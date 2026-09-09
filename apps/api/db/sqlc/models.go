@@ -586,6 +586,44 @@ type CliDeviceCode struct {
 	CreatedAt      time.Time          `json:"created_at"`
 }
 
+type ConnectivityIssuance struct {
+	SessionID uuid.UUID `json:"session_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	OwnerID   uuid.UUID `json:"owner_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	IssuedAt  time.Time `json:"issued_at"`
+}
+
+type ConnectivityIssuanceLock struct {
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+type ConnectivityProfile struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	Enabled      bool      `json:"enabled"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	RelayUrl     string    `json:"relay_url"`
+	SecretSealed *string   `json:"secret_sealed"`
+	Revision     int64     `json:"revision"`
+}
+
+type ConnectivitySession struct {
+	DeviceID        uuid.UUID `json:"device_id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	OwnerID         uuid.UUID `json:"owner_id"`
+	GatewayID       uuid.UUID `json:"gateway_id"`
+	SessionID       uuid.UUID `json:"session_id"`
+	Generation      int64     `json:"generation"`
+	CreatedAt       time.Time `json:"created_at"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	Revoked         bool      `json:"revoked"`
+	DeviceSequence  int64     `json:"device_sequence"`
+	GatewaySequence int64     `json:"gateway_sequence"`
+	DevicePayload   []byte    `json:"device_payload"`
+	GatewayPayload  []byte    `json:"gateway_payload"`
+}
+
 type Device struct {
 	ID                uuid.UUID          `json:"id"`
 	OrgID             uuid.UUID          `json:"org_id"`

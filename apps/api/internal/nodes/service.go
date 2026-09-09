@@ -1104,19 +1104,8 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 	// derivation — that would be a second, shadow derivation input, the exact class the reduce killed). A
 	// member no longer a live gateway (unbound/deleted) is dropped from the active order at CONSUMPTION, a
 	// transient the membership-event reconcile (ReconcileHubSet on the unbind/delete path) then makes durable.
-	// No row → nil → fallback (a not-yet-reconciled org still compiles).
-	var hubMembers []sqlc.ListSiteGatewaysForOrgRow
-	if hs, herr := s.q.GetOrgHubSet(ctx, orgID); herr == nil {
-		byID := make(map[uuid.UUID]sqlc.ListSiteGatewaysForOrgRow, len(gws))
-		for _, g := range gws {
-			byID[g.ID] = g
-		}
-		for _, mid := range deriveActive(hs.Configured, hs.Demoted) {
-			if g, ok := byID[mid]; ok {
-				hubMembers = append(hubMembers, g)
-			}
-		}
-	} else if herr != pgx.ErrNoRows {
+	hubMembers, herr := s.loadHubMembers(ctx, orgID, gws)
+	if herr != nil {
 		return siteTopology{}, herr
 	}
 	// A3b: the org's device pool, canonical masked. A read ERROR fails the load (DesiredState-ATOMIC — a
@@ -1326,6 +1315,69 @@ func (s *Service) NodeDial(ctx context.Context, orgID, nodeID uuid.UUID) (endpoi
 	}
 	ep, pk, ok := activeHubDialFrom(nodeID, activeHubMembers(topo, time.Now()))
 	return ep, pk, ok, nil
+}
+
+// EffectiveConnectivityGateway reuses the same active topology as NodeDial.
+// q must be transaction-bound, with the topology rows held stable by the caller.
+// A non-member keeps its assigned gateway; this does not move device identity.
+func EffectiveConnectivityGateway(ctx context.Context, q *sqlc.Queries, orgID, assigned uuid.UUID, now time.Time) (uuid.UUID, string, bool, error) {
+	gws, err := q.ListSiteGatewaysForOrg(ctx, orgID)
+	if err != nil {
+		return uuid.Nil, "", false, err
+	}
+	hubs, err := (&Service{q: q}).loadHubMembers(ctx, orgID, gws)
+	if err != nil {
+		return uuid.Nil, "", false, err
+	}
+	id, key, derived := effectiveConnectivityGateway(gws, hubs, assigned, now)
+	return id, key, derived, nil
+}
+
+// EffectiveConnectivityGatewayFromSnapshot uses the same canonical selection on
+// a transaction-locked read set; it does not cache or independently elect a hub.
+func EffectiveConnectivityGatewayFromSnapshot(snapshot sqlc.ConnectivityTopologySnapshot, assigned uuid.UUID) (uuid.UUID, string, bool) {
+	var hubs []sqlc.ListSiteGatewaysForOrgRow
+	if snapshot.HubSet != nil {
+		hubs = hubMembersFrom(*snapshot.HubSet, snapshot.Gateways)
+	}
+	return effectiveConnectivityGateway(snapshot.Gateways, hubs, assigned, snapshot.Now)
+}
+
+func effectiveConnectivityGateway(gws, hubs []sqlc.ListSiteGatewaysForOrgRow, assigned uuid.UUID, now time.Time) (uuid.UUID, string, bool) {
+	topo := siteTopology{gws: gws, hubMembers: hubs}
+	members := activeHubMembers(topo, now)
+	_, key, derived := activeHubDialFrom(assigned, members)
+	if !derived {
+		return assigned, "", false
+	}
+	return members[0].ID, key, true
+}
+
+// loadHubMembers is shared by full topology and connectivity-only readers.
+// Selection does not require subnet, DNS or Kubernetes service inventory.
+func (s *Service) loadHubMembers(ctx context.Context, orgID uuid.UUID, gws []sqlc.ListSiteGatewaysForOrgRow) ([]sqlc.ListSiteGatewaysForOrgRow, error) {
+	hs, err := s.q.GetOrgHubSet(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return hubMembersFrom(hs, gws), nil
+}
+
+func hubMembersFrom(hs sqlc.GetOrgHubSetRow, gws []sqlc.ListSiteGatewaysForOrgRow) []sqlc.ListSiteGatewaysForOrgRow {
+	byID := make(map[uuid.UUID]sqlc.ListSiteGatewaysForOrgRow, len(gws))
+	for _, g := range gws {
+		byID[g.ID] = g
+	}
+	var members []sqlc.ListSiteGatewaysForOrgRow
+	for _, mid := range deriveActive(hs.Configured, hs.Demoted) {
+		if g, ok := byID[mid]; ok {
+			members = append(members, g)
+		}
+	}
+	return members
 }
 
 // activeHubDialFrom is WF-A's endpoint-derivation primitive (D-WFA-5 (C)): a device whose assigned node is a

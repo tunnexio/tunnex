@@ -17,6 +17,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
@@ -185,8 +186,9 @@ func requireVerifiedSessionUser(ctx context.Context) (*authctx.Principal, error)
 // typed responses on success and plain errors on failure; the strict handler's
 // ResponseErrorHandlerFunc renders those errors as the standard envelope.
 type apiServer struct {
-	system *sqlc.Queries
-	orgs   *tenancy.Service
+	system       *sqlc.Queries
+	connectivity *connectivity.Store
+	orgs         *tenancy.Service
 	// licence is the entitlement source, read on every gated question. ⚠ nil => Community (fail-open).
 	licence            *licence.Manager
 	cliAuth            *cliauth.Service

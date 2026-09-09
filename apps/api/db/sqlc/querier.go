@@ -131,6 +131,7 @@ type Querier interface {
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
 	ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) (int64, error)
 	ConnectAgentMCPOAuthConnection(ctx context.Context, arg ConnectAgentMCPOAuthConnectionParams) (int64, error)
+	ConnectivityWallClock(ctx context.Context) (time.Time, error)
 	// lint:cross-org — the token hash is the public endpoint's credential and the row is locked before creation.
 	ConsumeAgentBootstrapToken(ctx context.Context, arg ConsumeAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	// Single-use + purpose-bound: only matches an unconsumed, unexpired token of the
@@ -203,6 +204,7 @@ type Querier interface {
 	// it. Both are FK ON DELETE CASCADE'd when the cluster row is deleted, so the audit must capture them BEFORE
 	// the delete — a governance cascade must never vanish untraceably.
 	CountClusterCascade(ctx context.Context, arg CountClusterCascadeParams) (CountClusterCascadeRow, error)
+	CountConnectivityIssuances(ctx context.Context, arg CountConnectivityIssuancesParams) (CountConnectivityIssuancesRow, error)
 	// The per-user device cap counts ACTIVE + PENDING (S7.3 finding #1): a pending device
 	// reserves a real pool /32 and is a real enrollment, so excluding it let a user create
 	// unbounded pending devices (cap bypass on approve + an org-pool DoS). CONVENTION: pending
@@ -522,6 +524,8 @@ type Querier interface {
 	// The org join is the tenant boundary; device ids are globally unique, but a
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
 	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (EnsureAgentRuntimeStateRow, error)
+	EnsureConnectivityIssuanceLock(ctx context.Context, orgID uuid.UUID) error
+	EnsureConnectivityProfile(ctx context.Context, orgID uuid.UUID) error
 	ExpireAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentAccessRequestParams) (AgentAccessRequest, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
@@ -589,6 +593,7 @@ type Querier interface {
 	// Verify path: read the CONFIRMED secret + replay clock under a row lock, so the replay-guard
 	// read+update can't interleave with a concurrent verify.
 	GetConfirmedTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
+	GetConnectivitySession(ctx context.Context, arg GetConnectivitySessionParams) (ConnectivitySession, error)
 	GetCurrentAgentOwnerCandidate(ctx context.Context, arg GetCurrentAgentOwnerCandidateParams) (uuid.UUID, error)
 	GetDevice(ctx context.Context, arg GetDeviceParams) (Device, error)
 	// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
@@ -826,6 +831,7 @@ type Querier interface {
 	// annotation. Granting deployment-level authority to a soft-deleted account would arm an identity that is
 	// meant to be gone, and a later undelete would restore it silently holding a capability nobody granted it.
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
+	HasConnectivityIssuance(ctx context.Context, arg HasConnectivityIssuanceParams) (bool, error)
 	// lint:cross-org — SaveConnection checks the locked connection owner before inspecting this exact identity namespace.
 	HasSSOConnectionIdentities(ctx context.Context, connectionID uuid.UUID) (bool, error)
 	HeartbeatLifecycleInstallOperation(ctx context.Context, arg HeartbeatLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
@@ -1134,6 +1140,8 @@ type Querier interface {
 	// MORE THAN ONE member — i.e. a pinned HA set with at least one standby; a single-hub org has nothing to
 	// fail over (S8.6 Slice 4). Reads the CONFIGURED membership (the intent) — the reduce's field rename.
 	ListFailoverOrgs(ctx context.Context) ([]uuid.UUID, error)
+	// Candidate IDs only; caller must reauthorize each row through Store.Read.
+	ListGatewayConnectivityKeys(ctx context.Context, arg ListGatewayConnectivityKeysParams) ([]ListGatewayConnectivityKeysRow, error)
 	ListGroupMembers(ctx context.Context, arg ListGroupMembersParams) ([]ListGroupMembersRow, error)
 	// Compiler input: every (group, user) pair in the org.
 	ListGroupMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListGroupMembershipsByOrgRow, error)
@@ -1424,6 +1432,12 @@ type Querier interface {
 	// lint:allow-deleted — a persisted bounded policy keeps draining evidence for
 	// a soft-deleted tenant. The row lock serializes scheduled/manual claims.
 	LockAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	// Match the WireGuard roster's active owner/membership/posture/key gates.
+	// Device serialization plus shared eligibility locks keep the snapshot stable
+	// until commit. No caller-supplied owner or gateway determines the binding.
+	LockConnectivityEligibility(ctx context.Context, arg LockConnectivityEligibilityParams) (LockConnectivityEligibilityRow, error)
+	LockConnectivityIssuance(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	LockConnectivityProfile(ctx context.Context, orgID uuid.UUID) (ConnectivityProfile, error)
 	// lint:cross-org — a transaction-scoped advisory lock on an arbitrary key (a
 	// user id or org id, passed as text). Create takes BOTH (in sorted order, so no
 	// deadlock) to make the per-user cap check AND the org-wide IP allocation atomic
@@ -1492,6 +1506,9 @@ type Querier interface {
 	// This security-definer function is the only authorized DELETE path. Its SQL
 	// body locks the exact unexpired durable run and derives tenant/cutoff from it.
 	PruneAuditLogsByAgeBatch(ctx context.Context, runID uuid.UUID) (int64, error)
+	PruneConnectivityIssuances(ctx context.Context, arg PruneConnectivityIssuancesParams) error
+	ReadConnectivityProfile(ctx context.Context, orgID uuid.UUID) (ConnectivityProfile, error)
+	RecordConnectivityIssuance(ctx context.Context, arg RecordConnectivityIssuanceParams) error
 	// One stamp for all three poll outcomes (the two-tier health, D2):
 	//   success  → ok=true,  advance_clock=true  (last_sync_at = now; error cleared)
 	//   transient→ ok=false, advance_clock=false (last_sync_at FROZEN at the last good sync — the
@@ -1558,6 +1575,9 @@ type Querier interface {
 	// lint:cross-org — keyed by node id after the caller authorized via the current
 	// cert; renewal rotates the serial and stamps activity/version.
 	RenewNodeCert(ctx context.Context, arg RenewNodeCertParams) error
+	// Caller holds canonical device/eligibility locks. Keep generation monotonic
+	// even when the previous session was revoked or expired.
+	ReplaceConnectivitySession(ctx context.Context, arg ReplaceConnectivitySessionParams) (ConnectivitySession, error)
 	// Inputs:
 	//   $3 applied_revision       last revision installed successfully
 	//   $4 attempted_revision     revision this report concerns
@@ -1701,6 +1721,9 @@ type Querier interface {
 	// runs once per org. lint:cross-org — keyed by node_id inside the node-revoke transaction (org-authorized
 	// upstream, mirrors RevokeDevicesForNode).
 	RevokeOVPNClientCertsForNode(ctx context.Context, nodeID uuid.UUID) ([]uuid.UUID, error)
+	RevokeOrgConnectivitySessions(ctx context.Context, orgID uuid.UUID) error
+	SaveConnectivityProfile(ctx context.Context, arg SaveConnectivityProfileParams) (ConnectivityProfile, error)
+	SaveConnectivitySnapshot(ctx context.Context, arg SaveConnectivitySnapshotParams) (ConnectivitySession, error)
 	SaveSSOConnection(ctx context.Context, arg SaveSSOConnectionParams) (SsoConnection, error)
 	SetAgentManagingGroup(ctx context.Context, arg SetAgentManagingGroupParams) (AgentProfile, error)
 	SetAgentOwner(ctx context.Context, arg SetAgentOwnerParams) (Device, error)
@@ -1777,6 +1800,14 @@ type Querier interface {
 	SetTOTPLastTimestep(ctx context.Context, arg SetTOTPLastTimestepParams) error
 	SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error
 	SetUserStatus(ctx context.Context, arg SetUserStatusParams) error
+	// Match the WireGuard roster's active owner/membership/posture/key gates.
+	// Device serialization plus shared eligibility locks keep the snapshot stable
+	// until commit. No caller-supplied owner or gateway determines the binding.
+	ShareConnectivityEligibility(ctx context.Context, arg ShareConnectivityEligibilityParams) (ShareConnectivityEligibilityRow, error)
+	ShareConnectivityHubSet(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
+	ShareConnectivitySession(ctx context.Context, arg ShareConnectivitySessionParams) (ConnectivitySession, error)
+	ShareConnectivityTopologyNodes(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
+	ShareConnectivityTopologySites(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
 	SoftDeleteK8sService(ctx context.Context, arg SoftDeleteK8sServiceParams) error
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (int64, error)
 	// ⛔ SOFT, AND THE `ovpn_client_certs` CASCADE IS WHY — NOT A PREFERENCE.

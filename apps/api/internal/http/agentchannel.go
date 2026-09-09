@@ -22,6 +22,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
@@ -32,6 +33,7 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
+	connectivity               *connectivity.Store
 	svc                        *nodes.Service
 	ca                         *agentca.CA
 	hub                        *nodepush.Hub
@@ -122,6 +124,10 @@ func (a *AgentChannel) Handler() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Get("/agent/connectivity-sessions", a.connectivityPending)
+	r.Get("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
+	r.Put("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
+	r.Delete("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
 	r.Get("/agent/desired-state", a.desiredState)
 	r.Get("/agent/watch", a.watch)
 	r.Post("/agent/renew", a.renew)

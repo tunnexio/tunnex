@@ -1,5 +1,6 @@
 import { SsoSelfLink } from "../components/SsoSelfLink";
 import { SsoConnections } from "../components/SsoConnections";
+import { RelayFallbackSettings } from "../components/RelayFallbackSettings";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -297,6 +298,7 @@ export default function Settings() {
               canEdit={emailVerified}
               onResized={(o) => setOrg(o)}
             />
+            <RelayFallbackSettings key={org.id} orgId={org.id} canEdit={emailVerified && can(myRole, "connectivity:manage")} />
           </SettingGroup>
         )}
 

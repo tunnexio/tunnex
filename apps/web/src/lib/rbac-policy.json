@@ -16,6 +16,8 @@
     "alerting:manage",
     "audit_log_retention:manage",
     "audit_log_retention:view",
+    "connectivity:manage",
+    "connectivity:use",
     "device:approve",
     "device:restore",
     "device:transfer",
@@ -42,6 +44,7 @@
     "org:view"
   ],
   "member": [
+    "connectivity:use",
     "member:list",
     "org:view"
   ],
@@ -71,6 +74,8 @@
     "alerting:manage",
     "audit_log_retention:manage",
     "audit_log_retention:view",
+    "connectivity:manage",
+    "connectivity:use",
     "device:approve",
     "device:restore",
     "device:transfer",

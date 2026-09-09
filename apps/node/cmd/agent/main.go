@@ -34,6 +34,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
 	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
+	"github.com/tunnexio/tunnex/apps/node/internal/relay"
 )
 
 const (
@@ -417,8 +418,20 @@ func main() {
 	}
 	ownershipAttestor := control.NewPoolVIPOwnershipAttestorV3(ownershipAdapter,
 		control.NewFilePoolVIPOwnershipAppliedStateStore(filepath.Join(certDir, "pool-vip-ownership-applied.json")))
+	relayRuntime := relay.New(client, wgPub, logger)
+	if wgBackend == "wgctrl" {
+		go relayRuntime.Run(ctx)
+	}
 	r.OnDesired(func(commandCtx context.Context, desired reconcile.DesiredState) (reconcile.DesiredState, error) {
-		return ownershipCoordinator.UpdateBaseAndSnapshot(commandCtx, desired, ownershiplease.BaseAuthorityFromWire(desired.KubernetesOwnershipBaseAuthority))
+		projected, err := ownershipCoordinator.UpdateBaseAndSnapshot(commandCtx, desired, ownershiplease.BaseAuthorityFromWire(desired.KubernetesOwnershipBaseAuthority))
+		if err != nil {
+			relayRuntime.SetPort(0)
+		} else {
+			// Only the ownership-projected configuration may select the fixed
+			// local WireGuard listener. Signaling never supplies this address.
+			relayRuntime.SetPort(projected.ListenPort)
+		}
+		return projected, err
 	})
 	r.OnOVPN(func(ds reconcile.DesiredState) {
 		withdrawOVPN := func(cause error) {
