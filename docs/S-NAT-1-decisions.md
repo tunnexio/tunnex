@@ -188,3 +188,19 @@ not returned from the inventory snapshot. List pagination advances over omitted
 keys, so an invalid first row cannot starve the rest. Node-side RPC uses existing
 mTLS Client and bounds response bytes/time; responses never include raw DB errors.
 This completes the transport for signaling, not the ICE runtime itself.
+
+## Single relay profile and session credential delivery
+
+One org profile, TLS TURN URL only for the first supported UI. Admin/owner-only
+configuration permission, write-only shared secret sealed under the existing
+CP master key with org-bound plaintext envelope; reads expose configured boolean
+only. Update disables/revokes existing sessions transactionally; missing secret
+preserves it, never returns it. Enabling requires valid URL and configured key.
+No network dial or probe from the API on save. Reject URL credentials/fragments,
+loopback/unspecified/link-local/multicast IP targets; private routed relays allowed.
+
+Deliver short-lived credentials only as part of an already-authorized session
+response and only when a valid profile is present. No GET configuration response
+contains credentials. Internal store tests with inert opt-in-only profiles remain
+valid; such profiles are not enableable through the customer API. Feature-off
+continues existing direct behavior, not a silent plaintext fallback.
