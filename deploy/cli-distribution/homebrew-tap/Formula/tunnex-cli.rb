@@ -5,8 +5,10 @@ class TunnexCli < Formula
   version "0.1.25"
   sha256 "933e1edf0b2a9b15feccbec897e5df246efd3b8c17384b4c23a35d686133d73b"
   license "Apache-2.0"
+  revision 1
 
   depends_on "go" => :build
+  depends_on "wireguard-tools"
 
   def install
     cd "apps/cli" do
@@ -18,7 +20,7 @@ class TunnexCli < Formula
 
   def caveats
     <<~EOS
-      For tunnex up/down, install wireguard-tools and configure a device first.
+      WireGuard tools are installed. Configure a device before tunnex up/down.
       Login: tunnex login --server https://YOUR_CONTROL_PLANE
       CLI installation does not enroll a device or start a tunnel.
     EOS

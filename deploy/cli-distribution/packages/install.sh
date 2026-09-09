@@ -37,7 +37,12 @@ main() {
         Darwin)
             command -v brew >/dev/null 2>&1 || fail 'Install Homebrew from https://brew.sh, then rerun as a regular user.'
             [ "$(id -u)" != 0 ] || fail 'Run this installer as a regular user for Homebrew.'
-            brew install tunnexio/tap/tunnex-cli
+            brew install tunnexio/tap/tunnex-cli wireguard-tools
+            for tool in tunnex wg wg-quick wireguard-go; do
+                command -v "$tool" >/dev/null 2>&1 || fail "Required tool $tool is missing from PATH after installation."
+            done
+            tunnex version
+            printf '%s\n' 'Installed CLI and WireGuard tools. Next: tunnex login --server https://YOUR_CONTROL_PLANE'
             return ;;
         Linux) ;;
         *) fail 'Unsupported OS. See https://github.com/tunnexio/packages#installation' ;;

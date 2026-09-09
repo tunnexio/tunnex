@@ -1,8 +1,9 @@
 name: Verify and update Homebrew formula
 on:
   workflow_dispatch:
+  pull_request:
   push:
-    branches: [main]
+    branches: [main, cli-runtime-dependencies]
     paths: ['scripts/**', '.github/**']
   schedule:
     - cron: '43 */6 * * *'
@@ -62,10 +63,14 @@ jobs:
           brew install --build-from-source tunnexio/verification/tunnex-cli
           brew test tunnexio/verification/tunnex-cli
           tunnex version
+          command -v wg
+          command -v wg-quick
+          command -v wireguard-go
+          wg --version
           brew uninstall tunnex-cli
   publish:
     needs: [generate, test]
-    if: needs.generate.outputs.changed == 'true'
+    if: needs.generate.outputs.changed == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
