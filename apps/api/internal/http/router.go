@@ -26,6 +26,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
@@ -53,6 +54,7 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
+	Connectivity       *connectivity.Store
 	System             *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
 	Orgs               *tenancy.Service
 	CliAuth            *cliauth.Service
@@ -165,6 +167,10 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
+			if strings.Contains(req.URL.Path, "/connectivity-sessions") {
+				// Bound escaped JSON before the OpenAPI/body decoder allocates it.
+				req.Body = http.MaxBytesReader(w, req.Body, 128*1024)
+			}
 			next.ServeHTTP(w, req)
 		})
 	})
@@ -272,6 +278,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	}))
 
 	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv.connectivity = d.Connectivity
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
 	// wraps every operation (self-arming — a new endpoint is gated by construction).

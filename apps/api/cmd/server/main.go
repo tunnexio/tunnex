@@ -34,6 +34,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
+	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/dbcheck"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
@@ -477,6 +478,7 @@ func main() {
 		Invites:               invites.NewService(pool, mailer, cfg.AppBaseURL, logger),
 		Nodes:                 nodeSvc,
 		Devices:               deviceSvc,
+		Connectivity:          connectivity.NewStore(pool),
 		Ovpn:                  ovpnSvc,
 		Sites:                 siteSvc,
 		K8s:                   k8sSvc,

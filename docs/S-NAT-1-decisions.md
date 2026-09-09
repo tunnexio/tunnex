@@ -130,3 +130,48 @@ store tests; no unauthenticated or placeholder route will be registered.
 Next full contract decision still owed before forwarding integration: numeric
 forwarding lease/CP-loss bounds and relay peer restriction policy. This mailbox
 must not be misrepresented as live revocation enforcement.
+
+## Durable store and device API implementation checkpoint
+
+Implemented migration 0139, generated sqlc queries, canonical eligibility locks,
+database-clock expiry, bounded per-side snapshots, replacement generations and
+close. JSON storage preserves raw bytes, so the exact 16 KiB boundary does not
+expand during persistence. No history growth per message. No transport enabled.
+
+OpenAPI-first owner endpoints under
+`/organizations/{orgId}/devices/{deviceId}/connectivity-sessions`: create, read,
+publish and close. Item operations require exact session ID and generation.
+Dedicated `connectivity:use` grants to member/admin/owner, never operator/agent;
+canonical ownership still required regardless of role. Generated Go/CLI/TS/RBAC
+updated. Existing auth/MFA/CSRF/no-store middleware remains; request body capped
+before decoding; database/payload error details are not sent to the caller.
+
+Verified in isolated local PostgreSQL 17 fixture
+`tunnex-nat1-store-20260909a` (no default Compose/project changes):
+- All migrations to 139, rollback 139→138 and reapply.
+- Actual HTTP owner create/read/publish/close; replay, malformed payload,
+  wrong owner, operator and unauthenticated rejection.
+- Eight competing independent store writes: exactly one sequence accepted.
+- Durable read, gateway-side store principal, default-off, supersession,
+  posture/malformed-key/device/gateway revocation, membership removal and expiry.
+- Exact 16 KiB snapshot persistence; close prevents reads.
+- Focused PostgreSQL race tests in both editions; HTTP/RBAC/connectivity package
+  suites in both editions; vet and enterprise server build. These are focused
+  local results, not full story gates, live relay acceptance or exact-head CI.
+
+The generic auth walk needed valid new query/body fixtures; corrected the
+fixture without weakening its 401 assertion. No customer UI toggles added.
+
+Next implementation: authenticated gateway mTLS mailbox delivery and relay
+profile/credential wiring with transactional rate limits; then real node/client
+consumers and the small Settings card. Candidate semantic validation and
+forwarding lease/security decisions still required before those consumers.
+Profile enabling/configuration is deliberately not exposed yet. No PR/push,
+merge, cloud mutation or production enablement in this checkpoint.
+
+`make generate-check` passed against the staged generated artifacts. Final
+PostgreSQL race reruns passed in both editions after the JSON byte-preservation
+change. Independent review dispatch was attempted but the agent service refused
+with a thread-limit error; no independent-review completion is claimed. Full
+story-end multi-finder review remains pending. Local test PostgreSQL is retained
+for the next slice; do not touch unrelated containers or default Compose stores.

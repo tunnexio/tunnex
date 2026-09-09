@@ -18,6 +18,61 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/devices/{deviceId}/connectivity-sessions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: createConnectivitySession
+      summary: Create or supersede an opted-in device owner's negotiation session
+      tags: [connectivity]
+      responses:
+        "201":
+          description: Current server-bound session; previous generation is invalidated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectivityMailbox" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/devices/{deviceId}/connectivity-sessions/{sessionId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: generation, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+    get:
+      operationId: getConnectivitySession
+      summary: Read the latest bounded signaling snapshots (device owner only)
+      tags: [connectivity]
+      responses:
+        "200":
+          description: Current session; authorization is rechecked on every read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectivityMailbox" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: publishConnectivitySnapshot
+      summary: Replace the device's complete signaling snapshot (not a trickle delta)
+      tags: [connectivity]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConnectivitySnapshotRequest" }
+      responses:
+        "200":
+          description: Updated mailbox; replayed or skipped sequences are refused.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectivityMailbox" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: closeConnectivitySession
+      summary: Close a negotiation session and clear its snapshots
+      tags: [connectivity]
+      responses:
+        "204": { description: Session closed; this is not a live tunnel revocation acknowledgement. }
+        default: { $ref: "#/components/responses/Error" }
   /healthz:
     get:
       operationId: getHealth
@@ -5453,6 +5508,30 @@ components:
       required: true
 
   schemas:
+    ConnectivitySnapshotRequest:
+      type: object
+      additionalProperties: false
+      required: [sequence, payload]
+      properties:
+        sequence: { type: integer, format: int64, minimum: 1, maximum: 64 }
+        payload:
+          type: string
+          maxLength: 16384
+          description: A complete UTF-8 JSON object, additionally bounded to 16384 bytes by the service. No TURN shared secret.
+    ConnectivityMailbox:
+      type: object
+      additionalProperties: false
+      required: [session_id, device_id, gateway_id, generation, expires_at, device_sequence, gateway_sequence, device_payload, gateway_payload]
+      properties:
+        session_id: { type: string, format: uuid }
+        device_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        generation: { type: integer, format: int64, minimum: 1 }
+        expires_at: { type: string, format: date-time }
+        device_sequence: { type: integer, format: int64, minimum: 0, maximum: 64 }
+        gateway_sequence: { type: integer, format: int64, minimum: 0, maximum: 64 }
+        device_payload: { type: string, maxLength: 16384 }
+        gateway_payload: { type: string, maxLength: 16384 }
     HealthResponse:
       type: object
       required: [status, service]

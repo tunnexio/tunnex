@@ -20,9 +20,10 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
-	"savessoconnection":     `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
-	"activatessoconnection": `{"enabled":false,"revision":1}`,
-	"testssoconnection":     `{"link_account":false}`,
+	"publishconnectivitysnapshot": `{"sequence":1,"payload":"{}"}`,
+	"savessoconnection":           `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
+	"activatessoconnection":       `{"enabled":false,"revision":1}`,
+	"testssoconnection":           `{"link_account":false}`,
 	// ⚠ A body is required so the 401 is about AUTHENTICATION, not about a missing field. Without one the
 	// spec validator answers 400 first and the walk cannot tell "you are not signed in" from "your JSON is
 	// wrong" — which is exactly the confusion the walk exists to rule out.
@@ -147,6 +148,9 @@ var walkBodies = map[string]string{
 // structurally valid so this walk measures authentication rather than the
 // generated parameter validator. Keep values inert and non-secret.
 var walkQueries = map[string]string{
+	"getconnectivitysession":                  "?generation=1",
+	"publishconnectivitysnapshot":             "?generation=1",
+	"closeconnectivitysession":                "?generation=1",
 	"testagentaccess":                         "?destination=192.0.2.10&protocol=tcp&port=443",
 	"getagentpolicytemplatedestinationimpact": "?destination_kind=resource&destination_id=00000000-0000-0000-0000-000000000000",
 	"deletek8sclusterscope":                   "?expected_revision=1",
@@ -183,6 +187,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{nodeId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{gatewayId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{deviceId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{sessionId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{credentialId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{groupId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{resourceId}", uuid.NewString())

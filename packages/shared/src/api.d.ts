@@ -4,6 +4,51 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/devices/{deviceId}/connectivity-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create or supersede an opted-in device owner's negotiation session */
+        post: operations["createConnectivitySession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/devices/{deviceId}/connectivity-sessions/{sessionId}": {
+        parameters: {
+            query: {
+                generation: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /** Read the latest bounded signaling snapshots (device owner only) */
+        get: operations["getConnectivitySession"];
+        /** Replace the device's complete signaling snapshot (not a trickle delta) */
+        put: operations["publishConnectivitySnapshot"];
+        post?: never;
+        /** Close a negotiation session and clear its snapshots */
+        delete: operations["closeConnectivitySession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -4315,6 +4360,30 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ConnectivitySnapshotRequest: {
+            /** Format: int64 */
+            sequence: number;
+            /** @description A complete UTF-8 JSON object, additionally bounded to 16384 bytes by the service. No TURN shared secret. */
+            payload: string;
+        };
+        ConnectivityMailbox: {
+            /** Format: uuid */
+            session_id: string;
+            /** Format: uuid */
+            device_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: int64 */
+            generation: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: int64 */
+            device_sequence: number;
+            /** Format: int64 */
+            gateway_sequence: number;
+            device_payload: string;
+            gateway_payload: string;
+        };
         HealthResponse: {
             /**
              * @description Liveness status.
@@ -7503,6 +7572,113 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    createConnectivitySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server-bound session; previous generation is invalidated. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectivityMailbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getConnectivitySession: {
+        parameters: {
+            query: {
+                generation: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current session; authorization is rechecked on every read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectivityMailbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    publishConnectivitySnapshot: {
+        parameters: {
+            query: {
+                generation: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectivitySnapshotRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated mailbox; replayed or skipped sequences are refused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectivityMailbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    closeConnectivitySession: {
+        parameters: {
+            query: {
+                generation: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed; this is not a live tunnel revocation acknowledgement. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
