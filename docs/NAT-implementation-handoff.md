@@ -6,14 +6,17 @@ or cached credentials from a previous laptop. Verify live Git and remote refs.
 ## Current re-entry override
 
 Latest continuation supersedes the historical paragraphs below. Server product
-is consolidated at `0b1dd15`, followed by hosted-latency reduction `46b19d4`;
-client product is committed at `55f4267` in its separate repository. Read
-`NAT-consolidated-aws-20260909.md` FIRST for current artifact hashes, schema141,
-rollback override, isolated hosted ownership PASS and combined recovery FAIL.
-Both worktrees are consolidated; do not assume runtime changes remain dirty.
-Latest full client suite318 passes. Corrected Mac helper is installed and Down.
-Next narrow issue is loaded CP request latency during recovery, not another broad
-NAT review or repeated historical proof. No merge/release readiness is claimed.
+tip is `cddcd57`; client product remains `55f4267` in its separate repository.
+Read `walk-artifacts/NAT/20260909-cp-recovery.md` and
+`docs/NAT-cp-pool-latency-20260909.md` FIRST. Pool headroom plus ordered locked
+topology read-set batching are implemented without relaxing auth/forwarding/DB
+deadlines. Combined native AWS recovery now PASSES: generation26 Relay+HTTP,
+real TURN restart, automatic generation27 Relay+HTTP, cleanup exit0.
+Prior failed candidates remain recorded. Tested API/node are active; corrected
+Mac helper is installed and Down. Source committed; no push, PR, merge or release.
+Latest full client suite318 passes from unchanged client source. Do not repeat
+the historical full walk by default. Full exact-final gates/CI and named platform/
+packaging qualifications remain; no merge/release readiness is claimed.
 
 ### Historical UI/backend checkpoint
 

@@ -111,3 +111,13 @@ Corrected Mac helper remains installed, Down. Both product worktrees are clean.
 No code pushed, PR opened, merge or release performed. The isolated hosted test
 database and rollback artifacts remain available; no customer credentials or
 audit records were removed. Candidate images are retained but not active.
+
+## Latest override: combined recovery PASS after measured CP reduction
+
+The rollback paragraph above is historical. Server product `cddcd57` is deployed
+with the candidate node and unchanged client/helper. Native Relay HTTP passed
+before and after an actual TURN restart; generation26→27 recovery was automatic
+and driver exited0 with helper Down/temporary credential revoked. See
+`walk-artifacts/NAT/20260909-cp-recovery.md` for hashes and exact scope, and
+`docs/NAT-cp-pool-latency-20260909.md` for retained failures and measurements.
+No full epic/GUI/platform/CI/merge acceptance is inferred from this bounded PASS.
