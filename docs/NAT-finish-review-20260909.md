@@ -1,4 +1,10 @@
-# NAT completion review — findings HELD
+# NAT completion review — fixes approved
+
+User disposition: **fix all four**, received 2026-09-09 after presentation of
+the ranked findings and proposed configurable 6/device, 30/owner, 300/org
+rolling-minute issuance defaults. Implement these defaults transactionally;
+refusal must preserve the existing session and return a bounded retry response.
+The historical HELD text below records review state before that approval.
 
 2026-09-09. Two independent read-only finders examined the current server/node
 and desktop/helper working trees. This is a bounded review, not complete beta
