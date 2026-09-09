@@ -10,6 +10,6 @@ paper and walk evidence. The control-plane CI does not execute nested workflows.
 Changes should be made and validated in the canonical distribution repository,
 then snapshots refreshed when updating this record. No private keys are included.
 
-Homebrew and signed Linux package publication are live. The packages snapshot's
-channels.py, channels.yml, flake.nix, nix/ and aur/ are an unpublished draft;
-its two review findings are held in docs/S-cli-publish-review.md.
+Homebrew, signed Linux packages, the Nix flake and the Arch build recipe are
+published and tested. Review dispositions and native execution evidence are
+recorded in docs/S-cli-publish-review.md and walk-artifacts/cli-publish/.

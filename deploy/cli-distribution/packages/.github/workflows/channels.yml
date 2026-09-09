@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['scripts/channels.py', 'scripts/upstream.py', '.github/workflows/channels.yml']
+    paths: ['scripts/channels.py', 'scripts/channel_guard.py', 'scripts/test_channels.py', 'scripts/upstream.py', '.github/workflows/channels.yml']
   schedule:
     - cron: '53 */6 * * *'
 permissions:
@@ -23,6 +23,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          python3 -m unittest discover -s scripts -p 'test_channels.py' -v
           python3 scripts/channels.py
           if ! git diff --quiet -- flake.nix nix aur || [ -n "$(git ls-files --others --exclude-standard flake.nix nix aur)" ] || [ "$GITHUB_EVENT_NAME" != schedule ]; then
             echo 'changed=true' >> "$GITHUB_OUTPUT"
@@ -55,6 +56,8 @@ jobs:
             nix --extra-experimental-features "nix-command flakes" build --no-write-lock-file path:/repo#tunnex-cli
             test "$(result/bin/tunnex version)" = "$EXPECTED"
             result/bin/tunnex help
+            nix --extra-experimental-features "nix-command flakes" profile install --no-write-lock-file path:/repo#tunnex-cli
+            test "$(/root/.nix-profile/bin/tunnex version)" = "$EXPECTED"
           '
       - name: Build and verify Arch recipe
         if: runner.arch == 'X64'
@@ -97,6 +100,8 @@ jobs:
         run: |
           python3 scripts/upstream.py > /tmp/current.json
           cmp /tmp/current.json nix/release.json
+          git fetch origin main
+          python3 scripts/channel_guard.py --current-ref origin/main
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add flake.nix nix aur
@@ -104,5 +109,6 @@ jobs:
             git commit -m 'chore: update verified Nix and Arch CLI recipes'
             # The Pages publisher does not commit; only this job owns recipe paths.
             git pull --rebase origin main
+            python3 scripts/channel_guard.py --current-ref origin/main
             git push origin HEAD:main
           fi

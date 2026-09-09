@@ -44,6 +44,18 @@ sudo dnf install tunnex-cli
 
 Verify the displayed key fingerprint against `keys/FINGERPRINT` before accepting.
 
+### openSUSE (zypper)
+
+```sh
+curl -fsS https://tunnexio.github.io/packages/tunnex.asc -o /tmp/tunnex.asc
+gpg --show-keys --with-fingerprint /tmp/tunnex.asc
+# Compare the fingerprint with keys/FINGERPRINT before importing.
+sudo rpm --import /tmp/tunnex.asc
+sudo zypper addrepo --refresh https://tunnexio.github.io/packages/rpm tunnex
+sudo zypper refresh tunnex
+sudo zypper install --from tunnex tunnex-cli
+```
+
 ### Alpine Linux (APK)
 
 ```sh
@@ -72,6 +84,29 @@ sudo pacman -Syu tunnex-cli
 
 ARM64 artifacts target Arch Linux ARM, not upstream Arch's x86_64 distribution.
 
+### Nix / NixOS
+
+```sh
+nix --extra-experimental-features 'nix-command flakes' profile install github:tunnexio/packages#tunnex-cli
+tunnex version
+```
+
+The first-party flake supports x86_64-linux and aarch64-linux. It wraps the
+verified static upstream CLI binary with a pinned checksum and package-set
+revision; it is separate from an upstream nixpkgs listing.
+
+### Build the Arch recipe locally
+
+```sh
+git clone --depth 1 https://github.com/tunnexio/packages.git tunnex-packages
+cd tunnex-packages/aur/tunnex-cli-bin
+makepkg -si
+```
+
+Use a regular user with Arch's build prerequisites installed. The recipe and
+`.SRCINFO` are tested before publication. This is a first-party recipe, not an
+AUR listing; no `yay`/AUR package availability is implied.
+
 ### Other Linux systems
 
 [Release archives](https://github.com/tunnexio/packages/releases/latest) contain
@@ -96,11 +131,13 @@ requirements. Kubernetes operations also have their own prerequisites.
 
 CI installs and removes packages on Ubuntu 24.04, Debian 12, Fedora 42,
 Rocky Linux 9, Amazon Linux 2023, openSUSE Leap 16.0, Alpine 3.22 and Arch Linux containers, executing version/help.
-This is package installation proof, not a live VPN/tunnel or every-distro test.
+Nix builds and profile installs also pass on native AMD64/ARM64; the Arch
+recipe is built and installed with makepkg on AMD64. These checks prove package
+installation, not live VPN/tunnel operation or every distro version.
 Other compatible distributions and ARM64 packages require corresponding host
 acceptance before fleet rollout. These are first-party repositories, not claims
 of inclusion in Debian, Ubuntu, Fedora, Alpine, AUR or other upstream indexes.
-Nixpkgs, Snap and Windows store submissions are tracked separately in ROADMAP.md.
+Upstream nixpkgs, AUR, Snap and Windows store submissions are tracked separately in ROADMAP.md.
 
 ## Publication and recovery
 

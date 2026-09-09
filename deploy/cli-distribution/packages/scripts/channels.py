@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 
 from upstream import resolve, download
+from channel_guard import validate
 info = resolve()
+previous = Path('nix/release.json')
+validate(info, json.loads(previous.read_text()) if previous.exists() else None)
 Path('work').mkdir(exist_ok=True)
 Path('work/release.json').write_text(json.dumps(info, indent=2) + '\n')
 download(info, 'work/upstream')
@@ -63,11 +66,11 @@ license=('Apache-2.0')
 provides=('tunnex-cli')
 conflicts=('tunnex-cli')
 optdepends=('wireguard-tools: tunnel up/down commands')
-source_x86_64=("tunnex::https://github.com/tunnexio/tunnex/releases/download/v${pkgver}/tnx-linux-amd64")
-source_aarch64=("tunnex::https://github.com/tunnexio/tunnex/releases/download/v${pkgver}/tnx-linux-arm64")
+source_x86_64=("tunnex-${pkgver}-x86_64::https://github.com/tunnexio/tunnex/releases/download/v${pkgver}/tnx-linux-amd64")
+source_aarch64=("tunnex-${pkgver}-aarch64::https://github.com/tunnexio/tunnex/releases/download/v${pkgver}/tnx-linux-arm64")
 sha256sums_x86_64=('%s')
 sha256sums_aarch64=('%s')
 package() {
-  install -Dm755 "$srcdir/tunnex" "$pkgdir/usr/bin/tunnex"
+  install -Dm755 "$srcdir/tunnex-${pkgver}-${CARCH}" "$pkgdir/usr/bin/tunnex"
 }
 ''' % (version, hashes['tnx-linux-amd64'], hashes['tnx-linux-arm64']))

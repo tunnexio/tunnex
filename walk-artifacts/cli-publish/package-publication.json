@@ -33,7 +33,6 @@
   "public_native_install_status": "success",
   "limitations": [
     "No live login or tunnel operation tested",
-    "Nix/Arch recipe review findings await user disposition",
     "Upstream store/index inclusion not claimed"
   ],
   "public_native_installs": {
@@ -55,5 +54,6 @@
     "head": "63edd240998ce99f52e1605b26926b8342f9b847",
     "status": "success",
     "behavior": "Existing signed packages verified and reused; no release assets overwritten"
-  }
+  },
+  "additional_channels": "Nix and Arch recipe publication is recorded in recipe-publication.json"
 }

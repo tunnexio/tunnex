@@ -2,12 +2,13 @@
 
 First-party package publication is independent of upstream package inclusion.
 
-- openSUSE/zypper: the signed RPM repository is available; run native zypper
-  acceptance before documenting a supported install command.
-- AUR: prepare and test PKGBUILD/.SRCINFO, then submit under a Tunnex-owned AUR
-  identity. A GitHub login does not grant AUR account access.
-- Nix/NixOS: build a source recipe with a verified vendor hash, validate with
-  nixpkgs-review and submit to nixpkgs. Do not ship a placeholder hash.
+- Additional distro versions: openSUSE Leap 16.0 native zypper acceptance has
+  passed; add version-specific acceptance for other supported releases as needed.
+- AUR: the first-party PKGBUILD/.SRCINFO is generated and tested by CI. Submit
+  it under a Tunnex-owned AUR identity; GitHub login does not grant AUR access.
+- Upstream nixpkgs: the first-party binary flake is independent. Prepare a
+  source recipe with verified vendor hash and maintainer metadata, validate with
+  nixpkgs-review, then submit for upstream review.
 - Snap: determine confinement for host wg-quick and routing, obtain publisher
   identity and any required classic-confinement review, then test enrollment and
   tunnel lifecycle before listing.

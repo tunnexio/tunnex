@@ -51,8 +51,9 @@ tampered InRelease with BADSIG.
 
 ## Nix/Arch recipe slice: two findings approved
 
-Draft sources are in deploy/cli-distribution/packages and the standalone local
-checkout /private/tmp/tunnex-cli-publish-packages. They have NOT been published.
+Published sources are in https://github.com/tunnexio/packages, with a review
+snapshot in deploy/cli-distribution/packages and a standalone local checkout
+at /private/tmp/tunnex-cli-publish-packages.
 User disposition on 2026-09-09: "i approve". Both following fixes are authorized:
 
 1. P2: channels.py Arch source aliases are always `tunnex`. Include version and
