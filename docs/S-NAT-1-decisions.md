@@ -249,3 +249,14 @@ the narrow correction: compare stored org/device/owner before offering recovery.
 That correction and a red-before/green-after PostgreSQL regression now pass in
 both editions. See the completion review for the bounded verification scope;
 this is not full-story or newly deployed live qualification.
+
+## AWS latency regression: reduce the selection read set
+
+Candidate 0b1dd15's durable mailbox test twice exceeded the unchanged five-second
+transaction deadline against the hosted AWS-walk database. Quota tests passed.
+The candidate API/node were rolled back; additive migration 141 remains.
+Connectivity currently invokes the complete DNS/subnet/Kubernetes topology loader
+only to consume gateways and hub order. Extract that existing hub-order reader
+for both consumers; retain deriveActive, activeHubMembers and activeHubDialFrom.
+Do not raise the transaction or forwarding deadlines. Re-test on the same hosted
+database before redeploying; fewer queries alone are not proof the timeout is fixed.
