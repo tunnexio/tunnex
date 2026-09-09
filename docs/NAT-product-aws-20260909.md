@@ -180,6 +180,43 @@ same-tunnel policy walk, not a forced-recovery or final release qualification.
 
 ## Native automatic session rollover PASS
 
+## Follow-up: measured Relay status and real TURN restart recovery
+
+2026-09-09: user installed the new helper with rollback retained. Installed,
+ad-hoc-signed SHA256 is
+`9c7c39ea8340438e2c7880d051b15a78694de55c9dbe1e2e090409b61f6f2345`.
+Signature verified, bundled helper synchronized byte-for-byte. The first attempt
+refused `already_up` because the old GUI survived SIGTERM; that exact dev process
+was stopped after confirming helper Down. No result is counted from that attempt.
+
+Account 735391218823 and instance i-0d320abd28be9eaa9/public13.235.24.2 verified.
+Only dedicated container `nat-product-turn-20260909b` was restarted for each
+interruption. No CP/DB/policy/security-group modifications or resource deletions.
+
+Initial isolated outage attempt failed. CP request logs show session GET HTTP500
+at `2026-09-09T08:03:40.205913761Z`; the client transient classifier omitted 500
+while accepting 502/503/504. A subsequent pre-correction run recovered generation
+13→14, but did not erase the failed attempt. Correction includes HTTP500 in the
+existing-lease bounded retry/recovery classification; it does not renew a helper
+lease on error or treat 401/403 as recoverable. Focused mocked 500/403 tests pass.
+
+Corrected-build live outage leg PASS: generation15 (expiry
+`2026-09-09T08:20:00.55741Z`) reached HTTP with helper path `relay`. Actual TURN
+restart broke the carrier. Changed-offer detection triggered one automatic fresh
+generation16 (expiry `2026-09-09T08:21:41.032834Z`), again path `relay`, with
+successful native HTTP. Exit0; helper down and temporary bearer revoked.
+No forced HTTP500 injection occurred in this final cloud run; its deterministic
+retry proof is the focused local regression, not an invented cloud assertion.
+
+Loaded controller SHA256:
+`ef27fd92002a5d8473004e0a31747f217822503aa4c8f69780d8232191a36b5b`.
+Full client309/309 tests PASS. Renderer66/66 focused tests and build, helper race
+suite/path classification, vet and macOS Intel build pass from the preceding
+path-status slice. Product changes remain uncommitted/unreleased. Native driver
+uses the production controller/owner queue but is not full Electron IPC/GUI proof.
+This is bounded recovery with interruption, not seamless handover or full-network
+qualification. Broader platform, outage/denial matrix, review and CI remain owed.
+
 2026-09-09 follow-up: account 735391218823 verified again. CP, gateway, relay,
 database expiry and policy configuration were unchanged for this leg. The dev
 GUI was stopped while its helper was already down, preventing competing owners.
