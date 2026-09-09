@@ -76,3 +76,24 @@ reader assertion and concurrent-reader deadlines; HA/ownership subtests passed.
 This test has a default four-connection test pool and local-latency assertions,
 so it is not a direct reproduction of the production16 pool. Preserve the FAIL;
 do not relabel it as full hosted qualification.
+
+## Reduction after the second failed candidate
+
+Batch-only live create still returned500 after5.84s while successful pool wait
+was flat and canceled acquisitions stayed0. Stopped further live retries and
+restored the prior API/node pair. No relay restart happened in either failed run.
+
+An isolated configured-relay timing probe then PASSED on the hosted database:
+ordinary individual queries take198–201ms, cold snapshot write397ms;
+create3782ms, publish2589ms, close1990ms with no competing CP controllers.
+This demonstrates very little five-second budget remains for shared-reader or
+writer contention. It does not identify the precise failing live SQL statement.
+
+Reduce the same read set, not the deadline: extend the ordered batch to include
+the existing wall clock, gateway list and hub-set read after the topology locks.
+Decode using pgx positional row collectors into existing generated row types,
+so no SQL or field-by-field decoder is copied. Reuse the canonical pure active
+hub selection for both ordinary and batched readers. Preserve missing-hub-set
+behavior, owner precheck, lock ordering, fresh post-mailbox-lock wall clock and
+all transaction/forwarding deadlines. Re-run local wire invariants, isolated
+hosted timing, bounded review, then one native recovery attempt.
