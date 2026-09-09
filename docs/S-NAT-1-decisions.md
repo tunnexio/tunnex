@@ -177,3 +177,14 @@ change. Independent review dispatch was attempted but the agent service refused
 with a thread-limit error; no independent-review completion is claimed. Full
 story-end multi-finder review remains pending. Local test PostgreSQL is retained
 for the next slice; do not touch unrelated containers or default Compose stores.
+
+## Gateway integration (next build)
+
+Reuse AgentChannel.authenticateAgent for every gateway mailbox operation. No
+JSON org/gateway identity is accepted. Paginate current pending session keys by
+device UUID, 64 at a time; each item must pass the same durable eligibility
+transaction as a direct read. An item concurrently revoked/superseded is omitted,
+not returned from the inventory snapshot. List pagination advances over omitted
+keys, so an invalid first row cannot starve the rest. Node-side RPC uses existing
+mTLS Client and bounds response bytes/time; responses never include raw DB errors.
+This completes the transport for signaling, not the ICE runtime itself.
