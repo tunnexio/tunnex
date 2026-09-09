@@ -192,6 +192,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	logger.Info("db_pool_configured", slog.Int("max_connections", int(pool.Config().MaxConns)))
 
 	// S10.1/S6.6 validate-never-generate: pgxpool.New is LAZY, so an unreachable
 	// EXTERNAL store would otherwise fail only on first query. Ping at boot so a bad
@@ -913,6 +914,21 @@ func main() {
 	// the dashboard reads, so the metric and the console can never disagree about what a kind means.
 	metricsCtx, stopMetrics := context.WithCancel(context.Background())
 	defer stopMetrics()
+	if os.Getenv("TUNNEX_DB_POOL_DIAGNOSTICS") == "true" {
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-metricsCtx.Done():
+					return
+				case <-ticker.C:
+					stats := pool.Stat()
+					logger.Info("db_pool_diagnostic", "max", stats.MaxConns(), "acquired", stats.AcquiredConns(), "idle", stats.IdleConns(), "acquires", stats.AcquireCount(), "wait_seconds", stats.EmptyAcquireWaitTime().Seconds(), "canceled", stats.CanceledAcquireCount())
+				}
+			}
+		}()
+	}
 	go func() {
 		reg := metrics.NewRegistry(func() map[nodes.PolicyDegradedKind]int {
 			// Bound the scrape's DB work: a slow fleet walk must never hold the scraper open.
@@ -920,6 +936,7 @@ func main() {
 			defer cancel()
 			return nodeSvc.FleetHealthCounts(ctx)
 		}, elector.IsLeader)
+		metrics.RegisterPool(reg, pool)
 		// readiness = the DB answers. A CP that cannot reach postgres serves nothing useful, and naming the
 		// reason beats a bare 503 (diagnosis-from-logs at the readiness tier).
 		ready := func() error { return pool.Ping(metricsCtx) }

@@ -25,3 +25,29 @@ as the override rather than inventing another tuning format. Direct migration/
 preflight connections must consume those pool settings locally, never send them
 as PostgreSQL GUCs. Keep channel-binding enforcement on all connection paths.
 Compare same new binary with explicit4 versus default16; then retest recovery.
+
+## Live result (11:33 UTC)
+
+The explicit4 override was refused at startup by the existing common PostgreSQL
+URL preflight whitelist. Removed that override immediately. Parser preservation
+tests are NOT end-to-end support for a customer pool URL option; the common URL
+contract remains narrower. No same-binary A/B claim is made.
+
+Default16 started successfully. Same nine-read probe passed: `/auth/me`
+1.53–1.67s, devices3.20–7.40s, nodes4.55–8.59s. Successful pool-wait growth
+settled at23.66s and remained unchanged for40s with idle connections available;
+one canceled acquisition was recorded. This reduces measured acquisition
+pressure, but does not establish that all request latency is fixed.
+
+With candidate API image `f920645edb1a`, node SHA
+`f7b1c01640e7ca9695c9dce10215794858ba2dd499b4715d9e9977b6d7303b1e`
+and installed client/helper, generation25 was created. Candidate PUT returned500
+after6.19s; cleanup DELETE returned500 after6.45s. The native walk FAILED BEFORE
+TURN restart. Driver cleanup confirmed helper Down and revoked the temporary
+credential. Next diagnosis is the bounded mailbox transaction itself, not another
+pool-size increase or a relaxed forwarding/authorization deadline.
+
+Focused dbconn/dbcheck/metrics tests pass in both editions; race tests, vet and
+both API builds pass. Enterprise connectivity/nodes package tests pass without
+the isolated-DB integration variable (not live DB coverage). Two bounded reviews
+of pool configuration and private metrics returned no actionable findings.
