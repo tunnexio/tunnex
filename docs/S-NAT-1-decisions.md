@@ -204,3 +204,21 @@ response and only when a valid profile is present. No GET configuration response
 contains credentials. Internal store tests with inert opt-in-only profiles remain
 valid; such profiles are not enableable through the customer API. Feature-off
 continues existing direct behavior, not a silent plaintext fallback.
+
+## Runtime bounds for the first macOS/Linux integration
+
+Pion stable release verified through upstream releases API on 2026-09-09:
+v4.4.2 (2026-09-04), identical to the feasibility pin. Reuse upstream ICE
+host/relay nomination. Node runs at most 64 sessions, polls CP every five seconds,
+closes forwarding on observed refusal or after 30 seconds without an authorized
+read, and bounds negotiation to 30 seconds. Closed generations never revive;
+retry requires fresh ICE negotiation, with 15-second failure backoff.
+CP outage fails relay forwarding closed; legacy direct peers remain untouched.
+Relay-only forwarding removal is not an assertion that legacy WG direct peers
+were removed: existing device-revocation reconciliation owns that boundary.
+
+Use only IPv4 UDP ICE candidates with literal routable/private IPs, max 32
+candidates, bounded strings, no loopback/link-local/multicast/unspecified targets.
+Fixed local kernel WireGuard destination, never a peer-provided UDP destination.
+Preserve application packets encrypted end-to-end. Windows/full-tunnel relay
+support must not be inferred from the split-tunnel macOS qualification.
