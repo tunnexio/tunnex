@@ -70,11 +70,11 @@ jobs:
                 # This step had NO condition at all and cost 59s on every run, including docs-only ones.
                 # It guards OpenAPI -> Go/TS/RBAC/sqlc drift, so it must fire when a SOURCE of generation
                 # changes or when a GENERATED artifact is hand-edited (the drift it exists to catch).
-                if ! printf '%s\n' "$CHANGED" | grep -qE '(openapi/|apps/api/db/|\.go$|go\.(mod|sum)$|\.gen\.|api\.d\.ts$|rbac-policy\.json$|tokens|Makefile|\.github/)'; then
+                if ! printf '%s\n' "$CHANGED" | grep -E '(openapi/|apps/api/db/|\.go$|go\.(mod|sum)$|\.gen\.|api\.d\.ts$|rbac-policy\.json$|tokens|Makefile|\.github/)' >/dev/null; then
                   RUN_CODEGEN=false
                 fi
                 # ── Web ─────────────────────────────────────────────────────────────────────────────────
-                if ! printf '%s\n' "$CHANGED" | grep -qE '(apps/web/|packages/|package\.json|pnpm-lock|\.github/)'; then
+                if ! printf '%s\n' "$CHANGED" | grep -E '(apps/web/|packages/|package\.json|pnpm-lock|\.github/)' >/dev/null; then
                   RUN_WEB=false
                 fi
                 # ── Docs-only ───────────────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ jobs:
             echo "docs_only=$DOCS_ONLY"
           } >> "$GITHUB_OUTPUT"
           echo "::notice title=gates scope::go=$RUN_GO codegen=$RUN_CODEGEN web=$RUN_WEB docs_only=$DOCS_ONLY (false = SKIPPED, not passed)"
-          printf '%s\n' "${CHANGED:-<no diff computed>}" | head -40
+          printf '%s\n' "${CHANGED:-<no diff computed>}" | sed -n '1,40p'
 
 
   contracts:

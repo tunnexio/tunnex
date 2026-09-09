@@ -59,10 +59,10 @@ jobs:
             if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
               CHANGED=$(git diff --name-only "${BASE}...HEAD" || true)
               if [ -n "$(printf '%s' "$CHANGED" | tr -d '[:space:]')" ]; then
-                if ! printf '%s\n' "$CHANGED" | grep -qE '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/)'; then
+                if ! printf '%s\n' "$CHANGED" | grep -E '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/)' >/dev/null; then
                   RUN_GO=false
                 fi
-                if ! printf '%s\n' "$CHANGED" | grep -qE '(\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)(package|pnpm-lock|package-lock)\.json$|(^|/)pnpm-lock\.yaml$|(^|/)(tsconfig|vite\.config|playwright\.config|playwright\.visual\.config)\.|Dockerfile|Makefile|\.github/|openapi/|apps/(web|client)/|packages/shared/|e2e/)'; then
+                if ! printf '%s\n' "$CHANGED" | grep -E '(\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)(package|pnpm-lock|package-lock)\.json$|(^|/)pnpm-lock\.yaml$|(^|/)(tsconfig|vite\.config|playwright\.config|playwright\.visual\.config)\.|Dockerfile|Makefile|\.github/|openapi/|apps/(web|client)/|packages/shared/|e2e/)' >/dev/null; then
                   RUN_JAVASCRIPT=false
                 fi
               fi

@@ -34,6 +34,7 @@ website design work and rejected standalone HTML preview are excluded.
 | Full enterprise API suite after integration | Every package except AI passed; seven AI tests referenced renamed fixture filenames. All references corrected and the entire AI package passed on rerun |
 | Open edition after integration | AI, HTTP, RBAC, connectivity, database connection, migrations and generated query suites PASS; full open suite also passed before main integration |
 | Probe diagnostic/deadline tests under race detector, 20 repetitions | PASS after replacing shared test counters with atomics; timeout behavior unchanged |
+| CI/gate contracts, including both classifiers with a 10,002-file diff | PASS: 44 tests; regressions failed before fixing early-exit pipe readers |
 | Toolchain guard plus four mutation/refusal contracts | PASS; first-party Go1.25.13 and upstream-required Go1.27.0 checked separately |
 | Website lint, 221 tests, full formatting, typecheck, build | PASS at `4dfb7f41484fb8f1fa41017dde0fe5126a604a49` |
 | Website remote CI checks and preview | PASS at that same website head |
@@ -55,7 +56,11 @@ volume, VM, deployment or user's model access was changed.
 
 The first core CI run exposed a test-only call-counter race and an overbroad
 toolchain equality check against the independent immutable Bifrost builder.
-Both are corrected with local race/refusal coverage. Remote CI must be assessed
+Both are corrected with local race/refusal coverage. A subsequent CI scope job
+failed while printing the large changed-file list. CI/security classifiers now
+drain pipeline input so broken pipes cannot fail classification or disable
+required lanes; both actual classifier scripts pass the large-diff regression.
+Remote CI must be assessed
 again on the final pushed head; earlier passing or cancelled jobs do not qualify
 that head.
 

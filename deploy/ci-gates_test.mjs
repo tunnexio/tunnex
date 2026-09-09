@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateGates } from './ci-gates.mjs';
 
@@ -101,4 +103,35 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   const cacheAction = readFileSync('.github/actions/go-container-cache/action.yml', 'utf8');
   assert.equal((cacheAction.match(/inputs\.lane/g) ?? []).length, 2,
     'both exact key and restore prefix must isolate matrix cache writers');
+});
+
+
+for (const [workflow, stepId, expected] of [
+  ['ci', 'scope', { go: 'true', web: 'true', codegen: 'true', docs_only: 'false' }],
+  ['security', 'c', { go: 'true', javascript: 'true' }],
+]) test(`${workflow} large PR classification drains input and retains required lanes`, (t) => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', `.github/workflows/${workflow}.yml`], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const { jobs } = JSON.parse(parsed.stdout);
+  const classify = jobs.scope.steps.find(step => step.id === stepId).run
+    .replaceAll('${{ github.event_name }}', 'pull_request')
+    .replaceAll('${{ github.event.pull_request.base.sha }}', 'fixture-base');
+  const dir = mkdtempSync(join(tmpdir(), 'tunnex-ci-scope-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const output = join(dir, 'outputs');
+  const fakeGit = `git() {
+    if [ "$1" = "cat-file" ]; then return 0; fi
+    if [ "$1" != "diff" ]; then return 1; fi
+    case "$*" in *--diff-filter=D*) return 0;; esac
+    printf '%s\n' apps/api/internal/fixture.go apps/web/src/fixture.tsx
+    for n in {1..10000}; do printf 'docs/large-publication-fixture-%s.md\n' "$n"; done
+  }
+`;
+  const result = spawnSync('bash', ['-c', fakeGit + classify], {
+    encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const values = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
+  assert.deepEqual(values, expected);
 });
