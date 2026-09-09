@@ -30,11 +30,23 @@
     "DEB/RPM/APK/Arch amd64 package SHA256 matches signed release manifest"
   ],
   "public_native_install_run": "https://github.com/tunnexio/packages/actions/runs/34313832784",
-  "public_native_install_status": "pending",
+  "public_native_install_status": "success",
   "limitations": [
     "No live login or tunnel operation tested",
-    "ARM64 native public installation pending",
     "Nix/Arch recipe review findings await user disposition",
     "Upstream store/index inclusion not claimed"
-  ]
+  ],
+  "public_native_installs": {
+    "amd64": [
+      "APT/Ubuntu 24.04",
+      "RPM/Rocky Linux 9",
+      "APK/Alpine 3.22",
+      "pacman/Arch Linux"
+    ],
+    "arm64": [
+      "APT/Ubuntu 24.04",
+      "RPM/Rocky Linux 9",
+      "APK/Alpine 3.22"
+    ]
+  }
 }

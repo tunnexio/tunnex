@@ -1,0 +1,27 @@
+name: Verify public package installs
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Publish signed CLI repositories']
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install from the public signed repositories
+        run: bash scripts/public_smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-install-${{ runner.arch }}
+          path: work/public/current.json
+          if-no-files-found: ignore
