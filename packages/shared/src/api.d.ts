@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/connectivity-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read relay fallback configuration without secrets */
+        get: operations["getConnectivityProfile"];
+        /** Configure one customer-hosted relay (admin/owner) */
+        put: operations["configureConnectivityProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/devices/{deviceId}/connectivity-sessions": {
         parameters: {
             query?: never;
@@ -37,12 +57,21 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Read the latest bounded signaling snapshots (device owner only) */
+        /**
+         * Read the latest bounded signaling snapshots (device owner only)
+         * @description An otherwise authorized owner receives 409 connectivity_gateway_changed when HA moved its live session to another gateway; obtain a fresh dial and session. Revoked or expired sessions remain 403 and must not auto-retry. New TURN credential issuance may return 429; wait at least 60 seconds.
+         */
         get: operations["getConnectivitySession"];
-        /** Replace the device's complete signaling snapshot (not a trickle delta) */
+        /**
+         * Replace the device's complete signaling snapshot (not a trickle delta)
+         * @description Returns 409 connectivity_gateway_changed for an otherwise authorized owner after HA promotion; stale or revoked sessions remain denied. New TURN credential issuance may return 429; wait at least 60 seconds.
+         */
         put: operations["publishConnectivitySnapshot"];
         post?: never;
-        /** Close a negotiation session and clear its snapshots */
+        /**
+         * Close a negotiation session and clear its snapshots
+         * @description A live session whose gateway changed may return 409 connectivity_gateway_changed; no old gateway is reauthorized.
+         */
         delete: operations["closeConnectivitySession"];
         options?: never;
         head?: never;
@@ -4360,6 +4389,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ConnectivityProfile: {
+            enabled: boolean;
+            relay_url: string;
+            secret_configured: boolean;
+            /** Format: int64 */
+            revision: number;
+        };
+        ConnectivityProfileRequest: {
+            enabled: boolean;
+            relay_url: string;
+            shared_secret?: string;
+            /** @default false */
+            clear_secret: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        ConnectivityRelayAccess: {
+            url: string;
+            username: string;
+            password: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         ConnectivitySnapshotRequest: {
             /** Format: int64 */
             sequence: number;
@@ -4367,6 +4419,9 @@ export interface components {
             payload: string;
         };
         ConnectivityMailbox: {
+            device_public_key?: string;
+            gateway_public_key?: string;
+            relay?: components["schemas"]["ConnectivityRelayAccess"];
             /** Format: uuid */
             session_id: string;
             /** Format: uuid */
@@ -7572,6 +7627,56 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getConnectivityProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default-off profile; shared secret is never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectivityProfile"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    configureConnectivityProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectivityProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; existing negotiation sessions invalidated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectivityProfile"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     createConnectivitySession: {
         parameters: {
             query?: never;
@@ -7591,6 +7696,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectivityMailbox"];
+                };
+            };
+            /** @description Issuance limit reached. Existing session unchanged; wait at least 60 seconds before retrying. No automatic retry loop. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             default: components["responses"]["Error"];

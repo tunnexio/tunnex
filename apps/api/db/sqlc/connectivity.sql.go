@@ -56,7 +56,8 @@ func (q *Queries) GetConnectivitySession(ctx context.Context, arg GetConnectivit
 }
 
 const lockConnectivityEligibility = `-- name: LockConnectivityEligibility :one
-SELECT d.id AS device_id, d.org_id, d.user_id AS owner_id, d.node_id AS gateway_id
+SELECT d.id AS device_id, d.org_id, d.user_id AS owner_id, d.node_id AS gateway_id,
+       d.public_key AS device_public_key, n.wg_public_key AS gateway_public_key
 FROM devices d
 JOIN nodes n ON n.id = d.node_id AND n.org_id = d.org_id
 JOIN users u ON u.id = d.user_id
@@ -78,10 +79,12 @@ type LockConnectivityEligibilityParams struct {
 }
 
 type LockConnectivityEligibilityRow struct {
-	DeviceID  uuid.UUID `json:"device_id"`
-	OrgID     uuid.UUID `json:"org_id"`
-	OwnerID   uuid.UUID `json:"owner_id"`
-	GatewayID uuid.UUID `json:"gateway_id"`
+	DeviceID         uuid.UUID `json:"device_id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	OwnerID          uuid.UUID `json:"owner_id"`
+	GatewayID        uuid.UUID `json:"gateway_id"`
+	DevicePublicKey  string    `json:"device_public_key"`
+	GatewayPublicKey string    `json:"gateway_public_key"`
 }
 
 // Match the WireGuard roster's active owner/membership/posture/key gates.
@@ -95,6 +98,8 @@ func (q *Queries) LockConnectivityEligibility(ctx context.Context, arg LockConne
 		&i.OrgID,
 		&i.OwnerID,
 		&i.GatewayID,
+		&i.DevicePublicKey,
+		&i.GatewayPublicKey,
 	)
 	return i, err
 }

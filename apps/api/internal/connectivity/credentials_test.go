@@ -27,7 +27,7 @@ func TestRelayCredentialsProtocolAndLifetime(t *testing.T) {
 		if err != nil || ts != got.ExpiresAt.Unix() {
 			t.Fatal("expiry prefix mismatch")
 		}
-		want := now.Add(RelayCredentialTTL)
+		want := now.Truncate(time.Minute).Add(RelayCredentialTTL)
 		if s.ExpiresAt.Before(want) {
 			want = s.ExpiresAt
 		}
@@ -74,6 +74,26 @@ func TestRelayCredentialsScopeAndRotation(t *testing.T) {
 				t.Fatal("credential scope reused")
 			}
 		})
+	}
+}
+
+func TestRelayCredentialsStableWithinIssuanceMinute(t *testing.T) {
+	s, c, p, now := fixture()
+	now = now.Truncate(time.Minute).Add(time.Second)
+	s.CreatedAt = now
+	s.ExpiresAt = now.Add(time.Hour)
+	secret := []byte(strings.Repeat("a", 32))
+	first, err := s.IssueRelayCredentials(p, c, now, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := s.IssueRelayCredentials(p, c, now.Add(57*time.Second), secret)
+	if err != nil || repeated != first {
+		t.Fatal("same-minute read minted different credentials")
+	}
+	next, err := s.IssueRelayCredentials(p, c, now.Add(time.Minute), secret)
+	if err != nil || next.Username == first.Username || next.Password == first.Password {
+		t.Fatal("next issuance minute did not rotate credentials")
 	}
 }
 

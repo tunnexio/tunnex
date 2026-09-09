@@ -2,7 +2,8 @@
 -- Match the WireGuard roster's active owner/membership/posture/key gates.
 -- Device serialization plus shared eligibility locks keep the snapshot stable
 -- until commit. No caller-supplied owner or gateway determines the binding.
-SELECT d.id AS device_id, d.org_id, d.user_id AS owner_id, d.node_id AS gateway_id
+SELECT d.id AS device_id, d.org_id, d.user_id AS owner_id, d.node_id AS gateway_id,
+       d.public_key AS device_public_key, n.wg_public_key AS gateway_public_key
 FROM devices d
 JOIN nodes n ON n.id = d.node_id AND n.org_id = d.org_id
 JOIN users u ON u.id = d.user_id

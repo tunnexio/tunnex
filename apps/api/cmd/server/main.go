@@ -460,6 +460,12 @@ func main() {
 		}
 	}
 	alertPublisher := alerts.NewOutboxPublisher(alerts.NewPostgresOutbox(pool))
+	relayLimits, err := connectivity.LoadIssuanceLimits(os.Getenv)
+	if err != nil {
+		logger.Error("relay_issuance_configuration_invalid", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		System:           systemQueries,
 		AgentRuntimePool: pool,
@@ -478,7 +484,7 @@ func main() {
 		Invites:               invites.NewService(pool, mailer, cfg.AppBaseURL, logger),
 		Nodes:                 nodeSvc,
 		Devices:               deviceSvc,
-		Connectivity:          connectivity.NewStore(pool),
+		Connectivity:          connectivityStore,
 		Ovpn:                  ovpnSvc,
 		Sites:                 siteSvc,
 		K8s:                   k8sSvc,
@@ -531,6 +537,7 @@ func main() {
 
 	// mTLS agent control channel (separate listener; client certs verified vs CA).
 	agentCh := apphttp.NewAgentChannel(nodeSvc, agentCA, pushHub, logger)
+	agentCh.SetConnectivityStore(connectivityStore)
 	// S20.3a P2: ownership deliveries are a durable, private mTLS mailbox.
 	// Attaching the store starts no scheduler and does not issue work; old agents
 	// omit the capability header and retain their existing desired-state path.

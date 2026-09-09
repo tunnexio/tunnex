@@ -2325,15 +2325,43 @@ type ConfigureK8sConnectorPoolRequest struct {
 
 // ConnectivityMailbox defines model for ConnectivityMailbox.
 type ConnectivityMailbox struct {
-	DeviceId        openapi_types.UUID `json:"device_id"`
-	DevicePayload   string             `json:"device_payload"`
-	DeviceSequence  int64              `json:"device_sequence"`
-	ExpiresAt       time.Time          `json:"expires_at"`
-	GatewayId       openapi_types.UUID `json:"gateway_id"`
-	GatewayPayload  string             `json:"gateway_payload"`
-	GatewaySequence int64              `json:"gateway_sequence"`
-	Generation      int64              `json:"generation"`
-	SessionId       openapi_types.UUID `json:"session_id"`
+	DeviceId         openapi_types.UUID       `json:"device_id"`
+	DevicePayload    string                   `json:"device_payload"`
+	DevicePublicKey  *string                  `json:"device_public_key,omitempty"`
+	DeviceSequence   int64                    `json:"device_sequence"`
+	ExpiresAt        time.Time                `json:"expires_at"`
+	GatewayId        openapi_types.UUID       `json:"gateway_id"`
+	GatewayPayload   string                   `json:"gateway_payload"`
+	GatewayPublicKey *string                  `json:"gateway_public_key,omitempty"`
+	GatewaySequence  int64                    `json:"gateway_sequence"`
+	Generation       int64                    `json:"generation"`
+	Relay            *ConnectivityRelayAccess `json:"relay,omitempty"`
+	SessionId        openapi_types.UUID       `json:"session_id"`
+}
+
+// ConnectivityProfile defines model for ConnectivityProfile.
+type ConnectivityProfile struct {
+	Enabled          bool   `json:"enabled"`
+	RelayUrl         string `json:"relay_url"`
+	Revision         int64  `json:"revision"`
+	SecretConfigured bool   `json:"secret_configured"`
+}
+
+// ConnectivityProfileRequest defines model for ConnectivityProfileRequest.
+type ConnectivityProfileRequest struct {
+	ClearSecret      *bool   `json:"clear_secret,omitempty"`
+	Enabled          bool    `json:"enabled"`
+	ExpectedRevision int64   `json:"expected_revision"`
+	RelayUrl         string  `json:"relay_url"`
+	SharedSecret     *string `json:"shared_secret,omitempty"`
+}
+
+// ConnectivityRelayAccess defines model for ConnectivityRelayAccess.
+type ConnectivityRelayAccess struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Password  string    `json:"password"`
+	Url       string    `json:"url"`
+	Username  string    `json:"username"`
 }
 
 // ConnectivitySnapshotRequest defines model for ConnectivitySnapshotRequest.
@@ -5147,6 +5175,9 @@ type UpdateAuditLogRetentionJSONRequestBody = UpdateAuditLogRetentionRequest
 // RunAuditLogPruneJSONRequestBody defines body for RunAuditLogPrune for application/json ContentType.
 type RunAuditLogPruneJSONRequestBody = RunAuditLogPruneRequest
 
+// ConfigureConnectivityProfileJSONRequestBody defines body for ConfigureConnectivityProfile for application/json ContentType.
+type ConfigureConnectivityProfileJSONRequestBody = ConnectivityProfileRequest
+
 // SetDeviceApprovalJSONRequestBody defines body for SetDeviceApproval for application/json ContentType.
 type SetDeviceApprovalJSONRequestBody = DeviceApproval
 
@@ -5929,6 +5960,14 @@ type ClientInterface interface {
 
 	// ListAuditLogs request
 	ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetConnectivityProfile request
+	GetConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfigureConnectivityProfileWithBody request with any body
+	ConfigureConnectivityProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConfigureConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// OrgDeletionPreflight request
 	OrgDeletionPreflight(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8785,6 +8824,42 @@ func (c *Client) RunAuditLogPrune(ctx context.Context, orgId openapi_types.UUID,
 
 func (c *Client) ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAuditLogsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConnectivityProfileRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureConnectivityProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureConnectivityProfileRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureConnectivityProfileRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17411,6 +17486,87 @@ func NewListAuditLogsRequest(server string, orgId openapi_types.UUID, params *Li
 	return req, nil
 }
 
+// NewGetConnectivityProfileRequest generates requests for GetConnectivityProfile
+func NewGetConnectivityProfileRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/connectivity-profile", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewConfigureConnectivityProfileRequest calls the generic ConfigureConnectivityProfile builder with application/json body
+func NewConfigureConnectivityProfileRequest(server string, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfigureConnectivityProfileRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewConfigureConnectivityProfileRequestWithBody generates requests for ConfigureConnectivityProfile with any type of body
+func NewConfigureConnectivityProfileRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/connectivity-profile", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewOrgDeletionPreflightRequest generates requests for OrgDeletionPreflight
 func NewOrgDeletionPreflightRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -24972,6 +25128,14 @@ type ClientWithResponsesInterface interface {
 	// ListAuditLogsWithResponse request
 	ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
 
+	// GetConnectivityProfileWithResponse request
+	GetConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetConnectivityProfileResponse, error)
+
+	// ConfigureConnectivityProfileWithBodyWithResponse request with any body
+	ConfigureConnectivityProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error)
+
+	ConfigureConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error)
+
 	// OrgDeletionPreflightWithResponse request
 	OrgDeletionPreflightWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*OrgDeletionPreflightResponse, error)
 
@@ -28517,6 +28681,52 @@ func (r ListAuditLogsResponse) StatusCode() int {
 	return 0
 }
 
+type GetConnectivityProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConnectivityProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConnectivityProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConnectivityProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConfigureConnectivityProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConnectivityProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfigureConnectivityProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfigureConnectivityProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type OrgDeletionPreflightResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -28704,6 +28914,7 @@ type CreateConnectivitySessionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON201      *ConnectivityMailbox
+	JSON429      *Error
 	JSONDefault  *Error
 }
 
@@ -33583,6 +33794,32 @@ func (c *ClientWithResponses) ListAuditLogsWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseListAuditLogsResponse(rsp)
+}
+
+// GetConnectivityProfileWithResponse request returning *GetConnectivityProfileResponse
+func (c *ClientWithResponses) GetConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetConnectivityProfileResponse, error) {
+	rsp, err := c.GetConnectivityProfile(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConnectivityProfileResponse(rsp)
+}
+
+// ConfigureConnectivityProfileWithBodyWithResponse request with arbitrary body returning *ConfigureConnectivityProfileResponse
+func (c *ClientWithResponses) ConfigureConnectivityProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error) {
+	rsp, err := c.ConfigureConnectivityProfileWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureConnectivityProfileResponse(rsp)
+}
+
+func (c *ClientWithResponses) ConfigureConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error) {
+	rsp, err := c.ConfigureConnectivityProfile(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureConnectivityProfileResponse(rsp)
 }
 
 // OrgDeletionPreflightWithResponse request returning *OrgDeletionPreflightResponse
@@ -39679,6 +39916,72 @@ func ParseListAuditLogsResponse(rsp *http.Response) (*ListAuditLogsResponse, err
 	return response, nil
 }
 
+// ParseGetConnectivityProfileResponse parses an HTTP response from a GetConnectivityProfileWithResponse call
+func ParseGetConnectivityProfileResponse(rsp *http.Response) (*GetConnectivityProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConnectivityProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConnectivityProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfigureConnectivityProfileResponse parses an HTTP response from a ConfigureConnectivityProfileWithResponse call
+func ParseConfigureConnectivityProfileResponse(rsp *http.Response) (*ConfigureConnectivityProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfigureConnectivityProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConnectivityProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseOrgDeletionPreflightResponse parses an HTTP response from a OrgDeletionPreflightWithResponse call
 func ParseOrgDeletionPreflightResponse(rsp *http.Response) (*OrgDeletionPreflightResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -39956,6 +40259,13 @@ func ParseCreateConnectivitySessionResponse(rsp *http.Response) (*CreateConnecti
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

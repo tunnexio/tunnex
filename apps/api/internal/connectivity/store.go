@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 )
 
 const (
@@ -20,14 +22,29 @@ const (
 )
 
 var ErrPayload = errors.New("invalid connectivity snapshot")
+var ErrGatewayChanged = errors.New("connectivity gateway changed")
 
 // Store is an internal transactional mailbox, not an authentication boundary.
 // Public callers must construct Principal from authenticated server context.
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool   *pgxpool.Pool
+	sealer *crypto.Sealer
+	limits IssuanceLimits
+}
 
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool, sealers ...*crypto.Sealer) *Store {
+	s := &Store{pool: pool, limits: DefaultIssuanceLimits()}
+	if len(sealers) > 0 {
+		s.sealer = sealers[0]
+	}
+	return s
+}
 
 type Mailbox struct {
+	DevicePublicKey               string
+	GatewayPublicKey              string
+	Relay                         *RelayAccess
+	principal                     Principal
 	Session                       Session
 	DevicePayload, GatewayPayload json.RawMessage
 }
@@ -38,8 +55,12 @@ func (s *Store) Create(ctx context.Context, p Principal, device uuid.UUID) (out 
 	if p.Side != DeviceSide {
 		return out, ErrDenied
 	}
-	err = s.transaction(ctx, p, device, func(q *sqlc.Queries, e sqlc.LockConnectivityEligibilityRow, now time.Time) error {
+	err = s.transaction(ctx, p, device, false, func(ctx context.Context, q *sqlc.Queries, e sqlc.LockConnectivityEligibilityRow, now time.Time) error {
 		id, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
+		now, err = s.reserveIssuance(ctx, q, Binding{SessionID: id, OrgID: e.OrgID, OwnerID: e.OwnerID, DeviceID: e.DeviceID}, DeviceSide, now)
 		if err != nil {
 			return err
 		}
@@ -49,6 +70,9 @@ func (s *Store) Create(ctx context.Context, p Principal, device uuid.UUID) (out 
 		})
 		if err == nil {
 			out = mailbox(row)
+			out.DevicePublicKey, out.GatewayPublicKey = e.DevicePublicKey, e.GatewayPublicKey
+			out.principal = p
+			err = s.relayAccess(ctx, q, &out, now)
 		}
 		return err
 	})
@@ -101,8 +125,14 @@ func (s *Store) operate(ctx context.Context, p Principal, device, session uuid.U
 	if session == uuid.Nil || generation == 0 {
 		return out, ErrDenied
 	}
-	err = s.transaction(ctx, p, device, func(q *sqlc.Queries, e sqlc.LockConnectivityEligibilityRow, now time.Time) error {
-		row, err := q.GetConnectivitySession(ctx, sqlc.GetConnectivitySessionParams{OrgID: p.OrgID, DeviceID: device})
+	err = s.transaction(ctx, p, device, mutate == nil, func(ctx context.Context, q *sqlc.Queries, e sqlc.LockConnectivityEligibilityRow, now time.Time) error {
+		var row sqlc.ConnectivitySession
+		var err error
+		if mutate == nil {
+			row, err = q.ShareConnectivitySession(ctx, sqlc.ShareConnectivitySessionParams{OrgID: p.OrgID, DeviceID: device})
+		} else {
+			row, err = q.GetConnectivitySession(ctx, sqlc.GetConnectivitySessionParams{OrgID: p.OrgID, DeviceID: device})
+		}
 		if err != nil {
 			return err
 		}
@@ -114,6 +144,16 @@ func (s *Store) operate(ctx context.Context, p Principal, device, session uuid.U
 		}
 		if row.SessionID != session || uint64(row.Generation) != generation {
 			return ErrDenied
+		}
+		// A transfer must never expose recovery for the previous owner's session.
+		// Check immutable ownership before classifying a gateway-only change.
+		if row.OrgID != e.OrgID || row.DeviceID != e.DeviceID || row.OwnerID != e.OwnerID {
+			return ErrDenied
+		}
+		// Only an otherwise eligible owner may learn that its live session's
+		// gateway moved. Revoked/expired sessions and gateway callers still deny.
+		if p.Side == DeviceSide && !row.Revoked && row.ExpiresAt.After(now) && row.GatewayID != e.GatewayID {
+			return ErrGatewayChanged
 		}
 		snap := Snapshot{
 			Current: Binding{session, e.OrgID, e.OwnerID, e.DeviceID, e.GatewayID, generation},
@@ -136,6 +176,11 @@ func (s *Store) operate(ctx context.Context, p Principal, device, session uuid.U
 			}
 		}
 		out = mailbox(row)
+		out.DevicePublicKey, out.GatewayPublicKey = e.DevicePublicKey, e.GatewayPublicKey
+		out.principal = p
+		if !row.Revoked {
+			return s.relayAccess(ctx, q, &out, now)
+		}
 		return nil
 	})
 	if err != nil {
@@ -144,7 +189,7 @@ func (s *Store) operate(ctx context.Context, p Principal, device, session uuid.U
 	return out, nil
 }
 
-func (s *Store) transaction(ctx context.Context, p Principal, device uuid.UUID, fn func(*sqlc.Queries, sqlc.LockConnectivityEligibilityRow, time.Time) error) error {
+func (s *Store) transaction(ctx context.Context, p Principal, device uuid.UUID, shared bool, fn func(context.Context, *sqlc.Queries, sqlc.LockConnectivityEligibilityRow, time.Time) error) error {
 	if s == nil || s.pool == nil || p.OrgID == uuid.Nil || p.SubjectID == uuid.Nil || device == uuid.Nil || (p.Side != DeviceSide && p.Side != GatewaySide) {
 		return ErrDenied
 	}
@@ -157,21 +202,48 @@ func (s *Store) transaction(ctx context.Context, p Principal, device uuid.UUID, 
 	}
 	defer tx.Rollback(ctx)
 	q := sqlc.New(tx)
-	e, err := q.LockConnectivityEligibility(ctx, sqlc.LockConnectivityEligibilityParams{DeviceID: device, OrgID: p.OrgID})
+	var e sqlc.LockConnectivityEligibilityRow
+	if shared {
+		row, readErr := q.ShareConnectivityEligibility(ctx, sqlc.ShareConnectivityEligibilityParams{DeviceID: device, OrgID: p.OrgID})
+		e, err = sqlc.LockConnectivityEligibilityRow(row), readErr
+	} else {
+		e, err = q.LockConnectivityEligibility(ctx, sqlc.LockConnectivityEligibilityParams{DeviceID: device, OrgID: p.OrgID})
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrDenied
 	}
 	if err != nil {
 		return err
 	}
-	if (p.Side == DeviceSide && p.SubjectID != e.OwnerID) || (p.Side == GatewaySide && p.SubjectID != e.GatewayID) {
+	if p.Side == DeviceSide && p.SubjectID != e.OwnerID {
 		return ErrDenied
+	}
+	// Hold promotion, binding and key/status inputs stable across the canonical
+	// selection and the session operation. Never elect independently in SQL.
+	if _, err = q.ShareConnectivityHubSet(ctx, p.OrgID); err != nil {
+		return err
+	}
+	if _, err = q.ShareConnectivityTopologyNodes(ctx, p.OrgID); err != nil {
+		return err
+	}
+	if _, err = q.ShareConnectivityTopologySites(ctx, p.OrgID); err != nil {
+		return err
 	}
 	now, err := q.ConnectivityWallClock(ctx)
 	if err != nil {
 		return err
 	}
-	if err = fn(q, e, now); errors.Is(err, pgx.ErrNoRows) {
+	effective, key, derived, err := nodes.EffectiveConnectivityGateway(ctx, q, p.OrgID, e.GatewayID, now)
+	if err != nil {
+		return err
+	}
+	if derived {
+		e.GatewayID, e.GatewayPublicKey = effective, key
+	}
+	if p.Side == GatewaySide && p.SubjectID != e.GatewayID {
+		return ErrDenied
+	}
+	if err = fn(ctx, q, e, now); errors.Is(err, pgx.ErrNoRows) {
 		return ErrDenied
 	}
 	if err != nil {

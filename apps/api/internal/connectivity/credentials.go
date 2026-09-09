@@ -36,7 +36,9 @@ func (s Session) IssueRelayCredentials(p Principal, current Snapshot, now time.T
 	if len(secret) < 32 || len(secret) > 4096 {
 		return RelayCredentials{}, ErrRelaySecret
 	}
-	expires := now.Add(RelayCredentialTTL)
+	// Stable per-minute credentials prevent each mailbox read minting another
+	// coturn username. Always <= five minutes; session expiry remains final.
+	expires := now.Truncate(time.Minute).Add(RelayCredentialTTL)
 	if s.ExpiresAt.Before(expires) {
 		expires = s.ExpiresAt
 	}

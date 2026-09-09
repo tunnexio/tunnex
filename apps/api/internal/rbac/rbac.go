@@ -9,12 +9,13 @@ import "sort"
 type Permission string
 
 const (
-	PermOrgView         Permission = "org:view"
-	PermConnectivityUse Permission = "connectivity:use"
-	PermOrgUpdate       Permission = "org:update"
-	PermOrgDelete       Permission = "org:delete"
-	PermMemberList      Permission = "member:list"
-	PermMemberInvite    Permission = "member:invite"
+	PermOrgView            Permission = "org:view"
+	PermConnectivityUse    Permission = "connectivity:use"
+	PermConnectivityManage Permission = "connectivity:manage"
+	PermOrgUpdate          Permission = "org:update"
+	PermOrgDelete          Permission = "org:delete"
+	PermMemberList         Permission = "member:list"
+	PermMemberInvite       Permission = "member:invite"
 	// PermMemberManage is the base capability to change roles / remove members.
 	// Relational limits (who may touch whom) are applied by CanManageMembership.
 	PermMemberManage Permission = "member:manage"
@@ -198,6 +199,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermConnectivityManage:          true,
 		PermConnectivityUse:             true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,
@@ -238,6 +240,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermConnectivityManage:          true,
 		PermConnectivityUse:             true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,

@@ -18,6 +18,36 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/connectivity-profile:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getConnectivityProfile
+      summary: Read relay fallback configuration without secrets
+      tags: [connectivity]
+      responses:
+        "200":
+          description: Default-off profile; shared secret is never returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectivityProfile" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: configureConnectivityProfile
+      summary: Configure one customer-hosted relay (admin/owner)
+      tags: [connectivity]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConnectivityProfileRequest" }
+      responses:
+        "200":
+          description: Saved; existing negotiation sessions invalidated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectivityProfile" }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/devices/{deviceId}/connectivity-sessions:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -27,6 +57,11 @@ paths:
       summary: Create or supersede an opted-in device owner's negotiation session
       tags: [connectivity]
       responses:
+        "429":
+          description: Issuance limit reached. Existing session unchanged; wait at least 60 seconds before retrying. No automatic retry loop.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "201":
           description: Current server-bound session; previous generation is invalidated.
           content:
@@ -41,6 +76,7 @@ paths:
       - { name: generation, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
     get:
       operationId: getConnectivitySession
+      description: An otherwise authorized owner receives 409 connectivity_gateway_changed when HA moved its live session to another gateway; obtain a fresh dial and session. Revoked or expired sessions remain 403 and must not auto-retry. New TURN credential issuance may return 429; wait at least 60 seconds.
       summary: Read the latest bounded signaling snapshots (device owner only)
       tags: [connectivity]
       responses:
@@ -52,6 +88,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     put:
       operationId: publishConnectivitySnapshot
+      description: Returns 409 connectivity_gateway_changed for an otherwise authorized owner after HA promotion; stale or revoked sessions remain denied. New TURN credential issuance may return 429; wait at least 60 seconds.
       summary: Replace the device's complete signaling snapshot (not a trickle delta)
       tags: [connectivity]
       requestBody:
@@ -68,6 +105,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: closeConnectivitySession
+      description: A live session whose gateway changed may return 409 connectivity_gateway_changed; no old gateway is reauthorized.
       summary: Close a negotiation session and clear its snapshots
       tags: [connectivity]
       responses:
@@ -5508,6 +5546,34 @@ components:
       required: true
 
   schemas:
+    ConnectivityProfile:
+      type: object
+      additionalProperties: false
+      required: [enabled, relay_url, secret_configured, revision]
+      properties:
+        enabled: { type: boolean }
+        relay_url: { type: string, maxLength: 512 }
+        secret_configured: { type: boolean }
+        revision: { type: integer, format: int64, minimum: 0 }
+    ConnectivityProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [enabled, relay_url, expected_revision]
+      properties:
+        enabled: { type: boolean }
+        relay_url: { type: string, maxLength: 512 }
+        shared_secret: { type: string, maxLength: 4096, writeOnly: true }
+        clear_secret: { type: boolean, default: false }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    ConnectivityRelayAccess:
+      type: object
+      additionalProperties: false
+      required: [url, username, password, expires_at]
+      properties:
+        url: { type: string }
+        username: { type: string }
+        password: { type: string }
+        expires_at: { type: string, format: date-time }
     ConnectivitySnapshotRequest:
       type: object
       additionalProperties: false
@@ -5523,6 +5589,9 @@ components:
       additionalProperties: false
       required: [session_id, device_id, gateway_id, generation, expires_at, device_sequence, gateway_sequence, device_payload, gateway_payload]
       properties:
+        device_public_key: { type: string }
+        gateway_public_key: { type: string }
+        relay: { $ref: "#/components/schemas/ConnectivityRelayAccess" }
         session_id: { type: string, format: uuid }
         device_id: { type: string, format: uuid }
         gateway_id: { type: string, format: uuid }

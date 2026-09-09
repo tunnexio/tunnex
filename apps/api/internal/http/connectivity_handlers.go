@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
@@ -85,6 +86,18 @@ func (s apiServer) CloseConnectivitySession(ctx context.Context, req api.CloseCo
 }
 
 func connectivityError(err error) error {
+	if errors.Is(err, connectivity.ErrProfileConflict) {
+		return apierr.New(409, "connectivity_profile_changed", "Relay configuration changed; reload and retry")
+	}
+	if errors.Is(err, connectivity.ErrProfile) {
+		return apierr.BadRequest("invalid_relay_profile", "A valid TLS relay URL and configured shared secret are required")
+	}
+	if errors.Is(err, connectivity.ErrIssuanceLimited) {
+		return apierr.New(http.StatusTooManyRequests, "connectivity_issuance_limited", "Wait at least 60 seconds before creating another connectivity session")
+	}
+	if errors.Is(err, connectivity.ErrGatewayChanged) {
+		return apierr.Conflict("connectivity_gateway_changed", "Gateway changed; establish a fresh connectivity session")
+	}
 	if errors.Is(err, connectivity.ErrDenied) {
 		return apierr.Forbidden("connectivity_denied", "Connectivity session unavailable")
 	}
@@ -97,7 +110,12 @@ func connectivityError(err error) error {
 
 func toConnectivityMailbox(m connectivity.Mailbox) api.ConnectivityMailbox {
 	s := m.Session
-	return api.ConnectivityMailbox{SessionId: s.Binding.SessionID, DeviceId: s.Binding.DeviceID, GatewayId: s.Binding.GatewayID,
+	out := api.ConnectivityMailbox{SessionId: s.Binding.SessionID, DeviceId: s.Binding.DeviceID, GatewayId: s.Binding.GatewayID,
+		DevicePublicKey: &m.DevicePublicKey, GatewayPublicKey: &m.GatewayPublicKey,
 		Generation: int64(s.Binding.Generation), ExpiresAt: s.ExpiresAt, DeviceSequence: int64(s.DeviceSequence), GatewaySequence: int64(s.GatewaySequence),
 		DevicePayload: string(m.DevicePayload), GatewayPayload: string(m.GatewayPayload)}
+	if m.Relay != nil {
+		out.Relay = &api.ConnectivityRelayAccess{Url: m.Relay.URL, Username: m.Relay.Username, Password: m.Relay.Password, ExpiresAt: m.Relay.ExpiresAt}
+	}
+	return out
 }

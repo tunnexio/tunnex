@@ -1328,6 +1328,22 @@ func (s *Service) NodeDial(ctx context.Context, orgID, nodeID uuid.UUID) (endpoi
 	return ep, pk, ok, nil
 }
 
+// EffectiveConnectivityGateway reuses the same active topology as NodeDial.
+// q must be transaction-bound, with the topology rows held stable by the caller.
+// A non-member keeps its assigned gateway; this does not move device identity.
+func EffectiveConnectivityGateway(ctx context.Context, q *sqlc.Queries, orgID, assigned uuid.UUID, now time.Time) (uuid.UUID, string, bool, error) {
+	topo, err := (&Service{q: q}).loadSiteTopology(ctx, orgID)
+	if err != nil {
+		return uuid.Nil, "", false, err
+	}
+	members := activeHubMembers(topo, now)
+	_, key, derived := activeHubDialFrom(assigned, members)
+	if !derived {
+		return assigned, "", false, nil
+	}
+	return members[0].ID, key, true, nil
+}
+
 // activeHubDialFrom is WF-A's endpoint-derivation primitive (D-WFA-5 (C)): a device whose assigned node is a
 // HUB-SET MEMBER dials the ACTIVE PRIMARY (activeMembers[0] — the head of the ONE derivation, activeHub
 // Members), so its dial FOLLOWS promotions while identity (node_id) stays put. Returns the active primary's

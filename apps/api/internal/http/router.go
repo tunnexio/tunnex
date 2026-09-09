@@ -167,7 +167,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
-			if strings.Contains(req.URL.Path, "/connectivity-sessions") {
+			if strings.Contains(req.URL.Path, "/connectivity-sessions") || strings.Contains(req.URL.Path, "/connectivity-profile") {
 				// Bound escaped JSON before the OpenAPI/body decoder allocates it.
 				req.Body = http.MaxBytesReader(w, req.Body, 128*1024)
 			}

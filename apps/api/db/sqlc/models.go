@@ -586,11 +586,26 @@ type CliDeviceCode struct {
 	CreatedAt      time.Time          `json:"created_at"`
 }
 
-type ConnectivityProfile struct {
+type ConnectivityIssuance struct {
+	SessionID uuid.UUID `json:"session_id"`
 	OrgID     uuid.UUID `json:"org_id"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	OwnerID   uuid.UUID `json:"owner_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	IssuedAt  time.Time `json:"issued_at"`
+}
+
+type ConnectivityIssuanceLock struct {
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+type ConnectivityProfile struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	Enabled      bool      `json:"enabled"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	RelayUrl     string    `json:"relay_url"`
+	SecretSealed *string   `json:"secret_sealed"`
+	Revision     int64     `json:"revision"`
 }
 
 type ConnectivitySession struct {

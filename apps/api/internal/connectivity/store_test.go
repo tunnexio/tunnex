@@ -8,9 +8,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 )
 
 func TestSnapshotPayloadBounds(t *testing.T) {
@@ -62,7 +64,11 @@ func TestDurableMailbox(t *testing.T) {
 	exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'member')`, org, owner)
 	exec(`INSERT INTO nodes(id,org_id,name,cert_serial) VALUES($1,$2,'nat-gateway',$3)`, gateway, org, gateway.String())
 	exec(`INSERT INTO devices(id,org_id,user_id,node_id,name,public_key,assigned_ip) VALUES($1,$2,$3,$4,'nat-device',$5,'10.99.0.2')`, device, org, owner, gateway, strings.Repeat("A", 43)+"=")
-	s := NewStore(pool)
+	sealer, err := crypto.NewSealer(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(pool, sealer)
 	p := Principal{DeviceSide, org, owner}
 	g := Principal{GatewaySide, org, gateway}
 	if _, err := s.Create(ctx, p, device); err != ErrDenied {
@@ -91,6 +97,31 @@ func TestDurableMailbox(t *testing.T) {
 	if err := read(g); err != nil {
 		t.Fatal("gateway read", err)
 	}
+	// Concurrent readers must coexist, while mutation remains fenced. This
+	// reproduces the gateway poll + device heartbeat contention on a slow DB.
+	t.Run("shared heartbeat locks preserve mutation fencing", func(t *testing.T) {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		if _, err := tx.Exec(ctx, `SELECT id FROM devices WHERE id=$1 FOR SHARE`, device); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `SELECT device_id FROM connectivity_sessions WHERE device_id=$1 FOR SHARE`, device); err != nil {
+			t.Fatal(err)
+		}
+		bounded, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		if _, err := s.Read(bounded, g, device, b.SessionID, b.Generation); err != nil {
+			t.Fatal("heartbeat blocked by another reader", err)
+		}
+		blocked, stop := context.WithTimeout(ctx, 150*time.Millisecond)
+		defer stop()
+		if err := s.Close(blocked, p, device, b.SessionID, b.Generation); err == nil {
+			t.Fatal("writer bypassed shared eligibility lock")
+		}
+	})
 	for _, bad := range []Principal{{DeviceSide, uuid.New(), owner}, {DeviceSide, org, uuid.New()}, {GatewaySide, org, uuid.New()}} {
 		if err := read(bad); err != ErrDenied {
 			t.Fatal("principal mismatch allowed", err)
@@ -186,5 +217,114 @@ func TestDurableMailbox(t *testing.T) {
 	exec(`UPDATE connectivity_sessions SET created_at=now()-interval '11 minutes',expires_at=now()-interval '1 minute' WHERE device_id=$1`, device)
 	if err := read(p); err != ErrDenied {
 		t.Fatal("expired session allowed", err)
+	}
+	secret := strings.Repeat("test-only-", 4)
+	profile, err := s.Configure(ctx, org, RelayConfig{Enabled: true, URL: "turns:relay.example.com:5349?transport=tcp", Secret: secret, ExpectedRevision: 0})
+	if err != nil || !profile.SecretConfigured || profile.Revision != 1 {
+		t.Fatal("profile configure", err)
+	}
+	var ciphertext string
+	if err := pool.QueryRow(ctx, `SELECT secret_sealed FROM connectivity_profiles WHERE org_id=$1`, org).Scan(&ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ciphertext, secret) {
+		t.Fatal("shared secret stored unsealed")
+	}
+	configured, err := s.Create(ctx, p, device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configured.Relay == nil || configured.Relay.Password == secret || configured.Relay.Username == "" {
+		t.Fatal("session credential missing or shared key leaked")
+	}
+	b = configured.Session.Binding
+	remote, err := s.Read(ctx, g, device, b.SessionID, b.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remote.Relay == nil || remote.Relay.Username == configured.Relay.Username {
+		t.Fatal("gateway credential not independently scoped")
+	}
+	limited := s.WithIssuanceLimits(IssuanceLimits{1, 30, 300})
+	if _, err := limited.Create(ctx, p, device); err != ErrIssuanceLimited {
+		t.Fatal("missing creation throttle", err)
+	}
+	unchanged, err := s.Read(ctx, p, device, b.SessionID, b.Generation)
+	if err != nil || unchanged.Session.Binding != b {
+		t.Fatal("refused issuance changed live session", err)
+	}
+	if _, err := s.Configure(ctx, org, RelayConfig{ExpectedRevision: 0}); err != ErrProfileConflict {
+		t.Fatal("stale profile overwrite", err)
+	}
+	t.Run("HA promotion follows canonical active dial without moving device identity", func(t *testing.T) {
+		s := s.WithIssuanceLimits(IssuanceLimits{30, 60, 300})
+		standby, siteA, siteB := uuid.New(), uuid.New(), uuid.New()
+		keyA, keyB := strings.Repeat("A", 43)+"=", strings.Repeat("B", 43)+"="
+		exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$3,'relay-a'),($2,$3,'relay-b')`, siteA, siteB, org)
+		exec(`UPDATE nodes SET site_id=$2,wg_public_key=$3,endpoint='192.0.2.1:51820' WHERE id=$1`, gateway, siteA, keyA)
+		exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,wg_public_key,endpoint) VALUES($1,$2,'standby',$3,$4,$5,'192.0.2.2:51820')`, standby, org, standby.String(), siteB, keyB)
+		exec(`INSERT INTO org_hub_set(org_id,configured) VALUES($1,$2)`, org, []uuid.UUID{gateway, standby})
+		a, err := s.Create(ctx, p, device)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.Session.Binding.GatewayID != gateway || a.GatewayPublicKey != keyA {
+			t.Fatal("wrong original active gateway")
+		}
+		exec(`UPDATE org_hub_set SET demoted=$2 WHERE org_id=$1`, org, []uuid.UUID{gateway})
+		if _, err := s.Read(ctx, p, device, a.Session.Binding.SessionID, a.Session.Binding.Generation); err != ErrGatewayChanged {
+			t.Fatal("old binding remained authorized", err)
+		}
+		t.Run("ownership transfer cannot recover former owner's session", func(t *testing.T) {
+			newOwner := uuid.New()
+			exec(`INSERT INTO users(id,email) VALUES($1,$2)`, newOwner, newOwner.String()+"@example.invalid")
+			exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'member')`, org, newOwner)
+			defer func() {
+				exec(`UPDATE devices SET user_id=$2 WHERE id=$1`, device, owner)
+				exec(`DELETE FROM memberships WHERE org_id=$1 AND user_id=$2`, org, newOwner)
+				exec(`DELETE FROM users WHERE id=$1`, newOwner)
+			}()
+			exec(`UPDATE devices SET user_id=$2 WHERE id=$1`, device, newOwner)
+			for _, principal := range []Principal{p, {DeviceSide, org, newOwner}} {
+				binding := a.Session.Binding
+				if _, err := s.Read(ctx, principal, device, binding.SessionID, binding.Generation); err != ErrDenied {
+					t.Fatalf("transferred session read must deny, got %v", err)
+				}
+				if _, err := s.Publish(ctx, principal, device, binding.SessionID, binding.Generation, 1, json.RawMessage(`{}`)); err != ErrDenied {
+					t.Fatalf("transferred session publish must deny, got %v", err)
+				}
+				if err := s.Close(ctx, principal, device, binding.SessionID, binding.Generation); err != ErrDenied {
+					t.Fatalf("transferred session close must deny, got %v", err)
+				}
+			}
+		})
+		exec(`UPDATE connectivity_sessions SET revoked=true WHERE device_id=$1`, device)
+		if _, err := s.Read(ctx, p, device, a.Session.Binding.SessionID, a.Session.Binding.Generation); err != ErrDenied {
+			t.Fatal("revocation was offered gateway recovery", err)
+		}
+		next, err := s.Create(ctx, p, device)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next.Session.Binding.GatewayID != standby || next.GatewayPublicKey != keyB {
+			t.Fatal("promotion did not update session gateway")
+		}
+		if _, err := s.Read(ctx, g, device, next.Session.Binding.SessionID, next.Session.Binding.Generation); err != ErrDenied {
+			t.Fatal("old gateway accepted", err)
+		}
+		if _, err := s.Read(ctx, Principal{GatewaySide, org, standby}, device, next.Session.Binding.SessionID, next.Session.Binding.Generation); err != nil {
+			t.Fatal("new gateway refused", err)
+		}
+		var assigned uuid.UUID
+		if err := pool.QueryRow(ctx, `SELECT node_id FROM devices WHERE id=$1`, device).Scan(&assigned); err != nil || assigned != gateway {
+			t.Fatal("assigned identity changed", err)
+		}
+		b = next.Session.Binding
+	})
+	if _, err := s.Configure(ctx, org, RelayConfig{Enabled: false, URL: profile.URL, ExpectedRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := read(p); err != ErrDenied {
+		t.Fatal("disabled profile preserved session", err)
 	}
 }

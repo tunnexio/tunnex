@@ -20,10 +20,11 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
-	"publishconnectivitysnapshot": `{"sequence":1,"payload":"{}"}`,
-	"savessoconnection":           `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
-	"activatessoconnection":       `{"enabled":false,"revision":1}`,
-	"testssoconnection":           `{"link_account":false}`,
+	"configureconnectivityprofile": `{"enabled":false,"relay_url":"","expected_revision":0}`,
+	"publishconnectivitysnapshot":  `{"sequence":1,"payload":"{}"}`,
+	"savessoconnection":            `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
+	"activatessoconnection":        `{"enabled":false,"revision":1}`,
+	"testssoconnection":            `{"link_account":false}`,
 	// ⚠ A body is required so the 401 is about AUTHENTICATION, not about a missing field. Without one the
 	// spec validator answers 400 first and the walk cannot tell "you are not signed in" from "your JSON is
 	// wrong" — which is exactly the confusion the walk exists to rule out.
