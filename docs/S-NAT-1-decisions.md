@@ -1,6 +1,8 @@
 # NAT-1 authenticated connectivity session
 
-Status: first internal contract slice, not an exposed API or enabled transport.
+Status: durable store and device-owner API implemented; gateway/transport wiring
+incomplete, feature default off. Earlier slice descriptions below are historical.
+Current consolidated pickup: [implementation handoff](NAT-implementation-handoff.md).
 User authorized CP-authenticated signaling after the native AWS packet proof.
 Baseline: main `f240bd5`; separate branch preserves both NAT-0 proof lanes.
 
