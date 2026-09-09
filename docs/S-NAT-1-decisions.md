@@ -108,3 +108,25 @@ HTTP surface, UI mutation or cloud change. This is a partial implementation
 checkpoint, not story completion; full gates/live product proof remain owed.
 Next: OpenAPI session/profile contracts and transactional persistence, followed
 by principal wiring; UI card must consume those real contracts.
+
+## Durable mailbox slice
+
+Locked: one current session row per device, fresh server UUID plus monotonic
+generation on replacement; no unbounded session history. Ten-minute negotiation
+session, maximum 64 messages per side, 16 KiB UTF-8 JSON object per message.
+Store only the latest complete signaling snapshot per side (not trickle deltas).
+Readers poll that snapshot; generation/sequence reject old updates. Close is
+terminal; replacement requires a fresh authorized device-side create. These are
+negotiation limits, NOT the lifetime or revocation lease of a running tunnel.
+
+Serialize operations through the canonical device row; read and lock active
+owner/membership, assigned gateway, org and opt-in in the same transaction.
+Use database wall time after locks for expiry. Profile initially holds only
+default-off opt-in; no deployment/config endpoint may enable it in this slice.
+No secret/candidate payload logging. New schema is additive; existing clients
+and direct configuration unchanged. HTTP principal wiring follows the durable
+store tests; no unauthenticated or placeholder route will be registered.
+
+Next full contract decision still owed before forwarding integration: numeric
+forwarding lease/CP-loss bounds and relay peer restriction policy. This mailbox
+must not be misrepresented as live revocation enforcement.
