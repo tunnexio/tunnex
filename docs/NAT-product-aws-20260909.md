@@ -1,5 +1,34 @@
 # NAT product candidate — live AWS checkpoint
 
+## Latest: isolated gateway-side CP-loss PASS
+
+2026-09-09. Account735391218823 verified. Dedicated gateway container
+`nat-product-gateway-20260909a` runs in its own bridge network namespace; its
+configured AgentChannel is exactly `https://10.245.1.10:8443`.
+
+Real generation20 had a positive native Relay/HTTP control. A temporary tagged
+OUTPUT rule in ONLY that gateway namespace rejected TCP to10.245.1.10:8443 for
+55 seconds. No host-wide firewall flush, SG edit, CP shutdown or application-policy
+change was made. Native client-to-CP and TURN remained reachable.
+
+Traffic stopped while the client was still Up and had a successful CP-authorized
+session read more than10 seconds after fault installation. Three subsequent HTTP
+requests stayed blocked. Total observation including negative request timeouts
+was44279ms, not an exact forwarding cutoff measurement. This separates the
+gateway forwarding boundary from the earlier client-side CP-loss simulation.
+
+Remote runner observed121 packets rejected by the exact tagged rule, removed it
+in finally, and verified its absence. The driver waited for successful removal,
+exited0, brought the native helper down and revoked its temporary bearer.
+No customer credential/device was revoked. This proves gateway-side bounded
+fail-close; post-restoration automatic GUI recovery was not measured in this leg.
+
+An earlier setup attempt failed before fault installation because residual helper
+Up was not adopted by the fresh test controller. Driver now reads actual helper
+status before down to acquire the existing cleanup handle; no product runtime
+change or result is claimed from that failed setup. This continuation adds live
+evidence only, not Windows/full-tunnel qualification, final review or exact-SHA CI.
+
 ## Latest safety qualification: scoped credential denial and client CP-loss
 
 2026-09-09. The active GUI was stopped to avoid shared-helper contention; its
