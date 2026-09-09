@@ -51,3 +51,15 @@ Focused dbconn/dbcheck/metrics tests pass in both editions; race tests, vet and
 both API builds pass. Enterprise connectivity/nodes package tests pass without
 the isolated-DB integration variable (not live DB coverage). Two bounded reviews
 of pool configuration and private metrics returned no actionable findings.
+
+## Next bounded reduction
+
+Topology locks currently consume three sequential round trips while retaining
+eligibility locks. Pipeline those same generated statements in the same order
+(hub set, ordered nodes, ordered sites), in the same transaction. Drain/close
+the batch before reading the wall clock or deriving the active gateway. A small
+handwritten composition helper beside generated sqlc queries can reference their
+constants without copying SQL or editing generated files. Preserve owner checks
+before these locks, error propagation, rollback and the five-second transaction
+deadline. This is a latency reduction, not evidence that every hosted workload
+fits the deadline. Re-prove the actual recovery before claiming the blocker fixed.
