@@ -5,6 +5,27 @@ The package is `tunnex-cli`; the command is `tunnex`.
 
 ## Installation
 
+### Single-command installer
+
+```sh
+curl -fsSL https://tunnexio.github.io/packages/install.sh | sh
+```
+
+The CLI installer detects Linux AMD64/ARM64 and configures the matching signed
+APT, DNF/YUM, zypper, APK or pacman repository, then installs `tunnex-cli`.
+It checks the downloaded repository key against a built-in SHA-256 pin.
+Run as a regular user with sudo, or as root on Linux. macOS delegates to an
+existing Homebrew installation and must run as a regular user.
+
+**On Arch, this performs a full system upgrade (`pacman -Syu --noconfirm`).**
+Inspect the [installer source](install.sh) before running if you need to review
+the host changes. Conflicting existing repository files are preserved and cause
+an explicit stop. Rerunning with installer-created configuration is supported.
+NixOS, immutable systems and unsupported architectures should use the applicable
+instructions below. The installer requires curl, HTTPS certificates and a
+supported package manager; it does not install the control plane or activate a
+tunnel. Native package-manager upgrades remain the update path.
+
 ### macOS and Linux with Homebrew
 
 ```sh

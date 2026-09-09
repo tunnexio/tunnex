@@ -11,7 +11,10 @@ concurrency:
   group: package-publication
   cancel-in-progress: false
 jobs:
+  installer:
+    uses: ./.github/workflows/installer.yml
   publish:
+    needs: installer
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:

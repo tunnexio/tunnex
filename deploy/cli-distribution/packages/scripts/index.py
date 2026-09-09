@@ -83,6 +83,7 @@ def main():
     if sum(p.stat().st_size for p in site.rglob('*') if p.is_file()) > 800 * 1024 * 1024:
         raise ValueError('Repository exceeds 800 MiB: migrate storage before next promotion')
     shutil.copyfile('README.md', site / 'README.md')
+    shutil.copyfile('install.sh', site / 'install.sh')
     (site / 'index.html').write_text('<!doctype html><meta charset="utf-8"><title>Tunnex packages</title><h1>Tunnex CLI packages</h1><p>Official signed package repositories.</p><p><a href="https://github.com/tunnexio/packages#installation">Installation instructions</a></p>')
     (site / '.nojekyll').touch()
 
