@@ -459,18 +459,27 @@ func TestAIPolicyValidation(t *testing.T) {
 	}
 }
 
-func TestAIPolicyRetryAdvancesPastTimedOutTarget(t *testing.T) {
+func TestAIPolicyRetryAdvancesPastCanceledTarget(t *testing.T) {
 	ctx, pool := testpostgres.New(t)
 	first := newPolicyFixture(t, ctx, pool)
 	second := newPolicyFixture(t, ctx, pool)
 	// Force a deterministic first target without relying on random UUID order.
 	first.exec(`UPDATE ai_gateway_assignments SET last_reconcile_at=now()-interval '2 hours' WHERE org_id=$1`, first.org)
 	first.exec(`UPDATE ai_gateway_assignments SET last_reconcile_at=now()-interval '1 hour' WHERE org_id=$1`, second.org)
-	deadline, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+	attempt, cancel := context.WithCancel(ctx)
 	defer cancel()
-	first.engine.beforeEnsure = func() { <-deadline.Done() }
-	if err := first.policies.ReconcilePending(deadline, 1); err == nil {
-		t.Fatal("timed-out native reconciliation reported success")
+	entered := false
+	// Cancel only after the native call is reached. A wall-clock deadline
+	// could expire during database preparation and never exercise rollback.
+	first.engine.beforeEnsure = func() {
+		entered = true
+		cancel()
+	}
+	if err := first.policies.ReconcilePending(attempt, 1); err == nil {
+		t.Fatal("canceled native reconciliation reported success")
+	}
+	if !entered || !errors.Is(attempt.Err(), context.Canceled) {
+		t.Fatal("reconciliation did not reach the canceled native attempt")
 	}
 	first.engine.beforeEnsure = nil
 	// A later pass must select the untouched second target, not retry the
@@ -480,6 +489,6 @@ func TestAIPolicyRetryAdvancesPastTimedOutTarget(t *testing.T) {
 	}
 	assignments, err := first.policies.ListAssignments(ctx, second.org)
 	if err != nil || len(assignments) != 1 || assignments[0].Status != "applied" {
-		t.Fatal("timed-out target starved another pending assignment")
+		t.Fatal("canceled target starved another pending assignment")
 	}
 }
