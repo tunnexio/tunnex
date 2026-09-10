@@ -76,16 +76,9 @@ ui_motion() {
 	[ -t 1 ] && [ "${TERM:-}" != dumb ] && [ -z "${NO_COLOR+x}" ] &&
 		[ "${TUNNEX_LOADER:-auto}" != never ]
 }
-# Original compact glyphs and spacing, with the approved EX colors.
+# Original compact glyphs and spacing, with one red for every EX row.
 wordmark_row() {
-	_wordmark_fg=$TUNNEX_RED
-	if [ -n "$TUNNEX_RESET" ]; then
-		case "${COLORTERM:-}" in
-		truecolor|24bit) _wordmark_fg="$(printf '\033[38;2;%sm' "$3")" ;;
-		*) case "${TERM:-}" in *256color*) _wordmark_fg="$(printf '\033[38;5;%sm' "$4")" ;; esac ;;
-		esac
-	fi
-	printf '  %s%s%s%s%s%s\n' "$TUNNEX_WHITE" "$1" "$TUNNEX_RESET" "$_wordmark_fg" "$2" "$TUNNEX_RESET"
+	printf '  %s%s%s%s%s%s\n' "$TUNNEX_WHITE" "$1" "$TUNNEX_RESET" "$TUNNEX_RED" "$2" "$TUNNEX_RESET"
 	if ui_motion; then sleep 0.12; fi
 }
 # A short decorative sweep; never presented as installation progress.
@@ -111,9 +104,9 @@ brand_sweep() {
 print_wordmark() {
 	say ''
 	printf '  %sTUNNEX / GUIDED SETUP%s\n\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
-	wordmark_row '▀█▀ █ █ █▄ █ █▄ █ ' '█▀▀ ▀▄▀' '176;58;69' '131'
-	wordmark_row ' █  █ █ █ ▀█ █ ▀█ ' '█▀▀ ▄▀▄' '143;39;51' '95'
-	wordmark_row ' ▀  ▀▀▀ ▀  ▀ ▀  ▀ ' '▀▀▀ ▀ ▀' '110;21;32' '88'
+	wordmark_row '▀█▀ █ █ █▄ █ █▄ █ ' '█▀▀ ▀▄▀'
+	wordmark_row ' █  █ █ █ ▀█ █ ▀█ ' '█▀▀ ▄▀▄'
+	wordmark_row ' ▀  ▀▀▀ ▀  ▀ ▀  ▀ ' '▀▀▀ ▀ ▀'
 
 	brand_sweep
 	printf '  %sConnect Everything. Trust Nothing.%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET"

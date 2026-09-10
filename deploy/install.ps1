@@ -18,18 +18,12 @@ function Test-TunnexMotion {
         -not (Test-Path Env:NO_COLOR) -and $env:TUNNEX_LOADER -ne "never")
 }
 
-function Write-TunnexWordmarkRow([string]$White, [string]$Red, [string]$Rgb) {
+function Write-TunnexWordmarkRow([string]$White, [string]$Red) {
     if ((Test-Path Env:NO_COLOR) -or $env:TERM -eq "dumb" -or $env:TUNNEX_COLOR -eq "never") {
         Write-Host "  $White$Red"
     } else {
         Write-Host "  $White" -NoNewline -ForegroundColor White
-        if (($env:COLORTERM -eq "truecolor" -or $env:COLORTERM -eq "24bit") -and
-            -not [Console]::IsOutputRedirected) {
-            $esc = [char]27
-            Write-Host "${esc}[38;2;${Rgb}m${Red}${esc}[0m"
-        } else {
-            Write-Host $Red -ForegroundColor DarkRed
-        }
+        Write-Host $Red -ForegroundColor Red
     }
     if (Test-TunnexMotion) { Start-Sleep -Milliseconds 120 }
 }
@@ -54,9 +48,9 @@ function Write-TunnexWordmark {
     Write-Host ""
     Write-Host "  TUNNEX / GUIDED SETUP" -ForegroundColor DarkGray
     Write-Host ""
-    Write-TunnexWordmarkRow "▀█▀ █ █ █▄ █ █▄ █ " "█▀▀ ▀▄▀" "176;58;69"
-    Write-TunnexWordmarkRow " █  █ █ █ ▀█ █ ▀█ " "█▀▀ ▄▀▄" "143;39;51"
-    Write-TunnexWordmarkRow " ▀  ▀▀▀ ▀  ▀ ▀  ▀ " "▀▀▀ ▀ ▀" "110;21;32"
+    Write-TunnexWordmarkRow "▀█▀ █ █ █▄ █ █▄ █ " "█▀▀ ▀▄▀"
+    Write-TunnexWordmarkRow " █  █ █ █ ▀█ █ ▀█ " "█▀▀ ▄▀▄"
+    Write-TunnexWordmarkRow " ▀  ▀▀▀ ▀  ▀ ▀  ▀ " "▀▀▀ ▀ ▀"
     Show-TunnexBrandSweep
     Write-Host "  Connect Everything. Trust Nothing." -ForegroundColor White
     Write-Host ""
