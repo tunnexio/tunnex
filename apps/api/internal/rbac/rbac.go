@@ -9,13 +9,18 @@ import "sort"
 type Permission string
 
 const (
-	PermOrgView            Permission = "org:view"
-	PermConnectivityUse    Permission = "connectivity:use"
-	PermConnectivityManage Permission = "connectivity:manage"
-	PermOrgUpdate          Permission = "org:update"
-	PermOrgDelete          Permission = "org:delete"
-	PermMemberList         Permission = "member:list"
-	PermMemberInvite       Permission = "member:invite"
+	PermAIWorkloadView      Permission = "ai_workload:view"
+	PermAIWorkloadManage    Permission = "ai_workload:manage"
+	PermAIModelAccessView   Permission = "ai_model_access:view"
+	PermAIModelAccessManage Permission = "ai_model_access:manage"
+	PermAIModelUse          Permission = "ai_model:use"
+	PermOrgView             Permission = "org:view"
+	PermOrgUpdate           Permission = "org:update"
+	PermOrgDelete           Permission = "org:delete"
+	PermMemberList          Permission = "member:list"
+	PermMemberInvite        Permission = "member:invite"
+	PermConnectivityUse     Permission = "connectivity:use"
+	PermConnectivityManage  Permission = "connectivity:manage"
 	// PermMemberManage is the base capability to change roles / remove members.
 	// Relational limits (who may touch whom) are applied by CanManageMembership.
 	PermMemberManage Permission = "member:manage"
@@ -122,6 +127,10 @@ const (
 	// organization metadata: enabling it opens an unattended configuration
 	// channel to every eligible managed agent in the organization.
 	PermAgentRuntimeManage Permission = "agent_runtime:manage"
+	PermAIProviderView     Permission = "ai_provider:view"
+	PermAIProviderManage   Permission = "ai_provider:manage"
+	PermAIGatewayView      Permission = "ai_gateway:view"
+	PermAIGatewayManage    Permission = "ai_gateway:manage"
 	// PermAgentCredentialRotate authorizes the one human checkpoint that asks
 	// an active managed agent to replace its machine bearer. It is deliberately
 	// narrower than runtime opt-in, device lifecycle, and future F06 delegation.
@@ -160,9 +169,11 @@ const (
 
 // Roles.
 const (
-	RoleOwner  = "owner"
-	RoleAdmin  = "admin"
-	RoleMember = "member"
+	RoleOwner   = "owner"
+	RoleAdmin   = "admin"
+	RoleMember  = "member"
+	RoleAIAdmin = "ai-admin"
+	RoleAIView  = "ai-view"
 	// RoleOperator (S10.2) is the fixed role a MACHINE credential holds — NOT user-assignable (the member
 	// role picker offers owner/admin/member only). Scoped to EXACTLY what the GitOps operator needs (D3):
 	// register a cluster, expose a Service, create a grant, and read the org — nothing else (no member
@@ -193,12 +204,28 @@ const (
 // the client. NOTE: CanManageMembership's relational rules are logic, not data,
 // so they are NOT covered by the guard and are still hand-mirrored in rbac.ts.
 var rolePermissions = map[string]map[Permission]bool{
+	RoleAIAdmin: {
+		PermAIWorkloadView: true, PermAIWorkloadManage: true,
+		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
+		PermOrgView: true, PermMemberList: true,
+		PermAIProviderView: true, PermAIProviderManage: true,
+		PermAIGatewayView: true, PermAIGatewayManage: true,
+	},
+	RoleAIView: {
+		PermAIWorkloadView: true,
+		PermAIModelUse:     true, PermAIModelAccessView: true,
+		PermOrgView: true, PermMemberList: true,
+		PermAIProviderView: true, PermAIGatewayView: true,
+	},
 	RoleMember: {
 		PermConnectivityUse: true,
+		PermAIModelUse:      true,
 		PermOrgView:         true,
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermAIWorkloadView: true, PermAIWorkloadManage: true,
+		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermConnectivityManage:          true,
 		PermConnectivityUse:             true,
 		PermOrgView:                     true,
@@ -226,6 +253,10 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sScopeManage:              true,
 		PermK8sScopeApprove:             true,
 		PermAgentRuntimeManage:          true,
+		PermAIProviderView:              true,
+		PermAIProviderManage:            true,
+		PermAIGatewayView:               true,
+		PermAIGatewayManage:             true,
 		PermAgentCredentialRotate:       true,
 		PermAgentEnroll:                 true,
 		PermAgentViewPrivileged:         true,
@@ -240,6 +271,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermAIWorkloadView: true, PermAIWorkloadManage: true,
+		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermConnectivityManage:          true,
 		PermConnectivityUse:             true,
 		PermOrgView:                     true,
@@ -270,6 +303,10 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermLicenseManage:               true,
 		PermMachineManage:               true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:          true,
+		PermAIProviderView:              true,
+		PermAIProviderManage:            true,
+		PermAIGatewayView:               true,
+		PermAIGatewayManage:             true,
 		PermAgentCredentialRotate:       true,
 		PermAgentEnroll:                 true,
 		PermAgentViewPrivileged:         true,
@@ -348,7 +385,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

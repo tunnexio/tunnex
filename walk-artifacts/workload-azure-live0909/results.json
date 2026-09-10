@@ -1,0 +1,94 @@
+{
+  "workload": "72f8983b-aa63-44ff-a3b7-afd6b4ffdb3d",
+  "name": "Engineering Azure live walk",
+  "org": "01a07ac6-0fdf-7ddf-a1f2-2c4e8b164dc1",
+  "model": "custom-fd5043c6-3863-4073-80be-f4af3bceefc2/gpt-5",
+  "initial_payload": {
+    "status": 400,
+    "code": "invalid_request",
+    "reason": "Test harness used unsupported max_completion_tokens and reasoning_effort fields; corrected to the documented max_tokens payload."
+  },
+  "azure_response_1": {
+    "status": 200,
+    "model": "gpt-5-2025-08-07",
+    "expected_marker_received": true,
+    "prompt_tokens": 16,
+    "completion_tokens": 145,
+    "total_tokens": 161,
+    "response_id": "chatcmpl-EM7rKiMzNpzxxingS6Dm8CMTg1TUS"
+  },
+  "initial_replica_0": {
+    "id": "c0cb5490-4ddd-4017-a267-f0d111f79760",
+    "token_created": "2026-09-09T08:22:10.431551+00:00",
+    "token_expires": "2026-09-09T08:27:10.431551+00:00"
+  },
+  "key": "465e562d-b3f2-41dc-96e4-a70a52131f2e",
+  "renewal": "passed_after_340_seconds",
+  "cleanup": {
+    "status": "complete",
+    "workload_enabled": false,
+    "workload_status": "revoked",
+    "revision": 2,
+    "enrollment_key_revoked": true,
+    "both_instances_revoked": true,
+    "replica_0_auth_status": 401,
+    "replica_1_auth_status": 401,
+    "automatic_reenrollment": false,
+    "provider_configuration_unchanged": true,
+    "local_revoked_credential_files_removed": true
+  },
+  "azure_response_2": {
+    "status": 200,
+    "model": "gpt-5-2025-08-07",
+    "expected_marker_received": true,
+    "prompt_tokens": 16,
+    "completion_tokens": 81,
+    "total_tokens": 97,
+    "response_id": "chatcmpl-EM7syANLAD2uLVx2hXDAgF7vtJk2q"
+  },
+  "replica_1": "709e688c-3985-45bd-8cda-f3ef2f9acf73",
+  "ungranted_model_status": 403,
+  "restart_without_enrollment_key": {
+    "instance_unchanged": true,
+    "http_status": 200
+  },
+  "key_only_revocation": {
+    "fresh_replica_status": 401,
+    "existing_replica_status": 200,
+    "uses": 2,
+    "limit": 3
+  },
+  "automatic_renewal": {
+    "instance": "c0cb5490-4ddd-4017-a267-f0d111f79760",
+    "created": "2026-09-09T08:26:10.446286+00:00",
+    "expires": "2026-09-09T08:31:10.446286+00:00",
+    "joining_key_revoked": true
+  },
+  "usage": {
+    "requests": 2,
+    "tokens": 258,
+    "uncosted_requests": 2,
+    "note": "Estimated USD is unavailable for this configured Azure model; zero display does not mean free."
+  },
+  "scoped_instance_revocation": {
+    "revoked_replica_status": 401,
+    "sibling_status": 200,
+    "automatic_reenrollment": false
+  },
+  "inference_attempt_budget": {
+    "limit": 3,
+    "attempts": 3,
+    "gateway_refusals": 1,
+    "successful_azure_calls": 2
+  },
+  "environment": {
+    "control_plane": "http://127.0.0.1:5180",
+    "docker_context": "colima-tunnex-sso-review",
+    "compose_project": "tunnexaiwalk0907repro4",
+    "network": "tunnexaiwalk0907repro4_engine",
+    "schema_version": 153,
+    "schema_dirty": false
+  },
+  "provider_configuration_sha256": "aad2b8da9ed6b806b176c22b0934010d2c1f04786037e5907f60feadf9ea8c37",
+  "cli_sha256": "16cbb87471a4a845fc5d7c0e001f3950d47a581f1f8731176dcfe3a4e3e1f208"
+}

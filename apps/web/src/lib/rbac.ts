@@ -16,9 +16,12 @@ const grants: Record<string, Set<string>> = Object.fromEntries(
   ),
 );
 
-export function can(role: Role | undefined, perm: string): boolean {
-  return role ? (grants[role]?.has(perm) ?? false) : false;
+export function can(role: Role | readonly Role[] | undefined, perm: string): boolean {
+  const roles = Array.isArray(role) ? role : role ? [role] : [];
+  return roles.some((r) => grants[r]?.has(perm) ?? false);
 }
+
+export const HUMAN_ROLES: Role[] = ["owner", "admin", "member", "ai-admin", "ai-view"];
 
 // NOTE: the drift guard covers the GRANT TABLE above (generated from Go) but NOT
 // the relational logic below — canManageMembership is control flow, not data, so

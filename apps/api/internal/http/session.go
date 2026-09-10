@@ -38,8 +38,10 @@ func SessionAuth(store *session.Store, q *sqlc.Queries) AuthFunc {
 			return nil
 		}
 		roles := make(map[uuid.UUID]string, len(memberships))
+		roleSets := make(map[uuid.UUID][]string, len(memberships))
 		for _, m := range memberships {
 			roles[m.OrgID] = m.Role
+			roleSets[m.OrgID] = m.Roles
 		}
 		return &authctx.Principal{
 			UserID:        user.ID,
@@ -48,6 +50,7 @@ func SessionAuth(store *session.Store, q *sqlc.Queries) AuthFunc {
 			EmailVerified: user.EmailVerifiedAt.Valid,
 			AuthMethod:    sess.AuthMethod, // rides the session's mint-time method (immutable)
 			Roles:         roles,
+			RoleSets:      roleSets,
 			// ⛔ ONLY ACCOUNTS THAT HAVE A LOCAL PASSWORD CAN BE ASKED TO CHANGE ONE.
 			//
 			// An SSO user has no password_hash at all — they authenticate through their IdP. If the flag

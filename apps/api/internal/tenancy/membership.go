@@ -305,11 +305,28 @@ func (s *MembershipService) GetMember(ctx context.Context, orgID, userID uuid.UU
 // member.role_changed audit event atomically. actor is the acting user (nil only
 // for system callers; user-initiated changes must pass it once auth lands).
 func (s *MembershipService) ChangeMemberRole(ctx context.Context, actor *uuid.UUID, actorRole string, orgID, targetUserID uuid.UUID, newRole string) (sqlc.Membership, error) {
-	if !rbac.ValidRole(newRole) {
-		return sqlc.Membership{}, apierr.BadRequest("invalid_role", "unknown role: "+newRole)
+	if _, err := rbac.NormalizeHumanRoles([]string{newRole}); err != nil {
+		return sqlc.Membership{}, apierr.BadRequest("invalid_role", err.Error())
 	}
+	return s.changeRoles(ctx, actor, actorRole, orgID, targetUserID, nil, newRole)
+}
+
+// ChangeMemberRoles atomically replaces the entire human role set.
+func (s *MembershipService) ChangeMemberRoles(ctx context.Context, actor *uuid.UUID, actorRole string, orgID, targetUserID uuid.UUID, roles []string) (sqlc.Membership, error) {
+	normalized, err := rbac.NormalizeHumanRoles(roles)
+	if err != nil {
+		return sqlc.Membership{}, apierr.BadRequest("invalid_role", err.Error())
+	}
+	return s.changeRoles(ctx, actor, actorRole, orgID, targetUserID, normalized, "")
+}
+
+func (s *MembershipService) changeRoles(ctx context.Context, actor *uuid.UUID, actorRole string, orgID, targetUserID uuid.UUID, roles []string, legacyRole string) (sqlc.Membership, error) {
 	var result sqlc.Membership
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		// Serialize owner-count checks and role writes across different members.
+		if _, e := q.LockMembershipOrganization(ctx, orgID); e != nil {
+			return e
+		}
 		target, e := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: targetUserID})
 		if errors.Is(e, pgx.ErrNoRows) {
 			return apierr.NotFound("member_not_found", "member not found")
@@ -317,18 +334,27 @@ func (s *MembershipService) ChangeMemberRole(ctx context.Context, actor *uuid.UU
 		if e != nil {
 			return e
 		}
-		if !rbac.CanManageMembership(actorRole, target.Role, newRole) {
-			return apierr.New(403, "forbidden", "you may not change this member's role")
+		if legacyRole != "" {
+			roles = []string{legacyRole}
+			for _, r := range target.Roles {
+				if r != target.Role && r != legacyRole {
+					roles = append(roles, r)
+				}
+			}
+			roles, _ = rbac.NormalizeHumanRoles(roles)
 		}
-		if e := s.guardLastOwner(ctx, q, orgID, target.Role, newRole); e != nil {
+		if !rbac.CanManageMembership(actorRole, target.Role, roles[0]) {
+			return apierr.New(403, "forbidden", "you may not change this member's roles")
+		}
+		if e := s.guardLastOwner(ctx, q, orgID, target.Role, roles[0]); e != nil {
 			return e
 		}
-		result, e = q.ChangeMemberRole(ctx, sqlc.ChangeMemberRoleParams{OrgID: orgID, UserID: targetUserID, Role: newRole})
+		result, e = q.ChangeMemberRoles(ctx, sqlc.ChangeMemberRolesParams{OrgID: orgID, UserID: targetUserID, Roles: roles})
 		if e != nil {
 			return e
 		}
 		return writeAudit(ctx, q, orgID, actor, "member.role_changed", "membership", targetUserID.String(),
-			map[string]any{"role": map[string]string{"from": target.Role, "to": newRole}})
+			map[string]any{"roles": map[string][]string{"from": target.Roles, "to": result.Roles}})
 	})
 	return result, err
 }

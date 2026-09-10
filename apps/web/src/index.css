@@ -6,6 +6,20 @@
   color-scheme: dark;
 }
 
+/* Shared route navigation for AI and identity workspaces. */
+.workspace-tabs { display:flex; gap:24px; overflow-x:auto; border-bottom:1px solid var(--tnx-border); min-width:0; }
+.workspace-tabs a { flex-shrink:0; padding:12px 2px 14px; border-bottom:2px solid transparent; color:var(--tnx-text-secondary); font-size:14px; font-weight:500; }
+.workspace-tabs a:hover { color:var(--tnx-text-heading); }
+.workspace-tabs a[aria-current="page"] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-focus); }
+.workspace-tabs a:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:-2px; }
+.ai-workspace { color:var(--tnx-text-body); }
+.ai-section-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.ai-workspace h2 { color:var(--tnx-text-heading); }
+.ai-workspace .ai-provider-eyebrow,.ai-workspace .ai-usage-eyebrow { text-transform:none; letter-spacing:normal; font-size:12px; }
+.ai-workspace .ai-provider-heading h2,.ai-workspace .ai-usage-topline h2 { font-size:20px; }
+.ai-model-access td code { overflow-wrap:anywhere; }
+@media(max-width:640px) { .workspace-tabs { gap:20px; } .ai-workspace .ai-provider-panel { padding:18px; } }
+
 html,
 body,
 #root {
@@ -365,3 +379,9 @@ select:disabled { opacity:.45; cursor:not-allowed; }
 @media(forced-colors:active) {
   select:not([multiple]),select:not([multiple])::picker(select) { appearance:auto; box-shadow:none; }
 }
+
+/* Opt-in drawer placement retains the shared Modal focus/dismiss contract. */
+.tnx-modal-overlay[data-placement="right"] { padding:0; justify-content:flex-end; align-items:stretch; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel { width:min(100%,680px); max-width:680px; height:100dvh; max-height:100dvh; border-radius:0; border-width:0 0 0 1px; background:var(--tnx-surface); }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-body { flex:1; overscroll-behavior:contain; }
+body:has(.tnx-modal-overlay[data-placement="right"]) { overflow:hidden; }

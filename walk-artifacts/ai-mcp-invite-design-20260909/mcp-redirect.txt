@@ -1,0 +1,20 @@
+[
+  {
+    "id": "3",
+    "providerTabId": "2",
+    "title": "tunnex",
+    "url": "http://127.0.0.1:5180/ai-gateway/models"
+  },
+  {
+    "id": "4",
+    "providerTabId": "3",
+    "title": "tunnex",
+    "url": "http://127.0.0.1:5180/ai-gateway/models"
+  },
+  {
+    "id": "12",
+    "providerTabId": "browser-use:81eb68c2-090e-4b62-9afa-f997221aa2dd",
+    "title": "tunnex",
+    "url": "http://127.0.0.1:5180/mcp?group=fixture-navigation#profiles"
+  }
+]

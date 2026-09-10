@@ -163,7 +163,7 @@ describe("released F09 agent group and template workflow", () => {
 
     groupInventoryFail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("button", { name: "Create group" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Create people group" })).toBeTruthy();
   });
 
   it("renders exact valid member counts and refuses a stale or malformed count contract", async () => {
@@ -177,7 +177,8 @@ describe("released F09 agent group and template workflow", () => {
     expect(await screen.findByText("0 members")).toBeTruthy();
     expect(screen.getByText("1 member")).toBeTruthy();
     expect(screen.getByText("2 members")).toBeTruthy();
-    expect(screen.getByText("3 members")).toBeTruthy();
+    expect(screen.queryByText("3 members")).toBeNull();
+    expect(f09Reads).toEqual([]);
     expect(screen.queryByText(/undefined members|null members|NaN members/)).toBeNull();
     view.unmount();
 
@@ -192,7 +193,7 @@ describe("released F09 agent group and template workflow", () => {
   });
 
   it("keeps group and template mutations reachable from their distinct Agents workspaces", async () => {
-    const groupsView = render(<MemoryRouter initialEntries={["/access/groups?type=agents"]}><AccessGroups /></MemoryRouter>);
+    const groupsView = render(<MemoryRouter initialEntries={["/agents/groups"]}><AccessGroups scope="agents" /></MemoryRouter>);
     await screen.findByRole("button", { name: "Create agent group" });
     fireEvent.click(screen.getByRole("button", { name: "Create agent group" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "workers" } });
@@ -248,13 +249,13 @@ describe("released F09 agent group and template workflow", () => {
   it("withdraws prior-org F09 facts synchronously on organization switch", async () => {
     groups = [{ id: "group-a", name: "old-agent-group", member_count: 0 }];
     templates = [{ id: "template-a", name: "old-template" }];
-    const view = render(<MemoryRouter><AccessGroups /></MemoryRouter>);
+    const view = render(<MemoryRouter><AccessGroups scope="agents" /></MemoryRouter>);
     await screen.findAllByText("old-agent-group");
     currentOrg = { id: "org-b", name: "Organization B", agent_policy_templates_enabled: true };
-    view.rerender(<MemoryRouter><AccessGroups /></MemoryRouter>);
+    view.rerender(<MemoryRouter><AccessGroups scope="agents" /></MemoryRouter>);
     expect(screen.queryByText("old-agent-group")).toBeNull();
     expect(screen.queryByText("old-template")).toBeNull();
-    await screen.findByRole("heading", { name: "Groups" });
+    await screen.findByRole("heading", { name: "Agent groups" });
     expect(screen.queryByText("old-agent-group")).toBeNull();
   });
 });

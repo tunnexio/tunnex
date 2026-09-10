@@ -1,0 +1,5 @@
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-api network=tunnexaiwalk0907repro4_engine
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-fixture network=tunnexaiwalk0907repro4_engine
+Final API healthy, provider data unchanged, schema150 clean.
+Final API SHA256=5ef082f2df90653ecad981f9f36404843c8fcd266087110242e041766a16f61e

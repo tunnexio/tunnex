@@ -1,0 +1,163 @@
+- button "Expand sidebar":
+- navigation "Main":
+  - list:
+    - link "Overview":
+      - /url: /dashboard
+  - list:
+    - link "Gateways":
+      - /url: /gateways
+    - link "Sites":
+      - /url: /sites
+    - link "Routed ranges":
+      - /url: /routed-ranges
+    - link "Kubernetes":
+      - /url: /kubernetes
+  - list:
+    - link "AI Gateway":
+      - /url: /ai-gateway
+    - link "AI Agents":
+      - /url: /agents
+    - link "MCP":
+      - /url: /mcp
+  - list:
+    - link "Access Policies":
+      - /url: /access
+    - link "Devices":
+      - /url: /devices
+    - link "Users & Groups":
+      - /url: /users
+  - list:
+    - link "Alerts":
+      - /url: /alerts
+    - link "Access Events":
+      - /url: /access-events
+    - link "Audit Log":
+      - /url: /audit
+  - list:
+    - link "Settings":
+      - /url: /settings
+- button "Signed in as preview@tunnex.local": PR
+- banner:
+  - button "Go to a page… ⌘K":
+    - generic: Go to a page…
+    - generic: ⌘K
+- main:
+  - heading "Users & Groups" [level=1]
+  - paragraph: AI installed fixture · 6 people
+  - button "Invite user"
+  - navigation "Users and groups sections":
+    - link "Users":
+      - /url: /users
+    - link "Groups":
+      - /url: /users/groups
+    - link "Roles":
+      - /url: /users/roles
+    - link "Invitations":
+      - /url: /users/invitations
+  - heading "People" [level=2]
+  - generic: Select people to manage their accounts
+  - searchbox "Filter Members"
+  - region "Members table scroll area":
+    - table "Members":
+      - caption: Members
+      - rowgroup:
+        - row "Select all 6 on this page Member State Devices Roles":
+          - columnheader "Select all 6 on this page":
+            - checkbox "Select all 6 on this page"
+          - columnheader "Member":
+            - button "Member":
+              - text: Member
+          - columnheader "State":
+            - button "State":
+              - text: State
+          - columnheader "Devices"
+          - columnheader "Roles":
+            - button "Roles":
+              - text: Roles
+      - rowgroup:
+        - row "Select Control Plane Admin admin@tunnex.local Control Plane Admin admin@tunnex.local Active 0":
+          - cell "Select Control Plane Admin admin@tunnex.local":
+            - checkbox "Select Control Plane Admin admin@tunnex.local"
+          - cell "Control Plane Admin admin@tunnex.local":
+            - generic: Control Plane Admin
+            - generic: admin@tunnex.local
+          - cell "Active":
+            - generic: Active
+          - cell "0"
+          - cell:
+            - generic "Roles for admin@tunnex.local": owner
+        - row "Select Local Preview preview@tunnex.local Local Preview(you) preview@tunnex.local Active 0":
+          - cell "Select Local Preview preview@tunnex.local":
+            - checkbox "Select Local Preview preview@tunnex.local"
+          - cell "Local Preview(you) preview@tunnex.local":
+            - generic: Local Preview(you)
+            - generic: preview@tunnex.local
+          - cell "Active":
+            - generic: Active
+          - cell "0"
+          - cell:
+            - generic "Roles for preview@tunnex.local": owner
+        - row "Select AI access fixture ai-access-ff1ee4ab-0@tunnex.local AI access fixture ai-access-ff1ee4ab-0@tunnex.local Active 0":
+          - cell "Select AI access fixture ai-access-ff1ee4ab-0@tunnex.local":
+            - checkbox "Select AI access fixture ai-access-ff1ee4ab-0@tunnex.local"
+          - cell "AI access fixture ai-access-ff1ee4ab-0@tunnex.local":
+            - generic: AI access fixture
+            - generic: ai-access-ff1ee4ab-0@tunnex.local
+          - cell "Active":
+            - generic: Active
+          - cell "0"
+          - cell:
+            - generic "Roles for ai-access-ff1ee4ab-0@tunnex.local": ai-admin + member
+        - row "Select AI access fixture ai-access-ff1ee4ab-1@tunnex.local AI access fixture ai-access-ff1ee4ab-1@tunnex.local Active 0":
+          - cell "Select AI access fixture ai-access-ff1ee4ab-1@tunnex.local":
+            - checkbox "Select AI access fixture ai-access-ff1ee4ab-1@tunnex.local"
+          - cell "AI access fixture ai-access-ff1ee4ab-1@tunnex.local":
+            - generic: AI access fixture
+            - generic: ai-access-ff1ee4ab-1@tunnex.local
+          - cell "Active":
+            - generic: Active
+          - cell "0"
+          - cell:
+            - generic "Roles for ai-access-ff1ee4ab-1@tunnex.local": member
+        - row "Select AI access fixture ai-access-ff1ee4ab-2@tunnex.local AI access fixture ai-access-ff1ee4ab-2@tunnex.local Active 0":
+          - cell "Select AI access fixture ai-access-ff1ee4ab-2@tunnex.local":
+            - checkbox "Select AI access fixture ai-access-ff1ee4ab-2@tunnex.local"
+          - cell "AI access fixture ai-access-ff1ee4ab-2@tunnex.local":
+            - generic: AI access fixture
+            - generic: ai-access-ff1ee4ab-2@tunnex.local
+          - cell "Active":
+            - generic: Active
+          - cell "0"
+          - cell:
+            - generic "Roles for ai-access-ff1ee4ab-2@tunnex.local": member
+        - row "Select AI access fixture ai-access-ff1ee4ab-3@tunnex.local AI access fixture ai-access-ff1ee4ab-3@tunnex.local Active 0":
+          - cell "Select AI access fixture ai-access-ff1ee4ab-3@tunnex.local":
+            - checkbox "Select AI access fixture ai-access-ff1ee4ab-3@tunnex.local"
+          - cell "AI access fixture ai-access-ff1ee4ab-3@tunnex.local":
+            - generic: AI access fixture
+            - generic: ai-access-ff1ee4ab-3@tunnex.local
+          - cell "Active":
+            - generic: Active
+          - cell "0"
+          - cell:
+            - generic "Roles for ai-access-ff1ee4ab-3@tunnex.local": member
+  - generic "Understand roles":
+    - text: Understand roles
+    - generic: ＋
+- region "Notifications alt+T"
+- dialog "Invite user":
+  - heading "Invite user" [level=2]
+  - paragraph: Add a person to this organization and choose their starting role.
+  - generic: Email address
+  - textbox "Email address" [active]:
+    - /placeholder: name@company.com
+  - generic: Role
+  - combobox "Role":
+    - option "owner"
+    - option "admin"
+    - option "member"
+    - option "ai-admin" [selected]
+    - option "ai-view"
+  - paragraph: Email delivery is off. After creating the invitation, copy its one-time link and share it securely.
+  - button "Cancel"
+  - button "Create invite"

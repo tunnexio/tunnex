@@ -1,0 +1,23 @@
+Local frontend validation, 2026-09-09. TypeScript: passed.
+
+Full web suite
+ Test Files  122 passed (122)
+      Tests  1469 passed (1469)
+   Start at  23:56:40
+   Duration  26.35s (transform 2.28s, setup 0ms, collect 8.77s, tests 30.62s, environment 14.37s, prepare 3.86s)
+
+Final navigation suite
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  00:05:55
+   Duration  1.13s (transform 303ms, setup 0ms, collect 474ms, tests 159ms, environment 300ms, prepare 42ms)
+
+Final provider and responsive suites
+ Test Files  2 passed (2)
+      Tests  92 passed (92)
+   Start at  00:06:16
+   Duration  11.25s (transform 527ms, setup 0ms, collect 843ms, tests 10.53s, environment 584ms, prepare 82ms)
+
+Final production build
+(!) Some chunks are larger than 500 kB after minification. Consider:
+✓ built in 2.88s

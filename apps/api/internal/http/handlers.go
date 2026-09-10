@@ -11,6 +11,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -85,11 +86,11 @@ func authorize(ctx context.Context, orgID uuid.UUID, perm rbac.Permission) (cont
 			"This account is still using its one-time bootstrap password. Set a new password before "+
 				"doing anything else.")
 	}
-	role, member := p.RoleIn(orgID)
+	_, member := p.RoleIn(orgID)
 	if !member {
 		return ctx, apierr.NotFound("org_not_found", "organization not found")
 	}
-	if !rbac.Can(role, perm) {
+	if !rbac.CanAny(p.RolesIn(orgID), perm) {
 		return ctx, apierr.New(http.StatusForbidden, "forbidden", "you do not have permission to perform this action")
 	}
 	// Mutating actions require a verified email (S2.1 decision, enforced here) — EXCEPT a machine principal
@@ -197,6 +198,9 @@ type apiServer struct {
 	invites            *invites.Service
 	nodes              *nodes.Service
 	agentRuntime       *agentruntime.Service
+	aiCredentials      *aigateway.Credentials
+	aiWorkloads        *aigateway.Workloads
+	aiPolicies         *aigateway.Policies
 	alertConfig        *alerts.ConfigService
 	devices            *devices.Service
 	ovpn               *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export; nil in a stripped build

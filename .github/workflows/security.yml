@@ -59,10 +59,10 @@ jobs:
             if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
               CHANGED=$(git diff --name-only "${BASE}...HEAD" || true)
               if [ -n "$(printf '%s' "$CHANGED" | tr -d '[:space:]')" ]; then
-                if ! printf '%s\n' "$CHANGED" | grep -qE '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/)'; then
+                if ! printf '%s\n' "$CHANGED" | grep -E '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/)' >/dev/null; then
                   RUN_GO=false
                 fi
-                if ! printf '%s\n' "$CHANGED" | grep -qE '(\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)(package|pnpm-lock|package-lock)\.json$|(^|/)pnpm-lock\.yaml$|(^|/)(tsconfig|vite\.config|playwright\.config|playwright\.visual\.config)\.|Dockerfile|Makefile|\.github/|openapi/|apps/(web|client)/|packages/shared/|e2e/)'; then
+                if ! printf '%s\n' "$CHANGED" | grep -E '(\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)(package|pnpm-lock|package-lock)\.json$|(^|/)pnpm-lock\.yaml$|(^|/)(tsconfig|vite\.config|playwright\.config|playwright\.visual\.config)\.|Dockerfile|Makefile|\.github/|openapi/|apps/(web|client)/|packages/shared/|e2e/)' >/dev/null; then
                   RUN_JAVASCRIPT=false
                 fi
               fi
@@ -219,8 +219,10 @@ jobs:
       # starts, which reads as an infrastructure blip rather than a broken commit. (An unquoted colon in a
       # step NAME cost a full CI round-trip in this very slice.) Linting the workflows is the gate for the
       # files that ARE the gates.
-      - name: Go toolchain pin agreement (one pin, every site — S11 Cluster A)
-        run: ./scripts/check-toolchain-pin.sh
+      - name: Go toolchain pins (first-party and immutable upstream)
+        run: |
+          ./scripts/check-toolchain-pin.sh
+          node --test scripts/check-toolchain-pin.test.mjs
       - name: actionlint (workflow syntax — the gates' own gate)
         run: |
           set -euo pipefail

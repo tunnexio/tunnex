@@ -1,0 +1,21 @@
+{
+  "result": "passed",
+  "transport": "separate local HTTPS MCP process and production loopback proxy",
+  "discovered_tools": [
+    "delete_issue",
+    "read_issue",
+    "write_issue"
+  ],
+  "anonymous_http": 401,
+  "forbidden_http": 403,
+  "partial_page_http": 403,
+  "partial_catalog_published": false,
+  "selected_tool_http": 200,
+  "unselected_tool_http": 403,
+  "new_tool_http": 403,
+  "revoked_tool_http": 403,
+  "upstream_tool_calls": [
+    "read_issue"
+  ],
+  "boundary": "Transport and proxy proof; control-plane lease, enrollment and browser flow remain separate acceptance checks."
+}

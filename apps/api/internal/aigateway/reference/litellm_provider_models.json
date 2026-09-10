@@ -1,0 +1,3347 @@
+{
+  "source_commit": "eeb7732fc11fd47762ca84cc3fb7cc74235d7097",
+  "source_sha256": "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202",
+  "source_path": "model_prices_and_context_window.json",
+  "entries": [
+    {
+      "id": "anthropic/claude-3-7-sonnet-20250219",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-3-haiku-20240307",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-3-opus-20240229",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-4-opus-20250514",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-4-sonnet-20250514",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-fable-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-fable-5-1",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-haiku-4-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-haiku-4-5-20251001",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-mythos-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-mythos-5-1",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-mythos-preview",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-1",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-1-20250805",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-20250514",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-5-20251101",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-6",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-6-20260205",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-7",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-7-20260416",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4-8",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4-20250514",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4-5-20250929",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4-6",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-5",
+      "provider": "anthropic",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/gemma-4-31b",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/gpt-oss-120b",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/llama-3.3-70b",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/llama3.1-70b",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/llama3.1-8b",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/qwen-3-32b",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/zai-glm-4.6",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "cerebras/zai-glm-4.7",
+      "provider": "cerebras",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-chat",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-chat",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-coder",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-reasoner",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-reasoner",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.2",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash-vision-exp",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash-vision-exp",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/deep-research-pro-preview-12-2025",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-1.5-flash",
+      "provider": "gemini",
+      "mode": "embedding"
+    },
+    {
+      "id": "gemini/gemini-2.0-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.0-flash-001",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.0-flash-exp-image-generation",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-2.0-flash-exp-image-generation",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-2.0-flash-lite",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.0-flash-lite-001",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-computer-use-preview-10-2025",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-image",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-lite",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-lite-preview-06-17",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-lite-preview-09-2025",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-preview-09-2025",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-preview-tts",
+      "provider": "gemini",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "gemini/gemini-2.5-flash-preview-tts",
+      "provider": "gemini",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "gemini/gemini-2.5-pro",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-2.5-pro-preview-tts",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3-flash-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3-pro-image",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-3-pro-image-preview",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-3-pro-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.1-flash-image",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-3.1-flash-image-preview",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.1-flash-lite-image",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/gemini-3.1-flash-lite-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.1-flash-tts-preview",
+      "provider": "gemini",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "gemini/gemini-3.1-pro-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.1-pro-preview-customtools",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.5-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.5-transcribe",
+      "provider": "gemini",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "gemini/gemini-3.5-transcribe-live",
+      "provider": "gemini",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "gemini/gemini-3.6-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.7-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-3.8-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-embedding-001",
+      "provider": "gemini",
+      "mode": "embedding"
+    },
+    {
+      "id": "gemini/gemini-embedding-2",
+      "provider": "gemini",
+      "mode": "embedding"
+    },
+    {
+      "id": "gemini/gemini-embedding-2-preview",
+      "provider": "gemini",
+      "mode": "embedding"
+    },
+    {
+      "id": "gemini/gemini-exp-1114",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-exp-1206",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-exp-1206",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-flash-latest",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-flash-latest",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-flash-lite-latest",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-flash-lite-latest",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-gemma-2-27b-it",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-gemma-2-9b-it",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-omni-1.1-flash",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-omni-flash-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-pro-latest",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-pro-latest",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-robotics-er-1.5-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-robotics-er-1.6-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-robotics-er-2-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemini-robotics-er-2-streaming-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemma-3-27b-it",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemma-4-26b-a4b-it",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/gemma-4-31b-it",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/imagen-3.0-fast-generate-001",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/imagen-3.0-generate-001",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/imagen-3.0-generate-002",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/imagen-4.0-fast-generate-001",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/imagen-4.0-generate-001",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/imagen-4.0-ultra-generate-001",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/learnlm-1.5-pro-experimental",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/lyria-3-clip-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/lyria-3-pro-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/lyria-3.5-clip-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/lyria-3.5-pro-preview",
+      "provider": "gemini",
+      "mode": "chat"
+    },
+    {
+      "id": "gemini/nano-banana-pro-preview",
+      "provider": "gemini",
+      "mode": "image_generation"
+    },
+    {
+      "id": "gemini/veo-2.0-generate-001",
+      "provider": "gemini",
+      "mode": "video_generation"
+    },
+    {
+      "id": "gemini/veo-3.1-fast-generate-001",
+      "provider": "gemini",
+      "mode": "video_generation"
+    },
+    {
+      "id": "gemini/veo-3.1-fast-generate-preview",
+      "provider": "gemini",
+      "mode": "video_generation"
+    },
+    {
+      "id": "gemini/veo-3.1-generate-001",
+      "provider": "gemini",
+      "mode": "video_generation"
+    },
+    {
+      "id": "gemini/veo-3.1-generate-preview",
+      "provider": "gemini",
+      "mode": "video_generation"
+    },
+    {
+      "id": "gemini/veo-3.1-lite-generate-preview",
+      "provider": "gemini",
+      "mode": "video_generation"
+    },
+    {
+      "id": "groq/canopylabs/orpheus-arabic-saudi",
+      "provider": "groq",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "groq/canopylabs/orpheus-v1-english",
+      "provider": "groq",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "groq/gemma-7b-it",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/llama-3.1-8b-instant",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/llama-3.3-70b-versatile",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/meta-llama/llama-4-scout-17b-16e-instruct",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/meta-llama/llama-guard-4-12b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/meta-llama/llama-prompt-guard-2-22m",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/meta-llama/llama-prompt-guard-2-86m",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/moonshotai/kimi-k2-instruct-0905",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/openai/gpt-oss-120b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/openai/gpt-oss-20b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/openai/gpt-oss-safeguard-20b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/playai-tts",
+      "provider": "groq",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "groq/qwen/qwen3-32b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/qwen/qwen3.6-27b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/qwen/qwen3.8-27b",
+      "provider": "groq",
+      "mode": "chat"
+    },
+    {
+      "id": "groq/whisper-large-v3",
+      "provider": "groq",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "groq/whisper-large-v3-turbo",
+      "provider": "groq",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/codestral-2405",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/codestral-2508",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/codestral-embed",
+      "provider": "mistral",
+      "mode": "embedding"
+    },
+    {
+      "id": "mistral/codestral-embed-2505",
+      "provider": "mistral",
+      "mode": "embedding"
+    },
+    {
+      "id": "mistral/codestral-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/codestral-mamba-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-medium-2507",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-medium-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-small-2505",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-small-2507",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/devstral-small-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/glm-5-2",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/labs-devstral-small-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/labs-leanstral-1-5",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/labs-leanstral-1-5-1",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-medium-1-2-2509",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-medium-2506",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-medium-2509",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-medium-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-small-1-2-2509",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-small-2506",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/magistral-small-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-14b-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-14b-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-3-14b-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-3-3b-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-3-8b-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-3b-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-3b-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-8b-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/ministral-8b-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-code-agent-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-code-fim-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-code-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-embed",
+      "provider": "mistral",
+      "mode": "embedding"
+    },
+    {
+      "id": "mistral/mistral-embed-2312",
+      "provider": "mistral",
+      "mode": "embedding"
+    },
+    {
+      "id": "mistral/mistral-large-2402",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-large-2407",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-large-2411",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-large-2512",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-large-3",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-large-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-2312",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-2505",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-2508",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-2604",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-3",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-3-1-2508",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-3-5",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-3.5",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-medium-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-small",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-small-2603",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-small-3-2-2506",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-small-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-tiny",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-vibe-cli-fast",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-vibe-cli-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/mistral-vibe-cli-with-tools",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/open-codestral-mamba",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/open-mistral-7b",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/open-mistral-nemo",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/open-mistral-nemo-2407",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/open-mixtral-8x22b",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/open-mixtral-8x7b",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/pixtral-12b-2409",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/pixtral-large-2411",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/pixtral-large-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/voxtral-mini-2602",
+      "provider": "mistral",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/voxtral-mini-latest",
+      "provider": "mistral",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/voxtral-mini-realtime-2602",
+      "provider": "mistral",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/voxtral-mini-realtime-latest",
+      "provider": "mistral",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/voxtral-mini-transcribe-realtime-2602",
+      "provider": "mistral",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/voxtral-mini-transcribe-realtime-latest",
+      "provider": "mistral",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "mistral/voxtral-mini-tts-2603",
+      "provider": "mistral",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "mistral/voxtral-mini-tts-latest",
+      "provider": "mistral",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "mistral/voxtral-small-2507",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/voxtral-small-latest",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "mistral/zai-glm-5-2",
+      "provider": "mistral",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/chat-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/chatgpt-4o-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/chatgpt-image-latest",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/container",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/dall-e-2",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/dall-e-3",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/daybreak-blue-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/daybreak-red-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-3.5-turbo",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-3.5-turbo-0125",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-3.5-turbo-0613",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-3.5-turbo-1106",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4-0613",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4.1-2025-04-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4.1-mini-2025-04-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4.1-nano-2025-04-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4o-2024-08-06",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4o-2024-11-20",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:gpt-4o-mini-2024-07-18",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/ft:o4-mini-2025-04-16",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-3.5-turbo",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-3.5-turbo-0125",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-3.5-turbo-1106",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-3.5-turbo-16k",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-0125-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-0314",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-0613",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-1106-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-turbo",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-turbo-2024-04-09",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4-turbo-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-2025-04-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-mini-2025-04-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-nano-2025-04-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-2024-05-13",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-2024-08-06",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-2024-11-20",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-audio-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-audio-preview-2024-12-17",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-audio-preview-2025-06-03",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini-2024-07-18",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini-audio-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini-audio-preview-2024-12-17",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini-search-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini-search-preview-2025-03-11",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini-transcribe",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-4o-mini-transcribe-2025-03-20",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-4o-mini-transcribe-2025-12-15",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-4o-mini-tts",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/gpt-4o-mini-tts-2025-03-20",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/gpt-4o-mini-tts-2025-12-15",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/gpt-4o-search-preview",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-search-preview-2025-03-11",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-transcribe",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-4o-transcribe-diarize",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-5",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-2025-08-07",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-chat",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-chat-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-mini-2025-08-07",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-nano",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-nano-2025-08-07",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-search-api",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5-search-api-2025-10-14",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.1",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.1-2025-11-13",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.1-chat-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.2",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.2-2025-12-11",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.2-chat-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.3-chat-latest",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.4-2026-03-05",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.4-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.4-mini-2026-03-17",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.4-nano",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.4-nano-2026-03-17",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.5-2026-04-23",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.6",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.6-cyber",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.6-luna",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.6-sol",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-5.6-terra",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-6-astra",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-audio",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-audio-1.5",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-audio-2025-08-28",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-audio-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-audio-mini-2025-10-06",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-audio-mini-2025-12-15",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/gpt-image-1",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/gpt-image-1-mini",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/gpt-image-1.5",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/gpt-image-1.5-2025-12-16",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/gpt-image-2",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/gpt-image-2-2026-04-21",
+      "provider": "openai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "openai/gpt-live-transcribe",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-realtime-whisper",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/gpt-transcribe",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openai/o1",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o1-2024-12-17",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o3",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o3-2025-04-16",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o3-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o3-mini-2025-01-31",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o4-mini",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/o4-mini-2025-04-16",
+      "provider": "openai",
+      "mode": "chat"
+    },
+    {
+      "id": "openai/sora-2",
+      "provider": "openai",
+      "mode": "video_generation"
+    },
+    {
+      "id": "openai/sora-2",
+      "provider": "openai",
+      "mode": "video_generation"
+    },
+    {
+      "id": "openai/sora-2-pro",
+      "provider": "openai",
+      "mode": "video_generation"
+    },
+    {
+      "id": "openai/sora-2-pro",
+      "provider": "openai",
+      "mode": "video_generation"
+    },
+    {
+      "id": "openai/sora-2-pro-high-res",
+      "provider": "openai",
+      "mode": "video_generation"
+    },
+    {
+      "id": "openai/sora-2-pro-high-res",
+      "provider": "openai",
+      "mode": "video_generation"
+    },
+    {
+      "id": "openai/text-embedding-3-large",
+      "provider": "openai",
+      "mode": "embedding"
+    },
+    {
+      "id": "openai/text-embedding-3-small",
+      "provider": "openai",
+      "mode": "embedding"
+    },
+    {
+      "id": "openai/text-embedding-ada-002",
+      "provider": "openai",
+      "mode": "embedding"
+    },
+    {
+      "id": "openai/text-embedding-ada-002-v2",
+      "provider": "openai",
+      "mode": "embedding"
+    },
+    {
+      "id": "openai/tts-1",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/tts-1-1106",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/tts-1-hd",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/tts-1-hd-1106",
+      "provider": "openai",
+      "mode": "audio_speech"
+    },
+    {
+      "id": "openai/whisper-1",
+      "provider": "openai",
+      "mode": "audio_transcription"
+    },
+    {
+      "id": "openrouter/anthropic/claude-3-haiku",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-3.5-sonnet",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-3.7-sonnet",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-fable-5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-fable-5.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-haiku-4.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-4",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-4.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-4.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-4.6",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-4.7",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-4.8",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-opus-5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-sonnet-4",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-sonnet-4.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-sonnet-4.6",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/anthropic/claude-sonnet-5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/bytedance/ui-tars-1.5-7b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-chat",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-chat-v3-0324",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-chat-v3.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-r1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-r1-0528",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-r1-distill-llama-70b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v3.1-terminus",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v3.2",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v3.2-exp",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v4-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v4-flash-0731",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v4-flash-vision-exp",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v4-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/deepseek/deepseek-v4-pro-0813",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.0-flash-001",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.5-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.5-flash-image",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.5-flash-lite",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.5-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.5-pro-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-2.5-pro-preview-05-06",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3-flash-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3-pro-image",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3-pro-image-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3-pro-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-flash-image",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-flash-image-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-flash-lite",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-flash-lite-image",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-flash-lite-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-pro-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.1-pro-preview-customtools",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.5-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.5-flash-lite",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.6-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.7-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemini-3.8-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-2-27b-it",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-3-12b-it",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-3-27b-it",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-3-4b-it",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-4-26b-a4b-it",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-4-26b-a4b-it:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-4-31b-it",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/google/gemma-4-31b-it:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/gryphe/mythomax-l2-13b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mancer/weaver",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-3-70b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-3.1-70b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-3.1-8b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-3.2-1b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-3.2-3b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-3.3-70b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-4-maverick",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-4-scout",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/meta-llama/llama-guard-4-12b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-01",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m2",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m2-her",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m2.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m2.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m2.7",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m2.7:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m3",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/minimax/minimax-m3:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/codestral-2508",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/devstral-2512",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/ministral-14b-2512",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/ministral-3b-2512",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/ministral-8b-2512",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-7b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-large",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-large-2407",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-large-2512",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-medium-3",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-medium-3-5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-medium-3.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-nemo",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-saba",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-small-24b-instruct-2501",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-small-2603",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-small-3.1-24b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/mixtral-8x22b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/mistralai/voxtral-small-24b-2507",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k2",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k2-0905",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k2-thinking",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k2.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k2.6",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k2.7-code",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/moonshotai/kimi-k3",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3-nano-30b-a3b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3-super-120b-a12b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3-ultra-550b-a55b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3.5-content-safety",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3.5-content-safety:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3.5-lightning",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/nvidia/nemotron-3.5-lightning:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-3.5-turbo",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-3.5-turbo-16k",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-3.5-turbo-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4-turbo",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4-turbo-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4.1-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4.1-nano",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4o",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4o-2024-05-13",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4o-2024-08-06",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4o-2024-11-20",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4o-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-4o-mini-2024-07-18",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5-chat",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5-codex",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5-nano",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.1-codex",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.1-codex-max",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.1-codex-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.2",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.2-chat",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.2-codex",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.2-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.3-codex",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.4",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.4-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.4-nano",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.4-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.5-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.6-luna",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-5.6-terra",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-6-astra",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-audio",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-audio-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-oss-120b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-oss-20b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/gpt-oss-safeguard-20b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o1-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o3",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o3-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o3-mini-high",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o3-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o4-mini",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openai/o4-mini-high",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openrouter/auto",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openrouter/bodybuilder",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/openrouter/free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/poolside/laguna-s-2.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/poolside/laguna-s-2.1:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/poolside/laguna-xs-2.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/poolside/laguna-xs-2.1:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen-2.5-72b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen-2.5-7b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen-2.5-coder-32b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen-plus",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen-plus-2025-07-28",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen-vl-plus",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen2.5-vl-72b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-14b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-235b-a22b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-235b-a22b-2507",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-235b-a22b-thinking-2507",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-30b-a3b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-30b-a3b-instruct-2507",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-30b-a3b-thinking-2507",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-32b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-8b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-coder",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-coder-30b-a3b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-coder-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-coder-next",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-coder-plus",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-max",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-max-thinking",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-next-80b-a3b-thinking",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-235b-a22b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-235b-a22b-thinking",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-30b-a3b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-30b-a3b-thinking",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-32b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-8b-instruct",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3-vl-8b-thinking",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-122b-a10b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-27b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-35b-a3b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-397b-a17b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-9b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-flash-02-23",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-plus-02-15",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.5-plus-20260420",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.6-27b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.6-35b-a3b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.6-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.6-max-preview",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.6-plus",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.7-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.7-max",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.7-plus",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.8-2.4t-a95b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.8-27b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.8-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/qwen/qwen3.8-max",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/switchpoint/router",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/undi95/remm-slerp-l2-13b",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-4",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-4.20",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-4.20-multi-agent",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-4.3",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-4.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-4.6",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/x-ai/grok-build-0.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/xiaomi/mimo-v2-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/xiaomi/mimo-v2.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/xiaomi/mimo-v2.5-pro",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.5-air",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.5v",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.6",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.6:exacto",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.6v",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.7",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-4.7-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5-turbo",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5.1",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5.2",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5.2:free",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5.3",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5.3-flash",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "openrouter/z-ai/glm-5v-turbo",
+      "provider": "openrouter",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-beta",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-fast-beta",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-fast-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini-beta",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini-fast",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini-fast-beta",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini-fast-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-0709",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-1-fast",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-1-fast-non-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-1-fast-non-reasoning-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-1-fast-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-1-fast-reasoning-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-fast-non-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-fast-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-0309-non-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-0309-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-beta-0309-non-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-beta-0309-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-non-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-non-reasoning-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-reasoning",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.20-reasoning-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.3",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.3-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.5",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.5-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-4.6",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-build-0.1",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-build-latest",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-code-fast",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-code-fast-1",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-code-fast-1-0825",
+      "provider": "xai",
+      "mode": "chat"
+    },
+    {
+      "id": "xai/grok-imagine-image",
+      "provider": "xai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "xai/grok-imagine-image-2.0",
+      "provider": "xai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "xai/grok-imagine-image-2026-03-02",
+      "provider": "xai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "xai/grok-imagine-image-pro",
+      "provider": "xai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "xai/grok-imagine-image-quality",
+      "provider": "xai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "xai/grok-imagine-image-quality-20260403",
+      "provider": "xai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "xai/grok-imagine-image-quality-latest",
+      "provider": "xai",
+      "mode": "image_generation"
+    }
+  ]
+}

@@ -123,6 +123,7 @@ type UnaccountedMemberField = Exclude<
   | "email"
   | "name"
   | "role"
+  | "roles" // rendered and edited by RoleAssignment
   | "status"
   | "email_verified"
   | "joined_at"
@@ -314,9 +315,11 @@ describe("roleDistribution — the one of the panel's three promised facts that 
       { role: "owner", n: 1, deactivated: 0 },
       { role: "admin", n: 0, deactivated: 0 },
       { role: "member", n: 2, deactivated: 0 },
+      { role: "ai-admin", n: 0, deactivated: 0 },
+      { role: "ai-view", n: 0, deactivated: 0 },
     ]);
     // Hierarchy order, not insertion order and not alphabetical (which would put admin first).
-    expect(d.map((t) => t.role)).toEqual(["owner", "admin", "member"]);
+    expect(d.map((t) => t.role)).toEqual(["owner", "admin", "member", "ai-admin", "ai-view"]);
   });
 
   it("⛔ COUNTS DEACTIVATED IN `n`, AND REPORTS THEM SEPARATELY — two facts, not one number", () => {
@@ -339,8 +342,8 @@ describe("roleDistribution — the one of the panel's three promised facts that 
     expect(d[0]).toEqual({ role: "owner", n: 1, deactivated: 1 });
   });
 
-  it("an empty roster gives three zeros, not an empty list", () => {
-    expect(roleDistribution([])).toHaveLength(3);
+  it("an empty roster gives five zeros, not an empty list", () => {
+    expect(roleDistribution([])).toHaveLength(5);
     expect(roleDistribution([]).every((t) => t.n === 0)).toBe(true);
   });
 

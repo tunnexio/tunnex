@@ -93,7 +93,7 @@ func (s *Service) withTx(ctx context.Context, fn func(*sqlc.Queries) error) erro
 // primary delivery for SMTP-less self-hosts); the email is best-effort on top.
 func (s *Service) Create(ctx context.Context, actor, orgID uuid.UUID, email, role string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
-	if !rbac.ValidRole(role) {
+	if _, err := rbac.NormalizeHumanRoles([]string{role}); err != nil {
 		return "", apierr.BadRequest("invalid_role", "unknown role: "+role)
 	}
 	raw, hash, err := newToken()
@@ -101,6 +101,9 @@ func (s *Service) Create(ctx context.Context, actor, orgID uuid.UUID, email, rol
 		return "", err
 	}
 	err = s.withTx(ctx, func(q *sqlc.Queries) error {
+		if e := authorizeInvitationRole(ctx, q, actor, orgID, role); e != nil {
+			return e
+		}
 		if _, e := q.CreateInvitation(ctx, sqlc.CreateInvitationParams{
 			OrgID: orgID, Email: email, Role: role, TokenHash: hash,
 			ExpiresAt: time.Now().Add(inviteTTL), InvitedByUserID: pgUUID(actor),
@@ -223,22 +226,46 @@ func (s *Service) Resend(ctx context.Context, actor, orgID uuid.UUID, email stri
 		return err
 	}
 	err = s.withTx(ctx, func(q *sqlc.Queries) error {
+		pending, e := q.GetPendingInvitationForResend(ctx, sqlc.GetPendingInvitationForResendParams{OrgID: orgID, Email: email})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apierr.NotFound("invite_not_pending", "no pending invitation for this email")
+		}
+		if e != nil {
+			return e
+		}
+		if e := authorizeInvitationRole(ctx, q, actor, orgID, pending.Role); e != nil {
+			return e
+		}
 		if _, e := q.RevokeInvitationByOrgEmail(ctx, sqlc.RevokeInvitationByOrgEmailParams{OrgID: orgID, Email: email}); e != nil {
 			return e
 		}
 		if _, e := q.CreateInvitation(ctx, sqlc.CreateInvitationParams{
-			OrgID: orgID, Email: email, Role: rbac.RoleMember, TokenHash: hash,
+			OrgID: orgID, Email: email, Role: pending.Role, TokenHash: hash,
 			ExpiresAt: time.Now().Add(inviteTTL), InvitedByUserID: pgUUID(actor),
 		}); e != nil {
 			return e
 		}
-		return writeAudit(ctx, q, orgID, &actor, "invite.resent", email, nil)
+		return writeAudit(ctx, q, orgID, &actor, "invite.resent", email, map[string]any{"role": pending.Role})
 	})
 	if err != nil {
 		return err
 	}
 	if err := s.send(ctx, mail.ResendInviteMessage(email, s.baseURL+"/accept-invite?token="+raw, "")); err != nil {
 		return ErrNotDelivered // the token was re-minted; only the delivery failed
+	}
+	return nil
+}
+
+func authorizeInvitationRole(ctx context.Context, q *sqlc.Queries, actor, orgID uuid.UUID, role string) error {
+	member, err := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: actor})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apierr.Forbidden("forbidden", "you cannot invite users to this organization")
+	}
+	if err != nil {
+		return err
+	}
+	if !rbac.CanManageMembership(member.Role, "", role) {
+		return apierr.Forbidden("forbidden", "you cannot grant this invitation role")
 	}
 	return nil
 }

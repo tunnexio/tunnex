@@ -1,0 +1,344 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "aiGateway": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "providerManagementEnabled": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "secretKeys": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adminUser",
+            "adminPassword",
+            "providerKey",
+            "encryptionKey"
+          ],
+          "properties": {
+            "adminUser": {
+              "type": "string",
+              "minLength": 1
+            },
+            "adminPassword": {
+              "type": "string",
+              "minLength": 1
+            },
+            "providerKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "encryptionKey": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "providerKeyID": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240,
+            "pattern": "^[A-Za-z0-9_./:-]+$"
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "storageClassName": {
+              "type": "string"
+            },
+            "configSize": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$"
+            },
+            "logsSize": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$"
+            }
+          }
+        },
+        "dns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "namespaceLabels": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "podLabels": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "customProviders": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "endpoints": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "url",
+                  "allowed_cidrs"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "url": {
+                    "type": "string",
+                    "pattern": "^https?://"
+                  },
+                  "allowed_cidrs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "custom",
+                      "sagemaker",
+                      "azure_foundry"
+                    ]
+                  }
+                }
+              }
+            },
+            "protectedHosts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "deniedCIDRs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "secretKeys": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "proxyURL",
+                "proxyUsername",
+                "proxyPassword"
+              ],
+              "properties": {
+                "proxyURL": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "proxyUsername": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "proxyPassword": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "publicHTTPS": {
+              "type": "boolean",
+              "default": false,
+              "description": "Allow public HTTPS/443 Custom and Azure endpoints through validated egress without per-endpoint rules."
+            }
+          }
+        },
+        "litellmBridge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "adminTokenKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "models": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "alias",
+                  "endpoint",
+                  "region",
+                  "access_key_id_env",
+                  "secret_access_key_env"
+                ],
+                "properties": {
+                  "alias": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "endpoint": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "region": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "access_key_id_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "secret_access_key_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "session_token_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "role_arn": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "clients": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key_env",
+                  "models"
+                ],
+                "properties": {
+                  "key_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "models": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "existingSecret": {
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "aiGateway": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          }
+        },
+        "required": [
+          "aiGateway"
+        ]
+      },
+      "then": {
+        "properties": {
+          "api": {
+            "properties": {
+              "replicas": {
+                "const": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

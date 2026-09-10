@@ -1,0 +1,201 @@
+{{- if .Values.aiGateway.enabled }}
+{{- if ne (int .Values.api.replicas) 1 }}{{ fail "AI gateway requires api.replicas=1; admission and engine state are single-instance" }}{{ end }}
+{{- $secret := required "aiGateway.existingSecret is required; never generate engine/provider credentials" .Values.aiGateway.existingSecret }}
+{{- $name := printf "%s-ai" (include "tunnex-cp.fullname" .) }}
+{{- $config := .Files.Get "files/bifrost-config.json" | fromJson }}
+{{- if .Values.aiGateway.providerManagementEnabled }}
+{{- $_ := unset $config "providers" }}
+{{- else }}
+{{- $provider := index $config.providers "openrouter" }}
+{{- $key := index $provider.keys 0 }}
+{{- $_ := set $key "id" .Values.aiGateway.providerKeyID }}
+{{- $_ := set $key "name" .Values.aiGateway.providerKeyID }}
+{{- $_ := set $key "models" .Values.aiGateway.models }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- $config | toPrettyJson | nindent 4 }}
+{{- range $type, $size := dict "config" .Values.aiGateway.persistence.configSize "logs" .Values.aiGateway.persistence.logsSize }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-{{ $type }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "tunnex-cp.labels" $ | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if $.Values.aiGateway.persistence.storageClassName }}
+  storageClassName: {{ $.Values.aiGateway.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $size | quote }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-engine
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ai-engine
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ $config | toJson | sha256sum }}
+      labels:
+        {{- include "tunnex-cp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: ai-engine
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: bifrost
+          image: maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - {name: APP_HOST, value: "0.0.0.0"}
+            - {name: APP_PORT, value: "8080"}
+            - {name: APP_DIR, value: "/app/data"}
+            - {name: LOG_LEVEL, value: "error"}
+            {{- range $envName, $secretKey := dict "BIFROST_ADMIN_USER" .Values.aiGateway.secretKeys.adminUser "BIFROST_ADMIN_PASSWORD" .Values.aiGateway.secretKeys.adminPassword "OPENROUTER_API_KEY" .Values.aiGateway.secretKeys.providerKey "BIFROST_ENCRYPTION_KEY" .Values.aiGateway.secretKeys.encryptionKey }}
+            - name: {{ $envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ $secretKey | quote }}
+                  {{- if and $.Values.aiGateway.providerManagementEnabled (eq $envName "OPENROUTER_API_KEY") }}
+                  optional: true
+                  {{- end }}
+            {{- end }}
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - name: TUNNEX_AI_CUSTOM_PROXY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.customProviders.existingSecret }}
+                  key: {{ .Values.aiGateway.customProviders.secretKeys.proxyURL | quote }}
+            {{- end }}
+          volumeMounts:
+            - {name: config-state, mountPath: /app/data}
+            - {name: log-state, mountPath: /app/data/logs}
+            - {name: bootstrap, mountPath: /app/data/config.json, subPath: config.json, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.aiGateway.resources | nindent 12 }}
+      volumes:
+        - name: config-state
+          persistentVolumeClaim: {claimName: {{ $name }}-config}
+        - name: log-state
+          persistentVolumeClaim: {claimName: {{ $name }}-logs}
+        - name: bootstrap
+          configMap: {name: {{ $name }}}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bifrost
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-engine
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: ai-engine
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ai-engine
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.aiGateway.dns.namespaceLabels | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.aiGateway.dns.podLabels | nindent 14 }}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    {{- if .Values.aiGateway.customProviders.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: 8190}
+    {{- end }}
+    # Standard NetworkPolicy cannot enforce provider FQDNs. Permit public HTTPS
+    # only, excluding private/link-local/loopback/multicast address spaces.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4]
+        - ipBlock:
+            cidr: "::/0"
+            except: ["::/128", "::1/128", "::ffff:0:0/96", "fc00::/7", "fe80::/10", "ff00::/8"]
+      ports:
+        - {protocol: TCP, port: 443}
+{{- end }}

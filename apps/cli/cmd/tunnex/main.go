@@ -31,6 +31,13 @@ Usage:
                                             create a device and capture its one-time config
   tunnex up | down                          bring the WireGuard tunnel up/down (wg-quick)
   tunnex k8s <verb> [flags]                 Kubernetes gateway install and lifecycle
+  tunnex ai models --org UUID              list models granted to your user groups
+  tunnex ai chat --org UUID --model ID --prompt TEXT
+                                            call a model using your Tunnex login
+  tunnex workload run --config FILE -- COMMAND [ARGS...]
+                                            connect an application with renewable workload authentication
+  tunnex workload enroll|token|rotate|retire --config FILE
+                                            enroll, obtain a token, rotate the key, or permanently retire
   tunnex version                            print the exact CLI build version
 `)
 }
@@ -73,6 +80,10 @@ func main() {
 		} else {
 			err = cli.Login(ctx, s)
 		}
+	case "ai":
+		err = cli.AI(ctx, os.Args[2:], os.Stdout)
+	case "workload":
+		err = cli.Workload(ctx, os.Args[2:], os.Stdout)
 	case "logout":
 		err = cli.Logout(ctx)
 	case "device":

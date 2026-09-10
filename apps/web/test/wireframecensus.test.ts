@@ -73,8 +73,8 @@ const DISPOSITIONS: Record<string, Disposition> = {
   // absorption with no named home is just a gap someone re-discovers in six months.
   GROUPS: {
     kind: "absorbed",
-    into: "/access (GroupRow) + /settings (IdP sync freshness)",
-    why: "groups are edited where the rules that use them live; sync freshness belongs with the credential that produces it",
+    into: "/users/groups (people and directory groups) + /agents/groups (managed agents) + /settings (IdP sync freshness)",
+    why: "approved AI navigation design places membership with users or agents, while policies select those same groups; sync freshness stays with the directory connection",
   },
   ONBOARDING: {
     kind: "absorbed",

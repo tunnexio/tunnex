@@ -48,8 +48,9 @@ type Principal struct {
 	SessionID     string // the session backing this principal (for logout)
 	Email         string
 	EmailVerified bool
-	AuthMethod    string               // how this principal authenticated (AuthLocalPassword | AuthSSO | AuthBearer | AuthMachine | "")
-	Roles         map[uuid.UUID]string // orgID -> role
+	AuthMethod    string                 // how this principal authenticated (AuthLocalPassword | AuthSSO | AuthBearer | AuthMachine | "")
+	Roles         map[uuid.UUID]string   // orgID -> role
+	RoleSets      map[uuid.UUID][]string // orgID -> all human roles; loaded on every request
 	// ⛔ MustChangePassword — the CP admin's bootstrap credential was PRINTED TO LOGS, so it is treated as
 	// compromised from the moment it works. Until it is changed the principal may authenticate and may do
 	// NOTHING ELSE.
@@ -168,6 +169,21 @@ func (p *Principal) RoleIn(orgID uuid.UUID) (string, bool) {
 	}
 	r, ok := p.Roles[orgID]
 	return r, ok
+}
+
+// RolesIn falls back only for legacy and machine principals. A present empty
+// set is denied rather than borrowing the compatibility role.
+func (p *Principal) RolesIn(orgID uuid.UUID) []string {
+	if p == nil {
+		return nil
+	}
+	if roles, ok := p.RoleSets[orgID]; ok {
+		return roles
+	}
+	if role, ok := p.RoleIn(orgID); ok {
+		return []string{role}
+	}
+	return nil
 }
 
 type ctxKey int

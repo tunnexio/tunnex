@@ -18,6 +18,870 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/ai-gateway/workloads:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloads
+      tags: [ai-workloads]
+      summary: List stable workloads and their applied policies
+      responses:
+        "200":
+          description: List stable workloads and their applied policies
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIWorkload' } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAIWorkload
+      tags: [ai-workloads]
+      summary: Create a workload without a user or network device
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadInput' } } }
+      responses:
+        "201":
+          description: Create a workload without a user or network device
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkload' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateAIWorkload
+      tags: [ai-workloads]
+      summary: Update policy or disable workload access immediately
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadInput' } } }
+      responses:
+        "200":
+          description: Update policy or disable workload access immediately
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkload' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloadKeys
+      tags: [ai-workloads]
+      summary: List enrollment keys without their secrets
+      parameters:
+        - { name: after, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: List enrollment keys without their secrets
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeyPage' } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAIWorkloadKey
+      tags: [ai-workloads]
+      summary: Create a workload-bound enrollment key shown once
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeyInput' } } }
+      responses:
+        "201":
+          description: Create a workload-bound enrollment key shown once
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeySecret' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys/{keyId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAIWorkloadKey
+      tags: [ai-workloads]
+      summary: Stop future enrollment and optionally revoke enrolled instances
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeyRevoke' } } }
+      responses:
+        "204":
+          description: Stop future enrollment and optionally revoke enrolled instances
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloadInstances
+      tags: [ai-workloads]
+      summary: List independent workload replicas
+      parameters:
+        - { name: after, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: List independent workload replicas
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadInstancePage' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances/{instanceId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: instanceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAIWorkloadInstance
+      tags: [ai-workloads]
+      summary: Revoke only this instance; no automatic reenrollment
+      responses:
+        "204":
+          description: Revoke only this instance; no automatic reenrollment
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/enroll:
+    post:
+      operationId: enrollWorkload
+      tags: [ai-workloads]
+      summary: Atomically register an instance public key using a signed enrollment proof
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadEnrollInput' } } }
+      responses:
+        "200":
+          description: Atomically register an instance public key using a signed enrollment proof
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadReceipt' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/token:
+    post:
+      operationId: exchangeWorkloadToken
+      tags: [ai-workloads]
+      summary: Exchange a private_key_jwt for a five-minute AI gateway token
+      security: []
+      requestBody:
+        required: true
+        content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/AIWorkloadTokenInput' } } }
+      responses:
+        "200":
+          description: Exchange a private_key_jwt for a five-minute AI gateway token
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadToken' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/rotate:
+    post:
+      operationId: rotateWorkloadKey
+      tags: [ai-workloads]
+      summary: Rotate the instance key with proofs from both keys and a durable request ID
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadRotationInput' } } }
+      responses:
+        "200":
+          description: Rotate the instance key with proofs from both keys and a durable request ID
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadReceipt' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/retire:
+    post:
+      operationId: retireWorkloadInstance
+      tags: [ai-workloads]
+      summary: Retire the authenticated instance on graceful shutdown
+      security: []
+      responses:
+        "204":
+          description: Retire the authenticated instance on graceful shutdown
+        default: { $ref: "#/components/responses/Error" }
+  /ai/v1/models:
+    get:
+      operationId: listWorkloadModels
+      tags: [ai-workloads]
+      summary: List currently authorized models using a workload bearer
+      security: []
+      responses:
+        "200":
+          description: List currently authorized models using a workload bearer
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadModelList' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/user-groups:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIUserGroups
+      tags: [ai-gateway]
+      responses:
+        '200':
+          description: Organization-scoped results. Model access requires current user group membership.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIUserGroup' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/user-model-grants:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIUserModelGrants
+      tags: [ai-gateway]
+      responses:
+        '200':
+          description: Organization-scoped results. Model access requires current user group membership.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIUserModelGrant' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: putAIUserModelGrant
+      tags: [ai-gateway]
+      summary: Grant or revoke an exact model for a human user group
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIUserModelGrantInput' } } }
+      responses:
+        '200':
+          description: Desired grant and provisioning state. Access is effective only when applied.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIUserModelGrant' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/my-models:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listMyAIModels
+      tags: [ai-gateway]
+      responses:
+        '200':
+          description: Organization-scoped results. Model access requires current user group membership.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIUserModel' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserChatCompletion
+      summary: Execute an allowed model using a short-lived AI credential
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/completions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserCompletion
+      summary: Execute an authorized completions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AICompletionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            text/event-stream: { schema: { type: string } }
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/embeddings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserEmbedding
+      summary: Execute an authorized embeddings model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIEmbeddingRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/speech:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserSpeech
+      summary: Execute an authorized audio/speech model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AISpeechRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            audio/mpeg: { schema: { type: string, format: binary } }
+            audio/ogg: { schema: { type: string, format: binary } }
+            audio/aac: { schema: { type: string, format: binary } }
+            audio/flac: { schema: { type: string, format: binary } }
+            audio/wav: { schema: { type: string, format: binary } }
+            audio/pcm: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/transcriptions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserTranscription
+      summary: Execute an authorized audio/transcriptions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { $ref: '#/components/schemas/AITranscriptionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/images/generations:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserImageGeneration
+      summary: Execute an authorized images/generations model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIImageRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserVideoGeneration
+      summary: Execute an authorized videos model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{16,128}$' } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIVideoRequest' } } }
+      responses:
+        "200":
+          description: Bounded output; video returns job acceptance, not completion.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/rerank:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserRerank
+      summary: Execute an authorized rerank model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIRerankRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiUserVideoStatus
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}/content:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiUserVideoContent
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            video/webm: { schema: { type: string, format: binary } }
+            video/mp4: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/anthropic/v1/messages:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserAnthropicMessage
+      summary: Execute an allowed model through the qualified Anthropic-compatible path
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed; same identity and model policy as chat completions.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/providers:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIProviders
+      summary: List organization-owned provider connections and legacy key references
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Safe connection metadata; no provider secrets.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderList' } } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createAIProvider
+      summary: Add an encrypted private-engine provider connection
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderCreate' } } }
+      responses:
+        "201":
+          description: Durable desired connection. Inspect status before assigning access.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderConnection' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/providers/model-catalog:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: searchAIProviderCatalog
+      summary: Search an endpoint's model catalog using unsaved credentials
+      description: Requires provider management permission. No inference, connection creation or secret persistence. Catalog membership does not prove inference entitlement or deployment availability.
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderCatalogRequest' } } }
+      responses:
+        "200":
+          description: Bounded model suggestions from the selected endpoint.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderModelList' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/providers/test-connection:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: testAIProviderConnection
+      summary: Test new or saved provider credentials with one bounded model request
+      description: Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. Supply either api_key (new credentials) or connection_id and expected_revision (saved credentials). Saved tests use the owned connection's endpoint and key, including for a new model, without changing its serving model scope. No connection or secret is persisted.
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderProbe' } } }
+      responses:
+        "200":
+          description: Sanitized result for the selected model only.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderProbeResult' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateAIProvider
+      summary: Edit, rotate or disable an owned provider connection
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderUpdate' } } }
+      responses:
+        "200":
+          description: Durable desired connection with synchronization status.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderConnection' } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteAIProvider
+      summary: Remove an unreferenced connection while retaining its ownership tombstone
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderRevision' } } }
+      responses:
+        "204": { description: Connection removed; team policies and usage are preserved. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}/test:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: testAIProvider
+      summary: Check saved provider catalog access without inference or model spend
+      description: Public catalogs may not validate API keys. A successful connection check does not prove model inference access.
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderRevision' } } }
+      responses:
+        "200":
+          description: Connection metadata including last check result.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderConnection' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/models:
+    parameters:
+      - { name: mode, in: query, schema: { $ref: '#/components/schemas/AIModelMode' } }
+      - { name: connection_id, in: query, schema: { type: string, format: uuid }, description: Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. }
+      - { name: provider, in: query, schema: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry], default: openrouter } }
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: query, in: query, schema: { type: string, maxLength: 100 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+    get:
+      operationId: listAIProviderModels
+      summary: Browse cached qualified-provider model suggestions without a provider key
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Model suggestions; catalog inclusion does not prove entitlement.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderModelList' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/teams:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAITeamPolicies
+      summary: List configured AI team policies
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AITeamPolicy" } } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: teamId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: putAITeamPolicy
+      summary: Set exact model policy for an existing Agent Group
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AITeamPolicyWrite" } } }
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AITeamPolicy" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/agents:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIAssignments
+      summary: List explicit AI team assignments and synchronization status
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AIAssignment" } } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: putAIAssignment
+      summary: Assign one AI team or disable access for an agent
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIAssignmentWrite" } } }
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIAssignment" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}/reconcile:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: reconcileAIAssignment
+      summary: Retry verified private-engine policy synchronization
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIAssignment" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/usage:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: team_id, in: query, schema: { type: string, format: uuid } }
+      - { name: device_id, in: query, schema: { type: string, format: uuid } }
+      - { name: from, in: query, schema: { type: string, format: date-time } }
+      - { name: to, in: query, schema: { type: string, format: date-time } }
+      - { name: dashboard, in: query, schema: { type: boolean, default: false }, description: Include bounded native daily and historical attribution aggregates. }
+    get:
+      operationId: getAIUsage
+      summary: Read scoped native usage estimates over at most 31 days
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIUsageReport" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/agent/runtime/ai-credential:
+    post:
+      operationId: issueAICredential
+      summary: Exchange current enrolled-agent identity for a five-minute AI credential
+      description: Community supported. Requires independent organization AI opt-in and an applied AI policy. Tenant, device and audience are server-bound. No provider key is returned.
+      tags: [ai-gateway]
+      security: [{ runtimeBearer: [] }]
+      responses:
+        "201":
+          description: One-time AI credential. Store securely and renew before expiry.
+          headers:
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AICredential" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIGatewaySettings
+      summary: Read AI gateway opt-in and installation availability
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Organization settings; absent configuration is disabled.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewaySettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setAIGatewaySettings
+      summary: Explicitly enable or disable the organization's AI gateway
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewayOptIn" } } }
+      responses:
+        "200":
+          description: Updated opt-in. Disabling denies new AI requests.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewaySettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /ai/v1/chat/completions:
+    post:
+      operationId: aiChatCompletion
+      summary: Execute an allowed model using a short-lived AI credential
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
+  /ai/v1/completions:
+    post:
+      operationId: aiCompletion
+      summary: Execute an authorized completions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AICompletionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            text/event-stream: { schema: { type: string } }
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/embeddings:
+    post:
+      operationId: aiEmbedding
+      summary: Execute an authorized embeddings model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIEmbeddingRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/audio/speech:
+    post:
+      operationId: aiSpeech
+      summary: Execute an authorized audio/speech model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AISpeechRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            audio/mpeg: { schema: { type: string, format: binary } }
+            audio/ogg: { schema: { type: string, format: binary } }
+            audio/aac: { schema: { type: string, format: binary } }
+            audio/flac: { schema: { type: string, format: binary } }
+            audio/wav: { schema: { type: string, format: binary } }
+            audio/pcm: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/audio/transcriptions:
+    post:
+      operationId: aiTranscription
+      summary: Execute an authorized audio/transcriptions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { $ref: '#/components/schemas/AITranscriptionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/images/generations:
+    post:
+      operationId: aiImageGeneration
+      summary: Execute an authorized images/generations model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIImageRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/videos:
+    post:
+      operationId: aiVideoGeneration
+      summary: Execute an authorized videos model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{16,128}$' } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIVideoRequest' } } }
+      responses:
+        "200":
+          description: Bounded output; video returns job acceptance, not completion.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/rerank:
+    post:
+      operationId: aiRerank
+      summary: Execute an authorized rerank model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIRerankRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/videos/{jobId}:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiVideoStatus
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/videos/{jobId}/content:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiVideoContent
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            video/webm: { schema: { type: string, format: binary } }
+            video/mp4: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/anthropic/v1/messages:
+    post:
+      operationId: aiAnthropicMessage
+      summary: Execute an allowed model through the qualified Anthropic-compatible path
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed; same identity and model policy as chat completions.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/connectivity-profile:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3605,6 +4469,31 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/members/{userId}/roles:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: changeMemberRoles
+      summary: Replace a member's role set (RBAC-gated; refuses demoting the last owner)
+      tags: [members]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeRolesRequest" }
+      responses:
+        "204":
+          description: Role changed. (Client refetches the roster.)
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/members/{userId}/deactivate:
     parameters:
       - name: orgId
@@ -5523,6 +6412,10 @@ paths:
 
 components:
   securitySchemes:
+    aiBearerAuth:
+      type: http
+      scheme: bearer
+      description: Five-minute org/device/current-runtime bound credential with fixed tunnex-ai audience. Provider keys and runtime bearers are not accepted for inference.
     cookieAuth:
       type: apiKey
       in: cookie
@@ -5546,6 +6439,590 @@ components:
       required: true
 
   schemas:
+    AIWorkloadModel:
+      type: object
+      required: [connection_id, model, mode]
+      properties:
+        connection_id: { type: string, format: uuid }
+        model: { type: string, minLength: 1, maxLength: 255 }
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+    AIWorkloadInput:
+      type: object
+      additionalProperties: false
+      required: [name, enabled, models, expected_revision]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        enabled: { type: boolean }
+        models: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/AIWorkloadModel' } }
+        daily_usd_threshold: { type: number, format: double, minimum: 0, exclusiveMinimum: true, maximum: 100000, nullable: true }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIWorkload:
+      type: object
+      required: [id, name, enabled, models, revision, applied_revision, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        enabled: { type: boolean }
+        models: { type: array, items: { $ref: '#/components/schemas/AIWorkloadModel' } }
+        daily_usd_threshold: { type: number, format: double, nullable: true }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, revoked, error] }
+        created_at: { type: string, format: date-time }
+    AIWorkloadKeyInput:
+      type: object
+      additionalProperties: false
+      required: [name, reusable, ephemeral, expires_at, max_uses]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        reusable: { type: boolean }
+        ephemeral: { type: boolean }
+        expires_at: { type: string, format: date-time }
+        max_uses: { type: integer, format: int64, minimum: 0, description: 'Total enrollments, not concurrent replicas. Zero means unlimited for a reusable key; single-use keys require one.' }
+    AIWorkloadEnrollmentKey:
+      type: object
+      required: [id, name, reusable, ephemeral, max_uses, uses, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        reusable: { type: boolean }
+        ephemeral: { type: boolean }
+        max_uses: { type: integer, format: int64 }
+        uses: { type: integer, format: int64 }
+        expires_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    AIWorkloadKeySecret:
+      type: object
+      required: [key, secret]
+      properties:
+        key: { $ref: '#/components/schemas/AIWorkloadEnrollmentKey' }
+        secret: { type: string, writeOnly: false, description: 'Shown once. Deliver in a protected file; never put in an image or command argument.' }
+    AIWorkloadKeyRevoke:
+      type: object
+      additionalProperties: false
+      required: [revoke_instances]
+      properties:
+        revoke_instances: { type: boolean }
+    AIWorkloadKeyPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIWorkloadEnrollmentKey' } }
+        next_cursor: { type: string, format: uuid, nullable: true }
+    AIWorkloadInstance:
+      type: object
+      required: [id, enrollment_key_id, ephemeral, state, key_generation, last_contact_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        enrollment_key_id: { type: string, format: uuid }
+        ephemeral: { type: boolean }
+        state: { type: string, enum: [active, offline, revoked, retired] }
+        key_generation: { type: integer, format: int64 }
+        last_contact_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    AIWorkloadInstancePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIWorkloadInstance' } }
+        next_cursor: { type: string, format: uuid, nullable: true }
+    AIWorkloadEnrollInput:
+      type: object
+      additionalProperties: false
+      required: [enrollment_key, request_id, public_key, proof]
+      properties:
+        enrollment_key: { type: string, minLength: 40, maxLength: 128 }
+        request_id: { type: string, format: uuid }
+        public_key: { type: string, minLength: 43, maxLength: 43, description: 'Raw Ed25519 public key encoded using unpadded base64url.' }
+        proof: { type: string, maxLength: 8192, description: 'EdDSA JWT with iss/sub=enrollment, audience=enrollment URL, request_id and enrollment_hash (SHA256 key, hex).' }
+    AIWorkloadReceipt:
+      type: object
+      required: [instance_id, workload_id, organization_id, key_generation, token_endpoint, gateway_base]
+      properties:
+        instance_id: { type: string, format: uuid }
+        workload_id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        key_generation: { type: integer, format: int64 }
+        token_endpoint: { type: string, format: uri }
+        gateway_base: { type: string, format: uri }
+    AIWorkloadTokenInput:
+      type: object
+      additionalProperties: false
+      required: [grant_type, client_id, client_assertion_type, client_assertion]
+      properties:
+        grant_type: { type: string, enum: [client_credentials] }
+        client_id: { type: string, format: uuid }
+        client_assertion_type: { type: string, enum: ['urn:ietf:params:oauth:client-assertion-type:jwt-bearer'] }
+        client_assertion: { type: string, maxLength: 8192 }
+    AIWorkloadToken:
+      type: object
+      required: [access_token, token_type, expires_in, scope]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer }
+        scope: { type: string, enum: [tunnex-ai], x-enum-varnames: [WorkloadScopeAI] }
+    AIWorkloadRotationInput:
+      type: object
+      additionalProperties: false
+      required: [instance_id, request_id, public_key, old_proof, new_proof]
+      properties:
+        instance_id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid }
+        public_key: { type: string, minLength: 43, maxLength: 43 }
+        old_proof: { type: string, maxLength: 8192 }
+        new_proof: { type: string, maxLength: 8192 }
+    AIWorkloadModelList:
+      type: object
+      required: [object, data]
+      properties:
+        object: { type: string, enum: [list] }
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, object, owned_by, mode]
+            properties:
+              id: { type: string }
+              object: { type: string, enum: [model] }
+              owned_by: { type: string }
+              mode: { $ref: '#/components/schemas/AIModelMode' }
+    AIUserGroup:
+      type: object
+      additionalProperties: false
+      required: [id, name, members]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        members: { type: integer, minimum: 0 }
+    AIUserModel:
+      type: object
+      additionalProperties: false
+      required: [model, mode]
+      properties:
+        model: { type: string }
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+    AIUserModelGrantInput:
+      type: object
+      additionalProperties: false
+      required: [group_id, connection_id, model, enabled, expected_revision]
+      properties:
+        group_id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        model: { type: string, minLength: 1, maxLength: 255 }
+        enabled: { type: boolean }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIUserModelGrant:
+      type: object
+      additionalProperties: false
+      required: [id, group_name, connection_id, model, mode, enabled, revision, applied_revision, status]
+      properties:
+        id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        group_name: { type: string }
+        connection_id: { type: string, format: uuid }
+        model: { type: string }
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, revoked, error] }
+    AICompletionRequest:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: { type: string, maxLength: 255 }
+        prompt: { type: string, minLength: 1, maxLength: 65536 }
+        max_tokens: { type: integer, minimum: 1, maximum: 4096, default: 1024 }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        stream: { type: boolean, default: false }
+    AIEmbeddingRequest:
+      type: object
+      additionalProperties: false
+      required: [model, input]
+      properties:
+        model: { type: string, maxLength: 255 }
+        input: { oneOf: [{ type: string, minLength: 1, maxLength: 65536 }, { type: array, minItems: 1, maxItems: 128, items: { type: string, minLength: 1, maxLength: 65536 } }] }
+        encoding_format: { type: string, enum: [float, base64] }
+        dimensions: { type: integer, minimum: 1, maximum: 65536 }
+    AISpeechRequest:
+      type: object
+      additionalProperties: false
+      required: [model, input, voice]
+      properties:
+        model: { type: string, maxLength: 255 }
+        input: { type: string, minLength: 1, maxLength: 4096 }
+        voice: { type: string, minLength: 1, maxLength: 100 }
+        response_format: { type: string, enum: [mp3, opus, aac, flac, wav, pcm] }
+        speed: { type: number, minimum: 0.25, maximum: 4 }
+    AITranscriptionRequest:
+      type: object
+      additionalProperties: false
+      required: [model, file]
+      properties:
+        model: { type: string, maxLength: 255 }
+        file: { type: string, format: binary, description: One audio file at most 8 MiB. }
+        language: { type: string, pattern: '^[a-z]{2}$' }
+        prompt: { type: string, maxLength: 4096 }
+        response_format: { type: string, enum: [json], default: json }
+        temperature: { type: number, minimum: 0, maximum: 1 }
+    AIImageRequest:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: { type: string, maxLength: 255 }
+        prompt: { type: string, minLength: 1, maxLength: 4096 }
+        n: { type: integer, enum: [1], default: 1 }
+        size: { type: string, enum: [256x256, 512x512, 1024x1024, 1024x1536, 1536x1024, 1024x1792, 1792x1024, auto] }
+        quality: { type: string, enum: [standard, hd, low, medium, high, auto] }
+        response_format: { type: string, enum: [url, b64_json] }
+    AIVideoRequest:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: { type: string, maxLength: 255 }
+        prompt: { type: string, minLength: 1, maxLength: 4096 }
+        seconds: { type: string, enum: ['4', '8', '12'], default: '4' }
+        size: { type: string, enum: [720x1280, 1280x720] }
+    AIRerankRequest:
+      type: object
+      additionalProperties: false
+      required: [model, query, documents]
+      properties:
+        model: { type: string, maxLength: 255 }
+        query: { type: string, minLength: 1, maxLength: 4096 }
+        documents: { type: array, minItems: 1, maxItems: 128, items: { type: string, minLength: 1, maxLength: 65536 } }
+        top_n: { type: integer, minimum: 1, maximum: 128 }
+        return_documents: { type: boolean, default: false }
+    AIVideoJob:
+      type: object
+      additionalProperties: false
+      required: [id, status, object, model, created_at, expires_at]
+      properties:
+        object: { type: string, enum: [video] }
+        model: { type: string, maxLength: 255 }
+        created_at: { type: integer, format: int64 }
+        expires_at: { type: integer, format: int64 }
+        id: { type: string, format: uuid, description: Opaque tenant and agent owned handle. }
+        status: { type: string, enum: [submitting, queued, in_progress, completed, failed, uncertain] }
+    AIModelMode:
+      type: string
+      enum: [chat, completion, embedding, audio_speech, audio_transcription, image_generation, video_generation, rerank]
+      default: chat
+    AIModelModes:
+      type: object
+      maxProperties: 32
+      additionalProperties: { $ref: '#/components/schemas/AIModelMode' }
+      description: Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
+    AIProviderInputModels:
+      type: array
+      minItems: 1
+      maxItems: 32
+      uniqueItems: true
+      description: Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+      items: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_./:-]*$', maxLength: 255 }
+    AICustomEndpoint:
+      type: object
+      additionalProperties: false
+      required: [name, url]
+      properties:
+        name: { type: string }
+        url: { type: string, format: uri }
+    AIProviderConnection:
+      type: object
+      additionalProperties: false
+      required: [id, key_id, provider, name, models, enabled, revision, applied_revision, status, last_test_status]
+      properties:
+        model_modes: { $ref: '#/components/schemas/AIModelModes' }
+        id: { type: string, format: uuid }
+        key_id: { type: string, description: Non-secret owned policy reference. }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
+        name: { type: string }
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, error, disabled] }
+        last_test_status: { type: string, enum: [untested, success, failed] }
+        last_test_at: { type: string, format: date-time }
+    AIProviderDefinition:
+      type: object
+      additionalProperties: false
+      required: [id, name, credential_label, model_placeholder]
+      properties:
+        id: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
+        name: { type: string }
+        credential_label: { type: string }
+        model_placeholder: { type: string }
+    AIProviderList:
+      type: object
+      additionalProperties: false
+      required: [management_available, items, legacy_key_ids]
+      properties:
+        supported_modes: { type: array, items: { $ref: '#/components/schemas/AIModelMode' }, description: Qualified gateway routes; absent on older servers means chat only. }
+        management_available: { type: boolean }
+        test_available: { type: boolean, description: Private inference test adapter is configured. }
+        public_endpoints_available: { type: boolean, description: Public HTTPS endpoints can be entered directly with automatic egress validation. }
+        foundry_available: { type: boolean }
+        foundry_endpoints: { type: array, items: { $ref: '#/components/schemas/AICustomEndpoint' } }
+        sagemaker_available: { type: boolean }
+        sagemaker_endpoints: { type: array, items: { $ref: '#/components/schemas/AICustomEndpoint' } }
+        custom_available: { type: boolean }
+        custom_endpoints: { type: array, items: { $ref: '#/components/schemas/AICustomEndpoint' } }
+        definitions: { type: array, items: { $ref: '#/components/schemas/AIProviderDefinition' }, description: Supported provider forms; absence indicates an older server without provider discovery. }
+        items: { type: array, items: { $ref: '#/components/schemas/AIProviderConnection' } }
+        legacy_key_ids: { type: array, items: { type: string } }
+    AIProviderCreate:
+      type: object
+      additionalProperties: false
+      required: [provider, name, models, enabled, api_key]
+      properties:
+        model_modes: { $ref: '#/components/schemas/AIModelModes' }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        models: { $ref: '#/components/schemas/AIProviderInputModels' }
+        enabled: { type: boolean }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true, description: Transient write-only secret stored only by the encrypted private engine. }
+    AIProviderUpdate:
+      type: object
+      additionalProperties: false
+      required: [provider, name, models, enabled, expected_revision]
+      properties:
+        model_modes: { $ref: '#/components/schemas/AIModelModes' }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        models: { $ref: '#/components/schemas/AIProviderInputModels' }
+        enabled: { type: boolean }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true, description: Omit to preserve the secret; supply a new value to rotate. }
+        expected_revision: { type: integer, format: int64, minimum: 1 }
+    AIProviderCatalogRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, api_key, endpoint_url]
+      properties:
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+        provider: { type: string, enum: [custom, sagemaker, azure_foundry] }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules. }
+        query: { type: string, maxLength: 100, default: '' }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        offset: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+    AIProviderProbe:
+      type: object
+      additionalProperties: false
+      required: [provider, model]
+      properties:
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
+        model: { type: string, minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9_./:-]*$' }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
+        connection_id: { type: string, format: uuid, description: Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision. }
+        expected_revision: { type: integer, format: int64, minimum: 1, description: Required only for a saved-credential test. }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages endpoint. }
+    AIProviderProbeResult:
+      type: object
+      additionalProperties: false
+      required: [status, duration_ms]
+      properties:
+        status: { type: string, enum: [success, error] }
+        duration_ms: { type: integer, format: int64, minimum: 0 }
+        failure: { $ref: '#/components/schemas/AIProviderProbeFailure' }
+    AIProviderProbeFailure:
+      type: object
+      additionalProperties: false
+      description: Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned.
+      required: [kind, source]
+      properties:
+        kind: { type: string, enum: [http_error, network_error, timeout, configuration_error, invalid_response, unknown] }
+        source: { type: string, enum: [provider, proxy, gateway] }
+        http_status: { type: integer, minimum: 400, maximum: 599 }
+    AIProviderRevision:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision: { type: integer, format: int64, minimum: 1 }
+    AIProviderModelList:
+      type: object
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AIProviderModel' }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        offset: { type: integer, minimum: 0, maximum: 10000 }
+    AIProviderModel:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+        id: { type: string }
+        name: { type: string }
+    AIModelNames:
+      type: array
+      maxItems: 32
+      uniqueItems: true
+      items: { type: string, pattern: '^(openai|anthropic|gemini|openrouter|groq|mistral|cerebras|xai|deepseek|custom-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/[A-Za-z0-9][A-Za-z0-9_./:-]*$', maxLength: 255 }
+    AITeamPolicyWrite:
+      type: object
+      additionalProperties: false
+      required: [models, key_ids, expected_revision]
+      properties:
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        key_ids:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]*$' }
+        daily_cost_limit: { type: number, format: double, nullable: true, minimum: 0, exclusiveMinimum: true, maximum: 100000, description: Optional daily USD soft threshold based on native observed usage since midnight UTC. Concurrent work can exceed it. }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AITeamPolicy:
+      type: object
+      additionalProperties: false
+      required: [team_id, models, key_ids, revision]
+      properties:
+        team_id: { type: string, format: uuid }
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        key_ids: { type: array, items: { type: string } }
+        daily_cost_limit: { type: number, format: double, nullable: true }
+        revision: { type: integer, format: int64 }
+    AIAssignmentWrite:
+      type: object
+      additionalProperties: false
+      required: [team_id, enabled, models_override, expected_revision]
+      properties:
+        team_id: { type: string, format: uuid }
+        enabled: { type: boolean }
+        models_override: { $ref: '#/components/schemas/AIModelNames' }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIAssignment:
+      type: object
+      additionalProperties: false
+      required: [device_id, team_id, enabled, models_override, revision, applied_revision, applied_team_revision, status]
+      properties:
+        device_id: { type: string, format: uuid }
+        team_id: { type: string, format: uuid }
+        enabled: { type: boolean }
+        models_override: { $ref: '#/components/schemas/AIModelNames' }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        applied_team_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, error, disabled] }
+    AIUsageReport:
+      type: object
+      additionalProperties: false
+      required: [from, to, total_requests, total_tokens, prompt_tokens, completion_tokens, total_cost, uncosted_requests, semantics]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        total_requests: { type: integer, format: int64 }
+        total_tokens: { type: integer, format: int64 }
+        prompt_tokens: { type: integer, format: int64 }
+        completion_tokens: { type: integer, format: int64 }
+        total_cost: { type: number, format: double }
+        uncosted_requests: { type: integer, format: int64 }
+        dashboard: { $ref: "#/components/schemas/AIUsageDashboard" }
+        semantics: { type: string, enum: [observed_estimate], description: Native reported usage estimates; not a provider invoice or hard spending cap. }
+    AIUsageDashboard:
+      type: object
+      additionalProperties: false
+      required: [successful_requests, failed_requests, cancelled_requests, daily, models, teams, agents]
+      properties:
+        successful_requests: { type: integer, format: int64, minimum: 0 }
+        failed_requests: { type: integer, format: int64, minimum: 0 }
+        cancelled_requests: { type: integer, format: int64, minimum: 0 }
+        daily: { type: array, items: { $ref: "#/components/schemas/AIUsageDay" } }
+        models: { type: array, items: { $ref: "#/components/schemas/AIUsageModel" } }
+        teams: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
+        agents: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
+        user_groups: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
+        workloads: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
+    AIUsageDay:
+      type: object
+      additionalProperties: false
+      required: [date, requests, tokens, cost, uncosted_requests]
+      properties:
+        date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        requests: { type: integer, format: int64, minimum: 0 }
+        tokens: { type: integer, format: int64, minimum: 0 }
+        cost: { type: number, format: double, minimum: 0 }
+        uncosted_requests: { type: integer, format: int64, minimum: 0 }
+    AIUsageModel:
+      type: object
+      additionalProperties: false
+      required: [name, cost]
+      properties:
+        name: { type: string }
+        cost: { type: number, format: double, minimum: 0 }
+    AIUsageAttribution:
+      type: object
+      additionalProperties: false
+      required: [id, name, requests, tokens, cost, uncosted_requests]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        requests: { type: integer, format: int64, minimum: 0 }
+        tokens: { type: integer, format: int64, minimum: 0 }
+        cost: { type: number, format: double, minimum: 0 }
+        uncosted_requests: { type: integer, format: int64, minimum: 0 }
+    AICredential:
+      type: object
+      additionalProperties: false
+      required: [token, audience, expires_at, endpoint]
+      properties:
+        token: { type: string, description: One-time secret; never returned by read APIs. }
+        audience: { type: string, enum: [tunnex-ai] }
+        expires_at: { type: string, format: date-time }
+        endpoint: { type: string }
+    AIGatewayOptIn:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+    AIGatewaySettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, available, revision]
+      properties:
+        enabled: { type: boolean }
+        available: { type: boolean, description: Server has the qualified private engine configuration. }
+        revision: { type: integer, format: int64 }
+    AIInferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [model, messages]
+      properties:
+        model: { type: string, minLength: 3, maxLength: 256, description: Exact provider/model identifier; aliases and caller fallback are not supported. }
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items:
+            type: object
+            additionalProperties: false
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [user, assistant, system]
+                description: Anthropic messages accept user or assistant; its system text is top-level.
+              content: { type: string, description: Text only; multimodal blocks and tool calls are not qualified. }
+        stream: { type: boolean, default: false }
+        max_tokens: { type: integer, minimum: 1, maximum: 4096, default: 1024 }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        system: { type: string, maxLength: 65536 }
     ConnectivityProfile:
       type: object
       additionalProperties: false
@@ -7457,7 +8934,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
         expires_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         # ⛔ THE THREE TERMINAL STATES ARE TIMESTAMPS, NOT A STATUS ENUM — the table stores them that way
@@ -8954,7 +10431,7 @@ components:
       additionalProperties: false
       properties:
         email: { type: string, format: email, maxLength: 320 }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
 
     Member:
       type: object
@@ -8964,7 +10441,12 @@ components:
         user_id: { type: string, format: uuid }
         email: { type: string, format: email }
         name: { type: string }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
         # Account status — a deactivated member stays on the roster (S2.6).
         status: { type: string, enum: [active, deactivated] }
         email_verified: { type: boolean }
@@ -8986,7 +10468,19 @@ components:
       required: [role]
       additionalProperties: false
       properties:
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+
+    ChangeRolesRequest:
+      type: object
+      required: [roles]
+      additionalProperties: false
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
 
     OrgDeletionPreflight:
       type: object

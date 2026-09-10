@@ -79,6 +79,40 @@ spec:
             # and also defaults OFF.
             - name: TUNNEX_K8S_HA_ENABLED
               value: {{ .Values.kubernetesHA.enabled | quote }}
+            {{- if .Values.aiGateway.enabled }}
+            - name: TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED
+              value: {{ .Values.aiGateway.providerManagementEnabled | quote }}
+            - name: TUNNEX_AI_GATEWAY_URL
+              value: "http://bifrost:8080"
+            - name: TUNNEX_AI_GATEWAY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "aiGateway.existingSecret is required" .Values.aiGateway.existingSecret }}
+                  key: {{ .Values.aiGateway.secretKeys.adminUser | quote }}
+            - name: TUNNEX_AI_GATEWAY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.existingSecret }}
+                  key: {{ .Values.aiGateway.secretKeys.adminPassword | quote }}
+            {{- end }}
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - name: TUNNEX_AI_CUSTOM_ENDPOINTS_FILE
+              value: /etc/tunnex/ai-custom/policy.json
+            - name: TUNNEX_AI_CUSTOM_PROXY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.customProviders.existingSecret }}
+                  key: {{ .Values.aiGateway.customProviders.secretKeys.proxyURL | quote }}
+            {{- end }}
+            {{- if .Values.aiGateway.litellmBridge.enabled }}
+            - name: TUNNEX_AI_LITELLM_URL
+              value: http://litellm-bridge:8200
+            - name: TUNNEX_AI_LITELLM_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.litellmBridge.existingSecret }}
+                  key: {{ .Values.aiGateway.litellmBridge.adminTokenKey | quote }}
+            {{- end }}
             # External store (URL-wins; API pings both at boot, fails loud if unreachable).
             {{- if .Values.database.urlSecret }}
             - name: TUNNEX_DATABASE_URL
@@ -101,6 +135,9 @@ spec:
               value: {{ required "redis.url or redis.urlSecret is required (external Redis — this chart runs no bundled Redis)" .Values.redis.url | quote }}
             {{- end }}
           volumeMounts:
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - {name: ai-custom-policy, mountPath: /etc/tunnex/ai-custom, readOnly: true}
+            {{- end }}
             {{- include "tunnex-cp.databaseTLSMount" . | nindent 12 }}
             - name: roots
               mountPath: {{ .Values.api.masterKeyPath }}
@@ -129,7 +166,44 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- if .Values.aiGateway.customProviders.enabled }}
+        - name: ai-egress
+          image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.api) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [/usr/local/bin/tunnex-ai-egress]
+          ports:
+            - {name: ai-egress, containerPort: 8190}
+          env:
+            - {name: TUNNEX_AI_CUSTOM_ENDPOINTS_FILE, value: /etc/tunnex/ai-custom/policy.json}
+            - {name: TUNNEX_AI_CUSTOM_PROXY_LISTEN, value: ":8190"}
+            {{- range $name, $key := dict "TUNNEX_AI_CUSTOM_PROXY_USERNAME" .Values.aiGateway.customProviders.secretKeys.proxyUsername "TUNNEX_AI_CUSTOM_PROXY_PASSWORD" .Values.aiGateway.customProviders.secretKeys.proxyPassword }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.aiGateway.customProviders.existingSecret }}
+                  key: {{ $key | quote }}
+            {{- end }}
+          volumeMounts:
+            - {name: ai-custom-policy, mountPath: /etc/tunnex/ai-custom, readOnly: true}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            tcpSocket: {port: ai-egress}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: ai-egress}
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+        {{- end }}
       volumes:
+        {{- if .Values.aiGateway.customProviders.enabled }}
+        - name: ai-custom-policy
+          configMap: {name: {{ include "tunnex-cp.fullname" . }}-ai-custom}
+        {{- end }}
         {{- include "tunnex-cp.databaseTLSVolume" . | nindent 8 }}
         # Roots of trust: a single READ-ONLY projected mount. The master key is
         # REQUIRED and the chart NEVER generates one — a new key would orphan every

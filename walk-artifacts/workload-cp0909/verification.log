@@ -1,0 +1,28 @@
+2026-09-09 — integrated local control-plane workload walk
+This is a sanitized result ledger, not a raw secret-bearing process log.
+Source: story/S-AI-workload-identity, local product changes; see source-sha256.txt.
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4
+Docker context=colima-tunnex-sso-review
+Network=tunnexaiwalk0907repro4_engine
+API health=200; schema=153:false
+Provider configuration before/after=unchanged
+Workload=b02f8a74-a519-41e5-83f7-2da99b2e5d64 (Engineering app (local test))
+Allowed model=custom-f8e40d46-00ed-4aae-be79-9d905a562151/private-demo
+PASS actual CP: model list 200; fixture chat 200; ungranted model 403.
+PASS child uses local session credential, not provider API key.
+PASS restart without enrollment-key file reuses instance 03f45e11-9a7b-4c54-8200-c9de05c621ed.
+PASS second replica c15b01fc-a556-4768-bbcd-bde84847fdd2 independently enrolled.
+PASS revoked first instance refused 401 without automatic re-enrollment.
+PASS sibling remains authorized after first-instance revocation.
+PASS enrollment key e966e0e8-b115-436c-a04d-5029b975eb69 revoked via actual CP UI.
+PASS installed /opt/homebrew/bin/tunnex still lists/calls permitted fixture model after key revocation.
+PASS revoked key refuses fresh replica enrollment with 401.
+PASS revoked key retains Revoke instances action in the actual UI.
+PASS usage: stable workload shows 5 requests, 50 tokens, 5 explicitly uncosted fixture calls.
+PASS web focused suite: 30 tests, 3 files.
+PASS web typecheck and production build.
+PASS both API edition builds.
+PASS both-edition workload storage-outage/lifecycle tests.
+PASS CLI workload unit/race tests and updated HTTP wire fixture.
+Production multi-API/failover/Windows/MCP qualification remains incomplete.
+No paid Azure/Claude call; no release, push or merge.

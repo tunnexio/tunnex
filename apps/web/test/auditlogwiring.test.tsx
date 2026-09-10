@@ -30,6 +30,7 @@ afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup n
 // Every audit-log request, captured at the NETWORK boundary — the query is the assertion target.
 const queries: Array<Record<string, unknown>> = [];
 let logFail = false;
+let viewerRoles = ["owner"];
 
 // ⛔ `actor_id`, NOT `actor_user_id`. The mock sent a field the spec does not have — and ActivityEntry is
 // `additionalProperties: false`, so the server can NEVER send it. The page reads `a.actor_id`, so every row
@@ -71,7 +72,8 @@ vi.mock("../src/lib/api", async () => {
                   user_id: "u1",
                   email: "a@b.c",
                   name: "Ada Auditor",
-                  role: "owner",
+                  role: viewerRoles[0],
+                  roles: viewerRoles,
                   status: "active",
                   email_verified: true,
                   joined_at: "2026-01-01T00:00:00Z",
@@ -115,6 +117,23 @@ const withAuth = (ui: React.ReactElement) =>
 beforeEach(() => {
   queries.length = 0;
   logFail = false;
+  viewerRoles = ["owner"];
+});
+
+describe("AuditLog — AI roles keep a self-activity view", () => {
+  it.each([["member"], ["ai-view"], ["ai-admin"], ["ai-admin", "member"], ["ai-view", "member"]])("scopes %j to the signed-in user's activity", async (...roles) => {
+    viewerRoles = roles;
+    withAuth(<AuditLog />);
+    await screen.findByText("Showing your activity only. Organization-wide activity is visible to admins and owners.");
+    expect((screen.getByRole("combobox", { name: "Actor" }) as HTMLSelectElement).disabled).toBe(true);
+  });
+  it.each([["admin", "ai-view"], ["owner", "ai-admin"]])("retains organization audit access for %j", async (...roles) => {
+    viewerRoles = roles;
+    withAuth(<AuditLog />);
+    await screen.findByRole("table", { name: "Audit events" });
+    expect(screen.queryByText("Showing your activity only. Organization-wide activity is visible to admins and owners.")).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Actor" }) as HTMLSelectElement).disabled).toBe(false);
+  });
 });
 
 describe("AuditLog — wiring: paging must use the APPLIED filter set, not the one being edited", () => {

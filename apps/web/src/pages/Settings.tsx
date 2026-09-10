@@ -74,6 +74,7 @@ import {
 } from "../components/AgentOrganizationSettings";
 import { AccessEventRetentionSettings } from "../components/AccessEventRetentionSettings";
 import { AuditLogRetentionSettings } from "../components/AuditLogRetentionSettings";
+import { AIGatewaySettings } from "../components/AIGatewaySettings";
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -411,6 +412,7 @@ export default function Settings() {
         {org && isAdmin && active === "ai-agents" && (
           <SettingGroup id="ai-agents" title="AI Agents" tabpanel>
             <div className="flex flex-col gap-3.5">
+              <AIGatewaySettings orgId={org.id} canEdit={can(myRole, "ai_gateway:manage") && emailVerified} />
               <AgentRuntimeSettingCard orgId={org.id} value={org.managed_agent_runtime_enabled} canEdit={can(myRole, "agent_runtime:manage") && emailVerified} onSaved={(enabled) => setOrg((current) => current ? { ...current, managed_agent_runtime_enabled: enabled } : current)} />
               <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRole, "org:update") && emailVerified} />
               <AgentPolicyTemplatesToggle org={org} canEdit={can(myRole, "agent_template:manage") && emailVerified} onSaved={(next) => setOrg(next)} />

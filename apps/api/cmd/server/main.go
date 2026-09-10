@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +29,8 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aiegress"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
@@ -461,6 +464,54 @@ func main() {
 		}
 	}
 	alertPublisher := alerts.NewOutboxPublisher(alerts.NewPostgresOutbox(pool))
+	// Configuration makes AI available; independent org opt-in and applied
+	// policies grant access. Community requires no paid runtime entitlement.
+	var aiPolicies *aigateway.Policies
+	var aiWorkloads *aigateway.Workloads
+	var aiAdapter *aigateway.Adapter
+	aiRuntime := agentruntime.New(pool, nil)
+	aiCredentials := aigateway.NewCredentials(pool, aiRuntime, nil)
+	if cfg.AIGatewayURL != "" {
+		engine, engineErr := aigateway.NewEngine(cfg.AIGatewayURL, cfg.AIGatewayAdminUser, cfg.AIGatewayAdminPassword)
+		if engineErr != nil {
+			logger.Error("ai_gateway_invalid_configuration")
+			os.Exit(1)
+		}
+		aiPolicies = aigateway.NewPolicies(pool, sealer, engine)
+		aiPolicies.EnableProviderManagement(cfg.AIProviderManagementEnabled)
+		if cfg.AICustomEndpointsFile != "" || cfg.AICustomProxyURL != "" {
+			customPolicy, customErr := aiegress.LoadPolicy(cfg.AICustomEndpointsFile)
+			if customErr != nil || !cfg.AIProviderManagementEnabled || engine.ConfigureCustomProxy(cfg.AICustomProxyURL) != nil {
+				logger.Error("ai_custom_invalid_configuration")
+				os.Exit(1)
+			}
+			aiPolicies.ConfigureCustomProviders(customPolicy)
+		}
+		if cfg.AILiteLLMURL != "" || cfg.AILiteLLMAdminToken != "" {
+			if !cfg.AIProviderManagementEnabled || aiPolicies.ConfigureLiteLLMBridge(cfg.AILiteLLMURL, cfg.AILiteLLMAdminToken) != nil {
+				logger.Error("ai_litellm_invalid_configuration")
+				os.Exit(1)
+			}
+		}
+		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
+		aiWorkloads, engineErr = aigateway.NewWorkloads(aiPolicies, cfg.AppBaseURL)
+		if engineErr != nil {
+			logger.Error("ai_workload_invalid_configuration")
+			os.Exit(1)
+		}
+		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, func(ctx context.Context, raw, model string) (aigateway.Grant, error) {
+			if strings.HasPrefix(raw, "tnx_wai_") {
+				return aiWorkloads.Authorize(ctx, raw, model)
+			}
+			return aiCredentials.Authorize(ctx, raw, model)
+		})
+		if engineErr != nil {
+			logger.Error("ai_gateway_invalid_configuration")
+			os.Exit(1)
+		}
+		aiAdapter.ConfigureVideoStore(pool)
+		aiCredentials.SetAvailable(true)
+	}
 	relayLimits, err := connectivity.LoadIssuanceLimits(os.Getenv)
 	if err != nil {
 		logger.Error("relay_issuance_configuration_invalid", slog.String("error", err.Error()))
@@ -469,6 +520,10 @@ func main() {
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		System:           systemQueries,
+		AICredentials:    aiCredentials,
+		AIWorkloads:      aiWorkloads,
+		AIPolicies:       aiPolicies,
+		AIAdapter:        aiAdapter,
 		AgentRuntimePool: pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
@@ -574,6 +629,35 @@ func main() {
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
+	if aiPolicies != nil {
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-electorCtx.Done():
+					return
+				case <-ticker.C:
+					if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+						continue
+					}
+					workCtx, cancel := context.WithTimeout(electorCtx, 20*time.Second)
+					if aiPolicies.ReconcilePending(workCtx, 16) != nil {
+						logger.Warn("ai_gateway_reconcile_incomplete")
+					}
+					cancel()
+					if aiWorkloads != nil {
+						workloadCtx, workloadCancel := context.WithTimeout(electorCtx, 20*time.Second)
+						if aiWorkloads.Maintain(workloadCtx, 64) != nil {
+							logger.Warn("ai_workload_maintenance_incomplete")
+						}
+						workloadCancel()
+					}
+				}
+			}
+		}()
+	}
+
 	// S20.3b P3: the deployment composition gate defaults OFF independently of
 	// organization settings. The base compiler deliberately does not stamp node
 	// liveness; authority preparation for a disconnected standby is not a report.

@@ -1,0 +1,160 @@
+{{- if .Values.aiGateway.litellmBridge.enabled }}
+{{- $cfg := .Values.aiGateway.litellmBridge }}
+{{- if not (and .Values.aiGateway.enabled .Values.aiGateway.providerManagementEnabled) }}{{ fail "litellmBridge requires AI gateway and provider management" }}{{ end }}
+{{- if and $cfg.models (not .Values.aiGateway.customProviders.enabled) }}{{ fail "SageMaker models require customProviders egress policy" }}{{ end }}
+{{- if and $cfg.models (not $cfg.clients) }}{{ fail "SageMaker models require scoped bridge clients" }}{{ end }}
+{{- $secret := required "litellmBridge.existingSecret is required" $cfg.existingSecret }}
+{{- if not (regexMatch "^[^[:space:]]+@sha256:[a-f0-9]{64}$" $cfg.image) }}{{ fail "litellmBridge.image requires an operator-built immutable sha256 image" }}{{ end }}
+{{- $envs := dict }}
+{{- range $model := $cfg.models }}
+{{- range $field := list "access_key_id_env" "secret_access_key_env" "session_token_env" }}
+{{- with index $model $field }}{{- $_ := set $envs . true }}{{- end }}
+{{- end }}
+{{- end }}
+{{- range $client := $cfg.clients }}{{- $_ := set $envs $client.key_env true }}{{- end }}
+{{- range $env, $_ := $envs }}
+{{- if or (not (regexMatch "^[A-Z][A-Z0-9_]{0,127}$" $env)) (hasPrefix "TUNNEX_" $env) }}{{ fail "bridge config secret references must be uppercase non-TUNNEX environment names" }}{{ end }}
+{{- end }}
+{{- $name := printf "%s-ai-bridge" (include "tunnex-cp.fullname" .) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- dict "models" $cfg.models "clients" $cfg.clients | toJson | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-bridge
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ai-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: ai-bridge
+      annotations:
+        checksum/config: {{ dict "models" $cfg.models "clients" $cfg.clients | toJson | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001}
+      containers:
+        - name: litellm-bridge
+          image: {{ $cfg.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, /app/bridge.py]
+          ports: [{name: http, containerPort: 8200}]
+          env:
+            - {name: TUNNEX_AI_BRIDGE_CONFIG_FILE, value: /etc/tunnex/ai-bridge/config.json}
+            - {name: TUNNEX_AI_BRIDGE_LISTEN, value: "0.0.0.0:8200"}
+            - name: TUNNEX_AI_BRIDGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: {{ $cfg.adminTokenKey | quote }}}
+            {{- range $env, $_ := $envs }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: {{ $env | quote }}}
+            {{- end }}
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - {name: TUNNEX_AI_CUSTOM_ENDPOINTS_FILE, value: /etc/tunnex/ai-custom/policy.json}
+            - name: TUNNEX_AI_CUSTOM_PROXY_URL
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.aiGateway.customProviders.existingSecret }}, key: {{ .Values.aiGateway.customProviders.secretKeys.proxyURL | quote }}}
+            {{- end }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/tunnex/ai-bridge, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - {name: policy, mountPath: /etc/tunnex/ai-custom, readOnly: true}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 10}
+          livenessProbe: {tcpSocket: {port: http}, periodSeconds: 20}
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}}
+        - name: tmp
+          emptyDir: {sizeLimit: 128Mi}
+        {{- if .Values.aiGateway.customProviders.enabled }}
+        - name: policy
+          configMap: {name: {{ include "tunnex-cp.fullname" . }}-ai-custom}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm-bridge
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: ai-bridge
+  ports: [{name: http, port: 8200, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ai-bridge
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: api
+      ports: [{protocol: TCP, port: 8200}]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.aiGateway.dns.namespaceLabels | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.aiGateway.dns.podLabels | nindent 14 }}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4]
+        - ipBlock:
+            cidr: "::/0"
+            except: ["::/128", "::1/128", "::ffff:0:0/96", "fc00::/7", "fe80::/10", "ff00::/8"]
+      ports: [{protocol: TCP, port: 443}]
+    {{- if .Values.aiGateway.customProviders.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: api
+      ports: [{protocol: TCP, port: 8190}]
+    {{- end }}
+{{- end }}

@@ -1,0 +1,38 @@
+AI navigation, invitations and optional threshold validation — 2026-09-09
+Product commit: 1cd62a11
+Website docs commit: e23eed8e0158351fbee86730e707592348b10d2d
+
+PASS — Web TypeScript, 122 files / 1473 tests, Vite production build.
+PASS — API builds in open and enterprise editions with GOFLAGS=-mod=readonly.
+PASS — Full API unit/package tests in both editions.
+PASS — Full enterprise PostgreSQL suite, serialized packages, schema151.
+PASS AFTER TEST-ENV CORRECTION — Full open PostgreSQL suite passed all packages
+except the new AI invitation cases on the test DB's old schema150. Applied the
+shipped migration151 to that verified isolated test DB, then the entire invites
+package passed. This is aggregate evidence, not a clean first-pass full run.
+PASS — Explicit AI-role create/resend/accept, owner-grant boundary, machine-role
+refusal with PostgreSQL in both editions. Preview schema150→151 preserved users,
+memberships and invitations; the browser invitation form was never submitted.
+PASS — All seven generators run twice, 50 hashed files, no generated diff against
+committed output. Generator versions match the repository pins.
+PASS — Actual pinned Bifrost synthetic cost/admission tests in both editions;
+enterprise native budget test includes concurrent/streamed accounting and restart.
+PASS — Final threshold-policy assertion/transaction-cleanup rerun in both editions.
+PASS — Linux node gate using the specified Go1.25.13 Alpine image with NET_ADMIN,
+OpenVPN/nftables/iptables. The first make attempt had an empty VM bind mount;
+copying the identical source into a disposable container resolved that environment
+issue. The task's test container was removed after successful completion.
+PASS — CLI module tests (no CLI implementation changed).
+PASS — Website local Cloudflare types, Astro check (0 errors, 0 warnings; 13 hints),
+25 files / 214 tests, full asset generation and Astro production build.
+PASS — Changed website files' formatting, route/navigation ESLint, git diff checks.
+PASS — Browser inspection of top-level AI pages, forms, detail tabs, redirects,
+role list, saved-credential hiding and USD2.50/blank/invalid fixture behavior.
+PASS — Independent design and navigation/functionality reviews; dispositioned
+fixes applied and re-reviewed.
+
+NOT CLAIMED — Remote CI or production deployment; actual private Azure network
+reachability; user visual acceptance; handset visual acceptance. The current repo
+has no apps/helper or helper/client gate targets from the historical AGENTS list.
+Core full-suite local tests use Go1.26.5; Linux node uses the pinned Go1.25.13 image.
+No production data, real-provider secrets or live inference were used in this walk.

@@ -4,6 +4,1012 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List stable workloads and their applied policies */
+        get: operations["listAIWorkloads"];
+        put?: never;
+        /** Create a workload without a user or network device */
+        post: operations["createAIWorkload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update policy or disable workload access immediately */
+        put: operations["updateAIWorkload"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        /** List enrollment keys without their secrets */
+        get: operations["listAIWorkloadKeys"];
+        put?: never;
+        /** Create a workload-bound enrollment key shown once */
+        post: operations["createAIWorkloadKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys/{keyId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop future enrollment and optionally revoke enrolled instances */
+        post: operations["revokeAIWorkloadKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        /** List independent workload replicas */
+        get: operations["listAIWorkloadInstances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances/{instanceId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke only this instance; no automatic reenrollment */
+        post: operations["revokeAIWorkloadInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomically register an instance public key using a signed enrollment proof */
+        post: operations["enrollWorkload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange a private_key_jwt for a five-minute AI gateway token */
+        post: operations["exchangeWorkloadToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the instance key with proofs from both keys and a durable request ID */
+        post: operations["rotateWorkloadKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire the authenticated instance on graceful shutdown */
+        post: operations["retireWorkloadInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List currently authorized models using a workload bearer */
+        get: operations["listWorkloadModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/user-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listAIUserGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/user-model-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listAIUserModelGrants"];
+        put?: never;
+        /** Grant or revoke an exact model for a human user group */
+        post: operations["putAIUserModelGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/my-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listMyAIModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute an allowed model using a short-lived AI credential */
+        post: operations["aiUserChatCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized completions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized embeddings model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/speech model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/transcriptions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserTranscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/images/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized images/generations model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserImageGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized videos model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserVideoGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/rerank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized rerank model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserRerank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiUserVideoStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiUserVideoContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/anthropic/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute an allowed model through the qualified Anthropic-compatible path */
+        post: operations["aiUserAnthropicMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List organization-owned provider connections and legacy key references */
+        get: operations["listAIProviders"];
+        put?: never;
+        /** Add an encrypted private-engine provider connection */
+        post: operations["createAIProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/model-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search an endpoint's model catalog using unsaved credentials
+         * @description Requires provider management permission. No inference, connection creation or secret persistence. Catalog membership does not prove inference entitlement or deployment availability.
+         */
+        post: operations["searchAIProviderCatalog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test new or saved provider credentials with one bounded model request
+         * @description Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. Supply either api_key (new credentials) or connection_id and expected_revision (saved credentials). Saved tests use the owned connection's endpoint and key, including for a new model, without changing its serving model scope. No connection or secret is persisted.
+         */
+        post: operations["testAIProviderConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit, rotate or disable an owned provider connection */
+        put: operations["updateAIProvider"];
+        post?: never;
+        /** Remove an unreferenced connection while retaining its ownership tombstone */
+        delete: operations["deleteAIProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check saved provider catalog access without inference or model spend
+         * @description Public catalogs may not validate API keys. A successful connection check does not prove model inference access.
+         */
+        post: operations["testAIProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/models": {
+        parameters: {
+            query?: {
+                mode?: components["schemas"]["AIModelMode"];
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
+                connection_id?: string;
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+                query?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Browse cached qualified-provider model suggestions without a provider key */
+        get: operations["listAIProviderModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List configured AI team policies */
+        get: operations["listAITeamPolicies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Set exact model policy for an existing Agent Group */
+        put: operations["putAITeamPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List explicit AI team assignments and synchronization status */
+        get: operations["listAIAssignments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign one AI team or disable access for an agent */
+        put: operations["putAIAssignment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry verified private-engine policy synchronization */
+        post: operations["reconcileAIAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/usage": {
+        parameters: {
+            query?: {
+                team_id?: string;
+                device_id?: string;
+                from?: string;
+                to?: string;
+                /** @description Include bounded native daily and historical attribution aggregates. */
+                dashboard?: boolean;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read scoped native usage estimates over at most 31 days */
+        get: operations["getAIUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/runtime/ai-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange current enrolled-agent identity for a five-minute AI credential
+         * @description Community supported. Requires independent organization AI opt-in and an applied AI policy. Tenant, device and audience are server-bound. No provider key is returned.
+         */
+        post: operations["issueAICredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read AI gateway opt-in and installation availability */
+        get: operations["getAIGatewaySettings"];
+        /** Explicitly enable or disable the organization's AI gateway */
+        put: operations["setAIGatewaySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/chat/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute an allowed model using a short-lived AI credential */
+        post: operations["aiChatCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized completions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized embeddings model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/audio/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/speech model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/audio/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/transcriptions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiTranscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/images/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized images/generations model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiImageGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized videos model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiVideoGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/rerank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized rerank model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiRerank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/videos/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiVideoStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/videos/{jobId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiVideoContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/anthropic/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute an allowed model through the qualified Anthropic-compatible path */
+        post: operations["aiAnthropicMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/connectivity-profile": {
         parameters: {
             query?: never;
@@ -2697,6 +3703,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/members/{userId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a member's role set (RBAC-gated; refuses demoting the last owner) */
+        put: operations["changeMemberRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/members/{userId}/deactivate": {
         parameters: {
             query?: never;
@@ -4389,6 +5415,609 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIWorkloadModel: {
+            /** Format: uuid */
+            connection_id: string;
+            model: string;
+            mode: components["schemas"]["AIModelMode"];
+        };
+        AIWorkloadInput: {
+            name: string;
+            enabled: boolean;
+            models: components["schemas"]["AIWorkloadModel"][];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIWorkload: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            enabled: boolean;
+            models: components["schemas"]["AIWorkloadModel"][];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "revoked" | "error";
+            /** Format: date-time */
+            created_at: string;
+        };
+        AIWorkloadKeyInput: {
+            name: string;
+            reusable: boolean;
+            ephemeral: boolean;
+            /** Format: date-time */
+            expires_at: string;
+            /**
+             * Format: int64
+             * @description Total enrollments, not concurrent replicas. Zero means unlimited for a reusable key; single-use keys require one.
+             */
+            max_uses: number;
+        };
+        AIWorkloadEnrollmentKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            reusable: boolean;
+            ephemeral: boolean;
+            /** Format: int64 */
+            max_uses: number;
+            /** Format: int64 */
+            uses: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AIWorkloadKeySecret: {
+            key: components["schemas"]["AIWorkloadEnrollmentKey"];
+            /** @description Shown once. Deliver in a protected file; never put in an image or command argument. */
+            secret: string;
+        };
+        AIWorkloadKeyRevoke: {
+            revoke_instances: boolean;
+        };
+        AIWorkloadKeyPage: {
+            items: components["schemas"]["AIWorkloadEnrollmentKey"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        AIWorkloadInstance: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            enrollment_key_id: string;
+            ephemeral: boolean;
+            /** @enum {string} */
+            state: "active" | "offline" | "revoked" | "retired";
+            /** Format: int64 */
+            key_generation: number;
+            /** Format: date-time */
+            last_contact_at: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AIWorkloadInstancePage: {
+            items: components["schemas"]["AIWorkloadInstance"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        AIWorkloadEnrollInput: {
+            enrollment_key: string;
+            /** Format: uuid */
+            request_id: string;
+            /** @description Raw Ed25519 public key encoded using unpadded base64url. */
+            public_key: string;
+            /** @description EdDSA JWT with iss/sub=enrollment, audience=enrollment URL, request_id and enrollment_hash (SHA256 key, hex). */
+            proof: string;
+        };
+        AIWorkloadReceipt: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            workload_id: string;
+            /** Format: uuid */
+            organization_id: string;
+            /** Format: int64 */
+            key_generation: number;
+            /** Format: uri */
+            token_endpoint: string;
+            /** Format: uri */
+            gateway_base: string;
+        };
+        AIWorkloadTokenInput: {
+            /** @enum {string} */
+            grant_type: "client_credentials";
+            /** Format: uuid */
+            client_id: string;
+            /** @enum {string} */
+            client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+            client_assertion: string;
+        };
+        AIWorkloadToken: {
+            access_token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            expires_in: number;
+            /** @enum {string} */
+            scope: "tunnex-ai";
+        };
+        AIWorkloadRotationInput: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            request_id: string;
+            public_key: string;
+            old_proof: string;
+            new_proof: string;
+        };
+        AIWorkloadModelList: {
+            /** @enum {string} */
+            object: "list";
+            data: {
+                id: string;
+                /** @enum {string} */
+                object: "model";
+                owned_by: string;
+                mode: components["schemas"]["AIModelMode"];
+            }[];
+        };
+        AIUserGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            members: number;
+        };
+        AIUserModel: {
+            model: string;
+            mode: components["schemas"]["AIModelMode"];
+        };
+        AIUserModelGrantInput: {
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            connection_id: string;
+            model: string;
+            enabled: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIUserModelGrant: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            group_id?: string;
+            group_name: string;
+            /** Format: uuid */
+            connection_id: string;
+            model: string;
+            mode: components["schemas"]["AIModelMode"];
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "revoked" | "error";
+        };
+        AICompletionRequest: {
+            model: string;
+            prompt: string;
+            /** @default 1024 */
+            max_tokens: number;
+            temperature?: number;
+            /** @default false */
+            stream: boolean;
+        };
+        AIEmbeddingRequest: {
+            model: string;
+            input: string | string[];
+            /** @enum {string} */
+            encoding_format?: "float" | "base64";
+            dimensions?: number;
+        };
+        AISpeechRequest: {
+            model: string;
+            input: string;
+            voice: string;
+            /** @enum {string} */
+            response_format?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+            speed?: number;
+        };
+        AITranscriptionRequest: {
+            model: string;
+            /**
+             * Format: binary
+             * @description One audio file at most 8 MiB.
+             */
+            file: string;
+            language?: string;
+            prompt?: string;
+            /**
+             * @default json
+             * @enum {string}
+             */
+            response_format: "json";
+            temperature?: number;
+        };
+        AIImageRequest: {
+            model: string;
+            prompt: string;
+            /**
+             * @default 1
+             * @enum {integer}
+             */
+            n: 1;
+            /** @enum {string} */
+            size?: "256x256" | "512x512" | "1024x1024" | "1024x1536" | "1536x1024" | "1024x1792" | "1792x1024" | "auto";
+            /** @enum {string} */
+            quality?: "standard" | "hd" | "low" | "medium" | "high" | "auto";
+            /** @enum {string} */
+            response_format?: "url" | "b64_json";
+        };
+        AIVideoRequest: {
+            model: string;
+            prompt: string;
+            /**
+             * @default 4
+             * @enum {string}
+             */
+            seconds: "4" | "8" | "12";
+            /** @enum {string} */
+            size?: "720x1280" | "1280x720";
+        };
+        AIRerankRequest: {
+            model: string;
+            query: string;
+            documents: string[];
+            top_n?: number;
+            /** @default false */
+            return_documents: boolean;
+        };
+        AIVideoJob: {
+            /** @enum {string} */
+            object: "video";
+            model: string;
+            /** Format: int64 */
+            created_at: number;
+            /** Format: int64 */
+            expires_at: number;
+            /**
+             * Format: uuid
+             * @description Opaque tenant and agent owned handle.
+             */
+            id: string;
+            /** @enum {string} */
+            status: "submitting" | "queued" | "in_progress" | "completed" | "failed" | "uncertain";
+        };
+        /**
+         * @default chat
+         * @enum {string}
+         */
+        AIModelMode: "chat" | "completion" | "embedding" | "audio_speech" | "audio_transcription" | "image_generation" | "video_generation" | "rerank";
+        /** @description Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change. */
+        AIModelModes: {
+            [key: string]: components["schemas"]["AIModelMode"];
+        };
+        /** @description Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update. */
+        AIProviderInputModels: string[];
+        AICustomEndpoint: {
+            name: string;
+            /** Format: uri */
+            url: string;
+        };
+        AIProviderConnection: {
+            model_modes?: components["schemas"]["AIModelModes"];
+            /** Format: uuid */
+            id: string;
+            /** @description Non-secret owned policy reference. */
+            key_id: string;
+            /**
+             * Format: uri
+             * @description Immutable installation-approved custom
+             */
+            endpoint_url?: string;
+            /** @enum {string} */
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+            name: string;
+            models: components["schemas"]["AIModelNames"];
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "error" | "disabled";
+            /** @enum {string} */
+            last_test_status: "untested" | "success" | "failed";
+            /** Format: date-time */
+            last_test_at?: string;
+        };
+        AIProviderDefinition: {
+            /** @enum {string} */
+            id: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+            name: string;
+            credential_label: string;
+            model_placeholder: string;
+        };
+        AIProviderList: {
+            /** @description Qualified gateway routes; absent on older servers means chat only. */
+            supported_modes?: components["schemas"]["AIModelMode"][];
+            management_available: boolean;
+            /** @description Private inference test adapter is configured. */
+            test_available?: boolean;
+            /** @description Public HTTPS endpoints can be entered directly with automatic egress validation. */
+            public_endpoints_available?: boolean;
+            foundry_available?: boolean;
+            foundry_endpoints?: components["schemas"]["AICustomEndpoint"][];
+            sagemaker_available?: boolean;
+            sagemaker_endpoints?: components["schemas"]["AICustomEndpoint"][];
+            custom_available?: boolean;
+            custom_endpoints?: components["schemas"]["AICustomEndpoint"][];
+            /** @description Supported provider forms; absence indicates an older server without provider discovery. */
+            definitions?: components["schemas"]["AIProviderDefinition"][];
+            items: components["schemas"]["AIProviderConnection"][];
+            legacy_key_ids: string[];
+        };
+        AIProviderCreate: {
+            model_modes?: components["schemas"]["AIModelModes"];
+            /**
+             * Format: uri
+             * @description Immutable installation-approved custom
+             */
+            endpoint_url?: string;
+            /** @enum {string} */
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+            name: string;
+            models: components["schemas"]["AIProviderInputModels"];
+            enabled: boolean;
+            /** @description Transient write-only secret stored only by the encrypted private engine. */
+            api_key: string;
+        };
+        AIProviderUpdate: {
+            model_modes?: components["schemas"]["AIModelModes"];
+            /**
+             * Format: uri
+             * @description Immutable installation-approved custom
+             */
+            endpoint_url?: string;
+            /** @enum {string} */
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+            name: string;
+            models: components["schemas"]["AIProviderInputModels"];
+            enabled: boolean;
+            /** @description Omit to preserve the secret; supply a new value to rotate. */
+            api_key?: string;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIProviderCatalogRequest: {
+            mode?: components["schemas"]["AIModelMode"];
+            /** @enum {string} */
+            provider: "custom" | "sagemaker" | "azure_foundry";
+            api_key: string;
+            /**
+             * Format: uri
+             * @description Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
+             */
+            endpoint_url: string;
+            /** @default  */
+            query: string;
+            /** @default 50 */
+            limit: number;
+            /** @default 0 */
+            offset: number;
+        };
+        AIProviderProbe: {
+            mode?: components["schemas"]["AIModelMode"];
+            /** @enum {string} */
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+            model: string;
+            api_key?: string;
+            /**
+             * Format: uuid
+             * @description Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision.
+             */
+            connection_id?: string;
+            /**
+             * Format: int64
+             * @description Required only for a saved-credential test.
+             */
+            expected_revision?: number;
+            /**
+             * Format: uri
+             * @description Installation-approved custom
+             */
+            endpoint_url?: string;
+        };
+        AIProviderProbeResult: {
+            /** @enum {string} */
+            status: "success" | "error";
+            /** Format: int64 */
+            duration_ms: number;
+            failure?: components["schemas"]["AIProviderProbeFailure"];
+        };
+        /** @description Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned. */
+        AIProviderProbeFailure: {
+            /** @enum {string} */
+            kind: "http_error" | "network_error" | "timeout" | "configuration_error" | "invalid_response" | "unknown";
+            /** @enum {string} */
+            source: "provider" | "proxy" | "gateway";
+            http_status?: number;
+        };
+        AIProviderRevision: {
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIProviderModelList: {
+            items: components["schemas"]["AIProviderModel"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        AIProviderModel: {
+            mode?: components["schemas"]["AIModelMode"];
+            id: string;
+            name: string;
+        };
+        AIModelNames: string[];
+        AITeamPolicyWrite: {
+            models: components["schemas"]["AIModelNames"];
+            key_ids: string[];
+            /**
+             * Format: double
+             * @description Optional daily USD soft threshold based on native observed usage since midnight UTC. Concurrent work can exceed it.
+             */
+            daily_cost_limit?: number | null;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AITeamPolicy: {
+            /** Format: uuid */
+            team_id: string;
+            models: components["schemas"]["AIModelNames"];
+            key_ids: string[];
+            /** Format: double */
+            daily_cost_limit?: number | null;
+            /** Format: int64 */
+            revision: number;
+        };
+        AIAssignmentWrite: {
+            /** Format: uuid */
+            team_id: string;
+            enabled: boolean;
+            models_override: components["schemas"]["AIModelNames"];
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIAssignment: {
+            /** Format: uuid */
+            device_id: string;
+            /** Format: uuid */
+            team_id: string;
+            enabled: boolean;
+            models_override: components["schemas"]["AIModelNames"];
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** Format: int64 */
+            applied_team_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "error" | "disabled";
+        };
+        AIUsageReport: {
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int64 */
+            total_requests: number;
+            /** Format: int64 */
+            total_tokens: number;
+            /** Format: int64 */
+            prompt_tokens: number;
+            /** Format: int64 */
+            completion_tokens: number;
+            /** Format: double */
+            total_cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
+            dashboard?: components["schemas"]["AIUsageDashboard"];
+            /**
+             * @description Native reported usage estimates; not a provider invoice or hard spending cap.
+             * @enum {string}
+             */
+            semantics: "observed_estimate";
+        };
+        AIUsageDashboard: {
+            /** Format: int64 */
+            successful_requests: number;
+            /** Format: int64 */
+            failed_requests: number;
+            /** Format: int64 */
+            cancelled_requests: number;
+            daily: components["schemas"]["AIUsageDay"][];
+            models: components["schemas"]["AIUsageModel"][];
+            teams: components["schemas"]["AIUsageAttribution"][];
+            agents: components["schemas"]["AIUsageAttribution"][];
+            user_groups?: components["schemas"]["AIUsageAttribution"][];
+            workloads?: components["schemas"]["AIUsageAttribution"][];
+        };
+        AIUsageDay: {
+            date: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            tokens: number;
+            /** Format: double */
+            cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
+        };
+        AIUsageModel: {
+            name: string;
+            /** Format: double */
+            cost: number;
+        };
+        AIUsageAttribution: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            tokens: number;
+            /** Format: double */
+            cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
+        };
+        AICredential: {
+            /** @description One-time secret; never returned by read APIs. */
+            token: string;
+            /** @enum {string} */
+            audience: "tunnex-ai";
+            /** Format: date-time */
+            expires_at: string;
+            endpoint: string;
+        };
+        AIGatewayOptIn: {
+            enabled: boolean;
+        };
+        AIGatewaySettings: {
+            enabled: boolean;
+            /** @description Server has the qualified private engine configuration. */
+            available: boolean;
+            /** Format: int64 */
+            revision: number;
+        };
+        AIInferenceRequest: {
+            /** @description Exact provider/model identifier; aliases and caller fallback are not supported. */
+            model: string;
+            messages: {
+                /**
+                 * @description Anthropic messages accept user or assistant; its system text is top-level.
+                 * @enum {string}
+                 */
+                role: "user" | "assistant" | "system";
+                /** @description Text only; multimodal blocks and tool calls are not qualified. */
+                content: string;
+            }[];
+            /** @default false */
+            stream: boolean;
+            /** @default 1024 */
+            max_tokens: number;
+            temperature?: number;
+            system?: string;
+        };
         ConnectivityProfile: {
             enabled: boolean;
             relay_url: string;
@@ -6075,7 +7704,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
             /** Format: date-time */
             expires_at: string;
             /** Format: date-time */
@@ -7077,7 +8706,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
         };
         Member: {
             /** Format: uuid */
@@ -7086,7 +8715,8 @@ export interface components {
             email: string;
             name: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+            roles?: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
             /** @enum {string} */
             status: "active" | "deactivated";
             email_verified: boolean;
@@ -7099,7 +8729,10 @@ export interface components {
         };
         ChangeRoleRequest: {
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+        };
+        ChangeRolesRequest: {
+            roles: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
         };
         OrgDeletionPreflight: {
             /** @description True only when every count below is zero. */
@@ -7627,6 +9260,1504 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAIWorkloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List stable workloads and their applied policies */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkload"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadInput"];
+            };
+        };
+        responses: {
+            /** @description Create a workload without a user or network device */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkload"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAIWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadInput"];
+            };
+        };
+        responses: {
+            /** @description Update policy or disable workload access immediately */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkload"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIWorkloadKeys: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List enrollment keys without their secrets */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadKeyPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIWorkloadKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadKeyInput"];
+            };
+        };
+        responses: {
+            /** @description Create a workload-bound enrollment key shown once */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadKeySecret"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAIWorkloadKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadKeyRevoke"];
+            };
+        };
+        responses: {
+            /** @description Stop future enrollment and optionally revoke enrolled instances */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIWorkloadInstances: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List independent workload replicas */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadInstancePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAIWorkloadInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoke only this instance; no automatic reenrollment */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    enrollWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadEnrollInput"];
+            };
+        };
+        responses: {
+            /** @description Atomically register an instance public key using a signed enrollment proof */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadReceipt"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeWorkloadToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["AIWorkloadTokenInput"];
+            };
+        };
+        responses: {
+            /** @description Exchange a private_key_jwt for a five-minute AI gateway token */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadToken"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rotateWorkloadKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadRotationInput"];
+            };
+        };
+        responses: {
+            /** @description Rotate the instance key with proofs from both keys and a durable request ID */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadReceipt"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    retireWorkloadInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retire the authenticated instance on graceful shutdown */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listWorkloadModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List currently authorized models using a workload bearer */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadModelList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIUserGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-scoped results. Model access requires current user group membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserGroup"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIUserModelGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-scoped results. Model access requires current user group membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserModelGrant"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIUserModelGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIUserModelGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Desired grant and provisioning state. Access is effective only when applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserModelGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMyAIModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-scoped results. Model access requires current user group membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserModel"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserChatCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AICompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserEmbedding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIEmbeddingRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISpeechRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/mpeg": string;
+                    "audio/ogg": string;
+                    "audio/aac": string;
+                    "audio/flac": string;
+                    "audio/wav": string;
+                    "audio/pcm": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserTranscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["AITranscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserVideoGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded output; video returns job acceptance, not completion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserRerank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIRerankRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserVideoStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserVideoContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/webm": string;
+                    "video/mp4": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserAnthropicMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Model output, optionally streamed; same identity and model policy as chat completions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe connection metadata; no provider secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Durable desired connection. Inspect status before assigning access. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    searchAIProviderCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCatalogRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model suggestions from the selected endpoint. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderModelList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testAIProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderProbe"];
+            };
+        };
+        responses: {
+            /** @description Sanitized result for the selected model only. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderProbeResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Durable desired connection with synchronization status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderRevision"];
+            };
+        };
+        responses: {
+            /** @description Connection removed; team policies and usage are preserved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderRevision"];
+            };
+        };
+        responses: {
+            /** @description Connection metadata including last check result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIProviderModels: {
+        parameters: {
+            query?: {
+                mode?: components["schemas"]["AIModelMode"];
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
+                connection_id?: string;
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
+                query?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model suggestions; catalog inclusion does not prove entitlement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderModelList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAITeamPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITeamPolicy"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAITeamPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AITeamPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITeamPolicy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAssignment"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIAssignmentWrite"];
+            };
+        };
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAssignment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    reconcileAIAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAssignment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAIUsage: {
+        parameters: {
+            query?: {
+                team_id?: string;
+                device_id?: string;
+                from?: string;
+                to?: string;
+                /** @description Include bounded native daily and historical attribution aggregates. */
+                dashboard?: boolean;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUsageReport"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    issueAICredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One-time AI credential. Store securely and renew before expiry. */
+            201: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AICredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAIGatewaySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization settings; absent configuration is disabled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIGatewaySettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setAIGatewaySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIGatewayOptIn"];
+            };
+        };
+        responses: {
+            /** @description Updated opt-in. Disabling denies new AI requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIGatewaySettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiChatCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AICompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiEmbedding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIEmbeddingRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISpeechRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/mpeg": string;
+                    "audio/ogg": string;
+                    "audio/aac": string;
+                    "audio/flac": string;
+                    "audio/wav": string;
+                    "audio/pcm": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiTranscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["AITranscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiVideoGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded output; video returns job acceptance, not completion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiRerank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIRerankRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiVideoStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiVideoContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/webm": string;
+                    "video/mp4": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiAnthropicMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Model output, optionally streamed; same identity and model policy as chat completions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getConnectivityProfile: {
         parameters: {
             query?: never;
@@ -11991,6 +15122,33 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ChangeRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Role changed. (Client refetches the roster.) */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    changeMemberRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRolesRequest"];
             };
         };
         responses: {

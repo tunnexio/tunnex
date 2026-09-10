@@ -407,6 +407,190 @@ type AgentWorkflowSigningKey struct {
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type AiGatewayAssignment struct {
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	TeamID              uuid.UUID          `json:"team_id"`
+	Enabled             bool               `json:"enabled"`
+	ModelsOverride      []string           `json:"models_override"`
+	Revision            int64              `json:"revision"`
+	AppliedRevision     int64              `json:"applied_revision"`
+	AppliedTeamRevision int64              `json:"applied_team_revision"`
+	Status              string             `json:"status"`
+	LastReconcileAt     pgtype.Timestamptz `json:"last_reconcile_at"`
+}
+
+type AiGatewayCredential struct {
+	TokenHash       []byte             `json:"token_hash"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	DeviceID        uuid.UUID          `json:"device_id"`
+	RuntimeRevision int64              `json:"runtime_revision"`
+	Audience        string             `json:"audience"`
+	CreatedAt       time.Time          `json:"created_at"`
+	ExpiresAt       time.Time          `json:"expires_at"`
+	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+}
+
+// Stable native accounting identities; retained across team moves, not a second usage ledger.
+type AiGatewayKeyBinding struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	DeviceID        uuid.UUID `json:"device_id"`
+	TeamID          uuid.UUID `json:"team_id"`
+	NativeKeyID     string    `json:"native_key_id"`
+	SealedKey       string    `json:"sealed_key"`
+	BindingRevision int64     `json:"binding_revision"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type AiGatewayTeamPolicy struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	TeamID         uuid.UUID `json:"team_id"`
+	Models         []string  `json:"models"`
+	KeyIds         []string  `json:"key_ids"`
+	DailyCostLimit *float64  `json:"daily_cost_limit"`
+	Revision       int64     `json:"revision"`
+}
+
+// Ownership and desired state only. Provider secrets live exclusively in private engine storage. Tombstones reserve ownership.
+type AiProviderConnection struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	KeyID           string             `json:"key_id"`
+	Provider        string             `json:"provider"`
+	Name            string             `json:"name"`
+	Models          []string           `json:"models"`
+	Enabled         bool               `json:"enabled"`
+	Revision        int64              `json:"revision"`
+	AppliedRevision int64              `json:"applied_revision"`
+	Status          string             `json:"status"`
+	LastTestStatus  string             `json:"last_test_status"`
+	LastTestAt      pgtype.Timestamptz `json:"last_test_at"`
+	DeletedAt       pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+	EndpointUrl     *string            `json:"endpoint_url"`
+	// Exact model protocol. Omitted entries retain backwards-compatible chat semantics; no secrets.
+	ModelModes []byte `json:"model_modes"`
+}
+
+type AiProviderLegacyKey struct {
+	OrgID uuid.UUID `json:"org_id"`
+	KeyID string    `json:"key_id"`
+}
+
+// Human group model grants; deleted groups lose access immediately. Retained rows preserve native usage attribution. No provider secrets.
+type AiUserModelGrant struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	GroupID         pgtype.UUID        `json:"group_id"`
+	GroupRef        uuid.UUID          `json:"group_ref"`
+	GroupName       string             `json:"group_name"`
+	ConnectionID    uuid.UUID          `json:"connection_id"`
+	Model           string             `json:"model"`
+	Mode            string             `json:"mode"`
+	Enabled         bool               `json:"enabled"`
+	Revision        int64              `json:"revision"`
+	AppliedRevision int64              `json:"applied_revision"`
+	Status          string             `json:"status"`
+	NativeKeyID     string             `json:"native_key_id"`
+	SealedKey       string             `json:"sealed_key"`
+	BindingRevision int64              `json:"binding_revision"`
+	LastReconcileAt pgtype.Timestamptz `json:"last_reconcile_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+}
+
+// Opaque tenant-owned video handles; no prompts, credentials, generated content or provider error bodies. Uncertain submissions are never retried automatically.
+type AiVideoJob struct {
+	ID             uuid.UUID   `json:"id"`
+	OrgID          uuid.UUID   `json:"org_id"`
+	DeviceID       pgtype.UUID `json:"device_id"`
+	Model          string      `json:"model"`
+	IdempotencyKey string      `json:"idempotency_key"`
+	RequestHash    []byte      `json:"request_hash"`
+	ProviderID     string      `json:"provider_id"`
+	State          string      `json:"state"`
+	CreatedAt      time.Time   `json:"created_at"`
+	ExpiresAt      time.Time   `json:"expires_at"`
+	UserID         pgtype.UUID `json:"user_id"`
+	WorkloadID     pgtype.UUID `json:"workload_id"`
+}
+
+type AiWorkload struct {
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	Name              string             `json:"name"`
+	Enabled           bool               `json:"enabled"`
+	Revision          int64              `json:"revision"`
+	CredentialEpoch   int64              `json:"credential_epoch"`
+	DailyUsdThreshold *float64           `json:"daily_usd_threshold"`
+	AppliedRevision   int64              `json:"applied_revision"`
+	Status            string             `json:"status"`
+	NativeKeyID       string             `json:"native_key_id"`
+	SealedKey         string             `json:"sealed_key"`
+	BindingRevision   int64              `json:"binding_revision"`
+	LastReconcileAt   pgtype.Timestamptz `json:"last_reconcile_at"`
+	CreatedAt         time.Time          `json:"created_at"`
+}
+
+type AiWorkloadAssertion struct {
+	InstanceID uuid.UUID `json:"instance_id"`
+	Jti        string    `json:"jti"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+type AiWorkloadEnrollmentKey struct {
+	ID         uuid.UUID          `json:"id"`
+	OrgID      uuid.UUID          `json:"org_id"`
+	WorkloadID uuid.UUID          `json:"workload_id"`
+	SecretHash []byte             `json:"secret_hash"`
+	Name       string             `json:"name"`
+	Reusable   bool               `json:"reusable"`
+	Ephemeral  bool               `json:"ephemeral"`
+	MaxUses    int64              `json:"max_uses"`
+	Uses       int64              `json:"uses"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
+type AiWorkloadInstance struct {
+	ID                  uuid.UUID   `json:"id"`
+	OrgID               uuid.UUID   `json:"org_id"`
+	WorkloadID          uuid.UUID   `json:"workload_id"`
+	EnrollmentKeyID     uuid.UUID   `json:"enrollment_key_id"`
+	EnrollmentRequestID uuid.UUID   `json:"enrollment_request_id"`
+	PublicKey           []byte      `json:"public_key"`
+	KeyGeneration       int64       `json:"key_generation"`
+	PreviousPublicKey   []byte      `json:"previous_public_key"`
+	RotationID          pgtype.UUID `json:"rotation_id"`
+	Ephemeral           bool        `json:"ephemeral"`
+	State               string      `json:"state"`
+	LastContactAt       time.Time   `json:"last_contact_at"`
+	CreatedAt           time.Time   `json:"created_at"`
+}
+
+type AiWorkloadModel struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	WorkloadID   uuid.UUID `json:"workload_id"`
+	ConnectionID uuid.UUID `json:"connection_id"`
+	Model        string    `json:"model"`
+	Mode         string    `json:"mode"`
+}
+
+type AiWorkloadToken struct {
+	TokenHash     []byte    `json:"token_hash"`
+	OrgID         uuid.UUID `json:"org_id"`
+	WorkloadID    uuid.UUID `json:"workload_id"`
+	InstanceID    uuid.UUID `json:"instance_id"`
+	Audience      string    `json:"audience"`
+	KeyGeneration int64     `json:"key_generation"`
+	WorkloadEpoch int64     `json:"workload_epoch"`
+	OrgRevision   int64     `json:"org_revision"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type AlertDelivery struct {
 	ID              uuid.UUID          `json:"id"`
 	OrgID           uuid.UUID          `json:"org_id"`
@@ -1314,6 +1498,7 @@ type Membership struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	AccessRevokedAt pgtype.Timestamptz `json:"access_revoked_at"`
+	Roles           []string           `json:"roles"`
 }
 
 type MembershipAccessSource struct {
@@ -1486,6 +1671,8 @@ type Organization struct {
 	AgentJitAccessEnabled       bool               `json:"agent_jit_access_enabled"`
 	AlertingEnabled             bool               `json:"alerting_enabled"`
 	FqdnResourcesEnabled        bool               `json:"fqdn_resources_enabled"`
+	AiGatewayEnabled            bool               `json:"ai_gateway_enabled"`
+	AiGatewayRevision           int64              `json:"ai_gateway_revision"`
 }
 
 type OvpnClientCert struct {

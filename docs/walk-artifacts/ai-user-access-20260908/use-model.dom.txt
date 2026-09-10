@@ -1,0 +1,78 @@
+- button "Expand sidebar":
+- navigation "Main":
+  - list:
+    - link "Overview":
+      - /url: /dashboard
+  - list:
+    - link "Gateways":
+      - /url: /gateways
+    - link "Sites":
+      - /url: /sites
+    - link "Routed ranges":
+      - /url: /routed-ranges
+    - link "Kubernetes":
+      - /url: /kubernetes
+    - link "AI agents":
+      - /url: /agents
+  - list:
+    - link "Access Policies":
+      - /url: /access
+    - link "Devices":
+      - /url: /devices
+    - link "Users & Roles":
+      - /url: /users
+  - list:
+    - link "Alerts":
+      - /url: /alerts
+    - link "Access Events":
+      - /url: /access-events
+    - link "Audit Log":
+      - /url: /audit
+  - list:
+    - link "Settings":
+      - /url: /settings
+- button "Signed in as preview@tunnex.local": PR
+- banner:
+  - button "Go to a page… ⌘K":
+    - generic: Go to a page…
+    - generic: ⌘K
+- main:
+  - heading "AI gateway" [level=1]
+  - paragraph: Manage models, grant group access, and call AI with your Tunnex login.
+  - navigation "AI Agents sections":
+    - link "Agents":
+      - /url: /agents
+    - link "Policy templates":
+      - /url: /agents/policies
+    - link "MCP profiles":
+      - /url: /agents/mcp
+    - link "AI gateway":
+      - /url: /agents/ai-gateway
+  - navigation "AI gateway views":
+    - button "Usage & cost"
+    - button "Models & endpoints"
+    - button "Group access"
+    - button "Use model"
+    - button "Configuration"
+  - region "Use a model":
+    - heading "Use model" [level=2]
+    - paragraph: Your Tunnex login gives access to models granted to your user groups. No provider API key is needed.
+    - button "Refresh my models"
+    - generic: Your model
+    - combobox "Your model":
+      - option "custom-f8e40d46-00ed-4aae-be79-9d905a562151/private-demo" [selected]
+    - heading "API endpoint" [level=3]
+    - code: http://127.0.0.1:5180/api/v1/organizations/01a07ac6-0fdf-7ddf-a1f2-2c4e8b164dc1/ai-gateway/inference/v1/chat/completions
+    - button "Copy endpoint"
+    - heading "Call from your terminal" [level=3]
+    - generic: tunnex login --server 'http://127.0.0.1:5180' tunnex ai models --org 01a07ac6-0fdf-7ddf-a1f2-2c4e8b164dc1 tunnex ai chat --org 01a07ac6-0fdf-7ddf-a1f2-2c4e8b164dc1 --model 'custom-f8e40d46-00ed-4aae-be79-9d905a562151/private-demo' --prompt 'Hello'
+    - paragraph: The CLI uses your saved Tunnex login. API clients authenticate with the same Tunnex login credential; browser calls use your session.
+    - generic: Message
+    - textbox "Message": Say hello in one sentence.
+    - button "Call model"
+    - heading "Model response" [level=3]
+    - generic: "{ \"id\": \"custom-fixture\", \"choices\": [ { \"index\": 0, \"finish_reason\": \"stop\", \"message\": { \"role\": \"assistant\", \"content\": \"Private endpoint through approved egress proxy.\" } } ], \"created\": 1788867901, \"model\": \"private-demo\", \"object\": \"chat.completion\", \"system_fingerprint\": \"\", \"usage\": { \"prompt_tokens\": 3, \"completion_tokens\": 7, \"total_tokens\": 10 }, \"extra_fields\": { \"request_type\": \"chat_completion\", \"routing_info\": { \"provider\": \"custom-f8e40d46-00ed-4aae-be79-9d905a562151\", \"model\": \"private-demo\", \"key\": \"tnx-managed-f8e40d46-00ed-4aae-be79-9d905a562151-r1\" }, \"provider\": \"custom-f8e40d46-00ed-4aae-be79-9d905a562151\", \"original_model_requested\": \"private-demo\", \"resolved_model_used\": \"private-demo\", \"latency\": 13, \"upstream_latency\": 13, \"chunk_index\": 0 } }"
+- region "Notifications alt+T":
+  - list:
+    - button "Close toast":
+    - generic: HTTP 200 — Model responded

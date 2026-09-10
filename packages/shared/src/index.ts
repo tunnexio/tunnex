@@ -28,6 +28,9 @@ const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 // configured origin (S6.1), never by this middleware — the token never enters
 // renderer JS.
 let apiOrigin: string | null = null;
+export function getApiOrigin(): string | null {
+  return apiOrigin;
+}
 export function setApiOrigin(origin: string | null): void {
   // Pin to a bare origin (scheme://host[:port]) — self-defending against a
   // caller passing a path/garbage. Empty/invalid → disabled (same-origin).

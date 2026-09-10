@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AccessTabRail } from "../components/AccessTabRail";
+import { UsersTabRail } from "../components/WorkspaceTabs";
+import { AgentsTabRail } from "../components/AgentsTabRail";
+import { can } from "../lib/rbac";
+import "../network-workspaces.css";
+import "../agents-workspace.css";
 import { Badge, Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
 import { api, apiErrorMessage, listItems, loadOne, type AgentGroup, type AgentGroupMember, type GroupMember, type Member, type UserGroup } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
@@ -18,15 +22,17 @@ function memberLabel(count: number): string {
   return count === 1 ? "1 member" : `${count} members`;
 }
 
-export default function AccessGroups() {
-  return <AccessGroupsLoader />;
+type GroupScope = "people" | "agents";
+export default function AccessGroups({ scope = "people" }: { scope?: GroupScope }) {
+  const { org } = useOrg();
+  return <AccessGroupsLoader key={`${org?.id}:${scope}`} scope={scope} />;
 }
 
 
-function AccessGroupsLoader() {
+function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
   const { org } = useOrg();
   const { state } = useAuth();
-  const agentGroupsEnabled = Boolean(org?.agent_policy_templates_enabled);
+  const agentGroupsEnabled = scope === "agents" && Boolean(org?.agent_policy_templates_enabled);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [people, setPeople] = useState<UserGroup[] | null>(null);
   const [agentGroups, setAgentGroups] = useState<AgentGroup[] | null>(null);
@@ -39,7 +45,7 @@ function AccessGroupsLoader() {
     setPeople(null);
     setAgentGroups(null);
     const [peopleResult, agentResult] = await Promise.all([
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: org.id } } })),
+      scope === "people" ? loadOne(() => api.GET("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: org.id } } })) : Promise.resolve({ ok: true as const, data: [] as UserGroup[] }),
       agentGroupsEnabled
         ? loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId: org.id } } }))
         : Promise.resolve({ ok: true as const, data: [] as AgentGroup[] }),
@@ -47,7 +53,7 @@ function AccessGroupsLoader() {
     if (!peopleResult.ok || !agentResult.ok) { setError("Could not load the group inventory."); return; }
     setPeople(peopleResult.data);
     setAgentGroups(agentResult.data);
-  }, [agentGroupsEnabled, authorized, org?.id]);
+  }, [agentGroupsEnabled, authorized, org?.id, scope]);
   useEffect(() => {
     let cancelled = false;
     if (!org || state.status !== "authed") { setAuthorized(false); return; }
@@ -58,16 +64,17 @@ function AccessGroupsLoader() {
       if (!result.ok) { setError(result.error); return; }
       setMembers(result.data);
       const mine = result.data.find((member) => member.user_id === state.user.id);
-      setAuthorized(mine?.role === "owner" || mine?.role === "admin");
+      const roles = mine?.roles ?? (mine ? [mine.role] : []);
+      setAuthorized(scope === "agents" ? can(roles, "agent_template:manage") : roles.includes("owner") || roles.includes("admin"));
     });
     return () => { cancelled = true; };
-  }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", permissionAttempt]);
+  }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", permissionAttempt, scope]);
   useEffect(() => { void reload(); }, [reload]);
-  const header = <><PageHeader title="Groups" subtitle={agentGroupsEnabled ? "People, managed-agent, and directory-synced groups in one operational inventory." : "People and directory-synced groups in one operational inventory."} /><AccessTabRail /></>;
-  if (!org || authorized === null) return <div className="space-y-5">{header}<Card>{error ? <LoadRetry error={`Could not check group permissions: ${error}`} onRetry={() => setPermissionAttempt((attempt) => attempt + 1)} /> : <Loading label="Checking group permissions…" />}</Card></div>;
-  if (!authorized) return <div className="space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
-  if (!people || !agentGroups || !members) return <div className="space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
-  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} peopleOptions={members} onReload={reload} />;
+  const header = <><PageHeader title={scope === "agents" ? "Agent groups" : "Users & Groups"} subtitle={scope === "agents" ? "Organize managed agents and their inherited policies." : "Manage people and directory-synced group membership."} />{scope === "agents" ? <AgentsTabRail /> : <UsersTabRail />}</>;
+  if (!org || authorized === null) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={`Could not check group permissions: ${error}`} onRetry={() => setPermissionAttempt((attempt) => attempt + 1)} /> : <Loading label="Checking group permissions…" />}</Card></div>;
+  if (!authorized) return <div className="network-management agents-workspace space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
+  if (!people || !agentGroups || !members) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
+  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} peopleOptions={members} scope={scope} onReload={reload} />;
 }
 
 type CanonicalRow = {
@@ -87,8 +94,10 @@ function CanonicalGroupsWorkspace({
   agentGroupsEnabled,
   peopleOptions,
   onReload,
+  scope,
 }: {
   orgId: string;
+  scope: GroupScope;
   people: UserGroup[];
   agentGroups: AgentGroup[];
   agentGroupsEnabled: boolean;
@@ -107,7 +116,7 @@ function CanonicalGroupsWorkspace({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const requestedType = (search.get("type") as "all" | Kind | null) ?? "all";
-  const type = requestedType === "agents" && !agentGroupsEnabled ? "all" : requestedType;
+  const type = scope === "agents" ? "agents" : requestedType === "people" || requestedType === "directory" ? requestedType : "all";
   const selectedId = search.get("group") ?? "";
   const query = search.get("q") ?? "";
   const update = (changes: Record<string, string | null>) => {
@@ -131,13 +140,11 @@ function CanonicalGroupsWorkspace({
     agents: rows.filter((row) => row.kind === "agents").length,
     directory: rows.filter((row) => row.kind === "directory").length,
   };
-  const createLabel = !agentGroupsEnabled || type === "people" ? "Create people group" : type === "agents" ? "Create agent group" : "Create group";
-  const canCreate = type !== "directory";
-  const visibleTypes: Array<"all" | Kind> = agentGroupsEnabled
-    ? ["all", "people", "agents", "directory"]
-    : ["all", "people", "directory"];
+  const createLabel = scope === "agents" ? "Create agent group" : "Create people group";
+  const canCreate = type !== "directory" && (scope === "people" || agentGroupsEnabled);
+  const visibleTypes: Array<"all" | Kind> = scope === "agents" ? [] : ["all", "people", "directory"];
   const inventoryDescription = agentGroupsEnabled
-    ? `${rows.length} groups across people, agents, and directory sources.`
+    ? `${rows.length} agent groups. Manage membership and inherited policies.`
     : `${rows.length} groups across people and directory sources.`;
   const loadSelected = useCallback(async () => {
     if (!selected) { setSelectedMembers(null); return; }
@@ -186,7 +193,7 @@ function CanonicalGroupsWorkspace({
     const groupId = selected.raw.id;
     const ok = await action(() => selected.kind === "agents"
       ? api.POST("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } }, body: { device_id: memberId } })
-      : api.POST("/api/v1/organizations/{orgId}/groups/{groupId}/members", { params: { path: { orgId, groupId } }, body: { user_id: memberId } }), "Could not add the member.", selected.kind === "agents" ? "Agent added. Desired inherited configuration was queued, not confirmed applied." : "Person added. Rules scoped to this group now include them.");
+      : api.POST("/api/v1/organizations/{orgId}/groups/{groupId}/members", { params: { path: { orgId, groupId } }, body: { user_id: memberId } }), "Could not add the member.", selected.kind === "agents" ? "Agent added. Desired inherited configuration was queued, not confirmed applied." : "Person added. This group’s network rules and granted AI models now include them.");
     if (ok) { setDialog(null); setMemberId(""); await Promise.all([loadSelected(), onReload()]); }
   }
   async function removeMember() {
@@ -195,7 +202,7 @@ function CanonicalGroupsWorkspace({
     const memberKey = selected.kind === "agents" ? (removing as AgentGroupMember).device_id : (removing as GroupMember).user_id;
     const ok = await action(() => selected.kind === "agents"
       ? api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members/{deviceId}", { params: { path: { orgId, groupId, deviceId: memberKey } } })
-      : api.DELETE("/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}", { params: { path: { orgId, groupId, userId: memberKey } } }), "Could not remove the member.", selected.kind === "agents" ? "Agent removed. Its group-derived desired configuration was withdrawn; other members are unchanged." : "Person removed. Rules scoped only to this group no longer apply to them.");
+      : api.DELETE("/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}", { params: { path: { orgId, groupId, userId: memberKey } } }), "Could not remove the member.", selected.kind === "agents" ? "Agent removed. Its group-derived desired configuration was withdrawn; other members are unchanged." : "Person removed. Network rules and AI models granted only through this group no longer apply to them.");
     if (ok) { setDialog(null); setRemoving(null); await Promise.all([loadSelected(), onReload()]); }
   }
   async function archive() {
@@ -208,15 +215,15 @@ function CanonicalGroupsWorkspace({
   }
   const candidates = selected?.kind === "agents" ? agentOptions : peopleOptions;
   const memberIds = new Set((selectedMembers ?? []).map((member) => selected?.kind === "agents" ? (member as AgentGroupMember).device_id : (member as GroupMember).user_id));
-  if (!countsValid) return <div className="space-y-5">
-    <PageHeader title="Groups" subtitle="People, managed-agent, and directory-synced groups in one operational inventory." actions={canCreate ? <Button onClick={() => { setCreateKind(type === "agents" ? "agents" : "people"); setName(""); setDialog("create"); }}>{createLabel}</Button> : undefined} />
-    <AccessTabRail />
+  if (!countsValid) return <div className="network-management agents-workspace space-y-5">
+    <PageHeader title={scope === "agents" ? "Agent groups" : "Users & Groups"} subtitle="People, managed-agent, and directory-synced groups in one operational inventory." actions={canCreate ? <Button onClick={() => { setCreateKind(type === "agents" ? "agents" : "people"); setName(""); setDialog("create"); }}>{createLabel}</Button> : undefined} />
+    {scope === "agents" ? <AgentsTabRail /> : <UsersTabRail />}
     <Card><p role="alert" className="text-cell text-ink-tertiary">Member counts require the matching control-plane API version.</p><p className="mt-2 text-cell text-ink-tertiary">The inventory is withheld until the server returns a non-negative member count for every group.</p></Card>
   </div>;
-  return <div className="space-y-5">
-    <PageHeader title="Groups" subtitle={inventoryDescription} actions={canCreate ? <Button onClick={() => { setCreateKind(type === "agents" ? "agents" : "people"); setName(""); setDialog("create"); }}>{createLabel}</Button> : undefined} />
-    <AccessTabRail />
-    {!agentGroupsEnabled && <p className="text-sm text-ink-tertiary">Agent groups and policy templates are disabled. <Link className="text-ink-body hover:underline" to="/settings?section=ai-agents">Configure AI Agent settings</Link>.</p>}
+  return <div className="network-management agents-workspace space-y-5">
+    <PageHeader title={scope === "agents" ? "Agent groups" : "Users & Groups"} subtitle={inventoryDescription} actions={canCreate ? <Button onClick={() => { setCreateKind(type === "agents" ? "agents" : "people"); setName(""); setDialog("create"); }}>{createLabel}</Button> : undefined} />
+    {scope === "agents" ? <AgentsTabRail /> : <UsersTabRail />}
+    {scope === "agents" && !agentGroupsEnabled && <p className="text-sm text-ink-tertiary">Agent groups and policy templates are disabled. <Link className="text-ink-body hover:underline" to="/settings?section=ai-agents">Configure AI Agent settings</Link>.</p>}
     <div className="flex flex-wrap items-center gap-2"><Input aria-label="Search groups" className="min-w-[14rem] flex-1 sm:max-w-sm" value={query} placeholder="Search groups" onChange={(event) => update({ q: event.target.value || null })} />{visibleTypes.map((value) => <Button key={value} size="sm" variant={type === value ? "primary" : "ghost"} onClick={() => update({ type: value === "all" ? null : value, group: null })}>{value === "all" ? "All" : value[0].toUpperCase() + value.slice(1)} <span className="ml-1 text-ink-tertiary">{typeCounts[value]}</span></Button>)}</div>
     <ErrorText>{error}</ErrorText>{notice && <p role="status" className="text-sm text-ok">{notice}</p>}
     <Card><DataTable caption="Groups inventory" rows={visible} rowKey={(row) => row.id} failed={false} filterable={false} pageSize={0} empty={<EmptyState>No groups match this view.</EmptyState>} columns={[{ key: "name", header: "Group name", cell: (row) => <button type="button" className="font-medium text-ink-heading hover:underline" onClick={() => update({ group: row.id })}>{row.name}</button> }, { key: "type", header: "Type", cell: (row) => <Badge tone="neutral">{row.kind === "agents" ? "Agent" : row.kind === "directory" ? "Directory" : "People"}</Badge> }, { key: "members", header: "Members", cell: (row) => memberLabel(row.memberCount) }, { key: "source", header: "Source", cell: (row) => row.source }, { key: "status", header: "Status", cell: (row) => <Badge tone={row.kind === "directory" ? "neutral" : "ok"}>{row.status}</Badge> }]} /></Card>
@@ -226,7 +233,7 @@ function CanonicalGroupsWorkspace({
       <section className="border-t border-white/10 pt-3"><h3 className="text-sm font-medium text-ink-heading">Members</h3>{selectedMembers === null ? <Loading label="Loading members…" /> : selectedMembers.length === 0 ? <p className="mt-2 text-sm text-ink-tertiary">No members.</p> : <div className="mt-2 max-h-72 divide-y divide-white/10 overflow-y-auto">{selectedMembers.map((member) => { const id = selected.kind === "agents" ? (member as AgentGroupMember).device_id : (member as GroupMember).user_id; const label = selected.kind === "agents" ? (member as AgentGroupMember).name : (member as GroupMember).name || (member as GroupMember).email; return <div key={id} className="flex items-center justify-between gap-3 py-2 text-sm"><span>{label}</span>{selected.kind !== "directory" && <Button size="sm" variant="ghost" disabled={busy} aria-label={`Remove ${label}`} onClick={() => { setRemoving(member); setDialog("remove"); }}>Remove</Button>}</div>; })}</div>}</section>
       <Link className="inline-block text-sm text-accent-400 hover:underline" to="/audit">View audit context</Link>
     </div></Modal>}
-    {dialog === "create" && <Modal title="Create group" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim()} onClick={() => void create()}>Create group</Button></>}><div className="space-y-3">{agentGroupsEnabled && <Field label="Group type"><Select value={createKind} onChange={(event) => setCreateKind(event.target.value as "people" | "agents")}><option value="people">People</option><option value="agents">Managed agents</option></Select></Field>}<p className="text-xs text-ink-tertiary">{createKind === "agents" ? "Shares inherited configuration with managed agents." : "Defines people used as policy subjects."}</p><Field label="Name"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field></div></Modal>}
+    {dialog === "create" && <Modal title="Create group" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim()} onClick={() => void create()}>Create group</Button></>}><div className="space-y-3"><p className="text-xs text-ink-tertiary">{createKind === "agents" ? "Shares inherited configuration with managed agents." : "Defines people used as policy subjects."}</p><Field label="Name"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field></div></Modal>}
     {dialog === "rename" && <Modal title="Rename group" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim()} onClick={() => void rename()}>Save name</Button></>}><Field label="Name"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field><p className="mt-2 text-xs text-ink-tertiary">Rules and assignments follow the group identity, so renaming does not rebuild their scope.</p></Modal>}
     {dialog === "add" && <Modal title={`Add ${selected?.kind === "agents" ? "agent" : "person"} member`} onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !memberId} onClick={() => void addMember()}>Add member</Button></>}><p className="mb-3 text-cell text-ink-tertiary">{selected?.kind === "agents" ? "Adding an agent can give it this group’s desired inherited configuration. Queued does not mean applied." : "Adding a person expands rules that use this group as a subject."}</p><Field label={selected?.kind === "agents" ? "Agent" : "Person"}><Select value={memberId} onChange={(event) => setMemberId(event.target.value)}><option value="">Select {selected?.kind === "agents" ? "agent" : "person"}</option>{candidates.filter((candidate) => !memberIds.has(selected?.kind === "agents" ? (candidate as { device_id: string }).device_id : (candidate as Member).user_id)).map((candidate) => { const id = selected?.kind === "agents" ? (candidate as { device_id: string }).device_id : (candidate as Member).user_id; const label = selected?.kind === "agents" ? (candidate as { name: string }).name : (candidate as Member).name || (candidate as Member).email; return <option key={id} value={id}>{label}</option>; })}</Select></Field></Modal>}
     {dialog === "remove" && <Modal title="Remove member?" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void removeMember()}>Remove member</Button></>}><p className="text-cell text-ink-tertiary">{selected?.kind === "agents" ? "This removes the agent’s inherited group context. Desired configuration is withdrawn after server reconciliation; other members are unchanged." : "This removes the person from this policy subject group. Rules scoped only through this group no longer apply to them."} Recovery is to explicitly add the member back.</p></Modal>}

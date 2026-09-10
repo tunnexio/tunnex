@@ -5,9 +5,14 @@ module github.com/tunnexio/tunnex/apps/cli
 
 go 1.25.13
 
-require github.com/oapi-codegen/runtime v1.1.1
+require (
+	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/gofrs/flock v0.13.1
+	github.com/google/uuid v1.5.0
+	github.com/oapi-codegen/runtime v1.1.1
+)
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
-	github.com/google/uuid v1.5.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 )

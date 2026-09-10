@@ -15,11 +15,13 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	oapimw "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -41,6 +43,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpn"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
@@ -54,6 +57,10 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
+	AICredentials      *aigateway.Credentials
+	AIWorkloads        *aigateway.Workloads
+	AIPolicies         *aigateway.Policies
+	AIAdapter          *aigateway.Adapter
 	Connectivity       *connectivity.Store
 	System             *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
 	Orgs               *tenancy.Service
@@ -175,6 +182,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		})
 	})
 
+	r.Use(workloadMiddleware(d.AIWorkloads, d.AIAdapter))
 	// Attach the authenticated principal (if any) so downstream authorization can
 	// fail closed. The org used for scoping is derived from this principal's
 	// memberships, never from client input. A CLI bearer credential (S5.1) is
@@ -258,6 +266,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	agentRuntime.SetNotifier(d.AgentRuntimeNotify)
 	agentRuntime.SetAlertPublisher(d.AlertPublisher)
 	r.Use(runtimeAuthMiddleware(agentRuntime))
+	r.Use(aiInferenceMiddleware(d.AIAdapter))
 	r.Use(authBeforeAgentValidation)
 
 	// Validate every request against the spec; render failures as the envelope.
@@ -266,18 +275,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
-	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
-		ErrorHandler: validationErrorHandler,
-		Options: openapi3filter.Options{
-			// The validator must NOT enforce security itself — authentication and
-			// authorization are done in our handlers (authorize/requireVerifiedUser),
-			// which produce the typed envelope. A noop here means "auth handled
-			// elsewhere"; without it the validator would 401 even valid sessions.
-			AuthenticationFunc: func(context.Context, *openapi3filter.AuthenticationInput) error { return nil },
-		},
-	}))
-
-	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	srv.connectivity = d.Connectivity
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
@@ -287,6 +285,24 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	r.Use(gate)
+
+	r.Use(aiUserInferenceMiddleware(d.AIAdapter, d.AIPolicies))
+	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
+		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, req *http.Request, opts oapimw.ErrorHandlerOpts) {
+			message := "AI provider request is invalid"
+			if !isAIProviderRequest(req) {
+				message = err.Error()
+			}
+			validationErrorHandler(w, message, opts.StatusCode)
+		},
+		Options: openapi3filter.Options{
+			// The validator must NOT enforce security itself — authentication and
+			// authorization are done in our handlers (authorize/requireVerifiedUser),
+			// which produce the typed envelope. A noop here means "auth handled
+			// elsewhere"; without it the validator would 401 even valid sessions.
+			AuthenticationFunc: func(context.Context, *openapi3filter.AuthenticationInput) error { return nil },
+		},
+	}))
 
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		// Both hooks render typed *apierr.Error (and anything else) as the envelope.
@@ -333,6 +349,13 @@ func validationErrorHandler(w http.ResponseWriter, message string, statusCode in
 	})
 }
 
+// Provider bodies carry write-only secrets. Keep route detection independent of
+// parameter binding so authorization and safe validation also cover malformed IDs.
+func isAIProviderRequest(req *http.Request) bool {
+	parts := strings.Split(req.URL.Path, "/")
+	return len(parts) >= 7 && parts[1] == "api" && parts[2] == "v1" && parts[3] == "organizations" && parts[5] == "ai-gateway" && (parts[6] == "providers" || parts[6] == "models")
+}
+
 func authBeforeAgentValidation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, "/api/v1/agent/runtime/") {
@@ -341,9 +364,34 @@ func authBeforeAgentValidation(next http.Handler) http.Handler {
 				return
 			}
 		}
+		if isAIProviderRequest(req) {
+			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
+				apierr.Write(w, req, apierr.New(401, "unauthenticated", "authentication required"))
+				return
+			}
+			parts := strings.Split(req.URL.Path, "/")
+			org, err := uuid.Parse(parts[4])
+			if err != nil {
+				apierr.Write(w, req, apierr.BadRequest("validation_failed", "AI provider request is invalid"))
+				return
+			}
+			permission := rbac.PermAIProviderView
+			if req.Method != http.MethodGet {
+				permission = rbac.PermAIProviderManage
+			}
+			ctx, err := authorize(req.Context(), org, permission)
+			if err == nil && req.Method != http.MethodGet {
+				_, err = aiManagementActor(ctx)
+			}
+			if err != nil {
+				apierr.Write(w, req, err)
+				return
+			}
+			req = req.WithContext(ctx)
+		}
 		orgPath := strings.HasPrefix(req.URL.Path, "/api/v1/organizations/")
 		protectedAgentMutation := req.Method == http.MethodPut &&
-			(strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings") || strings.HasSuffix(req.URL.Path, "/mcp-tool-policy"))
+			(strings.HasSuffix(req.URL.Path, "/ai-gateway") || strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings") || strings.HasSuffix(req.URL.Path, "/mcp-tool-policy"))
 		protectedMCPOAuthStart := req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/mcp-oauth-connections")
 		protectedFQDNMutation := strings.Contains(req.URL.Path, "/fqdn-resources") && req.Method != http.MethodGet
 		protectedRetentionMutation := req.Method != http.MethodGet &&
@@ -351,9 +399,10 @@ func authBeforeAgentValidation(next http.Handler) http.Handler {
 		// Alerting carries write-only destination credentials. Authenticate before
 		// schema validation so an anonymous caller cannot use malformed bodies or
 		// a guessed destination identifier to probe the surface.
+		protectedAIGateway := strings.Contains(req.URL.Path, "/ai-gateway/")
 		protectedAlerting := strings.Contains(req.URL.Path, "/alerting-settings") || strings.Contains(req.URL.Path, "/alert-destinations")
 		protectedNodeLifecycle := strings.Contains(req.URL.Path, "/nodes/lifecycle-claims/")
-		if orgPath && (protectedAgentMutation || protectedMCPOAuthStart || protectedAlerting || protectedFQDNMutation || protectedRetentionMutation || protectedNodeLifecycle) {
+		if orgPath && (protectedAIGateway || protectedAgentMutation || protectedMCPOAuthStart || protectedAlerting || protectedFQDNMutation || protectedRetentionMutation || protectedNodeLifecycle) {
 			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
 				apierr.Write(w, req, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required"))
 				return

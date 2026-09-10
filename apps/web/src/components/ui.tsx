@@ -213,6 +213,7 @@ export function Modal({
   actions,
   size = "default",
   showClose = false,
+  placement = "center",
 }: {
   title: string;
   danger?: boolean;
@@ -220,6 +221,7 @@ export function Modal({
   children: ReactNode;
   actions?: ReactNode;
   showClose?: boolean;
+  placement?: "center" | "right";
   /**
    * `wide` for a dialog whose content is a pair of searchable pickers rather than a sentence and a button.
    *
@@ -307,6 +309,7 @@ export function Modal({
   return createPortal(
     <div
       className="tnx-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4"
+      data-placement={placement}
       role="dialog"
       aria-modal="true"
       aria-labelledby={headingId}

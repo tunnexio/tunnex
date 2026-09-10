@@ -1,3 +1,6 @@
+import { UsersTabRail } from "../components/WorkspaceTabs";
+import { RoleAssignment } from "../components/RoleAssignment";
+import { HUMAN_ROLES } from "../lib/rbac";
 import {
   useCallback,
   useEffect,
@@ -48,23 +51,16 @@ import {
   deviceCountFor,
   deviceCountLabel,
   deactivationImpactCopy,
-  groupAccessLabel,
-  groupAccessState,
-  LAST_OWNER_NOTE,
-  roleDistribution,
-  roleTallyLabel,
-  rosterSubtitle,
   rosterShape,
 } from "../lib/usersview";
 
 import "../network-workspaces.css";
 import "../users-workspace.css";
 
-const ROLES: Role[] = ["owner", "admin", "member"];
 const selectCls =
   "rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 disabled:opacity-50";
 
-export default function Users() {
+export default function Users({ view = "users" }: { view?: "users" | "roles" | "invitations" }) {
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
   // fetched itself, which is what made a second organization unreachable.
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
@@ -89,14 +85,17 @@ export default function Users() {
   const [inviteBusy, setInviteBusy] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   // ⛔ `null` MEANS "NOT LOADED", AND IT IS NOT THE SAME AS `[]`. An empty array is a fetched answer; null is
-  // the absence of one, and deviceCountFor / groupAccessState each have a DISTINCT arm for it. Initialising
+  // the absence of one, and deviceCountFor has a distinct arm for it. Initialising
   // these to `[]` would make a page that has not finished loading claim every member owns nothing.
   const [devices, setDevices] = useState<Device[] | null>(null);
-  const [groupCount, setGroupCount] = useState<number | null>(null);
 
   // My role in this org comes from my own row in the roster — no extra endpoint.
   const myRole = useMemo(
-    () => members.find((m) => m.user_id === myId)?.role,
+    () => {
+      const mine = members.find((m) => m.user_id === myId);
+      const roles = mine?.roles ?? (mine ? [mine.role] : []);
+      return roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : mine?.role;
+    },
     [members, myId],
   );
   // Owner count drives the last-owner disable (mirrors the server's CountOwners).
@@ -192,10 +191,8 @@ export default function Users() {
     // either never loads at all, or loads once and then lies about which tenant it is showing.
   }, [currentOrg]);
 
-  // ⛔ THE TWO GATED READS ARE NOT ISSUED WHEN THEIR GATE FAILS. Firing them anyway would put a 403 into the
-  // page's single error surface, so a member's ordinary, correct page load would show an error — and the gate
-  // note already says the same thing calmly. Depends on `myRole`, which arrives with the members list, so this
-  // effect runs after it rather than in the load above.
+  // Load device counts only for membership administrators. Wait for the current
+  // member's role so ordinary members do not receive an avoidable 403.
   useEffect(() => {
     let cancelled = false;
     if (!org || !myRole) return;
@@ -208,13 +205,6 @@ export default function Users() {
         // A failure leaves `devices` NULL on purpose — deviceCountFor renders "could not load", which is
         // honest, rather than a zero that would read as "this person has no devices".
         if (!cancelled && !error) setDevices(data ?? []);
-      }
-      if (isEnterprise && can(myRole, "policy:view")) {
-        const { data, error } = await api.GET(
-          "/api/v1/organizations/{orgId}/groups",
-          { params: { path: { orgId: org.id } } },
-        );
-        if (!cancelled && !error) setGroupCount((data ?? []).length);
       }
     })();
     return () => {
@@ -249,15 +239,15 @@ export default function Users() {
     await loadMembers(org.id);
   }
 
-  const changeRole = (m: Member, role: Role) =>
+  const changeRoles = (m: Member, roles: Role[]) =>
     mutate(
       () =>
-        api.PUT("/api/v1/organizations/{orgId}/members/{userId}/role", {
+        api.PUT("/api/v1/organizations/{orgId}/members/{userId}/roles", {
           params: { path: { orgId: org!.id, userId: m.user_id } },
-          body: { role },
+          body: { roles },
         }),
-      "Could not change the role.",
-      `Role updated to ${role}`,
+      "Could not change the roles.",
+      "Roles updated",
     );
 
   /**
@@ -354,11 +344,6 @@ export default function Users() {
       canManageMembership(myRole, m.role, "") &&
       m.user_id !== myId,
   );
-  const groupAccess = groupAccessState({
-    isEnterprise,
-    role: myRole,
-    groupCount,
-  });
   // The table filters now, so the page hands it the whole roster.
   const shown = members;
 
@@ -392,7 +377,7 @@ export default function Users() {
   return (
     <div className="network-management users-workspace">
       <PageHeader
-        title="Users & Roles"
+        title="Users & Groups"
         subtitle={
           org
             ? `${org.name} · ${members.length} ${members.length === 1 ? "person" : "people"}`
@@ -404,59 +389,16 @@ export default function Users() {
           ) : undefined
         }
       />
+      <UsersTabRail />
       <ErrorText>{error}</ErrorText>
-
-      <section
-        aria-labelledby="access-posture-heading"
-        className="tnx-card-surface users-summary"
-      >
-        <h2 id="access-posture-heading" className="sr-only">Access posture</h2>
-        <div className="users-total">
-          <span className="text-2xl font-semibold tabular-nums text-ink-heading">
-            {members.length}
-          </span>
-          <span className="text-xs text-ink-secondary">
-            people
-          </span>
-          {members.some((m) => m.status === "deactivated") && (
-            <span className="ml-2 text-xs text-warn">
-              {members.filter((m) => m.status === "deactivated").length} deactivated
-            </span>
-          )}
-          <p className="sr-only">{rosterSubtitle(members)}</p>
-        </div>
-        <dl className="flex flex-wrap items-center gap-x-7 gap-y-2">
-          {roleDistribution(members).map((t) => (
-            <div key={t.role} className="flex items-baseline gap-2">
-              <dd className="text-lg font-semibold tabular-nums text-ink-heading">{t.n}</dd>
-              <dt className="text-xs capitalize text-ink-secondary">
-                {t.role}{t.n === 1 ? "" : "s"}
-              </dt>
-              <span className="sr-only">{roleTallyLabel(t)}</span>
-            </div>
-          ))}
-        </dl>
-        <div className="users-context">
-          <span>
-            <span className="font-medium text-ink-secondary">Groups</span>{" "}
-            {groupAccess.kind === "edges"
-              ? `· ${groupAccessLabel(groupAccess)} in this organization.`
-              : `· ${groupAccessLabel(groupAccess)}.`}
-            <span className="sr-only"> The count stands in for it until the relationship view is available.</span>
-          </span>
-          {can(myRole, "member:manage") && (
-            <span title={LAST_OWNER_NOTE}>Last owner is protected</span>
-          )}
-        </div>
-        {shape.gateNote && (
-          <p className="w-full text-xs text-ink-tertiary">{shape.gateNote}</p>
-        )}
-      </section>
 
       {/* S14.3 slice A: a real <table>. The roster is tabular — person, role, state, actions per row — and as
           <li> blocks the tier could only find a member by matching their email as free text. The role control
           and the action buttons keep their own accessible names, so they stay queryable INSIDE a cell. */}
       <div className="users-content">
+        {view === "roles" && <p className="mb-4 text-sm text-ink-secondary">Assign multiple roles to each person. Roles control administration; user group grants control which AI models they can call.</p>}
+        {view === "invitations" && inviteGate(myRole).kind !== "ready" && <Card><p role="alert">You do not have permission to manage invitations.</p></Card>}
+        {view === "invitations" && invites === null && inviteGate(myRole).kind === "ready" && <Card>{inviteErr ? <p role="alert">{inviteErr}</p> : <Loading label="Loading invitations…" />}</Card>}
         {/* ⛔ ONE FILTER, AND IT IS THE TABLE'S NOW. The page carried a separate "Filter members" field
             floating above the roster in its own box — disconnected from the thing it narrowed, and a second
             search input the moment the table grew one.
@@ -465,9 +407,9 @@ export default function Users() {
             table's search runs over every column's `sortValue`, which is those three PLUS state — so
             "deactivated" now finds the deactivated members, which the old box could not. Swapping to the
             weaker control to preserve a helper would have been keeping the test, not the capability. */}
-        <div className="tnx-card-surface users-inventory">
+        {view !== "invitations" && <><div className="tnx-card-surface users-inventory">
           <div className="users-inventory-heading">
-            <h2>People</h2>
+            <h2>{view === "roles" ? "Role assignments" : "People"}</h2>
             <span>{anyRowHasAction ? "Select people to manage their accounts" : "Organization members"}</span>
           </div>
         <DataTable
@@ -658,7 +600,7 @@ export default function Users() {
               : []),
             {
               key: "role",
-              header: "Role",
+              header: "Roles",
               // ⚠ NOT `numeric`. The role control sits directly after the right-aligned DEVICES count, so
               // without its own left padding a "0" and a <select> render touching — see the numeric padding
               // in DataTable. This column is left-aligned and takes the gap from that side.
@@ -668,34 +610,18 @@ export default function Users() {
                 // ownership). The last-owner disable therefore surfaces on the sole owner's OWN role control.
                 const canManage =
                   emailVerified && canManageMembership(myRole, m.role, "");
-                const assignable = ROLES.filter((r) =>
+                const assignable = HUMAN_ROLES.filter((r) =>
                   canManageMembership(myRole, m.role, r),
                 );
                 if (!canManage || assignable.length === 0)
                   return (
                     <span className="text-xs capitalize text-ink-secondary">
-                      {m.role}
+                      {(m.roles ?? [m.role]).join(" + ")}
                     </span>
                   );
                 return (
-                  <select
-                    className={`${selectCls} users-role-select`}
-                    aria-label={`Role for ${m.email}`}
-                    value={m.role}
-                    disabled={isSoleOwner(m)}
-                    title={
-                      isSoleOwner(m)
-                        ? "An organization must always have at least one owner."
-                        : undefined
-                    }
-                    onChange={(e) => changeRole(m, e.target.value as Role)}
-                  >
-                    {assignable.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                  <RoleAssignment email={m.email} roles={m.roles ?? [m.role]} options={assignable}
+                    soleOwner={isSoleOwner(m)} onSave={(roles) => changeRoles(m, roles)} />
                 );
               },
             },
@@ -703,20 +629,22 @@ export default function Users() {
         />
 
         </div>
-        <details className="users-role-guide">
+        <details className="users-role-guide" open={view === "roles" ? true : undefined}>
           <summary>Understand roles <span aria-hidden="true">＋</span></summary>
           <div className="users-role-grid">
             <div><h3>Owner</h3><p>Manages the organization and its members, including other owners.</p></div>
             <div><h3>Admin</h3><p>Manages members and configuration. Cannot manage or appoint owners.</p></div>
             <div><h3>Member</h3><p>Uses access granted by policy. Cannot manage organization membership.</p></div>
+            <div><h3>AI admin</h3><p>Manages AI models, credentials and group access. No VPN or user administration.</p></div>
+            <div><h3>AI view</h3><p>Views AI configuration and usage. Cannot change settings or credentials.</p></div>
           </div>
-        </details>
+        </details></>}
 
         {/* ⚠ CONTEXT, BELOW THE SUBJECT, AND SIDE BY SIDE — two short cards stacked full-width were a screen
           of scrolling to reach a roster. Columns, so a wider display adds a column rather than stretching
           either card. */}
-        {invites !== null && inviteGate(myRole).kind === "ready" && (
-          <details className="group mt-5 border-y border-white/10 py-1">
+        {view === "invitations" && invites !== null && inviteGate(myRole).kind === "ready" && (
+          <details open className="group mt-5 border-y border-white/10 py-1">
             <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-ink-heading focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent-400">
               <span>Invitation history</span>
               <span className="flex items-center gap-3 text-xs font-normal text-ink-tertiary">
@@ -770,6 +698,8 @@ export default function Users() {
                         unavailable: (inv) =>
                           inviteBusy === inv.email + "resend"
                             ? "Resending…"
+                            : !canManageMembership(myRole, "member", inv.role)
+                              ? "Only an owner can resend an owner invitation."
                             : canResend(invitationState(inv, new Date()))
                               ? null
                               : "Only a pending or expired invitation can be resent.",
@@ -830,7 +760,7 @@ export default function Users() {
                       },
                       {
                         key: "role",
-                        header: "Role",
+                        header: "Roles",
                         sortValue: (inv) => inv.role,
                         cell: (inv) => (
                           <span className="text-xs text-slate-500">
@@ -865,72 +795,6 @@ export default function Users() {
               </Card>
             </div>
 
-          {/* ── Access posture ────────────────────────────────────────────────────────────────────────────────
-          The wireframe's subtitle promises `role hierarchy · MFA coverage · authentication sources` and the
-          product projects ONE of the three. This panel ships that one and NAMES the two it does not have,
-          rather than printing a subtitle that promises all three. `MFA enrolled 5/7` in particular is a
-          NUMBER, and a reader trusts a number more than prose. */}
-          {false && (
-          <div className="mt-6">
-            <Card>
-              <h2 className="text-sm font-semibold text-white">
-                Access posture
-              </h2>
-              {/* ⛔ STATES WHAT IS COUNTED. The first version read "Role hierarchy across N members", which claims
-              WHO CAN ACT — and the tally counts accounts on the roster, deactivated included. A roster of 7
-              with 1 deactivated is TWO FACTS, NOT ONE NUMBER. */}
-              <p className="mt-1 text-xs text-slate-400">
-                {rosterSubtitle(members)}
-              </p>
-              <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-                {roleDistribution(members).map((t) => (
-                  <div key={t.role}>
-                    {/* The zero is rendered, not dropped: an omitted role reads as a role that does not exist. */}
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">
-                      {t.role}
-                      {t.n === 1 ? "" : "s"}
-                    </dt>
-                    <dd className="text-lg font-semibold text-white">{t.n}</dd>
-                    {/* The split, per role, only where it exists — so "1 owner" cannot hide a deactivated one. */}
-                    {t.deactivated > 0 && (
-                      <dd className="text-xs text-warn">
-                        {t.deactivated} deactivated
-                      </dd>
-                    )}
-                    <span className="sr-only">{roleTallyLabel(t)}</span>
-                  </div>
-                ))}
-              </dl>
-              {/* ⛔ THE TWO MISSING FACTS ARE NAMED, NOT OMITTED. Silence here would read as "this org has no MFA
-              story", which is false — MFA is enforced and enrollable, it is the per-member PROJECTION that
-              does not exist (D1), as with authentication sources (D1b). */}
-              {/* ── Groups: OUT OF THE STAT ROW, and registered as a DELIBERATE ADDITION ─────────────────────
-              ⛔ THE WIREFRAME HAS NO GROUPS STAT. Its Access posture panel is:
-                   title · "role hierarchy · MFA coverage · authentication sources" · {{ teamMap }}
-                   · legend (role tiers, MFA enrolled 5/7) · the last-owner copy
-              Groups appear ONLY as one axis inside `{{ teamMap }}` — the tripartite role↔user↔group graph,
-              which is D2, held, cut on the permission boundary.
-
-              I had put a `Groups 3` tile in the stat row beside owner/admin/member, where a group count reads
-              as A FOURTH ROLE TIER — and I did it WITHOUT REGISTERING IT, breaking my own §2.6 rule
-              ("additions get the same discipline as cuts") in the story that states the rule.
-
-              THE REASON IT STAYS AT ALL: it is the honest placeholder for the held graph, and it is the only
-              thing on this screen that renders the edition/permission seam — the four-gate shape the section
-              exists to demonstrate. So it keeps its own line, named as standing in for teamMap.
-              Registered: docs/DEFERRAL-REGISTER.md. */}
-              <p className="mt-3 border-t border-white/5 pt-3 text-cell text-ink-secondary">
-                <span className="font-medium text-ink-heading">Groups</span>{" "}
-                {groupAccess.kind === "edges"
-                  ? `— ${groupAccessLabel(groupAccess)} in this organization.`
-                  : `— ${groupAccessLabel(groupAccess)}.`}
-              </p>
-              {shape.gateNote && (
-                <p className="mt-2 text-xs text-slate-400">{shape.gateNote}</p>
-              )}
-            </Card>
-          </div>
-          )}
           </details>
         )}
 
@@ -947,6 +811,7 @@ export default function Users() {
       {inviteOpen && org && (
         <InviteForm
           orgId={org.id}
+          actorRole={myRole}
           // Creating an invitation does not change the member roster until it is accepted.
           // Refreshing members here put the whole page into its loading state, unmounting
           // InviteForm before its one-time link could be shown. Refresh invitation history
@@ -1009,15 +874,17 @@ export default function Users() {
 // only ever for bringing in a new address.
 function InviteForm({
   orgId,
+  actorRole,
   onInvited,
   onDismiss,
 }: {
   orgId: string;
+  actorRole: Role | undefined;
   onInvited: () => void;
   onDismiss: () => void;
 }) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("member");
+  const [role, setRole] = useState<(typeof HUMAN_ROLES)[number]>("member");
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -1125,10 +992,10 @@ function InviteForm({
           <select
             className={`${selectCls} min-h-11 w-full px-3 py-2`}
             value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
+            onChange={(e) => setRole(e.target.value as (typeof HUMAN_ROLES)[number])}
             aria-label="Role"
           >
-            {ROLES.map((r) => (
+            {HUMAN_ROLES.filter((r) => canManageMembership(actorRole, "member", r)).map((r) => (
               <option key={r} value={r}>{r}</option>
             ))}
           </select>

@@ -25,6 +25,12 @@ UPDATE invitations
 SET revoked_at = now()
 WHERE org_id = $1 AND email = $2 AND accepted_at IS NULL AND revoked_at IS NULL;
 
+-- name: GetPendingInvitationForResend :one
+-- Expired invitations can be resent, but accepted/revoked ones cannot.
+SELECT * FROM invitations
+WHERE org_id = $1 AND email = $2 AND accepted_at IS NULL AND revoked_at IS NULL
+FOR UPDATE;
+
 -- name: SupersedePendingInvites :exec
 -- When a user joins an org another way (e.g. domain-capture JIT), pending
 -- invites for that (org, email) become moot — revoke them so they can't be

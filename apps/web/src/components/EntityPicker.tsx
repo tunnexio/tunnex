@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 /**
  * ONE PICKER PER SIDE, ACROSS EVERY KIND — the shape ruled in `docs/rule-validity-matrix.md`.
@@ -19,6 +19,7 @@ import { useMemo, useRef, useState } from "react";
 export interface PickerOption {
   /** Stable value handed back on select. For a literal CIDR this is the CIDR itself. */
   value: string;
+  icon?: ReactNode;
   kind: string;
   /** Short uppercase tag — GROUP, SITE, AGENT. */
   tag: string;
@@ -54,6 +55,8 @@ export function EntityPicker({
   acceptCidr?: boolean;
   placeholder?: string;
 }) {
+  const pickerId = useId();
+  const listId = `${pickerId}-list`;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -90,17 +93,20 @@ export function EntityPicker({
 
   return (
     <div className="relative" ref={box}>
-      <label className="block text-sm text-slate-300" htmlFor={`pick-${label}`}>
+      <label className="block text-sm text-slate-300" htmlFor={pickerId}>
         {label}
       </label>
       <input
-        id={`pick-${label}`}
+        id={pickerId}
         role="combobox"
         aria-expanded={open}
-        aria-controls={`list-${label}`}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={open && shown[active] ? `${listId}-${active}` : undefined}
         autoComplete="off"
         value={open ? query : selected ? `${selected.label}` : ""}
         placeholder={placeholder ?? "Search…"}
+        style={!open && selected?.icon ? { paddingLeft: 44 } : undefined}
         onFocus={() => {
           setOpen(true);
           setQuery("");
@@ -124,7 +130,8 @@ export function EntityPicker({
               if (n === 0) return 0;
               return e.key === "ArrowDown" ? (a + 1) % n : (a - 1 + n) % n;
             });
-          } else if (e.key === "Enter") {
+          } else if (e.key === "Enter" && open) {
+            e.preventDefault();
             const o = shown[active];
             // ⚠ Enter must not select what the rules forbid — the same refusal the click path honours.
             if (o && !o.unavailable) {
@@ -133,7 +140,8 @@ export function EntityPicker({
               setOpen(false);
               setQuery("");
             }
-          } else if (e.key === "Escape") {
+          } else if (e.key === "Escape" && open) {
+            e.stopPropagation();
             setOpen(false);
           }
         }}
@@ -141,14 +149,15 @@ export function EntityPicker({
       />
       {/* The chosen thing keeps saying WHAT it is once the box is closed — otherwise "eu-lan" alone is
           ambiguous between a site and a group with the same name. */}
-      {!open && selected && (
+      {!open && selected?.icon && <span className="pointer-events-none absolute left-3 top-[2.05rem]">{selected.icon}</span>}
+      {!open && selected?.tag && (
         <span className="pointer-events-none absolute right-3 top-[2.05rem] rounded border border-white/10 bg-white/[.04] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">
           {selected.tag}
         </span>
       )}
       {open && (
         <ul
-          id={`list-${label}`}
+          id={listId}
           role="listbox"
           aria-label={label}
           className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-white/[.14] bg-[#141414] p-1 shadow-[0_18px_48px_rgba(0,0,0,.72)]"
@@ -167,6 +176,7 @@ export function EntityPicker({
           {shown.map((o, idx) => (
             <li
               key={`${o.kind}:${o.value}`}
+              id={`${listId}-${idx}`}
               role="option"
               aria-selected={o.value === value}
             >
@@ -197,8 +207,8 @@ export function EntityPicker({
                       : "text-slate-200 hover:bg-white/[.06]"
                 }`}
               >
-                <span className="min-w-0"><span className="block truncate font-medium">{o.label}</span>{o.detail && <span className="mt-0.5 block truncate text-xs text-ink-tertiary">{o.detail}</span>}</span>
-                <span className="rounded border border-white/10 bg-white/[.035] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">{o.tag}</span>
+                <span className="flex min-w-0 items-center gap-3">{o.icon}<span className="min-w-0"><span className="block truncate font-medium">{o.label}</span>{o.detail && <span className="mt-0.5 block truncate text-xs text-ink-tertiary">{o.detail}</span>}</span></span>
+                {o.tag && <span className="rounded border border-white/10 bg-white/[.035] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">{o.tag}</span>}
                 {/* ⛔ THE REASON IS SHOWN IN THE ROW, not only on hover. A disabled option whose
                     explanation requires a mouse is no explanation on a touch screen or to a reader. */}
                 {o.unavailable && (

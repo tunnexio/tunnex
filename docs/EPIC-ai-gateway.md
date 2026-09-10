@@ -1,6 +1,9 @@
 # Epic: identity-based AI gateway without shared provider keys
 
-Status: development plan, not implemented or acceptance-tested by this document.
+Status: AI-0–AI-5 implemented and qualified locally on `ai-improvement`; exact-head
+remote CI and merge/release approval remain pending. Current results and explicit
+deployment limits: [qualification ledger](AI-2-5-validation-20260907.md).
+The original planning estimates below are historical; verified evidence takes precedence.
 Planned against main `231f63f493641caacb2ff3d2f409f7ac06825b24` on 2026-09-06.
 Story namespace: AI. Independent of NAT traversal and relay deployment.
 

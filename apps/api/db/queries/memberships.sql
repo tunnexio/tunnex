@@ -30,7 +30,7 @@ ORDER BY created_at;
 --
 -- ⚠ COUNTED ACROSS EVERY ORGANIZATION, because deactivation is a deployment-wide act on a person. A count
 -- scoped to this org would under-report the blast radius on the one screen that exists to state it.
-SELECT m.user_id, m.role, m.created_at AS joined_at,
+SELECT m.user_id, m.role, m.roles, m.created_at AS joined_at,
        u.email, u.name, u.status, (u.email_verified_at IS NOT NULL)::boolean AS email_verified,
        (SELECT count(*) FROM machine_credentials mc
          WHERE mc.user_id = m.user_id AND mc.revoked_at IS NULL)::bigint AS machine_credentials,
@@ -74,6 +74,14 @@ UPDATE memberships
 SET role = $3
 WHERE org_id = $1 AND user_id = $2
 RETURNING *;
+
+-- name: ChangeMemberRoles :one
+UPDATE memberships SET roles = sqlc.arg(roles)::text[]
+WHERE org_id = sqlc.arg(org_id) AND user_id = sqlc.arg(user_id)
+RETURNING *;
+
+-- name: LockMembershipOrganization :one
+SELECT id FROM organizations WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;
 
 -- name: RemoveMember :execrows
 DELETE FROM memberships

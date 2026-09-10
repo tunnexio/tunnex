@@ -17,3 +17,6 @@ spec:
     - name: http
       port: 8080
       targetPort: http
+    {{- if .Values.aiGateway.customProviders.enabled }}
+    - {name: ai-egress, port: 8190, targetPort: ai-egress}
+    {{- end }}

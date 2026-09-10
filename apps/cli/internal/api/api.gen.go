@@ -19,9 +19,308 @@ import (
 )
 
 const (
+	AiBearerAuthScopes  = "aiBearerAuth.Scopes"
 	BearerAuthScopes    = "bearerAuth.Scopes"
 	CookieAuthScopes    = "cookieAuth.Scopes"
 	RuntimeBearerScopes = "runtimeBearer.Scopes"
+)
+
+// Defines values for AIAssignmentStatus.
+const (
+	AIAssignmentStatusApplied  AIAssignmentStatus = "applied"
+	AIAssignmentStatusDisabled AIAssignmentStatus = "disabled"
+	AIAssignmentStatusError    AIAssignmentStatus = "error"
+	AIAssignmentStatusPending  AIAssignmentStatus = "pending"
+)
+
+// Defines values for AICredentialAudience.
+const (
+	TunnexAi AICredentialAudience = "tunnex-ai"
+)
+
+// Defines values for AIEmbeddingRequestEncodingFormat.
+const (
+	Base64 AIEmbeddingRequestEncodingFormat = "base64"
+	Float  AIEmbeddingRequestEncodingFormat = "float"
+)
+
+// Defines values for AIImageRequestN.
+const (
+	AIImageRequestNN1 AIImageRequestN = 1
+)
+
+// Defines values for AIImageRequestQuality.
+const (
+	AIImageRequestQualityAuto     AIImageRequestQuality = "auto"
+	AIImageRequestQualityHd       AIImageRequestQuality = "hd"
+	AIImageRequestQualityHigh     AIImageRequestQuality = "high"
+	AIImageRequestQualityLow      AIImageRequestQuality = "low"
+	AIImageRequestQualityMedium   AIImageRequestQuality = "medium"
+	AIImageRequestQualityStandard AIImageRequestQuality = "standard"
+)
+
+// Defines values for AIImageRequestResponseFormat.
+const (
+	B64Json AIImageRequestResponseFormat = "b64_json"
+	Url     AIImageRequestResponseFormat = "url"
+)
+
+// Defines values for AIImageRequestSize.
+const (
+	AIImageRequestSizeAuto       AIImageRequestSize = "auto"
+	AIImageRequestSizeN1024x1024 AIImageRequestSize = "1024x1024"
+	AIImageRequestSizeN1024x1536 AIImageRequestSize = "1024x1536"
+	AIImageRequestSizeN1024x1792 AIImageRequestSize = "1024x1792"
+	AIImageRequestSizeN1536x1024 AIImageRequestSize = "1536x1024"
+	AIImageRequestSizeN1792x1024 AIImageRequestSize = "1792x1024"
+	AIImageRequestSizeN256x256   AIImageRequestSize = "256x256"
+	AIImageRequestSizeN512x512   AIImageRequestSize = "512x512"
+)
+
+// Defines values for AIInferenceRequestMessagesRole.
+const (
+	AIInferenceRequestMessagesRoleAssistant AIInferenceRequestMessagesRole = "assistant"
+	AIInferenceRequestMessagesRoleSystem    AIInferenceRequestMessagesRole = "system"
+	AIInferenceRequestMessagesRoleUser      AIInferenceRequestMessagesRole = "user"
+)
+
+// Defines values for AIModelMode.
+const (
+	AudioSpeech        AIModelMode = "audio_speech"
+	AudioTranscription AIModelMode = "audio_transcription"
+	Chat               AIModelMode = "chat"
+	Completion         AIModelMode = "completion"
+	Embedding          AIModelMode = "embedding"
+	ImageGeneration    AIModelMode = "image_generation"
+	Rerank             AIModelMode = "rerank"
+	VideoGeneration    AIModelMode = "video_generation"
+)
+
+// Defines values for AIProviderCatalogRequestProvider.
+const (
+	AIProviderCatalogRequestProviderAzureFoundry AIProviderCatalogRequestProvider = "azure_foundry"
+	AIProviderCatalogRequestProviderCustom       AIProviderCatalogRequestProvider = "custom"
+	AIProviderCatalogRequestProviderSagemaker    AIProviderCatalogRequestProvider = "sagemaker"
+)
+
+// Defines values for AIProviderConnectionLastTestStatus.
+const (
+	AIProviderConnectionLastTestStatusFailed   AIProviderConnectionLastTestStatus = "failed"
+	AIProviderConnectionLastTestStatusSuccess  AIProviderConnectionLastTestStatus = "success"
+	AIProviderConnectionLastTestStatusUntested AIProviderConnectionLastTestStatus = "untested"
+)
+
+// Defines values for AIProviderConnectionProvider.
+const (
+	AIProviderConnectionProviderAnthropic    AIProviderConnectionProvider = "anthropic"
+	AIProviderConnectionProviderAzureFoundry AIProviderConnectionProvider = "azure_foundry"
+	AIProviderConnectionProviderCerebras     AIProviderConnectionProvider = "cerebras"
+	AIProviderConnectionProviderCustom       AIProviderConnectionProvider = "custom"
+	AIProviderConnectionProviderDeepseek     AIProviderConnectionProvider = "deepseek"
+	AIProviderConnectionProviderGemini       AIProviderConnectionProvider = "gemini"
+	AIProviderConnectionProviderGroq         AIProviderConnectionProvider = "groq"
+	AIProviderConnectionProviderMistral      AIProviderConnectionProvider = "mistral"
+	AIProviderConnectionProviderOpenai       AIProviderConnectionProvider = "openai"
+	AIProviderConnectionProviderOpenrouter   AIProviderConnectionProvider = "openrouter"
+	AIProviderConnectionProviderSagemaker    AIProviderConnectionProvider = "sagemaker"
+	AIProviderConnectionProviderXai          AIProviderConnectionProvider = "xai"
+)
+
+// Defines values for AIProviderConnectionStatus.
+const (
+	AIProviderConnectionStatusApplied  AIProviderConnectionStatus = "applied"
+	AIProviderConnectionStatusDisabled AIProviderConnectionStatus = "disabled"
+	AIProviderConnectionStatusError    AIProviderConnectionStatus = "error"
+	AIProviderConnectionStatusPending  AIProviderConnectionStatus = "pending"
+)
+
+// Defines values for AIProviderCreateProvider.
+const (
+	AIProviderCreateProviderAnthropic    AIProviderCreateProvider = "anthropic"
+	AIProviderCreateProviderAzureFoundry AIProviderCreateProvider = "azure_foundry"
+	AIProviderCreateProviderCerebras     AIProviderCreateProvider = "cerebras"
+	AIProviderCreateProviderCustom       AIProviderCreateProvider = "custom"
+	AIProviderCreateProviderDeepseek     AIProviderCreateProvider = "deepseek"
+	AIProviderCreateProviderGemini       AIProviderCreateProvider = "gemini"
+	AIProviderCreateProviderGroq         AIProviderCreateProvider = "groq"
+	AIProviderCreateProviderMistral      AIProviderCreateProvider = "mistral"
+	AIProviderCreateProviderOpenai       AIProviderCreateProvider = "openai"
+	AIProviderCreateProviderOpenrouter   AIProviderCreateProvider = "openrouter"
+	AIProviderCreateProviderSagemaker    AIProviderCreateProvider = "sagemaker"
+	AIProviderCreateProviderXai          AIProviderCreateProvider = "xai"
+)
+
+// Defines values for AIProviderDefinitionId.
+const (
+	AIProviderDefinitionIdAnthropic    AIProviderDefinitionId = "anthropic"
+	AIProviderDefinitionIdAzureFoundry AIProviderDefinitionId = "azure_foundry"
+	AIProviderDefinitionIdCerebras     AIProviderDefinitionId = "cerebras"
+	AIProviderDefinitionIdCustom       AIProviderDefinitionId = "custom"
+	AIProviderDefinitionIdDeepseek     AIProviderDefinitionId = "deepseek"
+	AIProviderDefinitionIdGemini       AIProviderDefinitionId = "gemini"
+	AIProviderDefinitionIdGroq         AIProviderDefinitionId = "groq"
+	AIProviderDefinitionIdMistral      AIProviderDefinitionId = "mistral"
+	AIProviderDefinitionIdOpenai       AIProviderDefinitionId = "openai"
+	AIProviderDefinitionIdOpenrouter   AIProviderDefinitionId = "openrouter"
+	AIProviderDefinitionIdSagemaker    AIProviderDefinitionId = "sagemaker"
+	AIProviderDefinitionIdXai          AIProviderDefinitionId = "xai"
+)
+
+// Defines values for AIProviderProbeProvider.
+const (
+	AIProviderProbeProviderAnthropic    AIProviderProbeProvider = "anthropic"
+	AIProviderProbeProviderAzureFoundry AIProviderProbeProvider = "azure_foundry"
+	AIProviderProbeProviderCerebras     AIProviderProbeProvider = "cerebras"
+	AIProviderProbeProviderCustom       AIProviderProbeProvider = "custom"
+	AIProviderProbeProviderDeepseek     AIProviderProbeProvider = "deepseek"
+	AIProviderProbeProviderGemini       AIProviderProbeProvider = "gemini"
+	AIProviderProbeProviderGroq         AIProviderProbeProvider = "groq"
+	AIProviderProbeProviderMistral      AIProviderProbeProvider = "mistral"
+	AIProviderProbeProviderOpenai       AIProviderProbeProvider = "openai"
+	AIProviderProbeProviderOpenrouter   AIProviderProbeProvider = "openrouter"
+	AIProviderProbeProviderSagemaker    AIProviderProbeProvider = "sagemaker"
+	AIProviderProbeProviderXai          AIProviderProbeProvider = "xai"
+)
+
+// Defines values for AIProviderProbeFailureKind.
+const (
+	AIProviderProbeFailureKindConfigurationError AIProviderProbeFailureKind = "configuration_error"
+	AIProviderProbeFailureKindHttpError          AIProviderProbeFailureKind = "http_error"
+	AIProviderProbeFailureKindInvalidResponse    AIProviderProbeFailureKind = "invalid_response"
+	AIProviderProbeFailureKindNetworkError       AIProviderProbeFailureKind = "network_error"
+	AIProviderProbeFailureKindTimeout            AIProviderProbeFailureKind = "timeout"
+	AIProviderProbeFailureKindUnknown            AIProviderProbeFailureKind = "unknown"
+)
+
+// Defines values for AIProviderProbeFailureSource.
+const (
+	AIProviderProbeFailureSourceGateway  AIProviderProbeFailureSource = "gateway"
+	AIProviderProbeFailureSourceProvider AIProviderProbeFailureSource = "provider"
+	AIProviderProbeFailureSourceProxy    AIProviderProbeFailureSource = "proxy"
+)
+
+// Defines values for AIProviderProbeResultStatus.
+const (
+	AIProviderProbeResultStatusError   AIProviderProbeResultStatus = "error"
+	AIProviderProbeResultStatusSuccess AIProviderProbeResultStatus = "success"
+)
+
+// Defines values for AIProviderUpdateProvider.
+const (
+	AIProviderUpdateProviderAnthropic    AIProviderUpdateProvider = "anthropic"
+	AIProviderUpdateProviderAzureFoundry AIProviderUpdateProvider = "azure_foundry"
+	AIProviderUpdateProviderCerebras     AIProviderUpdateProvider = "cerebras"
+	AIProviderUpdateProviderCustom       AIProviderUpdateProvider = "custom"
+	AIProviderUpdateProviderDeepseek     AIProviderUpdateProvider = "deepseek"
+	AIProviderUpdateProviderGemini       AIProviderUpdateProvider = "gemini"
+	AIProviderUpdateProviderGroq         AIProviderUpdateProvider = "groq"
+	AIProviderUpdateProviderMistral      AIProviderUpdateProvider = "mistral"
+	AIProviderUpdateProviderOpenai       AIProviderUpdateProvider = "openai"
+	AIProviderUpdateProviderOpenrouter   AIProviderUpdateProvider = "openrouter"
+	AIProviderUpdateProviderSagemaker    AIProviderUpdateProvider = "sagemaker"
+	AIProviderUpdateProviderXai          AIProviderUpdateProvider = "xai"
+)
+
+// Defines values for AISpeechRequestResponseFormat.
+const (
+	Aac  AISpeechRequestResponseFormat = "aac"
+	Flac AISpeechRequestResponseFormat = "flac"
+	Mp3  AISpeechRequestResponseFormat = "mp3"
+	Opus AISpeechRequestResponseFormat = "opus"
+	Pcm  AISpeechRequestResponseFormat = "pcm"
+	Wav  AISpeechRequestResponseFormat = "wav"
+)
+
+// Defines values for AITranscriptionRequestResponseFormat.
+const (
+	Json AITranscriptionRequestResponseFormat = "json"
+)
+
+// Defines values for AIUsageReportSemantics.
+const (
+	ObservedEstimate AIUsageReportSemantics = "observed_estimate"
+)
+
+// Defines values for AIUserModelGrantStatus.
+const (
+	AIUserModelGrantStatusApplied AIUserModelGrantStatus = "applied"
+	AIUserModelGrantStatusError   AIUserModelGrantStatus = "error"
+	AIUserModelGrantStatusPending AIUserModelGrantStatus = "pending"
+	AIUserModelGrantStatusRevoked AIUserModelGrantStatus = "revoked"
+)
+
+// Defines values for AIVideoJobObject.
+const (
+	Video AIVideoJobObject = "video"
+)
+
+// Defines values for AIVideoJobStatus.
+const (
+	AIVideoJobStatusCompleted  AIVideoJobStatus = "completed"
+	AIVideoJobStatusFailed     AIVideoJobStatus = "failed"
+	AIVideoJobStatusInProgress AIVideoJobStatus = "in_progress"
+	AIVideoJobStatusQueued     AIVideoJobStatus = "queued"
+	AIVideoJobStatusSubmitting AIVideoJobStatus = "submitting"
+	AIVideoJobStatusUncertain  AIVideoJobStatus = "uncertain"
+)
+
+// Defines values for AIVideoRequestSeconds.
+const (
+	N12 AIVideoRequestSeconds = "12"
+	N4  AIVideoRequestSeconds = "4"
+	N8  AIVideoRequestSeconds = "8"
+)
+
+// Defines values for AIVideoRequestSize.
+const (
+	N1280x720 AIVideoRequestSize = "1280x720"
+	N720x1280 AIVideoRequestSize = "720x1280"
+)
+
+// Defines values for AIWorkloadStatus.
+const (
+	AIWorkloadStatusApplied AIWorkloadStatus = "applied"
+	AIWorkloadStatusError   AIWorkloadStatus = "error"
+	AIWorkloadStatusPending AIWorkloadStatus = "pending"
+	AIWorkloadStatusRevoked AIWorkloadStatus = "revoked"
+)
+
+// Defines values for AIWorkloadInstanceState.
+const (
+	AIWorkloadInstanceStateActive  AIWorkloadInstanceState = "active"
+	AIWorkloadInstanceStateOffline AIWorkloadInstanceState = "offline"
+	AIWorkloadInstanceStateRetired AIWorkloadInstanceState = "retired"
+	AIWorkloadInstanceStateRevoked AIWorkloadInstanceState = "revoked"
+)
+
+// Defines values for AIWorkloadModelListDataObject.
+const (
+	Model AIWorkloadModelListDataObject = "model"
+)
+
+// Defines values for AIWorkloadModelListObject.
+const (
+	List AIWorkloadModelListObject = "list"
+)
+
+// Defines values for AIWorkloadTokenScope.
+const (
+	WorkloadScopeAI AIWorkloadTokenScope = "tunnex-ai"
+)
+
+// Defines values for AIWorkloadTokenTokenType.
+const (
+	Bearer AIWorkloadTokenTokenType = "Bearer"
+)
+
+// Defines values for AIWorkloadTokenInputClientAssertionType.
+const (
+	UrnIetfParamsOauthClientAssertionTypeJwtBearer AIWorkloadTokenInputClientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+)
+
+// Defines values for AIWorkloadTokenInputGrantType.
+const (
+	ClientCredentials AIWorkloadTokenInputGrantType = "client_credentials"
 )
 
 // Defines values for AccessEventDecision.
@@ -225,7 +524,7 @@ const (
 
 // Defines values for AgentWorkflowProvenanceAssertionVersion.
 const (
-	N1 AgentWorkflowProvenanceAssertionVersion = 1
+	AgentWorkflowProvenanceAssertionVersionN1 AgentWorkflowProvenanceAssertionVersion = 1
 )
 
 // Defines values for AgentWorkflowProvenanceOutcomeVerificationReason.
@@ -353,9 +652,20 @@ const (
 
 // Defines values for ChangeRoleRequestRole.
 const (
-	ChangeRoleRequestRoleAdmin  ChangeRoleRequestRole = "admin"
-	ChangeRoleRequestRoleMember ChangeRoleRequestRole = "member"
-	ChangeRoleRequestRoleOwner  ChangeRoleRequestRole = "owner"
+	ChangeRoleRequestRoleAdmin   ChangeRoleRequestRole = "admin"
+	ChangeRoleRequestRoleAiAdmin ChangeRoleRequestRole = "ai-admin"
+	ChangeRoleRequestRoleAiView  ChangeRoleRequestRole = "ai-view"
+	ChangeRoleRequestRoleMember  ChangeRoleRequestRole = "member"
+	ChangeRoleRequestRoleOwner   ChangeRoleRequestRole = "owner"
+)
+
+// Defines values for ChangeRolesRequestRoles.
+const (
+	ChangeRolesRequestRolesAdmin   ChangeRolesRequestRoles = "admin"
+	ChangeRolesRequestRolesAiAdmin ChangeRolesRequestRoles = "ai-admin"
+	ChangeRolesRequestRolesAiView  ChangeRolesRequestRoles = "ai-view"
+	ChangeRolesRequestRolesMember  ChangeRolesRequestRoles = "member"
+	ChangeRolesRequestRolesOwner   ChangeRolesRequestRoles = "owner"
 )
 
 // Defines values for CreateDeviceRequestKind.
@@ -649,16 +959,20 @@ const (
 
 // Defines values for InvitationRole.
 const (
-	InvitationRoleAdmin  InvitationRole = "admin"
-	InvitationRoleMember InvitationRole = "member"
-	InvitationRoleOwner  InvitationRole = "owner"
+	InvitationRoleAdmin   InvitationRole = "admin"
+	InvitationRoleAiAdmin InvitationRole = "ai-admin"
+	InvitationRoleAiView  InvitationRole = "ai-view"
+	InvitationRoleMember  InvitationRole = "member"
+	InvitationRoleOwner   InvitationRole = "owner"
 )
 
 // Defines values for InviteRequestRole.
 const (
-	InviteRequestRoleAdmin  InviteRequestRole = "admin"
-	InviteRequestRoleMember InviteRequestRole = "member"
-	InviteRequestRoleOwner  InviteRequestRole = "owner"
+	InviteRequestRoleAdmin   InviteRequestRole = "admin"
+	InviteRequestRoleAiAdmin InviteRequestRole = "ai-admin"
+	InviteRequestRoleAiView  InviteRequestRole = "ai-view"
+	InviteRequestRoleMember  InviteRequestRole = "member"
+	InviteRequestRoleOwner   InviteRequestRole = "owner"
 )
 
 // Defines values for JoinTokenRequestEnrolsKind.
@@ -840,9 +1154,20 @@ const (
 
 // Defines values for MemberRole.
 const (
-	MemberRoleAdmin  MemberRole = "admin"
-	MemberRoleMember MemberRole = "member"
-	MemberRoleOwner  MemberRole = "owner"
+	MemberRoleAdmin   MemberRole = "admin"
+	MemberRoleAiAdmin MemberRole = "ai-admin"
+	MemberRoleAiView  MemberRole = "ai-view"
+	MemberRoleMember  MemberRole = "member"
+	MemberRoleOwner   MemberRole = "owner"
+)
+
+// Defines values for MemberRoles.
+const (
+	MemberRolesAdmin   MemberRoles = "admin"
+	MemberRolesAiAdmin MemberRoles = "ai-admin"
+	MemberRolesAiView  MemberRoles = "ai-view"
+	MemberRolesMember  MemberRoles = "member"
+	MemberRolesOwner   MemberRoles = "owner"
 )
 
 // Defines values for MemberStatus.
@@ -1084,11 +1409,11 @@ const (
 
 // Defines values for UpgradeStatusRollbackState.
 const (
-	Available         UpgradeStatusRollbackState = "available"
-	Failed            UpgradeStatusRollbackState = "failed"
-	InProgress        UpgradeStatusRollbackState = "in_progress"
-	NotNeeded         UpgradeStatusRollbackState = "not_needed"
-	RestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
+	UpgradeStatusRollbackStateAvailable         UpgradeStatusRollbackState = "available"
+	UpgradeStatusRollbackStateFailed            UpgradeStatusRollbackState = "failed"
+	UpgradeStatusRollbackStateInProgress        UpgradeStatusRollbackState = "in_progress"
+	UpgradeStatusRollbackStateNotNeeded         UpgradeStatusRollbackState = "not_needed"
+	UpgradeStatusRollbackStateRestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
 )
 
 // Defines values for UpgradeStatusState.
@@ -1184,6 +1509,691 @@ const (
 	Tcp TestAgentAccessParamsProtocol = "tcp"
 	Udp TestAgentAccessParamsProtocol = "udp"
 )
+
+// AIAssignment defines model for AIAssignment.
+type AIAssignment struct {
+	AppliedRevision     int64              `json:"applied_revision"`
+	AppliedTeamRevision int64              `json:"applied_team_revision"`
+	DeviceId            openapi_types.UUID `json:"device_id"`
+	Enabled             bool               `json:"enabled"`
+	ModelsOverride      AIModelNames       `json:"models_override"`
+	Revision            int64              `json:"revision"`
+	Status              AIAssignmentStatus `json:"status"`
+	TeamId              openapi_types.UUID `json:"team_id"`
+}
+
+// AIAssignmentStatus defines model for AIAssignment.Status.
+type AIAssignmentStatus string
+
+// AIAssignmentWrite defines model for AIAssignmentWrite.
+type AIAssignmentWrite struct {
+	Enabled          bool               `json:"enabled"`
+	ExpectedRevision int64              `json:"expected_revision"`
+	ModelsOverride   AIModelNames       `json:"models_override"`
+	TeamId           openapi_types.UUID `json:"team_id"`
+}
+
+// AICompletionRequest defines model for AICompletionRequest.
+type AICompletionRequest struct {
+	MaxTokens   *int     `json:"max_tokens,omitempty"`
+	Model       string   `json:"model"`
+	Prompt      string   `json:"prompt"`
+	Stream      *bool    `json:"stream,omitempty"`
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
+// AICredential defines model for AICredential.
+type AICredential struct {
+	Audience  AICredentialAudience `json:"audience"`
+	Endpoint  string               `json:"endpoint"`
+	ExpiresAt time.Time            `json:"expires_at"`
+
+	// Token One-time secret; never returned by read APIs.
+	Token string `json:"token"`
+}
+
+// AICredentialAudience defines model for AICredential.Audience.
+type AICredentialAudience string
+
+// AICustomEndpoint defines model for AICustomEndpoint.
+type AICustomEndpoint struct {
+	Name string `json:"name"`
+	Url  string `json:"url"`
+}
+
+// AIEmbeddingRequest defines model for AIEmbeddingRequest.
+type AIEmbeddingRequest struct {
+	Dimensions     *int                              `json:"dimensions,omitempty"`
+	EncodingFormat *AIEmbeddingRequestEncodingFormat `json:"encoding_format,omitempty"`
+	Input          AIEmbeddingRequest_Input          `json:"input"`
+	Model          string                            `json:"model"`
+}
+
+// AIEmbeddingRequestEncodingFormat defines model for AIEmbeddingRequest.EncodingFormat.
+type AIEmbeddingRequestEncodingFormat string
+
+// AIEmbeddingRequestInput0 defines model for .
+type AIEmbeddingRequestInput0 = string
+
+// AIEmbeddingRequestInput1 defines model for .
+type AIEmbeddingRequestInput1 = []string
+
+// AIEmbeddingRequest_Input defines model for AIEmbeddingRequest.Input.
+type AIEmbeddingRequest_Input struct {
+	union json.RawMessage
+}
+
+// AIGatewayOptIn defines model for AIGatewayOptIn.
+type AIGatewayOptIn struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AIGatewaySettings defines model for AIGatewaySettings.
+type AIGatewaySettings struct {
+	// Available Server has the qualified private engine configuration.
+	Available bool  `json:"available"`
+	Enabled   bool  `json:"enabled"`
+	Revision  int64 `json:"revision"`
+}
+
+// AIImageRequest defines model for AIImageRequest.
+type AIImageRequest struct {
+	Model          string                        `json:"model"`
+	N              *AIImageRequestN              `json:"n,omitempty"`
+	Prompt         string                        `json:"prompt"`
+	Quality        *AIImageRequestQuality        `json:"quality,omitempty"`
+	ResponseFormat *AIImageRequestResponseFormat `json:"response_format,omitempty"`
+	Size           *AIImageRequestSize           `json:"size,omitempty"`
+}
+
+// AIImageRequestN defines model for AIImageRequest.N.
+type AIImageRequestN int
+
+// AIImageRequestQuality defines model for AIImageRequest.Quality.
+type AIImageRequestQuality string
+
+// AIImageRequestResponseFormat defines model for AIImageRequest.ResponseFormat.
+type AIImageRequestResponseFormat string
+
+// AIImageRequestSize defines model for AIImageRequest.Size.
+type AIImageRequestSize string
+
+// AIInferenceRequest defines model for AIInferenceRequest.
+type AIInferenceRequest struct {
+	MaxTokens *int `json:"max_tokens,omitempty"`
+	Messages  []struct {
+		// Content Text only; multimodal blocks and tool calls are not qualified.
+		Content string `json:"content"`
+
+		// Role Anthropic messages accept user or assistant; its system text is top-level.
+		Role AIInferenceRequestMessagesRole `json:"role"`
+	} `json:"messages"`
+
+	// Model Exact provider/model identifier; aliases and caller fallback are not supported.
+	Model       string   `json:"model"`
+	Stream      *bool    `json:"stream,omitempty"`
+	System      *string  `json:"system,omitempty"`
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
+// AIInferenceRequestMessagesRole Anthropic messages accept user or assistant; its system text is top-level.
+type AIInferenceRequestMessagesRole string
+
+// AIModelMode defines model for AIModelMode.
+type AIModelMode string
+
+// AIModelModes Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
+type AIModelModes map[string]AIModelMode
+
+// AIModelNames defines model for AIModelNames.
+type AIModelNames = []string
+
+// AIProviderCatalogRequest defines model for AIProviderCatalogRequest.
+type AIProviderCatalogRequest struct {
+	ApiKey *string `json:"api_key,omitempty"`
+
+	// EndpointUrl Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
+	EndpointUrl string                           `json:"endpoint_url"`
+	Limit       *int                             `json:"limit,omitempty"`
+	Mode        *AIModelMode                     `json:"mode,omitempty"`
+	Offset      *int                             `json:"offset,omitempty"`
+	Provider    AIProviderCatalogRequestProvider `json:"provider"`
+	Query       *string                          `json:"query,omitempty"`
+}
+
+// AIProviderCatalogRequestProvider defines model for AIProviderCatalogRequest.Provider.
+type AIProviderCatalogRequestProvider string
+
+// AIProviderConnection defines model for AIProviderConnection.
+type AIProviderConnection struct {
+	AppliedRevision int64 `json:"applied_revision"`
+	Enabled         bool  `json:"enabled"`
+
+	// EndpointUrl Immutable installation-approved custom
+	EndpointUrl *string            `json:"endpoint_url,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// KeyId Non-secret owned policy reference.
+	KeyId          string                             `json:"key_id"`
+	LastTestAt     *time.Time                         `json:"last_test_at,omitempty"`
+	LastTestStatus AIProviderConnectionLastTestStatus `json:"last_test_status"`
+
+	// ModelModes Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
+	ModelModes *AIModelModes                `json:"model_modes,omitempty"`
+	Models     AIModelNames                 `json:"models"`
+	Name       string                       `json:"name"`
+	Provider   AIProviderConnectionProvider `json:"provider"`
+	Revision   int64                        `json:"revision"`
+	Status     AIProviderConnectionStatus   `json:"status"`
+}
+
+// AIProviderConnectionLastTestStatus defines model for AIProviderConnection.LastTestStatus.
+type AIProviderConnectionLastTestStatus string
+
+// AIProviderConnectionProvider defines model for AIProviderConnection.Provider.
+type AIProviderConnectionProvider string
+
+// AIProviderConnectionStatus defines model for AIProviderConnection.Status.
+type AIProviderConnectionStatus string
+
+// AIProviderCreate defines model for AIProviderCreate.
+type AIProviderCreate struct {
+	// ApiKey Transient write-only secret stored only by the encrypted private engine.
+	ApiKey  *string `json:"api_key,omitempty"`
+	Enabled bool    `json:"enabled"`
+
+	// EndpointUrl Immutable installation-approved custom
+	EndpointUrl *string `json:"endpoint_url,omitempty"`
+
+	// ModelModes Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
+	ModelModes *AIModelModes `json:"model_modes,omitempty"`
+
+	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+	Models   AIProviderInputModels    `json:"models"`
+	Name     string                   `json:"name"`
+	Provider AIProviderCreateProvider `json:"provider"`
+}
+
+// AIProviderCreateProvider defines model for AIProviderCreate.Provider.
+type AIProviderCreateProvider string
+
+// AIProviderDefinition defines model for AIProviderDefinition.
+type AIProviderDefinition struct {
+	CredentialLabel  string                 `json:"credential_label"`
+	Id               AIProviderDefinitionId `json:"id"`
+	ModelPlaceholder string                 `json:"model_placeholder"`
+	Name             string                 `json:"name"`
+}
+
+// AIProviderDefinitionId defines model for AIProviderDefinition.Id.
+type AIProviderDefinitionId string
+
+// AIProviderInputModels Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+type AIProviderInputModels = []string
+
+// AIProviderList defines model for AIProviderList.
+type AIProviderList struct {
+	CustomAvailable *bool               `json:"custom_available,omitempty"`
+	CustomEndpoints *[]AICustomEndpoint `json:"custom_endpoints,omitempty"`
+
+	// Definitions Supported provider forms; absence indicates an older server without provider discovery.
+	Definitions         *[]AIProviderDefinition `json:"definitions,omitempty"`
+	FoundryAvailable    *bool                   `json:"foundry_available,omitempty"`
+	FoundryEndpoints    *[]AICustomEndpoint     `json:"foundry_endpoints,omitempty"`
+	Items               []AIProviderConnection  `json:"items"`
+	LegacyKeyIds        []string                `json:"legacy_key_ids"`
+	ManagementAvailable bool                    `json:"management_available"`
+
+	// PublicEndpointsAvailable Public HTTPS endpoints can be entered directly with automatic egress validation.
+	PublicEndpointsAvailable *bool               `json:"public_endpoints_available,omitempty"`
+	SagemakerAvailable       *bool               `json:"sagemaker_available,omitempty"`
+	SagemakerEndpoints       *[]AICustomEndpoint `json:"sagemaker_endpoints,omitempty"`
+
+	// SupportedModes Qualified gateway routes; absent on older servers means chat only.
+	SupportedModes *[]AIModelMode `json:"supported_modes,omitempty"`
+
+	// TestAvailable Private inference test adapter is configured.
+	TestAvailable *bool `json:"test_available,omitempty"`
+}
+
+// AIProviderModel defines model for AIProviderModel.
+type AIProviderModel struct {
+	Id   string       `json:"id"`
+	Mode *AIModelMode `json:"mode,omitempty"`
+	Name string       `json:"name"`
+}
+
+// AIProviderModelList defines model for AIProviderModelList.
+type AIProviderModelList struct {
+	Items  []AIProviderModel `json:"items"`
+	Limit  int               `json:"limit"`
+	Offset int               `json:"offset"`
+	Total  int               `json:"total"`
+}
+
+// AIProviderProbe defines model for AIProviderProbe.
+type AIProviderProbe struct {
+	ApiKey *string `json:"api_key,omitempty"`
+
+	// ConnectionId Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision.
+	ConnectionId *openapi_types.UUID `json:"connection_id,omitempty"`
+
+	// EndpointUrl Installation-approved custom
+	EndpointUrl *string `json:"endpoint_url,omitempty"`
+
+	// ExpectedRevision Required only for a saved-credential test.
+	ExpectedRevision *int64                  `json:"expected_revision,omitempty"`
+	Mode             *AIModelMode            `json:"mode,omitempty"`
+	Model            string                  `json:"model"`
+	Provider         AIProviderProbeProvider `json:"provider"`
+}
+
+// AIProviderProbeProvider defines model for AIProviderProbe.Provider.
+type AIProviderProbeProvider string
+
+// AIProviderProbeFailure Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned.
+type AIProviderProbeFailure struct {
+	HttpStatus *int                         `json:"http_status,omitempty"`
+	Kind       AIProviderProbeFailureKind   `json:"kind"`
+	Source     AIProviderProbeFailureSource `json:"source"`
+}
+
+// AIProviderProbeFailureKind defines model for AIProviderProbeFailure.Kind.
+type AIProviderProbeFailureKind string
+
+// AIProviderProbeFailureSource defines model for AIProviderProbeFailure.Source.
+type AIProviderProbeFailureSource string
+
+// AIProviderProbeResult defines model for AIProviderProbeResult.
+type AIProviderProbeResult struct {
+	DurationMs int64 `json:"duration_ms"`
+
+	// Failure Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned.
+	Failure *AIProviderProbeFailure     `json:"failure,omitempty"`
+	Status  AIProviderProbeResultStatus `json:"status"`
+}
+
+// AIProviderProbeResultStatus defines model for AIProviderProbeResult.Status.
+type AIProviderProbeResultStatus string
+
+// AIProviderRevision defines model for AIProviderRevision.
+type AIProviderRevision struct {
+	ExpectedRevision int64 `json:"expected_revision"`
+}
+
+// AIProviderUpdate defines model for AIProviderUpdate.
+type AIProviderUpdate struct {
+	// ApiKey Omit to preserve the secret; supply a new value to rotate.
+	ApiKey  *string `json:"api_key,omitempty"`
+	Enabled bool    `json:"enabled"`
+
+	// EndpointUrl Immutable installation-approved custom
+	EndpointUrl      *string `json:"endpoint_url,omitempty"`
+	ExpectedRevision int64   `json:"expected_revision"`
+
+	// ModelModes Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
+	ModelModes *AIModelModes `json:"model_modes,omitempty"`
+
+	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+	Models   AIProviderInputModels    `json:"models"`
+	Name     string                   `json:"name"`
+	Provider AIProviderUpdateProvider `json:"provider"`
+}
+
+// AIProviderUpdateProvider defines model for AIProviderUpdate.Provider.
+type AIProviderUpdateProvider string
+
+// AIRerankRequest defines model for AIRerankRequest.
+type AIRerankRequest struct {
+	Documents       []string `json:"documents"`
+	Model           string   `json:"model"`
+	Query           string   `json:"query"`
+	ReturnDocuments *bool    `json:"return_documents,omitempty"`
+	TopN            *int     `json:"top_n,omitempty"`
+}
+
+// AISpeechRequest defines model for AISpeechRequest.
+type AISpeechRequest struct {
+	Input          string                         `json:"input"`
+	Model          string                         `json:"model"`
+	ResponseFormat *AISpeechRequestResponseFormat `json:"response_format,omitempty"`
+	Speed          *float32                       `json:"speed,omitempty"`
+	Voice          string                         `json:"voice"`
+}
+
+// AISpeechRequestResponseFormat defines model for AISpeechRequest.ResponseFormat.
+type AISpeechRequestResponseFormat string
+
+// AITeamPolicy defines model for AITeamPolicy.
+type AITeamPolicy struct {
+	DailyCostLimit *float64           `json:"daily_cost_limit"`
+	KeyIds         []string           `json:"key_ids"`
+	Models         AIModelNames       `json:"models"`
+	Revision       int64              `json:"revision"`
+	TeamId         openapi_types.UUID `json:"team_id"`
+}
+
+// AITeamPolicyWrite defines model for AITeamPolicyWrite.
+type AITeamPolicyWrite struct {
+	// DailyCostLimit Optional daily USD soft threshold based on native observed usage since midnight UTC. Concurrent work can exceed it.
+	DailyCostLimit   *float64     `json:"daily_cost_limit"`
+	ExpectedRevision int64        `json:"expected_revision"`
+	KeyIds           []string     `json:"key_ids"`
+	Models           AIModelNames `json:"models"`
+}
+
+// AITranscriptionRequest defines model for AITranscriptionRequest.
+type AITranscriptionRequest struct {
+	// File One audio file at most 8 MiB.
+	File           openapi_types.File                    `json:"file"`
+	Language       *string                               `json:"language,omitempty"`
+	Model          string                                `json:"model"`
+	Prompt         *string                               `json:"prompt,omitempty"`
+	ResponseFormat *AITranscriptionRequestResponseFormat `json:"response_format,omitempty"`
+	Temperature    *float32                              `json:"temperature,omitempty"`
+}
+
+// AITranscriptionRequestResponseFormat defines model for AITranscriptionRequest.ResponseFormat.
+type AITranscriptionRequestResponseFormat string
+
+// AIUsageAttribution defines model for AIUsageAttribution.
+type AIUsageAttribution struct {
+	Cost             float64            `json:"cost"`
+	Id               openapi_types.UUID `json:"id"`
+	Name             string             `json:"name"`
+	Requests         int64              `json:"requests"`
+	Tokens           int64              `json:"tokens"`
+	UncostedRequests int64              `json:"uncosted_requests"`
+}
+
+// AIUsageDashboard defines model for AIUsageDashboard.
+type AIUsageDashboard struct {
+	Agents             []AIUsageAttribution  `json:"agents"`
+	CancelledRequests  int64                 `json:"cancelled_requests"`
+	Daily              []AIUsageDay          `json:"daily"`
+	FailedRequests     int64                 `json:"failed_requests"`
+	Models             []AIUsageModel        `json:"models"`
+	SuccessfulRequests int64                 `json:"successful_requests"`
+	Teams              []AIUsageAttribution  `json:"teams"`
+	UserGroups         *[]AIUsageAttribution `json:"user_groups,omitempty"`
+	Workloads          *[]AIUsageAttribution `json:"workloads,omitempty"`
+}
+
+// AIUsageDay defines model for AIUsageDay.
+type AIUsageDay struct {
+	Cost             float64 `json:"cost"`
+	Date             string  `json:"date"`
+	Requests         int64   `json:"requests"`
+	Tokens           int64   `json:"tokens"`
+	UncostedRequests int64   `json:"uncosted_requests"`
+}
+
+// AIUsageModel defines model for AIUsageModel.
+type AIUsageModel struct {
+	Cost float64 `json:"cost"`
+	Name string  `json:"name"`
+}
+
+// AIUsageReport defines model for AIUsageReport.
+type AIUsageReport struct {
+	CompletionTokens int64             `json:"completion_tokens"`
+	Dashboard        *AIUsageDashboard `json:"dashboard,omitempty"`
+	From             time.Time         `json:"from"`
+	PromptTokens     int64             `json:"prompt_tokens"`
+
+	// Semantics Native reported usage estimates; not a provider invoice or hard spending cap.
+	Semantics        AIUsageReportSemantics `json:"semantics"`
+	To               time.Time              `json:"to"`
+	TotalCost        float64                `json:"total_cost"`
+	TotalRequests    int64                  `json:"total_requests"`
+	TotalTokens      int64                  `json:"total_tokens"`
+	UncostedRequests int64                  `json:"uncosted_requests"`
+}
+
+// AIUsageReportSemantics Native reported usage estimates; not a provider invoice or hard spending cap.
+type AIUsageReportSemantics string
+
+// AIUserGroup defines model for AIUserGroup.
+type AIUserGroup struct {
+	Id      openapi_types.UUID `json:"id"`
+	Members int                `json:"members"`
+	Name    string             `json:"name"`
+}
+
+// AIUserModel defines model for AIUserModel.
+type AIUserModel struct {
+	Mode  AIModelMode `json:"mode"`
+	Model string      `json:"model"`
+}
+
+// AIUserModelGrant defines model for AIUserModelGrant.
+type AIUserModelGrant struct {
+	AppliedRevision int64                  `json:"applied_revision"`
+	ConnectionId    openapi_types.UUID     `json:"connection_id"`
+	Enabled         bool                   `json:"enabled"`
+	GroupId         *openapi_types.UUID    `json:"group_id,omitempty"`
+	GroupName       string                 `json:"group_name"`
+	Id              openapi_types.UUID     `json:"id"`
+	Mode            AIModelMode            `json:"mode"`
+	Model           string                 `json:"model"`
+	Revision        int64                  `json:"revision"`
+	Status          AIUserModelGrantStatus `json:"status"`
+}
+
+// AIUserModelGrantStatus defines model for AIUserModelGrant.Status.
+type AIUserModelGrantStatus string
+
+// AIUserModelGrantInput defines model for AIUserModelGrantInput.
+type AIUserModelGrantInput struct {
+	ConnectionId     openapi_types.UUID `json:"connection_id"`
+	Enabled          bool               `json:"enabled"`
+	ExpectedRevision int64              `json:"expected_revision"`
+	GroupId          openapi_types.UUID `json:"group_id"`
+	Model            string             `json:"model"`
+}
+
+// AIVideoJob defines model for AIVideoJob.
+type AIVideoJob struct {
+	CreatedAt int64 `json:"created_at"`
+	ExpiresAt int64 `json:"expires_at"`
+
+	// Id Opaque tenant and agent owned handle.
+	Id     openapi_types.UUID `json:"id"`
+	Model  string             `json:"model"`
+	Object AIVideoJobObject   `json:"object"`
+	Status AIVideoJobStatus   `json:"status"`
+}
+
+// AIVideoJobObject defines model for AIVideoJob.Object.
+type AIVideoJobObject string
+
+// AIVideoJobStatus defines model for AIVideoJob.Status.
+type AIVideoJobStatus string
+
+// AIVideoRequest defines model for AIVideoRequest.
+type AIVideoRequest struct {
+	Model   string                 `json:"model"`
+	Prompt  string                 `json:"prompt"`
+	Seconds *AIVideoRequestSeconds `json:"seconds,omitempty"`
+	Size    *AIVideoRequestSize    `json:"size,omitempty"`
+}
+
+// AIVideoRequestSeconds defines model for AIVideoRequest.Seconds.
+type AIVideoRequestSeconds string
+
+// AIVideoRequestSize defines model for AIVideoRequest.Size.
+type AIVideoRequestSize string
+
+// AIWorkload defines model for AIWorkload.
+type AIWorkload struct {
+	AppliedRevision   int64              `json:"applied_revision"`
+	CreatedAt         time.Time          `json:"created_at"`
+	DailyUsdThreshold *float64           `json:"daily_usd_threshold"`
+	Enabled           bool               `json:"enabled"`
+	Id                openapi_types.UUID `json:"id"`
+	Models            []AIWorkloadModel  `json:"models"`
+	Name              string             `json:"name"`
+	Revision          int64              `json:"revision"`
+	Status            AIWorkloadStatus   `json:"status"`
+}
+
+// AIWorkloadStatus defines model for AIWorkload.Status.
+type AIWorkloadStatus string
+
+// AIWorkloadEnrollInput defines model for AIWorkloadEnrollInput.
+type AIWorkloadEnrollInput struct {
+	EnrollmentKey string `json:"enrollment_key"`
+
+	// Proof EdDSA JWT with iss/sub=enrollment, audience=enrollment URL, request_id and enrollment_hash (SHA256 key, hex).
+	Proof string `json:"proof"`
+
+	// PublicKey Raw Ed25519 public key encoded using unpadded base64url.
+	PublicKey string             `json:"public_key"`
+	RequestId openapi_types.UUID `json:"request_id"`
+}
+
+// AIWorkloadEnrollmentKey defines model for AIWorkloadEnrollmentKey.
+type AIWorkloadEnrollmentKey struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Ephemeral bool               `json:"ephemeral"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Id        openapi_types.UUID `json:"id"`
+	MaxUses   int64              `json:"max_uses"`
+	Name      string             `json:"name"`
+	Reusable  bool               `json:"reusable"`
+	RevokedAt *time.Time         `json:"revoked_at"`
+	Uses      int64              `json:"uses"`
+}
+
+// AIWorkloadInput defines model for AIWorkloadInput.
+type AIWorkloadInput struct {
+	DailyUsdThreshold *float64          `json:"daily_usd_threshold"`
+	Enabled           bool              `json:"enabled"`
+	ExpectedRevision  int64             `json:"expected_revision"`
+	Models            []AIWorkloadModel `json:"models"`
+	Name              string            `json:"name"`
+}
+
+// AIWorkloadInstance defines model for AIWorkloadInstance.
+type AIWorkloadInstance struct {
+	CreatedAt       time.Time               `json:"created_at"`
+	EnrollmentKeyId openapi_types.UUID      `json:"enrollment_key_id"`
+	Ephemeral       bool                    `json:"ephemeral"`
+	Id              openapi_types.UUID      `json:"id"`
+	KeyGeneration   int64                   `json:"key_generation"`
+	LastContactAt   time.Time               `json:"last_contact_at"`
+	State           AIWorkloadInstanceState `json:"state"`
+}
+
+// AIWorkloadInstanceState defines model for AIWorkloadInstance.State.
+type AIWorkloadInstanceState string
+
+// AIWorkloadInstancePage defines model for AIWorkloadInstancePage.
+type AIWorkloadInstancePage struct {
+	Items      []AIWorkloadInstance `json:"items"`
+	NextCursor *openapi_types.UUID  `json:"next_cursor"`
+}
+
+// AIWorkloadKeyInput defines model for AIWorkloadKeyInput.
+type AIWorkloadKeyInput struct {
+	Ephemeral bool      `json:"ephemeral"`
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// MaxUses Total enrollments, not concurrent replicas. Zero means unlimited for a reusable key; single-use keys require one.
+	MaxUses  int64  `json:"max_uses"`
+	Name     string `json:"name"`
+	Reusable bool   `json:"reusable"`
+}
+
+// AIWorkloadKeyPage defines model for AIWorkloadKeyPage.
+type AIWorkloadKeyPage struct {
+	Items      []AIWorkloadEnrollmentKey `json:"items"`
+	NextCursor *openapi_types.UUID       `json:"next_cursor"`
+}
+
+// AIWorkloadKeyRevoke defines model for AIWorkloadKeyRevoke.
+type AIWorkloadKeyRevoke struct {
+	RevokeInstances bool `json:"revoke_instances"`
+}
+
+// AIWorkloadKeySecret defines model for AIWorkloadKeySecret.
+type AIWorkloadKeySecret struct {
+	Key AIWorkloadEnrollmentKey `json:"key"`
+
+	// Secret Shown once. Deliver in a protected file; never put in an image or command argument.
+	Secret string `json:"secret"`
+}
+
+// AIWorkloadModel defines model for AIWorkloadModel.
+type AIWorkloadModel struct {
+	ConnectionId openapi_types.UUID `json:"connection_id"`
+	Mode         AIModelMode        `json:"mode"`
+	Model        string             `json:"model"`
+}
+
+// AIWorkloadModelList defines model for AIWorkloadModelList.
+type AIWorkloadModelList struct {
+	Data []struct {
+		Id      string                        `json:"id"`
+		Mode    AIModelMode                   `json:"mode"`
+		Object  AIWorkloadModelListDataObject `json:"object"`
+		OwnedBy string                        `json:"owned_by"`
+	} `json:"data"`
+	Object AIWorkloadModelListObject `json:"object"`
+}
+
+// AIWorkloadModelListDataObject defines model for AIWorkloadModelList.Data.Object.
+type AIWorkloadModelListDataObject string
+
+// AIWorkloadModelListObject defines model for AIWorkloadModelList.Object.
+type AIWorkloadModelListObject string
+
+// AIWorkloadReceipt defines model for AIWorkloadReceipt.
+type AIWorkloadReceipt struct {
+	GatewayBase    string             `json:"gateway_base"`
+	InstanceId     openapi_types.UUID `json:"instance_id"`
+	KeyGeneration  int64              `json:"key_generation"`
+	OrganizationId openapi_types.UUID `json:"organization_id"`
+	TokenEndpoint  string             `json:"token_endpoint"`
+	WorkloadId     openapi_types.UUID `json:"workload_id"`
+}
+
+// AIWorkloadRotationInput defines model for AIWorkloadRotationInput.
+type AIWorkloadRotationInput struct {
+	InstanceId openapi_types.UUID `json:"instance_id"`
+	NewProof   string             `json:"new_proof"`
+	OldProof   string             `json:"old_proof"`
+	PublicKey  string             `json:"public_key"`
+	RequestId  openapi_types.UUID `json:"request_id"`
+}
+
+// AIWorkloadToken defines model for AIWorkloadToken.
+type AIWorkloadToken struct {
+	AccessToken string                   `json:"access_token"`
+	ExpiresIn   int                      `json:"expires_in"`
+	Scope       AIWorkloadTokenScope     `json:"scope"`
+	TokenType   AIWorkloadTokenTokenType `json:"token_type"`
+}
+
+// AIWorkloadTokenScope defines model for AIWorkloadToken.Scope.
+type AIWorkloadTokenScope string
+
+// AIWorkloadTokenTokenType defines model for AIWorkloadToken.TokenType.
+type AIWorkloadTokenTokenType string
+
+// AIWorkloadTokenInput defines model for AIWorkloadTokenInput.
+type AIWorkloadTokenInput struct {
+	ClientAssertion     string                                  `json:"client_assertion"`
+	ClientAssertionType AIWorkloadTokenInputClientAssertionType `json:"client_assertion_type"`
+	ClientId            openapi_types.UUID                      `json:"client_id"`
+	GrantType           AIWorkloadTokenInputGrantType           `json:"grant_type"`
+}
+
+// AIWorkloadTokenInputClientAssertionType defines model for AIWorkloadTokenInput.ClientAssertionType.
+type AIWorkloadTokenInputClientAssertionType string
+
+// AIWorkloadTokenInputGrantType defines model for AIWorkloadTokenInput.GrantType.
+type AIWorkloadTokenInputGrantType string
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
 type AcceptInviteRequest struct {
@@ -2237,6 +3247,14 @@ type ChangeRoleRequest struct {
 
 // ChangeRoleRequestRole defines model for ChangeRoleRequest.Role.
 type ChangeRoleRequestRole string
+
+// ChangeRolesRequest defines model for ChangeRolesRequest.
+type ChangeRolesRequest struct {
+	Roles []ChangeRolesRequestRoles `json:"roles"`
+}
+
+// ChangeRolesRequestRoles defines model for ChangeRolesRequest.Roles.
+type ChangeRolesRequestRoles string
 
 // CliAuthorizeRequest defines model for CliAuthorizeRequest.
 type CliAuthorizeRequest struct {
@@ -3727,12 +4745,16 @@ type Member struct {
 	ManagedAgentDelegations *int               `json:"managed_agent_delegations,omitempty"`
 	Name                    string             `json:"name"`
 	Role                    MemberRole         `json:"role"`
+	Roles                   *[]MemberRoles     `json:"roles,omitempty"`
 	Status                  MemberStatus       `json:"status"`
 	UserId                  openapi_types.UUID `json:"user_id"`
 }
 
 // MemberRole defines model for Member.Role.
 type MemberRole string
+
+// MemberRoles defines model for Member.Roles.
+type MemberRoles string
 
 // MemberStatus defines model for Member.Status.
 type MemberStatus string
@@ -4763,6 +5785,11 @@ type ZeroTrustModeMode string
 // and CLI can surface directly; `code` is stable for programmatic handling.
 type RuntimeUnauthorized = Error
 
+// AiVideoGenerationParams defines parameters for AiVideoGeneration.
+type AiVideoGenerationParams struct {
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // GetRuntimeMCPOAuthLeaseParams defines parameters for GetRuntimeMCPOAuthLease.
 type GetRuntimeMCPOAuthLeaseParams struct {
 	Endpoint string `form:"endpoint" json:"endpoint"`
@@ -4916,6 +5943,46 @@ type TestAgentAccessParams struct {
 // TestAgentAccessParamsProtocol defines parameters for TestAgentAccess.
 type TestAgentAccessParamsProtocol string
 
+// AiUserVideoGenerationParams defines parameters for AiUserVideoGeneration.
+type AiUserVideoGenerationParams struct {
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// ListAIProviderModelsParams defines parameters for ListAIProviderModels.
+type ListAIProviderModelsParams struct {
+	Mode *AIModelMode `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// ConnectionId Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint.
+	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
+	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
+	Query        *string             `form:"query,omitempty" json:"query,omitempty"`
+	Limit        *int                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset       *int                `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetAIUsageParams defines parameters for GetAIUsage.
+type GetAIUsageParams struct {
+	TeamId   *openapi_types.UUID `form:"team_id,omitempty" json:"team_id,omitempty"`
+	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
+	From     *time.Time          `form:"from,omitempty" json:"from,omitempty"`
+	To       *time.Time          `form:"to,omitempty" json:"to,omitempty"`
+
+	// Dashboard Include bounded native daily and historical attribution aggregates.
+	Dashboard *bool `form:"dashboard,omitempty" json:"dashboard,omitempty"`
+}
+
+// ListAIWorkloadKeysParams defines parameters for ListAIWorkloadKeys.
+type ListAIWorkloadKeysParams struct {
+	After *openapi_types.UUID `form:"after,omitempty" json:"after,omitempty"`
+	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAIWorkloadInstancesParams defines parameters for ListAIWorkloadInstances.
+type ListAIWorkloadInstancesParams struct {
+	After *openapi_types.UUID `form:"after,omitempty" json:"after,omitempty"`
+	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListAlertOccurrencesParams defines parameters for ListAlertOccurrences.
 type ListAlertOccurrencesParams struct {
 	State *AlertOccurrenceState `form:"state,omitempty" json:"state,omitempty"`
@@ -4991,6 +6058,33 @@ type ListRoutedRangesParams struct {
 	// DeviceId WF-A: when present, the response ALSO carries this device's dial (endpoint + gateway pubkey) derived from the org's ACTIVE HUB, so a running device re-homes on promotion via the SAME poll. The device MUST belong to the calling org AND be owned by the authenticated user — a device fetches only its OWN dial (cross-org/cross-device is refused). Omit for the pre-WF-A ranges-only behavior.
 	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
 }
+
+// AiAnthropicMessageJSONRequestBody defines body for AiAnthropicMessage for application/json ContentType.
+type AiAnthropicMessageJSONRequestBody = AIInferenceRequest
+
+// AiSpeechJSONRequestBody defines body for AiSpeech for application/json ContentType.
+type AiSpeechJSONRequestBody = AISpeechRequest
+
+// AiTranscriptionMultipartRequestBody defines body for AiTranscription for multipart/form-data ContentType.
+type AiTranscriptionMultipartRequestBody = AITranscriptionRequest
+
+// AiChatCompletionJSONRequestBody defines body for AiChatCompletion for application/json ContentType.
+type AiChatCompletionJSONRequestBody = AIInferenceRequest
+
+// AiCompletionJSONRequestBody defines body for AiCompletion for application/json ContentType.
+type AiCompletionJSONRequestBody = AICompletionRequest
+
+// AiEmbeddingJSONRequestBody defines body for AiEmbedding for application/json ContentType.
+type AiEmbeddingJSONRequestBody = AIEmbeddingRequest
+
+// AiImageGenerationJSONRequestBody defines body for AiImageGeneration for application/json ContentType.
+type AiImageGenerationJSONRequestBody = AIImageRequest
+
+// AiRerankJSONRequestBody defines body for AiRerank for application/json ContentType.
+type AiRerankJSONRequestBody = AIRerankRequest
+
+// AiVideoGenerationJSONRequestBody defines body for AiVideoGeneration for application/json ContentType.
+type AiVideoGenerationJSONRequestBody = AIVideoRequest
 
 // UpdateGatewayEndpointJSONRequestBody defines body for UpdateGatewayEndpoint for application/json ContentType.
 type UpdateGatewayEndpointJSONRequestBody = UpdateGatewayEndpointRequest
@@ -5160,6 +6254,75 @@ type StartAgentMCPOAuthConnectionJSONRequestBody = StartAgentMCPOAuthConnectionR
 // ReplaceAgentMCPToolPolicyJSONRequestBody defines body for ReplaceAgentMCPToolPolicy for application/json ContentType.
 type ReplaceAgentMCPToolPolicyJSONRequestBody = ReplaceAgentMCPToolPolicyRequest
 
+// SetAIGatewaySettingsJSONRequestBody defines body for SetAIGatewaySettings for application/json ContentType.
+type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
+
+// PutAIAssignmentJSONRequestBody defines body for PutAIAssignment for application/json ContentType.
+type PutAIAssignmentJSONRequestBody = AIAssignmentWrite
+
+// AiUserAnthropicMessageJSONRequestBody defines body for AiUserAnthropicMessage for application/json ContentType.
+type AiUserAnthropicMessageJSONRequestBody = AIInferenceRequest
+
+// AiUserSpeechJSONRequestBody defines body for AiUserSpeech for application/json ContentType.
+type AiUserSpeechJSONRequestBody = AISpeechRequest
+
+// AiUserTranscriptionMultipartRequestBody defines body for AiUserTranscription for multipart/form-data ContentType.
+type AiUserTranscriptionMultipartRequestBody = AITranscriptionRequest
+
+// AiUserChatCompletionJSONRequestBody defines body for AiUserChatCompletion for application/json ContentType.
+type AiUserChatCompletionJSONRequestBody = AIInferenceRequest
+
+// AiUserCompletionJSONRequestBody defines body for AiUserCompletion for application/json ContentType.
+type AiUserCompletionJSONRequestBody = AICompletionRequest
+
+// AiUserEmbeddingJSONRequestBody defines body for AiUserEmbedding for application/json ContentType.
+type AiUserEmbeddingJSONRequestBody = AIEmbeddingRequest
+
+// AiUserImageGenerationJSONRequestBody defines body for AiUserImageGeneration for application/json ContentType.
+type AiUserImageGenerationJSONRequestBody = AIImageRequest
+
+// AiUserRerankJSONRequestBody defines body for AiUserRerank for application/json ContentType.
+type AiUserRerankJSONRequestBody = AIRerankRequest
+
+// AiUserVideoGenerationJSONRequestBody defines body for AiUserVideoGeneration for application/json ContentType.
+type AiUserVideoGenerationJSONRequestBody = AIVideoRequest
+
+// CreateAIProviderJSONRequestBody defines body for CreateAIProvider for application/json ContentType.
+type CreateAIProviderJSONRequestBody = AIProviderCreate
+
+// SearchAIProviderCatalogJSONRequestBody defines body for SearchAIProviderCatalog for application/json ContentType.
+type SearchAIProviderCatalogJSONRequestBody = AIProviderCatalogRequest
+
+// TestAIProviderConnectionJSONRequestBody defines body for TestAIProviderConnection for application/json ContentType.
+type TestAIProviderConnectionJSONRequestBody = AIProviderProbe
+
+// DeleteAIProviderJSONRequestBody defines body for DeleteAIProvider for application/json ContentType.
+type DeleteAIProviderJSONRequestBody = AIProviderRevision
+
+// UpdateAIProviderJSONRequestBody defines body for UpdateAIProvider for application/json ContentType.
+type UpdateAIProviderJSONRequestBody = AIProviderUpdate
+
+// TestAIProviderJSONRequestBody defines body for TestAIProvider for application/json ContentType.
+type TestAIProviderJSONRequestBody = AIProviderRevision
+
+// PutAITeamPolicyJSONRequestBody defines body for PutAITeamPolicy for application/json ContentType.
+type PutAITeamPolicyJSONRequestBody = AITeamPolicyWrite
+
+// PutAIUserModelGrantJSONRequestBody defines body for PutAIUserModelGrant for application/json ContentType.
+type PutAIUserModelGrantJSONRequestBody = AIUserModelGrantInput
+
+// CreateAIWorkloadJSONRequestBody defines body for CreateAIWorkload for application/json ContentType.
+type CreateAIWorkloadJSONRequestBody = AIWorkloadInput
+
+// UpdateAIWorkloadJSONRequestBody defines body for UpdateAIWorkload for application/json ContentType.
+type UpdateAIWorkloadJSONRequestBody = AIWorkloadInput
+
+// CreateAIWorkloadKeyJSONRequestBody defines body for CreateAIWorkloadKey for application/json ContentType.
+type CreateAIWorkloadKeyJSONRequestBody = AIWorkloadKeyInput
+
+// RevokeAIWorkloadKeyJSONRequestBody defines body for RevokeAIWorkloadKey for application/json ContentType.
+type RevokeAIWorkloadKeyJSONRequestBody = AIWorkloadKeyRevoke
+
 // CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
 type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
 
@@ -5277,6 +6440,9 @@ type AssignMachineCredentialOwnerJSONRequestBody = AssignMachineCredentialOwnerR
 // ChangeMemberRoleJSONRequestBody defines body for ChangeMemberRole for application/json ContentType.
 type ChangeMemberRoleJSONRequestBody = ChangeRoleRequest
 
+// ChangeMemberRolesJSONRequestBody defines body for ChangeMemberRoles for application/json ContentType.
+type ChangeMemberRolesJSONRequestBody = ChangeRolesRequest
+
 // SetMfaEnforceJSONRequestBody defines body for SetMfaEnforce for application/json ContentType.
 type SetMfaEnforceJSONRequestBody = MfaEnforce
 
@@ -5379,6 +6545,77 @@ type SetSsoConfigJSONRequestBody = SsoConfigRequest
 // SetZeroTrustModeJSONRequestBody defines body for SetZeroTrustMode for application/json ContentType.
 type SetZeroTrustModeJSONRequestBody = ZeroTrustMode
 
+// EnrollWorkloadJSONRequestBody defines body for EnrollWorkload for application/json ContentType.
+type EnrollWorkloadJSONRequestBody = AIWorkloadEnrollInput
+
+// RotateWorkloadKeyJSONRequestBody defines body for RotateWorkloadKey for application/json ContentType.
+type RotateWorkloadKeyJSONRequestBody = AIWorkloadRotationInput
+
+// ExchangeWorkloadTokenFormdataRequestBody defines body for ExchangeWorkloadToken for application/x-www-form-urlencoded ContentType.
+type ExchangeWorkloadTokenFormdataRequestBody = AIWorkloadTokenInput
+
+// AsAIEmbeddingRequestInput0 returns the union data inside the AIEmbeddingRequest_Input as a AIEmbeddingRequestInput0
+func (t AIEmbeddingRequest_Input) AsAIEmbeddingRequestInput0() (AIEmbeddingRequestInput0, error) {
+	var body AIEmbeddingRequestInput0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIEmbeddingRequestInput0 overwrites any union data inside the AIEmbeddingRequest_Input as the provided AIEmbeddingRequestInput0
+func (t *AIEmbeddingRequest_Input) FromAIEmbeddingRequestInput0(v AIEmbeddingRequestInput0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIEmbeddingRequestInput0 performs a merge with any union data inside the AIEmbeddingRequest_Input, using the provided AIEmbeddingRequestInput0
+func (t *AIEmbeddingRequest_Input) MergeAIEmbeddingRequestInput0(v AIEmbeddingRequestInput0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIEmbeddingRequestInput1 returns the union data inside the AIEmbeddingRequest_Input as a AIEmbeddingRequestInput1
+func (t AIEmbeddingRequest_Input) AsAIEmbeddingRequestInput1() (AIEmbeddingRequestInput1, error) {
+	var body AIEmbeddingRequestInput1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIEmbeddingRequestInput1 overwrites any union data inside the AIEmbeddingRequest_Input as the provided AIEmbeddingRequestInput1
+func (t *AIEmbeddingRequest_Input) FromAIEmbeddingRequestInput1(v AIEmbeddingRequestInput1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIEmbeddingRequestInput1 performs a merge with any union data inside the AIEmbeddingRequest_Input, using the provided AIEmbeddingRequestInput1
+func (t *AIEmbeddingRequest_Input) MergeAIEmbeddingRequestInput1(v AIEmbeddingRequestInput1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AIEmbeddingRequest_Input) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AIEmbeddingRequest_Input) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
 
@@ -5452,6 +6689,58 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// AiAnthropicMessageWithBody request with any body
+	AiAnthropicMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiAnthropicMessage(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiSpeechWithBody request with any body
+	AiSpeechWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiSpeech(ctx context.Context, body AiSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiTranscriptionWithBody request with any body
+	AiTranscriptionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiChatCompletionWithBody request with any body
+	AiChatCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiChatCompletion(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiCompletionWithBody request with any body
+	AiCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiCompletion(ctx context.Context, body AiCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiEmbeddingWithBody request with any body
+	AiEmbeddingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiEmbedding(ctx context.Context, body AiEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiImageGenerationWithBody request with any body
+	AiImageGenerationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiImageGeneration(ctx context.Context, body AiImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListWorkloadModels request
+	ListWorkloadModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiRerankWithBody request with any body
+	AiRerankWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiRerank(ctx context.Context, body AiRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiVideoGenerationWithBody request with any body
+	AiVideoGenerationWithBody(ctx context.Context, params *AiVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiVideoGeneration(ctx context.Context, params *AiVideoGenerationParams, body AiVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiVideoStatus request
+	AiVideoStatus(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiVideoContent request
+	AiVideoContent(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetGatewayEndpoint request
 	GetGatewayEndpoint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -5495,6 +6784,9 @@ type ClientInterface interface {
 	RekeyChallengeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueAICredential request
+	IssueAICredential(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PrepareAgentRuntimeCredentialWithBody request with any body
 	PrepareAgentRuntimeCredentialWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5906,6 +7198,167 @@ type ClientInterface interface {
 	// ListAgentWorkflowProvenance request
 	ListAgentWorkflowProvenance(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAIGatewaySettings request
+	GetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAIGatewaySettingsWithBody request with any body
+	SetAIGatewaySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIAssignments request
+	ListAIAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAIAssignmentWithBody request with any body
+	PutAIAssignmentWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReconcileAIAssignment request
+	ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserAnthropicMessageWithBody request with any body
+	AiUserAnthropicMessageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserAnthropicMessage(ctx context.Context, orgId openapi_types.UUID, body AiUserAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserSpeechWithBody request with any body
+	AiUserSpeechWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserSpeech(ctx context.Context, orgId openapi_types.UUID, body AiUserSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserTranscriptionWithBody request with any body
+	AiUserTranscriptionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserChatCompletionWithBody request with any body
+	AiUserChatCompletionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserChatCompletion(ctx context.Context, orgId openapi_types.UUID, body AiUserChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserCompletionWithBody request with any body
+	AiUserCompletionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserCompletion(ctx context.Context, orgId openapi_types.UUID, body AiUserCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserEmbeddingWithBody request with any body
+	AiUserEmbeddingWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserEmbedding(ctx context.Context, orgId openapi_types.UUID, body AiUserEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserImageGenerationWithBody request with any body
+	AiUserImageGenerationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserImageGeneration(ctx context.Context, orgId openapi_types.UUID, body AiUserImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserRerankWithBody request with any body
+	AiUserRerankWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserRerank(ctx context.Context, orgId openapi_types.UUID, body AiUserRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserVideoGenerationWithBody request with any body
+	AiUserVideoGenerationWithBody(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiUserVideoGeneration(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, body AiUserVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserVideoStatus request
+	AiUserVideoStatus(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiUserVideoContent request
+	AiUserVideoContent(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIProviderModels request
+	ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMyAIModels request
+	ListMyAIModels(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIProviders request
+	ListAIProviders(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAIProviderWithBody request with any body
+	CreateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SearchAIProviderCatalogWithBody request with any body
+	SearchAIProviderCatalogWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SearchAIProviderCatalog(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAIProviderConnectionWithBody request with any body
+	TestAIProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestAIProviderConnection(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAIProviderWithBody request with any body
+	DeleteAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DeleteAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAIProviderWithBody request with any body
+	UpdateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAIProviderWithBody request with any body
+	TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAITeamPolicies request
+	ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAITeamPolicyWithBody request with any body
+	PutAITeamPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAITeamPolicy(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAIUsage request
+	GetAIUsage(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIUserGroups request
+	ListAIUserGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIUserModelGrants request
+	ListAIUserModelGrants(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAIUserModelGrantWithBody request with any body
+	PutAIUserModelGrantWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAIUserModelGrant(ctx context.Context, orgId openapi_types.UUID, body PutAIUserModelGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIWorkloads request
+	ListAIWorkloads(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAIWorkloadWithBody request with any body
+	CreateAIWorkloadWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAIWorkload(ctx context.Context, orgId openapi_types.UUID, body CreateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAIWorkloadWithBody request with any body
+	UpdateAIWorkloadWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAIWorkload(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body UpdateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIWorkloadKeys request
+	ListAIWorkloadKeys(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAIWorkloadKeyWithBody request with any body
+	CreateAIWorkloadKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAIWorkloadKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAIWorkloadKeyWithBody request with any body
+	RevokeAIWorkloadKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RevokeAIWorkloadKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RevokeAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIWorkloadInstances request
+	ListAIWorkloadInstances(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAIWorkloadInstance request
+	RevokeAIWorkloadInstance(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAlertDeliveries request
 	ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -6302,6 +7755,11 @@ type ClientInterface interface {
 
 	ChangeMemberRole(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ChangeMemberRolesWithBody request with any body
+	ChangeMemberRolesWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ChangeMemberRoles(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRolesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMfaEnforce request
 	GetMfaEnforce(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -6550,8 +8008,266 @@ type ClientInterface interface {
 
 	SetZeroTrustMode(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// EnrollWorkloadWithBody request with any body
+	EnrollWorkloadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	EnrollWorkload(ctx context.Context, body EnrollWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RetireWorkloadInstance request
+	RetireWorkloadInstance(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateWorkloadKeyWithBody request with any body
+	RotateWorkloadKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RotateWorkloadKey(ctx context.Context, body RotateWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExchangeWorkloadTokenWithBody request with any body
+	ExchangeWorkloadTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ExchangeWorkloadTokenWithFormdataBody(ctx context.Context, body ExchangeWorkloadTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) AiAnthropicMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiAnthropicMessageRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiAnthropicMessage(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiAnthropicMessageRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiSpeechWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiSpeechRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiSpeech(ctx context.Context, body AiSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiSpeechRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiTranscriptionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiTranscriptionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiChatCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiChatCompletionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiChatCompletion(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiChatCompletionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiCompletionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiCompletion(ctx context.Context, body AiCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiCompletionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiEmbeddingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiEmbeddingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiEmbedding(ctx context.Context, body AiEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiEmbeddingRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiImageGenerationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiImageGenerationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiImageGeneration(ctx context.Context, body AiImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiImageGenerationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListWorkloadModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWorkloadModelsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiRerankWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiRerankRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiRerank(ctx context.Context, body AiRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiRerankRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiVideoGenerationWithBody(ctx context.Context, params *AiVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiVideoGenerationRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiVideoGeneration(ctx context.Context, params *AiVideoGenerationParams, body AiVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiVideoGenerationRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiVideoStatus(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiVideoStatusRequest(c.Server, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiVideoContent(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiVideoContentRequest(c.Server, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) GetGatewayEndpoint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6748,6 +8464,18 @@ func (c *Client) RekeyChallengeWithBody(ctx context.Context, contentType string,
 
 func (c *Client) RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRekeyChallengeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) IssueAICredential(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueAICredentialRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -8594,6 +10322,738 @@ func (c *Client) ListAgentWorkflowProvenance(ctx context.Context, orgId openapi_
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIGatewaySettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetAIGatewaySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAIGatewaySettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAIGatewaySettingsRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIAssignmentsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIAssignmentWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIAssignmentRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIAssignmentRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReconcileAIAssignmentRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserAnthropicMessageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserAnthropicMessageRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserAnthropicMessage(ctx context.Context, orgId openapi_types.UUID, body AiUserAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserAnthropicMessageRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserSpeechWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserSpeechRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserSpeech(ctx context.Context, orgId openapi_types.UUID, body AiUserSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserSpeechRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserTranscriptionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserTranscriptionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserChatCompletionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserChatCompletionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserChatCompletion(ctx context.Context, orgId openapi_types.UUID, body AiUserChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserChatCompletionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserCompletionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserCompletionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserCompletion(ctx context.Context, orgId openapi_types.UUID, body AiUserCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserCompletionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserEmbeddingWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserEmbeddingRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserEmbedding(ctx context.Context, orgId openapi_types.UUID, body AiUserEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserEmbeddingRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserImageGenerationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserImageGenerationRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserImageGeneration(ctx context.Context, orgId openapi_types.UUID, body AiUserImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserImageGenerationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserRerankWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserRerankRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserRerank(ctx context.Context, orgId openapi_types.UUID, body AiUserRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserRerankRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserVideoGenerationWithBody(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserVideoGenerationRequestWithBody(c.Server, orgId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserVideoGeneration(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, body AiUserVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserVideoGenerationRequest(c.Server, orgId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserVideoStatus(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserVideoStatusRequest(c.Server, orgId, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiUserVideoContent(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiUserVideoContentRequest(c.Server, orgId, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIProviderModelsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListMyAIModels(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyAIModelsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIProviders(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIProvidersRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIProviderRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIProviderRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SearchAIProviderCatalogWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchAIProviderCatalogRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SearchAIProviderCatalog(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchAIProviderCatalogRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderConnectionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProviderConnection(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderConnectionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAIProviderRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIProviderRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAITeamPoliciesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAITeamPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAITeamPolicyRequestWithBody(c.Server, orgId, teamId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAITeamPolicy(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAITeamPolicyRequest(c.Server, orgId, teamId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAIUsage(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIUsageRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIUserGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIUserGroupsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIUserModelGrants(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIUserModelGrantsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIUserModelGrantWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIUserModelGrantRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIUserModelGrant(ctx context.Context, orgId openapi_types.UUID, body PutAIUserModelGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIUserModelGrantRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIWorkloads(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIWorkloadsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIWorkloadWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIWorkloadRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIWorkload(ctx context.Context, orgId openapi_types.UUID, body CreateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIWorkloadRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIWorkloadWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIWorkloadRequestWithBody(c.Server, orgId, workloadId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIWorkload(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body UpdateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIWorkloadRequest(c.Server, orgId, workloadId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIWorkloadKeys(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIWorkloadKeysRequest(c.Server, orgId, workloadId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIWorkloadKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIWorkloadKeyRequestWithBody(c.Server, orgId, workloadId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIWorkloadKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIWorkloadKeyRequest(c.Server, orgId, workloadId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAIWorkloadKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAIWorkloadKeyRequestWithBody(c.Server, orgId, workloadId, keyId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAIWorkloadKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RevokeAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAIWorkloadKeyRequest(c.Server, orgId, workloadId, keyId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIWorkloadInstances(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIWorkloadInstancesRequest(c.Server, orgId, workloadId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAIWorkloadInstance(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAIWorkloadInstanceRequest(c.Server, orgId, workloadId, instanceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAlertDeliveriesRequest(c.Server, orgId)
 	if err != nil {
@@ -10334,6 +12794,30 @@ func (c *Client) ChangeMemberRole(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) ChangeMemberRolesWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangeMemberRolesRequestWithBody(c.Server, orgId, userId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ChangeMemberRoles(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRolesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangeMemberRolesRequest(c.Server, orgId, userId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetMfaEnforce(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMfaEnforceRequest(c.Server, orgId)
 	if err != nil {
@@ -11462,6 +13946,90 @@ func (c *Client) SetZeroTrustMode(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) EnrollWorkloadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEnrollWorkloadRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) EnrollWorkload(ctx context.Context, body EnrollWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEnrollWorkloadRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RetireWorkloadInstance(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRetireWorkloadInstanceRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateWorkloadKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateWorkloadKeyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateWorkloadKey(ctx context.Context, body RotateWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateWorkloadKeyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExchangeWorkloadTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeWorkloadTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExchangeWorkloadTokenWithFormdataBody(ctx context.Context, body ExchangeWorkloadTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeWorkloadTokenRequestWithFormdataBody(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
 	if err != nil {
@@ -11472,6 +14040,463 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewAiAnthropicMessageRequest calls the generic AiAnthropicMessage builder with application/json body
+func NewAiAnthropicMessageRequest(server string, body AiAnthropicMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiAnthropicMessageRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiAnthropicMessageRequestWithBody generates requests for AiAnthropicMessage with any type of body
+func NewAiAnthropicMessageRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/anthropic/v1/messages")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiSpeechRequest calls the generic AiSpeech builder with application/json body
+func NewAiSpeechRequest(server string, body AiSpeechJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiSpeechRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiSpeechRequestWithBody generates requests for AiSpeech with any type of body
+func NewAiSpeechRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/audio/speech")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiTranscriptionRequestWithBody generates requests for AiTranscription with any type of body
+func NewAiTranscriptionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/audio/transcriptions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiChatCompletionRequest calls the generic AiChatCompletion builder with application/json body
+func NewAiChatCompletionRequest(server string, body AiChatCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiChatCompletionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiChatCompletionRequestWithBody generates requests for AiChatCompletion with any type of body
+func NewAiChatCompletionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/chat/completions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiCompletionRequest calls the generic AiCompletion builder with application/json body
+func NewAiCompletionRequest(server string, body AiCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiCompletionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiCompletionRequestWithBody generates requests for AiCompletion with any type of body
+func NewAiCompletionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/completions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiEmbeddingRequest calls the generic AiEmbedding builder with application/json body
+func NewAiEmbeddingRequest(server string, body AiEmbeddingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiEmbeddingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiEmbeddingRequestWithBody generates requests for AiEmbedding with any type of body
+func NewAiEmbeddingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/embeddings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiImageGenerationRequest calls the generic AiImageGeneration builder with application/json body
+func NewAiImageGenerationRequest(server string, body AiImageGenerationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiImageGenerationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiImageGenerationRequestWithBody generates requests for AiImageGeneration with any type of body
+func NewAiImageGenerationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/images/generations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListWorkloadModelsRequest generates requests for ListWorkloadModels
+func NewListWorkloadModelsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/models")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAiRerankRequest calls the generic AiRerank builder with application/json body
+func NewAiRerankRequest(server string, body AiRerankJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiRerankRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiRerankRequestWithBody generates requests for AiRerank with any type of body
+func NewAiRerankRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/rerank")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiVideoGenerationRequest calls the generic AiVideoGeneration builder with application/json body
+func NewAiVideoGenerationRequest(server string, params *AiVideoGenerationParams, body AiVideoGenerationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiVideoGenerationRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewAiVideoGenerationRequestWithBody generates requests for AiVideoGeneration with any type of body
+func NewAiVideoGenerationRequestWithBody(server string, params *AiVideoGenerationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/videos")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "Idempotency-Key", runtime.ParamLocationHeader, params.IdempotencyKey)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Idempotency-Key", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewAiVideoStatusRequest generates requests for AiVideoStatus
+func NewAiVideoStatusRequest(server string, jobId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/videos/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAiVideoContentRequest generates requests for AiVideoContent
+func NewAiVideoContentRequest(server string, jobId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/videos/%s/content", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetGatewayEndpointRequest generates requests for GetGatewayEndpoint
@@ -11852,6 +14877,33 @@ func NewRekeyChallengeRequestWithBody(server string, contentType string, body io
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewIssueAICredentialRequest generates requests for IssueAICredential
+func NewIssueAICredentialRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/ai-credential")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -16722,6 +19774,2009 @@ func NewListAgentWorkflowProvenanceRequest(server string, orgId openapi_types.UU
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAIGatewaySettingsRequest generates requests for GetAIGatewaySettings
+func NewGetAIGatewaySettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAIGatewaySettingsRequest calls the generic SetAIGatewaySettings builder with application/json body
+func NewSetAIGatewaySettingsRequest(server string, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAIGatewaySettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetAIGatewaySettingsRequestWithBody generates requests for SetAIGatewaySettings with any type of body
+func NewSetAIGatewaySettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAIAssignmentsRequest generates requests for ListAIAssignments
+func NewListAIAssignmentsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/agents", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAIAssignmentRequest calls the generic PutAIAssignment builder with application/json body
+func NewPutAIAssignmentRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAIAssignmentRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewPutAIAssignmentRequestWithBody generates requests for PutAIAssignment with any type of body
+func NewPutAIAssignmentRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/agents/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReconcileAIAssignmentRequest generates requests for ReconcileAIAssignment
+func NewReconcileAIAssignmentRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/agents/%s/reconcile", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAiUserAnthropicMessageRequest calls the generic AiUserAnthropicMessage builder with application/json body
+func NewAiUserAnthropicMessageRequest(server string, orgId openapi_types.UUID, body AiUserAnthropicMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserAnthropicMessageRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserAnthropicMessageRequestWithBody generates requests for AiUserAnthropicMessage with any type of body
+func NewAiUserAnthropicMessageRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/anthropic/v1/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserSpeechRequest calls the generic AiUserSpeech builder with application/json body
+func NewAiUserSpeechRequest(server string, orgId openapi_types.UUID, body AiUserSpeechJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserSpeechRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserSpeechRequestWithBody generates requests for AiUserSpeech with any type of body
+func NewAiUserSpeechRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/audio/speech", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserTranscriptionRequestWithBody generates requests for AiUserTranscription with any type of body
+func NewAiUserTranscriptionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/audio/transcriptions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserChatCompletionRequest calls the generic AiUserChatCompletion builder with application/json body
+func NewAiUserChatCompletionRequest(server string, orgId openapi_types.UUID, body AiUserChatCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserChatCompletionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserChatCompletionRequestWithBody generates requests for AiUserChatCompletion with any type of body
+func NewAiUserChatCompletionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/chat/completions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserCompletionRequest calls the generic AiUserCompletion builder with application/json body
+func NewAiUserCompletionRequest(server string, orgId openapi_types.UUID, body AiUserCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserCompletionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserCompletionRequestWithBody generates requests for AiUserCompletion with any type of body
+func NewAiUserCompletionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/completions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserEmbeddingRequest calls the generic AiUserEmbedding builder with application/json body
+func NewAiUserEmbeddingRequest(server string, orgId openapi_types.UUID, body AiUserEmbeddingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserEmbeddingRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserEmbeddingRequestWithBody generates requests for AiUserEmbedding with any type of body
+func NewAiUserEmbeddingRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/embeddings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserImageGenerationRequest calls the generic AiUserImageGeneration builder with application/json body
+func NewAiUserImageGenerationRequest(server string, orgId openapi_types.UUID, body AiUserImageGenerationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserImageGenerationRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserImageGenerationRequestWithBody generates requests for AiUserImageGeneration with any type of body
+func NewAiUserImageGenerationRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/images/generations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserRerankRequest calls the generic AiUserRerank builder with application/json body
+func NewAiUserRerankRequest(server string, orgId openapi_types.UUID, body AiUserRerankJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserRerankRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAiUserRerankRequestWithBody generates requests for AiUserRerank with any type of body
+func NewAiUserRerankRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/rerank", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiUserVideoGenerationRequest calls the generic AiUserVideoGeneration builder with application/json body
+func NewAiUserVideoGenerationRequest(server string, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, body AiUserVideoGenerationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiUserVideoGenerationRequestWithBody(server, orgId, params, "application/json", bodyReader)
+}
+
+// NewAiUserVideoGenerationRequestWithBody generates requests for AiUserVideoGeneration with any type of body
+func NewAiUserVideoGenerationRequestWithBody(server string, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/videos", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "Idempotency-Key", runtime.ParamLocationHeader, params.IdempotencyKey)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Idempotency-Key", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewAiUserVideoStatusRequest generates requests for AiUserVideoStatus
+func NewAiUserVideoStatusRequest(server string, orgId openapi_types.UUID, jobId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/videos/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAiUserVideoContentRequest generates requests for AiUserVideoContent
+func NewAiUserVideoContentRequest(server string, orgId openapi_types.UUID, jobId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/inference/v1/videos/%s/content", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIProviderModelsRequest generates requests for ListAIProviderModels
+func NewListAIProviderModelsRequest(server string, orgId openapi_types.UUID, params *ListAIProviderModelsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/models", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Mode != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mode", runtime.ParamLocationQuery, *params.Mode); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ConnectionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "connection_id", runtime.ParamLocationQuery, *params.ConnectionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Provider != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "provider", runtime.ParamLocationQuery, *params.Provider); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Query != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "query", runtime.ParamLocationQuery, *params.Query); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMyAIModelsRequest generates requests for ListMyAIModels
+func NewListMyAIModelsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/my-models", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIProvidersRequest generates requests for ListAIProviders
+func NewListAIProvidersRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAIProviderRequest calls the generic CreateAIProvider builder with application/json body
+func NewCreateAIProviderRequest(server string, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAIProviderRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAIProviderRequestWithBody generates requests for CreateAIProvider with any type of body
+func NewCreateAIProviderRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSearchAIProviderCatalogRequest calls the generic SearchAIProviderCatalog builder with application/json body
+func NewSearchAIProviderCatalogRequest(server string, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSearchAIProviderCatalogRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSearchAIProviderCatalogRequestWithBody generates requests for SearchAIProviderCatalog with any type of body
+func NewSearchAIProviderCatalogRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/model-catalog", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestAIProviderConnectionRequest calls the generic TestAIProviderConnection builder with application/json body
+func NewTestAIProviderConnectionRequest(server string, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestAIProviderConnectionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewTestAIProviderConnectionRequestWithBody generates requests for TestAIProviderConnection with any type of body
+func NewTestAIProviderConnectionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/test-connection", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAIProviderRequest calls the generic DeleteAIProvider builder with application/json body
+func NewDeleteAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteAIProviderRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewDeleteAIProviderRequestWithBody generates requests for DeleteAIProvider with any type of body
+func NewDeleteAIProviderRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateAIProviderRequest calls the generic UpdateAIProvider builder with application/json body
+func NewUpdateAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAIProviderRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewUpdateAIProviderRequestWithBody generates requests for UpdateAIProvider with any type of body
+func NewUpdateAIProviderRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestAIProviderRequest calls the generic TestAIProvider builder with application/json body
+func NewTestAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestAIProviderRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewTestAIProviderRequestWithBody generates requests for TestAIProvider with any type of body
+func NewTestAIProviderRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAITeamPoliciesRequest generates requests for ListAITeamPolicies
+func NewListAITeamPoliciesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/teams", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAITeamPolicyRequest calls the generic PutAITeamPolicy builder with application/json body
+func NewPutAITeamPolicyRequest(server string, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAITeamPolicyRequestWithBody(server, orgId, teamId, "application/json", bodyReader)
+}
+
+// NewPutAITeamPolicyRequestWithBody generates requests for PutAITeamPolicy with any type of body
+func NewPutAITeamPolicyRequestWithBody(server string, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "teamId", runtime.ParamLocationPath, teamId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/teams/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAIUsageRequest generates requests for GetAIUsage
+func NewGetAIUsageRequest(server string, orgId openapi_types.UUID, params *GetAIUsageParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/usage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.TeamId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "team_id", runtime.ParamLocationQuery, *params.TeamId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DeviceId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "device_id", runtime.ParamLocationQuery, *params.DeviceId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Dashboard != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dashboard", runtime.ParamLocationQuery, *params.Dashboard); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIUserGroupsRequest generates requests for ListAIUserGroups
+func NewListAIUserGroupsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/user-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIUserModelGrantsRequest generates requests for ListAIUserModelGrants
+func NewListAIUserModelGrantsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/user-model-grants", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAIUserModelGrantRequest calls the generic PutAIUserModelGrant builder with application/json body
+func NewPutAIUserModelGrantRequest(server string, orgId openapi_types.UUID, body PutAIUserModelGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAIUserModelGrantRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewPutAIUserModelGrantRequestWithBody generates requests for PutAIUserModelGrant with any type of body
+func NewPutAIUserModelGrantRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/user-model-grants", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAIWorkloadsRequest generates requests for ListAIWorkloads
+func NewListAIWorkloadsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAIWorkloadRequest calls the generic CreateAIWorkload builder with application/json body
+func NewCreateAIWorkloadRequest(server string, orgId openapi_types.UUID, body CreateAIWorkloadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAIWorkloadRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAIWorkloadRequestWithBody generates requests for CreateAIWorkload with any type of body
+func NewCreateAIWorkloadRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateAIWorkloadRequest calls the generic UpdateAIWorkload builder with application/json body
+func NewUpdateAIWorkloadRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, body UpdateAIWorkloadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAIWorkloadRequestWithBody(server, orgId, workloadId, "application/json", bodyReader)
+}
+
+// NewUpdateAIWorkloadRequestWithBody generates requests for UpdateAIWorkload with any type of body
+func NewUpdateAIWorkloadRequestWithBody(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAIWorkloadKeysRequest generates requests for ListAIWorkloadKeys
+func NewListAIWorkloadKeysRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadKeysParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/enrollment-keys", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "after", runtime.ParamLocationQuery, *params.After); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAIWorkloadKeyRequest calls the generic CreateAIWorkloadKey builder with application/json body
+func NewCreateAIWorkloadKeyRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAIWorkloadKeyRequestWithBody(server, orgId, workloadId, "application/json", bodyReader)
+}
+
+// NewCreateAIWorkloadKeyRequestWithBody generates requests for CreateAIWorkloadKey with any type of body
+func NewCreateAIWorkloadKeyRequestWithBody(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/enrollment-keys", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeAIWorkloadKeyRequest calls the generic RevokeAIWorkloadKey builder with application/json body
+func NewRevokeAIWorkloadKeyRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RevokeAIWorkloadKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevokeAIWorkloadKeyRequestWithBody(server, orgId, workloadId, keyId, "application/json", bodyReader)
+}
+
+// NewRevokeAIWorkloadKeyRequestWithBody generates requests for RevokeAIWorkloadKey with any type of body
+func NewRevokeAIWorkloadKeyRequestWithBody(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "keyId", runtime.ParamLocationPath, keyId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/enrollment-keys/%s/revoke", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAIWorkloadInstancesRequest generates requests for ListAIWorkloadInstances
+func NewListAIWorkloadInstancesRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadInstancesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/instances", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "after", runtime.ParamLocationQuery, *params.After); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeAIWorkloadInstanceRequest generates requests for RevokeAIWorkloadInstance
+func NewRevokeAIWorkloadInstanceRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "instanceId", runtime.ParamLocationPath, instanceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/instances/%s/revoke", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -21730,6 +26785,60 @@ func NewChangeMemberRoleRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewChangeMemberRolesRequest calls the generic ChangeMemberRoles builder with application/json body
+func NewChangeMemberRolesRequest(server string, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRolesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewChangeMemberRolesRequestWithBody(server, orgId, userId, "application/json", bodyReader)
+}
+
+// NewChangeMemberRolesRequestWithBody generates requests for ChangeMemberRoles with any type of body
+func NewChangeMemberRolesRequestWithBody(server string, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "userId", runtime.ParamLocationPath, userId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/members/%s/roles", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetMfaEnforceRequest generates requests for GetMfaEnforce
 func NewGetMfaEnforceRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -24549,6 +29658,153 @@ func NewSetZeroTrustModeRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewEnrollWorkloadRequest calls the generic EnrollWorkload builder with application/json body
+func NewEnrollWorkloadRequest(server string, body EnrollWorkloadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewEnrollWorkloadRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewEnrollWorkloadRequestWithBody generates requests for EnrollWorkload with any type of body
+func NewEnrollWorkloadRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/workload/enroll")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRetireWorkloadInstanceRequest generates requests for RetireWorkloadInstance
+func NewRetireWorkloadInstanceRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/workload/retire")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRotateWorkloadKeyRequest calls the generic RotateWorkloadKey builder with application/json body
+func NewRotateWorkloadKeyRequest(server string, body RotateWorkloadKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRotateWorkloadKeyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRotateWorkloadKeyRequestWithBody generates requests for RotateWorkloadKey with any type of body
+func NewRotateWorkloadKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/workload/rotate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExchangeWorkloadTokenRequestWithFormdataBody calls the generic ExchangeWorkloadToken builder with application/x-www-form-urlencoded body
+func NewExchangeWorkloadTokenRequestWithFormdataBody(server string, body ExchangeWorkloadTokenFormdataRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	bodyStr, err := runtime.MarshalForm(body, nil)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = strings.NewReader(bodyStr.Encode())
+	return NewExchangeWorkloadTokenRequestWithBody(server, "application/x-www-form-urlencoded", bodyReader)
+}
+
+// NewExchangeWorkloadTokenRequestWithBody generates requests for ExchangeWorkloadToken with any type of body
+func NewExchangeWorkloadTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/workload/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -24619,6 +29875,58 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// AiAnthropicMessageWithBodyWithResponse request with any body
+	AiAnthropicMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error)
+
+	AiAnthropicMessageWithResponse(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error)
+
+	// AiSpeechWithBodyWithResponse request with any body
+	AiSpeechWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiSpeechResponse, error)
+
+	AiSpeechWithResponse(ctx context.Context, body AiSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*AiSpeechResponse, error)
+
+	// AiTranscriptionWithBodyWithResponse request with any body
+	AiTranscriptionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiTranscriptionResponse, error)
+
+	// AiChatCompletionWithBodyWithResponse request with any body
+	AiChatCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error)
+
+	AiChatCompletionWithResponse(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error)
+
+	// AiCompletionWithBodyWithResponse request with any body
+	AiCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiCompletionResponse, error)
+
+	AiCompletionWithResponse(ctx context.Context, body AiCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiCompletionResponse, error)
+
+	// AiEmbeddingWithBodyWithResponse request with any body
+	AiEmbeddingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiEmbeddingResponse, error)
+
+	AiEmbeddingWithResponse(ctx context.Context, body AiEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*AiEmbeddingResponse, error)
+
+	// AiImageGenerationWithBodyWithResponse request with any body
+	AiImageGenerationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiImageGenerationResponse, error)
+
+	AiImageGenerationWithResponse(ctx context.Context, body AiImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiImageGenerationResponse, error)
+
+	// ListWorkloadModelsWithResponse request
+	ListWorkloadModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWorkloadModelsResponse, error)
+
+	// AiRerankWithBodyWithResponse request with any body
+	AiRerankWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiRerankResponse, error)
+
+	AiRerankWithResponse(ctx context.Context, body AiRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*AiRerankResponse, error)
+
+	// AiVideoGenerationWithBodyWithResponse request with any body
+	AiVideoGenerationWithBodyWithResponse(ctx context.Context, params *AiVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiVideoGenerationResponse, error)
+
+	AiVideoGenerationWithResponse(ctx context.Context, params *AiVideoGenerationParams, body AiVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiVideoGenerationResponse, error)
+
+	// AiVideoStatusWithResponse request
+	AiVideoStatusWithResponse(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiVideoStatusResponse, error)
+
+	// AiVideoContentWithResponse request
+	AiVideoContentWithResponse(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiVideoContentResponse, error)
+
 	// GetGatewayEndpointWithResponse request
 	GetGatewayEndpointWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGatewayEndpointResponse, error)
 
@@ -24662,6 +29970,9 @@ type ClientWithResponsesInterface interface {
 	RekeyChallengeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
 
 	RekeyChallengeWithResponse(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
+
+	// IssueAICredentialWithResponse request
+	IssueAICredentialWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*IssueAICredentialResponse, error)
 
 	// PrepareAgentRuntimeCredentialWithBodyWithResponse request with any body
 	PrepareAgentRuntimeCredentialWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error)
@@ -25073,6 +30384,167 @@ type ClientWithResponsesInterface interface {
 	// ListAgentWorkflowProvenanceWithResponse request
 	ListAgentWorkflowProvenanceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentWorkflowProvenanceResponse, error)
 
+	// GetAIGatewaySettingsWithResponse request
+	GetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewaySettingsResponse, error)
+
+	// SetAIGatewaySettingsWithBodyWithResponse request with any body
+	SetAIGatewaySettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error)
+
+	SetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error)
+
+	// ListAIAssignmentsWithResponse request
+	ListAIAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIAssignmentsResponse, error)
+
+	// PutAIAssignmentWithBodyWithResponse request with any body
+	PutAIAssignmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error)
+
+	PutAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error)
+
+	// ReconcileAIAssignmentWithResponse request
+	ReconcileAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReconcileAIAssignmentResponse, error)
+
+	// AiUserAnthropicMessageWithBodyWithResponse request with any body
+	AiUserAnthropicMessageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserAnthropicMessageResponse, error)
+
+	AiUserAnthropicMessageWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserAnthropicMessageResponse, error)
+
+	// AiUserSpeechWithBodyWithResponse request with any body
+	AiUserSpeechWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserSpeechResponse, error)
+
+	AiUserSpeechWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserSpeechResponse, error)
+
+	// AiUserTranscriptionWithBodyWithResponse request with any body
+	AiUserTranscriptionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserTranscriptionResponse, error)
+
+	// AiUserChatCompletionWithBodyWithResponse request with any body
+	AiUserChatCompletionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserChatCompletionResponse, error)
+
+	AiUserChatCompletionWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserChatCompletionResponse, error)
+
+	// AiUserCompletionWithBodyWithResponse request with any body
+	AiUserCompletionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserCompletionResponse, error)
+
+	AiUserCompletionWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserCompletionResponse, error)
+
+	// AiUserEmbeddingWithBodyWithResponse request with any body
+	AiUserEmbeddingWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserEmbeddingResponse, error)
+
+	AiUserEmbeddingWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserEmbeddingResponse, error)
+
+	// AiUserImageGenerationWithBodyWithResponse request with any body
+	AiUserImageGenerationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserImageGenerationResponse, error)
+
+	AiUserImageGenerationWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserImageGenerationResponse, error)
+
+	// AiUserRerankWithBodyWithResponse request with any body
+	AiUserRerankWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserRerankResponse, error)
+
+	AiUserRerankWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserRerankResponse, error)
+
+	// AiUserVideoGenerationWithBodyWithResponse request with any body
+	AiUserVideoGenerationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserVideoGenerationResponse, error)
+
+	AiUserVideoGenerationWithResponse(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, body AiUserVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserVideoGenerationResponse, error)
+
+	// AiUserVideoStatusWithResponse request
+	AiUserVideoStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiUserVideoStatusResponse, error)
+
+	// AiUserVideoContentWithResponse request
+	AiUserVideoContentWithResponse(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiUserVideoContentResponse, error)
+
+	// ListAIProviderModelsWithResponse request
+	ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error)
+
+	// ListMyAIModelsWithResponse request
+	ListMyAIModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListMyAIModelsResponse, error)
+
+	// ListAIProvidersWithResponse request
+	ListAIProvidersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIProvidersResponse, error)
+
+	// CreateAIProviderWithBodyWithResponse request with any body
+	CreateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error)
+
+	CreateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error)
+
+	// SearchAIProviderCatalogWithBodyWithResponse request with any body
+	SearchAIProviderCatalogWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error)
+
+	SearchAIProviderCatalogWithResponse(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error)
+
+	// TestAIProviderConnectionWithBodyWithResponse request with any body
+	TestAIProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error)
+
+	TestAIProviderConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error)
+
+	// DeleteAIProviderWithBodyWithResponse request with any body
+	DeleteAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error)
+
+	DeleteAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error)
+
+	// UpdateAIProviderWithBodyWithResponse request with any body
+	UpdateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error)
+
+	UpdateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error)
+
+	// TestAIProviderWithBodyWithResponse request with any body
+	TestAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
+
+	TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
+
+	// ListAITeamPoliciesWithResponse request
+	ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error)
+
+	// PutAITeamPolicyWithBodyWithResponse request with any body
+	PutAITeamPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error)
+
+	PutAITeamPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error)
+
+	// GetAIUsageWithResponse request
+	GetAIUsageWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*GetAIUsageResponse, error)
+
+	// ListAIUserGroupsWithResponse request
+	ListAIUserGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIUserGroupsResponse, error)
+
+	// ListAIUserModelGrantsWithResponse request
+	ListAIUserModelGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIUserModelGrantsResponse, error)
+
+	// PutAIUserModelGrantWithBodyWithResponse request with any body
+	PutAIUserModelGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIUserModelGrantResponse, error)
+
+	PutAIUserModelGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, body PutAIUserModelGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIUserModelGrantResponse, error)
+
+	// ListAIWorkloadsWithResponse request
+	ListAIWorkloadsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIWorkloadsResponse, error)
+
+	// CreateAIWorkloadWithBodyWithResponse request with any body
+	CreateAIWorkloadWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIWorkloadResponse, error)
+
+	CreateAIWorkloadWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIWorkloadResponse, error)
+
+	// UpdateAIWorkloadWithBodyWithResponse request with any body
+	UpdateAIWorkloadWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadResponse, error)
+
+	UpdateAIWorkloadWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body UpdateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadResponse, error)
+
+	// ListAIWorkloadKeysWithResponse request
+	ListAIWorkloadKeysWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadKeysParams, reqEditors ...RequestEditorFn) (*ListAIWorkloadKeysResponse, error)
+
+	// CreateAIWorkloadKeyWithBodyWithResponse request with any body
+	CreateAIWorkloadKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIWorkloadKeyResponse, error)
+
+	CreateAIWorkloadKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIWorkloadKeyResponse, error)
+
+	// RevokeAIWorkloadKeyWithBodyWithResponse request with any body
+	RevokeAIWorkloadKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadKeyResponse, error)
+
+	RevokeAIWorkloadKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RevokeAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadKeyResponse, error)
+
+	// ListAIWorkloadInstancesWithResponse request
+	ListAIWorkloadInstancesWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadInstancesParams, reqEditors ...RequestEditorFn) (*ListAIWorkloadInstancesResponse, error)
+
+	// RevokeAIWorkloadInstanceWithResponse request
+	RevokeAIWorkloadInstanceWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadInstanceResponse, error)
+
 	// ListAlertDeliveriesWithResponse request
 	ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error)
 
@@ -25469,6 +30941,11 @@ type ClientWithResponsesInterface interface {
 
 	ChangeMemberRoleWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMemberRoleResponse, error)
 
+	// ChangeMemberRolesWithBodyWithResponse request with any body
+	ChangeMemberRolesWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeMemberRolesResponse, error)
+
+	ChangeMemberRolesWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRolesJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMemberRolesResponse, error)
+
 	// GetMfaEnforceWithResponse request
 	GetMfaEnforceWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMfaEnforceResponse, error)
 
@@ -25717,8 +31194,300 @@ type ClientWithResponsesInterface interface {
 
 	SetZeroTrustModeWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetZeroTrustModeResponse, error)
 
+	// EnrollWorkloadWithBodyWithResponse request with any body
+	EnrollWorkloadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnrollWorkloadResponse, error)
+
+	EnrollWorkloadWithResponse(ctx context.Context, body EnrollWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*EnrollWorkloadResponse, error)
+
+	// RetireWorkloadInstanceWithResponse request
+	RetireWorkloadInstanceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RetireWorkloadInstanceResponse, error)
+
+	// RotateWorkloadKeyWithBodyWithResponse request with any body
+	RotateWorkloadKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RotateWorkloadKeyResponse, error)
+
+	RotateWorkloadKeyWithResponse(ctx context.Context, body RotateWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RotateWorkloadKeyResponse, error)
+
+	// ExchangeWorkloadTokenWithBodyWithResponse request with any body
+	ExchangeWorkloadTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeWorkloadTokenResponse, error)
+
+	ExchangeWorkloadTokenWithFormdataBodyWithResponse(ctx context.Context, body ExchangeWorkloadTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*ExchangeWorkloadTokenResponse, error)
+
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
+}
+
+type AiAnthropicMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiAnthropicMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiAnthropicMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiSpeechResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiSpeechResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiSpeechResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiTranscriptionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiTranscriptionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiTranscriptionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiChatCompletionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiChatCompletionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiChatCompletionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiCompletionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiCompletionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiCompletionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiEmbeddingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiEmbeddingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiEmbeddingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiImageGenerationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiImageGenerationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiImageGenerationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListWorkloadModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadModelList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWorkloadModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWorkloadModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiRerankResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiRerankResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiRerankResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiVideoGenerationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIVideoJob
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiVideoGenerationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiVideoGenerationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiVideoStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIVideoJob
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiVideoStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiVideoStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiVideoContentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiVideoContentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiVideoContentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type GetGatewayEndpointResponse struct {
@@ -25943,6 +31712,29 @@ func (r RekeyChallengeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RekeyChallengeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type IssueAICredentialResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AICredential
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueAICredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueAICredentialResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -28332,6 +34124,898 @@ func (r ListAgentWorkflowProvenanceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListAgentWorkflowProvenanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIGatewaySettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIGatewaySettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIGatewaySettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIGatewaySettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetAIGatewaySettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIGatewaySettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAIGatewaySettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAIGatewaySettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIAssignmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AIAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIAssignmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIAssignmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAIAssignmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAIAssignmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAIAssignmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReconcileAIAssignmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReconcileAIAssignmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReconcileAIAssignmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserAnthropicMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserAnthropicMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserAnthropicMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserSpeechResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserSpeechResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserSpeechResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserTranscriptionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserTranscriptionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserTranscriptionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserChatCompletionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserChatCompletionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserChatCompletionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserCompletionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserCompletionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserCompletionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserEmbeddingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserEmbeddingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserEmbeddingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserImageGenerationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserImageGenerationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserImageGenerationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserRerankResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserRerankResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserRerankResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserVideoGenerationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIVideoJob
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserVideoGenerationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserVideoGenerationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserVideoStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIVideoJob
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserVideoStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserVideoStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiUserVideoContentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiUserVideoContentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiUserVideoContentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIProviderModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderModelList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIProviderModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIProviderModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListMyAIModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AIUserModel
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyAIModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyAIModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIProvidersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIProvidersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIProvidersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AIProviderConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SearchAIProviderCatalogResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderModelList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchAIProviderCatalogResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchAIProviderCatalogResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestAIProviderConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderProbeResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAIProviderConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAIProviderConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAITeamPoliciesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AITeamPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAITeamPoliciesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAITeamPoliciesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAITeamPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AITeamPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAITeamPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAITeamPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIUsageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIUsageReport
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIUserGroupsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AIUserGroup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIUserGroupsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIUserGroupsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIUserModelGrantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AIUserModelGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIUserModelGrantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIUserModelGrantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAIUserModelGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIUserModelGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAIUserModelGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAIUserModelGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIWorkloadsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AIWorkload
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIWorkloadsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIWorkloadsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAIWorkloadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AIWorkload
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAIWorkloadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAIWorkloadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAIWorkloadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkload
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAIWorkloadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAIWorkloadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIWorkloadKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadKeyPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIWorkloadKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIWorkloadKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAIWorkloadKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AIWorkloadKeySecret
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAIWorkloadKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAIWorkloadKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAIWorkloadKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAIWorkloadKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAIWorkloadKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIWorkloadInstancesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadInstancePage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIWorkloadInstancesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIWorkloadInstancesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAIWorkloadInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAIWorkloadInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAIWorkloadInstanceResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -30753,6 +37437,28 @@ func (r ChangeMemberRoleResponse) StatusCode() int {
 	return 0
 }
 
+type ChangeMemberRolesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ChangeMemberRolesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ChangeMemberRolesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetMfaEnforceResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -32124,6 +38830,97 @@ func (r SetZeroTrustModeResponse) StatusCode() int {
 	return 0
 }
 
+type EnrollWorkloadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadReceipt
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r EnrollWorkloadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EnrollWorkloadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RetireWorkloadInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RetireWorkloadInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RetireWorkloadInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RotateWorkloadKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadReceipt
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateWorkloadKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateWorkloadKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ExchangeWorkloadTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadToken
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ExchangeWorkloadTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExchangeWorkloadTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetHealthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -32145,6 +38942,178 @@ func (r GetHealthResponse) StatusCode() int {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
+}
+
+// AiAnthropicMessageWithBodyWithResponse request with arbitrary body returning *AiAnthropicMessageResponse
+func (c *ClientWithResponses) AiAnthropicMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error) {
+	rsp, err := c.AiAnthropicMessageWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiAnthropicMessageResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiAnthropicMessageWithResponse(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error) {
+	rsp, err := c.AiAnthropicMessage(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiAnthropicMessageResponse(rsp)
+}
+
+// AiSpeechWithBodyWithResponse request with arbitrary body returning *AiSpeechResponse
+func (c *ClientWithResponses) AiSpeechWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiSpeechResponse, error) {
+	rsp, err := c.AiSpeechWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiSpeechResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiSpeechWithResponse(ctx context.Context, body AiSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*AiSpeechResponse, error) {
+	rsp, err := c.AiSpeech(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiSpeechResponse(rsp)
+}
+
+// AiTranscriptionWithBodyWithResponse request with arbitrary body returning *AiTranscriptionResponse
+func (c *ClientWithResponses) AiTranscriptionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiTranscriptionResponse, error) {
+	rsp, err := c.AiTranscriptionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiTranscriptionResponse(rsp)
+}
+
+// AiChatCompletionWithBodyWithResponse request with arbitrary body returning *AiChatCompletionResponse
+func (c *ClientWithResponses) AiChatCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error) {
+	rsp, err := c.AiChatCompletionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiChatCompletionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiChatCompletionWithResponse(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error) {
+	rsp, err := c.AiChatCompletion(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiChatCompletionResponse(rsp)
+}
+
+// AiCompletionWithBodyWithResponse request with arbitrary body returning *AiCompletionResponse
+func (c *ClientWithResponses) AiCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiCompletionResponse, error) {
+	rsp, err := c.AiCompletionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiCompletionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiCompletionWithResponse(ctx context.Context, body AiCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiCompletionResponse, error) {
+	rsp, err := c.AiCompletion(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiCompletionResponse(rsp)
+}
+
+// AiEmbeddingWithBodyWithResponse request with arbitrary body returning *AiEmbeddingResponse
+func (c *ClientWithResponses) AiEmbeddingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiEmbeddingResponse, error) {
+	rsp, err := c.AiEmbeddingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiEmbeddingResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiEmbeddingWithResponse(ctx context.Context, body AiEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*AiEmbeddingResponse, error) {
+	rsp, err := c.AiEmbedding(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiEmbeddingResponse(rsp)
+}
+
+// AiImageGenerationWithBodyWithResponse request with arbitrary body returning *AiImageGenerationResponse
+func (c *ClientWithResponses) AiImageGenerationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiImageGenerationResponse, error) {
+	rsp, err := c.AiImageGenerationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiImageGenerationResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiImageGenerationWithResponse(ctx context.Context, body AiImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiImageGenerationResponse, error) {
+	rsp, err := c.AiImageGeneration(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiImageGenerationResponse(rsp)
+}
+
+// ListWorkloadModelsWithResponse request returning *ListWorkloadModelsResponse
+func (c *ClientWithResponses) ListWorkloadModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWorkloadModelsResponse, error) {
+	rsp, err := c.ListWorkloadModels(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWorkloadModelsResponse(rsp)
+}
+
+// AiRerankWithBodyWithResponse request with arbitrary body returning *AiRerankResponse
+func (c *ClientWithResponses) AiRerankWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiRerankResponse, error) {
+	rsp, err := c.AiRerankWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiRerankResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiRerankWithResponse(ctx context.Context, body AiRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*AiRerankResponse, error) {
+	rsp, err := c.AiRerank(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiRerankResponse(rsp)
+}
+
+// AiVideoGenerationWithBodyWithResponse request with arbitrary body returning *AiVideoGenerationResponse
+func (c *ClientWithResponses) AiVideoGenerationWithBodyWithResponse(ctx context.Context, params *AiVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiVideoGenerationResponse, error) {
+	rsp, err := c.AiVideoGenerationWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiVideoGenerationResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiVideoGenerationWithResponse(ctx context.Context, params *AiVideoGenerationParams, body AiVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiVideoGenerationResponse, error) {
+	rsp, err := c.AiVideoGeneration(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiVideoGenerationResponse(rsp)
+}
+
+// AiVideoStatusWithResponse request returning *AiVideoStatusResponse
+func (c *ClientWithResponses) AiVideoStatusWithResponse(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiVideoStatusResponse, error) {
+	rsp, err := c.AiVideoStatus(ctx, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiVideoStatusResponse(rsp)
+}
+
+// AiVideoContentWithResponse request returning *AiVideoContentResponse
+func (c *ClientWithResponses) AiVideoContentWithResponse(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiVideoContentResponse, error) {
+	rsp, err := c.AiVideoContent(ctx, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiVideoContentResponse(rsp)
 }
 
 // GetGatewayEndpointWithResponse request returning *GetGatewayEndpointResponse
@@ -32291,6 +39260,15 @@ func (c *ClientWithResponses) RekeyChallengeWithResponse(ctx context.Context, bo
 		return nil, err
 	}
 	return ParseRekeyChallengeResponse(rsp)
+}
+
+// IssueAICredentialWithResponse request returning *IssueAICredentialResponse
+func (c *ClientWithResponses) IssueAICredentialWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*IssueAICredentialResponse, error) {
+	rsp, err := c.IssueAICredential(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueAICredentialResponse(rsp)
 }
 
 // PrepareAgentRuntimeCredentialWithBodyWithResponse request with arbitrary body returning *PrepareAgentRuntimeCredentialResponse
@@ -33621,6 +40599,533 @@ func (c *ClientWithResponses) ListAgentWorkflowProvenanceWithResponse(ctx contex
 	return ParseListAgentWorkflowProvenanceResponse(rsp)
 }
 
+// GetAIGatewaySettingsWithResponse request returning *GetAIGatewaySettingsResponse
+func (c *ClientWithResponses) GetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewaySettingsResponse, error) {
+	rsp, err := c.GetAIGatewaySettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIGatewaySettingsResponse(rsp)
+}
+
+// SetAIGatewaySettingsWithBodyWithResponse request with arbitrary body returning *SetAIGatewaySettingsResponse
+func (c *ClientWithResponses) SetAIGatewaySettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error) {
+	rsp, err := c.SetAIGatewaySettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAIGatewaySettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error) {
+	rsp, err := c.SetAIGatewaySettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAIGatewaySettingsResponse(rsp)
+}
+
+// ListAIAssignmentsWithResponse request returning *ListAIAssignmentsResponse
+func (c *ClientWithResponses) ListAIAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIAssignmentsResponse, error) {
+	rsp, err := c.ListAIAssignments(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIAssignmentsResponse(rsp)
+}
+
+// PutAIAssignmentWithBodyWithResponse request with arbitrary body returning *PutAIAssignmentResponse
+func (c *ClientWithResponses) PutAIAssignmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error) {
+	rsp, err := c.PutAIAssignmentWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIAssignmentResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error) {
+	rsp, err := c.PutAIAssignment(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIAssignmentResponse(rsp)
+}
+
+// ReconcileAIAssignmentWithResponse request returning *ReconcileAIAssignmentResponse
+func (c *ClientWithResponses) ReconcileAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReconcileAIAssignmentResponse, error) {
+	rsp, err := c.ReconcileAIAssignment(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReconcileAIAssignmentResponse(rsp)
+}
+
+// AiUserAnthropicMessageWithBodyWithResponse request with arbitrary body returning *AiUserAnthropicMessageResponse
+func (c *ClientWithResponses) AiUserAnthropicMessageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserAnthropicMessageResponse, error) {
+	rsp, err := c.AiUserAnthropicMessageWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserAnthropicMessageResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserAnthropicMessageWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserAnthropicMessageResponse, error) {
+	rsp, err := c.AiUserAnthropicMessage(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserAnthropicMessageResponse(rsp)
+}
+
+// AiUserSpeechWithBodyWithResponse request with arbitrary body returning *AiUserSpeechResponse
+func (c *ClientWithResponses) AiUserSpeechWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserSpeechResponse, error) {
+	rsp, err := c.AiUserSpeechWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserSpeechResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserSpeechWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserSpeechJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserSpeechResponse, error) {
+	rsp, err := c.AiUserSpeech(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserSpeechResponse(rsp)
+}
+
+// AiUserTranscriptionWithBodyWithResponse request with arbitrary body returning *AiUserTranscriptionResponse
+func (c *ClientWithResponses) AiUserTranscriptionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserTranscriptionResponse, error) {
+	rsp, err := c.AiUserTranscriptionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserTranscriptionResponse(rsp)
+}
+
+// AiUserChatCompletionWithBodyWithResponse request with arbitrary body returning *AiUserChatCompletionResponse
+func (c *ClientWithResponses) AiUserChatCompletionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserChatCompletionResponse, error) {
+	rsp, err := c.AiUserChatCompletionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserChatCompletionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserChatCompletionWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserChatCompletionResponse, error) {
+	rsp, err := c.AiUserChatCompletion(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserChatCompletionResponse(rsp)
+}
+
+// AiUserCompletionWithBodyWithResponse request with arbitrary body returning *AiUserCompletionResponse
+func (c *ClientWithResponses) AiUserCompletionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserCompletionResponse, error) {
+	rsp, err := c.AiUserCompletionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserCompletionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserCompletionWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserCompletionResponse, error) {
+	rsp, err := c.AiUserCompletion(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserCompletionResponse(rsp)
+}
+
+// AiUserEmbeddingWithBodyWithResponse request with arbitrary body returning *AiUserEmbeddingResponse
+func (c *ClientWithResponses) AiUserEmbeddingWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserEmbeddingResponse, error) {
+	rsp, err := c.AiUserEmbeddingWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserEmbeddingResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserEmbeddingWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserEmbeddingJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserEmbeddingResponse, error) {
+	rsp, err := c.AiUserEmbedding(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserEmbeddingResponse(rsp)
+}
+
+// AiUserImageGenerationWithBodyWithResponse request with arbitrary body returning *AiUserImageGenerationResponse
+func (c *ClientWithResponses) AiUserImageGenerationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserImageGenerationResponse, error) {
+	rsp, err := c.AiUserImageGenerationWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserImageGenerationResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserImageGenerationWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserImageGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserImageGenerationResponse, error) {
+	rsp, err := c.AiUserImageGeneration(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserImageGenerationResponse(rsp)
+}
+
+// AiUserRerankWithBodyWithResponse request with arbitrary body returning *AiUserRerankResponse
+func (c *ClientWithResponses) AiUserRerankWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserRerankResponse, error) {
+	rsp, err := c.AiUserRerankWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserRerankResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserRerankWithResponse(ctx context.Context, orgId openapi_types.UUID, body AiUserRerankJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserRerankResponse, error) {
+	rsp, err := c.AiUserRerank(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserRerankResponse(rsp)
+}
+
+// AiUserVideoGenerationWithBodyWithResponse request with arbitrary body returning *AiUserVideoGenerationResponse
+func (c *ClientWithResponses) AiUserVideoGenerationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserVideoGenerationResponse, error) {
+	rsp, err := c.AiUserVideoGenerationWithBody(ctx, orgId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserVideoGenerationResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiUserVideoGenerationWithResponse(ctx context.Context, orgId openapi_types.UUID, params *AiUserVideoGenerationParams, body AiUserVideoGenerationJSONRequestBody, reqEditors ...RequestEditorFn) (*AiUserVideoGenerationResponse, error) {
+	rsp, err := c.AiUserVideoGeneration(ctx, orgId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserVideoGenerationResponse(rsp)
+}
+
+// AiUserVideoStatusWithResponse request returning *AiUserVideoStatusResponse
+func (c *ClientWithResponses) AiUserVideoStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiUserVideoStatusResponse, error) {
+	rsp, err := c.AiUserVideoStatus(ctx, orgId, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserVideoStatusResponse(rsp)
+}
+
+// AiUserVideoContentWithResponse request returning *AiUserVideoContentResponse
+func (c *ClientWithResponses) AiUserVideoContentWithResponse(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiUserVideoContentResponse, error) {
+	rsp, err := c.AiUserVideoContent(ctx, orgId, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiUserVideoContentResponse(rsp)
+}
+
+// ListAIProviderModelsWithResponse request returning *ListAIProviderModelsResponse
+func (c *ClientWithResponses) ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error) {
+	rsp, err := c.ListAIProviderModels(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIProviderModelsResponse(rsp)
+}
+
+// ListMyAIModelsWithResponse request returning *ListMyAIModelsResponse
+func (c *ClientWithResponses) ListMyAIModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListMyAIModelsResponse, error) {
+	rsp, err := c.ListMyAIModels(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyAIModelsResponse(rsp)
+}
+
+// ListAIProvidersWithResponse request returning *ListAIProvidersResponse
+func (c *ClientWithResponses) ListAIProvidersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIProvidersResponse, error) {
+	rsp, err := c.ListAIProviders(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIProvidersResponse(rsp)
+}
+
+// CreateAIProviderWithBodyWithResponse request with arbitrary body returning *CreateAIProviderResponse
+func (c *ClientWithResponses) CreateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error) {
+	rsp, err := c.CreateAIProviderWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error) {
+	rsp, err := c.CreateAIProvider(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIProviderResponse(rsp)
+}
+
+// SearchAIProviderCatalogWithBodyWithResponse request with arbitrary body returning *SearchAIProviderCatalogResponse
+func (c *ClientWithResponses) SearchAIProviderCatalogWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error) {
+	rsp, err := c.SearchAIProviderCatalogWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchAIProviderCatalogResponse(rsp)
+}
+
+func (c *ClientWithResponses) SearchAIProviderCatalogWithResponse(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error) {
+	rsp, err := c.SearchAIProviderCatalog(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchAIProviderCatalogResponse(rsp)
+}
+
+// TestAIProviderConnectionWithBodyWithResponse request with arbitrary body returning *TestAIProviderConnectionResponse
+func (c *ClientWithResponses) TestAIProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error) {
+	rsp, err := c.TestAIProviderConnectionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestAIProviderConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error) {
+	rsp, err := c.TestAIProviderConnection(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderConnectionResponse(rsp)
+}
+
+// DeleteAIProviderWithBodyWithResponse request with arbitrary body returning *DeleteAIProviderResponse
+func (c *ClientWithResponses) DeleteAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error) {
+	rsp, err := c.DeleteAIProviderWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) DeleteAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error) {
+	rsp, err := c.DeleteAIProvider(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAIProviderResponse(rsp)
+}
+
+// UpdateAIProviderWithBodyWithResponse request with arbitrary body returning *UpdateAIProviderResponse
+func (c *ClientWithResponses) UpdateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error) {
+	rsp, err := c.UpdateAIProviderWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error) {
+	rsp, err := c.UpdateAIProvider(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIProviderResponse(rsp)
+}
+
+// TestAIProviderWithBodyWithResponse request with arbitrary body returning *TestAIProviderResponse
+func (c *ClientWithResponses) TestAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error) {
+	rsp, err := c.TestAIProviderWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error) {
+	rsp, err := c.TestAIProvider(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderResponse(rsp)
+}
+
+// ListAITeamPoliciesWithResponse request returning *ListAITeamPoliciesResponse
+func (c *ClientWithResponses) ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error) {
+	rsp, err := c.ListAITeamPolicies(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAITeamPoliciesResponse(rsp)
+}
+
+// PutAITeamPolicyWithBodyWithResponse request with arbitrary body returning *PutAITeamPolicyResponse
+func (c *ClientWithResponses) PutAITeamPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error) {
+	rsp, err := c.PutAITeamPolicyWithBody(ctx, orgId, teamId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAITeamPolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAITeamPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error) {
+	rsp, err := c.PutAITeamPolicy(ctx, orgId, teamId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAITeamPolicyResponse(rsp)
+}
+
+// GetAIUsageWithResponse request returning *GetAIUsageResponse
+func (c *ClientWithResponses) GetAIUsageWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*GetAIUsageResponse, error) {
+	rsp, err := c.GetAIUsage(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIUsageResponse(rsp)
+}
+
+// ListAIUserGroupsWithResponse request returning *ListAIUserGroupsResponse
+func (c *ClientWithResponses) ListAIUserGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIUserGroupsResponse, error) {
+	rsp, err := c.ListAIUserGroups(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIUserGroupsResponse(rsp)
+}
+
+// ListAIUserModelGrantsWithResponse request returning *ListAIUserModelGrantsResponse
+func (c *ClientWithResponses) ListAIUserModelGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIUserModelGrantsResponse, error) {
+	rsp, err := c.ListAIUserModelGrants(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIUserModelGrantsResponse(rsp)
+}
+
+// PutAIUserModelGrantWithBodyWithResponse request with arbitrary body returning *PutAIUserModelGrantResponse
+func (c *ClientWithResponses) PutAIUserModelGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIUserModelGrantResponse, error) {
+	rsp, err := c.PutAIUserModelGrantWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIUserModelGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAIUserModelGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, body PutAIUserModelGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIUserModelGrantResponse, error) {
+	rsp, err := c.PutAIUserModelGrant(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIUserModelGrantResponse(rsp)
+}
+
+// ListAIWorkloadsWithResponse request returning *ListAIWorkloadsResponse
+func (c *ClientWithResponses) ListAIWorkloadsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIWorkloadsResponse, error) {
+	rsp, err := c.ListAIWorkloads(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIWorkloadsResponse(rsp)
+}
+
+// CreateAIWorkloadWithBodyWithResponse request with arbitrary body returning *CreateAIWorkloadResponse
+func (c *ClientWithResponses) CreateAIWorkloadWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIWorkloadResponse, error) {
+	rsp, err := c.CreateAIWorkloadWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIWorkloadResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAIWorkloadWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIWorkloadResponse, error) {
+	rsp, err := c.CreateAIWorkload(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIWorkloadResponse(rsp)
+}
+
+// UpdateAIWorkloadWithBodyWithResponse request with arbitrary body returning *UpdateAIWorkloadResponse
+func (c *ClientWithResponses) UpdateAIWorkloadWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadResponse, error) {
+	rsp, err := c.UpdateAIWorkloadWithBody(ctx, orgId, workloadId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIWorkloadResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAIWorkloadWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body UpdateAIWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadResponse, error) {
+	rsp, err := c.UpdateAIWorkload(ctx, orgId, workloadId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIWorkloadResponse(rsp)
+}
+
+// ListAIWorkloadKeysWithResponse request returning *ListAIWorkloadKeysResponse
+func (c *ClientWithResponses) ListAIWorkloadKeysWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadKeysParams, reqEditors ...RequestEditorFn) (*ListAIWorkloadKeysResponse, error) {
+	rsp, err := c.ListAIWorkloadKeys(ctx, orgId, workloadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIWorkloadKeysResponse(rsp)
+}
+
+// CreateAIWorkloadKeyWithBodyWithResponse request with arbitrary body returning *CreateAIWorkloadKeyResponse
+func (c *ClientWithResponses) CreateAIWorkloadKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIWorkloadKeyResponse, error) {
+	rsp, err := c.CreateAIWorkloadKeyWithBody(ctx, orgId, workloadId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIWorkloadKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAIWorkloadKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIWorkloadKeyResponse, error) {
+	rsp, err := c.CreateAIWorkloadKey(ctx, orgId, workloadId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIWorkloadKeyResponse(rsp)
+}
+
+// RevokeAIWorkloadKeyWithBodyWithResponse request with arbitrary body returning *RevokeAIWorkloadKeyResponse
+func (c *ClientWithResponses) RevokeAIWorkloadKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadKeyResponse, error) {
+	rsp, err := c.RevokeAIWorkloadKeyWithBody(ctx, orgId, workloadId, keyId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAIWorkloadKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) RevokeAIWorkloadKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RevokeAIWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadKeyResponse, error) {
+	rsp, err := c.RevokeAIWorkloadKey(ctx, orgId, workloadId, keyId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAIWorkloadKeyResponse(rsp)
+}
+
+// ListAIWorkloadInstancesWithResponse request returning *ListAIWorkloadInstancesResponse
+func (c *ClientWithResponses) ListAIWorkloadInstancesWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadInstancesParams, reqEditors ...RequestEditorFn) (*ListAIWorkloadInstancesResponse, error) {
+	rsp, err := c.ListAIWorkloadInstances(ctx, orgId, workloadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIWorkloadInstancesResponse(rsp)
+}
+
+// RevokeAIWorkloadInstanceWithResponse request returning *RevokeAIWorkloadInstanceResponse
+func (c *ClientWithResponses) RevokeAIWorkloadInstanceWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadInstanceResponse, error) {
+	rsp, err := c.RevokeAIWorkloadInstance(ctx, orgId, workloadId, instanceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAIWorkloadInstanceResponse(rsp)
+}
+
 // ListAlertDeliveriesWithResponse request returning *ListAlertDeliveriesResponse
 func (c *ClientWithResponses) ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error) {
 	rsp, err := c.ListAlertDeliveries(ctx, orgId, reqEditors...)
@@ -34887,6 +42392,23 @@ func (c *ClientWithResponses) ChangeMemberRoleWithResponse(ctx context.Context, 
 	return ParseChangeMemberRoleResponse(rsp)
 }
 
+// ChangeMemberRolesWithBodyWithResponse request with arbitrary body returning *ChangeMemberRolesResponse
+func (c *ClientWithResponses) ChangeMemberRolesWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeMemberRolesResponse, error) {
+	rsp, err := c.ChangeMemberRolesWithBody(ctx, orgId, userId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangeMemberRolesResponse(rsp)
+}
+
+func (c *ClientWithResponses) ChangeMemberRolesWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body ChangeMemberRolesJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMemberRolesResponse, error) {
+	rsp, err := c.ChangeMemberRoles(ctx, orgId, userId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangeMemberRolesResponse(rsp)
+}
+
 // GetMfaEnforceWithResponse request returning *GetMfaEnforceResponse
 func (c *ClientWithResponses) GetMfaEnforceWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMfaEnforceResponse, error) {
 	rsp, err := c.GetMfaEnforce(ctx, orgId, reqEditors...)
@@ -35699,6 +43221,66 @@ func (c *ClientWithResponses) SetZeroTrustModeWithResponse(ctx context.Context, 
 	return ParseSetZeroTrustModeResponse(rsp)
 }
 
+// EnrollWorkloadWithBodyWithResponse request with arbitrary body returning *EnrollWorkloadResponse
+func (c *ClientWithResponses) EnrollWorkloadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnrollWorkloadResponse, error) {
+	rsp, err := c.EnrollWorkloadWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEnrollWorkloadResponse(rsp)
+}
+
+func (c *ClientWithResponses) EnrollWorkloadWithResponse(ctx context.Context, body EnrollWorkloadJSONRequestBody, reqEditors ...RequestEditorFn) (*EnrollWorkloadResponse, error) {
+	rsp, err := c.EnrollWorkload(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEnrollWorkloadResponse(rsp)
+}
+
+// RetireWorkloadInstanceWithResponse request returning *RetireWorkloadInstanceResponse
+func (c *ClientWithResponses) RetireWorkloadInstanceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RetireWorkloadInstanceResponse, error) {
+	rsp, err := c.RetireWorkloadInstance(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRetireWorkloadInstanceResponse(rsp)
+}
+
+// RotateWorkloadKeyWithBodyWithResponse request with arbitrary body returning *RotateWorkloadKeyResponse
+func (c *ClientWithResponses) RotateWorkloadKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RotateWorkloadKeyResponse, error) {
+	rsp, err := c.RotateWorkloadKeyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateWorkloadKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) RotateWorkloadKeyWithResponse(ctx context.Context, body RotateWorkloadKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RotateWorkloadKeyResponse, error) {
+	rsp, err := c.RotateWorkloadKey(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateWorkloadKeyResponse(rsp)
+}
+
+// ExchangeWorkloadTokenWithBodyWithResponse request with arbitrary body returning *ExchangeWorkloadTokenResponse
+func (c *ClientWithResponses) ExchangeWorkloadTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeWorkloadTokenResponse, error) {
+	rsp, err := c.ExchangeWorkloadTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeWorkloadTokenResponse(rsp)
+}
+
+func (c *ClientWithResponses) ExchangeWorkloadTokenWithFormdataBodyWithResponse(ctx context.Context, body ExchangeWorkloadTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*ExchangeWorkloadTokenResponse, error) {
+	rsp, err := c.ExchangeWorkloadTokenWithFormdataBody(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeWorkloadTokenResponse(rsp)
+}
+
 // GetHealthWithResponse request returning *GetHealthResponse
 func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error) {
 	rsp, err := c.GetHealth(ctx, reqEditors...)
@@ -35706,6 +43288,397 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseGetHealthResponse(rsp)
+}
+
+// ParseAiAnthropicMessageResponse parses an HTTP response from a AiAnthropicMessageWithResponse call
+func ParseAiAnthropicMessageResponse(rsp *http.Response) (*AiAnthropicMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiAnthropicMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiSpeechResponse parses an HTTP response from a AiSpeechWithResponse call
+func ParseAiSpeechResponse(rsp *http.Response) (*AiSpeechResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiSpeechResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiTranscriptionResponse parses an HTTP response from a AiTranscriptionWithResponse call
+func ParseAiTranscriptionResponse(rsp *http.Response) (*AiTranscriptionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiTranscriptionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiChatCompletionResponse parses an HTTP response from a AiChatCompletionWithResponse call
+func ParseAiChatCompletionResponse(rsp *http.Response) (*AiChatCompletionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiChatCompletionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiCompletionResponse parses an HTTP response from a AiCompletionWithResponse call
+func ParseAiCompletionResponse(rsp *http.Response) (*AiCompletionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiCompletionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiEmbeddingResponse parses an HTTP response from a AiEmbeddingWithResponse call
+func ParseAiEmbeddingResponse(rsp *http.Response) (*AiEmbeddingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiEmbeddingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiImageGenerationResponse parses an HTTP response from a AiImageGenerationWithResponse call
+func ParseAiImageGenerationResponse(rsp *http.Response) (*AiImageGenerationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiImageGenerationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListWorkloadModelsResponse parses an HTTP response from a ListWorkloadModelsWithResponse call
+func ParseListWorkloadModelsResponse(rsp *http.Response) (*ListWorkloadModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWorkloadModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadModelList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiRerankResponse parses an HTTP response from a AiRerankWithResponse call
+func ParseAiRerankResponse(rsp *http.Response) (*AiRerankResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiRerankResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiVideoGenerationResponse parses an HTTP response from a AiVideoGenerationWithResponse call
+func ParseAiVideoGenerationResponse(rsp *http.Response) (*AiVideoGenerationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiVideoGenerationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIVideoJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiVideoStatusResponse parses an HTTP response from a AiVideoStatusWithResponse call
+func ParseAiVideoStatusResponse(rsp *http.Response) (*AiVideoStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiVideoStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIVideoJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiVideoContentResponse parses an HTTP response from a AiVideoContentWithResponse call
+func ParseAiVideoContentResponse(rsp *http.Response) (*AiVideoContentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiVideoContentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetGatewayEndpointResponse parses an HTTP response from a GetGatewayEndpointWithResponse call
@@ -36011,6 +43984,39 @@ func ParseRekeyChallengeResponse(rsp *http.Response) (*RekeyChallengeResponse, e
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseIssueAICredentialResponse parses an HTTP response from a IssueAICredentialWithResponse call
+func ParseIssueAICredentialResponse(rsp *http.Response) (*IssueAICredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueAICredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AICredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -39435,6 +47441,1267 @@ func ParseListAgentWorkflowProvenanceResponse(rsp *http.Response) (*ListAgentWor
 	return response, nil
 }
 
+// ParseGetAIGatewaySettingsResponse parses an HTTP response from a GetAIGatewaySettingsWithResponse call
+func ParseGetAIGatewaySettingsResponse(rsp *http.Response) (*GetAIGatewaySettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIGatewaySettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIGatewaySettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAIGatewaySettingsResponse parses an HTTP response from a SetAIGatewaySettingsWithResponse call
+func ParseSetAIGatewaySettingsResponse(rsp *http.Response) (*SetAIGatewaySettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAIGatewaySettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIGatewaySettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIAssignmentsResponse parses an HTTP response from a ListAIAssignmentsWithResponse call
+func ParseListAIAssignmentsResponse(rsp *http.Response) (*ListAIAssignmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIAssignmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAIAssignmentResponse parses an HTTP response from a PutAIAssignmentWithResponse call
+func ParsePutAIAssignmentResponse(rsp *http.Response) (*PutAIAssignmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAIAssignmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReconcileAIAssignmentResponse parses an HTTP response from a ReconcileAIAssignmentWithResponse call
+func ParseReconcileAIAssignmentResponse(rsp *http.Response) (*ReconcileAIAssignmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReconcileAIAssignmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserAnthropicMessageResponse parses an HTTP response from a AiUserAnthropicMessageWithResponse call
+func ParseAiUserAnthropicMessageResponse(rsp *http.Response) (*AiUserAnthropicMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserAnthropicMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserSpeechResponse parses an HTTP response from a AiUserSpeechWithResponse call
+func ParseAiUserSpeechResponse(rsp *http.Response) (*AiUserSpeechResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserSpeechResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserTranscriptionResponse parses an HTTP response from a AiUserTranscriptionWithResponse call
+func ParseAiUserTranscriptionResponse(rsp *http.Response) (*AiUserTranscriptionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserTranscriptionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserChatCompletionResponse parses an HTTP response from a AiUserChatCompletionWithResponse call
+func ParseAiUserChatCompletionResponse(rsp *http.Response) (*AiUserChatCompletionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserChatCompletionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserCompletionResponse parses an HTTP response from a AiUserCompletionWithResponse call
+func ParseAiUserCompletionResponse(rsp *http.Response) (*AiUserCompletionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserCompletionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserEmbeddingResponse parses an HTTP response from a AiUserEmbeddingWithResponse call
+func ParseAiUserEmbeddingResponse(rsp *http.Response) (*AiUserEmbeddingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserEmbeddingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserImageGenerationResponse parses an HTTP response from a AiUserImageGenerationWithResponse call
+func ParseAiUserImageGenerationResponse(rsp *http.Response) (*AiUserImageGenerationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserImageGenerationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserRerankResponse parses an HTTP response from a AiUserRerankWithResponse call
+func ParseAiUserRerankResponse(rsp *http.Response) (*AiUserRerankResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserRerankResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserVideoGenerationResponse parses an HTTP response from a AiUserVideoGenerationWithResponse call
+func ParseAiUserVideoGenerationResponse(rsp *http.Response) (*AiUserVideoGenerationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserVideoGenerationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIVideoJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserVideoStatusResponse parses an HTTP response from a AiUserVideoStatusWithResponse call
+func ParseAiUserVideoStatusResponse(rsp *http.Response) (*AiUserVideoStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserVideoStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIVideoJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiUserVideoContentResponse parses an HTTP response from a AiUserVideoContentWithResponse call
+func ParseAiUserVideoContentResponse(rsp *http.Response) (*AiUserVideoContentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiUserVideoContentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIProviderModelsResponse parses an HTTP response from a ListAIProviderModelsWithResponse call
+func ParseListAIProviderModelsResponse(rsp *http.Response) (*ListAIProviderModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIProviderModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderModelList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMyAIModelsResponse parses an HTTP response from a ListMyAIModelsWithResponse call
+func ParseListMyAIModelsResponse(rsp *http.Response) (*ListMyAIModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyAIModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AIUserModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIProvidersResponse parses an HTTP response from a ListAIProvidersWithResponse call
+func ParseListAIProvidersResponse(rsp *http.Response) (*ListAIProvidersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIProvidersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAIProviderResponse parses an HTTP response from a CreateAIProviderWithResponse call
+func ParseCreateAIProviderResponse(rsp *http.Response) (*CreateAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSearchAIProviderCatalogResponse parses an HTTP response from a SearchAIProviderCatalogWithResponse call
+func ParseSearchAIProviderCatalogResponse(rsp *http.Response) (*SearchAIProviderCatalogResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchAIProviderCatalogResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderModelList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAIProviderConnectionResponse parses an HTTP response from a TestAIProviderConnectionWithResponse call
+func ParseTestAIProviderConnectionResponse(rsp *http.Response) (*TestAIProviderConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAIProviderConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderProbeResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAIProviderResponse parses an HTTP response from a DeleteAIProviderWithResponse call
+func ParseDeleteAIProviderResponse(rsp *http.Response) (*DeleteAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAIProviderResponse parses an HTTP response from a UpdateAIProviderWithResponse call
+func ParseUpdateAIProviderResponse(rsp *http.Response) (*UpdateAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAIProviderResponse parses an HTTP response from a TestAIProviderWithResponse call
+func ParseTestAIProviderResponse(rsp *http.Response) (*TestAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAITeamPoliciesResponse parses an HTTP response from a ListAITeamPoliciesWithResponse call
+func ParseListAITeamPoliciesResponse(rsp *http.Response) (*ListAITeamPoliciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAITeamPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AITeamPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAITeamPolicyResponse parses an HTTP response from a PutAITeamPolicyWithResponse call
+func ParsePutAITeamPolicyResponse(rsp *http.Response) (*PutAITeamPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAITeamPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AITeamPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAIUsageResponse parses an HTTP response from a GetAIUsageWithResponse call
+func ParseGetAIUsageResponse(rsp *http.Response) (*GetAIUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIUsageReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIUserGroupsResponse parses an HTTP response from a ListAIUserGroupsWithResponse call
+func ParseListAIUserGroupsResponse(rsp *http.Response) (*ListAIUserGroupsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIUserGroupsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AIUserGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIUserModelGrantsResponse parses an HTTP response from a ListAIUserModelGrantsWithResponse call
+func ParseListAIUserModelGrantsResponse(rsp *http.Response) (*ListAIUserModelGrantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIUserModelGrantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AIUserModelGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAIUserModelGrantResponse parses an HTTP response from a PutAIUserModelGrantWithResponse call
+func ParsePutAIUserModelGrantResponse(rsp *http.Response) (*PutAIUserModelGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAIUserModelGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIUserModelGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIWorkloadsResponse parses an HTTP response from a ListAIWorkloadsWithResponse call
+func ParseListAIWorkloadsResponse(rsp *http.Response) (*ListAIWorkloadsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIWorkloadsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AIWorkload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAIWorkloadResponse parses an HTTP response from a CreateAIWorkloadWithResponse call
+func ParseCreateAIWorkloadResponse(rsp *http.Response) (*CreateAIWorkloadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAIWorkloadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AIWorkload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAIWorkloadResponse parses an HTTP response from a UpdateAIWorkloadWithResponse call
+func ParseUpdateAIWorkloadResponse(rsp *http.Response) (*UpdateAIWorkloadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAIWorkloadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIWorkloadKeysResponse parses an HTTP response from a ListAIWorkloadKeysWithResponse call
+func ParseListAIWorkloadKeysResponse(rsp *http.Response) (*ListAIWorkloadKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIWorkloadKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadKeyPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAIWorkloadKeyResponse parses an HTTP response from a CreateAIWorkloadKeyWithResponse call
+func ParseCreateAIWorkloadKeyResponse(rsp *http.Response) (*CreateAIWorkloadKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAIWorkloadKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AIWorkloadKeySecret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAIWorkloadKeyResponse parses an HTTP response from a RevokeAIWorkloadKeyWithResponse call
+func ParseRevokeAIWorkloadKeyResponse(rsp *http.Response) (*RevokeAIWorkloadKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAIWorkloadKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIWorkloadInstancesResponse parses an HTTP response from a ListAIWorkloadInstancesWithResponse call
+func ParseListAIWorkloadInstancesResponse(rsp *http.Response) (*ListAIWorkloadInstancesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIWorkloadInstancesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadInstancePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAIWorkloadInstanceResponse parses an HTTP response from a RevokeAIWorkloadInstanceWithResponse call
+func ParseRevokeAIWorkloadInstanceResponse(rsp *http.Response) (*RevokeAIWorkloadInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAIWorkloadInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAlertDeliveriesResponse parses an HTTP response from a ListAlertDeliveriesWithResponse call
 func ParseListAlertDeliveriesResponse(rsp *http.Response) (*ListAlertDeliveriesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -42772,6 +52039,32 @@ func ParseChangeMemberRoleResponse(rsp *http.Response) (*ChangeMemberRoleRespons
 	return response, nil
 }
 
+// ParseChangeMemberRolesResponse parses an HTTP response from a ChangeMemberRolesWithResponse call
+func ParseChangeMemberRolesResponse(rsp *http.Response) (*ChangeMemberRolesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ChangeMemberRolesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetMfaEnforceResponse parses an HTTP response from a GetMfaEnforceWithResponse call
 func ParseGetMfaEnforceResponse(rsp *http.Response) (*GetMfaEnforceResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -44672,6 +53965,131 @@ func ParseSetZeroTrustModeResponse(rsp *http.Response) (*SetZeroTrustModeRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ZeroTrustMode
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseEnrollWorkloadResponse parses an HTTP response from a EnrollWorkloadWithResponse call
+func ParseEnrollWorkloadResponse(rsp *http.Response) (*EnrollWorkloadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EnrollWorkloadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRetireWorkloadInstanceResponse parses an HTTP response from a RetireWorkloadInstanceWithResponse call
+func ParseRetireWorkloadInstanceResponse(rsp *http.Response) (*RetireWorkloadInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RetireWorkloadInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateWorkloadKeyResponse parses an HTTP response from a RotateWorkloadKeyWithResponse call
+func ParseRotateWorkloadKeyResponse(rsp *http.Response) (*RotateWorkloadKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateWorkloadKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExchangeWorkloadTokenResponse parses an HTTP response from a ExchangeWorkloadTokenWithResponse call
+func ParseExchangeWorkloadTokenResponse(rsp *http.Response) (*ExchangeWorkloadTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExchangeWorkloadTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -1,0 +1,59 @@
+# Standalone PREPARATION only; do not combine with the running CP Compose files.
+# Supply a new, non-default project name. Nothing joins the API/Bifrost networks.
+name: ${TUNNEX_AI_PROXY_PROJECT:?Set a dedicated non-default proxy preparation project name}
+services:
+  ai-proxy:
+    build:
+      context: ../../apps/ai-proxy
+      dockerfile: Dockerfile
+    profiles: [ai-proxy]
+    depends_on:
+      ai-proxy-postgres:
+        condition: service_healthy
+    secrets:
+      - ai_proxy_master_key
+      - ai_proxy_salt_key
+      - ai_proxy_database_password
+    networks: [ai_proxy_database, ai_proxy_egress]
+    read_only: true
+    tmpfs: [/tmp:size=128m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+
+  ai-proxy-postgres:
+    # Official multi-architecture OCI index verified 2026-09-07.
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    profiles: [ai-proxy]
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_DB: litellm
+      POSTGRES_PASSWORD_FILE: /run/secrets/ai_proxy_database_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [ai_proxy_database_password]
+    volumes: [ai_proxy_postgres:/var/lib/postgresql/data]
+    networks: [ai_proxy_database]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, pg_isready, -U, litellm, -d, litellm]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  ai_proxy_database:
+    internal: true
+  # Reserved for a future explicitly attached approved egress proxy. Preparation
+  # has no provider Internet egress, credentials or models.
+  ai_proxy_egress:
+    internal: true
+volumes:
+  ai_proxy_postgres: {}
+secrets:
+  ai_proxy_master_key:
+    file: ${TUNNEX_AI_PROXY_MASTER_KEY_FILE:?Set absolute private master secret file path}
+  ai_proxy_salt_key:
+    file: ${TUNNEX_AI_PROXY_SALT_KEY_FILE:?Set absolute private stable salt file path}
+  ai_proxy_database_password:
+    file: ${TUNNEX_AI_PROXY_DATABASE_PASSWORD_FILE:?Set absolute private database password file path}

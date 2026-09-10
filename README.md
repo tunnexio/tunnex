@@ -78,6 +78,9 @@ curl -fsSL https://get.tunnex.io | \
 
 ## Develop locally
 
+Workload model access has a [local implementation preview guide](docs/workload-model-access.md)
+covering private setup, the application wrapper and current lifecycle limits. It is not released or production-qualified.
+
 The dev stack builds from source. Configure a real SMTP endpoint in `.env` for email flows (no public address):
 
 ```bash

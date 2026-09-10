@@ -1,0 +1,10 @@
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+Engineering member 1: HTTP 200
+Engineering member 2: HTTP 200
+Engineering member 3: HTTP 200
+Engineering member 4: HTTP 200
+Outsider: HTTP 403
+Existing PKCE-issued CLI login: HTTP 200
+Removed browser member: HTTP 403
+Removed CLI member: HTTP 403
+Provider and Azure configuration fingerprint unchanged; synthetic group restored to four members.

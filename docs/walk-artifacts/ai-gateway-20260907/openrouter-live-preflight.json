@@ -1,0 +1,15 @@
+{
+  "provider": "openrouter",
+  "model": "openrouter/openai/gpt-4o-mini",
+  "http_status": 200,
+  "status": "success",
+  "duration_ms": 5647,
+  "max_output_tokens": 16,
+  "retries": 0,
+  "persisted_connection": false,
+  "verified_at_utc": "2026-09-07T16:27:29.172541+00:00",
+  "implementation_content_tip": "3fdddc20382fb8dd2eea4150016504b584112e64",
+  "path": "Authenticated local CP -> private LiteLLM 1.100.0 SDK -> OpenRouter",
+  "scope": "Live pre-save inference check only; no SageMaker/AWS qualification, saved connection, or enrolled-agent forwarding walk",
+  "billing_amount": "Not measured; test excluded from gateway usage totals"
+}

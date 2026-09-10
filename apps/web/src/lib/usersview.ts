@@ -244,12 +244,12 @@ export interface RoleTally {
  * where it is non-zero.
  */
 export function roleDistribution(members: Member[]): RoleTally[] {
-  const order: Role[] = ["owner", "admin", "member"];
+  const order: Role[] = ["owner", "admin", "member", "ai-admin", "ai-view"];
   return order.map((role) => ({
     role,
-    n: members.filter((m) => m.role === role).length,
+    n: members.filter((m) => (m.roles ?? [m.role]).includes(role)).length,
     deactivated: members.filter(
-      (m) => m.role === role && m.status === "deactivated",
+      (m) => (m.roles ?? [m.role]).includes(role) && m.status === "deactivated",
     ).length,
   }));
 }

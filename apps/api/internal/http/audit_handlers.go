@@ -25,11 +25,14 @@ func auditActorScope(p *authctx.Principal, orgID uuid.UUID) *uuid.UUID {
 	if p == nil {
 		return nil
 	}
-	if role, _ := p.RoleIn(orgID); role == rbac.RoleMember {
-		actor := p.UserID
-		return &actor
+	for _, role := range p.RolesIn(orgID) {
+		if role == rbac.RoleOwner || role == rbac.RoleAdmin {
+			return nil
+		}
 	}
-	return nil
+	// AI administration does not confer organization-wide audit access.
+	actor := p.UserID
+	return &actor
 }
 
 // ListAuditLogs GET /api/v1/organizations/{orgId}/audit-logs — the org's audit

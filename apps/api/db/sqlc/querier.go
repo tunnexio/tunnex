@@ -94,6 +94,7 @@ type Querier interface {
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
 	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
+	ChangeMemberRoles(ctx context.Context, arg ChangeMemberRolesParams) (Membership, error)
 	ClaimAgentWorkflowAssertion(ctx context.Context, arg ClaimAgentWorkflowAssertionParams) (AgentWorkflowProvenanceUsedAssertion, error)
 	// lint:cross-org — the leader-gated dispatcher claims only its bounded due
 	// batch, atomically moving each delivery out of the pending queue.
@@ -219,6 +220,7 @@ type Querier interface {
 	CountDevicesForUserCap(ctx context.Context, arg CountDevicesForUserCapParams) (int64, error)
 	// Any origin — the refuse-unless-empty guard (D1) must see a hand-added member too.
 	CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error)
+	CountLiveAICredentials(ctx context.Context, arg CountLiveAICredentialsParams) (int64, error)
 	CountLiveAgentAccessRequests(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountLiveAgentAccessRequestsByDestination(ctx context.Context, arg CountLiveAgentAccessRequestsByDestinationParams) (int64, error)
 	CountLiveAgentAccessRequestsByDevice(ctx context.Context, arg CountLiveAgentAccessRequestsByDeviceParams) (int64, error)
@@ -547,6 +549,7 @@ type Querier interface {
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
 	GenerateID(ctx context.Context) (uuid.UUID, error)
+	GetAIGatewaySettings(ctx context.Context, id uuid.UUID) (GetAIGatewaySettingsRow, error)
 	GetAccessEventRetentionSettings(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error)
 	GetAccessEventRetentionSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error)
 	GetActiveAgentPolicyTemplateAssignment(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentParams) (AgentPolicyTemplateAssignment, error)
@@ -791,6 +794,8 @@ type Querier interface {
 	// current FQDN opt-in when the additive column exists. JSONB extraction is
 	// deliberately fail-closed: an absent or null later column means disabled.
 	GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error)
+	// Expired invitations can be resent, but accepted/revoked ones cannot.
+	GetPendingInvitationForResend(ctx context.Context, arg GetPendingInvitationForResendParams) (Invitation, error)
 	GetPlatformSecret(ctx context.Context, name string) (PlatformSecret, error)
 	// Resolve one rule (org-scoped) — S7.5.1 ingest enriches an allow event's kernel-stamped
 	// rule_id into the grant's destination (resource/group) it named, captured AT EVENT TIME so
@@ -888,6 +893,9 @@ type Querier interface {
 	// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
 	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
+	ListAIGatewayAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayAssignmentsRow, error)
+	ListAIGatewayNativeBindings(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayNativeBindingsRow, error)
+	ListAIGatewayTeamPolicies(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayTeamPoliciesRow, error)
 	// The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
 	ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error)
 	ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDeniesByAgentParams) ([]AccessEvent, error)
@@ -1459,6 +1467,7 @@ type Querier interface {
 	LockLiveAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	// Settings are user-facing configuration and may only change for a live tenant.
 	LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	LockMembershipOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	LockNodeByLifecycleClaimForOrg(ctx context.Context, arg LockNodeByLifecycleClaimForOrgParams) (Node, error)
 	// lint:cross-org — callback locks its opaque server-side flow's exact connection.
 	LockSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
@@ -1725,6 +1734,7 @@ type Querier interface {
 	SaveConnectivityProfile(ctx context.Context, arg SaveConnectivityProfileParams) (ConnectivityProfile, error)
 	SaveConnectivitySnapshot(ctx context.Context, arg SaveConnectivitySnapshotParams) (ConnectivitySession, error)
 	SaveSSOConnection(ctx context.Context, arg SaveSSOConnectionParams) (SsoConnection, error)
+	SetAIGatewayEnabled(ctx context.Context, arg SetAIGatewayEnabledParams) (SetAIGatewayEnabledRow, error)
 	SetAgentManagingGroup(ctx context.Context, arg SetAgentManagingGroupParams) (AgentProfile, error)
 	SetAgentOwner(ctx context.Context, arg SetAgentOwnerParams) (Device, error)
 	// The deployment-administrator capability, both directions (S12.11).

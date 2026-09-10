@@ -1,0 +1,102 @@
+name: AI gateway qualification
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/ai-bridge/**"
+      - "openapi/**"
+      - "deploy/ai-gateway/**"
+      - "deploy/helm/tunnex-cp/**"
+      - ".github/workflows/ai0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: ci-ai-${{ github.run_id }}-${{ github.run_attempt }}
+      GOWORK: "off"
+      GOFLAGS: "-mod=readonly"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache: false
+      - name: Extract the exact shipped Linux engine without starting it
+        run: |
+          image='maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208'
+          docker pull --platform linux/amd64 "$image"
+          container=$(docker create --platform linux/amd64 "$image")
+          docker cp "$container:/app/main" "$RUNNER_TEMP/bifrost"
+          docker rm "$container"
+          printf '%s  %s\n' e3a59884140ed5ddb29f373c6c76f42de8d453dc150b996f8f834893b2bfed41 "$RUNNER_TEMP/bifrost" | sha256sum --check
+          chmod 700 "$RUNNER_TEMP/bifrost"
+          echo "AI0_BIFROST_BINARY=$RUNNER_TEMP/bifrost" >> "$GITHUB_ENV"
+      - name: Start and verify a dedicated disposable test database
+        run: |
+          cat > "$RUNNER_TEMP/ai-postgres.yml" <<'COMPOSE'
+          services:
+            postgres:
+              image: postgres:16-alpine
+              environment:
+                POSTGRES_USER: ai_test
+                POSTGRES_PASSWORD: ai_ci_fixture_only
+                POSTGRES_DB: ai_test
+              ports: ["127.0.0.1::5432"]
+              healthcheck:
+                test: [CMD-SHELL, "pg_isready -U ai_test -d ai_test"]
+                interval: 2s
+                timeout: 2s
+                retries: 30
+          COMPOSE
+          docker compose -f "$RUNNER_TEMP/ai-postgres.yml" up -d --wait
+          container=$(docker compose -f "$RUNNER_TEMP/ai-postgres.yml" ps -q postgres)
+          test "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$container")" = "$COMPOSE_PROJECT_NAME"
+          docker inspect -f '{{json .NetworkSettings.Networks}}' "$container" | python3 -c 'import json,os,sys; assert os.environ["COMPOSE_PROJECT_NAME"]+"_default" in json.load(sys.stdin)'
+          echo "Verified COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME container=$container network=${COMPOSE_PROJECT_NAME}_default"
+          endpoint=$(docker compose -f "$RUNNER_TEMP/ai-postgres.yml" port postgres 5432)
+          echo "TUNNEX_TEST_DATABASE_URL=postgres://ai_test:ai_ci_fixture_only@$endpoint/ai_test?sslmode=disable" >> "$GITHUB_ENV"
+      - name: Native engine and enrolled HTTP boundary proof (zero provider spend)
+        working-directory: apps/api
+        run: |
+          DATABASE_URL="$TUNNEX_TEST_DATABASE_URL" go run ./cmd/migrate up
+          go test -race -count=1 ./internal/aigateway ./internal/http
+          go test -race -tags enterprise -count=1 ./internal/aigateway ./internal/http
+          go vet ./internal/aigateway ./internal/http
+      - name: Stop only this test database
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/ai-postgres.yml"; then
+            docker compose -f "$RUNNER_TEMP/ai-postgres.yml" down
+          fi
+
+  litellm-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/ai-bridge/requirements.txt
+      - name: Install the pinned OSS runtime and test tools
+        run: |
+          python -m pip install --require-hashes -r apps/ai-bridge/requirements.txt
+          python -m pip install pytest==9.1.1 pytest-asyncio==1.4.0
+      - name: Qualify SDK adapters and refusal paths without provider spend
+        env:
+          LITELLM_LOCAL_MODEL_COST_MAP: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
+          DO_NOT_TRACK: "1"
+        run: python -m pytest -q apps/ai-bridge/tests

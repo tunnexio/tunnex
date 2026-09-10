@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    # Keep disposable migration walks within the development VM's RAM budget.
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_wal_size=64MB", "-c", "min_wal_size=32MB"]
+    environment:
+      POSTGRES_USER: workload_test
+      POSTGRES_PASSWORD: workload_test_fixture
+      POSTGRES_DB: workload_test
+    ports:
+      - "127.0.0.1:15489:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:size=1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workload_test -d workload_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
