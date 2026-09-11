@@ -20,3 +20,5 @@ Locked continuation: Add Agent must read the current organization's runtime opt-
 ## OAuth inventory authentication (live walk)
 
 Locked: reuse the existing endpoint-bound runtime OAuth lease for read-only MCP inventory discovery. The connected provider currently returns 401 because discovery never supplies this lease although tool forwarding does. Keep tokens in memory, never in inventory/report/errors; refuse redirects for authenticated discovery. Lease failure must not fall back to anonymous discovery. Public discovery remains supported. No new grant or authentication path is introduced.
+
+Review disposition: fix P1 cache isolation in the same slice. Store and compare the exact endpoint with every cached lease; the former cache could reuse A's bearer after switching to B. Regression proves A-to-B fetches a new lease and B-to-B reuses only B's lease. Final bounded review found no further actionable regression.
