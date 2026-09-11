@@ -116,10 +116,8 @@ export default function Access() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
-  // Rules owns its own bounded subject inventory. Groups and Resources are dedicated
-  // Access routes, so a Rules refresh is no longer coupled to a second management
-  // surface mounted below this page.
-  const [subjectsRev] = useState(0);
+  // JIT approval and revocation change the sibling Rules inventory.
+  const [subjectsRev, setSubjectsRev] = useState(0);
   const [roleResolved, setRoleResolved] = useState(false);
   const reloadEpoch = useRef(0);
   const selectedOrgId = useRef<string | null>(currentOrg?.id ?? null);
@@ -263,6 +261,7 @@ export default function Access() {
               enabled={org.agent_jit_access_enabled}
               canApprove={can(myRole, "agent_access:approve")}
               currentUserId={myId}
+              onPolicyChange={() => setSubjectsRev((revision) => revision + 1)}
             />
           )}
         </div>
@@ -275,8 +274,9 @@ type TestableAgent = { device_id: string; name: string };
 
 type LicenceStatus = components["schemas"]["LicenseStatus"];
 
-function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId }: {
+function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId, onPolicyChange }: {
   orgId: string; enabled: boolean; canApprove: boolean; currentUserId: string;
+  onPolicyChange: () => void;
 }) {
   const [licence, setLicence] = useState<Loaded<LicenceStatus> | null>(null);
   useEffect(() => { void loadOne(() => api.GET("/api/v1/license")).then((result) => setLicence(result as Loaded<LicenceStatus>)); }, []);
@@ -285,7 +285,7 @@ function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId }
   if (!Array.isArray(licence.data.features)) return <Card><h2 className="text-sm font-semibold text-ink-heading">Just-in-time access</h2><p className="mt-1 text-cell text-ink-tertiary">The control plane returned an invalid licence capability response.</p><ErrorText>Refresh the page or contact an administrator if the problem continues.</ErrorText></Card>;
   if (!licence.data.features.includes("agent_jit_access")) return null;
   if (!enabled) return <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-ink-tertiary"><span className="h-1.5 w-1.5 rounded-full bg-slate-600" aria-hidden="true" /><span>Just-in-time access is off.</span><Link className="font-medium text-ink-body hover:underline" to="/settings">Configure</Link></div>;
-  return <AgentJITAccessSection orgId={orgId} enabled={enabled} canApprove={canApprove} currentUserId={currentUserId} />;
+  return <AgentJITAccessSection orgId={orgId} enabled={enabled} canApprove={canApprove} currentUserId={currentUserId} onPolicyChange={onPolicyChange} />;
 }
 
 function AgentJITAccessSection({
@@ -293,11 +293,13 @@ function AgentJITAccessSection({
   enabled,
   canApprove,
   currentUserId,
+  onPolicyChange,
 }: {
   orgId: string;
   enabled: boolean;
   canApprove: boolean;
   currentUserId: string;
+  onPolicyChange: () => void;
 }) {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [agents, setAgents] = useState<Array<{ device_id: string; name: string }>>([]);
@@ -481,6 +483,7 @@ function AgentJITAccessSection({
         apiErrorMessage(response.error, `Could not ${action} the request.`),
       );
     }
+    if (action === "approve" || action === "revoke") onPolicyChange();
     await load();
   }
 
@@ -570,7 +573,7 @@ function AgentJITAccessSection({
                 <div>
                   <p className="text-sm text-slate-300">{request.agent_name} → {request.destination_name}</p>
                   <p className="mt-1 text-xs text-slate-500">{request.reason} · {request.state} · requested {relativeAge(request.requested_at)}</p>
-                  {request.approved_expires_at && <p className="mt-1 text-xs text-amber-300">Expires {relativeAge(request.approved_expires_at)}</p>}
+                  {request.approved_expires_at && <p className="mt-1 text-xs text-amber-300">Expires {new Date(request.approved_expires_at).toLocaleString()}</p>}
                   {history[request.id] && <p className="mt-1 font-mono text-[10px] text-slate-500">{history[request.id].join(" → ")}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">

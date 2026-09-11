@@ -116,8 +116,16 @@ describe("released F10 JIT agent access workflow", () => {
     await screen.findByText("pending");
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await screen.findByText(/ship release · approved/);
+    await screen.findByRole("link", { name: "JIT access" });
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     await screen.findByText(/ship release · revoked/);
+    await waitFor(() => expect(screen.queryByRole("link", { name: "JIT access" })).toBeNull());
+  });
+
+  it("shows an exact expiry instead of treating a future deadline as a last-seen age", async () => {
+    requests = [requestRow("approved")];
+    render(<Access />);
+    await screen.findByText(`Expires ${new Date("2026-08-16T11:00:00Z").toLocaleString()}`);
   });
 
   it("lets a scoped operator request and cancel but never approve", async () => {
