@@ -11,11 +11,10 @@ User approved, 2026-09-11:
 - Explain which configured VPN gateway is applicable. Do not imply that all
   enrolled gateways support AI ingress: the current deployment configures one.
 
-Pending user clarification: does single-organization mean one live organization
-on the whole control plane, or one active membership for the connected user?
-The alias resolver and its UI recommendation must use the same definition.
-No alias implementation or deployment before that decision. Explicit scoped
-connection details and copy controls can be built independently.
+Locked by user: single-organization means one active membership for the
+connected user. Resolve the user from the verified VPN peer, then count live
+memberships. The node certificate constrains the target organization. More
+than one membership requires the explicit organization URL.
 
 Current production ingress supports chat completions only. Do not generate
 dummy-key examples for unsupported model modes or claim TURN relay proof.
