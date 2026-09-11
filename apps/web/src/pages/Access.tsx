@@ -310,6 +310,12 @@ function AgentJITAccessSection({
   const [reason, setReason] = useState("");
   const [durationSeconds, setDurationSeconds] = useState("3600");
   const [history, setHistory] = useState<Record<string, string[]>>({});
+  const [stateFilter, setStateFilter] = useState<AgentAccessRequest["state"] | "">("");
+  const [deviceFilter, setDeviceFilter] = useState(() => new URLSearchParams(window.location.search).get("agent") ?? "");
+  const [cursor, setCursor] = useState<{ before_requested_at: string; before_id: string }>();
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [rejectRequest, setRejectRequest] = useState<AgentAccessRequest | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadEpoch = useRef(0);
@@ -318,6 +324,8 @@ function AgentJITAccessSection({
     const epoch = ++loadEpoch.current;
     setError(null);
     setHistory({});
+    setCursor(undefined);
+    setRequests([]);
     const agentResult = await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/agents", {
         params: { path: { orgId } },
@@ -329,8 +337,22 @@ function AgentJITAccessSection({
       else setAuthorized(false);
       return;
     }
+    const inventory = listItems(agentResult.data);
+    let agentCursor = agentResult.data.next_cursor;
+    const seenCursors = new Set<string>();
+    while (agentCursor) {
+      if (seenCursors.has(agentCursor)) { setError("Could not load all agents. Refresh to retry."); return; }
+      seenCursors.add(agentCursor);
+      const page = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents", {
+        params: { path: { orgId }, query: { cursor: agentCursor!, limit: 100 } },
+      }));
+      if (epoch !== loadEpoch.current) return;
+      if (!page.ok) { setError(page.error); return; }
+      inventory.push(...page.data.items.filter(row => !inventory.some(existing => existing.device_id === row.device_id)));
+      agentCursor = page.data.next_cursor;
+    }
     const visible = await Promise.all(
-      listItems(agentResult.data).map(async (agent) => {
+      inventory.map(async (agent) => {
         const profile = await loadOne(() =>
           api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
             params: { path: { orgId, deviceId: agent.device_id } },
@@ -345,7 +367,7 @@ function AgentJITAccessSection({
     );
     const requestResult = await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
-        params: { path: { orgId }, query: { page_size: 50 } },
+        params: { path: { orgId }, query: { page_size: 50, state: stateFilter || undefined, device_id: deviceFilter || undefined } },
       }),
     );
     if (epoch !== loadEpoch.current) return;
@@ -361,11 +383,14 @@ function AgentJITAccessSection({
     // the optional panel visibly; never fabricate an empty history and never
     // crash the whole Access page.
     const requestItems = listItems(requestResult.data);
+    const page = requestResult.data;
+
     if (scoped.length === 0) {
       setAuthorized(true);
       setAgents([]);
       setDestinations([]);
       setRequests(requestItems);
+      setCursor(page.next_before_id && page.next_before_requested_at ? { before_id: page.next_before_id, before_requested_at: page.next_before_requested_at } : undefined);
       return;
     }
     const destinationResult = await loadOne(() =>
@@ -389,10 +414,11 @@ function AgentJITAccessSection({
     setAgents(scoped);
     setDestinations(destinationItems);
     setRequests(requestItems);
+    setCursor(page.next_before_id && page.next_before_requested_at ? { before_id: page.next_before_id, before_requested_at: page.next_before_requested_at } : undefined);
     setAgentId((current) =>
       scoped.some((agent) => agent.device_id === current)
         ? current
-        : (scoped[0]?.device_id ?? ""),
+        : (scoped.find(agent => agent.device_id === deviceFilter)?.device_id ?? scoped[0]?.device_id ?? ""),
     );
     setDestinationKey((current) =>
       destinationItems.some(
@@ -403,7 +429,7 @@ function AgentJITAccessSection({
           ? `${destinationItems[0].kind}:${destinationItems[0].id}`
           : "",
     );
-  }, [canApprove, orgId]);
+  }, [canApprove, orgId, stateFilter, deviceFilter]);
 
   useEffect(() => {
     void load();
@@ -411,6 +437,23 @@ function AgentJITAccessSection({
       loadEpoch.current += 1;
     };
   }, [load]);
+
+  async function loadMore() {
+    if (!cursor || loadingRequests || busy) return;
+    const epoch = loadEpoch.current;
+    setLoadingRequests(true);
+    setError(null);
+    try {
+      const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
+        params: { path: { orgId }, query: { page_size: 50, state: stateFilter || undefined, device_id: deviceFilter || undefined, ...cursor } },
+      }));
+      if (epoch !== loadEpoch.current) return;
+      if (!result.ok) { setError(result.error); return; }
+      const page = result.data;
+      setRequests(current => [...current, ...page.items.filter(row => !current.some(existing => existing.id === row.id))]);
+      setCursor(page.next_before_id && page.next_before_requested_at ? { before_id: page.next_before_id, before_requested_at: page.next_before_requested_at } : undefined);
+    } finally { setLoadingRequests(false); }
+  }
 
   async function submitRequest() {
     const destination = destinations.find(
@@ -457,7 +500,7 @@ function AgentJITAccessSection({
         { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
       );
     } else if (action === "reject") {
-      const rejection = window.prompt("Why is this request being rejected?")?.trim();
+      const rejection = rejectionReason.trim();
       if (!rejection) {
         setBusy(false);
         return;
@@ -483,6 +526,8 @@ function AgentJITAccessSection({
         apiErrorMessage(response.error, `Could not ${action} the request.`),
       );
     }
+    setRejectRequest(null);
+    setRejectionReason("");
     if (action === "approve" || action === "revoke") onPolicyChange();
     await load();
   }
@@ -502,20 +547,20 @@ function AgentJITAccessSection({
   }
 
   if (authorized === false) return null;
-  if (authorized == null) return null;
+  if (authorized == null) return error ? <Card><ErrorText>{error}</ErrorText><Button onClick={() => void load()}>Retry temporary access</Button></Card> : null;
 
   return (
     <Card data-testid="agent-jit-access-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">
+          <h2 id="agent-jit-access" className="text-sm font-semibold text-slate-200">
             Just-in-time agent access
           </h2>
           <p className="mt-1 text-xs text-slate-500">
             Request one expiring destination grant. Pending requests change no policy.
           </p>
         </div>
-        <Button disabled={busy} onClick={() => void load()}>Refresh</Button>
+        <Button disabled={busy || loadingRequests} onClick={() => void load()}>Refresh</Button>
       </div>
       {!enabled && (
         <p className="mt-3 text-xs text-amber-300">
@@ -564,6 +609,14 @@ function AgentJITAccessSection({
           {agents.length === 0 ? "No manageable agents are available." : "No access destinations are configured."}
         </p>
       )}
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Field label="Request state"><Select value={stateFilter} disabled={busy} onChange={event => { loadEpoch.current++; setRequests([]); setCursor(undefined); setStateFilter(event.target.value as AgentAccessRequest["state"] | ""); }}>
+          <option value="">All states</option>{(["pending", "approved", "rejected", "cancelled", "expired", "revoked"] as const).map(state => <option key={state} value={state}>{state[0].toUpperCase() + state.slice(1)}</option>)}
+        </Select></Field>
+        <Field label="Requests for agent"><Select value={deviceFilter} disabled={busy} onChange={event => { loadEpoch.current++; setRequests([]); setCursor(undefined); setDeviceFilter(event.target.value); }}>
+          <option value="">All accessible agents</option>{agents.map(agent => <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>)}
+        </Select></Field>
+      </div>
       <ErrorText>{error}</ErrorText>
       {requests.length > 0 && (
         <div className="mt-5 space-y-2">
@@ -579,9 +632,9 @@ function AgentJITAccessSection({
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => void showHistory(request.id)}>History</Button>
                   {canApprove && request.state === "pending" && (
-                    <><Button disabled={busy} onClick={() => void transition(request, "approve")}>Approve</Button><Button disabled={busy} onClick={() => void transition(request, "reject")}>Reject</Button></>
+                    <><Button disabled={busy} onClick={() => void transition(request, "approve")}>Approve</Button><Button disabled={busy} onClick={() => { setError(null); setRejectionReason(""); setRejectRequest(request); }}>Reject</Button></>
                   )}
-                  {!canApprove && request.state === "pending" && request.requested_by_user_id === currentUserId && (
+                  {request.state === "pending" && request.requested_by_user_id === currentUserId && (
                     <Button disabled={busy} onClick={() => void transition(request, "cancel")}>Cancel</Button>
                   )}
                   {canApprove && request.state === "approved" && (
@@ -593,6 +646,12 @@ function AgentJITAccessSection({
           ))}
         </div>
       )}
+      {cursor && <Button className="mt-4" disabled={busy || loadingRequests} onClick={() => void loadMore()}>{loadingRequests ? "Loading requests…" : "Load more requests"}</Button>}
+      {rejectRequest && <Modal title="Reject access request" onDismiss={() => !busy && setRejectRequest(null)} actions={<><Button disabled={busy} variant="ghost" onClick={() => setRejectRequest(null)}>Keep request</Button><Button disabled={busy || !rejectionReason.trim()} onClick={() => void transition(rejectRequest, "reject")}>{busy ? "Rejecting…" : "Reject request"}</Button></>}>
+        <p className="mb-3 text-sm">{rejectRequest.agent_name} → {rejectRequest.destination_name}</p>
+        <Field label="Rejection reason"><Input autoFocus maxLength={500} value={rejectionReason} onChange={event => setRejectionReason(event.target.value)} /></Field>
+        <ErrorText>{error}</ErrorText>
+      </Modal>}
     </Card>
   );
 }

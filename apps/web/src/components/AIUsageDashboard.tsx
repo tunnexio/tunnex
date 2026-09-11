@@ -43,7 +43,7 @@ export function AIUsageDashboard(props: AIUsageDashboardProps) {
         {totals.uncostedRequests > 0 && <p className="ai-usage-warning" role="status">Cost is incomplete: {count(totals.uncostedRequests)} observed requests have no recorded cost. The displayed estimate may understate spending.</p>}
         {totals.requests === 0 && <div className="ai-usage-empty" role="status"><h3>No requests in this period</h3><p>Choose another period or send an authorized agent request to begin seeing usage.</p></div>}
         <DailyChart days={props.daily} />
-        <div className="ai-usage-rank-grid">{props.userGroups && <Ranked title="Spend by user group" label="User group" rows={props.userGroups} />}<Ranked title="Spend by team" label="Team" rows={props.teams} /><Ranked title="Spend by agent" label="Agent" rows={props.agents} /><Ranked title="Spend by model" label="Model" rows={props.models?.map((m) => ({ ...m, id: m.name }))} /></div>
+        <div className="ai-usage-rank-grid">{props.userGroups && <Ranked title="Spend by user group" label="User group" rows={props.userGroups} />}<Ranked title="Spend by team" label="Team" rows={props.teams} /><Ranked title="Spend by agent" label="Agent" rows={props.agents} /><Ranked emptyMessage={totals.uncostedRequests > 0 ? "Model cost is unavailable for unpriced requests. Request and token totals are shown above." : undefined} title="Spend by model" label="Model" rows={props.models?.map((m) => ({ ...m, id: m.name }))} /></div>
         <TokenBreakdown totals={totals} />
         <p className="ai-usage-footnote">Provider request outcomes exclude requests refused by Tunnex before reaching the provider.{totals.cancelledRequests !== undefined && ` Cancelled provider requests: ${count(totals.cancelledRequests)}.`} Based on retained gateway records; older activity may no longer be available. Soft thresholds are not strict caps. Concurrent requests may exceed them. </p>
       </>}
@@ -67,12 +67,12 @@ function DailyChart({ days }: { days?: AIUsageDay[] }) {
     </>}
   </div>;
 }
-function Ranked({ title, label, rows }: { title: string; label: string; rows?: (Pick<AIUsageRank, "id" | "name" | "cost"> & Partial<AIUsageRank>)[] }) {
+function Ranked({ title, label, rows, emptyMessage }: { emptyMessage?: string; title: string; label: string; rows?: (Pick<AIUsageRank, "id" | "name" | "cost"> & Partial<AIUsageRank>)[] }) {
   const sorted = rows ? [...rows].sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name)) : undefined;
   const max = sorted?.[0]?.cost ?? 0;
   const hasRequests = label !== "Model";
   return <div className="ai-usage-panel"><div className="ai-usage-panel-title"><h3>{title}</h3><span>{rows ? `${rows.length} ${label.toLowerCase()}${rows.length === 1 ? "" : "s"}` : "Unavailable"}</span></div>
-    {!sorted?.length ? <p className="ai-usage-muted">{rows ? "No recorded usage in this period." : "Breakdown is unavailable."}</p> : <div className="ai-usage-table-scroll"><table><caption className="sr-only">{title}</caption><thead><tr><th scope="col">{label}</th>{hasRequests && <th scope="col">Requests</th>}<th scope="col">Cost</th></tr></thead><tbody>{sorted.map((row) => <tr key={row.id}><th scope="row"><span className="ai-usage-rank-name" title={row.name}>{row.name}</span><span className="ai-usage-rank-track" aria-hidden="true"><i style={{ width: `${max ? row.cost / max * 100 : 0}%` }} /></span>{(row.uncostedRequests ?? 0) > 0 && <small className="ai-usage-rank-missing">{count(row.uncostedRequests!)} without cost</small>}</th>{hasRequests && <td>{row.requests === undefined ? "Unavailable" : count(row.requests)}</td>}<td>{formatAIUsageCost(row.cost)}</td></tr>)}</tbody></table></div>}
+    {!sorted?.length ? <p className="ai-usage-muted">{rows ? emptyMessage ?? "No recorded usage in this period." : "Breakdown is unavailable."}</p> : <div className="ai-usage-table-scroll"><table><caption className="sr-only">{title}</caption><thead><tr><th scope="col">{label}</th>{hasRequests && <th scope="col">Requests</th>}<th scope="col">Cost</th></tr></thead><tbody>{sorted.map((row) => <tr key={row.id}><th scope="row"><span className="ai-usage-rank-name" title={row.name}>{row.name}</span><span className="ai-usage-rank-track" aria-hidden="true"><i style={{ width: `${max ? row.cost / max * 100 : 0}%` }} /></span>{(row.uncostedRequests ?? 0) > 0 && <small className="ai-usage-rank-missing">{count(row.uncostedRequests!)} without cost</small>}</th>{hasRequests && <td>{row.requests === undefined ? "Unavailable" : count(row.requests)}</td>}<td>{formatAIUsageCost(row.cost)}</td></tr>)}</tbody></table></div>}
   </div>;
 }
 function TokenBreakdown({ totals }: { totals: AIUsageTotals }) {

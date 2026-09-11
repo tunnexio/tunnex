@@ -65,6 +65,7 @@ export function AIGroupAccess({ orgId, canManage, initialConnection = "", initia
   }
   return <section className="space-y-5 ai-model-access" aria-label="Group model access"><Card>
     <div className="ai-section-heading"><h2>Model access</h2><a className="network-setup-link" href="/users/groups">Manage user groups</a></div><p className="my-2 text-sm text-ink-tertiary">Grant a model to a user group. Members call it with their Tunnex login; the provider key stays in the gateway.</p>
+    <nav aria-label="Model setup next steps" className="my-3 flex flex-wrap gap-4 text-sm"><a href="/ai-gateway/credentials" className="underline">1. Connect a provider</a><a href="/users/groups" className="underline">2. Set up user groups</a><a href="/ai-gateway/my-models" className="underline">3. Copy a model example</a></nav>
     {error && <p role="alert">{error}</p>}
     <Button disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Refresh access</Button>
     {!data ? <Loading label="Loading groups and models…" /> : canManage && <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -108,8 +109,26 @@ export function AIUseModel({ orgId }: { orgId: string }) {
     {models === null ? <Loading label="Loading your models…" /> : !models.length ? <p className="mt-4">No models are available to you yet. Ask your AI admin to grant a model to your user group and enable the gateway.</p> : <div className="mt-5 space-y-5"><Field label="Your model"><Select value={model} disabled={busy} onChange={(e) => { setModel(e.target.value); setOutput(""); }}>{models.map((m) => <option key={m.model} value={m.model}>{m.model}</option>)}</Select></Field>
       <AIModelConnectionDetails key={`${orgId}:${model}`} orgId={orgId} model={model} mode={selected?.mode} />
       <div><h3>Operation endpoint</h3><code className="block mt-2 break-all text-sm">{endpoint}</code><Button onClick={() => void navigator.clipboard.writeText(endpoint).then(() => toast.success("Endpoint copied")).catch(() => setError("Could not copy. Select the endpoint text to copy it."))}>Copy endpoint</Button></div>
-      <div><h3>Call from your terminal</h3><pre className="mt-2 overflow-x-auto rounded-lg bg-ink-900 p-4 text-xs">{`tunnex login --server ${shellQuote(origin)}\ntunnex ai models --org ${orgId}${selected?.mode === "chat" ? `\ntunnex ai chat --org ${orgId} --model ${shellQuote(model)} --prompt 'Hello'` : ""}`}</pre><p className="mt-2 text-xs text-ink-tertiary">The CLI uses your saved Tunnex login. API clients authenticate with the same Tunnex login credential; browser calls use your session.</p></div>
+      <div><h3>Call from your terminal</h3><pre className="mt-2 overflow-x-auto rounded-lg bg-ink-900 p-4 text-xs">{`tunnex login --server ${shellQuote(origin)}\ntunnex ai models --org ${orgId}${selected?.mode === "chat" ? `\ntunnex ai chat --org ${orgId} --model ${shellQuote(model)} --prompt 'Hello'` : ""}`}</pre><p className="mt-2 text-xs text-ink-tertiary">The CLI uses your saved Tunnex login. Browser calls use your session. For token-free SDK access over VPN, use the connection details above; other authenticated clients use a Tunnex credential.</p></div>
       {selected?.mode === "chat" && <><Field label="Message"><textarea className="w-full rounded-lg border border-white/10 bg-ink-900 p-3 text-sm" rows={3} maxLength={8000} value={prompt} disabled={busy} onChange={(e) => setPrompt(e.target.value)} /></Field><Button disabled={busy || !prompt.trim()} onClick={() => void call()}>{busy ? "Calling model…" : "Call model"}</Button></>}
     </div>}
-  </Card>{output && <Card><h3>Model response</h3><pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap text-sm">{output}</pre></Card>}</section>;
+  </Card>{output && <AIModelResponse output={output} />}</section>;
+}
+
+
+export function AIModelResponse({ output }: { output: string }) {
+  let answer = "";
+  let tokens: number | undefined;
+  try {
+    const data = JSON.parse(output);
+    answer = data.choices?.map((choice: { message?: { content?: unknown }; text?: unknown }) => {
+      const text = choice.message?.content ?? choice.text;
+      return typeof text === "string" ? text : "";
+    }).filter(Boolean).join("\n\n") ?? "";
+    if (typeof data.usage?.total_tokens === "number") tokens = data.usage.total_tokens;
+  } catch { /* Preserve unexpected responses in Details. */ }
+  return <Card><h3>Model response</h3><p className="mt-3 whitespace-pre-wrap break-words text-sm">{answer || "The model returned no text. See response details."}</p>
+    {tokens !== undefined && <p className="mt-3 text-xs text-ink-tertiary">{tokens.toLocaleString()} tokens used</p>}
+    <details className="mt-4"><summary className="cursor-pointer text-sm">Response details</summary><pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap text-xs">{output}</pre></details>
+  </Card>;
 }
