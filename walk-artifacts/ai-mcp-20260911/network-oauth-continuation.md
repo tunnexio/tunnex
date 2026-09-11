@@ -42,3 +42,13 @@ Network proof: template preview with enforcing On reported1agent/1rule/1gateway 
 - Artifact `/private/tmp/tunnex-mcp-deploy/tunnex-agent-runtime-oauth` SHA256 `8666d91337fe5cefaead788dc4a9a7af0a417409996f6cfae5ef89a74cbd5585`.
 - Automatic approval review rejected SCP to CP then disposable agent. Read-only AWS verification from CP confirmed account735391218823 owns CP15.206.183.232 and test agent13.205.1.253 (`tunnex-ai-network-agent-walk-20260911`). Same transfer was rejected again because exact payload/destination approval was required. Specific user approval is pending; no transfer/restart occurred.
 - Provider consent is now granted; revoke this test app after verification. Test org and instances remain pending deployment/proof/cleanup. No public push or release.
+
+## Live OAuth proof and cleanup completed
+
+- Explicit payload/destination approval received; runtime artifact checksum verified and installed only on disposable agent13.205.1.253, with rollback executable retained until instance termination.
+- Runtime reported healthy authenticated `workers-bindings` inventory: 23 tools and one prompt. Default-denied workers_list returned403/-32100. After allowing only workers_list in UI, initialize and tool call returned200, result present, isError=false. No upstream write tool was invoked.
+- Python urllib User-Agent received Cloudflare1010; runtime's normal Go-http-client/1.1 User-Agent succeeded. This distinguishes upstream bot filtering from Tunnex policy/OAuth failures.
+- Provider OAuth grant explicitly revoked via Connected Applications after exact cleanup approval. Same tool call then returnedHTTP200 with MCP isError=true. Transport status alone is not success. Natural OAuth token refresh was not exercised; it remains a separate coverage gap.
+- Automatic approval review required explicit grant cleanup approval, then allowed it. Site deletion was initially rejected with a gateway bound; unbound gateway, removed range, then deleted empty site through UI.
+- Test agent revoked/removed. Test gateway revoked/deleted. Test org `ai-network-walk-20260911` deletion accepted after all infrastructure blockers cleared. This is API soft deletion, not manual database purge.
+- AWS account735391218823 confirmed instances i-0765980443390d99b and i-0d2265341cfba2a78 terminated. Test SG sg-083b3b8b6a37acb55 deletion returnedTrue. All AWS commands executed on CP. Original Demo and its fixture retained for expanded full-feature walk.
