@@ -2,6 +2,12 @@
 
 User requested complete AI Gateway/MCP/AI Agent feature coverage, followed by simpler user journeys. This ledger distinguishes live evidence from tests and unsupported/unconfigured prerequisites. No universal green claim.
 
+## Current result (supersedes chronological remaining-work notes below)
+
+The configured GPT-5 chat, workload identity, MCP policy/OAuth, agent rotation/provenance, network-template and JIT control-plane scenarios listed here have live evidence. Streaming, JIT cancel/reject/idempotency and natural expiry are now proved. Non-chat modes are unconfigured by user disposition. Remaining qualification boundaries are natural OAuth token refresh, interrupted rotation recovery/old runtime credential rejection, and JIT-specific enforced dataplane expiry. These are not marked passed: the OAuth test grant was explicitly revoked and the enforcing test org was explicitly cleaned up. Trigger for those proofs: a dedicated resilience/production qualification run with a new consented provider session and disposable enforcing lab. Prior template dataplane proof does not substitute for JIT expiry dataplane proof.
+
+Current fixes are on story/ai-mcp-walk-fixes. Web85c56bd5 deployed on CP; API unchanged. All1517web tests, typecheck and production build passed. Independent narrow review found no regression. No push, merge or release performed.
+
 ## Live evidence this continuation
 
 - Original Demo restored as sole membership after disposable network/OAuth org deletion.
@@ -59,3 +65,11 @@ Secrets and runtime state remain only under /private/tmp/tunnex-workload-fullwal
 - Found two display bugs: policy table stays stale after JIT mutation; future expiry renders Expires0sago because it uses the last-seen age formatter. Approved correction recorded in the decision document before code.
 - Original test agent streamed GPT-5 through an in-memory runtime identity exchange201, inference200 text/event-stream,5dataevents, DONE marker and exact STREAM_WALK_OK response. No runtime/provider credential was printed or persisted by the test.
 - Remaining JIT cancel/reject/natural expiry uses a separate temporary CLI credential (existing user CLI state untouched), to be revoked at completion. This proves control-plane lifecycle only; Demo enforcement remainsOff.
+
+### Final JIT results and deployment
+
+- Cancel request01a091a0-cb28-7843-9597-d1b98f86dda0→cancelled; reject01a091a0-d032-7971-836a-aa939d1ae6f9→rejected. Duplicate creation with the same idempotency key returned the same request for all3cases.
+- Request01a091a0-d51a-7543-9d79-3151a9ecc9e9 approved for300seconds. Natural server expiry2026-09-11T18:05:32.625658Z; subsequent read showed history pending→approved→expired, no database/clock manipulation. Rules list0after expiry.
+- Deployed web85c56bd5 from artifact sha256da8fb0adedd79d33b8dbb8700d0546e3ed20fb0edeb55e4db0e3442e1d00b454; image manifest liste71a235400319befe8d41c3789ac24c1c3374081c7b2f3baf0af4abab363ac1e. Restricted rollback override on CP ai-mcp-fixes-20260911/rollback-before-jit-85c56bd5.yml.
+- New UI request01a091a7-7d82-7e47-b67f-160cf96d7664 proved approve displays1activeJIT rule without reload and revoke displays0without reload. Exact expiry rendered11/09/2026,23:35:32for expired request; future timestamp rendered correctly for new approval.
+- Final API restore: enabledfalse,pending0,approved0. Network enforcementOff throughout. Temporary CLI credential6017883dd0e6 logged out/revoked without warnings; user CLI state untouched. CP web healthy and HTTPS healthzstatusok.
