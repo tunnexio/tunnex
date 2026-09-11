@@ -251,6 +251,10 @@ func main() {
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.
 	dnsFwd := dnsforward.New(logger, nil)
+	if err := dnsFwd.SetVPNHost(os.Getenv("TUNNEX_AI_VPN_HOSTNAME"), os.Getenv("TUNNEX_AI_VPN_ADDRESS")); err != nil {
+		logger.Error("invalid VPN AI DNS configuration")
+		return
+	}
 	// Flow observations are on by default so an ordinarily enrolled gateway actually feeds the
 	// Access Events surface. TUNNEX_FLOWLOG_GROUP=0 is the explicit operational escape hatch;
 	// a positive value selects another local NFLOG group. Set the group BEFORE the first

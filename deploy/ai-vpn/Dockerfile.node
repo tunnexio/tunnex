@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=755 tunnex-node /usr/local/bin/tunnex-node
+COPY --chmod=755 tunnex-ai-vpn-relay /usr/local/bin/tunnex-ai-vpn-relay

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/netip"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -91,6 +92,12 @@ func (s apiServer) ListRoutedRanges(ctx context.Context, req api.ListRoutedRange
 				derivedForwards = append(derivedForwards, sitessvc.DNSForward{Domain: forward.Domain, ResolverIP: forward.ResolverIP})
 			}
 			fwds = sitessvc.MergeResolverForwardsFailClosed(fwds, derivedForwards)
+		}
+		if ingress := s.aiPolicies.VPNDeviceIngress(ctx, req.OrgId, *req.Params.DeviceId, p.UserID); ingress != nil {
+			body.Ranges = append(body.Ranges, ingress.Address.String()+"/32")
+			slices.Sort(body.Ranges)
+			body.Ranges = slices.Compact(body.Ranges)
+			fwds = sitessvc.MergeResolverForwardsFailClosed(fwds, []sitessvc.DNSForward{{Domain: ingress.Host, ResolverIP: ingress.Address.String()}})
 		}
 		if derived {
 			body.DialEndpoint = &ep

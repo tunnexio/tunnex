@@ -1,0 +1,21 @@
+Base: origin/main d378e332b5770a1c66986ffed8eed54c4f80711c
+Validation 2026-09-11:
+- Open and enterprise API packages build for Linux/amd64.
+- HTTP and config packages pass; database-dependent tests without an explicit
+  fixture in that local run skip and are not counted as live DB proof.
+- Relay peer/header tests and DNS package tests pass with loopback permission.
+- Isolated CP-side PostgreSQL project tunnexvpnverify0911, container
+  tunnexvpnverify0911-postgres-1, network tunnexvpnverify0911_default.
+  TestUserGroupModelAccess and TestVPNModelChecksCurrentDeviceAndUserGrant pass
+  in BOTH editions. The latter checks allowed identity, cross-org/gateway/IP/key,
+  ungranted model, revoked device, posture block, agent-device refusal, removed
+  grants and device-owner-specific DNS publication.
+- Initial SSH-tunneled migrations exceeded fixture deadline. Running the same
+  test binaries beside the isolated database completed in roughly 2-3s/test.
+- Initial new device lookup used an inet comparison against a text schema field;
+  corrected to the schema's canonical text address comparison. No such build was
+  deployed. Both final edition regressions passed after the correction.
+- Gateway enrollment completed: cp-vpn-gateway,
+  node 01a08f49-f6ee-7359-b717-9c22165eb917, wg0 10.99.0.1/24.
+  Console shows healthy. No client device/peer observed at this checkpoint.
+- Real VPN client DNS/routing, TLS ingress and model call remain pending.

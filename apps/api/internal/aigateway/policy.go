@@ -36,6 +36,7 @@ type Assignment struct {
 	Status                                         string
 }
 type Policies struct {
+	vpnIngress         *VPNIngress
 	pool               *pgxpool.Pool
 	sealer             *crypto.Sealer
 	engine             PolicyEngine

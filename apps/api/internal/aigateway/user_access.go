@@ -228,7 +228,11 @@ const userGrantKeyPurpose = "tunnex-ai-user-group-key"
 // ResolveUserModel never treats an organization role as inference authority.
 // All identity, membership, provider and opt-in facts are read for this request.
 func (s *Policies) ResolveUserModel(ctx context.Context, org, user uuid.UUID, model string) (Grant, error) {
-	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || user == uuid.Nil {
+	return s.resolveUserModel(ctx, org, user, model, nil)
+}
+
+func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error)) (Grant, error) {
+	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || (user == uuid.Nil && vpnUser == nil) {
 		return Grant{}, policyDenied()
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -236,6 +240,15 @@ func (s *Policies) ResolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		return Grant{}, aiUnavailable()
 	}
 	defer rollbackAI(tx)
+	if vpnUser != nil {
+		user, err = vpnUser(tx)
+		if err != nil {
+			return Grant{}, err
+		}
+		if user == uuid.Nil {
+			return Grant{}, policyDenied()
+		}
+	}
 	var live bool
 	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id JOIN organizations o ON o.id=m.org_id WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT (u.must_change_password AND u.password_hash IS NOT NULL) AND o.deleted_at IS NULL AND o.ai_gateway_enabled)`, org, user).Scan(&live) != nil {
 		return Grant{}, aiUnavailable()
