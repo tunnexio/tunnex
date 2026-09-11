@@ -177,7 +177,7 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
         actions={state.kind === "ready" && state.canEnroll ? <Button onClick={() => update({ add: "1" })}>Add agent</Button> : undefined}
       />
       <AgentsTabRail />
-      {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow orgId={org.id} enabled onDismiss={() => update({ add: null })} />}
+      {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow orgId={org.id} runtimeEnabled={Boolean(org.managed_agent_runtime_enabled)} enabled onDismiss={() => update({ add: null })} />}
 
       {state.kind === "loading" && <Card><Loading label="Loading AI agents…" /></Card>}
       {state.kind === "denied" && <Card><EmptyState>You do not have permission to view AI Agents in this organization.</EmptyState></Card>}

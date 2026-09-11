@@ -383,6 +383,12 @@ function TeamEditor({
   return (
     <div className="ai-config-editor">
       <div className="ai-config-policy-summary"><span className="ai-config-pill">{team ? `Revision ${team.revision}` : "New policy"}</span>{team && <span>{team.models.length} model{team.models.length === 1 ? "" : "s"} · {team.key_ids.length} provider key ID{team.key_ids.length === 1 ? "" : "s"}</span>}</div>
+      <Field label="Add a configured model">
+        <Select value="" disabled={busy} onChange={event => { if (event.target.value) setModels([...new Set([...lines(models), event.target.value])].join("\n")); }}>
+          <option value="">Choose a model</option>
+          {[...new Set(providers.items.filter(c => c.enabled && c.status === "applied" && c.applied_revision === c.revision).flatMap(c => c.models))].map(model => <option key={model} value={model}>{model}</option>)}
+        </Select>
+      </Field>
       <Field label="Exact models (one per line)">
         <textarea
           className={area}
