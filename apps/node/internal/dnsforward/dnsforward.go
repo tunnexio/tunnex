@@ -17,6 +17,7 @@ package dnsforward
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"sort"
@@ -162,6 +163,7 @@ type exchangeFn func(resolver netip.Addr, query []byte) ([]byte, error)
 
 // Forwarder holds the atomic table + a per-source rate limiter. Serve() (real UDP) is thin over handle().
 type Forwarder struct {
+	vpnHost  atomic.Pointer[vpnHostAnswer]
 	tbl      atomic.Pointer[table]
 	k8s      atomic.Pointer[k8sAnswers] // S10.3 A1: direct-answer set (FQDN → VIP + owned zones)
 	exchange exchangeFn
@@ -258,6 +260,12 @@ func (f *Forwarder) handle(query []byte, src netip.Addr) []byte {
 	q, err := p.Question()
 	if err != nil {
 		return refuse(hdr.ID, query)
+	}
+	if a := f.vpnHost.Load(); a != nil && strings.EqualFold(q.Name.String(), a.name) {
+		if q.Type != dnsmessage.TypeA {
+			return noData(hdr.ID, query)
+		}
+		return answerA(hdr.ID, query, q, a.ip)
 	}
 	// S10.3 A1 — K8s direct-answer, BEFORE the S8.4 forwarding match (a cluster zone is authoritative here,
 	// never relayed upstream). An EXPOSED FQDN → its VIP (A). An in-zone-but-UNEXPOSED name → NXDOMAIN (the
@@ -394,4 +402,25 @@ func respondRCode(id uint16, query []byte, rcode dnsmessage.RCode) []byte {
 		return nil
 	}
 	return out
+}
+
+type vpnHostAnswer struct {
+	name string
+	ip   netip.Addr
+}
+
+// SetVPNHost installs one exact opt-in hostname; it does not capture a zone or
+// alter the K8s answer set. The configured address must be the VPN relay address.
+func (f *Forwarder) SetVPNHost(host, address string) error {
+	if host == "" && address == "" {
+		f.vpnHost.Store(nil)
+		return nil
+	}
+	ip, err := netip.ParseAddr(address)
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	if err != nil || !ip.Is4() || !ip.IsPrivate() || host == "" || strings.ContainsAny(host, "/:@ ") {
+		return fmt.Errorf("invalid VPN hostname configuration")
+	}
+	f.vpnHost.Store(&vpnHostAnswer{name: host + ".", ip: ip})
+	return nil
 }

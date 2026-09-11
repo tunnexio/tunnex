@@ -20,6 +20,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
@@ -33,6 +34,8 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
+	vpnAIAdapter               *aigateway.Adapter
+	vpnAIPolicies              *aigateway.Policies
 	connectivity               *connectivity.Store
 	svc                        *nodes.Service
 	ca                         *agentca.CA
@@ -129,6 +132,7 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Put("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
 	r.Delete("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
 	r.Get("/agent/desired-state", a.desiredState)
+	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
 	r.Get("/agent/watch", a.watch)
 	r.Post("/agent/renew", a.renew)
 	r.Post("/agent/report", a.report)

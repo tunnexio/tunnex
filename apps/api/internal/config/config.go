@@ -49,6 +49,9 @@ type Config struct {
 	GatewayControlURL string
 	// Optional private AI engine. Empty URL leaves AI unavailable in every edition.
 	AIGatewayURL           string
+	AIVPNHostname          string
+	AIVPNNodeID            string
+	AIVPNAddress           string
 	AIGatewayAdminUser     string
 	AIGatewayAdminPassword string
 	// Enable only after the engine provider database becomes configuration authority.
@@ -169,6 +172,9 @@ func Load() Config {
 		AppBaseURL:                  getenv("APP_BASE_URL", "http://localhost"),
 		GatewayControlURL:           getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
 		AIGatewayURL:                getenv("TUNNEX_AI_GATEWAY_URL", ""),
+		AIVPNHostname:               getenv("TUNNEX_AI_VPN_HOSTNAME", ""),
+		AIVPNNodeID:                 getenv("TUNNEX_AI_VPN_NODE_ID", ""),
+		AIVPNAddress:                getenv("TUNNEX_AI_VPN_ADDRESS", ""),
 		AIGatewayAdminUser:          getenv("TUNNEX_AI_GATEWAY_ADMIN_USER", ""),
 		AIGatewayAdminPassword:      getenv("TUNNEX_AI_GATEWAY_ADMIN_PASSWORD", ""),
 		AIProviderManagementEnabled: getbool("TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED", false),

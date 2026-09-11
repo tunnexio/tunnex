@@ -1,6 +1,6 @@
 # AI inference authenticated by VPN identity
 
-Status: decision paper; no product implementation or deployment yet.
+Status: implementation and focused tests complete; deployment and client wire proof in progress.
 Base: origin/main d378e332b5770a1c66986ffed8eed54c4f80711c.
 Branch: story/ai-vpn-identity.
 

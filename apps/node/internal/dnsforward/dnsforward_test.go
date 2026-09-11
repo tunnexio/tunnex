@@ -483,3 +483,31 @@ func TestK8sDirectAnswer(t *testing.T) {
 		t.Fatalf("an emptied map must answer no cluster name (fall through to REFUSED), got rcode %v", rcodeOf(t, resp))
 	}
 }
+
+func TestVPNHostnameIsExactAndReversible(t *testing.T) {
+	f := New(nil, nil)
+	src := netip.MustParseAddr("10.99.0.2")
+	if err := f.SetVPNHost("internal.tunnex.app", "10.99.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	var msg dnsmessage.Message
+	if err := msg.Unpack(f.handle(mkQuery("internal.tunnex.app."), src)); err != nil {
+		t.Fatal(err)
+	}
+	if len(msg.Answers) != 1 {
+		t.Fatalf("answers=%v", msg.Answers)
+	}
+	a, ok := msg.Answers[0].Body.(*dnsmessage.AResource)
+	if !ok || a.A != [4]byte{10, 99, 0, 1} {
+		t.Fatal("wrong VPN address")
+	}
+	if rcodeOf(t, f.handle(mkQuery("other.internal.tunnex.app."), src)) != dnsmessage.RCodeRefused {
+		t.Fatal("captured unrelated subdomain")
+	}
+	if err := f.SetVPNHost("", ""); err != nil {
+		t.Fatal(err)
+	}
+	if rcodeOf(t, f.handle(mkQuery("internal.tunnex.app."), src)) != dnsmessage.RCodeRefused {
+		t.Fatal("stale VPN answer")
+	}
+}
