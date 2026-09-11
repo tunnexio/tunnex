@@ -18,5 +18,32 @@ details. Temporary preview files removed. Synthetic data only.
 Independent alias security review: no actionable findings; did not claim live proof.
 
 Pending: new alias live SDK proof; full repository composite gates/CI.
-No release, push or merge. Current deployed CP still uses the prior scoped route
-and the previously deployed MSS fix; this URL/UI candidate is not deployed.
+No release, push or merge. Deployment evidence follows.
+
+2026-09-11 authorized CP deployment: source d94d239b
+Host: ubuntu@15.206.183.232; compose project tunnex.
+SCP artifact checksums verified before image build and service recreation.
+Updated only api, web, ai-vpn-relay; node-agent and database not recreated.
+Images:
+  tunnex-api:ai-url-d94d239b
+    sha256:cad0a5daadb53f7183d702336c3895d94681b0002381d3879477a782ccc00313
+  tunnex-ai-vpn-relay:ai-url-d94d239b
+    sha256:7e0eb980d86dafe8e9e20064489ce3ed23e647733cd8646d625bf033003fdf57
+  tunnex-web:ai-url-d94d239b
+    sha256:6435e9ddc3472c8f47aa83fb2aa1cb7933c85595afc39c1ef2656983d7ee50fb
+All three containers healthy. Nginx upstream configuration reloaded.
+PASS: HTTPS /healthz 200.
+PASS: public scoped route dummy key + spoofed identity headers 401.
+PASS: public /ai/v1/chat/completions dummy key 401.
+PASS: private mTLS scoped and alias routes reject nonexistent peer with 403.
+PASS: public web index references new index-CkjVdUW8.js.
+PASS: gateway DNS maps internal.tunnex.app to 10.99.0.1; existing peer
+10.99.0.2/32 retained, WireGuard handshake observed after deployment.
+Pending: real SDK completion through the connected user's Mac on the new alias.
+
+Rollback (CP host, if needed):
+cd /home/ubuntu/tunnex
+cp ai-url-d94d239b/rollback/ai.override.yml ai.override.yml
+sudo docker compose -p tunnex --env-file .env -f tunnex.yml -f ai.override.yml up -d --no-deps api web ai-vpn-relay
+sudo docker exec tunnex-nginx-1 nginx -s reload
+Original images preserved; rollback file restricted to owner.
