@@ -1,0 +1,20 @@
+Deployment: 2026-09-11, source 721a47d3, CP 15.206.183.232.
+Source and binaries copied to /home/ubuntu/tunnex/vpn-721a47d3/.
+Rollback configuration: /home/ubuntu/tunnex/before-vpn-721a47d3/.
+Overlay retained in /home/ubuntu/tunnex/ai.override.yml.
+Images: tunnex-api:vpn-721a47d3; tunnex-node:vpn-721a47d3.
+API binary SHA256: 2d7b1b39b035193e8a6eb33482ad38eb16aeb2e5bdb4d32c099d3f8a43287794
+Node binary SHA256: 7cb8d464f10f234655a5c72f2dd534ae36164e55ac180748fe0ca1a706af381e
+Relay binary SHA256: 5c23c4bc8b7bc615454be656adafbb5286d32dad01a28efde8e63c8a44cf69fe
+Transferred binary hashes matched before building images.
+Relay socket: 10.99.0.1%wg0:443; restart count 0; no host port bindings.
+Public health: 200
+Public dummy key with spoofed VPN headers: 401
+Authenticated gateway with nonexistent peer: 403
+Gateway DNS: internal.tunnex.app -> 10.99.0.1
+No client peer in kernel allowed-ips at final inspection. Positive native-client
+DNS/routing/TLS/model wire proof remains pending the user's client connection.
+AWS ingress discovery ran ONLY on CP: current SG permits UDP51820; no AWS rule
+was changed. The isolated test DB project was removed and SSH tunnel closed.
+The consumed enrollment token was removed from live .env and temporary files.
+No provider credentials or user/application tokens were added to the SDK file.
