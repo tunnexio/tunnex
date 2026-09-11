@@ -7,7 +7,7 @@ import { AIGroupAccess } from "../src/components/AIUserAccess";
 import { NAV_GROUPS } from "../src/components/AppShell";
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), roles: ["admin"] }));
 vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mocks.get, POST: mocks.post } }));
-vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org", agent_policy_templates_enabled: true } }) }));
+vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org", agent_policy_templates_enabled: true }, orgs: [{ id: "org", name: "Test organization" }], loading: false, failed: false }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "person", email_verified: true } } }) }));
 const connection = { id: "saved-azure", name: "azure", provider: "azure_foundry", models: ["custom-saved-azure/gpt-5"], model_modes: { "custom-saved-azure/gpt-5": "chat" }, status: "applied", enabled: true, revision: 1, applied_revision: 1 };
 const inventory = { items: [connection], definitions: [{ id: "azure_foundry", name: "Azure AI Foundry" }], management_available: true, legacy_key_ids: [] };

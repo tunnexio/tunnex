@@ -146,6 +146,10 @@ func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Author
 					var payload map[string]json.RawMessage
 					err = json.Unmarshal(body, &payload)
 					if err == nil {
+						if limit, ok := payload["max_completion_tokens"]; ok {
+							payload["max_tokens"] = limit
+							delete(payload, "max_completion_tokens")
+						}
 						if _, ok := payload["max_tokens"]; !ok {
 							payload["max_tokens"] = json.RawMessage("1024")
 						}
@@ -364,7 +368,7 @@ func requestModelForPath(body []byte, path string) (string, error) {
 		}
 		seen[key] = true
 		switch key {
-		case "model", "messages", "stream", "max_tokens", "temperature", "system":
+		case "model", "messages", "stream", "max_tokens", "max_completion_tokens", "temperature", "system":
 		default:
 			return "", errors.New("unsupported field")
 		}
@@ -378,7 +382,10 @@ func requestModelForPath(body []byte, path string) (string, error) {
 			}
 		}
 		switch key {
-		case "max_tokens":
+		case "max_tokens", "max_completion_tokens":
+			if key == "max_completion_tokens" && !strings.HasSuffix(path, "/chat/completions") {
+				return "", errors.New("unsupported field")
+			}
 			var n int
 			if json.Unmarshal(raw, &n) != nil || n < 1 || n > 4096 {
 				return "", errors.New("invalid output limit")
@@ -415,6 +422,9 @@ func requestModelForPath(body []byte, path string) (string, error) {
 	}
 	if _, err := d.Token(); err != io.EOF {
 		return "", errors.New("trailing data")
+	}
+	if seen["max_tokens"] && seen["max_completion_tokens"] {
+		return "", errors.New("conflicting output limits")
 	}
 	if model == "" || len(model) > 256 || !seen["messages"] {
 		return "", errors.New("model required")

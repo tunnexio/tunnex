@@ -9,7 +9,7 @@ let org = { id: "org-a", name: "Acme", max_agent_identities: null as number | nu
 
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email: "owner@example.test", email_verified: true } } }) }));
-vi.mock("../src/lib/rbac", () => ({ can: () => true }));
+
 vi.mock("../src/lib/api", () => ({
   api: { GET: get, POST: post, PATCH: patch, PUT: put, DELETE: del },
   loadOne: async (fn: () => Promise<{ data?: unknown; error?: unknown }>) => {
