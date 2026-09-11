@@ -16,3 +16,7 @@ Verification: targeted regression tests, relevant web/API/CLI gates, then isolat
 Continuation: the live walk exposed an argument-constraints placeholder that omits the OpenAPI-required properties field. Locked: show a contract-valid example, reject missing required/properties locally with actionable guidance, and retain server-side validation. Do not broaden the supported constraint language. Network enforcement remains Off in Demo; its zero-rule confirmation warns all traffic would be denied. Separate network-walk scope is pending user disposition.
 
 Locked continuation: Add Agent must read the current organization's runtime opt-in when opening; a stale shared UI snapshot cannot decide availability. Use the existing organization read endpoint and preserve server bootstrap authorization. Unknown/read-error is a retryable unavailable state, never Off or permission to issue. Visual fixtures may use their explicit state. No new auth or persisted-state model.
+
+## OAuth inventory authentication (live walk)
+
+Locked: reuse the existing endpoint-bound runtime OAuth lease for read-only MCP inventory discovery. The connected provider currently returns 401 because discovery never supplies this lease although tool forwarding does. Keep tokens in memory, never in inventory/report/errors; refuse redirects for authenticated discovery. Lease failure must not fall back to anonymous discovery. Public discovery remains supported. No new grant or authentication path is introduced.
