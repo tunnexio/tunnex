@@ -156,3 +156,18 @@ it("allows creating the first MCP policy but does not hide permission failures",
  expect(await screen.findByText("No policy yet: the local proxy denies every tool.")).toBeTruthy();
  expect(screen.getByRole("button", {name:"Save tool policy"})).toBeTruthy();
 });
+
+it("explains missing argument constraint fields before submitting a tool policy", async () => {
+  seed();
+  renderDetail("mcp");
+  fireEvent.click(await screen.findByRole("checkbox", {name: "inventory · read"}));
+  const constraints = screen.getByRole("textbox", {name: "Argument constraints for read"});
+  fireEvent.change(constraints, {target: {value: '{"required":[]}'}});
+  fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
+  expect(await screen.findByText(/Argument constraints need a required array and a properties object/)).toBeTruthy();
+  expect(put).not.toHaveBeenCalled();
+  fireEvent.change(constraints, {target: {value: '{"required":[],"properties":{}}'}});
+  fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
+  await waitFor(() => expect(put).toHaveBeenCalled());
+  expect(put.mock.calls[0][1].body.rules[0].argument_constraints).toEqual({required: [], properties: {}});
+});
