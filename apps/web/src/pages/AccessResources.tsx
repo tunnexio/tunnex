@@ -79,7 +79,7 @@ export default function AccessResources() {
   const portsValid = protocol === "any" || portScope === "all" || (Number.isInteger(parsedLow) && parsedLow! >= 1 && parsedLow! <= 65535 && (portScope === "single" || (Number.isInteger(parsedHigh) && parsedHigh! >= parsedLow! && parsedHigh! <= 65535)));
   const showPortError = (portsTouched || saveAttempted) && !portsValid;
   const scopeSummary = protocol === "any" ? "Any protocol, all ports" : portScope === "all" ? `${protocol.toUpperCase()}, all ports` : portScope === "single" ? `${protocol.toUpperCase()} port ${portLow || "—"}` : `${protocol.toUpperCase()} ports ${portLow || "—"}–${portHigh || "—"}`;
-  const requestBody = () => ({ name: name.trim(), cidr: cidr.trim(), protocol, label: label.trim() || null, ...(protocol === "any" || portScope === "all" ? { port_low: null, port_high: null } : portScope === "single" ? { port_low: parsedLow!, port_high: null } : { port_low: parsedLow!, port_high: parsedHigh! }) });
+  const requestBody = () => ({ name: name.trim(), cidr: cidr.trim(), protocol, label: label.trim() || null, ...(protocol === "any" || portScope === "all" ? { port_low: null, port_high: null } : portScope === "single" ? { port_low: parsedLow!, port_high: parsedLow! } : { port_low: parsedLow!, port_high: parsedHigh! }) });
   async function save(_withheldBind = false) {
     setSaveAttempted(true);
     if (!org || !name.trim() || !cidr.trim() || !portsValid) return;
