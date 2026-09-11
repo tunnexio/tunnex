@@ -12,3 +12,5 @@ User approved fixing observed bugs and continuing the live walk on 2026-09-11.
 - Deferred: third-party OAuth proof requires an actual configured provider; synthetic echo proof is labelled as such.
 
 Verification: targeted regression tests, relevant web/API/CLI gates, then isolated AWS agent live allow/deny, model inference and template walk. No unrelated root working-tree edits. No merge or release requested.
+
+Continuation: the live walk exposed an argument-constraints placeholder that omits the OpenAPI-required properties field. Locked: show a contract-valid example, reject missing required/properties locally with actionable guidance, and retain server-side validation. Do not broaden the supported constraint language. Network enforcement remains Off in Demo; its zero-rule confirmation warns all traffic would be denied. Separate network-walk scope is pending user disposition.
