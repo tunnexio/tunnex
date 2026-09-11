@@ -22,3 +22,9 @@ Locked continuation: Add Agent must read the current organization's runtime opt-
 Locked: reuse the existing endpoint-bound runtime OAuth lease for read-only MCP inventory discovery. The connected provider currently returns 401 because discovery never supplies this lease although tool forwarding does. Keep tokens in memory, never in inventory/report/errors; refuse redirects for authenticated discovery. Lease failure must not fall back to anonymous discovery. Public discovery remains supported. No new grant or authentication path is introduced.
 
 Review disposition: fix P1 cache isolation in the same slice. Store and compare the exact endpoint with every cached lease; the former cache could reuse A's bearer after switching to B. Regression proves A-to-B fetches a new lease and B-to-B reuses only B's lease. Final bounded review found no further actionable regression.
+
+## JIT live-walk display corrections
+
+Locked under the user's approved bug-fix walk: refresh the sibling policy table after successful JIT approval/revocation using its existing revision trigger. Display the exact localized expiry timestamp, never the past-age formatter for a future deadline. Preserve the shared last-seen formatter and all server authorization. These are presentation corrections, with no new state model or enforcement change.
+
+Additional UI findings remain ranked for the follow-up: pagination/state filters, requester cancellation hidden for admins, native rejection prompt, and navigation from the agent detail card. This slice does not change those workflows.

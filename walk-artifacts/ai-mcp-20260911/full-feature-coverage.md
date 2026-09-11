@@ -52,3 +52,10 @@ Secrets and runtime state remain only under /private/tmp/tunnex-workload-fullwal
 - My models shows single-org VPN Base URL /ai/v1, exact org/model identifiers and SDK example. Browser-session Call model returned BROWSER_WALK_OK (92tokens). Raw response JSON is currently the default output: simplify answer/usage and move technical fields behind details in UI follow-up.
 - Test workload disabled again after recovery proof, fresh token issuance401. Final replacement instance2fe07878-8e58-4bfe-9106-600be8ac0caa revoked via UI; all4 instances and all3 keys revoked. Disabled workload record intentionally retains audit/usage evidence; there is no workload delete API.
 - JIT-specific opt-in approval remains pending. No enforcement change was made. JIT and natural OAuth refresh are not marked passed; non-chat modes explicitly unconfigured per user.
+
+### Approved JIT continuation and streaming
+
+- Latest user approved the exact temporary Demo JIT opt-in. UI pending request01a0919b-ca5d-7f4d-aad3-47070df5572a for fixture agent and ai-mcp-walk-private resource approved, history pending→approved, managed policy appeared on full reload. Revoke removed that rule on reload and restored0rules. JIT restoredOff with0pending/0approved; enforcement remainedOff throughout.
+- Found two display bugs: policy table stays stale after JIT mutation; future expiry renders Expires0sago because it uses the last-seen age formatter. Approved correction recorded in the decision document before code.
+- Original test agent streamed GPT-5 through an in-memory runtime identity exchange201, inference200 text/event-stream,5dataevents, DONE marker and exact STREAM_WALK_OK response. No runtime/provider credential was printed or persisted by the test.
+- Remaining JIT cancel/reject/natural expiry uses a separate temporary CLI credential (existing user CLI state untouched), to be revoked at completion. This proves control-plane lifecycle only; Demo enforcement remainsOff.
