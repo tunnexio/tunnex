@@ -84,3 +84,30 @@ func TestRelayStripsForgedIdentity(t *testing.T) {
 		t.Fatal("web path changed")
 	}
 }
+
+func TestAliasUsesVerifiedPeerAndDedicatedControlRoute(t *testing.T) {
+	target, _ := url.Parse("https://control:8443")
+	calls := 0
+	tr := roundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.Path != "/agent/ai/v1/chat/completions" || r.Header.Get("Authorization") != "" || r.Header.Get("X-Tunnex-VPN-Key") != peer {
+			t.Fatal("alias lost its trusted routing boundary")
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	})
+	h := Handler("internal.test", target, tr, func(context.Context) (string, error) { return peer + "\t10.99.0.2/32", nil }, http.NotFoundHandler())
+	for _, source := range []string{"10.99.0.2:1234", "203.0.113.1:1234"} {
+		r := httptest.NewRequest("POST", "https://internal.test/ai/v1/chat/completions", strings.NewReader(`{}`))
+		r.RemoteAddr = source
+		r.Header.Set("Authorization", "Bearer unused")
+		r.Header.Set("X-Tunnex-VPN-Key", "forged")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if source == "10.99.0.2:1234" && w.Code != 200 || source != "10.99.0.2:1234" && w.Code != 401 {
+			t.Fatalf("source %s status %d", source, w.Code)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("upstream calls %d", calls)
+	}
+}

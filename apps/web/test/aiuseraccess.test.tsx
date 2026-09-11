@@ -5,7 +5,7 @@ import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
 const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), success: vi.fn() }));
 vi.mock("../src/lib/api", () => ({ api: { GET: mock.get, POST: mock.post } }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user" } } }) }));
-vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org" } }) }));
+vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org" }, orgs: [{ id: "org", name: "Demo" }], loading: false, failed: false }) }));
 vi.mock("../src/components/Toasts", () => ({ toast: { success: mock.success, error: vi.fn() } }));
 afterEach(cleanup);beforeEach(() => vi.clearAllMocks());
 const provider = { id: "connection", name: "azure", provider: "azure_ai", models: ["custom-connection/gpt-5"], model_modes: { "custom-connection/gpt-5": "chat" }, status: "applied", enabled: true, revision: 1, applied_revision: 1, last_test_status: "success" };

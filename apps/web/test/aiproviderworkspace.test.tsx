@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }));
 vi.mock("../src/lib/api", () => ({ api }));
+vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ orgs: [{ id: "org", name: "Demo" }], loading: false, failed: false }) }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("../src/components/Toasts", () => ({ toast }));
 const c = { id: "c-a", key_id: "tnx-managed-a", provider: "openrouter", name: "Engineering", models: ["openrouter/openai/gpt-4o-mini"], enabled: true, revision: 3, applied_revision: 3, status: "applied", last_test_status: "untested" };

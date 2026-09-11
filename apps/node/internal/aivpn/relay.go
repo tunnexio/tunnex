@@ -76,7 +76,8 @@ func Handler(host string, control *url.URL, transport http.RoundTripper, peers K
 		prefix := "/api/v1/organizations/"
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, prefix), "/")
 		isChat := strings.HasPrefix(r.URL.Path, prefix) && len(parts) == 6 && parts[1] == "ai-gateway" && parts[2] == "inference" && parts[3] == "v1" && parts[4] == "chat" && parts[5] == "completions"
-		if !isChat {
+		isAlias := r.URL.Path == "/ai/v1/chat/completions"
+		if !isChat && !isAlias {
 			web.ServeHTTP(w, r)
 			return
 		}
@@ -109,7 +110,11 @@ func Handler(host string, control *url.URL, transport http.RoundTripper, peers K
 			return
 		}
 		clone := r.Clone(context.WithValue(ctx, peerContextKey{}, peerEvidence{source, key}))
-		clone.URL.Path = "/agent/ai/organizations/" + parts[0] + "/v1/chat/completions"
+		if isAlias {
+			clone.URL.Path = "/agent/ai/v1/chat/completions"
+		} else {
+			clone.URL.Path = "/agent/ai/organizations/" + parts[0] + "/v1/chat/completions"
+		}
 		clone.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		proxy.ServeHTTP(w, clone)
 	})

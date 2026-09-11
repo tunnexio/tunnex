@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
 import { Button, Card, Field, Loading, Select } from "./ui";
 import { toast } from "./Toasts";
+import { AIModelConnectionDetails } from "./AIModelConnectionDetails";
 type S = components["schemas"];
 type Capabilities = { view: boolean; manage: boolean; agents: boolean; workloadsView:boolean; workloadsManage:boolean };
 
@@ -105,7 +106,8 @@ export function AIUseModel({ orgId }: { orgId: string }) {
   return <section className="space-y-5" aria-label="Use a model"><Card><h2 className="text-xl font-semibold">My models</h2><p className="my-2 text-sm text-ink-tertiary">Your Tunnex login gives access to models granted to your user groups. No provider API key is needed.</p>
     {error && <p role="alert">{error}</p>}<Button disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Refresh my models</Button>
     {models === null ? <Loading label="Loading your models…" /> : !models.length ? <p className="mt-4">No models are available to you yet. Ask your AI admin to grant a model to your user group and enable the gateway.</p> : <div className="mt-5 space-y-5"><Field label="Your model"><Select value={model} disabled={busy} onChange={(e) => { setModel(e.target.value); setOutput(""); }}>{models.map((m) => <option key={m.model} value={m.model}>{m.model}</option>)}</Select></Field>
-      <div><h3>API endpoint</h3><code className="block mt-2 break-all text-sm">{endpoint}</code><Button onClick={() => void navigator.clipboard.writeText(endpoint).then(() => toast.success("Endpoint copied")).catch(() => setError("Could not copy. Select the endpoint text to copy it."))}>Copy endpoint</Button></div>
+      <AIModelConnectionDetails key={`${orgId}:${model}`} orgId={orgId} model={model} mode={selected?.mode} />
+      <div><h3>Operation endpoint</h3><code className="block mt-2 break-all text-sm">{endpoint}</code><Button onClick={() => void navigator.clipboard.writeText(endpoint).then(() => toast.success("Endpoint copied")).catch(() => setError("Could not copy. Select the endpoint text to copy it."))}>Copy endpoint</Button></div>
       <div><h3>Call from your terminal</h3><pre className="mt-2 overflow-x-auto rounded-lg bg-ink-900 p-4 text-xs">{`tunnex login --server ${shellQuote(origin)}\ntunnex ai models --org ${orgId}${selected?.mode === "chat" ? `\ntunnex ai chat --org ${orgId} --model ${shellQuote(model)} --prompt 'Hello'` : ""}`}</pre><p className="mt-2 text-xs text-ink-tertiary">The CLI uses your saved Tunnex login. API clients authenticate with the same Tunnex login credential; browser calls use your session.</p></div>
       {selected?.mode === "chat" && <><Field label="Message"><textarea className="w-full rounded-lg border border-white/10 bg-ink-900 p-3 text-sm" rows={3} maxLength={8000} value={prompt} disabled={busy} onChange={(e) => setPrompt(e.target.value)} /></Field><Button disabled={busy || !prompt.trim()} onClick={() => void call()}>{busy ? "Calling model…" : "Call model"}</Button></>}
     </div>}

@@ -50,6 +50,25 @@ func TestVPNModelChecksCurrentDeviceAndUserGrant(t *testing.T) {
 	if err := call(); err != nil {
 		t.Fatalf("authorized VPN user: %v", err)
 	}
+	alias := func() error {
+		_, err := f.policies.ResolveSingleOrgVPNModel(ctx, f.org, node, "10.99.0.2", key, g.Model)
+		return err
+	}
+	if err := alias(); err != nil {
+		t.Fatalf("single membership alias: %v", err)
+	}
+	other := newPolicyFixture(t, ctx, pool)
+	f.exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'member')`, other.org, user)
+	if err := alias(); err == nil {
+		t.Fatal("alias guessed an organization for a multi-org user")
+	}
+	if err := call(); err != nil {
+		t.Fatalf("explicit organization must remain usable: %v", err)
+	}
+	f.exec(`UPDATE memberships SET access_revoked_at=now() WHERE org_id=$1 AND user_id=$2`, other.org, user)
+	if err := alias(); err != nil {
+		t.Fatalf("revoked membership must not block alias: %v", err)
+	}
 	for _, tc := range []struct {
 		name           string
 		org, node      uuid.UUID

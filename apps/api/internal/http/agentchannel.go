@@ -133,6 +133,7 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Delete("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
 	r.Get("/agent/desired-state", a.desiredState)
 	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
+	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
 	r.Get("/agent/watch", a.watch)
 	r.Post("/agent/renew", a.renew)
 	r.Post("/agent/report", a.report)
