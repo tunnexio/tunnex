@@ -17,6 +17,7 @@ vi.mock("../src/lib/api", () => ({
     return result.error ? { ok: false, error: "Unavailable" } : { ok: true, data: result.data };
   },
   apiErrorMessage: (_: unknown, fallback: string) => fallback,
+  apiErrorCode: (value: any) => value?.error?.code,
 }));
 
 import AgentDetail from "../src/pages/AgentDetail";
@@ -145,4 +146,13 @@ describe("active Agent detail mutation ownership", () => {
     expect(await screen.findByText("Could not approve this step-up request. It may already have expired or been consumed. Refresh and try again.")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "Approve read once?" })).toBeTruthy();
   });
+});
+
+it("allows creating the first MCP policy but does not hide permission failures", async () => {
+ seed();
+ const original = get.getMockImplementation()!;
+ get.mockImplementation(async (path: string) => path.endsWith("/mcp-tool-policy") ? {error:{error:{code:"mcp_tool_policy_not_found"}}} : original(path));
+ renderDetail("mcp");
+ expect(await screen.findByText("No policy yet: the local proxy denies every tool.")).toBeTruthy();
+ expect(screen.getByRole("button", {name:"Save tool policy"})).toBeTruthy();
 });
