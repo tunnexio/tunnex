@@ -28,3 +28,9 @@ Review disposition: fix P1 cache isolation in the same slice. Store and compare 
 Locked under the user's approved bug-fix walk: refresh the sibling policy table after successful JIT approval/revocation using its existing revision trigger. Display the exact localized expiry timestamp, never the past-age formatter for a future deadline. Preserve the shared last-seen formatter and all server authorization. These are presentation corrections, with no new state model or enforcement change.
 
 Additional UI findings remain ranked for the follow-up: pagination/state filters, requester cancellation hidden for admins, native rejection prompt, and navigation from the agent detail card. This slice does not change those workflows.
+
+## Approved UI follow-up
+
+User explicitly requested implementation of the ranked UI improvements after the walk. Locked: use existing JIT state/device filters and keyset cursor with bounded Load more, discard stale responses on filter/org changes; allow original requesters to cancel including admins; replace native rejection prompt with an accessible required-reason modal. Link agent detail to the scoped JIT workspace. Keep permissions and enforcement server-owned.
+
+Locked: show chat answer and available usage before expandable raw response; correct missing-cost and OAuth credential copy; add contextual navigation between existing setup screens and operation-specific examples. Non-chat examples use authenticated requests and never imply dummy-key VPN support for unsupported operations. Do not fabricate deployment availability or pricing. Preserve existing branding/layout, no new backend state or auth path. Validate regressions, full web gates and rendered browser states before completion.
