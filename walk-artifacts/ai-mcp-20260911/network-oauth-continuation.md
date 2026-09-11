@@ -17,3 +17,19 @@ OAuth: Cloudflare official bindings MCP discovery and dynamic client registratio
 New UI finding: runtime opt-in toggled On in settings but subsequent SPA Add Agent showed stale Off dialog; full navigation refreshed authoritative state and allowed enrollment. No fix yet in this continuation.
 
 Network proof: template preview with enforcing On reported1agent/1rule/1gateway changed (Off previously0gateways). Apply succeeded; agent automatically learned172.30.250.2 route through runtime/source10.99.0.2. curl8080 returnedHTTP200 TUNNEX_TEMPLATE_NETWORK_OK; curl8081 timed out, although both8080and8081 returned the marker directly from gateway. Thus same-routed-destination port denial is real dataplane evidence. Removal UI left0assignments; gateway nft tunnex.forward had no allow rule and default drop; runtime removed destination route; subsequent8080 curl timedout/HTTP000. No manual client route/policy edits were used. Agentid01a09145-096b-7b06-a735-bbdc6e87e9df. Original Demo untouched.
+
+## Enrollment prerequisite fix and live deployment (2026-09-11)
+
+- Product commit `98791fdf`: Add Agent reads current organization runtime prerequisites before permitting bootstrap. Unknown/read-error state refuses token issuance and supports Retry; stale cached On/Off no longer controls enrollment. Successful retry clears a previous gateway-read error.
+- Validation: web typecheck, full web suite (126 files / 1516 tests), and production build passed before the review's small gateway-error reset. After that reset, all 6 focused enrollment tests and production build passed again. No API/schema changes in this slice.
+- Deployed web artifact SHA256 `f80a145c73e17095d65a34ab74538ee3ec806070463e01fb27cf48c875eb3ac9` to CP; image `tunnex-web:ai-mcp-98791fdf`. API and web both healthy. HTTPS health succeeds with CP address explicitly resolved; this is not a claim about CP host DNS.
+- Browser verification: Add Agent displays Step 1 with the active `ai-network-walk-gateway`; cancelled without issuing another credential. Stale On/Off and unreadable/retry cases are regression-test evidence, not live configuration toggles.
+- Rollback retained at `/home/ubuntu/tunnex/ai-mcp-fixes-20260911/rollback-before-runtime.yml` (restricted permissions).
+
+## Remaining OAuth consent boundary
+
+- Runtime discovered the real Cloudflare Bindings protected resource and the browser reached its real OAuth consent screen for client `Tunnex MCP verification`, redirecting to this CP.
+- Automatic approval review rejected clicking Approve because the external account/client/scopes had not been specifically authorized. No consent grant or refresh token was obtained. A user question requesting account identification and approval for `user:read account:read offline_access` is pending.
+- OAuth inventory, authenticated tool execution, refresh and revoke are NOT proven by reaching the consent screen.
+- Disposable organization `AI network walk 20260911` and instances `i-0765980443390d99b` / `i-0d2265341cfba2a78` remain for the pending OAuth proof. Cleanup remains outstanding; the temporary second org membership remains and may affect org-less SDK resolution. Original Demo infrastructure is preserved. After OAuth proof, remove the disposable test resources and membership and terminate these two instances.
+- Branch is local; no push, merge, or release claimed.
