@@ -46,3 +46,9 @@ Secrets and runtime state remain only under /private/tmp/tunnex-workload-fullwal
 - Signed synthetic workflow on original fixture host: signing key registration204; first assertion201verified; replay201unverified/replay; modified tool claim201unverified/bad_signature. Agent Activity shows verified chain and hides tool/workflow/resource/initiator for unverified claims. Private signing key remains host-only.
 - User confirmed only GPT-5 chat exists; non-chat model modes should be marked unconfigured, not blocked awaiting credentials or claimed tested.
 - JIT opt-in toggle was rejected by automatic approval review as requiring exact Demo setting approval. Specific question pending. Enforcement remainsOff.
+
+### End-user and final workload state
+
+- My models shows single-org VPN Base URL /ai/v1, exact org/model identifiers and SDK example. Browser-session Call model returned BROWSER_WALK_OK (92tokens). Raw response JSON is currently the default output: simplify answer/usage and move technical fields behind details in UI follow-up.
+- Test workload disabled again after recovery proof, fresh token issuance401. Final replacement instance2fe07878-8e58-4bfe-9106-600be8ac0caa revoked via UI; all4 instances and all3 keys revoked. Disabled workload record intentionally retains audit/usage evidence; there is no workload delete API.
+- JIT-specific opt-in approval remains pending. No enforcement change was made. JIT and natural OAuth refresh are not marked passed; non-chat modes explicitly unconfigured per user.
