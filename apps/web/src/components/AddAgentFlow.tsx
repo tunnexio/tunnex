@@ -20,9 +20,26 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<Stage>("details");
   const [command, setCommand] = useState<string | null>(null);
+  const [runtimeState, setRuntimeState] = useState<{ orgId: string; enabled: boolean } | null>(null);
+  const [runtimeError, setRuntimeError] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const runtimeReady = visualStage ? runtimeEnabled : runtimeState?.orgId === orgId ? runtimeState.enabled : null;
+
+  useEffect(() => {
+    if (!enabled || visualStage) return;
+    let cancelled = false;
+    setRuntimeState(null); setRuntimeError(false);
+    void api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId } } }).then(({ data, error: requestError }) => {
+      if (cancelled) return;
+      if (requestError || typeof data?.managed_agent_runtime_enabled !== "boolean") { setRuntimeError(true); return; }
+      setRuntimeState({ orgId, enabled: data.managed_agent_runtime_enabled });
+    }).catch(() => { if (!cancelled) setRuntimeError(true); });
+    return () => { cancelled = true; };
+  }, [enabled, orgId, visualStage, readAttempt]);
 
   useEffect(() => {
     if (!enabled) return;
+    setError(""); setGateways(null);
     let cancelled = false;
     void api.GET("/api/v1/organizations/{orgId}/nodes", { params: { path: { orgId } } }).then(({ data, error: requestError }) => {
       if (cancelled) return;
@@ -30,7 +47,7 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
       setGateways(data as Gateway[]);
     }).catch(() => { if (!cancelled) { setError("Could not reach the API to load gateways."); setGateways([]); } });
     return () => { cancelled = true; };
-  }, [enabled, orgId]);
+  }, [enabled, orgId, readAttempt]);
 
   function dismiss() {
     // The only copy of a shown-once token-derived command is component memory.
@@ -43,7 +60,7 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
     setStage("review");
   }
   async function issue() {
-    if (!enabled || !name.trim() || !gatewayId) return;
+    if (!enabled || runtimeReady !== true || !name.trim() || !gatewayId) return;
     setBusy(true); setError("");
     try {
       const { data, error: requestError } = await api.POST("/api/v1/organizations/{orgId}/agents/bootstrap-token", {
@@ -56,7 +73,8 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
   }
 
   if (!enabled) return null;
-  if (!runtimeEnabled) return <Modal title="Enable the agent runtime first" onDismiss={dismiss} actions={<Button onClick={dismiss}>Close</Button>}><p>Managed agents require runtime synchronization before installation. It is currently off for this organization.</p><a className="mt-3 inline-block text-accent-400" href="/settings?section=ai-agents">Configure AI Agent settings</a><p className="mt-2 text-sm">Runtime synchronization requires a paid plan. Enabling it does not grant model or MCP tool access.</p></Modal>;
+  if (runtimeReady === null) return <Modal title="Checking agent prerequisites" onDismiss={dismiss} actions={<><Button onClick={dismiss}>Close</Button>{runtimeError && <Button onClick={() => setReadAttempt((attempt) => attempt + 1)}>Retry</Button>}</>}>{runtimeError ? <p role="alert">Could not verify runtime synchronization. Retry before installing an agent.</p> : <Loading label="Checking runtime synchronization…" />}</Modal>;
+  if (!runtimeReady) return <Modal title="Enable the agent runtime first" onDismiss={dismiss} actions={<Button onClick={dismiss}>Close</Button>}><p>Managed agents require runtime synchronization before installation. It is currently off for this organization.</p><a className="mt-3 inline-block text-accent-400" href="/settings?section=ai-agents">Configure AI Agent settings</a><p className="mt-2 text-sm">Runtime synchronization requires a paid plan. Enabling it does not grant model or MCP tool access.</p></Modal>;
   const shownStage = visualStage ?? stage;
   const gateway = gateways?.find((item) => item.id === gatewayId);
   const visualCommand = command ?? "tunnex agent bootstrap --token tnx_fixture_one_time_token";
