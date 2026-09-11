@@ -30,3 +30,10 @@ User requested complete AI Gateway/MCP/AI Agent feature coverage, followed by si
 - Preserve existing workload key/instance lifecycle surfaces and consequences; they exist and are not missing.
 
 Secrets and runtime state remain only under /private/tmp/tunnex-workload-fullwalk (restricted). This test workload must be disabled/revoked after the remaining lifecycle proof; original customer model grants remain unchanged.
+
+### Additional workload lifecycle proof
+
+- Reusable key12653845-c924-4cfe-85d0-e4ebaa37da09 (24h, limit2) enrolled replicasde2674af-738a-4b79-ac41-c67a45c82c7c and347fd1a3-4708-478c-9d12-5f90797458d0. Third independent enrollment refused401.
+- Revoked spent single-use key without instance sweep: its existing instance still issued a token (discarded, never printed).
+- Revoked reusable key with instance sweep: both replicas' next token issuance refused401; UI readback revoked.
+- Individually revoked original instance: next token issuance refused401. All3 test instances now revoked; both enrollment keys revoked.
