@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,5 +117,51 @@ func TestNormalizeObservedSnapshotAcceptsMCPWireFieldNames(t *testing.T) {
 	}
 	if got.Tools[0].InputSchemaHash == "" || got.Tools[0].OutputSchemaHash == "" || got.Resources[0].MIMEType != "application/json" {
 		t.Fatalf("wire fields were not retained: %#v", got)
+	}
+}
+
+func TestOAuthInventoryUsesLeaseWithoutLeakingOrRedirecting(t *testing.T) {
+	const secret = "inventory-test-secret"
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Authorization") != "Bearer "+secret {
+			w.WriteHeader(401)
+			return
+		}
+		var req struct {
+			Method string `json:"method"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		switch req.Method {
+		case "initialize":
+			w.Write([]byte(`{"result":{"protocolVersion":"2025-11-25","serverInfo":{"name":"protected"},"capabilities":{}}}`))
+		case "tools/list":
+			w.Write([]byte(`{"result":{"tools":[{"name":"read","inputSchema":{"type":"object"}}]}}`))
+		default:
+			w.Write([]byte(`{"result":{}}`))
+		}
+	}))
+	defer server.Close()
+	got := observeMCPInventoryAuthorized(t.Context(), server.URL, func(context.Context) (string, error) { return secret, nil })
+	raw, _ := json.Marshal(got)
+	if !strings.Contains(string(raw), `"name":"read"`) || strings.Contains(string(raw), secret) {
+		t.Fatalf("invalid inventory %s", raw)
+	}
+	before := calls
+	got = observeMCPInventoryAuthorized(t.Context(), server.URL, func(context.Context) (string, error) { return "", fmt.Errorf("%s", secret) })
+	raw, _ = json.Marshal(got)
+	if calls != before || strings.Contains(string(raw), secret) {
+		t.Fatal("lease failure leaked or reached upstream")
+	}
+	targetCalls := 0
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { targetCalls++; w.WriteHeader(200) }))
+	defer target.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, 307) }))
+	defer redirect.Close()
+	observeMCPInventoryAuthorized(t.Context(), redirect.URL, func(context.Context) (string, error) { return secret, nil })
+	if targetCalls != 0 {
+		t.Fatal("authenticated discovery followed redirect")
 	}
 }

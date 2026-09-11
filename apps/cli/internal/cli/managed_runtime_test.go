@@ -312,3 +312,31 @@ func (*revokedRuntimeSource) Poll(context.Context, int64, string) (ManagedAgentC
 }
 
 func (*revokedRuntimeSource) Report(context.Context, AgentRuntimeReport) error { return nil }
+
+func TestMCPOAuthCacheBoundToEndpoint(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("endpoint") != "https://b.example/mcp" {
+			t.Error("wrong endpoint")
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"access_token": "token-b", "expires_at": time.Now().Add(time.Hour)})
+	}))
+	defer server.Close()
+	source, err := newManagedRuntimeSource(server.URL, "runtime-test", "", "", "", nil, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.mcpToken = "token-a"
+	source.mcpTokenEndpoint = "https://a.example/mcp"
+	source.mcpTokenExpires = time.Now().Add(time.Hour)
+	got, err := source.MCPProxyAuthorization(t.Context(), "https://b.example/mcp")
+	if err != nil || got != "token-b" || calls != 1 {
+		t.Fatalf("cross-endpoint cache reused: calls=%d error=%v", calls, err)
+	}
+	got, err = source.MCPProxyAuthorization(t.Context(), "https://b.example/mcp")
+	if err != nil || got != "token-b" || calls != 1 {
+		t.Fatal("same endpoint cache failed")
+	}
+}

@@ -29,6 +29,15 @@ func ObserveMCPInventory(ctx context.Context, endpoints []string) map[string]int
 	return map[string]interface{}{"servers": servers}
 }
 
+// observeMCPInventoryAuthorized uses the existing runtime lease only in memory.
+func observeMCPInventoryAuthorized(ctx context.Context, endpoint string, authorization MCPAuthorizationSource) map[string]interface{} {
+	token, err := authorization(ctx)
+	if err != nil {
+		return map[string]interface{}{"servers": []interface{}{map[string]interface{}{"endpoint": endpoint, "status": "failed"}}}
+	}
+	return map[string]interface{}{"servers": []interface{}{observeMCPEndpoint(ctx, endpoint, token)}}
+}
+
 // ObserveMCPOAuthDiscovery obtains only protected-resource metadata. It sends
 // no authorization header and does not follow an authorization-server redirect.
 // The resulting facts are for an administrator to begin consent; no credential
@@ -174,11 +183,11 @@ func stringList(raw interface{}, limit int) []string {
 	return out
 }
 
-func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interface{} {
+func observeMCPEndpoint(ctx context.Context, endpoint string, bearer ...string) map[string]interface{} {
 	base := map[string]interface{}{"endpoint": endpoint, "status": "failed"}
 	for _, version := range []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
 		start := time.Now()
-		init, sessionID, err := mcpSessionRequest(ctx, endpoint, 1, "initialize", map[string]interface{}{"protocolVersion": version, "capabilities": map[string]interface{}{}, "clientInfo": map[string]interface{}{"name": "tunnex-agent-runtime", "version": "f12"}}, "")
+		init, sessionID, err := mcpSessionRequest(ctx, endpoint, 1, "initialize", map[string]interface{}{"protocolVersion": version, "capabilities": map[string]interface{}{}, "clientInfo": map[string]interface{}{"name": "tunnex-agent-runtime", "version": "f12"}}, "", bearer...)
 		if err != nil {
 			continue
 		}
@@ -196,9 +205,9 @@ func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interfa
 			base["server_name"], _ = info["name"].(string)
 		}
 		base["capabilities"] = result["capabilities"]
-		_, sessionID, _ = mcpSessionRequest(ctx, endpoint, 2, "notifications/initialized", map[string]interface{}{}, sessionID)
+		_, sessionID, _ = mcpSessionRequest(ctx, endpoint, 2, "notifications/initialized", map[string]interface{}{}, sessionID, bearer...)
 		for _, spec := range []struct{ key, method string }{{"tools", "tools/list"}, {"resources", "resources/list"}, {"prompts", "prompts/list"}} {
-			if reply, nextSessionID, err := mcpSessionRequest(ctx, endpoint, 3, spec.method, map[string]interface{}{}, sessionID); err == nil {
+			if reply, nextSessionID, err := mcpSessionRequest(ctx, endpoint, 3, spec.method, map[string]interface{}{}, sessionID, bearer...); err == nil {
 				sessionID = nextSessionID
 				if r, ok := reply["result"].(map[string]interface{}); ok {
 					base[spec.key] = r[spec.key]
@@ -226,7 +235,7 @@ func mcpRequest(ctx context.Context, endpoint string, id int, method string, par
 
 // mcpSessionRequest preserves the server-issued streamable-HTTP session across
 // inventory discovery requests. It never invokes an MCP tool.
-func mcpSessionRequest(ctx context.Context, endpoint string, id int, method string, params interface{}, sessionID string) (map[string]interface{}, string, error) {
+func mcpSessionRequest(ctx context.Context, endpoint string, id int, method string, params interface{}, sessionID string, bearer ...string) (map[string]interface{}, string, error) {
 	body, _ := json.Marshal(map[string]interface{}{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -237,7 +246,12 @@ func mcpSessionRequest(ctx context.Context, endpoint string, id int, method stri
 	if sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", sessionID)
 	}
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	if len(bearer) > 0 && bearer[0] != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer[0])
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, sessionID, err
 	}

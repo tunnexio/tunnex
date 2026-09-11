@@ -242,21 +242,22 @@ func boundedRuntimeJitter(delay time.Duration) time.Duration {
 }
 
 type managedRuntimeSource struct {
-	client          *api.ClientWithResponses
-	server          string
-	credential      string
-	credentialPath  string
-	wait            int
-	configPath      string
-	statePath       string
-	state           *ManagedRuntimeState
-	rotateKey       func(context.Context, string, string) error
-	mcpEndpoints    []string
-	mcpUpstream     string
-	mcpConfigMu     sync.RWMutex
-	mcpTokenMu      sync.Mutex
-	mcpToken        string
-	mcpTokenExpires time.Time
+	client           *api.ClientWithResponses
+	server           string
+	credential       string
+	credentialPath   string
+	wait             int
+	configPath       string
+	statePath        string
+	state            *ManagedRuntimeState
+	rotateKey        func(context.Context, string, string) error
+	mcpEndpoints     []string
+	mcpUpstream      string
+	mcpConfigMu      sync.RWMutex
+	mcpTokenMu       sync.Mutex
+	mcpToken         string
+	mcpTokenEndpoint string
+	mcpTokenExpires  time.Time
 }
 
 func newManagedRuntimeSource(server, credential, credentialPath, configPath, statePath string,
@@ -464,7 +465,7 @@ func float64Pointer(value *float32) *float64 {
 func (s *managedRuntimeSource) MCPProxyAuthorization(ctx context.Context, endpoint string) (string, error) {
 	s.mcpTokenMu.Lock()
 	defer s.mcpTokenMu.Unlock()
-	if s.mcpToken != "" && s.mcpTokenExpires.After(time.Now().Add(30*time.Second)) {
+	if s.mcpTokenEndpoint == endpoint && s.mcpToken != "" && s.mcpTokenExpires.After(time.Now().Add(30*time.Second)) {
 		return s.mcpToken, nil
 	}
 	response, err := s.client.GetRuntimeMCPOAuthLeaseWithResponse(ctx, &api.GetRuntimeMCPOAuthLeaseParams{Endpoint: endpoint})
@@ -477,7 +478,7 @@ func (s *managedRuntimeSource) MCPProxyAuthorization(ctx context.Context, endpoi
 		}
 		return "", fmt.Errorf("runtime MCP OAuth lease failed with HTTP %d", response.StatusCode())
 	}
-	s.mcpToken, s.mcpTokenExpires = *response.JSON200.AccessToken, response.JSON200.ExpiresAt
+	s.mcpToken, s.mcpTokenExpires, s.mcpTokenEndpoint = *response.JSON200.AccessToken, response.JSON200.ExpiresAt, endpoint
 	return s.mcpToken, nil
 }
 
@@ -767,7 +768,7 @@ func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeRe
 	code := api.AgentRuntimeReportErrorCode(report.ErrorCode)
 	upstream := s.currentMCPUpstream()
 	if upstream != "" {
-		report.MCPInventory = ObserveMCPInventory(ctx, []string{upstream})
+		report.MCPInventory = observeMCPInventoryAuthorized(ctx, upstream, func(ctx context.Context) (string, error) { return s.MCPProxyAuthorization(ctx, upstream) })
 		report.MCPOAuthDiscovery = ObserveMCPOAuthDiscovery(ctx, []string{upstream})
 	}
 	body := api.AgentRuntimeReport{AppliedRevision: report.AppliedRevision, AttemptedRevision: report.AttemptedRevision, ClientVersion: report.ClientVersion, ErrorCode: code}
