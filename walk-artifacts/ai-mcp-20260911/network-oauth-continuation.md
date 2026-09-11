@@ -33,3 +33,12 @@ Network proof: template preview with enforcing On reported1agent/1rule/1gateway 
 - OAuth inventory, authenticated tool execution, refresh and revoke are NOT proven by reaching the consent screen.
 - Disposable organization `AI network walk 20260911` and instances `i-0765980443390d99b` / `i-0d2265341cfba2a78` remain for the pending OAuth proof. Cleanup remains outstanding; the temporary second org membership remains and may affect org-less SDK resolution. Original Demo infrastructure is preserved. After OAuth proof, remove the disposable test resources and membership and terminate these two instances.
 - Branch is local; no push, merge, or release claimed.
+
+## OAuth consent completed; inventory fix staged (2026-09-11)
+
+- User explicitly approved provider-required scopes, including Workers Write and D1 Write on iotunnex@gmail.com's account. Cloudflare Authorize completed and Tunnex now reports connected, expiry 2026-09-11T18:06:55Z. No provider write operation was invoked.
+- Fresh runtime inventory still failed. Code inspection showed Report used anonymous discovery while the tool proxy used runtime OAuth leases. Commit `e5e78d94` authenticates inventory using that existing lease and refuses authenticated redirects. Review additionally identified cross-endpoint bearer cache reuse; exact endpoint cache binding was folded and reviewed.
+- Full CLI `go test ./...` passed; Linux/amd64 runtime build passed. Regression covers authenticated inventory, lease-error refusal without secret leakage, refused redirects, and A-to-B cache isolation. Real authenticated inventory and tool call are still pending deployment, not claimed passed.
+- Artifact `/private/tmp/tunnex-mcp-deploy/tunnex-agent-runtime-oauth` SHA256 `8666d91337fe5cefaead788dc4a9a7af0a417409996f6cfae5ef89a74cbd5585`.
+- Automatic approval review rejected SCP to CP then disposable agent. Read-only AWS verification from CP confirmed account735391218823 owns CP15.206.183.232 and test agent13.205.1.253 (`tunnex-ai-network-agent-walk-20260911`). Same transfer was rejected again because exact payload/destination approval was required. Specific user approval is pending; no transfer/restart occurred.
+- Provider consent is now granted; revoke this test app after verification. Test org and instances remain pending deployment/proof/cleanup. No public push or release.
