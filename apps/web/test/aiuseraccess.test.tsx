@@ -34,7 +34,7 @@ describe("AI user access", () => {
     await waitFor(() => expect(mock.success).toHaveBeenCalledWith("HTTP 200 — Model responded"));
     expect(mock.post).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions", expect.objectContaining({ params: { path: { orgId: "org" } } }));
     expect(screen.queryByLabelText(/API key/i)).toBeNull();
-    expect(screen.getByText(/Hello Engineering/)).toBeTruthy();
+    expect(screen.getByText("Hello Engineering")).toBeTruthy();
   });
   it("disables provider mutations for an AI viewer", async () => {
     mock.get.mockResolvedValue({ data: { items: [provider], definitions: [{ id: "azure_ai", name: "Azure AI Foundry" }], management_available: true, legacy_key_ids: [] } });
