@@ -37,3 +37,12 @@ Secrets and runtime state remain only under /private/tmp/tunnex-workload-fullwal
 - Revoked spent single-use key without instance sweep: its existing instance still issued a token (discarded, never printed).
 - Revoked reusable key with instance sweep: both replicas' next token issuance refused401; UI readback revoked.
 - Individually revoked original instance: next token issuance refused401. All3 test instances now revoked; both enrollment keys revoked.
+
+### Usage, disable/re-enable and workflow evidence
+
+- Usage UI attributes exact test call to workload:1request/88tokens. Cost absent and incomplete-pricing warning present. Spend-by-model shows empty because engine model breakdown is cost-only; wording falsely implies no usage and needs improvement, not invented billing data.
+- Replacement key and instance enroll after prior key revocation. Test threshold1USD with unavailable pricing yields403; removing threshold via browser numeric-field fill did not actually clear rendered value (still1). Cause not yet attributed to product versus browser input tool; streaming attempt under this unchanged guard also403, so no stream success claimed.
+- Disabled workload refuses token issuance/new enrollment. Re-enabled workload permits existing instance fresh token issuance; pre-disable token returns403 on models and previous enrollment key remains401. Workload currently enabled with threshold1; replacement instance is not yet revoked. Final cleanup pending.
+- Signed synthetic workflow on original fixture host: signing key registration204; first assertion201verified; replay201unverified/replay; modified tool claim201unverified/bad_signature. Agent Activity shows verified chain and hides tool/workflow/resource/initiator for unverified claims. Private signing key remains host-only.
+- User confirmed only GPT-5 chat exists; non-chat model modes should be marked unconfigured, not blocked awaiting credentials or claimed tested.
+- JIT opt-in toggle was rejected by automatic approval review as requiring exact Demo setting approval. Specific question pending. Enforcement remainsOff.
