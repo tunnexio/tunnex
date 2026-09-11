@@ -19,7 +19,8 @@ func (a *AgentChannel) vpnAIChat(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if chi.URLParam(r, "orgId") != node.OrgID.String() {
+	explicitOrg := chi.URLParam(r, "orgId")
+	if explicitOrg != "" && explicitOrg != node.OrgID.String() {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -38,6 +39,9 @@ func (a *AgentChannel) vpnAIChat(w http.ResponseWriter, r *http.Request) {
 	// and identity headers are not forwarded to the provider adapter.
 	clone.Header = http.Header{"Content-Type": {r.Header.Get("Content-Type")}}
 	a.vpnAIAdapter.ServeAuthorized(w, clone, func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
+		if explicitOrg == "" {
+			return a.vpnAIPolicies.ResolveSingleOrgVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model)
+		}
 		return a.vpnAIPolicies.ResolveVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model)
 	})
 }

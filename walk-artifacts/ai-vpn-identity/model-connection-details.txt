@@ -1,0 +1,22 @@
+2026-09-11 local candidate validation
+
+User-approved selection: /ai/v1 for one active organization membership.
+Multiple active memberships require the explicit organization-scoped URL.
+Both routes retain node-certificate, current peer/device, membership and model-grant checks.
+
+PASS: real PostgreSQL TestVPNModelChecksCurrentDeviceAndUserGrant, open and enterprise.
+Includes single membership, second membership refusal, explicit URL with two
+memberships, and revoked second membership. Fixture project
+tunnexaiurlverify0911 used tmpfs storage and was removed after both runs.
+PASS: certificate refusal on both internal inference routes, both editions.
+PASS: node relay peer/header and alias routing tests.
+PASS: 86 focused web tests; final provider/card rerun 81 tests passed.
+PASS: TypeScript typecheck, web production build, Linux API builds both editions,
+Linux relay build.
+PASS: rendered Chrome fixture for loaded single-org and multi-org connection
+details. Temporary preview files removed. Synthetic data only.
+Independent alias security review: no actionable findings; did not claim live proof.
+
+Pending: new alias live SDK proof; full repository composite gates/CI.
+No release, push or merge. Current deployed CP still uses the prior scoped route
+and the previously deployed MSS fix; this URL/UI candidate is not deployed.

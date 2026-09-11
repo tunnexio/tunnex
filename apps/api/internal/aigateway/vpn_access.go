@@ -17,6 +17,16 @@ import (
 // The gateway must have observed the source on its VPN-only ingress. Never call
 // this with a public HTTP forwarding header or a NAT address.
 func (s *Policies) ResolveVPNModel(ctx context.Context, org, node uuid.UUID, source, key, model string) (Grant, error) {
+	return s.resolveVPNModel(ctx, org, node, source, key, model, false)
+}
+
+// ResolveSingleOrgVPNModel permits the alias only for a verified user with one
+// live membership. The authenticated gateway still determines the target org.
+func (s *Policies) ResolveSingleOrgVPNModel(ctx context.Context, org, node uuid.UUID, source, key, model string) (Grant, error) {
+	return s.resolveVPNModel(ctx, org, node, source, key, model, true)
+}
+
+func (s *Policies) resolveVPNModel(ctx context.Context, org, node uuid.UUID, source, key, model string, singleOrg bool) (Grant, error) {
 	if s == nil || s.vpnIngress == nil || s.vpnIngress.Node != node {
 		return Grant{}, policyDenied()
 	}
@@ -43,6 +53,16 @@ func (s *Policies) ResolveVPNModel(ctx context.Context, org, node uuid.UUID, sou
 		}
 		if !rbac.CanAny(roles, rbac.PermAIModelUse) {
 			return uuid.Nil, policyDenied()
+		}
+		if singleOrg {
+			var count int
+			// lint:cross-org count only the already verified VPN user's live memberships to reject ambiguous alias requests.
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM memberships m JOIN organizations o ON o.id=m.org_id WHERE m.user_id=$1 AND m.access_revoked_at IS NULL AND o.deleted_at IS NULL`, user).Scan(&count); err != nil {
+				return uuid.Nil, aiUnavailable()
+			}
+			if count != 1 {
+				return uuid.Nil, policyDenied()
+			}
 		}
 		return user, nil
 	})
