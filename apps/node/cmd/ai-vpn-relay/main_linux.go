@@ -35,7 +35,11 @@ func main() {
 	cert := flag.String("tls-cert", "", "HTTPS certificate path")
 	key := flag.String("tls-key", "", "HTTPS private key path")
 	webURL := flag.String("web-upstream", "", "HTTPS web upstream using normal DNS (not VPN DNS)")
+	tcpMSS := flag.Int("tcp-mss", 1200, "maximum VPN HTTPS TCP segment size (536-8960)")
 	flag.Parse()
+	if *tcpMSS < 536 || *tcpMSS > 8960 {
+		log.Fatal("tcp-mss must be between 536 and 8960")
+	}
 	bindIP, _, err := net.SplitHostPort(*addr)
 	if err != nil || net.ParseIP(bindIP) == nil || net.ParseIP(bindIP).IsUnspecified() || *host == "" || *controlName == "" {
 		log.Fatal("explicit VPN listen address, hostname and control server name required")
@@ -79,6 +83,12 @@ func main() {
 		var sockErr error
 		err := c.Control(func(fd uintptr) {
 			sockErr = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, *iface)
+			// Clamp this listener in both directions before SYN negotiation. Small
+			// DNS/WG handshakes can succeed on paths that black-hole larger TLS
+			// records. Interface MTU is independently owned by node reconciliation.
+			if sockErr == nil {
+				sockErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_MAXSEG, *tcpMSS)
+			}
 		})
 		if err != nil {
 			return err
