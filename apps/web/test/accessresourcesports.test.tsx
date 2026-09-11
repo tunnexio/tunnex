@@ -77,7 +77,7 @@ describe("Access Resources port scope", () => {
     fireEvent.change(screen.getByLabelText("Port"), { target: { value: "53" } });
     submitCreate();
     await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());
-    expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { protocol: "udp", port_low: 53, port_high: null } });
+    expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { protocol: "udp", port_low: 53, port_high: 53 } });
 
     cleanup(); renderPage(); await openCreate();
     fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "tcp" } });
