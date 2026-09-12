@@ -31,3 +31,11 @@ Scope: forced CP expiry and automatic refresh-token exchange proved. Natural ups
 ## Running runtime cache-renewal walk
 
 User requested runtime cache proof after forced-expiry handler proof. Existing process3392 still cached original06:01UTC expiry at05:14:34UTC; proxy initialize and23tool discovery succeeded. Prepared shortened expiry again to05:17:39.599844UTC (single-row/org/device/endpoint transaction; container labels/network reverified). Restarted only retained lab runtime before baseline to load this short lease, no credential or binary changes. New baseline process14843, ActiveEnterTimestamp2026-09-12 05:15:41UTC. Proxy initialize05:15:41 andtools/list05:15:42 bothHTTP200, workers-bindings0.5.5 and23tools. Next proof must use same running PID through expiry; no direct lease call or further restart during renewal.
+
+## Running runtime cache renewal: PASS (shortened lease)
+
+Post-expiry request2026-09-12T05:18:33UTC used only the actual runtime proxy127.0.0.1:17100. Same process14843, same ActiveEnterTimestamp05:15:41UTC. InitializeHTTP200 identified workers-bindings0.5.5; tools/listHTTP200 returned23tools without JSON-RPC error. Metadata readback: connected, token_expires_at06:18:31.082113UTC, updated_at05:18:33.717277UTC. Therefore the running runtime discarded its expired short lease, requested a new lease through the authenticated CP route, and the CP automatically refreshed with the provider. No restart, re-consent, direct lease probe or expiry rewrite between baseline and renewal.
+
+Repeat05:19:10UTC: initialize/tools-list againHTTP200,23tools; expiry and updated_at unchanged, consistent with renewed lease reuse without another provider refresh. This supersedes the earlier pending running-cache-renewal qualification. The lease was intentionally shortened with user approval; real upstream one-hour expiry was not waited out. Discovery is not an upstream tool invocation. No product change required.
+
+Cleanup remains explicit: test OAuth grant/profile are retained connected at this checkpoint; original echo profile still available. No automation exists. Test runtime remains active on original binary/credentials, gateway and CP unaffected.
