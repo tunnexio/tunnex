@@ -437,7 +437,12 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                 raise ValueError()
             if not secret(data["api_key"]):
                 raise ValueError()
-            endpoint = settings.endpoint(data["provider"], data["endpoint_url"])
+            provider = data["provider"]
+            if provider in STANDARD:
+                if data.get("endpoint_url"): raise ValueError()
+                endpoint = ""
+            else:
+                endpoint = settings.endpoint(provider, data["endpoint_url"])
             query = data.get("query", "")
             mode = data.get("mode", "chat")
             limit, offset = data.get("limit", 50), data.get("offset", 0)
@@ -449,7 +454,7 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
             ):
                 raise ValueError()
             payload = {
-                "operation": "catalog", "endpoint": endpoint,
+                "operation": "catalog", "endpoint": endpoint, "provider": provider, "mode": mode,
                 "api_key": data["api_key"], "proxy": settings.proxy,
                 "query": query, "limit": limit, "offset": offset,
             }

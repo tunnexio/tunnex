@@ -74,7 +74,6 @@ import {
 } from "../components/AgentOrganizationSettings";
 import { AccessEventRetentionSettings } from "../components/AccessEventRetentionSettings";
 import { AuditLogRetentionSettings } from "../components/AuditLogRetentionSettings";
-import { AIGatewaySettings } from "../components/AIGatewaySettings";
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -412,7 +411,6 @@ export default function Settings() {
         {org && isAdmin && active === "ai-agents" && (
           <SettingGroup id="ai-agents" title="AI Agents" tabpanel>
             <div className="flex flex-col gap-3.5">
-              <AIGatewaySettings orgId={org.id} canEdit={can(myRole, "ai_gateway:manage") && emailVerified} />
               <AgentRuntimeSettingCard orgId={org.id} value={org.managed_agent_runtime_enabled} canEdit={can(myRole, "agent_runtime:manage") && emailVerified} onSaved={(enabled) => setOrg((current) => current ? { ...current, managed_agent_runtime_enabled: enabled } : current)} />
               <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRole, "org:update") && emailVerified} />
               <AgentPolicyTemplatesToggle org={org} canEdit={can(myRole, "agent_template:manage") && emailVerified} onSaved={(next) => setOrg(next)} />
@@ -792,7 +790,7 @@ function DangerZone({
             {pre.blockers.length > 0
               ? `This organization still has ${pre.blockers.join(", ")}.`
               : "This organization still owns resources."}{" "}
-            Remove them first — deleting now would leave them running with no
+            Remove them first, deleting now would leave them running with no
             organization to manage them from.
           </p>
         </div>
@@ -868,7 +866,7 @@ function OrgMfaEnforce({
   return (
     <SettingRow
       label="Require two-factor authentication"
-      description="Password sign-ins must have 2FA. Applies at sign-in — open sessions stay valid until they expire."
+      description="Password sign-ins must have 2FA. Applies at sign-in, open sessions stay valid until they expire."
       error={error}
     >
       {/* ⚠ `null` is NOT "off" — it is "not read yet". Rendering an off switch for an unknown value would
@@ -1052,7 +1050,7 @@ function PoolSection({
         {done && (
           <p className="mt-3 text-xs text-accent-400">
             Pool resized to <span className="font-sans">{cidr}</span>. Existing
-            devices keep their current addresses — to reach addresses in the new
+            devices keep their current addresses, to reach addresses in the new
             range, re-issue their configs (revoke + recreate; configs are shown
             once and can’t be re-sent).
           </p>
@@ -1202,7 +1200,7 @@ export function IdpSyncSection({
     return (
       <Card>
         <h2 className="text-sm font-semibold text-slate-300">
-          Directory sync — {directoryLabel(provider)}
+          Directory sync, {directoryLabel(provider)}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
           Syncing groups from {directoryLabel(provider)} is a Tunnex Enterprise
@@ -1337,7 +1335,7 @@ export function IdpSyncSection({
         )
       }
       actionLabel={state.kind === "configured" ? "Manage" : "Configure"}
-      dialogTitle={`Directory sync — ${directoryLabel(provider)}`}
+      dialogTitle={`Directory sync, ${directoryLabel(provider)}`}
       error={err}
       actions={(close) => (
         <Button variant="ghost" onClick={close}>
@@ -1360,7 +1358,7 @@ export function IdpSyncSection({
       {state.kind === "unknown" && (
         <>
           <p className="mt-2 text-sm text-slate-400">
-            Directory-sync status unknown — the health read failed, so we cannot
+            Directory-sync status unknown, the health read failed, so we cannot
             tell whether this provider is configured.
           </p>
           <Button
@@ -1392,7 +1390,7 @@ export function IdpSyncSection({
 
       {state.kind === "configured" && state.health.provisioning_allowed === false && (
         <div role="status" className="rounded border border-amber-700/40 bg-amber-950/20 p-3 text-sm text-amber-200">
-          <p className="font-semibold">User provisioning paused — licence required</p>
+          <p className="font-semibold">User provisioning paused, licence required</p>
           <p className="mt-1">New user imports and group access grants require a valid licence or active trial. Directory removals and disabled-user revocations continue.</p>
         </div>
       )}
@@ -1451,7 +1449,7 @@ export function IdpSyncSection({
               the secret fingerprint come back only from the PUT that wrote them. So the form is
               never pre-filled from the server and does not pretend to show what is stored. */}
           <p className="text-xs text-slate-600">
-            {provider === "okta" ? "The private signing key is never returned. Replacing it preserves the current sync state and directory binding." : "Credentials are set, not readable back — this server serves no read for the directory-sync credential, so the fields below always start empty even when a credential is stored."}
+            {provider === "okta" ? "The private signing key is never returned. Replacing it preserves the current sync state and directory binding." : "Credentials are set, not readable back, this server serves no read for the directory-sync credential, so the fields below always start empty even when a credential is stored."}
           </p>
           {(provider === "microsoft" || provider === "okta") && <Field label={`${directoryLabel(provider)} directory client ID`}>
             <Input
@@ -1597,7 +1595,7 @@ export function IdpSyncSection({
             </Field>
             <p className="text-xs text-slate-600">
               Mapping onto an existing group is only allowed if that group is
-              empty — {emptyManual.length} manual group
+              empty, {emptyManual.length} manual group
               {emptyManual.length === 1 ? "" : "s"} exist.
             </p>
             <Button type="submit" disabled={busy === "map" || !canEdit}>
@@ -2087,7 +2085,7 @@ function SsoProvider({
         <p className="mt-2 text-xs text-slate-400">
           The current {providerName} SSO settings could not be read, so this
           shows neither “configured” nor “not configured”. Refresh to try again
-          — reconfiguring from here could overwrite a live setup.
+, reconfiguring from here could overwrite a live setup.
         </p>
         <div className="mt-3">
           <Button variant="ghost" onClick={() => void load(() => false)}>

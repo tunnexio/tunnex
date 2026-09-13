@@ -48,21 +48,22 @@ describe("AI and identity navigation", () => {
   });
   it("opens an exact model grant and preserves the models page in browser history", async () => {
     mount("/ai-gateway/models");
-    fireEvent.click(await screen.findByRole("button", { name: `Grant access to ${connection.models[0]} on azure` }));
-    await screen.findByRole("option", { name: "Engineering · 4 users" });
+    fireEvent.click(await screen.findByRole("checkbox", { name: `Select ${connection.models[0]}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (4)" });
     expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([connection.id, connection.models[0]]));
     expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
     expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(false);
     expect(mocks.post).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await screen.findByRole("table", { name: "Configured models" });
     expect(screen.getByLabelText("Current route").textContent).toBe("/ai-gateway/models");
   });
   it("does not accept a stale model selection from a bookmarked grant", async () => {
     render(<AIGroupAccess orgId="org" canManage initialConnection="deleted" initialModel="private" />);
     fireEvent.change(await screen.findByLabelText("User group"), { target: { value: "engineering" } });
-    await screen.findByRole("option", { name: "Engineering · 4 users" });
+    await screen.findByRole("option", { name: "Engineering (4)" });
     expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(true);
     expect(mocks.post).not.toHaveBeenCalled();
   });
@@ -78,7 +79,7 @@ describe("AI and identity navigation", () => {
     await screen.findByRole("table", { name: "Configured models" });
     expect(screen.queryByRole("button", { name: "Add Model" })).toBeNull();
     expect(screen.queryByLabelText("API key")).toBeNull();
-    expect((screen.getByRole("button", { name: `Grant access to ${connection.models[0]} on azure` }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Grant access" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("navigates to credentials without a second tab row", async () => {
     mount("/ai-gateway/models"); await screen.findByRole("table", { name: "Configured models" });

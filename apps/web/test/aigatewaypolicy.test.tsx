@@ -109,6 +109,7 @@ describe("AI team and agent policy workspace", () => {
       return Promise.resolve({ data: { items: [{ device_id: "agent-b", name: "Second page agent", status: "revoked" }], next_cursor: null } });
     });
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
     await screen.findByRole("option", { name: "Other owner's agent (active)" });
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-a" } });
     fireEvent.click(screen.getByRole("button", { name: "Load more agents" }));
@@ -122,6 +123,7 @@ describe("AI team and agent policy workspace", () => {
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-b" } });
     await screen.findByRole("button", { name: "Save agent access" });
     fireEvent.click(screen.getByRole("button", { name: "Refresh AI policies" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
     await screen.findByLabelText("Agent");
     expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("");
     expect(screen.queryByRole("button", { name: "Save agent access" })).toBeNull();
@@ -133,6 +135,7 @@ describe("AI team and agent policy workspace", () => {
   ])("shows threshold %s as decimal without changing its saved value", async (amount, displayed) => {
     mocks.GET.mockImplementation((path: string) => path.endsWith("/teams") ? Promise.resolve({ data: [{ ...team, daily_cost_limit: amount }] }) : get(path));
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Add policy" }));
     await screen.findByLabelText("Policy team");
     fireEvent.change(screen.getByLabelText("Policy team"), { target: { value: "group-a" } });
     const input = screen.getByLabelText("Daily USD soft threshold (optional)") as HTMLInputElement;
@@ -144,6 +147,7 @@ describe("AI team and agent policy workspace", () => {
   });
   it("clears an optional threshold and refuses nonpositive or excessive amounts", async () => {
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Add policy" }));
     await screen.findByLabelText("Policy team");
     fireEvent.change(screen.getByLabelText("Policy team"), { target: { value: "group-a" } });
     const input = screen.getByLabelText("Daily USD soft threshold (optional)");
@@ -169,7 +173,8 @@ describe("AI team and agent policy workspace", () => {
         { id: "connection-b", key_id: "tnx-managed-b", name: "Pending connection", enabled: true, status: "pending", revision: 2, applied_revision: 1, models: ["openrouter/allowed"] },
       ],
     } }) : get(path));
-    render(show()); await screen.findByLabelText("Policy team");
+    render(show()); fireEvent.click(await screen.findByRole("button", { name: "Add policy" }));
+    await screen.findByLabelText("Policy team");
     fireEvent.change(screen.getByLabelText("Policy team"), { target: { value: "group-a" } });
     expect((screen.getByRole("checkbox", { name: /Pending connection/ }) as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByLabelText("Provider key IDs (one per line)")).toBeNull();
@@ -180,6 +185,7 @@ describe("AI team and agent policy workspace", () => {
   });
   it("sends exact team models, key IDs and expected revision with a soft threshold", async () => {
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Add policy" }));
     await screen.findByLabelText("Policy team");
     fireEvent.change(screen.getByLabelText("Policy team"), {
       target: { value: "group-a" },
@@ -210,6 +216,7 @@ describe("AI team and agent policy workspace", () => {
   it("requires current membership and narrowing but still offers disable and reconcile", async () => {
     member = false;
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
     await screen.findByLabelText("Agent");
     expect(screen.queryByRole("option", { name: /Human/ })).toBeNull();
     fireEvent.change(screen.getByLabelText("Agent"), {
@@ -250,6 +257,7 @@ describe("AI team and agent policy workspace", () => {
   });
   it("saves an empty override as inheritance with the authoritative revision", async () => {
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
     await screen.findByLabelText("Agent");
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-a" } });
     await screen.findByText(/Current group membership verified/);
@@ -266,6 +274,7 @@ describe("AI team and agent policy workspace", () => {
   });
   it("refuses agent overrides outside its team", async () => {
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
     await screen.findByLabelText("Agent");
     fireEvent.change(screen.getByLabelText("Agent"), {
       target: { value: "agent-a" },
@@ -303,6 +312,7 @@ describe("AI team and agent policy workspace", () => {
     );
     const page = render(show());
     page.rerender(show("org-b"));
+    fireEvent.click(await screen.findByRole("button", { name: "Add policy" }));
     await screen.findByLabelText("Policy team");
     await act(async () => resolve({ data: [] }));
     expect(screen.getByLabelText("Policy team")).toBeTruthy();
@@ -311,6 +321,7 @@ describe("AI team and agent policy workspace", () => {
   it("keeps saved revision after a network mutation failure", async () => {
     mocks.PUT.mockRejectedValue(new Error("offline"));
     render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Add policy" }));
     await screen.findByLabelText("Policy team");
     fireEvent.change(screen.getByLabelText("Policy team"), {
       target: { value: "group-a" },

@@ -380,7 +380,7 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 		// solo-admin who hits a range collision on the one-screen affordance gets a next step, not a dead end.
 		return apierr.Conflict("subnet_not_disjoint",
 			"this subnet overlaps the "+string(refusal.Class)+" range "+refusal.With.String()+"; approval refused. "+
-				"Both sides use overlapping addresses — options: renumber one LAN to a non-overlapping range, or subnet-mapping (roadmap).")
+				"Both sides use overlapping addresses, options: renumber one LAN to a non-overlapping range, or subnet-mapping (roadmap).")
 	}
 	return nil
 }

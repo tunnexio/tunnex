@@ -104,35 +104,55 @@ async def catalog(data):
     import httpx
     from transport import LockedTransport
 
-    if not data.get("proxy"):
+    provider = data.get("provider", "custom")
+    native = provider in ORIGINS
+    if not native and not data.get("proxy"):
         raise ValueError("mandatory proxy missing")
-    base = data["endpoint"]
+    base = ORIGINS[provider] if native else data["endpoint"]
+    headers = {"Authorization": "Bearer " + data["api_key"]}
+    url = base + ("/models" if native and base.endswith("/v1") else "/v1/models")
+    if provider == "gemini":
+        url = base + "/v1beta/models?pageSize=1000"
+        headers = {"x-goog-api-key": data["api_key"]}
+    elif provider == "anthropic":
+        url = base + "/v1/models?limit=1000"
+        headers = {"x-api-key": data["api_key"], "anthropic-version": "2023-06-01"}
     u = urlsplit(base)
     origin = (u.scheme, u.hostname, u.port or (443 if u.scheme == "https" else 80))
     async with httpx.AsyncClient(
-        transport=LockedTransport([origin], data["proxy"]),
+        transport=LockedTransport([origin], None if native else data["proxy"]),
         trust_env=False, follow_redirects=False, timeout=9,
     ) as client:
-        async with client.stream(
-            "GET", base + "/v1/models",
-            headers={"Authorization": "Bearer " + data["api_key"]},
-        ) as response:
+        async with client.stream("GET", url, headers=headers) as response:
             if response.status_code != 200:
                 raise ValueError("catalog failed")
-            raw = await response.aread()
+            chunks = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > 4 * 1024 * 1024:
+                    raise ValueError("catalog bound")
+                chunks.append(chunk)
+            raw = b"".join(chunks)
     upstream = json.loads(raw)
-    if not isinstance(upstream, dict) or not isinstance(upstream.get("data"), list):
+    items = upstream.get("models" if provider == "gemini" else "data") if isinstance(upstream, dict) else None
+    if not isinstance(items, list) or len(items) > 10000:
         raise ValueError("catalog invalid")
-    if len(upstream["data"]) > 10000:
-        raise ValueError("catalog bound")
     names = set()
-    for item in upstream["data"]:
-        name = item.get("id") if isinstance(item, dict) else None
+    for item in items:
+        name = item.get("name" if provider == "gemini" else "id") if isinstance(item, dict) else None
+        if provider == "gemini" and isinstance(name, str):
+            name = name.removeprefix("models/")
+            method = {"chat": "generateContent", "embedding": "embedContent"}.get(data.get("mode", "chat"))
+            if method and method not in item.get("supportedGenerationMethods", []):
+                continue
         if not isinstance(name, str) or not MODEL_NAME.fullmatch(name):
             continue
         prefix = name.split("/", 1)[0]
         if "/" in name and (prefix == "custom" or prefix.startswith("custom-")):
             continue
+        if native:
+            name = provider + "/" + name
         if data["api_key"] in name:
             continue
         if data["query"].translate(ASCII_LOWER) in name.translate(ASCII_LOWER):
@@ -240,7 +260,7 @@ async def _invoke(data, emit=None):
         base = data["endpoint"] + ("" if provider == "foundry_anthropic" else "/v1")
         params.update(model=data["model"], api_key=data["api_key"], api_base=base)
     else:
-        base = ORIGINS[provider]
+        base = ORIGINS[provider] + ("/v1beta" if provider == "gemini" else "")
         params.update(model=data["model"], api_key=data["api_key"], api_base=base)
     u = urlsplit(base)
     origin = (u.scheme, u.hostname, u.port or (443 if u.scheme == "https" else 80))

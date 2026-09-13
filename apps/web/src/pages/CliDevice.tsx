@@ -38,7 +38,7 @@ export default function CliDevice() {
       <AuthLayout>
         <h1 className="text-xl font-semibold text-white">CLI approved</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Return to your terminal — the Tunnex CLI now has its credential. You
+          Return to your terminal, the Tunnex CLI now has its credential. You
           can close this page.
         </p>
       </AuthLayout>
@@ -59,7 +59,7 @@ export default function CliDevice() {
           to YOUR identity for whoever is polling that code. */}
       <p className="mt-3 rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-slate-300">
         Only enter a code you started yourself on this or another of your
-        machines. If someone asked you to enter a code here, stop — approving it
+        machines. If someone asked you to enter a code here, stop, approving it
         would give <span className="font-semibold">them</span> access to your
         account.
       </p>

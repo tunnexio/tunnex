@@ -216,8 +216,8 @@ export function causeFor(
   if (e.decision === "gap") {
     const n = e.deny_count ?? 0;
     return n > 0
-      ? `${n} events missing from the log — sequence gap`
-      : "sequence gap — events are missing from the log";
+      ? `${n} events missing from the log, sequence gap`
+      : "sequence gap, events are missing from the log";
   }
   if (e.decision === "deny_aggregate") {
     const n = e.deny_count ?? 0;
@@ -274,7 +274,7 @@ export function sourceFor(
 }
 
 export const ATTRIBUTION_NOTE =
-  "Source device and AI-agent IDs come from the successfully applied gateway policy; the recorded person comes from org-scoped ownership verified at ingest. Names are current labels only, and a recorded person is accountability — not proof that they initiated the traffic. Identity is never inferred from an IP address.";
+  "Source device and AI-agent IDs come from the successfully applied gateway policy; the recorded person comes from org-scoped ownership verified at ingest. Names are current labels only, and a recorded person is accountability, not proof that they initiated the traffic. Identity is never inferred from an IP address.";
 
 export function eventTimeline(e: AccessEvent): string[] {
   const reason = e.decision_reason?.replace(/_/g, " ") ?? "reason unavailable";
@@ -327,11 +327,11 @@ export function isLastPage(page: AccessEvent[], limit: number): boolean {
 export const FLOW_LOG_CUTS: readonly { what: string; why: string }[] = [
   {
     what: "JSONL export",
-    why: "DEFERRED with the on-disk JSONL writer (S7.5.1b) — the spec says so in a comment where the endpoint would be. The wireframe labels it deferred too.",
+    why: "DEFERRED with the on-disk JSONL writer (S7.5.1b), the spec says so in a comment where the endpoint would be. The wireframe labels it deferred too.",
   },
   {
     what: "Per-verdict filter chips (allow / deny / deny_aggregate / terminated)",
-    why: "the API has ONE verdict filter, `denies_only`; the source-identity filters are orthogonal. Filtering a keyset page client-side would hide events on OTHER pages while looking like a complete filter — a feed that under-reports is worse than one that does not filter.",
+    why: "the API has ONE verdict filter, `denies_only`; the source-identity filters are orthogonal. Filtering a keyset page client-side would hide events on OTHER pages while looking like a complete filter, a feed that under-reports is worse than one that does not filter.",
   },
   {
     what: "The verdict timeline and its totals (allow 528 · deny 68 · …)",
@@ -360,7 +360,7 @@ export function retentionNote(h: AccessLogHealth): {
 } {
   if (h.retention_failed) {
     return {
-      text: "The last retention sweep failed — old events may not have been dropped, so the hot window can keep growing. Check the control-plane logs.",
+      text: "The last retention sweep failed, old events may not have been dropped, so the hot window can keep growing. Check the control-plane logs.",
       loud: true,
       tone: "danger",
     };

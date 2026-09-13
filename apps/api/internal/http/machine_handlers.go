@@ -59,7 +59,7 @@ func (s apiServer) MintMachineCredential(ctx context.Context, req api.MintMachin
 		return nil, err
 	}
 	if req.Body == nil || strings.TrimSpace(req.Body.Name) == "" {
-		return nil, apierr.BadRequest("invalid_request", "a name is required — it appears in the audit trail as operator:<name>")
+		return nil, apierr.BadRequest("invalid_request", "a name is required, it appears in the audit trail as operator:<name>")
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	cred, err := s.machine.Mint(ctx, req.OrgId, p.UserID, strings.TrimSpace(req.Body.Name))
@@ -109,7 +109,7 @@ func (s apiServer) AssignMachineCredentialOwner(ctx context.Context, req api.Ass
 		return nil, apierr.New(401, "unauthenticated", "authentication required")
 	}
 	if req.Body == nil || req.Body.UserId == uuid.Nil {
-		return nil, apierr.BadRequest("user_id_required", "an owner must be named — the system does not know who minted this credential")
+		return nil, apierr.BadRequest("user_id_required", "an owner must be named, the system does not know who minted this credential")
 	}
 	// ⛔ AN UNVERIFIED ACCOUNT CANNOT BE NAMED AS AN ACCOUNTABLE OWNER (D21 ruled).
 	//

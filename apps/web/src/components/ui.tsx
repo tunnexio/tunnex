@@ -119,8 +119,10 @@ export function Card({
 export function Field({
   label,
   children,
+  help,
 }: {
   label: string;
+  help?: ReactNode;
   children: ReactNode;
 }) {
   // Explicit id/htmlFor association (not just implicit wrapping) so the label
@@ -132,9 +134,7 @@ export function Field({
     : children;
   return (
     <div className="block">
-      <label htmlFor={id} className="block text-sm text-slate-300">
-        {label}
-      </label>
+      {help ? <div className="flex items-center gap-1"><label htmlFor={id} className="block text-sm text-slate-300">{label}</label>{help}</div> : <label htmlFor={id} className="block text-sm text-slate-300">{label}</label>}
       <span className="mt-1 block">{control}</span>
     </div>
   );

@@ -1464,7 +1464,7 @@ func (s *Service) RemoveRevoked(ctx context.Context, orgID, actorID, deviceID uu
 				return apierr.NotFound("device_not_found", "device not found")
 			}
 			return apierr.Conflict("device_not_revoked",
-				"only a revoked device can be removed from the roster — revoke it first")
+				"only a revoked device can be removed from the roster, revoke it first")
 		}
 		return audit(ctx, q, orgID, &actorID, "device.removed", "device", deviceID.String(),
 			map[string]any{"cause": "operator_removed_revoked"})

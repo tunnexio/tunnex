@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { stripJsComments } from "./support/source";
 
 // ⛔ THE EM-DASH IS BANNED AS A PLACEHOLDER GLYPH, AND THAT RULE WAS ALREADY RESOLVED ONCE.
@@ -55,6 +56,27 @@ describe("the em-dash is never a placeholder value", () => {
         if (AS_A_VALUE.test(line))
           offenders.push(`${f.replace(SRC, "src")}:${i + 1}  ${line.trim()}`);
       });
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+// Product copy includes JSX text, labels, templates and escaped glyphs.
+describe("control-plane copy punctuation", () => {
+  it("contains no em dashes in UI text or string literals", () => {
+    const offenders: string[] = [];
+    for (const file of walk(SRC)) {
+      const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node) => {
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node) || ts.isJsxText(node)) {
+          if (/\u2014|&mdash;|&#8212;|&#x2014;/i.test(node.text)) {
+            const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+            offenders.push(`${file}:${line}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
     }
     expect(offenders).toEqual([]);
   });

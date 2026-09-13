@@ -84,7 +84,7 @@ export function AddressBlockExplorer({
       </div>
       <div className="address-zoom-heading">
         <span>
-          {cidr(currentGroup * groupSize)} —{" "}
+          {cidr(currentGroup * groupSize)} Not available{" "}
           {cidr(
             Math.min((currentGroup + 1) * groupSize - 1, map.block.cells - 1),
           )}

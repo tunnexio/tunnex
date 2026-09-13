@@ -6720,7 +6720,7 @@ components:
       description: Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
     AIProviderInputModels:
       type: array
-      minItems: 1
+      minItems: 0
       maxItems: 32
       uniqueItems: true
       description: Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
@@ -6743,7 +6743,7 @@ components:
         endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         name: { type: string }
-        models: { $ref: '#/components/schemas/AIModelNames' }
+        models: { $ref: '#/components/schemas/AIProviderInputModels' }
         enabled: { type: boolean }
         revision: { type: integer, format: int64 }
         applied_revision: { type: integer, format: int64 }
@@ -6808,9 +6808,9 @@ components:
       required: [provider, api_key, endpoint_url]
       properties:
         mode: { $ref: '#/components/schemas/AIModelMode' }
-        provider: { type: string, enum: [custom, sagemaker, azure_foundry] }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
-        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules. }
+        endpoint_url: { type: string, maxLength: 2048, description: Empty for standard providers. Normalized base without trailing /v1 for endpoint providers. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules. }
         query: { type: string, maxLength: 100, default: '' }
         limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
         offset: { type: integer, minimum: 0, maximum: 10000, default: 0 }

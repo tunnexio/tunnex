@@ -4,6 +4,8 @@ import { api } from "../lib/api";
 import { Button, Field, Input, Select } from "./ui";
 import { AIUsageDashboard, formatAIUsageCost } from "./AIUsageDashboard";
 
+import { HelpTooltip } from "./HelpTooltip";
+
 type Report = components["schemas"]["AIUsageReport"];
 type Inventory = {
   groups: { id: string; name: string }[];
@@ -87,7 +89,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
     error={error}
     onRetry={refresh}
     filters={<div className="space-y-3">
-      <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
+      <div className="ai-usage-filter-row">
         <Field label="Usage team"><Select value={team} onChange={(e) => { invalidate(); setTeam(e.target.value); }}>
           <option value="">All teams</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </Select></Field>
@@ -98,7 +100,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
           const v = e.target.value as Preset; setPreset(v); setRangeError("");
           if (v !== "custom") { invalidate(); setRange(rangeFor(v)); }
         }}><option value="today">Today (UTC)</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="custom">Custom range</option></Select></Field>
-        <Button disabled={busy} onClick={refresh}>{busy ? "Loading usage…" : "Refresh usage"}</Button>
+        <Button disabled={busy} onClick={refresh}>{busy ? "Refreshing…" : "Refresh"}</Button>
       </div>
       {preset === "custom" && <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
         <Field label="From (UTC)"><Input type="datetime-local" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} /></Field>
@@ -106,7 +108,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
         <Button onClick={applyCustom}>Apply range</Button>
       </div>}
       {rangeError && <p role="alert" className="text-sm text-danger">{rangeError}</p>}
-      <p className="text-xs text-ink-tertiary">{range.from.slice(0, 10)} {range.from.slice(11, 16)} – {range.to.slice(0, 10)} {range.to.slice(11, 16)} UTC · Based on retained gateway records; older activity may no longer be available.</p>
+      <span className="ai-usage-period">{range.from.slice(0, 10)} to {range.to.slice(0, 10)} · UTC<HelpTooltip>Based on retained gateway records. Older activity may no longer be available.</HelpTooltip></span>
     </div>}
     totals={report && d ? { requests: report.total_requests, tokens: report.total_tokens, inputTokens: report.prompt_tokens, outputTokens: report.completion_tokens, cost: report.total_cost, uncostedRequests: report.uncosted_requests, successfulRequests: d.successful_requests, failedRequests: d.failed_requests, cancelledRequests: d.cancelled_requests } : undefined}
     daily={d?.daily.map((r) => ({ ...r, uncostedRequests: r.uncosted_requests }))}
@@ -114,8 +116,9 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
     userGroups={d?.user_groups ? ranked(d.user_groups) : undefined}
     teams={d ? ranked(d.teams) : undefined}
     agents={d ? ranked(d.agents) : undefined}
+    workloads={d && <WorkloadUsage rows={d.workloads} />}
   />
-    {!busy && !error && d && <WorkloadUsage rows={d.workloads} />}
+
   </div>;
 }
 
@@ -126,7 +129,7 @@ function WorkloadUsage({ rows }: { rows: NonNullable<Report["dashboard"]>["workl
   return <section className="ai-usage-dashboard" aria-label="Workload usage">
     <div className="ai-usage-panel">
       <div className="ai-usage-panel-title"><h3>Spend by workload</h3><span>{rows ? `${rows.length} workload${rows.length === 1 ? "" : "s"}` : "Unavailable"}</span></div>
-      <p className="ai-usage-muted">Combined usage across each workload's instances. Included in the totals above.</p>
+
       {!sorted?.length ? <p className="ai-usage-muted">{rows ? "No workload usage recorded in this period." : "Workload breakdown is unavailable."}</p>
         : <div className="ai-usage-table-scroll"><table>
           <caption className="sr-only">Spend by workload</caption>

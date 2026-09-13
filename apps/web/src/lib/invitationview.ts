@@ -158,9 +158,9 @@ export function outstandingCount(rows: Invitation[], now: Date): number {
 export function inviteErrorCopy(code: string | null | undefined): string {
   switch (code) {
     case "invite_pending": // invites.go:109 (409)
-      return "An invitation is already pending for that address — resend or revoke it in the list below.";
+      return "An invitation is already pending for that address, resend or revoke it in the list below.";
     case "invite_not_pending": // invites.go:243 (404)
-      return "No pending invitation for that address — it may have just been accepted or revoked. Refresh to see the current list.";
+      return "No pending invitation for that address, it may have just been accepted or revoked. Refresh to see the current list.";
     case "invalid_role": // invites.go:97
       return "That role is not one this organization recognises.";
     case "account_deactivated": // invites.go:168 (403)

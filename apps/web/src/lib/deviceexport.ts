@@ -19,8 +19,8 @@ export function exportCeremony(kind: ExportKind): ExportCeremony {
   const wg = kind !== "openvpn";
   return {
     title: wg
-      ? "Your configuration — shown once"
-      : "Your OpenVPN profile — shown once",
+      ? "Your configuration, shown once"
+      : "Your OpenVPN profile, shown once",
     ext: wg ? "conf" : "ovpn",
     showQR: wg,
     honesty: wg

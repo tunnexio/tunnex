@@ -19,27 +19,34 @@ describe("AI user access", () => {
     mock.get.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }] : path.endsWith("user-model-grants") ? [] : { items: [provider] } }));
     mock.post.mockResolvedValue({ data: { id: "grant", group_id: "engineering", group_name: "Engineering", connection_id: provider.id, model: provider.models[0], enabled: true, status: "applied", revision: 1 } });
     render(<AIGroupAccess orgId="org" canManage />);
-    await screen.findByRole("option", { name: "Engineering · 4 users" });
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (4)" });
     fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: JSON.stringify([provider.id, provider.models[0]]) } });
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
     expect(await screen.findByRole("button", { name: "Revoke access" })).toBeTruthy();
   });
-  it("uses the login endpoint and toasts HTTP 200 without provider key input", async () => {
+  it("uses the login endpoint with conversation history and no provider key input", async () => {
     mock.get.mockResolvedValue({ data: [{ model: provider.models[0], mode: "chat" }] });
     mock.post.mockResolvedValue({ data: { choices: [{ message: { content: "Hello Engineering" } }] }, response: new Response("{}", { status: 200 }) });
     render(<AIUseModel orgId="org" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Call model" }));
-    await waitFor(() => expect(mock.success).toHaveBeenCalledWith("HTTP 200 — Model responded"));
+    await screen.findByRole("button", { name: "Send message" });
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByText("Hello Engineering");
     expect(mock.post).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions", expect.objectContaining({ params: { path: { orgId: "org" } } }));
     expect(screen.queryByLabelText(/API key/i)).toBeNull();
     expect(screen.getByText("Hello Engineering")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Tell me more" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(mock.post).toHaveBeenCalledTimes(2));
+    expect(mock.post.mock.calls[1][1].body.messages).toEqual([{role:"user",content:"Hello"},{role:"assistant",content:"Hello Engineering"},{role:"user",content:"Tell me more"}]);
   });
   it("disables provider mutations for an AI viewer", async () => {
     mock.get.mockResolvedValue({ data: { items: [provider], definitions: [{ id: "azure_ai", name: "Azure AI Foundry" }], management_available: true, legacy_key_ids: [] } });
     render(<AIProviderWorkspace orgId="org" canManage={false} />);
     expect((await screen.findByRole("tab", { name: "Add Model" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: /Edit custom/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Edit credentials" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

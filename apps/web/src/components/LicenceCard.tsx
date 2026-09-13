@@ -279,13 +279,13 @@ export function LicenceCard({
           {status.grace_ends_at
             ? ` and its grace period ends ${status.grace_ends_at.slice(0, 10)}`
             : ""}
-          . Nothing has stopped — everything keeps working until then.
+          . Nothing has stopped, everything keeps working until then.
         </p>
       )}
       {status?.state === "lapsed" && (
         <p className="mt-3 text-explainer text-warn">
           The grace period has ended, so this deployment is back to Community
-          limits. Gateways and organizations already running are unaffected —
+          limits. Gateways and organizations already running are unaffected,
           only enrolling new ones is.
         </p>
       )}
@@ -298,7 +298,7 @@ export function LicenceCard({
       {status?.clock_went_backwards && (
         <p className="mt-2 text-explainer text-warn">
           This server's clock moved backwards. Licence dates may read
-          incorrectly until it is corrected — nothing has been refused because
+          incorrectly until it is corrected, nothing has been refused because
           of it.
         </p>
       )}

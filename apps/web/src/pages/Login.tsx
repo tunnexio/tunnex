@@ -130,7 +130,7 @@ function BrowserLogin() {
       setError(
         apiErrorMessage(
           error,
-          "That code is not valid — check your authenticator app or use a recovery code.",
+          "That code is not valid, check your authenticator app or use a recovery code.",
         ),
       );
       return;
@@ -146,7 +146,7 @@ function BrowserLogin() {
           Two-factor authentication
         </h1>
         <p className="mt-1.5 text-sm text-slate-400 text-center">
-          Password accepted — no session yet. Enter the 6-digit code from your
+          Password accepted, no session yet. Enter the 6-digit code from your
           authenticator app, or a recovery code.
         </p>
         <form onSubmit={verify} className="mt-6 space-y-4">

@@ -124,7 +124,7 @@ func (s apiServer) CliDeviceApprove(ctx context.Context, req api.CliDeviceApprov
 		return nil, err
 	}
 	return api.CliDeviceApprove200JSONResponse{
-		Body:    api.GenericMessage{Message: "Approved — the CLI will receive its credential."},
+		Body:    api.GenericMessage{Message: "Approved, the CLI will receive its credential."},
 		Headers: api.CliDeviceApprove200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }

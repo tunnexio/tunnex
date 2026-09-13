@@ -789,7 +789,7 @@ describe("Directory provisioning entitlement", () => {
     await openSection(/Directory sync/);
     const manage = await screen.findAllByRole("button", { name: "Manage" });
     fireEvent.click(manage[0]);
-    expect(await screen.findByText("User provisioning paused — licence required")).toBeTruthy();
+    expect(await screen.findByText("User provisioning paused, licence required")).toBeTruthy();
     expect(screen.getByText(/Directory removals and disabled-user revocations continue/)).toBeTruthy();
   });
 });

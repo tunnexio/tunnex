@@ -80,7 +80,7 @@ export function MfaSettings() {
       setError(
         apiErrorMessage(
           error,
-          "That code is not valid — check your authenticator app and try again.",
+          "That code is not valid, check your authenticator app and try again.",
         ),
       );
       return;
@@ -221,7 +221,7 @@ export function MfaSettings() {
             <p className="text-xs text-warn">
               {remaining === 0
                 ? "You have no recovery codes left. Turn 2FA off and on again to generate a new set before you lose access to your authenticator."
-                : `Only ${remaining} recovery code${remaining === 1 ? "" : "s"} left — turn 2FA off and on again to generate a fresh set.`}
+                : `Only ${remaining} recovery code${remaining === 1 ? "" : "s"} left, turn 2FA off and on again to generate a fresh set.`}
             </p>
           )}
           {!confirmDisable ? (
@@ -249,7 +249,7 @@ export function MfaSettings() {
         <OneTimeSecretModal
           requireAck="I have saved my recovery codes somewhere I can reach without this device."
           title="Save your recovery codes"
-          caption="Each code works once, in place of your authenticator. Store them somewhere safe — they are shown only now and let you sign in if you lose your device."
+          caption="Each code works once, in place of your authenticator. Store them somewhere safe, they are shown only now and let you sign in if you lose your device."
           secret={recovery.join("\n")}
           copyLabel="Copy codes"
           downloadFilename="tunnex-recovery-codes.txt"

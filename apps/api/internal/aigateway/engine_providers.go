@@ -25,7 +25,7 @@ type ProviderEngine interface {
 }
 
 func (e *Engine) ProbeSavedProviderKey(ctx context.Context, s ProviderKeySpec, provider, model string, mode ModelMode) (ProviderProbeResult, error) {
-	if !s.Enabled || !ValidModelMode(mode) {
+	if (!s.Enabled && len(s.Models) > 0) || !ValidModelMode(mode) {
 		return ProviderProbeResult{}, errEngineScope
 	}
 	name, _, err := nativeProviderSpec(s)
@@ -110,7 +110,7 @@ func nativeProviderSpec(s ProviderKeySpec) (string, []string, error) {
 	if !nativeSupportedProvider(s.Provider) || !validModelModes(s.Models, s.ModelModes) {
 		return "", nil, errEngineScope
 	}
-	models, ok := canonicalModels(s.Models, false)
+	models, ok := canonicalModels(s.Models, !s.Enabled)
 	if !ok {
 		return "", nil, errEngineScope
 	}
@@ -142,7 +142,7 @@ func providerValueOK(raw json.RawMessage) bool {
 }
 func providerExact(k providerReadback, s ProviderKeySpec) bool {
 	name, models, err := nativeProviderSpec(s)
-	return err == nil && k.ID == s.ID && k.Name == name && k.Enabled != nil && *k.Enabled == s.Enabled && k.Weight != nil && *k.Weight == 1 && validEngineList(k.Models, true) && sameEngineSet(k.Models, models) && len(k.Blacklisted) == 0 && (len(k.Aliases) == 0 || string(k.Aliases) == "null" || string(k.Aliases) == "{}") && (k.Batch == nil || !*k.Batch) && (k.Anthropic == nil || !*k.Anthropic) && providerValueOK(k.Value)
+	return err == nil && k.ID == s.ID && k.Name == name && k.Enabled != nil && *k.Enabled == s.Enabled && k.Weight != nil && *k.Weight == 1 && (validEngineList(k.Models, true) || !s.Enabled && len(k.Models) == 0) && sameEngineSet(k.Models, models) && len(k.Blacklisted) == 0 && (len(k.Aliases) == 0 || string(k.Aliases) == "null" || string(k.Aliases) == "{}") && (k.Batch == nil || !*k.Batch) && (k.Anthropic == nil || !*k.Anthropic) && providerValueOK(k.Value)
 }
 func (e *Engine) providerKey(ctx context.Context, provider, id string) (providerReadback, int, error) {
 	var k providerReadback

@@ -223,5 +223,5 @@ func (m *Manager) NewPrincipalRefusal(now time.Time) string {
 		when = " on " + st.ExpiresAt.Format("2 January 2006")
 	}
 	return "This licence expired" + when + ". Everything already enrolled keeps working and nothing has " +
-		"stopped — but new devices, agents and gateways cannot be enrolled until it is renewed."
+		"stopped, but new devices, agents and gateways cannot be enrolled until it is renewed."
 }

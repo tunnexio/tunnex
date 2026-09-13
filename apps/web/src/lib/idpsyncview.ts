@@ -148,7 +148,7 @@ export function tierCopy(t: SyncTier): {
     case "escalated":
       return {
         label: "ESCALATED",
-        text: "Polls have been failing for more than 30 minutes — three whole cycles. Group membership is frozen at the last successful sync and is drifting from the directory.",
+        text: "Polls have been failing for more than 30 minutes, three whole cycles. Group membership is frozen at the last successful sync and is drifting from the directory.",
         loud: true,
       };
   }
@@ -163,7 +163,7 @@ export function tierCopy(t: SyncTier): {
  * the sync is broken. An operator reading only "degraded" would not know that.
  */
 export const FAIL_STATIC_NOTE =
-  "Membership is kept from the last successful sync, not emptied — so while sync is broken, a user removed in the directory keeps their access here until it recovers.";
+  "Membership is kept from the last successful sync, not emptied, so while sync is broken, a user removed in the directory keeps their access here until it recovers.";
 
 /** A Tunnex group the directory owns. Derived from the groups list; there is no mappings read. */
 export type MappedGroup = {
@@ -207,7 +207,7 @@ export function mappedGroups<T extends MappedGroup>(
  */
 export const UNMAP_CONSEQUENCES = [
   "Every member is removed from this group.",
-  "The group stays, as an empty manual group — it is not deleted.",
+  "The group stays, as an empty manual group, it is not deleted.",
   "Any access rule using this group keeps existing but will match nobody.",
   "Nodes are re-pushed org-wide, so access changes immediately.",
 ] as const;
@@ -241,9 +241,9 @@ export const UNMAP_UNAUDITED = true;
  */
 export const IDP_GROUP_ID_HELP: Record<string, string> = {
   microsoft:
-    "The Entra group's Object ID (a GUID) — Entra admin centre › Groups › the group › Object ID.",
+    "The Entra group's Object ID (a GUID), Entra admin centre › Groups › the group › Object ID.",
   google:
-    "The Google Workspace group's email address or immutable ID — Admin console › Directory › Groups.",
+    "The Google Workspace group's email address or immutable ID, Admin console › Directory › Groups.",
 };
 
 export function idpGroupIdHelp(provider: string): string {

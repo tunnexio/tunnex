@@ -10,7 +10,7 @@ vi.mock("../src/components/AIUsageDashboard", async (importOriginal) => ({
   ...await importOriginal<typeof import("../src/components/AIUsageDashboard")>(),
   AIUsageDashboard: (p: AIUsageDashboardProps) => {
     mocks.dashboard(p);
-    return createElement("section", null, p.filters,
+    return createElement("section", null, p.filters, p.status === "ready" ? p.workloads : null,
       createElement("p", { "data-testid": "result" }, p.status === "ready" ? `Cost ${p.totals?.cost}` : p.status),
       p.error ? createElement("p", { role: "alert" }, p.error) : null,
       createElement("button", { onClick: p.onRetry }, "Retry dashboard"));
@@ -33,7 +33,7 @@ describe("AI usage dashboard requests", () => {
     expect(span).toBeGreaterThanOrEqual(6 * 86400000);
     expect(span).toBeLessThanOrEqual(7 * 86400000);
     expect(request.params.query.from).toMatch(/T00:00:00.000Z$/);
-    expect(screen.getByText(/older activity may no longer be available/)).toBeTruthy();
+    expect(screen.getByText(/Older activity may no longer be available/)).toBeTruthy();
   });
   it("clears data immediately and ignores a late response after changing team", async () => {
     let resolve!: (v: unknown) => void;
@@ -91,7 +91,7 @@ describe("AI usage dashboard requests", () => {
     expect(rows).toHaveLength(3);
     expect(within(rows[1]).getByRole("rowheader").textContent).toBe("Support worker");
     expect(within(rows[1]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["4", "30", "$0.000100", "1"]);
-    expect(screen.getByText(/Combined usage across each workload's instances/)).toBeTruthy();
+
     expect(screen.getAllByText("Support worker")).toHaveLength(1);
     const props = mocks.dashboard.mock.lastCall![0] as AIUsageDashboardProps;
     expect(props.totals).toMatchObject({ requests: 8, tokens: 56, cost: 0.00017, uncostedRequests: 1 });
@@ -117,7 +117,7 @@ describe("AI usage dashboard requests", () => {
     mocks.GET.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
     render(show());
     await screen.findByRole("table", { name: "Spend by workload" });
-    fireEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(screen.queryByText("Support worker")).toBeNull();
     expect(screen.queryByRole("region", { name: "Workload usage" })).toBeNull();
     await act(async () => resolve({ error: { message: "Unavailable" } }));

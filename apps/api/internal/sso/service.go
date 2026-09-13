@@ -156,7 +156,7 @@ func (s *Service) resolveUser(ctx context.Context, id Identity, orgID uuid.UUID)
 			if !s.mayOnboard() {
 				return apierr.New(403, "edition_required",
 					"This deployment's licence does not cover adding new people through SSO. Existing "+
-						"sign-ins are unaffected — install a licence, or have an administrator invite "+
+						"sign-ins are unaffected, install a licence, or have an administrator invite "+
 						"this person.")
 			}
 			created, e := q.CreateUser(ctx, sqlc.CreateUserParams{Email: id.Email, Name: id.Name, PasswordHash: nil})

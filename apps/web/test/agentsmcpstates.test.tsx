@@ -58,6 +58,7 @@ describe("Agents MCP permission boundary", () => {
   it("uses the generated group-owned lifecycle contract from the profile workspace", async () => {
     mode = "ready";
     render(<MemoryRouter><AgentsMCP /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Jira" }));
     await screen.findByRole("button", { name: "Preview assignment" });
     expect(screen.getByRole("link", { name: "Manage agent groups" }).getAttribute("href")).toBe("/agents/groups");
     expect(await assignmentImpactText()).toContain("Preview the exact shared impact before the first assignment.");

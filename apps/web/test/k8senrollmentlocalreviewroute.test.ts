@@ -46,7 +46,7 @@ describe("the Kubernetes enrollment local review route", () => {
   it("keeps the scope preview lazy, build-flagged, labelled, and transport-restoring", () => {
     expect(app).toMatch(/lazy\(\(\) => import\("\.\/pages\/K8sScopeLocalReview"\)\)/);
     expect(app).toContain('path="/__local-review/kubernetes-scopes"');
-    expect(scopeFixture).toContain("LOCAL FIXTURE — NO CLUSTER OR POLICY MUTATION");
+    expect(scopeFixture).toContain("LOCAL FIXTURE, NO CLUSTER OR POLICY MUTATION");
     expect(scopeFixture).toContain("mutable.GET = original.GET");
     expect(scopeFixture).toContain("mutable.POST = original.POST");
     expect(scopeFixture).toContain("mutable.PUT = original.PUT");

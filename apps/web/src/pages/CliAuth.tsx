@@ -57,7 +57,7 @@ export default function CliAuth() {
       // that out instead of a generic failure — the user can act on it.
       if (apiErrorCode(error) === "email_not_verified") {
         return setError(
-          "Verify your email before authorizing a device — check your inbox, then try again.",
+          "Verify your email before authorizing a device, check your inbox, then try again.",
         );
       }
       return setError(apiErrorMessage(error, "Could not authorize the CLI."));

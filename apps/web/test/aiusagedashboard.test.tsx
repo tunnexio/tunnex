@@ -20,31 +20,32 @@ describe("AI usage dashboard", () => {
   });
   it("shows incomplete cost and accessible keyboard daily details with a table alternative", () => {
     render(createElement(AIUsageDashboard, report));
-    expect(screen.getByText(/Cost is incomplete/)).toBeTruthy();
-    expect(screen.getByText(/Provider request outcomes exclude/)).toBeTruthy();
+    expect(screen.getByText(/requests missing cost/)).toBeTruthy();
+    expect(screen.getByText(/Outcomes exclude/)).toBeTruthy();
     const day = screen.getByRole("button", { name: /2026-09-07: \$0.000170/ });
     fireEvent.focus(day);
     expect(screen.getByText(/5 requests · 30 tokens · 1 without cost/)).toBeTruthy();
     expect(day.getAttribute("aria-describedby")).toBeTruthy();
     fireEvent.keyDown(day, { key: "Escape" });
-    expect(screen.getByText(/Hover or focus a day/)).toBeTruthy();
+    expect(screen.getByText(/UTC · Requests/)).toBeTruthy();
     fireEvent.click(screen.getByText("View daily data table"));
     const table = screen.getByRole("table", { name: "Daily observed usage in UTC" });
     expect(within(table).getByText("$0.000170")).toBeTruthy();
     expect(within(table).getByRole("columnheader", { name: "Without cost" })).toBeTruthy();
   });
-  it("shows average cost only for nonempty completely priced requests", () => {
+  it("averages priced requests and excludes missing costs", () => {
     const page = render(createElement(AIUsageDashboard, report));
-    const metric = () => screen.getByText("Avg. cost / request").parentElement!;
-    expect(metric().textContent).toContain("UnavailableIncomplete pricing");
+    const metric = () => screen.getByText("Avg. cost / priced request").parentElement!;
+    expect(metric().textContent).not.toContain("Unavailable");
     page.rerender(createElement(AIUsageDashboard, { ...report, totals: { ...report.totals!, uncostedRequests: 0 } }));
     expect(metric().textContent).toContain("$0.000034");
     page.rerender(createElement(AIUsageDashboard, { ...report, totals: { requests: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cost: 0, uncostedRequests: 0, successfulRequests: 0, failedRequests: 0 } }));
-    expect(metric().textContent).toContain("UnavailableNo requests");
+    expect(metric().textContent).toContain("Unavailable");
     expect(metric().textContent).not.toContain("$0.00");
   });
   it("renders model costs without inventing model request counts", () => {
     render(createElement(AIUsageDashboard, report));
+    fireEvent.click(screen.getByRole("tab", { name: "Models" }));
     const table = screen.getByRole("table", { name: "Spend by model" });
     expect(within(table).getByText("openrouter/example")).toBeTruthy();
     expect(within(table).queryByRole("columnheader", { name: "Requests" })).toBeNull();
@@ -64,6 +65,13 @@ describe("AI usage dashboard", () => {
     render(createElement(AIUsageDashboard, { status: "ready", totals: { requests: 0, tokens: 0, inputTokens: 0, outputTokens: 0, cost: 0, uncostedRequests: 0, successfulRequests: 0, failedRequests: 0 }, daily: [] }));
     expect(screen.getByText("No requests in this period")).toBeTruthy();
     expect(screen.getByText("No daily usage recorded in this period.")).toBeTruthy();
-    expect(screen.getAllByText("Breakdown is unavailable.")).toHaveLength(3);
+    expect(screen.getAllByText("Breakdown is unavailable.")).toHaveLength(1);
   });
+});
+
+it("compacts large metrics while retaining exact accessible values", () => {
+  render(createElement(AIUsageDashboard, { ...report, totals: { ...report.totals!, requests: 123456789, tokens: 9876543210, cost: 1234567, uncostedRequests: 0 } }));
+  expect(screen.getByText("123.5M").getAttribute("aria-label")).toBe("123,456,789");
+  expect(screen.getByText("9.9B").getAttribute("title")).toBe("9,876,543,210");
+  expect(screen.getByText("$1.2M").getAttribute("title")).toBe("$1,234,567.00");
 });

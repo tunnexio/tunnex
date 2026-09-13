@@ -28,7 +28,7 @@ export default function K8sEnrollmentLocalReview() {
   return (
     <main className="tnx-page min-h-dvh p-4 sm:p-6" data-k8s-enrollment-local-review>
       <div className="mx-auto max-w-4xl space-y-4">
-        <Badge tone="warn">LOCAL FIXTURE — NO CLOUD OR CLUSTER API</Badge>
+        <Badge tone="warn">LOCAL FIXTURE, NO CLOUD OR CLUSTER API</Badge>
         <h1 className="text-[22px] font-semibold text-ink-heading">Provider-first Kubernetes enrollment preview</h1>
         <p className="text-cell text-ink-tertiary">
           Production component with deterministic local Site and connector facts. Saving changes only in-memory preview state.
@@ -60,7 +60,7 @@ export default function K8sEnrollmentLocalReview() {
           onDismiss={() => setOpen(null)}
           onSubmit={async () => ({
             ok: true,
-            notice: "Local preview only — no cluster was registered.",
+            notice: "Local preview only, no cluster was registered.",
           })}
           onDone={() => {}}
         />
@@ -73,7 +73,7 @@ export default function K8sEnrollmentLocalReview() {
           onDismiss={() => setOpen(null)}
           onSubmit={async () => ({
             ok: true,
-            notice: "Local preview only — metadata was not saved.",
+            notice: "Local preview only, metadata was not saved.",
           })}
           onDone={() => setOpen(null)}
         />
@@ -96,7 +96,7 @@ export default function K8sEnrollmentLocalReview() {
               ] },
             ],
           }}
-          onFixtureExpose={async (_inventoryRef, portRefs) => setExposureNotice(`Local preview only — ${portRefs.length} exact ports selected; no Service was exposed.`)}
+          onFixtureExpose={async (_inventoryRef, portRefs) => setExposureNotice(`Local preview only, ${portRefs.length} exact ports selected; no Service was exposed.`)}
           onClose={() => setOpen(null)}
           onDone={() => {}}
         />

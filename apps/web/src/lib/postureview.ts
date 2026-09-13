@@ -11,7 +11,7 @@ import { badgeClass, type BadgeTone } from "./healthview";
 // the paper forbids.
 export const POSTURE_HONESTY_LINE =
   "Posture checks deter honest non-compliance and give you an audit trail. They are " +
-  "client-reported, not hardware-attested — a compromised device can misreport. " +
+  "client-reported, not hardware-attested, a compromised device can misreport. " +
   "Treat posture as defense-in-depth, not a guarantee.";
 
 // The client platforms that actually REPORT posture (the desktop apps). The coverage
@@ -232,9 +232,9 @@ export function wouldFailCopy(
   if (wouldFail === undefined || wouldFail === 0) return null;
   const n = `${wouldFail} device${wouldFail === 1 ? "" : "s"}`;
   if (mode === "require") {
-    return `${n} last reported non-compliant for this check — they will be BLOCKED at their next report (within ~10 minutes). Devices that never report stay unaffected (unknown, not blocked).`;
+    return `${n} last reported non-compliant for this check, they will be BLOCKED at their next report (within ~10 minutes). Devices that never report stay unaffected (unknown, not blocked).`;
   }
-  return `${n} last reported non-compliant for this check — they will show a warning; access continues.`;
+  return `${n} last reported non-compliant for this check, they will show a warning; access continues.`;
 }
 
 // ── section state helpers ────────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ export function checkModeOf(
 //
 // So the text says WHAT IS TRUE OF ALL OF THEM — no address is assigned — and never guesses the cause.
 // "released" would be wrong for a device that never had one; "revoked" would be wrong for three of four.
-export const NO_ADDRESS = "—";
+export const NO_ADDRESS = "Not available";
 
 /** The address cell's text. A string, never an empty one — absence is stated, not left as blank pixels. */
 export function addressLabel(assignedIp: string | undefined | null): string {

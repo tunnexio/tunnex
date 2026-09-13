@@ -140,7 +140,7 @@ export default function CreateOrg() {
         </h1>
         <p className="mt-2 text-sm text-slate-400">
           This {PRODUCT_NAME} deployment is already set up. Accounts join by
-          invitation — ask an administrator to invite you, and the invitation
+          invitation, ask an administrator to invite you, and the invitation
           link will bring you straight in.
         </p>
         <button
@@ -184,7 +184,7 @@ export default function CreateOrg() {
             product they cannot yet enter. */}
         <p className="mt-2 text-sm text-slate-400">
           If you run this deployment, its organization limit is raised by
-          installing a licence —{" "}
+          installing a licence,{" "}
           <a
             href="https://tunnex.io/trial"
             target="_blank"
@@ -221,7 +221,7 @@ export default function CreateOrg() {
         Create your organization
       </h1>
       <p className="mt-1 text-sm text-slate-400">
-        One more step — name the organization that will own your gateways,
+        One more step, name the organization that will own your gateways,
         devices, and members.
       </p>
       <form onSubmit={submit} className="mt-5 space-y-4">

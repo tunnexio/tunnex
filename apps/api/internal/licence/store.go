@@ -185,7 +185,7 @@ func (m *Manager) StoreStatus() StoreHealth {
 	if m.storeErr != nil {
 		h.Stale = true
 		h.Detail = "The licence store is unreachable. This deployment is serving its last known " +
-			"entitlements — nothing has been downgraded. It will recover on its own once the database " +
+			"entitlements, nothing has been downgraded. It will recover on its own once the database " +
 			"is reachable."
 	}
 	if h.Rejected != "" {

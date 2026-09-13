@@ -1,3 +1,4 @@
+import { SiOkta, SiOpenid } from "react-icons/si";
 import { useEffect, useState } from "react";
 import { api, apiErrorMessage } from "../lib/api";
 import type { components } from "@tunnex/shared";
@@ -254,7 +255,7 @@ export function SsoConnections({
             {items.map((c) => (
               <div className="sso-connection" key={c.id}>
                 <span className={`sso-provider-mark ${c.provider}`}>
-                  {c.provider === "okta" ? "O" : "◎"}
+                  {c.provider === "okta" ? <SiOkta aria-hidden="true" /> : <SiOpenid aria-hidden="true" />}
                 </span>
                 <div className="sso-connection-name">
                   <strong>{c.name}</strong>
@@ -328,7 +329,7 @@ export function SsoConnections({
                       onClick={() => setDraft((v) => ({ ...v, provider: p }))}
                     >
                       <span className={`sso-provider-mark ${p}`}>
-                        {p === "okta" ? "O" : "◎"}
+                        {p === "okta" ? <SiOkta aria-hidden="true" /> : <SiOpenid aria-hidden="true" />}
                       </span>
                       <strong>{p === "okta" ? "Okta" : "Generic OIDC"}</strong>
                       <span>

@@ -64,7 +64,7 @@ func (s apiServer) Signup(ctx context.Context, req api.SignupRequestObject) (api
 		if !open {
 			return nil, apierr.Forbidden("signup_closed",
 				"This deployment is already set up. Sign in as the administrator with the credential "+
-					"printed at first run, or ask an administrator to invite you — the invitation link "+
+					"printed at first run, or ask an administrator to invite you, the invitation link "+
 					"will set up your account.")
 		}
 	}

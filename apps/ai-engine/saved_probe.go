@@ -80,7 +80,7 @@ func (h *ProviderHandler) tunnexSavedKeyProbe(ctx *fasthttp.RequestCtx) {
 	}
 	secret := ""
 	for _, key := range config.Keys {
-		if key.ID == id && key.Name == in.KeyName && key.Enabled != nil && *key.Enabled {
+		if key.ID == id && key.Name == in.KeyName && key.Enabled != nil && (*key.Enabled || len(key.Models) == 0) {
 			secret = key.Value.GetValue()
 			break
 		}

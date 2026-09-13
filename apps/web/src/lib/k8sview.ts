@@ -57,7 +57,7 @@ export interface ClusterCard {
 // on the next reconcile (the worst UX the ruling calls out).
 export const MANAGED_BADGE = "Managed by GitOps";
 export function managedEditWarning(kind: "cluster" | "Service"): string {
-  return `This ${kind} is managed by the GitOps operator — edit its CR, not the dashboard.`;
+  return `This ${kind} is managed by the GitOps operator, edit its CR, not the dashboard.`;
 }
 
 // objectControls (M3) is the PURE, unit-pinned withhold decision for a cluster/Service: `withheld` true means

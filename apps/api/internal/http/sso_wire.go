@@ -87,7 +87,7 @@ func soleSSOOrg(ctx context.Context, q enabledSSOOrgLister, provider string) (uu
 			"single sign-on is not configured for this provider")
 	default:
 		return uuid.Nil, apierr.BadRequest("sso_org_ambiguous",
-			"more than one organization uses this provider — specify your organization to continue")
+			"more than one organization uses this provider, specify your organization to continue")
 	}
 }
 

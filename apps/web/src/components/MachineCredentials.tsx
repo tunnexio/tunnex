@@ -231,13 +231,13 @@ export function MachineCredentials({
           data-state="load-failed"
           className="mt-3 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger"
         >
-          Could not load machine credentials — {endSentence(creds.error)}{" "}
+          Could not load machine credentials, {endSentence(creds.error)}{" "}
           <strong>This is not the same as having none.</strong> Retry before
           concluding anything about ownership.
         </p>
       ) : creds.data.length === 0 ? (
         <p data-state="none" className="mt-3 text-xs text-ink-secondary">
-          No machine credentials exist in this organization — there is nothing
+          No machine credentials exist in this organization, there is nothing
           to assign.
         </p>
       ) : (
@@ -261,7 +261,7 @@ export function MachineCredentials({
               data-state="all-owned"
               className="mt-3 rounded-md border border-ok/40 bg-ok/5 px-3 py-2 text-xs text-ok"
             >
-              Every machine credential has an owner — none is being refused for
+              Every machine credential has an owner, none is being refused for
               want of one.
             </p>
           )}
@@ -285,7 +285,7 @@ export function MachineCredentials({
                   ? "1 machine credential is being refused right now."
                   : `${refusedCount(creds.data)} machine credentials are being refused right now.`}
               </strong>{" "}
-              A credential with no owner cannot authenticate — any operator
+              A credential with no owner cannot authenticate, any operator
               using one is already failing. Assign an owner to restore it.
             </p>
           )}
@@ -336,7 +336,7 @@ export function MachineCredentials({
                       data-badge="refused"
                       className="rounded border border-danger/40 px-1.5 py-0.5 text-[10px] text-danger"
                     >
-                      no owner — refused
+                      no owner, refused
                     </span>
                   ),
               },
@@ -431,7 +431,7 @@ export function MachineCredentials({
           {canManage && creds.data.some((c) => !c.owner_user_id) && (
             <p className="mt-2 text-[11px] text-ink-secondary">
               Tunnex does not record who minted a credential, so it cannot
-              suggest an owner — choose the person accountable for what this
+              suggest an owner, choose the person accountable for what this
               credential does.
             </p>
           )}
@@ -445,7 +445,7 @@ export function MachineCredentials({
             <>
               This is the operator&rsquo;s bearer token. It is shown{" "}
               <span className="font-semibold">exactly once</span> and can never
-              be retrieved again — save it into the operator&rsquo;s Secret now.
+              be retrieved again, save it into the operator&rsquo;s Secret now.
               If lost, revoke and re-mint.
             </>
           }

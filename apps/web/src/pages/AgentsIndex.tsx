@@ -1,3 +1,4 @@
+import { HelpTooltip } from "../components/HelpTooltip";
 import "../network-workspaces.css";
 import "../agents-workspace.css";
 import { useEffect, useMemo, useState } from "react";
@@ -186,12 +187,12 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
         <>
         <section className="tnx-card-surface agents-result-summary" aria-label="Agent result summary">
           <div><span>Current results</span><strong>{rows.length}</strong><small>{state.page.next_cursor ? "More agents on the next page" : "Agents in this result"}</small></div>
-          <div><span>Connected</span><strong className="text-ok">{rows.filter(a => agentLiveness(a) === "online").length}</strong><small>Reported by their gateways</small></div>
-          <div><span>Connectivity unknown</span><strong>{rows.filter(a => agentLiveness(a) === "unknown").length}</strong><small>Gateway is not reporting</small></div>
-          <div><span>Ownership missing</span><strong>{rows.filter(a => a.unattributable || !a.owner_email).length}</strong><small>Review agent attribution</small></div>
+          <div><span>Connected</span><strong className="text-ok">{rows.filter(a => agentLiveness(a) === "online").length}</strong><HelpTooltip>Reported by their gateways</HelpTooltip></div>
+          <div><span>Connectivity unknown</span><strong>{rows.filter(a => agentLiveness(a) === "unknown").length}</strong><HelpTooltip>Gateway is not reporting</HelpTooltip></div>
+          <div><span>Ownership missing</span><strong>{rows.filter(a => a.unattributable || !a.owner_email).length}</strong><HelpTooltip>Review agent attribution</HelpTooltip></div>
         </section>
         <Card>
-          <div className="agents-inventory-heading"><h2>Agent inventory</h2><span>Open an agent to manage its runtime and access</span></div>
+          <div className="agents-inventory-heading"><h2>Agent inventory</h2><HelpTooltip label="About agents">Open an agent to manage its runtime and access.</HelpTooltip></div>
           <div className="agents-inventory-toolbar">
             <div className="min-w-[14rem] flex-1">
               <Input aria-label="Search AI agents" placeholder="Search name, owner, address" value={query.q} onChange={(event) => update({ q: event.target.value }, true)} />
@@ -233,7 +234,7 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
               },
               { key: "status", header: "Status", sortValue: (agent) => labelForStatus(agent).label, cell: (agent) => { const status = labelForStatus(agent); return <Badge tone={status.tone}>{status.label}</Badge>; } },
               { key: "owner", header: "Owner", sortValue: (agent) => agent.owner_email ?? "", cell: (agent) => { const note = attributionNote(agent); return note ? <Badge tone={note.tone}>{note.label}</Badge> : <span>{agent.owner_email ?? "Not available"}</span>; } },
-              { key: "gateway", header: "Gateway", sortValue: (agent) => agent.gateway_name, cell: (agent) => <span>{agent.gateway_name || "—"}</span> },
+              { key: "gateway", header: "Gateway", sortValue: (agent) => agent.gateway_name, cell: (agent) => <span>{agent.gateway_name || "Not available"}</span> },
               { key: "address", header: "Address", sortValue: (agent) => agent.address ?? "", cell: (agent) => <span className="font-sans text-xs">{agent.address ?? "Not available"}</span> },
               { key: "last_seen", header: "Last seen", sortValue: (agent) => agent.last_handshake_at ?? "", cell: (agent) => <span>{agent.last_handshake_at ? new Date(agent.last_handshake_at).toLocaleString() : "Never reported"}</span> },
             ]}

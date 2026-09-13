@@ -150,7 +150,7 @@ func (s *Service) SetCPAdmin(ctx context.Context, actor, targetUserID uuid.UUID,
 			if remaining < 1 {
 				return apierr.Conflict("last_cp_admin",
 					"this is the only deployment administrator who can sign in. Grant the capability to "+
-						"someone else first — a deployment with none cannot create organizations, cannot "+
+						"someone else first, a deployment with none cannot create organizations, cannot "+
 						"grant roles, and has no public signup to recover through.")
 			}
 		}

@@ -1485,7 +1485,7 @@ function RulesSection({
                 </svg>
                 <div className="mx-auto mt-1 flex max-w-[600px] items-center justify-between text-[10px] text-slate-500">
                   <span>
-                    <span className="text-slate-300">&#8212;&#8212;</span>{" "}
+                    <span className="text-slate-300">Not available</span>{" "}
                     allow&nbsp;&nbsp;
                     <span className="text-slate-300">- - -</span> temporary
                   </span>
@@ -2057,7 +2057,7 @@ function RulesSection({
         >
           <div className="text-sm text-slate-300">
             <p>
-              Deleting is permanent. Disabling keeps the rule and its history —
+              Deleting is permanent. Disabling keeps the rule and its history,
               prefer it if you may want this access back.
             </p>
             <ul className="mt-2 max-h-48 space-y-0.5 overflow-y-auto text-xs text-slate-400">

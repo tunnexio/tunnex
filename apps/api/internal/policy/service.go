@@ -803,10 +803,10 @@ func (s *Service) ExtendGrant(ctx context.Context, orgID, ruleID uuid.UUID, newE
 			return ge
 		}
 		if !existing.ExpiresAt.Valid {
-			return apierr.Conflict("not_temporary", "this is a permanent grant — it has no expiry to extend")
+			return apierr.Conflict("not_temporary", "this is a permanent grant, it has no expiry to extend")
 		}
 		if !existing.ExpiresAt.Time.After(time.Now()) {
-			return apierr.Conflict("grant_lapsed", "this grant already expired — create a new one")
+			return apierr.Conflict("grant_lapsed", "this grant already expired, create a new one")
 		}
 		oldExpiry := existing.ExpiresAt.Time.UTC().Format(time.RFC3339) // captured BEFORE the update
 		var e error

@@ -22,7 +22,7 @@ import (
 // already had its devices moved. Delete a LIVE one and the cascade is the outage the whole story exists to
 // prevent — silently, with no revoked rows left behind to explain it.
 var ErrNodeNotRevoked = apierr.New(http.StatusConflict, "node_not_revoked",
-	"only a revoked gateway can be deleted. Revoke it first — which will itself require moving any devices "+
+	"only a revoked gateway can be deleted. Revoke it first, which will itself require moving any devices "+
 		"homed to it.")
 
 // DeleteRevokedNode permanently removes a revoked gateway and the enrolment token that produced it.
@@ -66,7 +66,7 @@ func (s *Service) DeleteRevokedNode(ctx context.Context, actor, orgID, nodeID uu
 
 // ErrNodeNameRequired refuses an empty rename rather than storing one.
 var ErrNodeNameRequired = apierr.BadRequest("invalid_request",
-	"a gateway needs a name — it is how an operator tells one from another on every screen")
+	"a gateway needs a name, it is how an operator tells one from another on every screen")
 
 // RenameNode edits a gateway's display name (S12.12 D3).
 //
@@ -102,7 +102,7 @@ func (s *Service) RenameNode(ctx context.Context, actor, orgID, nodeID uuid.UUID
 				// The row exists (we just read it) but the update matched nothing, so the only predicate that
 				// can have excluded it is `revoked_at IS NULL`.
 				return apierr.New(http.StatusConflict, "node_revoked",
-					"a revoked gateway cannot be renamed — it is terminal and will never serve anything again")
+					"a revoked gateway cannot be renamed, it is terminal and will never serve anything again")
 			}
 			return e
 		}

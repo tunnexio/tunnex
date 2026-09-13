@@ -102,7 +102,7 @@ async def test_catalog_admin_validation_and_no_model_prerequisite():
         assert not calls
         response = await client.post("/model-catalog", json=draft(), headers=headers)
         assert response.status == 200
-        assert calls == [{"operation": "catalog", "endpoint": ENDPOINT, "api_key": KEY, "proxy": PROXY, "query": "", "limit": 50, "offset": 0}]
+        assert calls == [{"operation": "catalog", "endpoint": ENDPOINT, "provider": "custom", "mode": "chat", "api_key": KEY, "proxy": PROXY, "query": "", "limit": 50, "offset": 0}]
 
 
 @pytest.mark.asyncio
@@ -194,3 +194,31 @@ async def test_catalog_worker_filters_and_bounds_transport(mode, monkeypatch):
 async def test_catalog_worker_requires_proxy():
     with pytest.raises(ValueError):
         await invoke({"operation": "catalog", "endpoint": ENDPOINT})
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "openrouter", "groq", "mistral", "cerebras", "xai", "deepseek"])
+async def test_native_catalog_uses_fixed_origin_and_provider_auth(provider, monkeypatch):
+    from worker import ORIGINS
+    calls = []
+    async def answer(request):
+        calls.append(request)
+        assert str(request.url).startswith(ORIGINS[provider] + "/")
+        if provider == "gemini":
+            assert request.url.path == "/v1beta/models"
+            assert request.headers["x-goog-api-key"] == KEY
+            return httpx.Response(200, json={"models": [{"name": "models/current", "supportedGenerationMethods": ["generateContent"]}, {"name": "models/embed", "supportedGenerationMethods": ["embedContent"]}]})
+        if provider == "anthropic":
+            assert request.headers["x-api-key"] == KEY
+            assert request.headers["anthropic-version"] == "2023-06-01"
+        else:
+            assert request.headers["Authorization"] == "Bearer " + KEY
+        return httpx.Response(200, json={"data": [{"id": "current"}]})
+    original = transport.LockedTransport.__init__
+    def mock_network(self, origins, proxy=None):
+        assert proxy is None
+        original(self, origins, proxy)
+        self.transport = httpx.MockTransport(answer)
+    monkeypatch.setattr(transport.LockedTransport, "__init__", mock_network)
+    result = await invoke({"operation": "catalog", "provider": provider, "api_key": KEY, "query": "", "limit": 50, "offset": 0, "mode": "chat"})
+    assert result["items"] == [{"id": provider + "/current", "name": provider + "/current"}]
+    assert len(calls) == 1

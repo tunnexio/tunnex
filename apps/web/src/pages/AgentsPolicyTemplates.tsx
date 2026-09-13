@@ -1,3 +1,4 @@
+import { HelpTooltip } from "../components/HelpTooltip";
 import "../network-workspaces.css";
 import "../agents-workspace.css";
 import { useCallback, useEffect, useState } from "react";
@@ -14,8 +15,8 @@ export default function AgentsPolicyTemplates() {
   const { org } = useOrg();
   const enabled = Boolean(org?.agent_policy_templates_enabled);
   return <div className="network-management agents-workspace space-y-5">
-    <PageHeader title="Policy templates" subtitle="Reuse network access rules across agent groups. Preview changes before applying them." />
-    <Card><p className="text-sm text-ink-tertiary">Give an agent group reusable network access to specific destinations and ports, such as a private database. Applying a template adds managed rules; withdrawing it removes them. Model grants and MCP tool permissions are configured separately. Network restrictions take effect only when organization enforcement is on.</p></Card>
+    <PageHeader title="Policy templates" subtitle={org?.name} />
+    <div className="text-right"><HelpTooltip label="About policy templates">Give an agent group reusable network access to specific destinations and ports, such as a private database. Applying a template adds managed rules; withdrawing it removes them. Model grants and MCP tool permissions are configured separately. Network restrictions take effect only when organization enforcement is on.</HelpTooltip></div>
     <AgentsTabRail />
     <AgentsManagementGate>{(orgId) => enabled ? <PolicyTemplatesWorkspace key={orgId} orgId={orgId} /> : <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">Agent groups and policy templates are turned off</h2><p className="mt-2 text-cell text-ink-tertiary">Enable the organization opt-in before creating reusable policy intent. No policy template inventory is requested while this feature is disabled.</p><Link className="mt-3 inline-flex min-h-10 items-center text-sm font-medium text-accent-400 hover:underline" to="/settings?section=ai-agents">Configure AI Agent settings</Link></Card>}</AgentsManagementGate>
   </div>;

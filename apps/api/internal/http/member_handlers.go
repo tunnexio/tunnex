@@ -182,7 +182,7 @@ func (s apiServer) CreateInvitation(ctx context.Context, req api.CreateInvitatio
 	}
 	msg := "Invitation created."
 	if !delivered {
-		msg = "Invitation created — BUT THE EMAIL COULD NOT BE SENT. Copy the link below and send it to " +
+		msg = "Invitation created, BUT THE EMAIL COULD NOT BE SENT. Copy the link below and send it to " +
 			"them yourself. Check this deployment's SMTP settings."
 	}
 	// Return the raw token so the dashboard can show a copyable accept link (the
@@ -213,7 +213,7 @@ func (s apiServer) AcceptInvitation(ctx context.Context, req api.AcceptInvitatio
 		return nil, err
 	}
 	return api.AcceptInvitation200JSONResponse{
-		Body:    api.GenericMessage{Message: "Invitation accepted — you can now sign in."},
+		Body:    api.GenericMessage{Message: "Invitation accepted, you can now sign in."},
 		Headers: api.AcceptInvitation200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }

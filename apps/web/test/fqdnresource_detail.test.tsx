@@ -52,7 +52,7 @@ describe("FQDN resource detail route", () => {
   it("allows viewers, preserves the exact back query, and keeps Audit a plain link", async () => {
     page(undefined, { from: "/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc" });
     expect(await screen.findByRole("heading", { name: "Orders" })).toBeTruthy();
-    expect(screen.getByText("Unavailable — no active generation")).toBeTruthy();
+    expect(screen.getByText("Unavailable, no active generation")).toBeTruthy();
     expect(screen.getByText(/2 access rules reference this resource/i)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Audit log" }).getAttribute("href")).toBe("/audit");
     expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Resources" }).getAttribute("href")).toBe("/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc");
