@@ -75,11 +75,11 @@ function review() {
   fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
 }
 describe("Network setup", () => {
-  it("writes only after review and excludes assigned or revoked gateways", async () => {
+  it("writes only after review and excludes revoked gateways", async () => {
     mock.post.mockResolvedValue({ data: {} });
     show();
     expect(
-      screen.queryByRole("button", { name: /Assigned|Revoked/ }),
+      screen.queryByRole("button", { name: /Revoked/ }),
     ).toBeNull();
     review();
     expect(mock.post).not.toHaveBeenCalled();
@@ -97,6 +97,19 @@ describe("Network setup", () => {
         .getByRole("link", { name: /Configure access/ })
         .getAttribute("href"),
     ).toBe("/access");
+  });
+  it("uses an assigned gateway without creating or renaming its site", async () => {
+    mock.post.mockResolvedValue({ data: {} });
+    show();
+    fireEvent.click(screen.getByRole("button", { name: /Assigned/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    expect((screen.getByLabelText("Existing site") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Private range (CIDR)"), { target: { value: "10.30.0.0/24" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    expect(mock.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Create network" }));
+    await screen.findByText("Network created");
+    expect(mock.post.mock.calls[0][1].body.node_id).toBe("gw-b");
   });
   it("keeps the review available after a server refusal", async () => {
     mock.post.mockResolvedValue({ error: {} });

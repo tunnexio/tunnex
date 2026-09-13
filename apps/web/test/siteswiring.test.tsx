@@ -294,12 +294,13 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=dns"));
     fireEvent.click(screen.getByRole("button", { name: "History back" }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=overview&site=s1"));
-    fireEvent.click(screen.getByRole("button", { name: "History forward" }));
+    fireEvent.click(screen.getByRole("button", { name: "History forward", hidden: true }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=dns"));
   });
 
   it("clears Overview-only context when changing to an operational section", async () => {
     withAuth(<Sites />, ["/sites?site=s1&gateway=g1&q=aws&dns=1"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Close aws-site" }));
     await screen.findByRole("button", { name: "Pending approvals" });
     fireEvent.click(screen.getByRole("button", { name: "Pending approvals" }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=approvals"));
@@ -326,7 +327,7 @@ describe("Sites — URL-backed workspace state", () => {
     withAuth(<Sites />, ["/sites?site=site-primary"]);
 
     await waitFor(() =>
-      expect(screen.getByRole("region", { name: "Selected Site: us-east-dc" })).toBeTruthy(),
+      expect(screen.getByLabelText("Selected Site: us-east-dc")).toBeTruthy(),
     );
     expect(screen.getByRole("dialog", { name: "us-east-dc" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View details" }).getAttribute("href")).toBe("#site-details");

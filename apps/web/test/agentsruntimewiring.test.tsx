@@ -95,7 +95,7 @@ describe("active Agent detail mutation ownership", () => {
     renderDetail("mcp");
     fireEvent.click(await screen.findByRole("button", { name: "Approve once" }));
     expect(screen.getByText(/authorizes one retried invocation/i)).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: "Approve once" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Approve once" }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/approve", expect.anything()));
   });
 
@@ -142,7 +142,7 @@ describe("active Agent detail mutation ownership", () => {
     post.mockResolvedValue({ error: { error: { message: "request already expired" } } });
     renderDetail("mcp");
     fireEvent.click(await screen.findByRole("button", { name: "Approve once" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Approve once" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Approve once" }));
     expect(await screen.findByText("Could not approve this step-up request. It may already have expired or been consumed. Refresh and try again.")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "Approve read once?" })).toBeTruthy();
   });

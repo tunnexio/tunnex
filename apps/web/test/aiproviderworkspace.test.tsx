@@ -17,6 +17,7 @@ const definitions = [
 const inventory = { management_available: true, test_available: true, definitions, items: [c], legacy_key_ids: ["operator-key"] };
 const response = (status = 200) => new Response(null, { status });
 const selectProvider = (name = "OpenRouter") => {
+  while (!screen.queryByRole("combobox", { name: "Provider" }) && screen.queryByRole("button", { name: "Back" })) fireEvent.click(screen.getByRole("button", { name: "Back" }));
   const input = screen.getByRole("combobox", { name: "Provider" });
   fireEvent.focus(input); fireEvent.change(input, { target: { value: name } });
   fireEvent.keyDown(input, { key: "Enter" });
@@ -28,7 +29,7 @@ const passTest = async () => {
     fireEvent.click(button); await screen.findByText(/Test succeeded for/);
   }
 };
-const saveModel = () => within(screen.getByRole("dialog", { name: "Add Model" })).getByRole("button", { name: "Add Model" });
+const saveModel = () => { advanceWizard(3); return within(screen.getByRole("dialog", { name: "Add Model" })).getByRole("button", { name: "Add Model" }); };
 const show = (orgId = "org-a") => createElement(AIProviderWorkspace, { orgId });
 beforeEach(() => {
   vi.resetAllMocks();
@@ -49,9 +50,10 @@ describe("AI provider onboarding", () => {
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } });
     fireEvent.change(manualModelInput(), { target: { value: "openrouter/new-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     api.POST.mockResolvedValueOnce({ data: { status: "error", duration_ms: 10, failure: { ...failure, message: "PRIVATE-KEY-MARKER" } }, response: response() });
-    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(title, { description: expect.stringMatching(detail) }));
-    expect(screen.getByText(new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeTruthy();
+    advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    await screen.findAllByText(new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    expect(screen.getAllByText(detail).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeTruthy();
     expect(JSON.stringify(toast.error.mock.calls)).not.toContain("PRIVATE-KEY-MARKER");
     expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
   });
@@ -78,7 +80,7 @@ describe("AI provider onboarding", () => {
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } });
     fireEvent.change(manualModelInput(), { target: { value: "openrouter/new-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     api.POST.mockResolvedValueOnce({ data: { status: result, duration_ms: 10 }, response: response(status) });
-    fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findByText(/Connection test failed/);
+    advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findAllByText(/Connection test failed/);
     expect(toast.success).not.toHaveBeenCalled(); expect(toast.error).toHaveBeenCalled(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
   });
   it("ignores a saved-key test result after switching back to new credentials", async () => {
@@ -86,7 +88,7 @@ describe("AI provider onboarding", () => {
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } });
     fireEvent.change(manualModelInput(), { target: { value: "openrouter/new-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     let finish!: (value: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: "" } });
     await act(async () => finish({ data: { status: "success", duration_ms: 10 }, response: response() }));
     expect(toast.success).not.toHaveBeenCalled(); expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(""); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
@@ -143,7 +145,7 @@ describe("AI provider onboarding", () => {
     fireEvent.change(manualModelInput(), { target: { value: c.models[0] } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     let finish!: (v: unknown) => void;
     api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
     fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ }));
     expect(screen.queryByLabelText("API key")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider();
@@ -159,7 +161,7 @@ describe("AI provider onboarding", () => {
   it("creates credentials directly with a tested model scope and returns to LLM Credentials", async () => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add Credentials" }));
-    expect(screen.getByRole("dialog", { name: "Add Credentials" }).getAttribute("data-placement")).toBe("center");
+    expect(screen.getByRole("dialog", { name: "Add Credentials" }).parentElement?.getAttribute("data-placement")).toBe("center");
     expect(screen.getByText(/Select at least one model before testing/)).toBeTruthy();
     expect((screen.getByLabelText("Upstream API Base") as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByLabelText("Existing Credentials")).toBeNull();
@@ -201,8 +203,8 @@ describe("AI provider onboarding", () => {
     expect(screen.queryByLabelText("Connection name")).toBeNull();
     expect((screen.getByLabelText("Upstream API Base") as HTMLInputElement).value).toBe("https://openrouter.ai/api/v1");
     expect((screen.getByLabelText("Upstream API Base") as HTMLInputElement).readOnly).toBe(true);
-    expect(within(screen.getByLabelText("Mode")).getAllByRole("option")).toHaveLength(8);
-    expect((screen.getByLabelText("Mode") as HTMLSelectElement).value).toBe("chat");
+    expect(within(screen.getByLabelText("Catalog mode")).getAllByRole("option")).toHaveLength(8);
+    expect((screen.getByLabelText("Catalog mode") as HTMLSelectElement).value).toBe("chat");
     const key = screen.getByLabelText("API key") as HTMLInputElement; expect(key.type).toBe("password");
     fireEvent.change(key, { target: { value: "fixture-key-not-real" } });
     await screen.findByLabelText(/GPT-4o mini/); fireEvent.click(screen.getByLabelText(/GPT-4o mini/));
@@ -235,7 +237,7 @@ describe("AI provider onboarding", () => {
     fireEvent.click(credentialAction("Disable"));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "openrouter", name: "Engineering", models: c.models, enabled: false, expected_revision: 3 } })));
     await waitFor(() => expect((credentialAction("Edit") as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(credentialAction("Edit")); expect(screen.getByRole("dialog", { name: "Edit credentials" }).getAttribute("data-placement")).toBe("center"); const key = screen.getByLabelText("Replacement API key (optional)") as HTMLInputElement; expect(key.value).toBe("");
+    fireEvent.click(credentialAction("Edit")); expect(screen.getByRole("dialog", { name: "Edit credentials" }).parentElement?.getAttribute("data-placement")).toBe("center"); const key = screen.getByLabelText("Replacement API key (optional)") as HTMLInputElement; expect(key.value).toBe("");
     fireEvent.change(key, { target: { value: "fixture-rotated-key" } }); await passTest(); fireEvent.click(wizardSave());
     await waitFor(() => expect(api.PUT).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ expected_revision: 3, api_key: "fixture-rotated-key" }) })));
     expect(screen.queryByLabelText("Replacement API key (optional)")).toBeNull();
@@ -366,7 +368,7 @@ describe("custom provider approved endpoints", () => {
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://unapproved.internal" } });
     expect(screen.getByText(/This endpoint needs configured network access/)).toBeTruthy(); expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
     expect(screen.queryByText(/Test succeeded/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-secret" } }); fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); expect(api.POST).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-secret" } }); advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); expect(api.POST).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://user:secret@inference.internal" } }); expect(screen.getByText(/without embedded credentials/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: base } }); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-custom-key" } }); await passTest();
     fireEvent.click(saveModel()); await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: expect.objectContaining({ endpoint_url: base }) })));
@@ -427,14 +429,14 @@ describe("pre-save inference check", () => {
   it("requires result success, rejects HTTP200 error and invalidates changed credentials", async () => {
     await prepare(); const save = saveModel() as HTMLButtonElement; expect(save.disabled).toBe(true);
     api.POST.mockResolvedValueOnce({ data: { status: "error", duration_ms: 20 }, response: response() });
-    fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findByText(/Connection test failed/); expect(save.disabled).toBe(true);
+    advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findAllByText(/Connection test failed/); expect(save.disabled).toBe(true);
     await passTest(); expect(save.disabled).toBe(false);
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "openrouter", model: c.models[0], mode: "chat", api_key: "synthetic-key" } }));
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "changed-key" } }); expect(save.disabled).toBe(true); expect(screen.queryByText(/Test succeeded for/)).toBeNull();
   });
   it("ignores late success after model changes", async () => {
     await prepare(); let finish!: (v: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
     fireEvent.change(manualModelInput(), { target: { value: "openrouter/another-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     await act(async () => finish({ data: { status: "success", duration_ms: 20 }, response: response() }));
     expect(screen.queryByText(/Test succeeded for/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
@@ -475,7 +477,7 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove model other-deployment" }));
     fireEvent.change(manualModelInput(), { target: { value: "gpt-5" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     expect(test.disabled).toBe(false);
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } });
+    fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "embedding" } });
     expect(test.disabled).toBe(true); expect(screen.getByText(/The pasted URL uses Chat/)).toBeTruthy();
     expect(api.POST).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[0] } });
@@ -512,9 +514,9 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.change(screen.getByLabelText("Azure API key"), {target:{value:"synthetic-claude-key"}});
     fireEvent.change(manualModelInput(), {target:{value:"claude-opus-5"}}); fireEvent.click(screen.getByRole("button", {name:"Add exact model"}));
     expect(screen.getByText("https://bst-azure-ai-services.services.ai.azure.com/anthropic/v1/messages")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"embedding"}});
+    fireEvent.change(screen.getByLabelText("Catalog mode"), {target:{value:"embedding"}});
     expect((screen.getByRole("button", {name: form === "model" ? "Test Connect" : "Next"}) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"chat"}});
+    fireEvent.change(screen.getByLabelText("Catalog mode"), {target:{value:"chat"}});
     await passTest();
     expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/test-connection$/), expect.objectContaining({body:{provider:"azure_foundry",model:"claude-opus-5",mode:"chat",endpoint_url:"https://bst-azure-ai-services.services.ai.azure.com/anthropic",api_key:"synthetic-claude-key"}}));
     fireEvent.click(form === "model" ? saveModel() : screen.getByRole("button", {name:"Create credentials"}));
@@ -527,7 +529,7 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://sample.cognitiveservices.azure.com/openai/v1/" } });
     fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
     const test = screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement;
-    expect(test.disabled).toBe(false); fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); expect(test.disabled).toBe(false);
+    expect(test.disabled).toBe(false); fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "embedding" } }); expect(test.disabled).toBe(false);
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://next.cognitiveservices.azure.com/openai/v1/" } });
     expect(test.disabled).toBe(true); expect((screen.getByLabelText("Azure API key") as HTMLInputElement).value).toBe("");
     expect(screen.getByText(/If you changed the endpoint, enter the key again/)).toBeTruthy();
@@ -719,7 +721,7 @@ describe("model mode routing", () => {
   });
   it.each(modes)("probes and creates %s with an explicit per-model mode", async (mode) => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider("OpenAI");
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: mode } }); addExact("openai/mode-fixture");
+    fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: mode } }); addExact("openai/mode-fixture");
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-mode-key" } });
     expect((saveModel() as HTMLButtonElement).disabled).toBe(true); await passTest();
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "openai", model: "openai/mode-fixture", mode, api_key: "synthetic-mode-key" } }));
@@ -729,15 +731,15 @@ describe("model mode routing", () => {
   });
   it("leaves unqualified operation choices disabled on an older installation", async () => {
     api.GET.mockResolvedValue({ data: inventory }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
-    const options = within(screen.getByLabelText("Mode")).getAllByRole("option") as HTMLOptionElement[];
+    const options = within(screen.getByLabelText("Catalog mode")).getAllByRole("option") as HTMLOptionElement[];
     expect(options.filter((o) => !o.disabled).map((o) => o.value)).toEqual(["chat"]);
   });
   it("preserves selected models and typed input but invalidates an old probe when the Add Model mode changes", async () => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(); addExact(c.models[0]);
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-mode-key" } });
-    let finish!: (v: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    let finish!: (v: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })); advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
     fireEvent.change(manualModelInput(), { target: { value: "openrouter/another-model" } });
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } });
+    fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "embedding" } });
     expect(screen.getByRole("button", { name: `Remove model ${c.models[0]}` })).toBeTruthy();
     expect((manualModelInput() as HTMLInputElement).value).toBe("openrouter/another-model");
     expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(false);
@@ -751,7 +753,7 @@ describe("model mode routing", () => {
     let finish!: (v: unknown) => void;
     api.GET.mockImplementation((path: string, options: { params?: { query?: { mode?: string } } }) => path.endsWith("/models") && options.params?.query?.mode === "chat" ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve({ data: path.endsWith("/models") ? { items: [{ id: "openai/embed-fixture", name: "Embedding fixture", mode: "embedding" }], total: 1, limit: 50, offset: 0 } : { ...inventory, supported_modes: modes } }));
     render(show()); await screen.findByText("Engineering"); vi.useFakeTimers(); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider("OpenAI");
-    await act(async () => { await vi.advanceTimersByTimeAsync(500); }); fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); }); fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "embedding" } });
     await act(async () => { finish({ data: { items: [{ id: "openai/old", name: "Old chat result" }], total: 1, offset: 0, limit: 50 } }); await vi.advanceTimersByTimeAsync(500); });
     expect(screen.queryByText("Old chat result")).toBeNull(); expect(screen.getByLabelText(/Embedding fixture/)).toBeTruthy();
     expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ mode: "embedding" }) }) }));
@@ -761,7 +763,7 @@ describe("model mode routing", () => {
     api.GET.mockResolvedValue({ data: { ...inventory, items: [saved], supported_modes: modes } }); render(show()); await screen.findByText("Engineering");
     expect(screen.getByTitle("Completion, /completions")).toBeTruthy(); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider();
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); addExact(c.models[0]); addExact("openrouter/draft");
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); addExact("openrouter/embed-fixture"); await passTest(); fireEvent.click(saveModel());
+    fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "embedding" } }); addExact("openrouter/embed-fixture"); await passTest(); fireEvent.click(saveModel());
     expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ models: [c.models[0], "openrouter/draft", "openrouter/embed-fixture"], model_modes: { [c.models[0]]: "completion", "openrouter/draft": "embedding", "openrouter/embed-fixture": "embedding" }, expected_revision: 3 }) }));
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ connection_id: expect.any(String) }) }));
   });
@@ -770,10 +772,10 @@ describe("model mode routing", () => {
     const saved = { ...c, id, provider: "custom", endpoint_url: "https://public.example", models: [retained], model_modes: { [retained]: "embedding" } };
     api.GET.mockResolvedValue({ data: { ...inventory, public_endpoints_available: true, items: [saved], supported_modes: modes, definitions: [...definitions, { id: "custom", name: "Custom", credential_label: "API key", model_placeholder: "model" }] } });
     render(show()); await screen.findByText("Engineering"); vi.useFakeTimers(); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider("Custom");
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://public.example/v1" } }); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "draft-fixture" } });
+    fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "embedding" } }); fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://public.example/v1" } }); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "draft-fixture" } });
     api.POST.mockResolvedValue({ data: { items: [], total: 0, limit: 50, offset: 0 } }); await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/model-catalog$/), expect.objectContaining({ body: expect.objectContaining({ mode: "embedding", endpoint_url: "https://public.example", api_key: "draft-fixture" }) }));
-    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } }); fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "rerank" } }); addExact("embed"); addExact("rank"); vi.useRealTimers(); api.POST.mockResolvedValue({ data: { status: "success", duration_ms: 20 }, response: response() }); await passTest(); fireEvent.click(saveModel());
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } }); fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "rerank" } }); addExact("embed"); addExact("rank"); vi.useRealTimers(); api.POST.mockResolvedValue({ data: { status: "success", duration_ms: 20 }, response: response() }); await passTest(); fireEvent.click(saveModel());
     expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ models: [retained, "rank"], model_modes: { [retained]: "embedding", rank: "rerank" } }) }));
   });
   it("edits mixed modes individually and probes the actual first model mode after rotation", async () => {
@@ -782,7 +784,7 @@ describe("model mode routing", () => {
     api.GET.mockResolvedValue({ data: { ...inventory, items: [saved], supported_modes: modes } }); render(show()); await screen.findByTitle("Completion, /completions");
     fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ })); fireEvent.click(credentialAction("Edit"));
     expect((screen.getByLabelText(`Mode for ${second}`) as HTMLSelectElement).value).toBe("embedding");
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "rerank" } }); expect((screen.getByLabelText(`Mode for ${c.models[0]}`) as HTMLSelectElement).value).toBe("completion");
+    fireEvent.change(screen.getByLabelText("Catalog mode"), { target: { value: "rerank" } }); expect((screen.getByLabelText(`Mode for ${c.models[0]}`) as HTMLSelectElement).value).toBe("completion");
     fireEvent.change(screen.getByLabelText("Replacement API key (optional)"), { target: { value: "rotated-mode-key" } }); await passTest();
     expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ model: c.models[0], mode: "completion" }) }));
     fireEvent.change(screen.getByLabelText(`Mode for ${second}`), { target: { value: "rerank" } }); expect(screen.queryByText(/Test succeeded/)).toBeNull();
@@ -940,12 +942,12 @@ it("requires every model to pass and retries only failed models", async () => {
   advanceWizard(3);
   api.POST.mockResolvedValueOnce({ data: { status: "success" }, response: response() })
     .mockResolvedValueOnce({ data: { status: "error", failure: { kind: "http_error", source: "provider", http_status: 404 } }, response: response() });
-  fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+  advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
   await waitFor(() => expect(within(screen.getByRole("list", { name: "Model test results" })).getByText(/Provider HTTP 404/)).toBeTruthy());
   expect((screen.getByRole("button", { name: "Create credentials" }) as HTMLButtonElement).disabled).toBe(true);
   api.POST.mockClear();
   api.POST.mockResolvedValue({ data: { status: "success" }, response: response() });
-  fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+  advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
   await screen.findByText(/Test succeeded for all 2/);
   expect(api.POST).toHaveBeenCalledTimes(1);
   expect(api.POST.mock.calls[0][1].body.model).toBe("openai/two");

@@ -25,6 +25,7 @@ describe("AI user access", () => {
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: JSON.stringify([provider.id, provider.models[0]]) } });
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
+    fireEvent.click(await screen.findByRole("radio"));
     expect(await screen.findByRole("button", { name: "Revoke access" })).toBeTruthy();
   });
   it("uses the login endpoint with conversation history and no provider key input", async () => {

@@ -296,7 +296,7 @@ describe("access-event retention settings", () => {
     expect(screen.queryByText(/whole number from 1 to 3650 days/i)).toBeNull();
     fireEvent.change(daysInput, { target: { value: "60" } });
     fireEvent.click(
-      screen.getByRole("dialog", { name: "Edit access-event retention" }),
+      screen.getByRole("dialog", { name: "Edit access-event retention" }).parentElement!,
     );
     expect(
       screen.queryByRole("dialog", { name: "Edit access-event retention" }),

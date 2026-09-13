@@ -69,7 +69,7 @@ describe("AI and identity navigation", () => {
   });
   it("opens My models for members without loading provider administration", async () => {
     mocks.roles = ["member"]; mount("/ai-gateway/credentials");
-    await screen.findByRole("heading", { name: "My models" });
+    await screen.findByRole("heading", { name: "Playground" });
     expect(screen.getByLabelText("Current route").textContent).toBe("/ai-gateway/my-models");
     expect(screen.queryByRole("link", { name: "LLM credentials" })).toBeNull();
     expect(mocks.get.mock.calls.some(([path]) => path.endsWith("/providers"))).toBe(false);

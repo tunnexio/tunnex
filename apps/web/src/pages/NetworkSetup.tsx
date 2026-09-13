@@ -62,10 +62,11 @@ function NetworkSetupWorkspace({
   const nodes = state.nodes.filter(
     (node) =>
       node.status === "active" &&
-      !node.site_id &&
       node.enrolled_kind === "gateway",
   );
   const selected = nodes.find((node) => node.id === nodeId);
+  const existingSite = selected?.site_id;
+  const siteName = existingSite ? state.siteNames?.[existingSite] || "Existing site" : name;
   if (!org) return null;
   async function apply() {
     if (!org || !selected || busy || uncertain) return;
@@ -76,7 +77,7 @@ function NetworkSetupWorkspace({
         "/api/v1/organizations/{orgId}/routed-lans",
         {
           params: { path: { orgId: org.id } },
-          body: { node_id: nodeId, cidr: cidr.trim(), name: name.trim() },
+          body: { node_id: nodeId, cidr: cidr.trim(), name: existingSite ? siteName : name.trim() },
         },
       );
       if (result.error) {
@@ -112,7 +113,7 @@ function NetworkSetupWorkspace({
             <span className="network-complete-mark" aria-hidden="true">
               ✓
             </span>
-            <h2>{name}</h2>
+            <h2>{siteName}</h2>
             <p>
               {cidr} through {selected?.name}
             </p>
@@ -149,8 +150,8 @@ function NetworkSetupWorkspace({
                 <>
                   <h2>Where will this network connect?</h2>
                   <p className="network-hint">
-                    Choose an active gateway that is not already assigned to a
-                    site.
+                    Choose an active gateway. Gateways already connected to a site
+                    will add the private range to that site.
                   </p>
                   <div
                     className="network-gateways"
@@ -166,7 +167,7 @@ function NetworkSetupWorkspace({
                         <span>
                           <strong>{node.name}</strong>
                           <small>
-                            {node.endpoint || "No public endpoint configured"}
+                            {node.site_id ? `Site: ${state.siteNames?.[node.site_id] || "Existing site"}` : "New site"} · {node.endpoint || "No public endpoint configured"}
                           </small>
                         </span>
                         <span aria-hidden="true">
@@ -177,7 +178,7 @@ function NetworkSetupWorkspace({
                   </div>
                   {!nodes.length && (
                     <p className="network-hint">
-                      No available gateways. Enroll one here, then refresh when
+                      No active gateways found. Enroll one here, then refresh when
                       it has joined.
                     </p>
                   )}
@@ -215,9 +216,10 @@ function NetworkSetupWorkspace({
                     Enter the private address range reachable from{" "}
                     {selected?.name}.
                   </p>
-                  <Field label="Network name">
+                  <Field label={existingSite ? "Existing site" : "Network name"}>
                     <Input
-                      value={name}
+                      value={existingSite ? siteName : name}
+                      disabled={!!existingSite}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Sydney office"
                     />
@@ -239,12 +241,11 @@ function NetworkSetupWorkspace({
                 <>
                   <h2>Ready to create your network?</h2>
                   <p className="network-hint">
-                    This creates a site, assigns the gateway, and approves the
-                    private route for distribution to devices.
+                    {existingSite ? "This adds the private range to the gateway’s existing site and approves it for distribution to devices." : "This creates a site, assigns the gateway, and approves the private route for distribution to devices."}
                   </p>
                   <dl className="network-review">
                     <dt>Network</dt>
-                    <dd>{name}</dd>
+                    <dd>{siteName}</dd>
                     <dt>Gateway</dt>
                     <dd>{selected?.name || "Gateway no longer available"}</dd>
                     <dt>Private range</dt>
@@ -274,7 +275,7 @@ function NetworkSetupWorkspace({
                   <Button
                     disabled={
                       !selected ||
-                      (step === 1 && (!name.trim() || !cidr.trim()))
+                      (step === 1 && ((!existingSite && !name.trim()) || !cidr.trim()))
                     }
                     onClick={() => setStep(step + 1)}
                   >
@@ -294,7 +295,7 @@ function NetworkSetupWorkspace({
             <aside className="network-preview" aria-label="Network preview">
               <span>Your network</span>
               <div className="network-preview-node">
-                {name || "Private network"}
+                {siteName || "Private network"}
                 <small>{cidr || "Private address range"}</small>
               </div>
               <div className="network-preview-connector" />
