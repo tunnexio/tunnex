@@ -151,4 +151,4 @@ async def test_catalog_accepts_mode_without_claiming_model_capability():
             response = await client.post("/model-catalog", json={**draft, "mode": mode}, headers=headers)
             assert response.status == 200
             assert (await response.json())["items"] == [{"id": "deployment", "name": "deployment"}]
-            assert "mode" not in calls[-1]  # /models has names, not operation qualification.
+            assert calls[-1]["mode"] == mode  # Forward the catalog filter; listing is not qualification.

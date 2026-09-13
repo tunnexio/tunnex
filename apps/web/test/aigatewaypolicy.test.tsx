@@ -122,7 +122,7 @@ describe("AI team and agent policy workspace", () => {
     expect(mocks.GET.mock.calls.some(([path]) => path.endsWith("/devices"))).toBe(false);
     fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-b" } });
     await screen.findByRole("button", { name: "Save agent access" });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
     await screen.findByLabelText("Agent");

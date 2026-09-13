@@ -201,6 +201,9 @@ export function Modal({
     <Dialog.Portal>
       <Dialog.Overlay className="tnx-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" data-placement={placement} onClick={(event) => { if (event.target === event.currentTarget) onDismiss(); }}>
         <Dialog.Content aria-describedby={undefined}
+          // Let child pickers consume Escape before the dialog handles the bubbling event.
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onDismiss(); } }}
           onCloseAutoFocus={(event) => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus(); }}
           className={cn("tnx-modal-panel flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-lg border border-line bg-surface p-6 shadow-lg focus:outline-none", size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md")}>
           <div className="flex shrink-0 items-center justify-between gap-3">
