@@ -293,6 +293,10 @@ func (q *Queries) GetAgentRuntimeCredential(ctx context.Context, tokenHash []byt
 
 const getAgentRuntimeCredentialRotation = `-- name: GetAgentRuntimeCredentialRotation :one
 SELECT current.device_id, current.revision,
+  CAST(COALESCE(candidate.revision, (
+    SELECT max(history.revision) + 1 FROM agent_runtime_credentials history
+    WHERE history.org_id = current.org_id AND history.device_id = current.device_id
+  )) AS bigint) AS next_revision,
   current.rotation_requested_at, current.rotation_deadline,
   CAST(candidate.id IS NOT NULL AS boolean) AS candidate_pending
 FROM agent_runtime_credentials current
@@ -312,6 +316,7 @@ type GetAgentRuntimeCredentialRotationParams struct {
 type GetAgentRuntimeCredentialRotationRow struct {
 	DeviceID            uuid.UUID          `json:"device_id"`
 	Revision            int64              `json:"revision"`
+	NextRevision        int64              `json:"next_revision"`
 	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
 	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
 	CandidatePending    bool               `json:"candidate_pending"`
@@ -323,6 +328,7 @@ func (q *Queries) GetAgentRuntimeCredentialRotation(ctx context.Context, arg Get
 	err := row.Scan(
 		&i.DeviceID,
 		&i.Revision,
+		&i.NextRevision,
 		&i.RotationRequestedAt,
 		&i.RotationDeadline,
 		&i.CandidatePending,
@@ -388,7 +394,16 @@ WITH current_credential AS (
     AND current.state = 'current' AND current.revoked_at IS NULL
     AND current.rotation_requested_at IS NOT NULL
     AND current.rotation_deadline > statement_timestamp()
-    AND $4 = current.revision + 1
+    -- Retained revoked candidates consume revisions; an existing candidate is
+    -- reused only through the exact revision/hash conflict check below.
+    AND $4 = COALESCE((
+      SELECT candidate.revision FROM agent_runtime_credentials candidate
+      WHERE candidate.org_id = current.org_id AND candidate.device_id = current.device_id
+        AND candidate.state = 'candidate'
+    ), (
+      SELECT max(history.revision) + 1 FROM agent_runtime_credentials history
+      WHERE history.org_id = current.org_id AND history.device_id = current.device_id
+    ))
   FOR UPDATE
 ), prepared AS (
   INSERT INTO agent_runtime_credentials (
