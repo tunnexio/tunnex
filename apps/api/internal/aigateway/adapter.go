@@ -62,7 +62,7 @@ func NewAdapter(upstream string, authorize Authorize) (*Adapter, error) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
 			// Deliberately do not inherit HTTP_PROXY for scoped credentials.
-			DialContext:         (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+			DialContext: (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
 			// Non-streaming providers send headers only after generation completes.
 			TLSHandshakeTimeout: 3 * time.Second, ResponseHeaderTimeout: 30 * time.Second,
 			MaxResponseHeaderBytes: 32 << 10, IdleConnTimeout: 30 * time.Second,

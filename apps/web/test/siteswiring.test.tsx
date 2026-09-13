@@ -330,7 +330,7 @@ describe("Sites — URL-backed workspace state", () => {
       expect(screen.getByLabelText("Selected Site: us-east-dc")).toBeTruthy(),
     );
     expect(screen.getByRole("dialog", { name: "us-east-dc" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View details" }).getAttribute("href")).toBe("#site-details");
+    expect(screen.getByRole("link", { name: "View details", hidden: true }).getAttribute("href")).toBe("#site-details");
     expect(screen.getByRole("button", { name: "Advertise subnet" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Unbind gateway" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete site" })).toBeTruthy();
