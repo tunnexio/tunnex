@@ -54,6 +54,10 @@ SELECT count(*) FROM expired_candidate;
 
 -- name: GetAgentRuntimeCredentialRotation :one
 SELECT current.device_id, current.revision,
+  CAST(COALESCE(candidate.revision, (
+    SELECT max(history.revision) + 1 FROM agent_runtime_credentials history
+    WHERE history.org_id = current.org_id AND history.device_id = current.device_id
+  )) AS bigint) AS next_revision,
   current.rotation_requested_at, current.rotation_deadline,
   CAST(candidate.id IS NOT NULL AS boolean) AS candidate_pending
 FROM agent_runtime_credentials current
@@ -131,7 +135,16 @@ WITH current_credential AS (
     AND current.state = 'current' AND current.revoked_at IS NULL
     AND current.rotation_requested_at IS NOT NULL
     AND current.rotation_deadline > statement_timestamp()
-    AND $4 = current.revision + 1
+    -- Retained revoked candidates consume revisions; an existing candidate is
+    -- reused only through the exact revision/hash conflict check below.
+    AND $4 = COALESCE((
+      SELECT candidate.revision FROM agent_runtime_credentials candidate
+      WHERE candidate.org_id = current.org_id AND candidate.device_id = current.device_id
+        AND candidate.state = 'candidate'
+    ), (
+      SELECT max(history.revision) + 1 FROM agent_runtime_credentials history
+      WHERE history.org_id = current.org_id AND history.device_id = current.device_id
+    ))
   FOR UPDATE
 ), prepared AS (
   INSERT INTO agent_runtime_credentials (

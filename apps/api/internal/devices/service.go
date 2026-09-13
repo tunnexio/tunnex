@@ -99,7 +99,7 @@ func credentialRotationStatus(row sqlc.GetAgentRuntimeCredentialRotationRow) Age
 	var requested *int64
 	var deadline *time.Time
 	if row.RotationRequestedAt.Valid && row.RotationDeadline.Valid && row.RotationDeadline.Time.After(time.Now()) {
-		next := row.Revision + 1
+		next := row.NextRevision
 		requested = &next
 		d := row.RotationDeadline.Time
 		deadline = &d
@@ -197,7 +197,11 @@ func (s *Service) RequestAgentCredentialRotation(ctx context.Context, actorID, o
 		result = AgentCredentialRotationStatus{DeviceID: row.DeviceID, CurrentRevision: row.Revision, State: "requested",
 			WireGuardCurrentRevision: wg.CurrentRevision, WireGuardState: wg.State,
 			WireGuardRequestedRevision: wg.RequestedRevision}
-		next := row.Revision + 1
+		rotation, err := q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID})
+		if err != nil {
+			return err
+		}
+		next := rotation.NextRevision
 		result.RequestedRevision = &next
 		if row.RotationDeadline.Valid {
 			d := row.RotationDeadline.Time

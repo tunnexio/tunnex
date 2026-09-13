@@ -165,8 +165,12 @@ func (s *Service) authenticate(ctx context.Context, raw string, allowPromotion b
 		if !allowPromotion || dev.Status != "active" || cred.Revision <= 1 {
 			return Identity{}, ErrUnauthorized
 		}
+		current, err := q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: cred.OrgID, DeviceID: cred.DeviceID})
+		if err != nil || !current.CandidatePending || current.NextRevision != cred.Revision || current.Revision >= cred.Revision {
+			return Identity{}, ErrUnauthorized
+		}
 		if _, err := q.DemoteAgentRuntimeCredentialPredecessor(ctx, sqlc.DemoteAgentRuntimeCredentialPredecessorParams{
-			OrgID: cred.OrgID, DeviceID: cred.DeviceID, Revision: cred.Revision - 1,
+			OrgID: cred.OrgID, DeviceID: cred.DeviceID, Revision: current.Revision,
 		}); err != nil {
 			return Identity{}, ErrUnauthorized
 		}
@@ -229,7 +233,7 @@ type Config struct {
 // PrepareCredentialCandidate stores only a locally generated successor hash.
 // Repeating the same requested revision/hash is idempotent in PostgreSQL.
 func (s *Service) PrepareCredentialCandidate(ctx context.Context, id Identity, revision int64, hashHex string) error {
-	if s == nil || s.pool == nil || id.CredentialState != "current" || revision != id.CredentialRevision+1 {
+	if s == nil || s.pool == nil || id.CredentialState != "current" || revision <= id.CredentialRevision {
 		return ErrUnauthorized
 	}
 	hash, err := hex.DecodeString(hashHex)
@@ -244,6 +248,10 @@ func (s *Service) PrepareCredentialCandidate(ctx context.Context, id Identity, r
 	q := sqlc.New(tx)
 	dev, err := q.GetDeviceForUpdate(ctx, sqlc.GetDeviceForUpdateParams{ID: id.DeviceID, OrgID: id.OrgID})
 	if err != nil || dev.Kind != "agent" || dev.Status != "active" || dev.DeletedAt.Valid {
+		return ErrRuntimeStateMissing
+	}
+	current, err := q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID})
+	if err != nil || current.Revision != id.CredentialRevision || current.NextRevision != revision {
 		return ErrRuntimeStateMissing
 	}
 	prepared, err := q.PrepareAgentRuntimeCredentialCandidate(ctx, sqlc.PrepareAgentRuntimeCredentialCandidateParams{
@@ -332,7 +340,7 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	var rotationRevision *int64
 	credential, rotationErr := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID})
 	if rotationErr == nil && credential.RotationRequestedAt.Valid && credential.RotationDeadline.Valid && credential.RotationDeadline.Time.After(s.now()) {
-		next := credential.Revision + 1
+		next := credential.NextRevision
 		rotationRevision = &next
 	}
 	wgCurrentRevision := int64(1)

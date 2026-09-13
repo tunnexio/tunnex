@@ -92,6 +92,74 @@ func (f *credentialFixture) assertPromoted() {
 
 func TestRuntimeCredentialTransactionsPostgres(t *testing.T) {
 	ctx, pool := testpostgres.New(t)
+	for _, cancellation := range []string{"suspend", "expiry"} {
+		t.Run("retry_after_"+cancellation, func(t *testing.T) {
+			f := newCredentialFixture(t, ctx, pool, false, true)
+			if cancellation == "suspend" {
+				f.exec(`UPDATE devices SET status='suspended' WHERE id=$1`, f.device)
+				f.exec(`UPDATE devices SET status='active' WHERE id=$1`, f.device)
+			} else {
+				f.exec(`UPDATE agent_runtime_credentials SET candidate_expires_at=now()-interval '1 second' WHERE id=$1`, f.candidate)
+			}
+			ds := devices.NewService(pool, nil, nil)
+			requested, err := ds.RequestAgentCredentialRotation(ctx, f.owner, f.org, f.device)
+			if err != nil || requested.RequestedRevision == nil || *requested.RequestedRevision != 3 {
+				t.Fatalf("retry must allocate revision3: %+v error=%v", requested, err)
+			}
+			var revokedBefore []byte
+			if err := pool.QueryRow(ctx, `SELECT to_jsonb(c) FROM agent_runtime_credentials c WHERE id=$1 AND state='revoked'`, f.candidate).Scan(&revokedBefore); err != nil {
+				t.Fatal(err)
+			}
+			q := sqlc.New(pool)
+			rotation, err := q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: f.org, DeviceID: f.device})
+			if err != nil || rotation.Revision != 1 || rotation.NextRevision != 3 {
+				t.Fatalf("rotation=%+v error=%v", rotation, err)
+			}
+			fresh := RuntimeCredentialPrefix + uuid.NewString()
+			h := sha256.Sum256([]byte(fresh))
+			for _, revision := range []int64{2, 4} {
+				before := f.snapshot()
+				if err := f.svc.PrepareCredentialCandidate(ctx, f.identity(), revision, fmt.Sprintf("%x", h)); err == nil {
+					t.Fatalf("accepted unused/wrong revision %d", revision)
+				}
+				if !bytes.Equal(before, f.snapshot()) {
+					t.Fatal("refused preparation mutated history")
+				}
+			}
+			for i := 0; i < 2; i++ {
+				if err := f.svc.PrepareCredentialCandidate(ctx, f.identity(), 3, fmt.Sprintf("%x", h)); err != nil {
+					t.Fatalf("prepare/replay revision3: %v", err)
+				}
+			}
+			id, err := f.svc.Authenticate(ctx, fresh)
+			if err != nil || id.CredentialRevision != 3 {
+				t.Fatalf("promote gap: %+v error=%v", id, err)
+			}
+			f.assertPromoted()
+			for _, token := range []string{f.old, f.next} {
+				if _, err := f.svc.Authenticate(ctx, token); err != ErrUnauthorized {
+					t.Fatalf("old/revoked accepted: %v", err)
+				}
+			}
+			// A stale identity cannot prepare a future rotation after cutover.
+			f.exec(`UPDATE agent_runtime_credentials SET rotation_requested_at=now(),rotation_deadline=now()+interval '1 hour',rotation_requested_by=$2 WHERE device_id=$1 AND state='current'`, f.device, f.owner)
+			before := f.snapshot()
+			if err := f.svc.PrepareCredentialCandidate(ctx, f.identity(), 4, fmt.Sprintf("%x", h)); err == nil {
+				t.Fatal("stale identity prepared future candidate")
+			}
+			if !bytes.Equal(before, f.snapshot()) {
+				t.Fatal("stale identity changed history")
+			}
+			var revokedAfter []byte
+			if err := pool.QueryRow(ctx, `SELECT to_jsonb(c) FROM agent_runtime_credentials c WHERE id=$1 AND state='revoked'`, f.candidate).Scan(&revokedAfter); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(revokedBefore, revokedAfter) {
+				t.Fatal("cancelled credential history changed")
+			}
+		})
+	}
+
 	for _, candidateFirst := range []bool{false, true} {
 		t.Run(fmt.Sprintf("candidate_first_%t", candidateFirst), func(t *testing.T) {
 			f := newCredentialFixture(t, ctx, pool, candidateFirst, true)
