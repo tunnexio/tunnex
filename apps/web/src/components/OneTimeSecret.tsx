@@ -1,4 +1,4 @@
-import { createPortal } from "react-dom";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useState, type ReactNode } from "react";
 import { Button, StatusDot } from "./ui";
 
@@ -112,14 +112,22 @@ export function OneTimeSecretModal({
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/[.96] p-4">
-      <div className="w-full max-w-lg rounded-card border border-white/15 bg-[#171717] p-5 shadow-modal">
+  return (
+    <Dialog.Root open>
+    <Dialog.Portal>
+    <Dialog.Overlay className="fixed inset-0 z-[60] grid place-items-center bg-black/[.96] p-4">
+      <Dialog.Content
+        onEscapeKeyDown={event => event.preventDefault()}
+        onKeyDown={event => { if (event.key === "Escape") event.stopPropagation(); }}
+        onPointerDownOutside={event => event.preventDefault()}
+        onInteractOutside={event => event.preventDefault()}
+        className="w-full max-w-lg rounded-card border border-white/15 bg-[#171717] p-5 shadow-modal"
+      >
         <div className="flex items-center gap-2">
           <StatusDot tone="warn" />
-          <span className="text-sm font-semibold text-warn">{title}</span>
+          <Dialog.Title className="text-sm font-semibold text-warn">{title}</Dialog.Title>
         </div>
-        <p className="mt-2 text-xs text-slate-400">{caption}</p>
+        <Dialog.Description className="mt-2 text-xs text-slate-400">{caption}</Dialog.Description>
         {children}
         <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-ink-950 p-3 font-mono text-xs text-slate-300">
           {secret}
@@ -163,8 +171,9 @@ export function OneTimeSecretModal({
             I&rsquo;ve saved it
           </Button>
         </div>
-      </div>
-    </div>,
-    document.body,
+      </Dialog.Content>
+    </Dialog.Overlay>
+    </Dialog.Portal>
+    </Dialog.Root>
   );
 }
