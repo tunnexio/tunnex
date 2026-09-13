@@ -76,7 +76,7 @@ test("the config-download ceremony renders once with the amber one-time callout 
 
   // The ceremony modal: amber "shown once" callout, the config in a mono block,
   // the save/copy controls.
-  await expect(page.getByText("Your configuration — shown once")).toBeVisible();
+  await expect(page.getByText("Your configuration, shown once")).toBeVisible();
   await expect(page.getByText(/exactly once/i)).toBeVisible();
   await expect(page.getByText("TEST_PRIVATE_KEY_SHOWN_ONCE")).toBeVisible();
   await expect(page.getByRole("button", { name: /Download/ })).toBeVisible();
@@ -84,11 +84,11 @@ test("the config-download ceremony renders once with the amber one-time callout 
 
   // Explicit acknowledgement gate: "I've saved it" dismisses it.
   await page.getByRole("button", { name: /I.?ve saved it/ }).click();
-  await expect(page.getByText("Your configuration — shown once")).toBeHidden();
+  await expect(page.getByText("Your configuration, shown once")).toBeHidden();
 
   // No route back: the config exists only in page state and is never re-fetched.
   // Reloading the devices page must NOT resurrect it.
   await page.reload();
   await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
-  await expect(page.getByText("Your configuration — shown once")).toBeHidden();
+  await expect(page.getByText("Your configuration, shown once")).toBeHidden();
 });

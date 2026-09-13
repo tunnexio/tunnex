@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, cleanup } from "@testing-library/react";
+import { Modal } from "../src/components/ui";
 import { OneTimeSecretModal } from "../src/components/OneTimeSecret";
 
 // ⛔ THE THREE DISMISSAL RULES, ASSERTED RATHER THAN ASSUMED.
@@ -82,4 +83,18 @@ describe("OneTimeSecretModal — dismissal", () => {
     fireEvent.click(btn);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+});
+
+it("keeps a nested one-time ceremony accessible and prevents Escape from dismissing its parent", () => {
+  const parentDismiss = vi.fn(), secretDismiss = vi.fn();
+  render(<Modal title="Enroll gateway" onDismiss={parentDismiss}>
+    <OneTimeSecretModal title="Save token" caption="Shown once." secret="synthetic-token" onDismiss={secretDismiss} />
+  </Modal>);
+  const acknowledgement = screen.getByRole("button", { name: /saved it/i });
+  expect(screen.getByRole("dialog", { name: "Save token" })).toBeTruthy();
+  fireEvent.keyDown(acknowledgement, { key: "Escape" });
+  expect(parentDismiss).not.toHaveBeenCalled();
+  expect(secretDismiss).not.toHaveBeenCalled();
+  fireEvent.click(acknowledgement);
+  expect(secretDismiss).toHaveBeenCalledTimes(1);
 });
