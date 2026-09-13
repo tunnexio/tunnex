@@ -215,6 +215,6 @@ export function attributionBadge(
     label: "unattributable",
     tone: "warn",
     detail:
-      "No owner is recorded for this gateway, so its activity cannot be attributed to a person. It keeps running and enforcing policy — this is a gap in the audit trail, not in access control.",
+      "No owner is recorded for this gateway, so its activity cannot be attributed to a person. It keeps running and enforcing policy, this is a gap in the audit trail, not in access control.",
   };
 }

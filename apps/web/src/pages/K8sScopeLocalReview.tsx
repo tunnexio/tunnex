@@ -66,5 +66,5 @@ export default function K8sScopeLocalReview() {
   }, []);
 
   if (!ready) return null;
-  return <main className="tnx-page min-h-dvh p-4 sm:p-6"><div className="mx-auto mb-4 max-w-[92rem]"><Badge tone="warn">LOCAL FIXTURE — NO CLUSTER OR POLICY MUTATION</Badge></div><AuthProvider><OrgProvider><div className="mx-auto max-w-[92rem]"><AccessKubernetesScopes /></div></OrgProvider></AuthProvider></main>;
+  return <main className="tnx-page min-h-dvh p-4 sm:p-6"><div className="mx-auto mb-4 max-w-[92rem]"><Badge tone="warn">LOCAL FIXTURE, NO CLUSTER OR POLICY MUTATION</Badge></div><AuthProvider><OrgProvider><div className="mx-auto max-w-[92rem]"><AccessKubernetesScopes /></div></OrgProvider></AuthProvider></main>;
 }

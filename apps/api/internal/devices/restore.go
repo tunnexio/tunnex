@@ -103,7 +103,7 @@ func (s *Service) RestoreCascadeRevokedDevices(ctx context.Context, orgID, sourc
 				map[string]any{
 					"target_node_id": targetNodeID.String(),
 					"candidates":     len(candidates),
-					"authorized_by": "operator (device:restore) — a human undoing a human's revoke, which is the " +
+					"authorized_by": "operator (device:restore), a human undoing a human's revoke, which is the " +
 						"only thing permitted to: proof of possession must never overturn a human decision (D3)",
 				}); aerr != nil {
 				return aerr

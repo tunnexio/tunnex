@@ -182,20 +182,20 @@ type TransitionRule struct {
 }
 
 var transitionTable = []TransitionRule{
-	{KindCertExpiredCannotReconnect, "CP-recorded cert_not_after is in the PAST (CertExpired) — the agent cannot complete a TLS handshake, so it cannot reach /agent/renew either; remedy = RE-ENROLL the gateway. Ranked FIRST because every other kind's evidence is the agent's last report, which is necessarily stale once it can no longer connect"},
-	{KindUnsupportedPolicyVersion, "agent REFUSED a too-new artifact (UnsupportedVersion) — checked FIRST, remedy = upgrade the agent"},
-	{KindSiteHubDown, "site gateway, HUB site-link no fresh handshake (SiteHubDown) — remedy = fix the hub; outranks a single spoke link-down"},
-	{KindSiteLinkDown, "site gateway, a spoke site-link no fresh handshake (SiteLinkDown) — remedy = fix that spoke's tunnel/NAT"},
-	{KindSiteSubnetUnreachable, "site gateway advertises a local subnet no host addr is inside (SiteSubnetUnreachable) — reassuring-green trap; remedy = fix the gateway's host networking"},
-	{KindHubForwardingNotReconciling, "hub-set member, wire FRESH but agent last_seen STALE (HubForwardingNotReconciling) — zombie hub, remedy = restart the agent; ranked above apply/desync so a dead agent's stale report can't mask it"},
+	{KindCertExpiredCannotReconnect, "CP-recorded cert_not_after is in the PAST (CertExpired), the agent cannot complete a TLS handshake, so it cannot reach /agent/renew either; remedy = RE-ENROLL the gateway. Ranked FIRST because every other kind's evidence is the agent's last report, which is necessarily stale once it can no longer connect"},
+	{KindUnsupportedPolicyVersion, "agent REFUSED a too-new artifact (UnsupportedVersion), checked FIRST, remedy = upgrade the agent"},
+	{KindSiteHubDown, "site gateway, HUB site-link no fresh handshake (SiteHubDown), remedy = fix the hub; outranks a single spoke link-down"},
+	{KindSiteLinkDown, "site gateway, a spoke site-link no fresh handshake (SiteLinkDown), remedy = fix that spoke's tunnel/NAT"},
+	{KindSiteSubnetUnreachable, "site gateway advertises a local subnet no host addr is inside (SiteSubnetUnreachable), reassuring-green trap; remedy = fix the gateway's host networking"},
+	{KindHubForwardingNotReconciling, "hub-set member, wire FRESH but agent last_seen STALE (HubForwardingNotReconciling), zombie hub, remedy = restart the agent; ranked above apply/desync so a dead agent's stale report can't mask it"},
 	{KindHealthy, "not degraded: no error, pushed==applied, reports fresh"},
 	{KindApplyFailing, "policy_error set AND policy_failing_since set"},
 	{KindStuckEnforcing, "policy_error set AND policy_failing_since EMPTY (pushed=='' && applied!='')"},
 	{KindConverging, "term-3 (pushed!=applied), reports fresh, age < T"},
 	{KindSilentDesync, "term-3 (pushed!=applied), reports fresh, age >= T"},
-	{KindDesyncUnknown, "pushed-hash UNAVAILABLE, OR (stamped AND reports stale) — cannot determine"},
-	{KindConntrackFlushUnavailable, "policy in sync but the expired-grant conntrack flush is failing (ConntrackFlushUnavailable) — lowest priority; remedy = restore CAP_NET_ADMIN"},
-	{KindK8sEndpointsUnavailable, "K8s gateway has no endpoint view from the API (K8sEndpointsUnavailable) — exposed-Service DNAT unprogrammed, fail-closed; remedy = check the gateway's K8s API reachability + its read-only services/endpointslices RBAC"},
+	{KindDesyncUnknown, "pushed-hash UNAVAILABLE, OR (stamped AND reports stale), cannot determine"},
+	{KindConntrackFlushUnavailable, "policy in sync but the expired-grant conntrack flush is failing (ConntrackFlushUnavailable), lowest priority; remedy = restore CAP_NET_ADMIN"},
+	{KindK8sEndpointsUnavailable, "K8s gateway has no endpoint view from the API (K8sEndpointsUnavailable), exposed-Service DNAT unprogrammed, fail-closed; remedy = check the gateway's K8s API reachability + its read-only services/endpointslices RBAC"},
 }
 
 // AllKinds returns every health kind, derived from transitionTable — the SOURCE the metrics layer ranges
@@ -356,13 +356,13 @@ func degradedKind(in KindInput) PolicyDegradedKind {
 // decision no proof may overturn.
 func RekeyAuthorized(status string, certNotAfter time.Time, certNotAfterKnown bool, now time.Time, certUndelivered bool) (bool, string) {
 	if status == "revoked" {
-		return false, "node is REVOKED — an operator deliberately retired it, and a proof of possession cannot " +
+		return false, "node is REVOKED, an operator deliberately retired it, and a proof of possession cannot " +
 			"distinguish the real gateway from whoever holds its stolen key. Re-key must never un-revoke. " +
 			"Recover it with an operator-minted join token"
 	}
 	if certUndelivered {
 		return true, "the certificate this control plane last issued for this node has NEVER been used to " +
-			"authenticate, and the caller asked for one over the same recorded key — a REDELIVERY of a grant that " +
+			"authenticate, and the caller asked for one over the same recorded key, a REDELIVERY of a grant that " +
 			"was made but never arrived (D10 lost-response recovery). A running gateway's certificate has " +
 			"authenticated by definition, so this state cannot describe a live node"
 	}
@@ -374,8 +374,8 @@ func RekeyAuthorized(status string, certNotAfter time.Time, certNotAfterKnown bo
 	}
 	if certNotAfter.Before(now) {
 		return true, "the certificate this control plane issued expired at " +
-			certNotAfter.UTC().Format(time.RFC3339) + " — the agent cannot authenticate and cannot renew"
+			certNotAfter.UTC().Format(time.RFC3339) + ", the agent cannot authenticate and cannot renew"
 	}
 	return false, "the node's certificate is still valid until " + certNotAfter.UTC().Format(time.RFC3339) +
-		" — a live gateway must never be re-keyed. Revoke it first if you intend to replace it"
+		", a live gateway must never be re-keyed. Revoke it first if you intend to replace it"
 }

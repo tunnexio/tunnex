@@ -13,5 +13,5 @@ const logos: Record<string, string> = { openai, anthropic, gemini, openrouter, g
 export function ProviderLogo({ provider }: { provider: string }) {
   if (provider === "azure_foundry") return <VscAzure aria-hidden="true" className="ai-provider-logo" style={{ color: "#0078d4" }} size={24} />;
   const src = logos[provider];
-  return src ? <img src={src} alt="" aria-hidden="true" className="ai-provider-logo" width={24} height={24} /> : provider === "custom" ? <svg aria-hidden="true" className="ai-provider-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="3" width="16" height="7" rx="2" /><rect x="4" y="14" width="16" height="7" rx="2" /><path d="M7 6h2m-2 11h2" /></svg> : null;
+  return src ? <img src={src} alt="" aria-hidden="true" className="ai-provider-logo" width={24} height={24} /> : provider === "custom" ? <svg aria-hidden="true" className="ai-provider-logo ai-provider-logo-custom" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5v5m6-5v5M7 10h10v3a5 5 0 0 1-10 0v-3Zm5 8v3" /><path d="M6 10h12" /></svg> : null;
 }

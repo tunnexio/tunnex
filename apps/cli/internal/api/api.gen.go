@@ -98,9 +98,18 @@ const (
 
 // Defines values for AIProviderCatalogRequestProvider.
 const (
+	AIProviderCatalogRequestProviderAnthropic    AIProviderCatalogRequestProvider = "anthropic"
 	AIProviderCatalogRequestProviderAzureFoundry AIProviderCatalogRequestProvider = "azure_foundry"
+	AIProviderCatalogRequestProviderCerebras     AIProviderCatalogRequestProvider = "cerebras"
 	AIProviderCatalogRequestProviderCustom       AIProviderCatalogRequestProvider = "custom"
+	AIProviderCatalogRequestProviderDeepseek     AIProviderCatalogRequestProvider = "deepseek"
+	AIProviderCatalogRequestProviderGemini       AIProviderCatalogRequestProvider = "gemini"
+	AIProviderCatalogRequestProviderGroq         AIProviderCatalogRequestProvider = "groq"
+	AIProviderCatalogRequestProviderMistral      AIProviderCatalogRequestProvider = "mistral"
+	AIProviderCatalogRequestProviderOpenai       AIProviderCatalogRequestProvider = "openai"
+	AIProviderCatalogRequestProviderOpenrouter   AIProviderCatalogRequestProvider = "openrouter"
 	AIProviderCatalogRequestProviderSagemaker    AIProviderCatalogRequestProvider = "sagemaker"
+	AIProviderCatalogRequestProviderXai          AIProviderCatalogRequestProvider = "xai"
 )
 
 // Defines values for AIProviderConnectionLastTestStatus.
@@ -1652,7 +1661,7 @@ type AIModelNames = []string
 type AIProviderCatalogRequest struct {
 	ApiKey *string `json:"api_key,omitempty"`
 
-	// EndpointUrl Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
+	// EndpointUrl Empty for standard providers. Normalized base without trailing /v1 for endpoint providers. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
 	EndpointUrl string                           `json:"endpoint_url"`
 	Limit       *int                             `json:"limit,omitempty"`
 	Mode        *AIModelMode                     `json:"mode,omitempty"`
@@ -1679,12 +1688,14 @@ type AIProviderConnection struct {
 	LastTestStatus AIProviderConnectionLastTestStatus `json:"last_test_status"`
 
 	// ModelModes Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
-	ModelModes *AIModelModes                `json:"model_modes,omitempty"`
-	Models     AIModelNames                 `json:"models"`
-	Name       string                       `json:"name"`
-	Provider   AIProviderConnectionProvider `json:"provider"`
-	Revision   int64                        `json:"revision"`
-	Status     AIProviderConnectionStatus   `json:"status"`
+	ModelModes *AIModelModes `json:"model_modes,omitempty"`
+
+	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+	Models   AIProviderInputModels        `json:"models"`
+	Name     string                       `json:"name"`
+	Provider AIProviderConnectionProvider `json:"provider"`
+	Revision int64                        `json:"revision"`
+	Status   AIProviderConnectionStatus   `json:"status"`
 }
 
 // AIProviderConnectionLastTestStatus defines model for AIProviderConnection.LastTestStatus.

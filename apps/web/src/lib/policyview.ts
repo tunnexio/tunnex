@@ -1288,7 +1288,7 @@ export function cascadeConfirmCopy(
       `Deleting this ${what} also deletes every access rule that uses it as ${role}. ` +
       delegationCopy +
       templateCopy +
-      `Those rules are removed outright — they do not remain as broken rules you can review afterwards. ` +
+      `Those rules are removed outright, they do not remain as broken rules you can review afterwards. ` +
       `This cannot be undone.`,
     typeToConfirm: name,
     impactKnown:
@@ -1364,8 +1364,8 @@ export const SELF_SITE_REASON = "a site cannot reach itself";
  * group destination to one port, and no way to widen a resource past its declared ones. Choosing the noun IS
  * choosing the scope, so the noun has to be presented under a heading that says which.
  */
-export const DST_SCOPED = "Services — port-scoped";
-export const DST_WIDE = "Networks & devices — ALL ports";
+export const DST_SCOPED = "Services, port-scoped";
+export const DST_WIDE = "Networks & devices, ALL ports";
 
 export function sourceOptions(i: {
   groups: Array<{ id: string; name: string }>;
@@ -1544,7 +1544,7 @@ export function ruleEffectCaution(
   dstKind: string,
 ): string | null {
   if (srcKind === "agent" && (dstKind === "group" || dstKind === "site")) {
-    return "This gives a machine principal unrestricted access to people's own devices. If the agent needs a service, name that service as the destination instead — a resource is port-scoped, a group is not.";
+    return "This gives a machine principal unrestricted access to people's own devices. If the agent needs a service, name that service as the destination instead, a resource is port-scoped, a group is not.";
   }
   return null;
 }

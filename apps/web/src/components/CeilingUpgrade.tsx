@@ -153,7 +153,7 @@ export function ceilingSentence(
     const over = used - ceiling;
     return (
       `This deployment is on the ${tier} band, which allows ${ceiling} ` +
-      `${ceiling === 1 ? "gateway" : "gateways"}, and ${used} are enrolled — ${over} past the limit. ` +
+      `${ceiling === 1 ? "gateway" : "gateways"}, and ${used} are enrolled, ${over} past the limit. ` +
       `Nothing running is affected and no gateway will be stopped. ` +
       // ⛔ THE CLAUSE THAT PREVENTS A DESTRUCTIVE MISTAKE. Without it the obvious move is to revoke one.
       `Revoking one will not free a slot at this count; enrolling another needs a licence.`
@@ -184,7 +184,7 @@ export function ceilingSentence(
     // ⚠ THE COUNT ITSELF BELONGS ON THE CONFIRM, NOT HERE. This notice is deployment-scoped and does not
     // know which gateway an operator will pick; promising a number it cannot compute would be the same
     // mistake in the other direction. It states the KIND of cost and sends them where the number is.
-    `There is no room for another — install a licence, or retire a gateway. ` +
+    `There is no room for another, install a licence, or retire a gateway. ` +
     `Retiring one is permanent, and a gateway cannot be retired while devices are homed to it: ` +
     `move them to another gateway first, which re-issues their configurations.`
   );

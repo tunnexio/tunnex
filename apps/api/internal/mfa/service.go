@@ -321,9 +321,9 @@ func (s *Service) VerifyChallenge(ctx context.Context, rawToken, code string) (s
 	}
 	switch outcome {
 	case outChallengeGone:
-		return sqlc.User{}, false, apierr.New(401, "mfa_challenge_invalid", "this login challenge is invalid or has expired — sign in again")
+		return sqlc.User{}, false, apierr.New(401, "mfa_challenge_invalid", "this login challenge is invalid or has expired, sign in again")
 	case outExhausted:
-		return sqlc.User{}, false, apierr.New(401, "mfa_challenge_exhausted", "too many attempts — sign in again")
+		return sqlc.User{}, false, apierr.New(401, "mfa_challenge_exhausted", "too many attempts, sign in again")
 	case outInvalid:
 		return sqlc.User{}, false, apierr.New(401, "invalid_code", "that code is not valid")
 	}

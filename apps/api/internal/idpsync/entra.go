@@ -145,7 +145,7 @@ type graphUser struct {
 // (a disabled user would read active and never be swept). So a null aborts the fetch → the reconciler
 // treats it as a transient failure → FAIL-STATIC (no membership change) + degraded health, surfacing
 // the misconfiguration instead of silently keeping offboarded users live.
-var errAccountEnabledMissing = errors.New("entra: accountEnabled not readable — grant the app User.Read.All (Application) so disabled users can be detected")
+var errAccountEnabledMissing = errors.New("entra: accountEnabled not readable, grant the app User.Read.All (Application) so disabled users can be detected")
 
 func statusOf(accountEnabled *bool) (UserStatus, error) {
 	if accountEnabled == nil {

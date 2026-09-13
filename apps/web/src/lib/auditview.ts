@@ -120,7 +120,7 @@ export function resolveActor(
  * ours and does not go looking for a person who was never recorded.
  */
 export const UNATTRIBUTED_NOTE =
-  "Some events were written without an actor. That is a gap in how we record them, not evidence that nobody acted — these are system-initiated events whose writer did not name itself.";
+  "Some events were written without an actor. That is a gap in how we record them, not evidence that nobody acted, these are system-initiated events whose writer did not name itself.";
 
 /** The known system actors, for the filter. Derived from rows, never hardcoded. */
 export function systemActors(rows: AuditRow[]): string[] {

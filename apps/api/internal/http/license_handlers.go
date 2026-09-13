@@ -179,7 +179,7 @@ func licenceRefusal(r licence.Reason) string {
 		return "This key was not issued by this Tunnex. It may belong to another deployment, or it was " +
 			"signed by a key this build no longer trusts."
 	case licence.ReasonBadSignature:
-		return "This key did not verify. It is most likely truncated — licence keys are one long line, " +
+		return "This key did not verify. It is most likely truncated, licence keys are one long line, " +
 			"and some mail clients wrap them. Copy it again from the original email."
 	default:
 		return "This does not look like a Tunnex licence key. It should begin `tnxl_`."

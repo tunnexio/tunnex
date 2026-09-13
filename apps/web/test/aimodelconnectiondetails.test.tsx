@@ -30,3 +30,21 @@ it("does not promise dummy-key support for unsupported modes", () => {
   render(<AIModelConnectionDetails orgId="one" model="embedding" mode="embedding" />);
   expect(screen.queryByRole("button", { name: "Copy Python example" })).toBeNull();
 });
+it("switches language tabs with arrow keys and copies the selected source", () => {
+  render(<AIModelConnectionDetails orgId="one" model="example-model" />);
+  const python = screen.getByRole("tab", { name: "Python" });
+  fireEvent.keyDown(python, { key: "ArrowRight" });
+  const curl = screen.getByRole("tab", { name: "cURL" });
+  expect(curl.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(curl);
+  fireEvent.click(screen.getByRole("button", { name: "Copy example" }));
+  expect(copy).toHaveBeenLastCalledWith(expect.stringContaining("curl --fail-with-body"));
+});
+
+it("has one Python tab with separate SDK and REST examples", () => {
+  render(<AIModelConnectionDetails orgId="one" model="example-model" />);
+  expect(screen.getAllByRole("tab", { name: "Python" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "REST" }));
+  fireEvent.click(screen.getByRole("button", { name: "Copy example" }));
+  expect(copy).toHaveBeenLastCalledWith(expect.stringContaining('os.environ["TUNNEX_API_KEY"]'));
+});

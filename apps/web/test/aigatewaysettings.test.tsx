@@ -110,7 +110,7 @@ describe("AI gateway organization settings", () => {
     api.GET.mockResolvedValue(result(true));
     render(view("org-a", false));
     await state(true);
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Enable AI gateway|Disable AI gateway/ })).toBeNull();
     expect(api.PUT).not.toHaveBeenCalled();
   });
 });

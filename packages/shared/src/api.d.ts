@@ -5727,7 +5727,7 @@ export interface components {
             /** @enum {string} */
             provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             name: string;
-            models: components["schemas"]["AIModelNames"];
+            models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
             /** Format: int64 */
             revision: number;
@@ -5801,12 +5801,9 @@ export interface components {
         AIProviderCatalogRequest: {
             mode?: components["schemas"]["AIModelMode"];
             /** @enum {string} */
-            provider: "custom" | "sagemaker" | "azure_foundry";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             api_key: string;
-            /**
-             * Format: uri
-             * @description Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
-             */
+            /** @description Empty for standard providers. Normalized base without trailing /v1 for endpoint providers. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules. */
             endpoint_url: string;
             /** @default  */
             query: string;

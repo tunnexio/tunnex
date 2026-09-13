@@ -110,7 +110,7 @@ export function livenessLabel(
         // ⚠ NOT `danger`. A revoked credential is the system working as instructed, not an incident.
         tone: "neutral",
         detail:
-          "This agent's credential was revoked. Its peer has been removed from the gateway and it can reach nothing. Enrol a new agent to replace it — the old connect command will never work again.",
+          "This agent's credential was revoked. Its peer has been removed from the gateway and it can reach nothing. Enrol a new agent to replace it, the old connect command will never work again.",
       };
     case "online":
       return {
@@ -118,13 +118,13 @@ export function livenessLabel(
         tone: "ok",
         // ⚠ HONEST ABOUT WHAT "CONNECTED" MEANS. WireGuard has no connection state; this is handshake
         // recency, and saying so costs one clause and prevents a wrong bug report.
-        detail: `Handshaked with ${a.gateway_name} ${relAge(a.last_handshake_at, now)}. WireGuard has no connection state — this is derived from handshake recency.`,
+        detail: `Handshaked with ${a.gateway_name} ${relAge(a.last_handshake_at, now)}. WireGuard has no connection state, this is derived from handshake recency.`,
       };
     case "offline":
       return {
         label: `last seen ${relAge(a.last_handshake_at, now)}`,
         tone: "warn",
-        detail: `This agent has connected before but has not handshaked with ${a.gateway_name} recently. Its tunnel is down, so it can reach nothing — access rules are unaffected.`,
+        detail: `This agent has connected before but has not handshaked with ${a.gateway_name} recently. Its tunnel is down, so it can reach nothing, access rules are unaffected.`,
       };
     case "never":
       return {
@@ -142,7 +142,7 @@ export function livenessLabel(
         // apart from "nothing here" at a glance — the desync_unknown honest-state convention.
         tone: "unknown",
         // ⛔ THIS NAMES THE GATEWAY AS THE SUSPECT, NOT THE AGENT.
-        detail: `${a.gateway_name} is not reporting to the control plane, and it is the only source of this agent's liveness. The agent may be perfectly healthy — we cannot tell. Check the gateway first.`,
+        detail: `${a.gateway_name} is not reporting to the control plane, and it is the only source of this agent's liveness. The agent may be perfectly healthy, we cannot tell. Check the gateway first.`,
       };
     case "not-issued":
       return {
@@ -216,7 +216,7 @@ export function attributionNote(
     label: "unattributable",
     tone: "warn",
     detail:
-      "No owner is recorded for this agent, so its activity cannot be attributed to a person. It keeps running and policy still applies to it — this is a gap in the audit trail, not in access control.",
+      "No owner is recorded for this agent, so its activity cannot be attributed to a person. It keeps running and policy still applies to it, this is a gap in the audit trail, not in access control.",
   };
 }
 
@@ -227,7 +227,7 @@ export function attributionNote(
  * returns only the former. A failed load rendering as "no agents" is a zero nobody measured.
  */
 export const NO_AGENTS =
-  "No AI agents are enrolled in this organization. An agent is enrolled with a join token, the same way a gateway is — it then appears here with the person who authorised it.";
+  "No AI agents are enrolled in this organization. An agent is enrolled with a join token, the same way a gateway is, it then appears here with the person who authorised it.";
 
 /**
  * ⛔ THE UNDETERMINED STATE — ITS WORDS ARE RULED, AND THEY ARE PINNED LIKE THE RENDER FLOOR.
@@ -248,7 +248,7 @@ export const NO_AGENTS =
 export const UNDETERMINED_LABEL = "enrolment kind not recorded";
 
 export const UNDETERMINED_DETAIL =
-  "We do not know what this was enrolled as. This node was enrolled before Tunnex recorded that choice, so the answer was never captured and cannot be recovered. The node is working normally — this is a gap in our record, not a problem with it.";
+  "We do not know what this was enrolled as. This node was enrolled before Tunnex recorded that choice, so the answer was never captured and cannot be recovered. The node is working normally, this is a gap in our record, not a problem with it.";
 
 /**
  * Which of the three states a node is in.

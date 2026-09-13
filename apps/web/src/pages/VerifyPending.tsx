@@ -35,11 +35,11 @@ export default function VerifyPending() {
       {/* Success feedback uses the accent, not green: green is reserved for
           liveness, not "the action worked" (S4.4 decision f). */}
       {resend === "sent" && (
-        <p className="mt-3 text-xs text-accent-400">Sent — check your inbox.</p>
+        <p className="mt-3 text-xs text-accent-400">Sent, check your inbox.</p>
       )}
       {resend === "error" && (
         <p className="mt-3 text-xs text-danger">
-          Couldn&rsquo;t send — try again.
+          Couldn&rsquo;t send, try again.
         </p>
       )}
       <div className="mt-5 flex items-center justify-between">

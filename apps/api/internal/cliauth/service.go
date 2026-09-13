@@ -102,7 +102,7 @@ func ValidateLoopbackRedirect(raw string) error {
 		u.Path != "/callback",
 		u.RawQuery != "" || u.Fragment != "" || u.User != nil:
 		return apierr.BadRequest("invalid_redirect",
-			"redirect_uri must be http://127.0.0.1:<port>/callback (or [::1]) — loopback IP literal, explicit port, exactly /callback")
+			"redirect_uri must be http://127.0.0.1:<port>/callback (or [::1]), loopback IP literal, explicit port, exactly /callback")
 	}
 	return nil
 }

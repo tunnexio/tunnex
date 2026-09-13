@@ -4,6 +4,7 @@ import "../components/ai-gateway-configuration.css";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
+import { HelpTooltip, modelDisplayName } from "../components/HelpTooltip";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
@@ -16,6 +17,7 @@ import {
   Field,
   Input,
   Loading,
+  Modal,
   PageHeader,
   Select,
 } from "../components/ui";
@@ -50,17 +52,18 @@ const gatewayTabs = [
   { href: "/ai-gateway/credentials", label: "LLM credentials" },
   { href: "/ai-gateway/access", label: "Access" },
   { href: "/ai-gateway/usage", label: "Usage & cost" },
-  { href: "/ai-gateway/my-models", label: "My models" },
+  { href: "/ai-gateway/my-models", label: "Playground" },
   { href: "/ai-gateway/settings", label: "Settings" },
 ];
 export default function AgentsAIGateway() {
+  const [grant, setGrant] = useState<{ connection: string; model: string } | null>(null);
   const { org } = useOrg();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [search] = useSearchParams();
+  useEffect(() => setGrant(null), [org?.id, pathname]);
   const page = pathname.split("/")[2] || "models";
   return <div className="network-management ai-workspace space-y-5">
-    <PageHeader title="AI Gateway" subtitle="Connect models and grant access to your users and applications." />
     <AIAccessGate key={org?.id}>{(orgId, access) => {
       if (pathname === "/ai-gateway" || pathname === "/ai-gateway/") return <Navigate to={access.view ? "/ai-gateway/models" : "/ai-gateway/my-models"} replace />;
       if (!access.view && page !== "my-models") return <Navigate to="/ai-gateway/my-models" replace />;
@@ -68,6 +71,7 @@ export default function AgentsAIGateway() {
       const tabs = access.view ? gatewayTabs : gatewayTabs.filter((tab) => tab.href.endsWith("/my-models"));
       return <>
         <WorkspaceTabs label="AI gateway views" items={tabs} />
+        {grant && <AIGroupAccess orgId={orgId} canManage={access.manage} initialConnection={grant.connection} initialModel={grant.model} dialogOnly onDone={() => setGrant(null)} />}
         {page === "my-models" ? <AIUseModel key={orgId} orgId={orgId} />
            : page === "access" ? <>
             <nav aria-label="Access subjects" className="workspace-tabs">
@@ -80,10 +84,10 @@ export default function AgentsAIGateway() {
           : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage}
             view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
             onViewChange={(view) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? "/ai-gateway/models/new" : "/ai-gateway/models")}
-            onGrantAccess={(connection, model) => navigate(`/ai-gateway/access?${new URLSearchParams({ connection, model })}`)} />
-          : <div className="ai-gateway-configuration"><div className="ai-config-heading"><div><h2>Gateway settings</h2><p>Control organization access to AI models.</p></div></div>
+            onGrantAccess={(connection, model) => setGrant({ connection, model })} />
+          : <div className="ai-gateway-configuration"><div className="ai-config-heading"><div><h2>Gateway settings</h2></div></div>
             <AIGatewaySettings orgId={orgId} canEdit={access.manage} />
-            {access.agents && <Card><h2>Agent model access</h2><p className="my-2 text-sm text-ink-secondary">Existing managed hosts keep their team model policies. Enroll new applications through Access → Workloads.</p><Link className="network-setup-link" to="/agents/model-access">Manage agent model access</Link></Card>}
+            {access.agents && <Card className="ai-setting-card"><div className="ai-setting-row"><div className="ai-setting-copy"><h3>Agent model access</h3><p>Choose which models your managed agents can use.</p></div><Link className="network-setup-link" to="/agents/model-access">Manage access →</Link></div></Card>}
           </div>}
       </>;
     }}</AIAccessGate>
@@ -92,7 +96,7 @@ export default function AgentsAIGateway() {
 export function AgentModelAccess() {
   const { org } = useOrg();
   return <div className="network-management agents-workspace ai-workspace space-y-5">
-    <PageHeader title="Agent model access" subtitle="Manage team model policies and access for automated agents." />
+    <PageHeader title="Agent model access" subtitle={org?.name} />
     <AgentsTabRail />
     <AIAccessGate key={org?.id}>{(orgId, access) => !access.agents ? <Card><p role="alert">You do not have permission to manage agent model access.</p></Card>
       : !org?.agent_policy_templates_enabled ? <Card><h2>Agent groups are turned off</h2><Link to="/settings?section=ai-agents">Configure Agent Group settings</Link></Card>
@@ -101,6 +105,7 @@ export function AgentModelAccess() {
   </div>;
 }
 export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
+  const [editor, setEditor] = useState<"team" | "agent" | null>(null);
   const [data, setData] = useState<Inventory | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -230,14 +235,16 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
     data.groups.find((g) => g.id === id)?.name ??
     `Archived/unavailable group (${id})`;
   return (
-    <div className="ai-config-workspace">
-      <div className="ai-config-workspace-summary"><span><strong>{data.teams.length}</strong> team policies</span><span><strong>{data.assignments.length}</strong> agent assignments</span><span><strong>{data.devices.length}</strong> loaded agents{data.nextAgentCursor ? " · more available" : ""}</span></div>
-      {error && (
+    <div className="ai-config-workspace ai-agent-access">
+      <div className="ai-config-workspace-summary"><Button size="sm" disabled={busy} onClick={() => void reload()}>Refresh</Button><span><strong>{data.teams.length}</strong> {data.teams.length === 1 ? "team policy" : "team policies"}</span><span><strong>{data.assignments.length}</strong> {data.assignments.length === 1 ? "agent assignment" : "agent assignments"}</span><span><strong>{data.devices.length}</strong> loaded agents{data.nextAgentCursor ? " · more available" : ""}</span></div>
+      {error && !editor && (
         <p role="alert" className="ai-config-error">
           {error}
         </p>
       )}
-      <div className="ai-config-grid">
+      <Card><div className="ai-inventory-toolbar"><h2>Team policies <HelpTooltip>Set models and provider credentials for each agent group.</HelpTooltip></h2><Button onClick={() => { setTeamID(""); setEditor("team"); }}>Add policy</Button></div><table className="ai-compact-table"><thead><tr><th>Group</th><th>Models</th><th>Revision</th></tr></thead><tbody>{data.teams.map(t => <tr key={t.team_id}><td><button className="ai-access-name" aria-label={`Edit policy for ${teamName(t.team_id)}`} onClick={() => { setTeamID(t.team_id); setEditor("team"); }}>{teamName(t.team_id)}</button></td><td>{t.models.map(modelDisplayName).join(", ")}</td><td>{t.revision}</td></tr>)}</tbody></table>{!data.teams.length && <p>No team policies yet.</p>}</Card>
+      <Card><div className="ai-inventory-toolbar"><h2>Agent assignments <HelpTooltip>Each agent uses one team policy. Open an assignment to manage its models and synchronization.</HelpTooltip></h2><Button onClick={() => { setDeviceID(""); setEditor("agent"); }}>Assign agent</Button></div><table className="ai-compact-table"><thead><tr><th>Agent</th><th>Status</th></tr></thead><tbody>{data.assignments.map(a => <tr key={a.device_id}><td><button className="ai-access-name" aria-label={`Manage access for ${data.devices.find(d => d.id === a.device_id)?.name ?? a.device_id}`} onClick={() => { setDeviceID(a.device_id); setEditor("agent"); }}>{data.devices.find(d => d.id === a.device_id)?.name ?? a.device_id}</button></td><td>{a.status}</td></tr>)}</tbody></table>{!data.assignments.length && <p>No agent assignments yet.</p>}</Card>
+      {editor === "team" && <Modal title="Team model policy" size="wide" showClose onDismiss={() => !busy && setEditor(null)}>{error && <p role="alert">{error}</p>}
       <Card className="ai-config-card">
         <div className="ai-config-section-heading"><span className="ai-config-section-number" aria-hidden="true">01</span><div><p className="ai-config-eyebrow">MODEL ACCESS</p><h2 className="text-sm font-semibold">Team model policy</h2></div><span className="ai-config-pill">Team scope</span></div>
         <p className="my-2 text-sm">
@@ -287,11 +294,11 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
           .filter((t) => !data.groups.some((g) => g.id === t.team_id))
           .map((t) => (
             <p key={t.team_id}>
-              {teamName(t.team_id)} — retained policy revision {t.revision}.
+              {teamName(t.team_id)} , retained policy revision {t.revision}.
             </p>
           ))}
-      </Card>
-      <Card className="ai-config-card">
+      </Card></Modal>}
+      {editor === "agent" && <Modal title="Agent access" size="wide" showClose onDismiss={() => !busy && setEditor(null)}>{error && <p role="alert">{error}</p>}<Card className="ai-config-card">
         <div className="ai-config-section-heading"><span className="ai-config-section-number" aria-hidden="true">02</span><div><p className="ai-config-eyebrow">WORKLOAD ACCESS</p><h2 className="text-sm font-semibold">Agent access</h2></div><span className="ai-config-pill">One team per agent</span></div>
         <p className="my-2 text-sm">
           Disabling blocks new requests. Accepted streams may finish within 30
@@ -351,11 +358,8 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
               usage history.
             </p>
           ))}
-      </Card>
-      </div>
-      <div className="ai-config-footer"><p>Changes apply to new requests. Existing accepted streams may finish within 30 seconds.</p><Button disabled={busy} onClick={() => void reload()}>
-        Refresh AI policies
-      </Button></div>
+      </Card></Modal>}
+
     </div>
   );
 }
@@ -386,7 +390,7 @@ function TeamEditor({
       <Field label="Add a configured model">
         <Select value="" disabled={busy} onChange={event => { if (event.target.value) setModels([...new Set([...lines(models), event.target.value])].join("\n")); }}>
           <option value="">Choose a model</option>
-          {[...new Set(providers.items.filter(c => c.enabled && c.status === "applied" && c.applied_revision === c.revision).flatMap(c => c.models))].map(model => <option key={model} value={model}>{model}</option>)}
+          {[...new Set(providers.items.filter(c => c.enabled && c.status === "applied" && c.applied_revision === c.revision).flatMap(c => c.models))].map(model => <option key={model} value={model}>{modelDisplayName(model)}</option>)}
         </Select>
       </Field>
       <Field label="Exact models (one per line)">

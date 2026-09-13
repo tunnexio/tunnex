@@ -833,7 +833,7 @@ export function NodeLink({
               aria-pressed={interactive ? isSel : undefined}
               aria-label={
                 interactive
-                  ? `${n.label}${n.sub ? ` ${n.sub}` : ""} — ${state}`
+                  ? `${n.label}${n.sub ? ` ${n.sub}` : ""}, ${state}`
                   : undefined
               }
               className={
@@ -853,7 +853,7 @@ export function NodeLink({
                   : undefined
               }
             >
-              <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}`}</title>
+              <title>{`${n.label}${n.sub ? `, ${n.sub}` : ""}`}</title>
               {isSel && (
                 <circle
                   cx={p.x}

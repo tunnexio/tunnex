@@ -41,12 +41,12 @@ export const UNDOABLE_ACTIONS: UndoableAction[] = [
     action: "policy.rule_disabled",
     inverse: "policy.rule_enabled",
     sameIdentity:
-      "PATCH /policies/{ruleId} — the same ruleId is re-enabled; no row is created",
+      "PATCH /policies/{ruleId}, the same ruleId is re-enabled; no row is created",
   },
   {
     action: "policy.rule_enabled",
     inverse: "policy.rule_disabled",
-    sameIdentity: "PATCH /policies/{ruleId} — same ruleId",
+    sameIdentity: "PATCH /policies/{ruleId}, same ruleId",
   },
   {
     action: "org.zero_trust_enabled",
@@ -78,7 +78,7 @@ export const UNDOABLE_ACTIONS: UndoableAction[] = [
 export const NOT_UNDOABLE: Array<{ action: string; why: string }> = [
   {
     action: "policy.rule_created",
-    why: "re-creating yields a NEW rule id — a new grant, not the old one back",
+    why: "re-creating yields a NEW rule id, a new grant, not the old one back",
   },
   { action: "resource.created", why: "re-creating yields a NEW resource id" },
   { action: "group.created", why: "re-creating yields a NEW group id" },
@@ -88,7 +88,7 @@ export const NOT_UNDOABLE: Array<{ action: string; why: string }> = [
   },
   {
     action: "device.revoked",
-    why: "revocation is a FULL SWEEP — peer slot, pool address and telemetry",
+    why: "revocation is a FULL SWEEP, peer slot, pool address and telemetry",
   },
   { action: "org.deleted", why: "no inverse exists at all" },
   {
@@ -101,7 +101,7 @@ export const NOT_UNDOABLE: Array<{ action: string; why: string }> = [
   },
   {
     action: "group.member_removed",
-    why: "same — the sync reconciler is authoritative for synced groups",
+    why: "same, the sync reconciler is authoritative for synced groups",
   },
 ];
 

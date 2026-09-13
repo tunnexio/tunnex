@@ -85,7 +85,7 @@ export const MESH_NODES: readonly string[] = [
 
 export const HERO_HEADLINE = "Connect everything. Trust nothing.";
 export const HERO_SUBHEAD =
-  "Every cloud, VPC, site and device — joined into one encrypted mesh.";
+  "Every cloud, VPC, site and device, joined into one encrypted mesh.";
 
 /**
  * ⛔ THE GENERIC-202 NOTE, AND IT IS A SECURITY PROPERTY RATHER THAN REASSURANCE.
@@ -95,7 +95,7 @@ export const HERO_SUBHEAD =
  * evidence that the address was recognised — and it is the same no-oracle rule the 401s follow.
  */
 export const GENERIC_202_NOTE =
-  "Sign-up and password reset always answer the same way, whether or not an account exists — so neither confirms nor denies an address.";
+  "Sign-up and password reset always answer the same way, whether or not an account exists, so neither confirms nor denies an address.";
 
 /**
  * ⛔ THE RECOVERY-CODE COUNT IS CARDINALITY ONLY — and the server says so in the schema.
@@ -116,7 +116,7 @@ export function recoveryWarning(remaining: number): {
   }
   if (remaining === 1) {
     return {
-      text: "1 recovery code left — this is the last one. Generate a new set after signing in.",
+      text: "1 recovery code left, this is the last one. Generate a new set after signing in.",
       loud: true,
     };
   }
@@ -132,5 +132,5 @@ export function recoveryWarning(remaining: number): {
 
 /** The count line itself — always says the codes are not re-shown, because that surprises people. */
 export function recoveryCountLabel(remaining: number): string {
-  return `${remaining} recovery code${remaining === 1 ? "" : "s"} remaining — count only, codes are never re-shown.`;
+  return `${remaining} recovery code${remaining === 1 ? "" : "s"} remaining, count only, codes are never re-shown.`;
 }

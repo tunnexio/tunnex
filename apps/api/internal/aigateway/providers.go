@@ -78,7 +78,7 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 			return in, providerInvalid()
 		}
 		in.EndpointURL = &normalized
-		if len(in.Models) < 1 || len(in.Models) > 32 {
+		if len(in.Models) > 32 {
 			return in, providerInvalid()
 		}
 		for _, model := range in.Models {
@@ -91,7 +91,7 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 			return in, providerInvalid()
 		}
 		var ok bool
-		in.Models, ok = canonicalModels(in.Models, false)
+		in.Models, ok = canonicalModels(in.Models, true)
 		if !ok {
 			return in, providerInvalid()
 		}
@@ -124,7 +124,7 @@ func providerSpec(p ProviderConnection) ProviderKeySpec {
 	if p.EndpointURL != nil {
 		base = *p.EndpointURL
 	}
-	return ProviderKeySpec{Provider: nativeConnectionProvider(p), BaseURL: base, ID: p.KeyID, Revision: p.Revision, Models: p.Models, ModelModes: p.ModelModes, Enabled: p.Enabled}
+	return ProviderKeySpec{Provider: nativeConnectionProvider(p), BaseURL: base, ID: p.KeyID, Revision: p.Revision, Models: p.Models, ModelModes: p.ModelModes, Enabled: p.Enabled && len(p.Models) > 0}
 }
 
 // validateProviderAccess is called under the team lock. Sorted provider locks are
@@ -520,7 +520,9 @@ func (s *Policies) FoundryAvailable() bool {
 func (s *Policies) ApprovedFoundryEndpoints() []aiegress.Endpoint {
 	return s.approvedEndpoints("azure_foundry")
 }
-func (s *Policies) SageMakerAvailable() bool { return len(s.approvedEndpoints("sagemaker")) > 0 }
+func (s *Policies) SageMakerAvailable() bool {
+	return s.PublicEndpointsAvailable() || len(s.approvedEndpoints("sagemaker")) > 0
+}
 func (s *Policies) ApprovedCustomEndpoints() []aiegress.Endpoint {
 	return s.approvedEndpoints("custom")
 }
@@ -540,7 +542,7 @@ func (s *Policies) endpointEligible(provider, raw string) bool {
 			return true
 		}
 	}
-	return (provider == "custom" || provider == "azure_foundry" && aiegress.FoundryEndpoint(normalized)) && s.customPolicy.AllowsPublicEndpoint(normalized)
+	return (provider == "custom" || provider == "sagemaker" || provider == "azure_foundry" && aiegress.FoundryEndpoint(normalized)) && s.customPolicy.AllowsPublicEndpoint(normalized)
 }
 func nativeConnectionProvider(p ProviderConnection) string {
 	if endpointProvider(p.Provider) {
@@ -555,7 +557,7 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 	if !endpointProvider(in.Provider) {
 		return nil
 	}
-	if in.EndpointURL == nil || !s.endpointEligible(in.Provider, *in.EndpointURL) {
+	if in.EndpointURL == nil || len(in.Models) > 0 && !s.endpointEligible(in.Provider, *in.EndpointURL) {
 		return providerInvalid()
 	}
 	prefix := "custom-" + id.String() + "/"
@@ -577,7 +579,7 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 		}
 		out = append(out, prefix+model)
 	}
-	models, ok := canonicalModels(out, false)
+	models, ok := canonicalModels(out, true)
 	if !ok {
 		return providerInvalid()
 	}
@@ -607,7 +609,7 @@ func (s *Policies) CustomProviderModelsForMode(ctx context.Context, org, id uuid
 	if err != nil {
 		return ProviderModelPage{}, aiUnavailable()
 	}
-	if !endpointProvider(p.Provider) || !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision || !s.customConnectionEligible(p) {
+	if !endpointProvider(p.Provider) || !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision {
 		return ProviderModelPage{}, providerMissing()
 	}
 	if p.Provider == "azure_foundry" {
@@ -618,6 +620,9 @@ func (s *Policies) CustomProviderModelsForMode(ctx context.Context, org, id uuid
 			}
 		}
 		return mergedProviderCatalog(ctx, s.engine.(ProviderEngine), nativeConnectionProvider(p), mode, true, configured, query, limit, offset)
+	}
+	if !s.customConnectionEligible(p) {
+		return ProviderModelPage{}, providerMissing()
 	}
 	result, err := s.engine.(ProviderEngine).ProviderModels(ctx, nativeConnectionProvider(p), query, limit, offset)
 	if err != nil {

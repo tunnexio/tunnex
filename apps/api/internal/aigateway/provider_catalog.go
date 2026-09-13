@@ -34,14 +34,23 @@ func (s *Policies) SearchProviderCatalog(ctx context.Context, org, actor uuid.UU
 		return ProviderModelPage{}, policyDenied()
 	}
 	in.Mode = DefaultModelMode(in.Mode)
-	if !ValidModelMode(in.Mode) || !endpointProvider(in.Provider) || utf8.RuneCountInString(in.Query) > 100 || in.Limit < 1 || in.Limit > 100 || in.Offset < 0 || in.Offset > 10000 {
+	if !ValidModelMode(in.Mode) || (!supportedProvider(in.Provider) && !endpointProvider(in.Provider)) || utf8.RuneCountInString(in.Query) > 100 || in.Limit < 1 || in.Limit > 100 || in.Offset < 0 || in.Offset > 10000 {
 		return ProviderModelPage{}, providerInvalid()
 	}
-	validated, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Catalog", Models: []string{"catalog"}, Secret: &in.Secret, EndpointURL: &in.EndpointURL}, true)
-	if err != nil || validated.EndpointURL == nil || !s.endpointEligible(in.Provider, *validated.EndpointURL) {
-		return ProviderModelPage{}, providerInvalid()
+	if endpointProvider(in.Provider) {
+		validated, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Catalog", Models: []string{"catalog"}, Secret: &in.Secret, EndpointURL: &in.EndpointURL}, true)
+		if err != nil || validated.EndpointURL == nil || !s.endpointEligible(in.Provider, *validated.EndpointURL) {
+			return ProviderModelPage{}, providerInvalid()
+		}
+		in.EndpointURL = *validated.EndpointURL
+	} else {
+		if in.EndpointURL != "" {
+			return ProviderModelPage{}, providerInvalid()
+		}
+		if _, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Catalog", Models: []string{in.Provider + "/catalog"}, Secret: &in.Secret}, true); err != nil {
+			return ProviderModelPage{}, providerInvalid()
+		}
 	}
-	in.EndpointURL = *validated.EndpointURL
 	b := s.bridge
 	if !b.admit(org, time.Now()) {
 		return ProviderModelPage{}, apierr.New(429, "ai_provider_probe_limited", "AI provider connection test limit reached")

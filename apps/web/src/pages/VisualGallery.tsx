@@ -134,7 +134,7 @@ export default function VisualGallery() {
     <div className="tnx-page flex flex-col gap-3.5 p-6" data-visual-gallery>
       <PageHeader title="Visual gallery" />
 
-      <GalleryGroup title="S18 AI Agents — route components with development fixtures">
+      <GalleryGroup title="S18 AI Agents, route components with development fixtures">
         <div className="flex max-w-5xl flex-wrap gap-2 text-xs">
           {([
             "index-populated", "index-empty", "index-loading", "index-error", "index-partial", "index-denied", "index-community", "index-filtered",
@@ -186,7 +186,7 @@ export default function VisualGallery() {
 
       {/* ⛔ COMBINATION 1: a table in ALL THREE of its states, side by side. The failed and empty renderings
           are the ones that historically diverge, and they are only comparable when adjacent. */}
-      <GalleryGroup title="DataTable — populated / empty / failed">
+      <GalleryGroup title="DataTable, populated / empty / failed">
         <div className="w-80">
           <Panel title="Populated">
             <DataTable
@@ -300,7 +300,7 @@ export default function VisualGallery() {
             direction. Selection is rendered ON, because dimming is a RELATIVE effect: an unselected diagram
             proves nothing about what selection does to the other links. */}
         <div className="w-80">
-          <Panel title="Node link — three tones, one selected">
+          <Panel title="Node link, three tones, one selected">
             <NodeLink
               label="Topology"
               source={{ endpoint: "/x" }}
@@ -348,7 +348,7 @@ export default function VisualGallery() {
           </Panel>
         </div>
         <div className="w-80">
-          <Panel title="Node link — inert (no onSelect)">
+          <Panel title="Node link, inert (no onSelect)">
             <NodeLink
               label="Topology"
               source={{ endpoint: "/x" }}
@@ -397,7 +397,7 @@ export default function VisualGallery() {
           BOTH WIDTHS STAY. Neither alone is the component — that is the finding, not a compromise. */}
       <section className="flex flex-col gap-2" data-wide-specimens>
         <h2 className="font-mono text-micro font-semibold uppercase tracking-[.16em] text-ink-secondary">
-          At full column width — the width-sensitive class
+          At full column width, the width-sensitive class
         </h2>
         <Panel title="Node link at column width">
           <NodeLink
@@ -473,7 +473,7 @@ export default function VisualGallery() {
         {/* ⛔ THE TIME-SERIES PRIMITIVE, WITH FIXTURES, SO ITS DESIGN CAN BE JUDGED BEFORE ITS DATA EXISTS.
             On Overview this same component renders `roadmap`, which draws NOTHING — correct there, useless
             for review. The gallery is where a component gets to be looked at without an endpoint. */}
-        <Panel title="Area chart — site-link throughput (fixture data)">
+        <Panel title="Area chart, site-link throughput (fixture data)">
           <AreaChart
             label="Site-link throughput"
             source={{ endpoint: "/x" }}

@@ -384,9 +384,9 @@ func (s *Service) ceilingRefusal(tier licence.Tier, ceiling int, live int64) str
 	// bug — "it allows 5 and I have none" — and their next move is a support ticket rather than an upgrade.
 	return fmt.Sprintf(
 		"This deployment is on the %s band, which allows %d %s across every organization, and %d %s "+
-			"already enrolled. Nothing running is affected — existing gateways keep working, and this "+
+			"already enrolled. Nothing running is affected, existing gateways keep working, and this "+
 			"refusal applies only to enrolling a new one. To add another: upgrade the licence, or revoke "+
-			"a gateway you no longer use to free a slot. Your join token is still valid — retry with it "+
+			"a gateway you no longer use to free a slot. Your join token is still valid, retry with it "+
 			"once there is room.",
 		tier, ceiling, unit, live, verb)
 }
@@ -500,7 +500,7 @@ func (s *Service) Enroll(ctx context.Context, rawToken, csrPEM, nodeName, agentV
 		// and issues a new one, rather than retrying into the same wall with the same secret.
 		if RefuseUnownedEnrolment(tok.IssuedBy.Valid) {
 			return apierr.New(422, "enrolment_owner_required",
-				"this join token records no issuer, so the agent it enrols could not be attributed to a person — "+
+				"this join token records no issuer, so the agent it enrols could not be attributed to a person, "+
 					"issue a new join token and enrol with that")
 		}
 

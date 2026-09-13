@@ -287,10 +287,10 @@ export function revokeConsequence(
   nodeId: string,
 ): string {
   const permanent =
-    "This cannot be undone \u2014 a revoked gateway is never active again.";
+    "This cannot be undone, a revoked gateway is never active again.";
   if (counts === null)
     return (
-      `${permanent} The devices homed here could not be counted \u2014 if any are, ` +
+      `${permanent} The devices homed here could not be counted, if any are, ` +
       `the revoke will be refused until they are moved to another gateway.`
     );
   const n = counts[nodeId] ?? 0;
@@ -332,7 +332,7 @@ export function transferConsequence(
   if (!crossSite) return base;
   return (
     `${base} The destination is in a DIFFERENT SITE, and site-scoped policy is evaluated against a ` +
-    `device's gateway \u2014 so the rules that apply to ${count === 1 ? "this device" : "these devices"} ` +
+    `device's gateway, so the rules that apply to ${count === 1 ? "this device" : "these devices"} ` +
     `will change, and what ${count === 1 ? "it" : "they"} can reach may widen or narrow.`
   );
 }
