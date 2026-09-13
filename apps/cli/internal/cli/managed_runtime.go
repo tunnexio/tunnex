@@ -311,10 +311,14 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 			}
 			return ManagedAgentConfig{}, ErrRuntimeUnauthorized
 		}
-		// Any non-401 proves the candidate authenticated; promotion happens in
-		// the auth transaction even if a later edition/handler gate refuses.
-		_ = os.Remove(previousPath)
-		_ = os.Remove(s.credentialPath + ".candidate")
+		// A crash can leave .previous durable before the active file switches.
+		// Authentication with that previous credential does not prove promotion;
+		// keep the prepared candidate so the same server revision can retry.
+		// Unknown HTTP outcomes also retain the recovery material.
+		if s.credential != previous && (resp.JSON200 != nil || resp.StatusCode() == http.StatusNoContent) {
+			_ = os.Remove(previousPath)
+			_ = os.Remove(s.credentialPath + ".candidate")
+		}
 	}
 	if resp.JSON200 != nil && resp.JSON200.CredentialRotationRevision != nil {
 		resp, err = s.rotateCredential(ctx, applied, version, *resp.JSON200.CredentialRotationRevision)
@@ -759,8 +763,10 @@ func (s *managedRuntimeSource) rotateCredential(ctx context.Context, applied int
 		_ = os.Remove(candidatePath)
 		return nil, ErrRuntimeUnauthorized
 	}
-	_ = os.Remove(previousPath)
-	_ = os.Remove(candidatePath)
+	if resp.JSON200 != nil || resp.StatusCode() == http.StatusNoContent {
+		_ = os.Remove(previousPath)
+		_ = os.Remove(candidatePath)
+	}
 	return resp, nil
 }
 
