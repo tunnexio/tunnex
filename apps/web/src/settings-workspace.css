@@ -5,7 +5,7 @@
 .settings-navigation [role=tablist] { display:flex; flex-direction:column; gap:3px; position:static; padding:0; border:0; background:none; overflow:visible; }
 .settings-navigation [role=tab] { min-height:43px; padding:10px 14px; border:1px solid transparent; border-radius:7px; box-shadow:none; }
 .settings-navigation [role=tab] span { font-size:13px; font-weight:450; }
-.settings-navigation [role=tab][aria-selected=true] { background:linear-gradient(135deg,#20252d,#14171c); border-color:#333c48; box-shadow:inset 2px 0 0 var(--tnx-focus); }
+.settings-navigation [role=tab][aria-selected=true] { background:var(--tnx-surface-inset); border-color:var(--tnx-border); box-shadow:inset 2px 0 0 var(--tnx-focus); }
 .settings-navigation #danger-tab { margin-top:20px; border-top:1px solid var(--tnx-divider); border-radius:0; }
 .settings-search-empty { font-size:12px; color:var(--tnx-text-secondary); padding:12px 0; }
 .settings-content { display:flex; flex-direction:column; gap:16px; min-width:0; }

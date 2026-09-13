@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { fireEvent, render, screen, within, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, within, cleanup, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import {
   Badge,
@@ -110,7 +110,7 @@ describe("Modal — complete keyboard dialog behaviour", () => {
     );
   }
 
-  it("moves focus inside, closes with Escape, and restores the opener", () => {
+  it("moves focus inside, closes with Escape, and restores the opener", async () => {
     render(<Harness />);
     const opener = screen.getByRole("button", { name: "Open revoke dialog" });
     opener.focus();
@@ -121,10 +121,10 @@ describe("Modal — complete keyboard dialog behaviour", () => {
 
     fireEvent.keyDown(cancel, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(opener);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
-  it("returns to the opener even when the dialog field uses autoFocus", () => {
+  it("returns to the opener even when the dialog field uses autoFocus", async () => {
     render(
       <HarnessWithAutoFocus />,
     );
@@ -136,7 +136,7 @@ describe("Modal — complete keyboard dialog behaviour", () => {
     expect(document.activeElement).toBe(siteName);
     fireEvent.keyDown(siteName, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(opener);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
   it("keeps Tab navigation within the dialog", () => {

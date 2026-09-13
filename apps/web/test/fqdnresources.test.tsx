@@ -61,7 +61,7 @@ describe("FQDN resource operator index", () => {
     expect(screen.queryByText("Review prototype — not active")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Edit profiles" }));
     const dialog = screen.getByRole("dialog");
-    expect(dialog.firstElementChild?.className).toContain("max-w-2xl");
+    expect(dialog.className).toContain("max-w-2xl");
     fireEvent.click(within(dialog).getByRole("button", { name: "Add endpoint" }));
     expect(within(dialog).getByRole("button", { name: "Remove profile 1 endpoint 1" })).toBeTruthy();
     expect(within(dialog).getByLabelText("Profile 1 endpoint 1 IP").parentElement?.className).toContain("minmax(0,1fr)");

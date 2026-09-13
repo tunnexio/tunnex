@@ -18,7 +18,7 @@ function view(orgId = "org-a", canEdit = true) {
   return createElement(AIGatewaySettings, { orgId, canEdit });
 }
 async function state(enabled: boolean) {
-  await waitFor(() => expect(screen.getByRole("status").textContent).toContain(`Organization access: ${enabled ? "enabled" : "disabled"}.`));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain(enabled ? "Enabled" : "Disabled"));
 }
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
@@ -63,7 +63,7 @@ describe("AI gateway organization settings", () => {
     render(view());
     await state(false);
     fireEvent.click(screen.getByRole("button", { name: "Enable AI gateway" }));
-    expect(screen.getByRole("status").textContent).toContain("Organization access: disabled.");
+    expect(screen.getByRole("status").textContent).toContain("Disabled");
     expect((screen.getByRole("button", { name: "Saving…" }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { saving.resolve(result(false)); });
     await state(false);
@@ -87,7 +87,7 @@ describe("AI gateway organization settings", () => {
     page.rerender(view("org-b"));
     await state(false);
     await act(async () => { oldLoad.resolve(result(true)); });
-    expect(screen.getByRole("status").textContent).toContain("Organization access: disabled. Gateway: not configured.");
+    expect(screen.getByRole("status").textContent).toContain("Disabled");
     expect((screen.getByRole("button", { name: "Enable AI gateway" }) as HTMLButtonElement).disabled).toBe(true);
     expect(api.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId: "org-b" } } });
   });

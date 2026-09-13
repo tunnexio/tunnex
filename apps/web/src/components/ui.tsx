@@ -1,15 +1,16 @@
+import * as Dialog from "@radix-ui/react-dialog";
+import { cn } from "../lib/utils";
+import { Button as ShadcnButton } from "./ui/button";
 import { DateTimeInput } from "./DateTimeInput";
 import {
   cloneElement,
   Fragment,
   isValidElement,
-  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -57,47 +58,10 @@ export function Button({
    */
   size?: "default" | "sm";
 }) {
-  const pad =
-    size === "sm"
-      ? "min-h-8 px-2.5 py-1 text-xs"
-      : "min-h-9 px-3.5 py-1.5 text-sm";
-  const base = `inline-flex items-center justify-center rounded-md ${pad} font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400`;
-  // ⛔ THE PRIMARY BUTTON WAS UNREADABLE, PRODUCT-WIDE, AND THE PALETTE SWAP IS WHY.
-  //
-  // It was `bg-accent-500 text-white`. In the mono palette `--tnx-accent` is **#C9C9C4** — a LIGHT GREY — so
-  // every primary button in the app rendered WHITE TEXT ON LIGHT GREY. It was legible under the old violet
-  // accent (#7C5CFC) and stopped being legible the moment the palette was re-pointed at the handoff's mono
-  // set, because the class names did not change and nothing asserts contrast.
-  //
-  // A SEMANTIC NAME SURVIVES A PALETTE SWAP; THE CONTRAST IT ASSUMED DOES NOT. `accent` kept meaning
-  // "the accent", and the thing it pointed at went from dark-enough-for-white-text to far too light.
-  //
-  // THE FIX IS THE DESIGN'S OWN RECIPE (dc.html L449, the `+ Add site` button):
-  //   background rgba(255,255,255,.16) · border rgba(255,255,255,.4) · blur(10px)
-  //   shadow 0 4px 16px rgba(0,0,0,.4) · color #F5F5F5
-  // A 16%-white wash over a near-black page lands around #2F2F2F, so #F5F5F5 sits at roughly 12:1 — and it
-  // stays legible on the glass panels too, which is why the design uses a translucent fill rather than a
-  // solid one.
-  //
-  // ⚠ `backdrop-blur` makes an element a containing block for `position: fixed` descendants — the trap that
-  // clipped five modals inside `Card`. Safe here: a button has no fixed descendants. Do not lift this recipe
-  // onto a container without re-reading that law.
-  const variants = {
-    primary:
-      "border border-line bg-surface text-ink-heading shadow-sm hover:bg-surface-inset",
-    ghost: "border border-white/10 text-slate-200 hover:bg-white/5",
-    danger: "text-slate-400 hover:text-danger",
-    // The product-defining activation control is decisive, not decorative: a
-    // high-contrast solid action rather than a glow or gradient hero.
-    enforce:
-      "border border-white bg-white text-black shadow-[0_2px_10px_rgba(0,0,0,.28)] hover:bg-ink-emphasis",
-  } as const;
-  return (
-    <button
-      className={`${base} ${variants[variant]} ${className}`}
-      {...props}
-    />
-  );
+  const mappedVariant = { primary: "default", ghost: "outline", danger: "ghost", enforce: "default" } as const;
+  return <ShadcnButton variant={mappedVariant[variant]} size={size}
+    className={variant === "danger" ? `text-danger hover:text-danger ${className}` : className}
+    {...props} />;
 }
 
 export function Card({
@@ -147,7 +111,7 @@ export function Input({
   if (props.type === "datetime-local" || props.type === "date") return <DateTimeInput {...props} className={className} />;
   return (
     <input
-      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
+      className={cn("min-h-9 w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm text-ink-heading shadow-sm placeholder:text-ink-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50", className)}
       {...props}
     />
   );
@@ -192,7 +156,7 @@ export function Select({
 }) {
   return (
     <select
-      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
+      className={cn("min-h-9 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink-heading shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50", width === "auto" ? "w-auto min-w-[9rem]" : "w-full", className)}
       {...props}
     >
       {children}
@@ -232,108 +196,23 @@ export function Modal({
    */
   size?: "default" | "wide" | "workspace" | "enrollment";
 }) {
-  const headingId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
-  // Capture the opener during render, before a child input's `autoFocus` runs in
-  // the commit phase. Reading it in the effect is too late: the focused field
-  // then becomes the apparent opener and disappears with the dialog.
-  const returnFocusRef = useRef<HTMLElement | null>(
-    document.activeElement instanceof HTMLElement ? document.activeElement : null,
-  );
-
-  // F17 restores the complete dialog contract rather than bringing back Escape as a global
-  // listener: focus enters the panel, stays in the panel while it is open, and returns to the
-  // opener on dismissal. This lets every existing create/edit/confirm consumer benefit without
-  // each page inventing its own partial version.
-  useEffect(() => {
-    const panel = panelRef.current;
-    const firstFocusable = panel?.querySelector<HTMLElement>(
-      '[autofocus], button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    (firstFocusable ?? panel)?.focus();
-
-    return () => {
-      const opener = returnFocusRef.current;
-      if (opener?.isConnected) opener.focus();
-    };
-  }, []);
-
-  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onDismiss();
-      return;
-    }
-    if (event.key !== "Tab") return;
-
-    const panel = panelRef.current;
-    if (!panel) return;
-    const focusable = Array.from(
-      panel.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-    if (focusable.length === 0) {
-      event.preventDefault();
-      panel.focus();
-      return;
-    }
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  //
-  // ⛔ PORTALLED TO <body>, AND THIS IS NOT COSMETIC.
-  //
-  // `position: fixed` is relative to the VIEWPORT — unless an ancestor has `filter`, `transform`,
-  // `perspective`, `will-change` or `backdrop-filter`, any of which makes that ancestor the containing block.
-  // S14.4 gave `Card` the glass recipe, which includes `backdrop-filter` — and FIVE modals across FOUR screens
-  // render inside a Card. Every one of them silently stopped being viewport-positioned: the overlay was
-  // clipped to the card, and the card's own body sat on top of the modal's buttons, so clicks never landed.
-  //
-  // It surfaced as ONE Playwright click timing out with a Card listed as the intercepting element. It did not
-  // surface in the component tier at all — jsdom has no layout engine, so a containing-block change is
-  // invisible there, and a click-through of all twelve screens reported "nothing broken" because nothing
-  // crashed and no content was lost.
-  //
-  // A portal is the correct fix independent of the cause: an overlay's position must never depend on WHERE IN
-  // THE TREE it happens to be rendered.
-  return createPortal(
-    <div
-      className="tnx-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4"
-      data-placement={placement}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={headingId}
-      onClick={onDismiss}
-    >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className={`tnx-modal-panel flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal sm:max-h-[calc(100dvh-2rem)]`}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={onKeyDown}
-      >
-        <div className="flex shrink-0 items-center justify-between gap-3">
-          <h2 id={headingId} className={`text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}>{title}</h2>
-          {showClose && (
-            <button type="button" aria-label={`Close ${title}`} onClick={onDismiss} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35">×</button>
-          )}
-        </div>
-        <div className="tnx-modal-body mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
-        {actions && <div className="tnx-modal-actions mt-5 shrink-0 flex justify-end gap-2">{actions}</div>}
-      </div>
-    </div>,
-    document.body,
-  );
+  const opener = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  return <Dialog.Root open onOpenChange={(open) => { if (!open) onDismiss(); }}>
+    <Dialog.Portal>
+      <Dialog.Overlay className="tnx-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" data-placement={placement} onClick={(event) => { if (event.target === event.currentTarget) onDismiss(); }}>
+        <Dialog.Content aria-describedby={undefined}
+          onCloseAutoFocus={(event) => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus(); }}
+          className={cn("tnx-modal-panel flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-lg border border-line bg-surface p-6 shadow-lg focus:outline-none", size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md")}>
+          <div className="flex shrink-0 items-center justify-between gap-3">
+            <Dialog.Title className={cn("text-lg font-semibold tracking-tight", danger ? "text-danger" : "text-ink-heading")}>{title}</Dialog.Title>
+            {showClose && <Dialog.Close aria-label={`Close ${title}`} className="grid h-8 w-8 place-items-center rounded-md text-ink-secondary hover:bg-surface-inset focus-visible:ring-2 focus-visible:ring-focus">×</Dialog.Close>}
+          </div>
+          <div className="tnx-modal-body mt-4 min-h-0 overflow-y-auto text-sm text-ink-body">{children}</div>
+          {actions && <div className="tnx-modal-actions mt-6 flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>}
+        </Dialog.Content>
+      </Dialog.Overlay>
+    </Dialog.Portal>
+  </Dialog.Root>;
 }
 
 // ── S14.3 SLICE A — STRUCTURAL PRIMITIVES, SEMANTIC BY CONSTRUCTION ─────────────────────────────────────────

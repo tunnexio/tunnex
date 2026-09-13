@@ -102,17 +102,10 @@ body {
 /* One structural card material across every product workspace. Inputs, menus, modals, and semantic alerts
  * intentionally keep their own surfaces because they carry different interaction/state meaning. */
 .tnx-card-surface {
-  border: 1px solid rgba(176, 192, 215, .12);
-  border-radius: 12px;
-  background:
-    linear-gradient(155deg, rgba(207, 222, 245, .045), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, .015), transparent 65%),
-    var(--tnx-surface);
-  box-shadow:
-    inset 0 1px 0 rgba(226, 235, 250, .07),
-    inset 0 -1px 0 rgba(0, 0, 0, .22),
-    0 3px 5px rgba(0, 0, 0, .18),
-    0 14px 32px rgba(0, 0, 0, .24);
+  border: 1px solid var(--tnx-border);
+  border-radius: 8px;
+  background: var(--tnx-surface);
+  box-shadow: none;
 }
 
 /* ⛔ THE FLOWING LINK — the handoff's `.tnx-edge`, verbatim geometry (dc.html L64).
@@ -227,7 +220,7 @@ body {
 
 /* Portalled dialogs own their typography; page-scoped workspace styles cannot reach them. */
 .tnx-modal-overlay { background:rgba(0,0,0,.76); }
-.tnx-modal-panel { padding:28px; border-color:var(--tnx-border); background:linear-gradient(145deg,rgba(255,255,255,.035),transparent 40%),var(--tnx-surface); box-shadow:0 32px 100px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.07); }
+.tnx-modal-panel { padding:28px; border-color:var(--tnx-border); background:var(--tnx-surface); box-shadow:0 16px 48px rgba(0,0,0,.4); }
 .tnx-modal-panel h2 { font-size:22px; line-height:1.3; letter-spacing:-.025em; }
 .tnx-modal-body { margin-top:24px; font-size:14px; line-height:1.65; color:var(--tnx-text-body); }
 .tnx-modal-body .text-cell,.tnx-modal-body .text-sm { font-size:14px; line-height:1.65; }
