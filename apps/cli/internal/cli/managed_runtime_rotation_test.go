@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -440,4 +441,99 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestManagedRuntimePreservesPreparedCandidateBeforeLocalSwitch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "runtime-credential")
+	old, candidate := "tnx_runtime_old_restart", "tnx_runtime_prepared_restart"
+	for file, value := range map[string]string{path: old, path + ".previous": old, path + ".candidate": candidate} {
+		if err := WriteFileAtomic0600(file, []byte(value+"\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepared := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" {
+			var body api.AgentCredentialCandidate
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			expected := sha256.Sum256([]byte(candidate))
+			if auth != "Bearer "+old || body.TokenHash != fmt.Sprintf("%x", expected) {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+			prepared = true
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if auth == "Bearer "+candidate {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"revision":1,"device_id":"11111111-1111-1111-1111-111111111111","org_id":"22222222-2222-2222-2222-222222222222","address":"10.99.0.7/32","gateway_endpoint":"127.0.0.1:51820","gateway_public_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","allowed_ips":[],"dns":[],"persistent_keepalive":25,"credential_rotation_revision":2}`))
+	}))
+	defer server.Close()
+	state := ManagedRuntimeState{Server: server.URL, ClientVersion: "test", WireGuardRevision: 1}
+	source, err := newManagedRuntimeSource(server.URL, old, path, filepath.Join(dir, "runtime.conf"), filepath.Join(dir, "state.json"), &state, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = source.Poll(context.Background(), 1, "test"); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := loadRuntimeCredential(path)
+	if err != nil || stored != candidate || !prepared {
+		t.Fatal("prepared candidate not recovered", err)
+	}
+	for _, suffix := range []string{".previous", ".candidate"} {
+		if _, err := os.Stat(path + suffix); !os.IsNotExist(err) {
+			t.Fatal("recovery scratch not cleaned", suffix, err)
+		}
+	}
+}
+
+func TestManagedRuntimeRotationRetainsRecoveryOnUnknownHTTP(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "credential")
+			old := "tnx_runtime_previous"
+			if err := WriteFileAtomic0600(path, []byte(old)); err != nil {
+				t.Fatal(err)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+			state := ManagedRuntimeState{Server: server.URL, ClientVersion: "test", WireGuardRevision: 1}
+			source, err := newManagedRuntimeSource(server.URL, old, path, filepath.Join(dir, "runtime.conf"), filepath.Join(dir, "state.json"), &state, 0, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = source.rotateCredential(context.Background(), 1, "test", 2); err != nil {
+				t.Fatal(err)
+			}
+			for _, suffix := range []string{".candidate", ".previous"} {
+				if _, err := os.Stat(path + suffix); err != nil {
+					t.Fatal("lost recovery material", suffix, err)
+				}
+			}
+			if _, err = source.Poll(context.Background(), 1, "test"); err == nil {
+				t.Fatal("unknown failure reported as success")
+			}
+			for _, suffix := range []string{".candidate", ".previous"} {
+				if _, err := os.Stat(path + suffix); err != nil {
+					t.Fatal("restart lost recovery material", suffix, err)
+				}
+			}
+		})
+	}
 }
