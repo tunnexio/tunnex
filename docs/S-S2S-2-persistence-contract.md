@@ -1,6 +1,6 @@
 # S2S-2 — Persistence and lifecycle contract
 
-Status: proposed, 2026-09-24. The [foundation](S-S2S-2-decision-gates.md) is approved; the decisions below make its remaining lifecycle gate reviewable. No migration, IPsec endpoint or runtime is introduced by this paper.
+Status: implementation proceeding after Founder's 2026-09-24 instruction to continue development, following the reviewed proposal and local CP bring-up. The [foundation](S-S2S-2-decision-gates.md) and all-tier decision remain in force. The first bounded increment below implements only relational storage invariants; public API and runtime acceptance remain separate work.
 
 ## Observable outcome and implementation boundary
 
@@ -8,7 +8,7 @@ A verified owner/admin can store and inspect a redacted, disabled two-tunnel con
 
 Implement storage and disabled configuration first. Activation, gateway delivery, rotation and acknowledgements remain unavailable until their actual runtime paths exist and pass the corresponding tests. Do not expose a working-looking Connect action backed only by storage. No provider-support claim follows from these records.
 
-The capability requirement for disabled creation, stable organization lock and node-deletion guard below clarify this proposal; they do not mark its lifecycle or persistence implementation as approved.
+The reviewed capability requirement for disabled creation, stable organization lock and node-deletion guard are part of this implementation direction. They do not imply that a runtime or public mutation endpoint already exists.
 
 ## P1 — Ownership and records
 
@@ -90,4 +90,22 @@ Concrete review artifact: `/private/tmp/s2s-foundation-db/compose.yaml`.
 - Before creating, refuse any pre-existing object with that project/name and verify the port is free. Before each DB-capable test command, print and verify project, container project/service labels, network project label, loopback port and tmpfs mount; construct the test DSN only from this verified fixture. Never inherit an arbitrary DSN.
 - Tests may create/drop only scratch databases inside this new container. Container removal after tests needs an explicit teardown decision; no volume pruning or default-project command is part of the plan. Tmpfs data is disposable and is lost if the container stops.
 
-The Compose file is prepared and statically checked only. Database creation and lifecycle implementation await disposition of this paper and the bounded test resource plan.
+The dedicated fixture was started for the continued development instruction, separately from the running local review CP. Project/container/network labels, loopback port and tmpfs storage are checked before each DB-capable test command. No migration test runs against the review CP or existing default databases.
+
+## Current bounded increment — relational storage invariants
+
+Migration 0158 introduces organization settings, connection identities, two tunnel slots and sealed secret storage. Only `disabled` and terminal `deleted` connection states are representable in this increment. There is no delivered state, enabled state, secret-delivery query, observation or acknowledgement implementation. A disabled record therefore means never delivered; deletion requires retaining its identity/revision/history, releasing its live site/gateway references and removing children/secrets atomically.
+
+Composite ownership references protect live sites and gateway bindings. Deferred constraints require exactly two tunnel/secret pairs for disabled records and none for deleted records. Immutable identity/assignment and exact successor revisions prevent raw SQL from silently changing ownership or resurrecting tombstones. Organization-row serialization and deletion checks cover the absent-setting case. Revocation remains possible; physical node deletion/unbinding remains blocked by live references. Rollback refuses populated tables before destructive DDL.
+
+This is dormant schema: no production service writes it yet. Opt-in/capability acceptance, verified-manager checks, atomic redacted audit writes and scoped HTTP 409 mapping belong to the following service/API increment. Existing services may currently surface a database constraint failure as a generic error if records are inserted manually; no UI can create such records in this increment. SQL tests are evidence for relational integrity, not for those unimplemented product gates.
+
+Acceptance: red-before-code isolated PostgreSQL regressions; up/down/up; populated rollback refusal; direct ownership and child-cardinality attacks; concurrent destructive changes; tombstone/secret withdrawal; WireGuard resource preservation; deterministic SQLC generation; API build and independent review. Runtime and packet-path gates remain outstanding.
+
+### Relational increment evidence — 2026-09-24
+
+- Initial real-PostgreSQL regression failed on absent migration 158 before implementation (`/private/tmp/s2s-ipsec-schema-red.log`). Final isolated suite passes, including empty up/down/up, populated rollback refusal, complete-shape ownership/bounds attacks, atomic two-tunnel creation/finalization, immutable identities and retained tombstones, revocation, and preserved WireGuard sites.
+- Concurrency tests observe actual blocked database sessions before releasing the other transaction, then require the resumed statement to refuse. A separately demonstrated Repeatable Read stale-snapshot deletion bypass failed before the fix (`/private/tmp/s2s-ipsec-rr-red.log`). IPsec create/setting operations now version the locked organization row, so older-snapshot deletion gets a serialization refusal. The existing organization timestamp trigger means these IPsec configuration operations also update organization `updated_at`; WireGuard-only operations gain no such write.
+- Five independent guard mutations were behaviorally killed: gateway ownership FK, organization deletion refusal, exact-two children, terminal hard-delete refusal and revision successor. Source was restored byte-for-byte after each; restored up-migration SHA256 `b5d164f082a5384ca838ee679f3e7731b1f2db1481e943b9f95598acabfa60df`. This is bounded mutation evidence, not exhaustive coverage. Log: `/private/tmp/s2s-ipsec-schema-mutations.log`.
+- Restored migration suite passes with Go race detector; database package tests without a DSN also pass (unrelated integration tests skip, not database proof). API and migration binaries build. Cached SQLC v1.31.1 generation is identical across two runs; only the four additive models change. Independent schema/test review has no remaining blocking finding within this storage-only scope.
+- After these gates, the owned local review CP `tunnexs2scp0924` migrated to version 158, dirty=false, and its API was refreshed. Health and Vite-proxied meta reads pass. The disposable migration fixture is separate, with tmpfs storage; default databases were untouched. No IPsec records were seeded into the review CP, and no activation or live traffic claim follows.
