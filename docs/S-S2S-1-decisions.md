@@ -21,3 +21,17 @@ Status: initial development authorized by Founder on 2026-09-24; paper precedes 
 - Typecheck, focused UI verification and production build; visual acceptance remains a separate gate before slice completion.
 
 This is the first increment of S2S-1, not completion of the whole epic or a new two-network creation wizard. Endpoint call-site and destructive-action census is unchanged: this increment adds only navigation, no mutating endpoints or destructive verbs.
+
+## First increment evidence — 2026-09-24
+
+Implementation branch: `story/site-to-site-connectivity`, fresh from `origin/main` at `1a81f8fc`; approved paper cherry-picked before product edits.
+
+- Added authenticated application route and shared navigation entry; command palette consumes that same navigation registry.
+- Reused existing network setup, Sites, access policy and routed range pages. No new APIs, secrets or packet-path changes.
+- Self-review corrected overly broad access wording: the landing page asks operators to review policy rather than claiming every edition automatically denies newly added networks.
+- TypeScript typecheck passed. Setup, command-palette, navigation-count and navigation-collapse suites: 44 tests passed after updating the site-search expectation for the additional destination.
+- Vite production build passed; existing bundle-size warning remains.
+- Actual component rendered in local Browser at desktop and 390px mobile; headings, method explanations and links inspected. Mobile document width equaled viewport width (390px); no horizontal overflow. This is a component preview, not authenticated full-application or live-network proof.
+- Temporary preview files are not part of the product commit. Full application visual review, independent review and user visual acceptance remain pending; S2S-1 and the epic are not declared complete.
+
+Next increment: existing-network visibility and permission-aware setup entry, preserving current hub/spoke topology; finish S2S-1 review before starting IPsec schema/runtime work.

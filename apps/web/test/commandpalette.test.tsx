@@ -104,7 +104,7 @@ describe("filtering narrows, and says so when nothing matches", () => {
     const labels = within(list)
       .getAllByRole("option")
       .map((o) => o.textContent);
-    expect(labels).toEqual(["Sites"]);
+    expect(labels).toEqual(["Sites", "Site-to-site"]);
   });
 
   it("an unmatched query says NO MATCH rather than rendering an empty box", () => {

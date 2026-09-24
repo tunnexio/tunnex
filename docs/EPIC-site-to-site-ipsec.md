@@ -2,7 +2,7 @@
 
 Status: **Founder authorized plan publication and development start on 2026-09-24. Initial slice: customer navigation and method selection using existing WireGuard surfaces. IPsec design gates remain deferred to S2S-2.**
 Date: 2026-09-24. Baseline: freshly fetched `origin/main`, `1a81f8fc`.
-Planning branch: `story/site-to-site-ipsec-plan`.
+Planning branch: `story/site-to-site-ipsec-plan`. Implementation branch: `story/site-to-site-connectivity`, created fresh from the latest-main baseline.
 
 ## Outcome and boundaries
 

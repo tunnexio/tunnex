@@ -1,4 +1,5 @@
 import NetworkSetup from "./pages/NetworkSetup";
+import SiteToSite from "./pages/SiteToSite";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "./brand";
@@ -177,6 +178,7 @@ function ProductApp() {
             <Route path="/gateways" element={<Gateways />} />
             <Route path="/gateways/:gatewayId" element={<GatewayDetail />} />
             <Route path="/sites" element={<Sites />} />
+            <Route path="/site-to-site" element={<SiteToSite />} />
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
             <Route path="/agents" element={<AgentsIndex />} />
