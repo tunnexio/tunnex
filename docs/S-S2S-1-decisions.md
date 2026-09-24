@@ -35,3 +35,13 @@ Implementation branch: `story/site-to-site-connectivity`, fresh from `origin/mai
 - Temporary preview files are not part of the product commit. Full application visual review, independent review and user visual acceptance remain pending; S2S-1 and the epic are not declared complete.
 
 Next increment: existing-network visibility and permission-aware setup entry, preserving current hub/spoke topology; finish S2S-1 review before starting IPsec schema/runtime work.
+
+## Second increment — existing site inventory
+
+Reuse generated Site/Member types and existing organization/auth contexts. Read existing sites and current membership only; no connection records or new endpoints. Withdraw old-org rows synchronously on organization change and discard late replies. Failed site reads show retry, never an empty network list. Unknown membership hides setup action; verified managers retain existing setup entry. The preview uses explicit synthetic data, labeled demo data, with empty/error/member/loading states. It must never claim to show production inventory.
+
+## Third increment — read-only two-network review
+
+LOCKED within existing read-only UI scope: choose two distinct existing sites locally, then read their subnet lists and the organization's gateway list using existing endpoints. Selection does not create a tunnel, edit routes, add a policy, or promise a direct link. Gateway records and approved ranges are configuration facts, not traffic proof. Show failed reads separately from empty results. Limit subnet reads to the selected sites; discard obsolete responses and reset selection on organization/user/retry identity changes. Reuse existing Sites and Access destinations for mutations. Preview uses explicit fixtures with separately marked unavailable data.
+
+Independent review of the second increment reported two P2 findings held for disposition: membership-read errors need an actionable retry distinct from lack of permission; organization discovery failure needs actual provider/page reload rather than local-only retry. No finding is marked resolved until disposition and regression evidence.
