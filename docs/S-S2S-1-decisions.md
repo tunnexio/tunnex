@@ -45,3 +45,15 @@ Reuse generated Site/Member types and existing organization/auth contexts. Read 
 LOCKED within existing read-only UI scope: choose two distinct existing sites locally, then read their subnet lists and the organization's gateway list using existing endpoints. Selection does not create a tunnel, edit routes, add a policy, or promise a direct link. Gateway records and approved ranges are configuration facts, not traffic proof. Show failed reads separately from empty results. Limit subnet reads to the selected sites; discard obsolete responses and reset selection on organization/user/retry identity changes. Reuse existing Sites and Access destinations for mutations. Preview uses explicit fixtures with separately marked unavailable data.
 
 Independent review of the second increment reported two P2 findings held for disposition: membership-read errors need an actionable retry distinct from lack of permission; organization discovery failure needs actual provider/page reload rather than local-only retry. No finding is marked resolved until disposition and regression evidence.
+
+Founder disposition (2026-09-24): apply both recovery fixes. Membership read failure retains read-only site inventory with a permission-specific retry; organization discovery failure offers explicit page reload. Regression tests first reproduce both missing recovery paths; verification downgrade must immediately remove setup controls.
+
+## Inventory and pair review evidence — 2026-09-24
+
+- Implemented scoped site/member reads and selected-pair gateway/subnet reads using existing GET endpoints only. No schema, API contract, permission or packet-path change.
+- Both approved recovery findings have regression coverage. The original two failing recovery cases passed after the fixes; a further user-switch case checks selector reset and rejection of a previous user's late subnet response.
+- Screen census now explicitly accounts for SiteToSite with wiring and failure evidence: 15 covered + 12 pending = 27 accountable screens. No exemption or reduced assertion.
+- Final local gates: TypeScript passed; 13 focused tests passed; full Vitest passed 1,559 tests across 131 files; Vite production build passed with the existing large-chunk warning. No backend/DB gate was run for this frontend-only increment.
+- Independent static review found no actionable findings in identity isolation, partial failures, destination links, contract mappings and configuration/traffic wording.
+- Browser checked synthetic selected-pair configuration, approved/pending ranges, missing gateway, permission retry and actual page reload. Keyboard focus proceeds from the second selector to the gateway link. At 390px, document width equals viewport width; mobile content and path guidance were inspected.
+- Preview is synthetic component evidence, not an authenticated control-plane walk or live-network proof. User visual acceptance and full S2S-1 acceptance remain pending. The local `.s2s-preview` fixture is excluded from publication.
