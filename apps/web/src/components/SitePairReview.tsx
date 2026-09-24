@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api, loadOne, type Loaded, type Node, type Site, type SiteSubnet } from "../lib/api";
-import { Button, Card, Field, Select } from "./ui";
+import { policyHealthBadge, siteLinkNote } from "../lib/healthview";
+import { Badge, Button, Card, Field, Select } from "./ui";
 
 export function SitePairReview({ sites, renderDetails }: {
   sites: Site[];
@@ -86,11 +87,17 @@ function SiteConfiguration({ site, nodes, ranges }: { site: Site; nodes: Loaded<
     <h3 className="font-semibold">{site.name}</h3>
     <p className="text-sm text-ink-secondary">WireGuard · configured site</p>
     <h4 className="font-semibold">Gateways</h4>
-    {!nodes.ok ? <p role="alert">Could not load gateways. {nodes.error}</p> : gateways.length === 0 ? <p>No gateway assigned.</p> : <ul className="space-y-2">{gateways.map(node => <li key={node.id}>
+    {!nodes.ok ? <p role="alert">Could not load gateways. {nodes.error}</p> : gateways.length === 0 ? <p>No gateway assigned.</p> : <ul className="space-y-2">{gateways.map(node => {
+      const health = policyHealthBadge(node);
+      const note = node.status === "revoked" ? null : siteLinkNote(node);
+      return <li key={node.id}>
       <Link className="underline underline-offset-4" to={`/sites?site=${encodeURIComponent(site.id)}&gateway=${encodeURIComponent(node.id)}`}>{node.name}</Link>
       <span> · {node.status === "revoked" ? "Revoked" : "Registered"}</span>
       <p className="text-sm text-ink-secondary">Last report: {node.last_seen_at && Number.isFinite(Date.parse(node.last_seen_at)) ? new Date(node.last_seen_at).toLocaleString() : "Not reported"}</p>
-    </li>)}</ul>}
+      {health && <p className="text-sm [&>.tnx-badge]:max-w-full [&>.tnx-badge]:!whitespace-normal"><span>Reported status: </span><Badge tone={health.tone}>{health.label}</Badge></p>}
+      {note && <p className="text-sm text-ink-secondary"><span>Reported peer note: </span><span>site link down: {note.peer}{note.demoted && " (demoted)"}</span></p>}
+    </li>;
+    })}</ul>}
     <h4 className="font-semibold">Network ranges</h4>
     {!ranges.ok ? <p role="alert">Could not load ranges. {ranges.error}</p> : ranges.data.length === 0 ? <p>No network ranges advertised.</p> : <ul className="space-y-2">{ranges.data.map(range => <li key={range.id}><span className="font-mono">{range.cidr}</span> · {range.status === "approved" ? "Approved" : "Pending approval"}</li>)}</ul>}
     <Link className="inline-block underline underline-offset-4" to={`/sites?site=${encodeURIComponent(site.id)}`}>View site settings</Link>
