@@ -1029,6 +1029,47 @@ type Invitation struct {
 	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
+type IpsecConnection struct {
+	ID                      uuid.UUID          `json:"id"`
+	OrgID                   uuid.UUID          `json:"org_id"`
+	Name                    string             `json:"name"`
+	SiteID                  pgtype.UUID        `json:"site_id"`
+	GatewayNodeID           pgtype.UUID        `json:"gateway_node_id"`
+	HistoricalSiteID        uuid.UUID          `json:"historical_site_id"`
+	HistoricalGatewayNodeID uuid.UUID          `json:"historical_gateway_node_id"`
+	DesiredRevision         int64              `json:"desired_revision"`
+	DesiredIntent           string             `json:"desired_intent"`
+	DeletedAt               pgtype.Timestamptz `json:"deleted_at"`
+	FinalizedAt             pgtype.Timestamptz `json:"finalized_at"`
+	CreatedAt               time.Time          `json:"created_at"`
+	UpdatedAt               time.Time          `json:"updated_at"`
+}
+
+type IpsecOrgSetting struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	Enabled   bool      `json:"enabled"`
+	Revision  int64     `json:"revision"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type IpsecTunnel struct {
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	ConnectionID   uuid.UUID `json:"connection_id"`
+	Slot           int16     `json:"slot"`
+	SecretRevision int64     `json:"secret_revision"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type IpsecTunnelSecret struct {
+	TunnelID       uuid.UUID `json:"tunnel_id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	ConnectionID   uuid.UUID `json:"connection_id"`
+	SecretRevision int64     `json:"secret_revision"`
+	SealedPsk      string    `json:"sealed_psk"`
+}
+
 type K8sBaseAuthorityAckReceipt struct {
 	DeliveryID         uuid.UUID `json:"delivery_id"`
 	OrgID              uuid.UUID `json:"org_id"`
