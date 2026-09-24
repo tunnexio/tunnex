@@ -132,9 +132,9 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 					if state.ReqID != t.ReqID {
 						return ErrRuntimeController
 					}
-					if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress && state.SPI == child.SPIOut {
+					if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress && state.SPI == child.SPIOut && (state.Direction == "" || state.Direction == "out") {
 						out = true
-					} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress && state.SPI == child.SPIIn {
+					} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress && state.SPI == child.SPIIn && (state.Direction == "" || state.Direction == "in") {
 						in = true
 					} else {
 						return ErrRuntimeController

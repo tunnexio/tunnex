@@ -1,0 +1,30 @@
+src 10.10.0.0/24 dst 10.20.0.0/24
+dir out priority 375423
+tmpl src 198.19.240.10 dst 198.19.240.21
+proto esp spi 0xc837ea48 reqid 4015348071 mode tunnel
+if_id 0xef555967
+src 10.20.0.0/24 dst 10.10.0.0/24
+dir fwd priority 375423
+tmpl src 198.19.240.21 dst 198.19.240.10
+proto esp reqid 4015348071 mode tunnel
+if_id 0xef555967
+src 10.20.0.0/24 dst 10.10.0.0/24
+dir in priority 375423
+tmpl src 198.19.240.21 dst 198.19.240.10
+proto esp reqid 4015348071 mode tunnel
+if_id 0xef555967
+src 10.10.0.0/24 dst 10.20.0.0/24
+dir out priority 375423
+tmpl src 198.19.240.10 dst 198.19.240.20
+proto esp spi 0xc97b4b1c reqid 3462773392 mode tunnel
+if_id 0xce65ba90
+src 10.20.0.0/24 dst 10.10.0.0/24
+dir fwd priority 375423
+tmpl src 198.19.240.20 dst 198.19.240.10
+proto esp reqid 3462773392 mode tunnel
+if_id 0xce65ba90
+src 10.20.0.0/24 dst 10.10.0.0/24
+dir in priority 375423
+tmpl src 198.19.240.20 dst 198.19.240.10
+proto esp reqid 3462773392 mode tunnel
+if_id 0xce65ba90

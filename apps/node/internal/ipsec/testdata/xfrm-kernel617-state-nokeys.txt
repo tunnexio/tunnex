@@ -1,0 +1,32 @@
+src 198.19.240.10 dst 198.19.240.21
+proto esp spi 0xc837ea48 reqid 4015348071 mode tunnel
+replay-window 0 flag af-unspec
+auth-trunc hmac(sha256) <<Keys hidden>> 128
+enc cbc(aes) <<Keys hidden>>
+anti-replay context: seq 0x0, oseq 0x0, bitmap 0x00000000
+if_id 0xef555967
+dir out
+src 198.19.240.21 dst 198.19.240.10
+proto esp spi 0xc3873a12 reqid 4015348071 mode tunnel
+replay-window 32 flag af-unspec
+auth-trunc hmac(sha256) <<Keys hidden>> 128
+enc cbc(aes) <<Keys hidden>>
+anti-replay context: seq 0x0, oseq 0x0, bitmap 0x00000000
+if_id 0xef555967
+dir in
+src 198.19.240.10 dst 198.19.240.20
+proto esp spi 0xc97b4b1c reqid 3462773392 mode tunnel
+replay-window 0 flag af-unspec
+auth-trunc hmac(sha256) <<Keys hidden>> 128
+enc cbc(aes) <<Keys hidden>>
+anti-replay context: seq 0x0, oseq 0x0, bitmap 0x00000000
+if_id 0xce65ba90
+dir out
+src 198.19.240.20 dst 198.19.240.10
+proto esp spi 0xc81e39f2 reqid 3462773392 mode tunnel
+replay-window 32 flag af-unspec
+auth-trunc hmac(sha256) <<Keys hidden>> 128
+enc cbc(aes) <<Keys hidden>>
+anti-replay context: seq 0x0, oseq 0x0, bitmap 0x00000000
+if_id 0xce65ba90
+dir in
