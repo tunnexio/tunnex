@@ -57,3 +57,9 @@ Founder disposition (2026-09-24): apply both recovery fixes. Membership read fai
 - Independent static review found no actionable findings in identity isolation, partial failures, destination links, contract mappings and configuration/traffic wording.
 - Browser checked synthetic selected-pair configuration, approved/pending ranges, missing gateway, permission retry and actual page reload. Keyboard focus proceeds from the second selector to the gateway link. At 390px, document width equals viewport width; mobile content and path guidance were inspected.
 - Preview is synthetic component evidence, not an authenticated control-plane walk or live-network proof. User visual acceptance and full S2S-1 acceptance remain pending. The local `.s2s-preview` fixture is excluded from publication.
+
+## Fourth increment — existing reported gateway diagnostics
+
+Within the approved read-only visibility scope, reuse `policyHealthBadge` and `siteLinkNote` from the existing health projection. Show reported degradation and subordinate peer notes next to the recorded gateway identity and last report; do not turn an absent badge into a healthy/connected verdict. Reuse existing badge styling. Revoked gateways retain their revoked state and suppress repair diagnostics, including subordinate notes. No liveness timer, new endpoint, topology inference, permission or persistence change.
+
+Acceptance: active site-link-down and unknown degradation retain existing labels; revoked gateways show no repair diagnosis; demoted-peer note stays separate from the headline; absent diagnostics do not claim health. Preview degraded/revoked/missing-data states and long names at mobile width. Keep the traffic-not-verified statement and the existing site/access destinations.
