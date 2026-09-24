@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { Site } from "../src/lib/api";
+import type { Node, Site } from "../src/lib/api";
 const mock = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("../src/lib/api", async original => ({ ...await original<object>(), api: { GET: mock.get } }));
 import { SitePairReview, SitePairDetails, SitePairConfigurationView } from "../src/components/SitePairReview";
@@ -54,4 +54,54 @@ it("discards old pair results when selection changes", async () => {
   await act(async()=>resolveA({data:[{id:'old',site_id:'a',cidr:'10.99.0.0/24',status:'approved'}]}));
   expect(screen.queryByText('10.99.0.0/24')).toBeNull();
   expect(screen.queryByRole('region',{name:'Office configuration'})).toBeNull();
+});
+
+function renderGateway(diagnostics: Partial<Node> = {}) {
+  const gateway = { id: "gateway", name: "Office gateway", site_id: a.id, status: "active", ...diagnostics } as Node;
+  render(<MemoryRouter><SitePairConfigurationView first={a} second={b} onRetry={() => {}} data={{
+    nodes: { ok: true, data: [gateway] },
+    firstRanges: { ok: true, data: [] },
+    secondRanges: { ok: true, data: [] },
+  }} /></MemoryRouter>);
+  return within(screen.getByRole("region", { name: "Office configuration" }));
+}
+
+it("shows the reported site-link diagnosis beside a registered gateway", () => {
+  const office = renderGateway({ policy_degraded: true, policy_degraded_kind: "site_link_down" });
+  expect(office.getByText("site link down")).toBeTruthy();
+  expect(office.getByText(/Registered/)).toBeTruthy();
+  expect(screen.getByText(/Traffic between these networks has not been verified/)).toBeTruthy();
+});
+
+it("preserves a generic degraded diagnosis for a server kind unknown to this client", () => {
+  const office = renderGateway({ policy_degraded: true, policy_degraded_kind: "future_server_kind" as Node["policy_degraded_kind"] });
+  expect(office.getByText("degraded")).toBeTruthy();
+});
+
+it("does not infer health or connectivity from absent gateway diagnostics", () => {
+  const office = renderGateway();
+  expect(office.getByText(/Registered/)).toBeTruthy();
+  expect(office.queryByText(/healthy|connected|degraded|site link down/i)).toBeNull();
+  expect(office.getByText("Last report: Not reported")).toBeTruthy();
+});
+
+it("suppresses both headline and subordinate repair diagnostics for revoked gateways", () => {
+  const office = renderGateway({ status: "revoked", policy_degraded: true, policy_degraded_kind: "site_link_down", site_link_note_peer: "old-hub", site_link_note_demoted: true });
+  expect(office.getByText(/Revoked/)).toBeTruthy();
+  expect(office.queryByText(/Registered|site link down|old-hub|demoted|healthy/i)).toBeNull();
+});
+
+it("keeps the demoted peer note distinct from the reported headline diagnosis", () => {
+  const office = renderGateway({ policy_degraded: true, policy_degraded_kind: "apply_failing", site_link_note_peer: "old-hub", site_link_note_demoted: true });
+  const headline = office.getByText("apply failing");
+  const note = office.getByText("site link down: old-hub (demoted)");
+  expect(headline).not.toBe(note);
+  expect(headline.contains(note)).toBe(false);
+  expect(note.contains(headline)).toBe(false);
+});
+
+it("shows a demoted peer note independently when no headline diagnosis is reported", () => {
+  const office = renderGateway({ site_link_note_peer: "old-hub", site_link_note_demoted: true });
+  expect(office.getByText("site link down: old-hub (demoted)")).toBeTruthy();
+  expect(office.queryByText(/^healthy$|^degraded$/i)).toBeNull();
 });
