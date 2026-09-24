@@ -115,3 +115,32 @@ func TestRuntimeAddressRoutesBindExactAssignedTunnel(t *testing.T) {
 		t.Fatal("local route stood in for remote unicast")
 	}
 }
+
+func TestRuntimeProofAndStatusRequireObservedSADirection(t *testing.T) {
+	for _, tc := range []struct {
+		name, outbound, inbound string
+		valid                   bool
+	}{
+		{"legacy kernel", "", "", true},
+		{"directional kernel", "out", "in", true},
+		{"reversed outbound", "in", "in", false},
+		{"reversed inbound", "out", "out", false},
+		{"unknown direction", "fwd", "in", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, d, k, x := runtimeProofFixture()
+			x.States[0].Direction = tc.outbound
+			x.States[1].Direction = tc.inbound
+			if valid := runtimeInventoryMatches(e, d, k, x) == nil; valid != tc.valid {
+				t.Fatalf("runtime proof accepted=%v, want %v", valid, tc.valid)
+			}
+			want := [2]string{"unknown", "up"}
+			if tc.valid {
+				want[0] = "up"
+			}
+			if got := runtimeTunnelStatuses(e, d, k, x); got != want {
+				t.Fatalf("status=%v, want %v", got, want)
+			}
+		})
+	}
+}

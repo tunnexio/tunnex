@@ -159,12 +159,12 @@ func runtimeTunnelStatus(t EngineTunnel, own Ownership, d DaemonInventory, k Ker
 		if state.IfID != t.XFRMID || state.ReqID != t.ReqID {
 			return "unknown"
 		}
-		if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress {
+		if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress && (state.Direction == "" || state.Direction == "out") {
 			statesOut++
 			if child != nil && state.SPI != child.SPIOut {
 				return "unknown"
 			}
-		} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress {
+		} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress && (state.Direction == "" || state.Direction == "in") {
 			statesIn++
 			if child != nil && state.SPI != child.SPIIn {
 				return "unknown"

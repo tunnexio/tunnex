@@ -11,6 +11,7 @@ import (
 var ErrXFRMInventoryInvalid = errors.New("invalid no-key XFRM inventory")
 
 type XFRMState struct {
+	Direction           string // Optional on older kernels; explicit values are in or out.
 	Source, Destination netip.Addr
 	SPI, ReqID, IfID    uint32
 	ReplayWindow        uint8
@@ -143,6 +144,19 @@ func xfrmEndpoints(line string) (netip.Addr, netip.Addr, bool) {
 }
 func xfrmState(b []string) (XFRMState, bool) {
 	var s XFRMState
+	if len(b) < 7 || len(b) > 9 {
+		return s, false
+	}
+	// Newer kernels expose SA direction after if_id. Preserve it for runtime
+	// association; legacy absence is accepted, but no other position/value is.
+	last := strings.Fields(b[len(b)-1])
+	if len(last) > 0 && last[0] == "dir" {
+		if len(last) != 2 || (last[1] != "in" && last[1] != "out") {
+			return s, false
+		}
+		s.Direction = last[1]
+		b = b[:len(b)-1]
+	}
 	if len(b) != 7 && len(b) != 8 {
 		return s, false
 	}
