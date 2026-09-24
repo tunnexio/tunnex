@@ -89,10 +89,14 @@ it("withdraws setup immediately when email verification is lost", async () => {
 });
 it("resets the selected pair on user switch and ignores the previous user's pending configuration", async () => {
   let finishPrevious: (value: unknown) => void = () => {};
+  let finishPreviousHubs: (value: unknown) => void = () => {};
   mock.get.mockImplementation((path: string, opts: { params: { path: { siteId?: string } } }) => {
     if (path.endsWith("/members")) return Promise.resolve({ data: [{ user_id: "user", role: "owner" }] });
     if (path.endsWith("/sites")) return Promise.resolve({ data: [{ id: "office", name: "Office" }, { id: "cloud", name: "Cloud" }] });
     if (path.endsWith("/nodes")) return Promise.resolve({ data: [] });
+    if (path.endsWith("/hub-set")) return mock.userId === "user"
+      ? new Promise(resolve => { finishPreviousHubs = resolve; })
+      : Promise.resolve({ data: { generation: 0, members: [] } });
     if (mock.userId === "user" && opts.params.path.siteId === "office") {
       return new Promise(resolve => { finishPrevious = resolve; });
     }
@@ -117,6 +121,9 @@ it("resets the selected pair on user switch and ignores the previous user's pend
   fireEvent.change(screen.getByLabelText("Second network"), { target: { value: "cloud" } });
   await screen.findByRole("region", { name: "Office configuration" });
   await act(async () => finishPrevious({ data: [{ id: "old", site_id: "office", cidr: "10.99.0.0/24", status: "approved" }] }));
+  await act(async () => finishPreviousHubs({ data: { generation: 1, members: [{ node_id: "old-user-hub", role: "primary" }] } }));
+  expect(screen.queryByText("old-user-hub")).toBeNull();
+  expect(screen.getByText("No transit hub set reported.")).toBeTruthy();
   expect(screen.queryByText("10.99.0.0/24")).toBeNull();
   expect(screen.getAllByText("No network ranges advertised.")).toHaveLength(2);
 });

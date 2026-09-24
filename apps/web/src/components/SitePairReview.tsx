@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, loadOne, type Loaded, type Node, type Site, type SiteSubnet } from "../lib/api";
+import { api, loadOne, type Loaded, type Node, type Site, type SiteSubnet, type HubSet } from "../lib/api";
 import { policyHealthBadge, siteLinkNote } from "../lib/healthview";
 import { Badge, Button, Card, Field, Select } from "./ui";
 
@@ -34,6 +34,7 @@ export type SitePairConfiguration = {
   nodes: Loaded<Node[]>;
   firstRanges: Loaded<SiteSubnet[]>;
   secondRanges: Loaded<SiteSubnet[]>;
+  hubSet: Loaded<HubSet>;
 };
 
 export function SitePairDetails({ orgId, first, second }: { orgId: string; first: Site; second: Site }) {
@@ -46,8 +47,9 @@ export function SitePairDetails({ orgId, first, second }: { orgId: string; first
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/nodes", { params: { path: { orgId } } })),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/sites/{siteId}/subnets", { params: { path: { orgId, siteId: first.id } } })),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/sites/{siteId}/subnets", { params: { path: { orgId, siteId: second.id } } })),
-    ]).then(([nodes, firstRanges, secondRanges]) => {
-      if (!cancelled) setResult({ key, data: { nodes, firstRanges, secondRanges } });
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/hub-set", { params: { path: { orgId } } })),
+    ]).then(([nodes, firstRanges, secondRanges, hubSet]) => {
+      if (!cancelled) setResult({ key, data: { nodes, firstRanges, secondRanges, hubSet } });
     });
     return () => { cancelled = true; };
   }, [key, orgId, first.id, second.id]);
@@ -58,12 +60,26 @@ export function SitePairDetails({ orgId, first, second }: { orgId: string; first
 export function SitePairConfigurationView({ first, second, data, onRetry }: {
   first: Site; second: Site; data: SitePairConfiguration; onRetry: () => void;
 }) {
-  const incomplete = !data.nodes.ok || !data.firstRanges.ok || !data.secondRanges.ok;
+  const incomplete = !data.nodes.ok || !data.firstRanges.ok || !data.secondRanges.ok || !data.hubSet.ok;
   return <div className="space-y-4">
     <div className="grid gap-4 lg:grid-cols-2">
       <SiteConfiguration site={first} nodes={data.nodes} ranges={data.firstRanges} />
       <SiteConfiguration site={second} nodes={data.nodes} ranges={data.secondRanges} />
     </div>
+    <section aria-labelledby="transit-hubs-heading" className="space-y-3 break-words">
+      <h3 id="transit-hubs-heading" className="font-semibold">Reported transit hubs</h3>
+      <p className="text-ink-secondary">These roles apply across your organization. They do not verify the traffic path between the selected networks.</p>
+      {!data.hubSet.ok ? <p role="alert">Could not load transit hubs. {data.hubSet.error}</p> : data.hubSet.data.members.length === 0 ? <p>No transit hub set reported.</p> : <ul className="space-y-2">{data.hubSet.data.members.map(member => {
+        const gateway = data.nodes.ok ? data.nodes.data.find(node => node.id === member.node_id) : undefined;
+        return <li key={member.node_id}>
+          <span>{member.role === "primary" ? "Primary" : "Standby"}</span>{" · "}
+          {gateway ? <>
+            {gateway.site_id ? <Link className="underline underline-offset-4" to={`/sites?site=${encodeURIComponent(gateway.site_id)}&gateway=${encodeURIComponent(gateway.id)}`}>{gateway.name}</Link> : <span>{gateway.name}</span>}
+            {gateway.status === "revoked" && <span> · Revoked</span>}
+          </> : <><span>{member.node_id}</span><p className="text-sm text-ink-secondary">Gateway details unavailable</p></>}
+        </li>;
+      })}</ul>}
+    </section>
     {incomplete && <Button onClick={onRetry}>Retry configuration</Button>}
     <div className="space-y-2">
       <h3 className="font-semibold">Next: review the full path</h3>
