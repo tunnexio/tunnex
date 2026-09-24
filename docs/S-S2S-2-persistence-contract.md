@@ -8,13 +8,15 @@ A verified owner/admin can store and inspect a redacted, disabled two-tunnel con
 
 Implement storage and disabled configuration first. Activation, gateway delivery, rotation and acknowledgements remain unavailable until their actual runtime paths exist and pass the corresponding tests. Do not expose a working-looking Connect action backed only by storage. No provider-support claim follows from these records.
 
+The capability requirement for disabled creation, stable organization lock and node-deletion guard below clarify this proposal; they do not mark its lifecycle or persistence implementation as approved.
+
 ## P1 — Ownership and records
 
 - An organization setting stores `enabled=false` by default and a positive revision. It is separate from licence entitlements. Setting changes require `ipsec:manage` and verified email.
 - A connection stores immutable UUID identity, org, site, assigned gateway, name, desired revision, desired intent, creation/update times and deletion time. UUID identity is never reused. Gateway/site assignment cannot be edited in this increment.
 - Exactly two tunnel records belong to the connection, with immutable UUIDs and slots 1 and 2. Configuration and secret revisions are separate: changing a display name does not require rebinding ciphertext to a new secret revision.
 - Secret rows are internal storage only: org/connection/tunnel/secret revision plus the existing sealed envelope. Manager responses may expose presence and revision; ordinary topology reads expose neither. No plaintext or ciphertext response field, export endpoint or unkeyed PSK fingerprint.
-- Database ownership constraints enforce same-org site and gateway references and tunnel-to-connection ownership. Service checks also require an active enrolled gateway currently bound to the selected site. Eligibility checks and inserts share locks/transaction boundaries with destructive ownership changes; a read-then-insert check alone is insufficient.
+- Database ownership constraints enforce same-org site and gateway references and tunnel-to-connection ownership. Service checks also require an active enrolled gateway currently bound to the selected site. Disabled creation retains the foundation requirements: organization opt-in must be enabled and the assigned gateway must advertise the explicit IPsec capability. Saving disabled configuration does not create an exception for gateways without that capability. Eligibility checks and inserts share locks/transaction boundaries with destructive ownership changes; a read-then-insert check alone is insufficient.
 - Keep shared site, subnet and policy ownership unchanged. Do not widen `sites.link_transport` or add remote CIDRs to shared policies as a side effect.
 
 This first storage increment reserves identities and stores disabled configuration. Provider-specific endpoint/inside-address/algorithm validation must be specified before accepting those fields through a public write API; storage must not accept opaque engine commands or arbitrary configuration text.
@@ -25,7 +27,7 @@ This first storage increment reserves identities and stores disabled configurati
 - The create operation uses a caller-generated UUID and create-only semantics (`If-None-Match: *`). A repeated identity cannot create another connection: return 409 and let the client recover using a redacted GET. Do not silently reinterpret a retry as an update, compare only non-secret fields, or claim transparent successful replay. This deliberately avoids retaining request bodies or secret-derived retry hashes.
 - Updates and deletes use `If-Match` with the current revision. After a lost response, GET the latest state before retrying. Even an identical stale update refuses. These preconditions belong in OpenAPI and generated clients, not a frontend-only check.
 - Validate authority and scope before existence-sensitive responses. Bind encryption to IDs/revision derived from authoritative rows. Seal, store both tunnels, update revision and append a redacted audit atomically. Any failure rolls back all records. Notifications follow commit; notification failure is recovered by the next desired-state fetch.
-- Lock in a documented consistent order: organization IPsec setting, site, gateway, connection, then tunnel slot. Existing site/node mutation paths must participate where necessary. Cover opposing operations with real concurrent PostgreSQL tests before shipping.
+- Lock in a documented consistent order: stable organization row, organization IPsec setting if present, site, gateway, connection, then tunnel slot. Creation, setting changes and organization soft deletion share the organization-row lock, including when no IPsec setting row exists. Recheck organization deletion state and applicable connection blockers inside that transaction; an earlier resource-count read is not sufficient. Existing site/node mutation paths must participate where necessary. Cover opposing operations with real concurrent PostgreSQL tests before shipping.
 
 ## P3 — Desired intent is separate from gateway evidence
 
@@ -53,7 +55,7 @@ Offline or revoked gateways can leave cleanup pending indefinitely. Preserve thi
 | --- | --- |
 | `sites.Service.DeleteSite` / `db/queries/sites.sql:DeleteSite` | Return a scoped 409; do not cascade away connection/cleanup evidence |
 | `sites.Service.UnbindNode`, `UnbindSiteNode` | Refuse detaching the assigned gateway until its connection is deleted and finalized; bodyless and explicit-node paths agree |
-| `nodes.Service.DeleteRevokedNode` | Refuse removal while connection cleanup is owed; preserve the principal identity for diagnosis |
+| `nodes.Service.DeleteRevokedNode` | Refuse removal while any referencing connection is unfinalized, including never-delivered disabled records; preserve the principal identity for diagnosis |
 | Gateway revocation | Preserve the existing security revocation path; stop secret delivery immediately, retain pending cleanup evidence, never synthesize an acknowledgement |
 | Organization soft deletion | Refuse while any live connection or cleanup obligation remains; existing behavior resumes after all connections finalize |
 | Direct SQL / migration | Ownership constraints prevent orphaning; tests bypass service helpers to prove the database boundary |
@@ -83,7 +85,7 @@ No runtime acknowledgement test is counted as implemented merely because a pure 
 Concrete review artifact: `/private/tmp/s2s-foundation-db/compose.yaml`.
 
 - Docker context `colima-f10-dev`; new non-default project `tunnexs2sfoundation0924` only.
-- One cached `postgres:16-alpine` container, loopback `127.0.0.1:54924`, internal project network, 512 MiB memory limit, 256 MiB tmpfs database storage and 64 MiB shared memory. No host data mount or persistent volume.
+- One cached `postgres:16-alpine` container, loopback `127.0.0.1:54924`, dedicated project bridge network, 512 MiB memory limit, 256 MiB tmpfs database storage and 64 MiB shared memory. No host data mount or persistent volume. Local CP startup demonstrated that this Docker context suppresses host port publication on an internal network; the test fixture therefore uses a bridge with loopback-only published ports.
 - Synthetic local test credential only. No application, node agent, Redis, cloud resource, shared database or production migration.
 - Before creating, refuse any pre-existing object with that project/name and verify the port is free. Before each DB-capable test command, print and verify project, container project/service labels, network project label, loopback port and tmpfs mount; construct the test DSN only from this verified fixture. Never inherit an arbitrary DSN.
 - Tests may create/drop only scratch databases inside this new container. Container removal after tests needs an explicit teardown decision; no volume pruning or default-project command is part of the plan. Tmpfs data is disposable and is lost if the container stops.
