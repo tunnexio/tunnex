@@ -75,12 +75,15 @@ func TestDaemonInvalidInputDoesNotDial(t *testing.T) {
 	}
 }
 func TestDaemonSocketRefusesUnsafeParentAndSymlinks(t *testing.T) {
-	dir, err := os.MkdirTemp("/private/tmp", "vici-")
+	dir, err := os.MkdirTemp("/tmp", "vici-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	dir, _ = filepath.EvalSymlinks(dir)
+	dir, err = filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(dir, "charon.vici")
 	listener, err := net.Listen("unix", path)
 	if err != nil {
