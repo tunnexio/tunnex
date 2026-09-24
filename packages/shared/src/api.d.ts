@@ -2622,6 +2622,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ipsec/configuration-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate an IPsec configuration without saving it
+         * @description Requires verified human ipsec:manage. Checks only the proposed AWS static IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
+         */
+        post: operations["checkIPsecConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an advisory IPsec gateway eligibility snapshot
+         * @description Organization viewers may inspect current opt-in and gateway capability/freshness. This is not full configuration validation; create rechecks all prerequisites authoritatively. Never writes state or activates connectivity.
+         */
+        get: operations["getIPsecEligibility"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List stored IPsec connection records, including tombstones
+         * @description Organization viewers in every edition may read these records. They are not evidence of active connectivity. Cursor pagination orders immutable connection UUIDs; concurrent inserts may require refreshing from the first page.
+         */
+        get: operations["listIPsecConnections"];
+        put?: never;
+        /**
+         * Store a disabled provider connection
+         * @description Requires verified human ipsec:manage. Create-only; never activates a gateway. Customer PSKs are write-only. Prerequisites unavailable or existing identity conflicts return 409; unavailable store/sealer returns 503.
+         */
+        post: operations["createIPsecProviderConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read stored nonsecret provider configuration
+         * @description Organization viewers may review network configuration. Tombstones retain profile/revision only. No credential material or credential metadata is returned.
+         */
+        get: operations["getIPsecProviderConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        /** Read a nonsecret stored IPsec connection record */
+        get: operations["getIPsecConnection"];
+        put?: never;
+        post?: never;
+        /**
+         * Request deletion with acknowledged cleanup
+         * @description Requires verified human ipsec:manage. Only a single canonical quoted positive decimal int64 If-Match is accepted. Stale revisions and already-deleted records conflict; retry is never silently replayed. Retains resources until exact cleanup acknowledgement when material may have been delivered.
+         */
+        delete: operations["deleteIPsecConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read independent gateway-reported tunnel status
+         * @description Read-only observation. Missing or stale evidence is unknown; selected denotes configured path, not traffic verification.
+         */
+        get: operations["getIPsecConnectionStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Request enabled or disabled IPsec intent
+         * @description Requires verified human ipsec:manage and exact desired revision. Runtime qualification remains authoritative. Disabled intent may require acknowledged cleanup; retained safety guards and range reservations are not implicitly released.
+         */
+        put: operations["setIPsecConnectionIntent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ipsec/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read organization IPsec opt-in settings
+         * @description Available to organization viewers in every edition. Missing settings mean disabled at revision zero. This setting does not indicate gateway capability or active connectivity.
+         */
+        get: operations["getIPsecSettings"];
+        /**
+         * Configure organization IPsec opt-in settings
+         * @description Requires verified ipsec:manage authority. Compare-and-set uses expected_revision; zero creates missing settings. Every accepted write advances revision, including unchanged values. Stale revision returns 409. This does not activate or remove any tunnel.
+         */
+        put: operations["setIPsecSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/hub-set": {
         parameters: {
             query?: never;
@@ -7463,6 +7652,122 @@ export interface components {
         HubPriorityRequest: {
             /** @description The admin hub pin (S8.6 D1) — lower = more preferred; null CLEARS the pin. Pinning declares a gateway a hub candidate; the PINNED set IS the HA hub set (opt-in). */
             priority?: number | null;
+        };
+        IPsecEligibility: {
+            eligible: boolean;
+            /** @enum {string} */
+            reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";
+        };
+        IPsecProviderCreateInput: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_node_id: string;
+            tunnel_ids: string[];
+            configuration: components["schemas"]["IPsecConfigurationCheckInput"];
+        };
+        IPsecProviderConfiguration: {
+            profile_id: string;
+            /** Format: int64 */
+            configuration_revision: number;
+            configuration?: components["schemas"]["IPsecProviderNetworkConfiguration"];
+        };
+        IPsecProviderNetworkConfiguration: {
+            mode: string;
+            customer_outside_address: string;
+            local_prefixes: string[];
+            remote_prefixes: string[];
+            tunnels: components["schemas"]["IPsecProviderNetworkTunnel"][];
+        };
+        IPsecProviderNetworkTunnel: {
+            outside_address: string;
+            inside_cidr: string;
+            customer_inside_address: string;
+            cloud_inside_address: string;
+        };
+        IPsecConfigurationCheckInput: {
+            /** @enum {string} */
+            mode: "ipv4-static";
+            customer_outside_address: string;
+            local_prefixes: string[];
+            remote_prefixes: string[];
+            tunnels: components["schemas"]["IPsecConfigurationCheckTunnel"][];
+        };
+        IPsecConfigurationCheckTunnel: {
+            outside_address: string;
+            inside_cidr: string;
+            customer_inside_address: string;
+            cloud_inside_address: string;
+            psk: string;
+        };
+        IPsecConfigurationCheckResult: {
+            valid: boolean;
+        };
+        IPsecTunnelStatus: {
+            /** Format: uuid */
+            id: string;
+            slot: number;
+            /** @enum {string} */
+            status: "up" | "down" | "unknown";
+            /** @description Configured traffic path; does not imply reachability. */
+            selected: boolean;
+        };
+        IPsecConnectionStatus: {
+            /**
+             * Format: date-time
+             * @description Control-plane receipt time; older than 90 seconds is unknown.
+             */
+            observed_at: string | null;
+            tunnels: components["schemas"]["IPsecTunnelStatus"][];
+        };
+        IPsecConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            /** Format: uuid */
+            site_id: string | null;
+            /** Format: uuid */
+            gateway_node_id: string | null;
+            /** Format: uuid */
+            historical_site_id: string;
+            /** Format: uuid */
+            historical_gateway_node_id: string;
+            /** Format: int64 */
+            desired_revision: number;
+            /** @enum {string} */
+            desired_intent: "disabled" | "enabled" | "deleted";
+            /** @enum {string} */
+            application_state: "not_applied" | "pending" | "applied";
+            /** @enum {string} */
+            cleanup_state: "not_required" | "pending" | "retained_guard";
+            /** Format: date-time */
+            deleted_at: string | null;
+            /** Format: date-time */
+            finalized_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        IPsecConnectionPage: {
+            items: components["schemas"]["IPsecConnection"][];
+            /** Format: uuid */
+            next_cursor: string | null;
+        };
+        IPsecSettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+        };
+        IPsecSettingsUpdate: {
+            enabled: boolean;
+            /** Format: int64 */
+            expected_revision: number;
         };
         HubSet: {
             /**
@@ -13150,6 +13455,316 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    checkIPsecConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IPsecConfigurationCheckInput"];
+            };
+        };
+        responses: {
+            /** @description Input satisfies the bounded preflight profile only. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConfigurationCheckResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getIPsecEligibility: {
+        parameters: {
+            query: {
+                site_id: string;
+                gateway_node_id: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current advisory eligibility. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecEligibility"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listIPsecConnections: {
+        parameters: {
+            query?: {
+                limit?: number;
+                after?: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded page of nonsecret connection records. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnectionPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createIPsecProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IPsecProviderCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Nonsecret disabled connection record. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    ETag?: string;
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getIPsecProviderConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nonsecret stored configuration or retained tombstone metadata. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecProviderConfiguration"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getIPsecConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored record, including finalized tombstones. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    /** @description Quoted positive desired revision. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteIPsecConnection: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": string;
+            };
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nonsecret deletion intent with successor revision; finalization may remain pending. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    /** @description Quoted positive successor desired revision. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getIPsecConnectionStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nonsecret two-tunnel status; finalized tombstones may have no tunnel identities. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnectionStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setIPsecConnectionIntent: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": string;
+            };
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    intent: "enabled" | "disabled";
+                };
+            };
+        };
+        responses: {
+            /** @description Committed successor desired intent; not a connectivity receipt. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    /** @description Quoted positive desired revision. */
+                    ETag?: string;
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getIPsecSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization opt-in settings. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setIPsecSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IPsecSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Committed successor settings. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecSettings"];
+                };
             };
             default: components["responses"]["Error"];
         };

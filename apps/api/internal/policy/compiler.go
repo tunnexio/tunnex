@@ -227,6 +227,8 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
+	// IPsecNetworks is populated only by a future qualified runtime service.
+	IPsecNetworks      []IPsecNetwork
 	Mode               string
 	Rules              []Rule
 	Resources          []Resource
@@ -700,6 +702,8 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		}
 	}
 
+	ipsecNetworks := validatedIPsecNetworks(s)
+
 	// ── site-SOURCE grants (S8.2): a site's LAN as the SOURCE subject. No device is involved — the
 	// source is the site's subnet CIDRs, and the grant lands on the gateway node(s) bound to the involved
 	// sites (the source site + a site destination), the transit endpoints whose forward chain the LAN
@@ -719,6 +723,8 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		// S8.2 Slice-1 placed only the site endpoints); site-subnet-contained CIDRs are the ruled scope.
 		var srcCIDRs []string
 		var srcSite uuid.UUID
+		var srcGw uuid.UUID
+		ipsecSource := false
 		switch r.SrcKind {
 		case "site":
 			srcSite = r.SrcSiteID
@@ -730,11 +736,29 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			// S8.7 [0]+[9] — the ONE placement predicate (same fn the warning uses): a cidr places iff its
 			// containing approved site subnet ALSO has a bound gateway. !ok → the rule places NOTHING (never
 			// the [0] dst-site ACCEPT bypass a warned rule must not emit, never the [9] node-less silent no-op).
-			s, ok := cidrPlacementSite(r.SrcCIDR, siteCIDRs, siteNode)
-			if !ok {
-				continue
+			site, ok := cidrPlacementSite(r.SrcCIDR, siteCIDRs, siteNode)
+			if ok {
+				srcSite = site
+			} else {
+				network, found := ipsecSourceNetwork(r.SrcCIDR, ipsecNetworks)
+				if !found {
+					continue
+				}
+				srcSite, srcGw, ipsecSource = network.LocalSiteID, network.AssignedGatewayID, true
+				switch r.DstKind {
+				case "site":
+					if r.DstSiteID != network.LocalSiteID {
+						continue
+					}
+				case "resource":
+					resource, exists := resourceByID[r.DstResourceID]
+					if !exists || !ipsecLocalResource(resource.CIDR, network.LocalSiteID, siteCIDRs) {
+						continue
+					}
+				default:
+					continue
+				}
 			}
-			srcSite = s
 			srcCIDRs = []string{r.SrcCIDR}
 		default:
 			continue
@@ -745,12 +769,14 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		// The SOURCE must resolve to a bound gateway to ORIGINATE — else the rule places NOTHING (the [0] fix
 		// generalized: a source that can't originate must not add the dst/hub ACCEPT). cidr already ensured
 		// this via cidrPlacementSite; site-src is guarded here (symmetric tightening).
-		srcGw := siteNode[srcSite]
+		if !ipsecSource {
+			srcGw = siteNode[srcSite]
+		}
 		if srcGw == uuid.Nil {
 			continue
 		}
 		enforceNodes := map[uuid.UUID]bool{srcGw: true}
-		if r.DstKind == "site" {
+		if !ipsecSource && r.DstKind == "site" {
 			if n := siteNode[r.DstSiteID]; n != uuid.Nil {
 				enforceNodes[n] = true
 			}

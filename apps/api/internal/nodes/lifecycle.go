@@ -12,6 +12,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/ipsecguard"
 )
 
 // ErrNodeNotRevoked refuses a delete on a gateway that is still live (S12.12 D2).
@@ -53,7 +54,7 @@ func (s *Service) DeleteRevokedNode(ctx context.Context, actor, orgID, nodeID uu
 		}
 		n, e := q.DeleteRevokedNode(ctx, sqlc.DeleteRevokedNodeParams{ID: nodeID, OrgID: orgID})
 		if e != nil {
-			return e
+			return ipsecguard.ResourceConflict(e)
 		}
 		if n == 0 {
 			// The node was revoked when we read it and is not now — someone else got here first, or it was

@@ -29,10 +29,12 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
+	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
+	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	applog "github.com/tunnexio/tunnex/apps/api/internal/log"
@@ -57,6 +59,13 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
+	IPsecRuntime       ipsecRuntimeRepository
+	IPsecStatus        ipsecStatusRepository
+	IPsecEligibility   ipsecEligibilityRepository
+	IPsecProviders     ipsecProviderRepository
+	IPsecSealer        *crypto.Sealer
+	IPsecConnections   ipsecConnectionRepository
+	IPsecSettings      ipsecSettingsRepository
 	AICredentials      *aigateway.Credentials
 	AIWorkloads        *aigateway.Workloads
 	AIPolicies         *aigateway.Policies
@@ -275,7 +284,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
-	srv := apiServer{aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	srv.connectivity = d.Connectivity
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
@@ -287,10 +296,28 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(gate)
 
 	r.Use(aiUserInferenceMiddleware(d.AIAdapter, d.AIPolicies))
+	r.Use(validateIPsecRuntimeIntent)
+	r.Use(validateIPsecEligibilityRequest)
+	r.Use(validateIPsecProviderRequest)
+	r.Use(validateIPsecConfigurationCheck)
+	r.Use(validateIPsecSettingsBody)
+	r.Use(validateIPsecConnectionHeaders)
 	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
 		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, req *http.Request, opts oapimw.ErrorHandlerOpts) {
 			message := "AI provider request is invalid"
-			if !isAIProviderRequest(req) {
+			if isIPsecRuntimeIntentRequest(req) || isIPsecProviderRequest(req) || isIPsecEligibilityRequest(req) {
+				apierr.Write(w, req, ipsecProviderError(ipsec.ErrConnectionInvalid))
+				return
+			}
+			if isIPsecConfigurationCheckRequest(req) {
+				apierr.Write(w, req, invalidIPsecConfiguration())
+				return
+			}
+			if isIPsecConnectionRequest(req) {
+				message = "invalid IPsec connection request"
+			} else if isIPsecSettingsRequest(req) {
+				message = "invalid IPsec settings request"
+			} else if !isAIProviderRequest(req) {
 				message = err.Error()
 			}
 			validationErrorHandler(w, message, opts.StatusCode)
@@ -306,10 +333,44 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		// Both hooks render typed *apierr.Error (and anything else) as the envelope.
-		RequestErrorHandlerFunc:  apierr.Write,
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			// The numeric validator uses floating-point bounds. Strict decode
+			// remains authoritative for int64 overflow. Do not log body data.
+			if isIPsecRuntimeIntentRequest(r) || isIPsecProviderRequest(r) || isIPsecEligibilityRequest(r) {
+				apierr.Write(w, r, ipsecProviderError(ipsec.ErrConnectionInvalid))
+				return
+			}
+			if isIPsecConfigurationCheckRequest(r) {
+				apierr.Write(w, r, invalidIPsecConfiguration())
+				return
+			}
+			if isIPsecConnectionRequest(r) {
+				apierr.Write(w, r, ipsecConnectionError(ipsec.ErrConnectionInvalid))
+				return
+			}
+			if isIPsecSettingsRequest(r) {
+				apierr.Write(w, r, apierr.BadRequest("invalid_ipsec_settings", "invalid IPsec settings request"))
+				return
+			}
+			apierr.Write(w, r, err)
+		},
 		ResponseErrorHandlerFunc: apierr.Write,
 	})
-	api.HandlerFromMux(strict, r)
+	api.HandlerWithOptions(strict, api.ChiServerOptions{BaseRouter: r, ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+		if isIPsecRuntimeIntentRequest(r) || isIPsecProviderRequest(r) || isIPsecEligibilityRequest(r) {
+			apierr.Write(w, r, ipsecProviderError(ipsec.ErrConnectionInvalid))
+			return
+		}
+		if isIPsecConfigurationCheckRequest(r) {
+			apierr.Write(w, r, invalidIPsecConfiguration())
+			return
+		}
+		if isIPsecConnectionRequest(r) {
+			apierr.Write(w, r, ipsecConnectionError(ipsec.ErrConnectionInvalid))
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}})
 
 	return r, nil
 }

@@ -186,6 +186,10 @@ func main() {
 		logger.Error("agent_client_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	if err := startIPsecRuntime(ctx, client, certDir, logger); err != nil {
+		logger.Error("ipsec_saved_refusal_restore_failed")
+		os.Exit(1)
+	}
 	// WireGuard key: generated locally and persisted; the private key never
 	// leaves the node. Re-key = delete the file -> a new key is generated and its
 	// pubkey re-reported.

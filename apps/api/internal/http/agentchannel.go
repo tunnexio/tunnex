@@ -24,6 +24,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
+	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
@@ -34,6 +35,8 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
+	ipsecRuntime               agentIPsecRepository
+	ipsecSealer                *crypto.Sealer
 	vpnAIAdapter               *aigateway.Adapter
 	vpnAIPolicies              *aigateway.Policies
 	connectivity               *connectivity.Store
@@ -131,6 +134,12 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Get("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
 	r.Put("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
 	r.Delete("/agent/connectivity-sessions/{deviceId}/{sessionId}", a.connectivitySession)
+	r.Get("/agent/ipsec/pending", a.ipsecPending)
+	r.Post("/agent/ipsec/connections/{connectionId}/material", a.ipsecMaterial)
+	r.Post("/agent/ipsec/connections/{connectionId}/status", a.ipsecStatusReport)
+	r.Get("/agent/ipsec/connections/{connectionId}/cleanup", a.ipsecCleanup)
+	r.Post("/agent/ipsec/connections/{connectionId}/acknowledgements", a.ipsecAcknowledgement)
+	r.Post("/agent/ipsec/connections/{connectionId}/permit-lease", a.ipsecPermitLease)
 	r.Get("/agent/desired-state", a.desiredState)
 	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
 	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
@@ -246,6 +255,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		// signal. Missing/zero is an older agent and must refuse FQDN
 		// enforcement before a request is queued, never time out as DNS.
 		DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
+		IPsecConfigVersion   int `json:"ipsec_config_version"`
 		// FlowLogState is a bounded collector heartbeat. It is deliberately
 		// independent of event volume so an idle gateway can still prove that its
 		// NFLOG source is armed.
@@ -257,7 +267,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch

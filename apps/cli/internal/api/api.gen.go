@@ -952,6 +952,48 @@ const (
 	Standby HubMemberRole = "standby"
 )
 
+// Defines values for IPsecConfigurationCheckInputMode.
+const (
+	Ipv4Static IPsecConfigurationCheckInputMode = "ipv4-static"
+)
+
+// Defines values for IPsecConnectionApplicationState.
+const (
+	IPsecApplicationPending IPsecConnectionApplicationState = "pending"
+	IPsecApplied            IPsecConnectionApplicationState = "applied"
+	IPsecNotApplied         IPsecConnectionApplicationState = "not_applied"
+)
+
+// Defines values for IPsecConnectionCleanupState.
+const (
+	IPsecCleanupNotRequired IPsecConnectionCleanupState = "not_required"
+	IPsecCleanupPending     IPsecConnectionCleanupState = "pending"
+	IPsecRetainedGuard      IPsecConnectionCleanupState = "retained_guard"
+)
+
+// Defines values for IPsecConnectionDesiredIntent.
+const (
+	IPsecConnectionDeleted  IPsecConnectionDesiredIntent = "deleted"
+	IPsecConnectionDisabled IPsecConnectionDesiredIntent = "disabled"
+	IPsecConnectionEnabled  IPsecConnectionDesiredIntent = "enabled"
+)
+
+// Defines values for IPsecEligibilityReason.
+const (
+	Eligible           IPsecEligibilityReason = "eligible"
+	GatewayUnavailable IPsecEligibilityReason = "gateway_unavailable"
+	OptInRequired      IPsecEligibilityReason = "opt_in_required"
+	ReportStale        IPsecEligibilityReason = "report_stale"
+	Unsupported        IPsecEligibilityReason = "unsupported"
+)
+
+// Defines values for IPsecTunnelStatusStatus.
+const (
+	IPsecTunnelDown    IPsecTunnelStatusStatus = "down"
+	IPsecTunnelUnknown IPsecTunnelStatusStatus = "unknown"
+	IPsecTunnelUp      IPsecTunnelStatusStatus = "up"
+)
+
 // Defines values for IdpSyncConfigProvider.
 const (
 	IdpSyncConfigProviderGoogle    IdpSyncConfigProvider = "google"
@@ -1517,6 +1559,12 @@ const (
 const (
 	Tcp TestAgentAccessParamsProtocol = "tcp"
 	Udp TestAgentAccessParamsProtocol = "udp"
+)
+
+// Defines values for SetIPsecConnectionIntentJSONBodyIntent.
+const (
+	IPsecIntentDisabled SetIPsecConnectionIntentJSONBodyIntent = "disabled"
+	IPsecIntentEnabled  SetIPsecConnectionIntentJSONBodyIntent = "enabled"
 )
 
 // AIAssignment defines model for AIAssignment.
@@ -4188,6 +4236,141 @@ type HubSet struct {
 	Members []HubMember `json:"members"`
 }
 
+// IPsecConfigurationCheckInput defines model for IPsecConfigurationCheckInput.
+type IPsecConfigurationCheckInput struct {
+	CustomerOutsideAddress string                           `json:"customer_outside_address"`
+	LocalPrefixes          []string                         `json:"local_prefixes"`
+	Mode                   IPsecConfigurationCheckInputMode `json:"mode"`
+	RemotePrefixes         []string                         `json:"remote_prefixes"`
+	Tunnels                []IPsecConfigurationCheckTunnel  `json:"tunnels"`
+}
+
+// IPsecConfigurationCheckInputMode defines model for IPsecConfigurationCheckInput.Mode.
+type IPsecConfigurationCheckInputMode string
+
+// IPsecConfigurationCheckResult defines model for IPsecConfigurationCheckResult.
+type IPsecConfigurationCheckResult struct {
+	Valid bool `json:"valid"`
+}
+
+// IPsecConfigurationCheckTunnel defines model for IPsecConfigurationCheckTunnel.
+type IPsecConfigurationCheckTunnel struct {
+	CloudInsideAddress    string  `json:"cloud_inside_address"`
+	CustomerInsideAddress string  `json:"customer_inside_address"`
+	InsideCidr            string  `json:"inside_cidr"`
+	OutsideAddress        string  `json:"outside_address"`
+	Psk                   *string `json:"psk,omitempty"`
+}
+
+// IPsecConnection defines model for IPsecConnection.
+type IPsecConnection struct {
+	ApplicationState        IPsecConnectionApplicationState `json:"application_state"`
+	CleanupState            IPsecConnectionCleanupState     `json:"cleanup_state"`
+	CreatedAt               time.Time                       `json:"created_at"`
+	DeletedAt               *time.Time                      `json:"deleted_at"`
+	DesiredIntent           IPsecConnectionDesiredIntent    `json:"desired_intent"`
+	DesiredRevision         int64                           `json:"desired_revision"`
+	FinalizedAt             *time.Time                      `json:"finalized_at"`
+	GatewayNodeId           *openapi_types.UUID             `json:"gateway_node_id"`
+	HistoricalGatewayNodeId openapi_types.UUID              `json:"historical_gateway_node_id"`
+	HistoricalSiteId        openapi_types.UUID              `json:"historical_site_id"`
+	Id                      openapi_types.UUID              `json:"id"`
+	Name                    string                          `json:"name"`
+	OrgId                   openapi_types.UUID              `json:"org_id"`
+	SiteId                  *openapi_types.UUID             `json:"site_id"`
+	UpdatedAt               time.Time                       `json:"updated_at"`
+}
+
+// IPsecConnectionApplicationState defines model for IPsecConnection.ApplicationState.
+type IPsecConnectionApplicationState string
+
+// IPsecConnectionCleanupState defines model for IPsecConnection.CleanupState.
+type IPsecConnectionCleanupState string
+
+// IPsecConnectionDesiredIntent defines model for IPsecConnection.DesiredIntent.
+type IPsecConnectionDesiredIntent string
+
+// IPsecConnectionPage defines model for IPsecConnectionPage.
+type IPsecConnectionPage struct {
+	Items      []IPsecConnection   `json:"items"`
+	NextCursor *openapi_types.UUID `json:"next_cursor"`
+}
+
+// IPsecConnectionStatus defines model for IPsecConnectionStatus.
+type IPsecConnectionStatus struct {
+	// ObservedAt Control-plane receipt time; older than 90 seconds is unknown.
+	ObservedAt *time.Time          `json:"observed_at"`
+	Tunnels    []IPsecTunnelStatus `json:"tunnels"`
+}
+
+// IPsecEligibility defines model for IPsecEligibility.
+type IPsecEligibility struct {
+	Eligible bool                   `json:"eligible"`
+	Reason   IPsecEligibilityReason `json:"reason"`
+}
+
+// IPsecEligibilityReason defines model for IPsecEligibility.Reason.
+type IPsecEligibilityReason string
+
+// IPsecProviderConfiguration defines model for IPsecProviderConfiguration.
+type IPsecProviderConfiguration struct {
+	Configuration         *IPsecProviderNetworkConfiguration `json:"configuration,omitempty"`
+	ConfigurationRevision int64                              `json:"configuration_revision"`
+	ProfileId             string                             `json:"profile_id"`
+}
+
+// IPsecProviderCreateInput defines model for IPsecProviderCreateInput.
+type IPsecProviderCreateInput struct {
+	Configuration IPsecConfigurationCheckInput `json:"configuration"`
+	GatewayNodeId openapi_types.UUID           `json:"gateway_node_id"`
+	Id            openapi_types.UUID           `json:"id"`
+	Name          string                       `json:"name"`
+	SiteId        openapi_types.UUID           `json:"site_id"`
+	TunnelIds     []openapi_types.UUID         `json:"tunnel_ids"`
+}
+
+// IPsecProviderNetworkConfiguration defines model for IPsecProviderNetworkConfiguration.
+type IPsecProviderNetworkConfiguration struct {
+	CustomerOutsideAddress string                       `json:"customer_outside_address"`
+	LocalPrefixes          []string                     `json:"local_prefixes"`
+	Mode                   string                       `json:"mode"`
+	RemotePrefixes         []string                     `json:"remote_prefixes"`
+	Tunnels                []IPsecProviderNetworkTunnel `json:"tunnels"`
+}
+
+// IPsecProviderNetworkTunnel defines model for IPsecProviderNetworkTunnel.
+type IPsecProviderNetworkTunnel struct {
+	CloudInsideAddress    string `json:"cloud_inside_address"`
+	CustomerInsideAddress string `json:"customer_inside_address"`
+	InsideCidr            string `json:"inside_cidr"`
+	OutsideAddress        string `json:"outside_address"`
+}
+
+// IPsecSettings defines model for IPsecSettings.
+type IPsecSettings struct {
+	Enabled  bool  `json:"enabled"`
+	Revision int64 `json:"revision"`
+}
+
+// IPsecSettingsUpdate defines model for IPsecSettingsUpdate.
+type IPsecSettingsUpdate struct {
+	Enabled          bool  `json:"enabled"`
+	ExpectedRevision int64 `json:"expected_revision"`
+}
+
+// IPsecTunnelStatus defines model for IPsecTunnelStatus.
+type IPsecTunnelStatus struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Selected Configured traffic path; does not imply reachability.
+	Selected bool                    `json:"selected"`
+	Slot     int                     `json:"slot"`
+	Status   IPsecTunnelStatusStatus `json:"status"`
+}
+
+// IPsecTunnelStatusStatus defines model for IPsecTunnelStatus.Status.
+type IPsecTunnelStatusStatus string
+
 // IdpGroupMapRequest defines model for IdpGroupMapRequest.
 type IdpGroupMapRequest struct {
 	GroupId *openapi_types.UUID `json:"group_id,omitempty"`
@@ -6035,6 +6218,36 @@ type UpdateDeviceModeParams struct {
 	FullTunnel *bool `form:"full_tunnel,omitempty" json:"full_tunnel,omitempty"`
 }
 
+// ListIPsecConnectionsParams defines parameters for ListIPsecConnections.
+type ListIPsecConnectionsParams struct {
+	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
+	After *openapi_types.UUID `form:"after,omitempty" json:"after,omitempty"`
+}
+
+// DeleteIPsecConnectionParams defines parameters for DeleteIPsecConnection.
+type DeleteIPsecConnectionParams struct {
+	IfMatch string `json:"If-Match"`
+}
+
+// SetIPsecConnectionIntentJSONBody defines parameters for SetIPsecConnectionIntent.
+type SetIPsecConnectionIntentJSONBody struct {
+	Intent SetIPsecConnectionIntentJSONBodyIntent `json:"intent"`
+}
+
+// SetIPsecConnectionIntentParams defines parameters for SetIPsecConnectionIntent.
+type SetIPsecConnectionIntentParams struct {
+	IfMatch string `json:"If-Match"`
+}
+
+// SetIPsecConnectionIntentJSONBodyIntent defines parameters for SetIPsecConnectionIntent.
+type SetIPsecConnectionIntentJSONBodyIntent string
+
+// GetIPsecEligibilityParams defines parameters for GetIPsecEligibility.
+type GetIPsecEligibilityParams struct {
+	SiteId        openapi_types.UUID `form:"site_id" json:"site_id"`
+	GatewayNodeId openapi_types.UUID `form:"gateway_node_id" json:"gateway_node_id"`
+}
+
 // ListK8sClusterScopeReviewQueueParams defines parameters for ListK8sClusterScopeReviewQueue.
 type ListK8sClusterScopeReviewQueueParams struct {
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -6405,6 +6618,18 @@ type ResendInvitationJSONRequestBody = EmailRequest
 
 // RevokeInvitationJSONRequestBody defines body for RevokeInvitation for application/json ContentType.
 type RevokeInvitationJSONRequestBody = EmailRequest
+
+// CheckIPsecConfigurationJSONRequestBody defines body for CheckIPsecConfiguration for application/json ContentType.
+type CheckIPsecConfigurationJSONRequestBody = IPsecConfigurationCheckInput
+
+// CreateIPsecProviderConnectionJSONRequestBody defines body for CreateIPsecProviderConnection for application/json ContentType.
+type CreateIPsecProviderConnectionJSONRequestBody = IPsecProviderCreateInput
+
+// SetIPsecConnectionIntentJSONRequestBody defines body for SetIPsecConnectionIntent for application/json ContentType.
+type SetIPsecConnectionIntentJSONRequestBody SetIPsecConnectionIntentJSONBody
+
+// SetIPsecSettingsJSONRequestBody defines body for SetIPsecSettings for application/json ContentType.
+type SetIPsecSettingsJSONRequestBody = IPsecSettingsUpdate
 
 // SetK8sClusterScopeSettingsJSONRequestBody defines body for SetK8sClusterScopeSettings for application/json ContentType.
 type SetK8sClusterScopeSettingsJSONRequestBody = SetK8sClusterScopeSettingsRequest
@@ -7615,6 +7840,47 @@ type ClientInterface interface {
 	RevokeInvitationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RevokeInvitation(ctx context.Context, orgId openapi_types.UUID, body RevokeInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckIPsecConfigurationWithBody request with any body
+	CheckIPsecConfigurationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CheckIPsecConfiguration(ctx context.Context, orgId openapi_types.UUID, body CheckIPsecConfigurationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIPsecConnections request
+	ListIPsecConnections(ctx context.Context, orgId openapi_types.UUID, params *ListIPsecConnectionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateIPsecProviderConnectionWithBody request with any body
+	CreateIPsecProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateIPsecProviderConnection(ctx context.Context, orgId openapi_types.UUID, body CreateIPsecProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteIPsecConnection request
+	DeleteIPsecConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *DeleteIPsecConnectionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIPsecConnection request
+	GetIPsecConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIPsecProviderConfiguration request
+	GetIPsecProviderConfiguration(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetIPsecConnectionIntentWithBody request with any body
+	SetIPsecConnectionIntentWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetIPsecConnectionIntent(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIPsecConnectionStatus request
+	GetIPsecConnectionStatus(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIPsecEligibility request
+	GetIPsecEligibility(ctx context.Context, orgId openapi_types.UUID, params *GetIPsecEligibilityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIPsecSettings request
+	GetIPsecSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetIPsecSettingsWithBody request with any body
+	SetIPsecSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetIPsecSettings(ctx context.Context, orgId openapi_types.UUID, body SetIPsecSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListK8sClusterScopeReviewQueue request
 	ListK8sClusterScopeReviewQueue(ctx context.Context, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12135,6 +12401,186 @@ func (c *Client) RevokeInvitationWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) RevokeInvitation(ctx context.Context, orgId openapi_types.UUID, body RevokeInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeInvitationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CheckIPsecConfigurationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckIPsecConfigurationRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CheckIPsecConfiguration(ctx context.Context, orgId openapi_types.UUID, body CheckIPsecConfigurationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckIPsecConfigurationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListIPsecConnections(ctx context.Context, orgId openapi_types.UUID, params *ListIPsecConnectionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIPsecConnectionsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateIPsecProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIPsecProviderConnectionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateIPsecProviderConnection(ctx context.Context, orgId openapi_types.UUID, body CreateIPsecProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIPsecProviderConnectionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteIPsecConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *DeleteIPsecConnectionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteIPsecConnectionRequest(c.Server, orgId, connectionId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIPsecConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIPsecConnectionRequest(c.Server, orgId, connectionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIPsecProviderConfiguration(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIPsecProviderConfigurationRequest(c.Server, orgId, connectionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetIPsecConnectionIntentWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetIPsecConnectionIntentRequestWithBody(c.Server, orgId, connectionId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetIPsecConnectionIntent(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetIPsecConnectionIntentRequest(c.Server, orgId, connectionId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIPsecConnectionStatus(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIPsecConnectionStatusRequest(c.Server, orgId, connectionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIPsecEligibility(ctx context.Context, orgId openapi_types.UUID, params *GetIPsecEligibilityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIPsecEligibilityRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetIPsecSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIPsecSettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetIPsecSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetIPsecSettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetIPsecSettings(ctx context.Context, orgId openapi_types.UUID, body SetIPsecSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetIPsecSettingsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -24875,6 +25321,561 @@ func NewRevokeInvitationRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewCheckIPsecConfigurationRequest calls the generic CheckIPsecConfiguration builder with application/json body
+func NewCheckIPsecConfigurationRequest(server string, orgId openapi_types.UUID, body CheckIPsecConfigurationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCheckIPsecConfigurationRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCheckIPsecConfigurationRequestWithBody generates requests for CheckIPsecConfiguration with any type of body
+func NewCheckIPsecConfigurationRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/configuration-check", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListIPsecConnectionsRequest generates requests for ListIPsecConnections
+func NewListIPsecConnectionsRequest(server string, orgId openapi_types.UUID, params *ListIPsecConnectionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "after", runtime.ParamLocationQuery, *params.After); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateIPsecProviderConnectionRequest calls the generic CreateIPsecProviderConnection builder with application/json body
+func NewCreateIPsecProviderConnectionRequest(server string, orgId openapi_types.UUID, body CreateIPsecProviderConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateIPsecProviderConnectionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateIPsecProviderConnectionRequestWithBody generates requests for CreateIPsecProviderConnection with any type of body
+func NewCreateIPsecProviderConnectionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteIPsecConnectionRequest generates requests for DeleteIPsecConnection
+func NewDeleteIPsecConnectionRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *DeleteIPsecConnectionParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "If-Match", runtime.ParamLocationHeader, params.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewGetIPsecConnectionRequest generates requests for GetIPsecConnection
+func NewGetIPsecConnectionRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIPsecProviderConfigurationRequest generates requests for GetIPsecProviderConfiguration
+func NewGetIPsecProviderConfigurationRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections/%s/configuration", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetIPsecConnectionIntentRequest calls the generic SetIPsecConnectionIntent builder with application/json body
+func NewSetIPsecConnectionIntentRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetIPsecConnectionIntentRequestWithBody(server, orgId, connectionId, params, "application/json", bodyReader)
+}
+
+// NewSetIPsecConnectionIntentRequestWithBody generates requests for SetIPsecConnectionIntent with any type of body
+func NewSetIPsecConnectionIntentRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections/%s/intent", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "If-Match", runtime.ParamLocationHeader, params.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("If-Match", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewGetIPsecConnectionStatusRequest generates requests for GetIPsecConnectionStatus
+func NewGetIPsecConnectionStatusRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections/%s/status", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIPsecEligibilityRequest generates requests for GetIPsecEligibility
+func NewGetIPsecEligibilityRequest(server string, orgId openapi_types.UUID, params *GetIPsecEligibilityParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/eligibility", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "site_id", runtime.ParamLocationQuery, params.SiteId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "gateway_node_id", runtime.ParamLocationQuery, params.GatewayNodeId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetIPsecSettingsRequest generates requests for GetIPsecSettings
+func NewGetIPsecSettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetIPsecSettingsRequest calls the generic SetIPsecSettings builder with application/json body
+func NewSetIPsecSettingsRequest(server string, orgId openapi_types.UUID, body SetIPsecSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetIPsecSettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetIPsecSettingsRequestWithBody generates requests for SetIPsecSettings with any type of body
+func NewSetIPsecSettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListK8sClusterScopeReviewQueueRequest generates requests for ListK8sClusterScopeReviewQueue
 func NewListK8sClusterScopeReviewQueueRequest(server string, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams) (*http.Request, error) {
 	var err error
@@ -30802,6 +31803,47 @@ type ClientWithResponsesInterface interface {
 
 	RevokeInvitationWithResponse(ctx context.Context, orgId openapi_types.UUID, body RevokeInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeInvitationResponse, error)
 
+	// CheckIPsecConfigurationWithBodyWithResponse request with any body
+	CheckIPsecConfigurationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckIPsecConfigurationResponse, error)
+
+	CheckIPsecConfigurationWithResponse(ctx context.Context, orgId openapi_types.UUID, body CheckIPsecConfigurationJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckIPsecConfigurationResponse, error)
+
+	// ListIPsecConnectionsWithResponse request
+	ListIPsecConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListIPsecConnectionsParams, reqEditors ...RequestEditorFn) (*ListIPsecConnectionsResponse, error)
+
+	// CreateIPsecProviderConnectionWithBodyWithResponse request with any body
+	CreateIPsecProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIPsecProviderConnectionResponse, error)
+
+	CreateIPsecProviderConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateIPsecProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIPsecProviderConnectionResponse, error)
+
+	// DeleteIPsecConnectionWithResponse request
+	DeleteIPsecConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *DeleteIPsecConnectionParams, reqEditors ...RequestEditorFn) (*DeleteIPsecConnectionResponse, error)
+
+	// GetIPsecConnectionWithResponse request
+	GetIPsecConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecConnectionResponse, error)
+
+	// GetIPsecProviderConfigurationWithResponse request
+	GetIPsecProviderConfigurationWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecProviderConfigurationResponse, error)
+
+	// SetIPsecConnectionIntentWithBodyWithResponse request with any body
+	SetIPsecConnectionIntentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetIPsecConnectionIntentResponse, error)
+
+	SetIPsecConnectionIntentWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIPsecConnectionIntentResponse, error)
+
+	// GetIPsecConnectionStatusWithResponse request
+	GetIPsecConnectionStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecConnectionStatusResponse, error)
+
+	// GetIPsecEligibilityWithResponse request
+	GetIPsecEligibilityWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetIPsecEligibilityParams, reqEditors ...RequestEditorFn) (*GetIPsecEligibilityResponse, error)
+
+	// GetIPsecSettingsWithResponse request
+	GetIPsecSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecSettingsResponse, error)
+
+	// SetIPsecSettingsWithBodyWithResponse request with any body
+	SetIPsecSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetIPsecSettingsResponse, error)
+
+	SetIPsecSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetIPsecSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIPsecSettingsResponse, error)
+
 	// ListK8sClusterScopeReviewQueueWithResponse request
 	ListK8sClusterScopeReviewQueueWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeReviewQueueResponse, error)
 
@@ -36538,6 +37580,259 @@ func (r RevokeInvitationResponse) StatusCode() int {
 	return 0
 }
 
+type CheckIPsecConfigurationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConfigurationCheckResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckIPsecConfigurationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckIPsecConfigurationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListIPsecConnectionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConnectionPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIPsecConnectionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIPsecConnectionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateIPsecProviderConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *IPsecConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateIPsecProviderConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateIPsecProviderConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteIPsecConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteIPsecConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteIPsecConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIPsecConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIPsecConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIPsecConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIPsecProviderConfigurationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecProviderConfiguration
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIPsecProviderConfigurationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIPsecProviderConfigurationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetIPsecConnectionIntentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetIPsecConnectionIntentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetIPsecConnectionIntentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIPsecConnectionStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConnectionStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIPsecConnectionStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIPsecConnectionStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIPsecEligibilityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecEligibility
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIPsecEligibilityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIPsecEligibilityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetIPsecSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIPsecSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIPsecSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetIPsecSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetIPsecSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetIPsecSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListK8sClusterScopeReviewQueueResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -41921,6 +43216,137 @@ func (c *ClientWithResponses) RevokeInvitationWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseRevokeInvitationResponse(rsp)
+}
+
+// CheckIPsecConfigurationWithBodyWithResponse request with arbitrary body returning *CheckIPsecConfigurationResponse
+func (c *ClientWithResponses) CheckIPsecConfigurationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckIPsecConfigurationResponse, error) {
+	rsp, err := c.CheckIPsecConfigurationWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckIPsecConfigurationResponse(rsp)
+}
+
+func (c *ClientWithResponses) CheckIPsecConfigurationWithResponse(ctx context.Context, orgId openapi_types.UUID, body CheckIPsecConfigurationJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckIPsecConfigurationResponse, error) {
+	rsp, err := c.CheckIPsecConfiguration(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckIPsecConfigurationResponse(rsp)
+}
+
+// ListIPsecConnectionsWithResponse request returning *ListIPsecConnectionsResponse
+func (c *ClientWithResponses) ListIPsecConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListIPsecConnectionsParams, reqEditors ...RequestEditorFn) (*ListIPsecConnectionsResponse, error) {
+	rsp, err := c.ListIPsecConnections(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIPsecConnectionsResponse(rsp)
+}
+
+// CreateIPsecProviderConnectionWithBodyWithResponse request with arbitrary body returning *CreateIPsecProviderConnectionResponse
+func (c *ClientWithResponses) CreateIPsecProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIPsecProviderConnectionResponse, error) {
+	rsp, err := c.CreateIPsecProviderConnectionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIPsecProviderConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateIPsecProviderConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateIPsecProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIPsecProviderConnectionResponse, error) {
+	rsp, err := c.CreateIPsecProviderConnection(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIPsecProviderConnectionResponse(rsp)
+}
+
+// DeleteIPsecConnectionWithResponse request returning *DeleteIPsecConnectionResponse
+func (c *ClientWithResponses) DeleteIPsecConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *DeleteIPsecConnectionParams, reqEditors ...RequestEditorFn) (*DeleteIPsecConnectionResponse, error) {
+	rsp, err := c.DeleteIPsecConnection(ctx, orgId, connectionId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteIPsecConnectionResponse(rsp)
+}
+
+// GetIPsecConnectionWithResponse request returning *GetIPsecConnectionResponse
+func (c *ClientWithResponses) GetIPsecConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecConnectionResponse, error) {
+	rsp, err := c.GetIPsecConnection(ctx, orgId, connectionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIPsecConnectionResponse(rsp)
+}
+
+// GetIPsecProviderConfigurationWithResponse request returning *GetIPsecProviderConfigurationResponse
+func (c *ClientWithResponses) GetIPsecProviderConfigurationWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecProviderConfigurationResponse, error) {
+	rsp, err := c.GetIPsecProviderConfiguration(ctx, orgId, connectionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIPsecProviderConfigurationResponse(rsp)
+}
+
+// SetIPsecConnectionIntentWithBodyWithResponse request with arbitrary body returning *SetIPsecConnectionIntentResponse
+func (c *ClientWithResponses) SetIPsecConnectionIntentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetIPsecConnectionIntentResponse, error) {
+	rsp, err := c.SetIPsecConnectionIntentWithBody(ctx, orgId, connectionId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetIPsecConnectionIntentResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetIPsecConnectionIntentWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIPsecConnectionIntentResponse, error) {
+	rsp, err := c.SetIPsecConnectionIntent(ctx, orgId, connectionId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetIPsecConnectionIntentResponse(rsp)
+}
+
+// GetIPsecConnectionStatusWithResponse request returning *GetIPsecConnectionStatusResponse
+func (c *ClientWithResponses) GetIPsecConnectionStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecConnectionStatusResponse, error) {
+	rsp, err := c.GetIPsecConnectionStatus(ctx, orgId, connectionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIPsecConnectionStatusResponse(rsp)
+}
+
+// GetIPsecEligibilityWithResponse request returning *GetIPsecEligibilityResponse
+func (c *ClientWithResponses) GetIPsecEligibilityWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetIPsecEligibilityParams, reqEditors ...RequestEditorFn) (*GetIPsecEligibilityResponse, error) {
+	rsp, err := c.GetIPsecEligibility(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIPsecEligibilityResponse(rsp)
+}
+
+// GetIPsecSettingsWithResponse request returning *GetIPsecSettingsResponse
+func (c *ClientWithResponses) GetIPsecSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecSettingsResponse, error) {
+	rsp, err := c.GetIPsecSettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIPsecSettingsResponse(rsp)
+}
+
+// SetIPsecSettingsWithBodyWithResponse request with arbitrary body returning *SetIPsecSettingsResponse
+func (c *ClientWithResponses) SetIPsecSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetIPsecSettingsResponse, error) {
+	rsp, err := c.SetIPsecSettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetIPsecSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetIPsecSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetIPsecSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIPsecSettingsResponse, error) {
+	rsp, err := c.SetIPsecSettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetIPsecSettingsResponse(rsp)
 }
 
 // ListK8sClusterScopeReviewQueueWithResponse request returning *ListK8sClusterScopeReviewQueueResponse
@@ -50788,6 +52214,369 @@ func ParseRevokeInvitationResponse(rsp *http.Response) (*RevokeInvitationRespons
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckIPsecConfigurationResponse parses an HTTP response from a CheckIPsecConfigurationWithResponse call
+func ParseCheckIPsecConfigurationResponse(rsp *http.Response) (*CheckIPsecConfigurationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckIPsecConfigurationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConfigurationCheckResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIPsecConnectionsResponse parses an HTTP response from a ListIPsecConnectionsWithResponse call
+func ParseListIPsecConnectionsResponse(rsp *http.Response) (*ListIPsecConnectionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIPsecConnectionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConnectionPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateIPsecProviderConnectionResponse parses an HTTP response from a CreateIPsecProviderConnectionWithResponse call
+func ParseCreateIPsecProviderConnectionResponse(rsp *http.Response) (*CreateIPsecProviderConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateIPsecProviderConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IPsecConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteIPsecConnectionResponse parses an HTTP response from a DeleteIPsecConnectionWithResponse call
+func ParseDeleteIPsecConnectionResponse(rsp *http.Response) (*DeleteIPsecConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteIPsecConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIPsecConnectionResponse parses an HTTP response from a GetIPsecConnectionWithResponse call
+func ParseGetIPsecConnectionResponse(rsp *http.Response) (*GetIPsecConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIPsecConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIPsecProviderConfigurationResponse parses an HTTP response from a GetIPsecProviderConfigurationWithResponse call
+func ParseGetIPsecProviderConfigurationResponse(rsp *http.Response) (*GetIPsecProviderConfigurationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIPsecProviderConfigurationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecProviderConfiguration
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetIPsecConnectionIntentResponse parses an HTTP response from a SetIPsecConnectionIntentWithResponse call
+func ParseSetIPsecConnectionIntentResponse(rsp *http.Response) (*SetIPsecConnectionIntentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetIPsecConnectionIntentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIPsecConnectionStatusResponse parses an HTTP response from a GetIPsecConnectionStatusWithResponse call
+func ParseGetIPsecConnectionStatusResponse(rsp *http.Response) (*GetIPsecConnectionStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIPsecConnectionStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConnectionStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIPsecEligibilityResponse parses an HTTP response from a GetIPsecEligibilityWithResponse call
+func ParseGetIPsecEligibilityResponse(rsp *http.Response) (*GetIPsecEligibilityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIPsecEligibilityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecEligibility
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIPsecSettingsResponse parses an HTTP response from a GetIPsecSettingsWithResponse call
+func ParseGetIPsecSettingsResponse(rsp *http.Response) (*GetIPsecSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIPsecSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetIPsecSettingsResponse parses an HTTP response from a SetIPsecSettingsWithResponse call
+func ParseSetIPsecSettingsResponse(rsp *http.Response) (*SetIPsecSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetIPsecSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

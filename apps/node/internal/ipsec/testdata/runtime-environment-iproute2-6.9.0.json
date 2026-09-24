@@ -1,0 +1,262 @@
+{
+  "provenance": "Synthetic native ARM64 owned disposable controller lab; iproute2 6.9.0, nft1.1.3. Read-only metadata; no SA or PSK dump.",
+  "ip": {
+    "-j -4 rule show": [
+      {
+        "priority": 0,
+        "src": "all",
+        "table": "local"
+      },
+      {
+        "priority": 32766,
+        "src": "all",
+        "table": "main"
+      },
+      {
+        "priority": 32767,
+        "src": "all",
+        "table": "default"
+      }
+    ],
+    "-j -d link show": [
+      {
+        "ifindex": 1,
+        "ifname": "lo",
+        "flags": [
+          "LOOPBACK",
+          "UP",
+          "LOWER_UP"
+        ],
+        "mtu": 65536,
+        "qdisc": "noqueue",
+        "operstate": "UNKNOWN",
+        "linkmode": "DEFAULT",
+        "group": "default",
+        "txqlen": 1000,
+        "link_type": "loopback",
+        "address": "00:00:00:00:00:00",
+        "broadcast": "00:00:00:00:00:00",
+        "promiscuity": 0,
+        "allmulti": 0,
+        "min_mtu": 0,
+        "max_mtu": 0,
+        "inet6_addr_gen_mode": "eui64",
+        "num_tx_queues": 1,
+        "num_rx_queues": 1,
+        "gso_max_size": 65536,
+        "gso_max_segs": 65535,
+        "tso_max_size": 524280,
+        "tso_max_segs": 65535,
+        "gro_max_size": 65536,
+        "gso_ipv4_max_size": 65536,
+        "gro_ipv4_max_size": 65536
+      },
+      {
+        "ifindex": 2,
+        "link_index": 451,
+        "ifname": "eth0",
+        "flags": [
+          "BROADCAST",
+          "MULTICAST",
+          "UP",
+          "LOWER_UP"
+        ],
+        "mtu": 1500,
+        "qdisc": "noqueue",
+        "operstate": "UP",
+        "linkmode": "DEFAULT",
+        "group": "default",
+        "link_type": "ether",
+        "address": "0a:02:45:5b:21:da",
+        "broadcast": "ff:ff:ff:ff:ff:ff",
+        "link_netnsid": 0,
+        "promiscuity": 0,
+        "allmulti": 0,
+        "min_mtu": 68,
+        "max_mtu": 65535,
+        "linkinfo": {
+          "info_kind": "veth"
+        },
+        "inet6_addr_gen_mode": "eui64",
+        "num_tx_queues": 4,
+        "num_rx_queues": 4,
+        "gso_max_size": 65536,
+        "gso_max_segs": 65535,
+        "tso_max_size": 524280,
+        "tso_max_segs": 65535,
+        "gro_max_size": 65536,
+        "gso_ipv4_max_size": 65536,
+        "gro_ipv4_max_size": 65536
+      },
+      {
+        "ifindex": 3,
+        "link_index": 455,
+        "ifname": "eth1",
+        "flags": [
+          "BROADCAST",
+          "MULTICAST",
+          "UP",
+          "LOWER_UP"
+        ],
+        "mtu": 1500,
+        "qdisc": "noqueue",
+        "operstate": "UP",
+        "linkmode": "DEFAULT",
+        "group": "default",
+        "link_type": "ether",
+        "address": "8a:b3:45:07:5b:b1",
+        "broadcast": "ff:ff:ff:ff:ff:ff",
+        "link_netnsid": 0,
+        "promiscuity": 0,
+        "allmulti": 0,
+        "min_mtu": 68,
+        "max_mtu": 65535,
+        "linkinfo": {
+          "info_kind": "veth"
+        },
+        "inet6_addr_gen_mode": "eui64",
+        "num_tx_queues": 4,
+        "num_rx_queues": 4,
+        "gso_max_size": 65536,
+        "gso_max_segs": 65535,
+        "tso_max_size": 524280,
+        "tso_max_segs": 65535,
+        "gro_max_size": 65536,
+        "gso_ipv4_max_size": 65536,
+        "gro_ipv4_max_size": 65536
+      }
+    ],
+    "-j -4 route show table main": [
+      {
+        "dst": "10.10.0.0/24",
+        "dev": "eth1",
+        "protocol": "kernel",
+        "scope": "link",
+        "prefsrc": "10.10.0.1",
+        "flags": []
+      },
+      {
+        "dst": "198.19.240.0/24",
+        "dev": "eth0",
+        "protocol": "kernel",
+        "scope": "link",
+        "prefsrc": "198.19.240.10",
+        "flags": []
+      }
+    ],
+    "-j -4 address show": [
+      {
+        "ifindex": 1,
+        "ifname": "lo",
+        "flags": [
+          "LOOPBACK",
+          "UP",
+          "LOWER_UP"
+        ],
+        "mtu": 65536,
+        "qdisc": "noqueue",
+        "operstate": "UNKNOWN",
+        "group": "default",
+        "txqlen": 1000,
+        "addr_info": [
+          {
+            "family": "inet",
+            "local": "127.0.0.1",
+            "prefixlen": 8,
+            "scope": "host",
+            "label": "lo",
+            "valid_life_time": 4294967295,
+            "preferred_life_time": 4294967295
+          }
+        ]
+      },
+      {
+        "ifindex": 2,
+        "link_index": 451,
+        "ifname": "eth0",
+        "flags": [
+          "BROADCAST",
+          "MULTICAST",
+          "UP",
+          "LOWER_UP"
+        ],
+        "mtu": 1500,
+        "qdisc": "noqueue",
+        "operstate": "UP",
+        "group": "default",
+        "link_netnsid": 0,
+        "addr_info": [
+          {
+            "family": "inet",
+            "local": "198.19.240.10",
+            "prefixlen": 24,
+            "broadcast": "198.19.240.255",
+            "scope": "global",
+            "label": "eth0",
+            "valid_life_time": 4294967295,
+            "preferred_life_time": 4294967295
+          }
+        ]
+      },
+      {
+        "ifindex": 3,
+        "link_index": 455,
+        "ifname": "eth1",
+        "flags": [
+          "BROADCAST",
+          "MULTICAST",
+          "UP",
+          "LOWER_UP"
+        ],
+        "mtu": 1500,
+        "qdisc": "noqueue",
+        "operstate": "UP",
+        "group": "default",
+        "link_netnsid": 0,
+        "addr_info": [
+          {
+            "family": "inet",
+            "local": "10.10.0.1",
+            "prefixlen": 24,
+            "broadcast": "10.10.0.255",
+            "scope": "global",
+            "label": "eth1",
+            "valid_life_time": 4294967295,
+            "preferred_life_time": 4294967295
+          }
+        ]
+      }
+    ],
+    "-j -4 route get 198.19.240.20": [
+      {
+        "dst": "198.19.240.20",
+        "dev": "eth0",
+        "prefsrc": "198.19.240.10",
+        "flags": [],
+        "uid": 0,
+        "cache": []
+      }
+    ],
+    "-j -4 route get 198.19.240.21": [
+      {
+        "dst": "198.19.240.21",
+        "dev": "eth0",
+        "prefsrc": "198.19.240.10",
+        "flags": [],
+        "uid": 0,
+        "cache": []
+      }
+    ]
+  },
+  "nft": {
+    "nftables": [
+      {
+        "metainfo": {
+          "version": "1.1.3",
+          "release_name": "Commodore Bullmoose #4",
+          "json_schema_version": 1
+        }
+      }
+    ]
+  }
+}

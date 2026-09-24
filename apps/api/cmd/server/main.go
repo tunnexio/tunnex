@@ -46,6 +46,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	apphttp "github.com/tunnexio/tunnex/apps/api/internal/http"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
+	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/leader"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
@@ -521,8 +522,16 @@ func main() {
 		logger.Error("relay_issuance_configuration_invalid", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	ipsecStore := ipsec.NewConnectionStore(pool)
+	ipsecStore.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
+		IPsecRuntime:     ipsecStore,
+		IPsecEligibility: ipsecStore,
+		IPsecConnections: ipsecStore,
+		IPsecProviders:   ipsecStore,
+		IPsecSealer:      sealer,
+		IPsecSettings:    ipsec.NewSettingsStore(pool),
 		System:           systemQueries,
 		AICredentials:    aiCredentials,
 		AIWorkloads:      aiWorkloads,
@@ -597,6 +606,7 @@ func main() {
 
 	// mTLS agent control channel (separate listener; client certs verified vs CA).
 	agentCh := apphttp.NewAgentChannel(nodeSvc, agentCA, pushHub, logger)
+	agentCh.SetIPsecRuntime(ipsecStore, sealer)
 	agentCh.SetConnectivityStore(connectivityStore)
 	agentCh.SetVPNInference(aiAdapter, aiPolicies)
 	// S20.3a P2: ownership deliveries are a durable, private mTLS mailbox.

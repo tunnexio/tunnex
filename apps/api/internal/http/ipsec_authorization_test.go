@@ -9,7 +9,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
-// Exercise the existing authorization seam. No IPsec HTTP handler exists yet.
+// Exercise the shared authorization seam used by IPsec management handlers.
 func TestIPsecManagementAuthorization(t *testing.T) {
 	org := uuid.New()
 	if _, err := authorize(context.Background(), org, rbac.PermIPsecManage); !hasCode(err, 401, "unauthenticated") {

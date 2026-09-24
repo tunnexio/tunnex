@@ -13,9 +13,14 @@ export function SitePairReview({ sites, renderDetails }: {
   const first = sites.find(site => site.id === firstId);
   const second = sites.find(site => site.id === secondId);
   return <section aria-labelledby="pair-heading" className="space-y-4">
-    <h2 id="pair-heading" className="text-lg font-semibold">Review two networks</h2>
-    <p className="text-ink-secondary">Choose existing sites to check their gateways and network ranges before reviewing access. This does not create or change a connection.</p>
-    {sites.length < 2 ? <p>Add at least two sites to review a site-to-site path.</p> : <>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 id="pair-heading" className="text-lg font-semibold">Review two networks</h2>
+      <div className="flex gap-2">
+        {first && second && <Button variant="ghost" size="sm" onClick={() => { setFirstId(secondId); setSecondId(firstId); }}>Swap networks</Button>}
+        {(first || second) && <Button variant="ghost" size="sm" onClick={() => { setFirstId(""); setSecondId(""); }}>Reset</Button>}
+      </div>
+    </div>
+    {sites.length < 2 ? <p>Add another network to review connectivity.</p> : <>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="First network"><Select value={first?.id ?? ""} onChange={event => {
           setFirstId(event.target.value);
@@ -25,7 +30,7 @@ export function SitePairReview({ sites, renderDetails }: {
           <option value="">Choose another network</option>{sites.filter(site => site.id !== firstId).map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
         </Select></Field>
       </div>
-      {first && second && first.id !== second.id ? renderDetails(first, second) : <p className="text-ink-secondary">Select two different networks to see their configuration.</p>}
+      {first && second && first.id !== second.id ? renderDetails(first, second) : <p className="text-ink-secondary">Choose two networks. Configuration appears here.</p>}
     </>}
   </section>;
 }
@@ -68,7 +73,7 @@ export function SitePairConfigurationView({ first, second, data, onRetry }: {
     </div>
     <section aria-labelledby="transit-hubs-heading" className="space-y-3 break-words">
       <h3 id="transit-hubs-heading" className="font-semibold">Reported transit hubs</h3>
-      <p className="text-ink-secondary">These roles apply across your organization. They do not verify the traffic path between the selected networks.</p>
+      <p className="text-ink-secondary">Organization-wide roles, not a traffic-path check.</p>
       {!data.hubSet.ok ? <p role="alert">Could not load transit hubs. {data.hubSet.error}</p> : data.hubSet.data.members.length === 0 ? <p>No transit hub set reported.</p> : <ul className="space-y-2">{data.hubSet.data.members.map(member => {
         const gateway = data.nodes.ok ? data.nodes.data.find(node => node.id === member.node_id) : undefined;
         return <li key={member.node_id}>
@@ -82,13 +87,7 @@ export function SitePairConfigurationView({ first, second, data, onRetry }: {
     </section>
     {incomplete && <Button onClick={onRetry}>Retry configuration</Button>}
     <div className="space-y-2">
-      <h3 className="font-semibold">Next: review the full path</h3>
-      <ol className="list-decimal space-y-2 pl-5 text-ink-secondary">
-        <li>Confirm each site has a usable gateway and the required approved ranges.</li>
-        <li>Review the existing topology and access policy for traffic in each direction.</li>
-        <li>Configure local return routes, then test an application between devices at the two sites.</li>
-      </ol>
-      <p className="text-ink-secondary">Traffic between these networks has not been verified here. Tunnex may route through a hub; selecting a pair does not establish a direct tunnel.</p>
+      <p className="text-sm text-ink-secondary">Traffic between these networks has not been verified. This review makes no connection changes.</p>
       <div className="flex flex-wrap gap-4">
         <Link className="underline underline-offset-4" to="/sites">View network topology</Link>
         <Link className="underline underline-offset-4" to="/access">Review access policies</Link>

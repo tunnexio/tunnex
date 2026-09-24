@@ -8,7 +8,7 @@ import {
   writeNavCollapse,
   type NavCollapse,
 } from "../lib/navcollapse";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Logo, Tagline } from "../brand";
 import { useAuth } from "../lib/auth";
 import { useResendVerification } from "../lib/useResendVerification";
@@ -44,8 +44,7 @@ export const NAV_GROUPS: Array<{
       // route and no entry here — working fleet management an operator could only reach by scrolling another
       // screen.
       { to: "/gateways", label: "Gateways", icon: "server" },
-      { to: "/sites", label: "Sites", icon: "network" },
-      { to: "/site-to-site", label: "Site-to-site", icon: "network" },
+      { to: "/sites", label: "Site-to-site", icon: "network" },
       // S14.7: Routed Ranges was BUILD, not REDESIGN — `/routed-ranges` has been served since S8.5 and
       // nothing rendered it. The answer to "does my LAN traffic go down the tunnel" was reachable only by
       // reading a device's AllowedIPs.
@@ -109,9 +108,12 @@ function badgeFor(to: string, c: NavCounts): string | null {
   // A BADGE PARKED ON THE NEAREST AVAILABLE ITEM OUTLIVES THE REASON IT WAS PARKED THERE.
   if (to === "/gateways")
     return gatewayBadgeText(c.gatewaysTotal, c.gatewayCeiling);
-  if (to === "/sites") return badgeText(c.sites);
   if (to === "/devices") return badgeText(c.devices);
   return null;
+}
+
+export function isNavDestinationActive(to: string, pathname: string): boolean {
+  return pathname === to || pathname.startsWith(`${to}/`) || (to === "/sites" && (pathname === "/site-to-site" || pathname.startsWith("/site-to-site/")));
 }
 
 function NavGroups({
@@ -124,6 +126,7 @@ function NavGroups({
   collapsed?: boolean;
 }) {
   const shows = navShows(collapsed ? "closed" : "open");
+  const { pathname } = useLocation();
   return (
     <>
       {NAV_GROUPS.map((g) => (
@@ -138,12 +141,13 @@ function NavGroups({
           <ul className="space-y-1">
             {g.items.map((item) => (
               <li key={item.to}>
-                <NavLink
+                <Link
                   to={item.to}
+                  aria-current={isNavDestinationActive(item.to, pathname) ? "page" : undefined}
                   onClick={onNavigate}
                   title={collapsed ? item.label : undefined}
                   aria-label={collapsed ? item.label : undefined}
-                  className={({ isActive }) =>
+                  className={
                     // README: nav item = flex, gap 10, padding 7px 12px, radius 9, 14px icon + 12.5px label,
                     // right-aligned badge. Active = accent at 13%; hover nudges 2px right.
                     `relative flex items-center gap-2.5 rounded-nav text-nav transition-colors ${
@@ -151,7 +155,7 @@ function NavGroups({
                       // 7px 12px + flex-start when open.
                       collapsed ? "justify-center py-[9px]" : "px-3 py-[7px]"
                     } ${
-                      isActive
+                      isNavDestinationActive(item.to, pathname)
                         ? "bg-white/[.12] text-ink-heading"
                         : "text-ink-body hover:translate-x-[2px] hover:bg-white/[.06] hover:text-ink-primary"
                     }`
@@ -180,7 +184,7 @@ function NavGroups({
                       </span>
                     );
                   })()}
-                </NavLink>
+                </Link>
               </li>
             ))}
           </ul>

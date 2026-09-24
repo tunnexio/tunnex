@@ -142,3 +142,7 @@ func TestCensusNoHandBuiltOrgRanges(t *testing.T) {
 		t.Fatalf("OrgRanges{ literal outside subnetguard (the law leaks here — go through Collect):\n%s", line)
 	}
 }
+
+func (f fakeSource) IPsecReservations(context.Context, uuid.UUID) ([]IPsecReservation, error) {
+	return nil, nil
+}

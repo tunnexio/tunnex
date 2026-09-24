@@ -193,3 +193,17 @@ it.each(["organization", "pair"])("discards a late hub response after the %s cha
   expect(screen.queryByText("old-hub")).toBeNull();
   expect(screen.getByText("current-hub")).toBeTruthy();
 });
+
+it("swaps selected networks and resets the review without changing configuration", () => {
+  render(<MemoryRouter><SitePairReview sites={[a,b]} renderDetails={(first,second)=><p>{first.name} to {second.name}</p>} /></MemoryRouter>);
+  expect(screen.queryByRole("button", {name:"Swap networks"})).toBeNull();
+  fireEvent.change(screen.getByLabelText("First network"), {target:{value:"a"}});
+  fireEvent.change(screen.getByLabelText("Second network"), {target:{value:"b"}});
+  fireEvent.click(screen.getByRole("button", {name:"Swap networks"}));
+  expect(screen.getByText("Cloud to Office")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name:"Reset"}));
+  expect((screen.getByLabelText("First network") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Second network") as HTMLSelectElement).value).toBe("");
+  expect(screen.queryByText("Cloud to Office")).toBeNull();
+  expect(mock.get).not.toHaveBeenCalled();
+});

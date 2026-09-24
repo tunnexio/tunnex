@@ -1,7 +1,7 @@
 // Package subnetguard is the ONE disjointness validator (S8.1 D5/D7). A candidate prefix — a site
 // subnet being advertised, a resized device pool, OR a Kubernetes cluster VIP range (S10.3) — must be
 // DISJOINT from every allocatable class in the org: the other site subnets, the device pool, the
-// clusters' VIP ranges, and reserved ranges. It is called from EVERY seam that can violate the
+// clusters' VIP ranges, IPsec reservations, and reserved ranges. It is called from EVERY seam that can violate the
 // invariant so the check can't diverge, with the class carried so each caller renders its own typed error.
 //
 // The full input set is assembled by Collect (the ONLY constructor of OrgRanges) so a new caller cannot
@@ -16,6 +16,7 @@ package subnetguard
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 
 	"github.com/google/uuid"
@@ -25,10 +26,13 @@ import (
 type OverlapClass string
 
 const (
-	ClassSiteSubnet OverlapClass = "site_subnet"
-	ClassPool       OverlapClass = "pool"
-	ClassVIPRange   OverlapClass = "vip_range" // S10.3: a K8s cluster's synthetic VIP range
-	ClassReserved   OverlapClass = "reserved"
+	ClassSiteSubnet    OverlapClass = "site_subnet"
+	ClassPool          OverlapClass = "pool"
+	ClassVIPRange      OverlapClass = "vip_range" // S10.3: a K8s cluster's synthetic VIP range
+	ClassReserved      OverlapClass = "reserved"
+	ClassIPsecRemote   OverlapClass = "ipsec_remote"
+	ClassIPsecInside   OverlapClass = "ipsec_inside"
+	ClassIPsecUnderlay OverlapClass = "ipsec_underlay"
 )
 
 // Overlap is the first collision found: the existing prefix and its class.
@@ -42,7 +46,13 @@ type Overlap struct {
 // a caller cannot hand-assemble a partial set that silently omits a class (e.g. VIP ranges). A
 // zero-value OrgRanges{} makes Check fail CLOSED (see Check). Do NOT construct this with a literal
 // outside this package; the census test enforces it.
+type IPsecReservation struct {
+	CIDR  string
+	Class OverlapClass
+}
+
 type OrgRanges struct {
+	ipsec     []IPsecReservation
 	site      []netip.Prefix
 	pool      netip.Prefix
 	vipRanges []netip.Prefix
@@ -51,12 +61,13 @@ type OrgRanges struct {
 }
 
 // RangeSource yields the raw CIDR text for each allocatable class of an org. Collect ALWAYS queries
-// every class, so a new caller that wires a RangeSource gets VIP ranges (and every future class) for
+// every class, so a new caller that wires a RangeSource gets IPsec/VIP ranges (and every future class) for
 // free — the seventh caller costs nothing and cannot leak the law.
 type RangeSource interface {
 	SiteSubnetCIDRs(ctx context.Context, orgID uuid.UUID) ([]string, error)
 	PoolCIDR(ctx context.Context, orgID uuid.UUID) (string, error)
 	VIPRangeCIDRs(ctx context.Context, orgID uuid.UUID) ([]string, error)
+	IPsecReservations(ctx context.Context, orgID uuid.UUID) ([]IPsecReservation, error)
 }
 
 // Collect assembles the org's full disjointness input set from the source. It is the ONLY constructor
@@ -83,6 +94,21 @@ func Collect(ctx context.Context, src RangeSource, orgID uuid.UUID) (OrgRanges, 
 	}
 	r.vipRanges = parsePrefixes(vipC)
 
+	r.ipsec, err = src.IPsecReservations(ctx, orgID)
+	if err != nil {
+		return OrgRanges{}, err
+	}
+	for _, entry := range r.ipsec {
+		p, err := netip.ParsePrefix(entry.CIDR)
+		if err != nil || !p.Addr().Is4() || p != p.Masked() {
+			return OrgRanges{}, errors.New("invalid IPsec range reservation")
+		}
+		switch entry.Class {
+		case ClassIPsecRemote, ClassIPsecInside, ClassIPsecUnderlay:
+		default:
+			return OrgRanges{}, errors.New("unknown IPsec range reservation")
+		}
+	}
 	r.collected = true
 	return r, nil
 }
@@ -102,10 +128,31 @@ func (r OrgRanges) WithoutPool() OrgRanges {
 }
 
 // Check reports whether candidate is DISJOINT from every class (ok=true), or the FIRST overlap it hit
-// (ok=false). Order: site subnets → pool → VIP ranges → reserved, so the class of the first collision is
+// (ok=false). Order: site subnets → pool → VIP ranges → reserved → IPsec reservations. Existing class precedence is
 // stable. A non-Collect'd OrgRanges fails CLOSED (ok=false) — a hand-built value can never wave a
 // candidate through.
 func Check(candidate netip.Prefix, r OrgRanges) (Overlap, bool) {
+	return check(candidate, r, "")
+}
+
+// CheckUnderlay permits shared underlay hosts, never overlap with a routed or inside range.
+func CheckUnderlay(candidate netip.Prefix, r OrgRanges) (Overlap, bool) {
+	if !candidate.IsValid() || candidate.Bits() != 32 || !candidate.Addr().Is4() {
+		return Overlap{}, false
+	}
+	return check(candidate, r, ClassIPsecUnderlay)
+}
+
+// CheckInside excludes only existing inside ranges: their uniqueness belongs to
+// the gateway-scoped database key. Routed/underlay conflicts remain organization-wide.
+func CheckInside(candidate netip.Prefix, r OrgRanges) (Overlap, bool) {
+	if !candidate.IsValid() || !candidate.Addr().Is4() || candidate.Bits() != 30 {
+		return Overlap{}, false
+	}
+	return check(candidate, r, ClassIPsecInside)
+}
+
+func check(candidate netip.Prefix, r OrgRanges, skipClass OverlapClass) (Overlap, bool) {
 	if !r.collected {
 		return Overlap{}, false
 	}
@@ -126,6 +173,15 @@ func Check(candidate netip.Prefix, r OrgRanges) (Overlap, bool) {
 	for _, res := range r.reserved {
 		if c.Overlaps(res.Masked()) {
 			return Overlap{With: res, Class: ClassReserved}, false
+		}
+	}
+	for _, entry := range r.ipsec {
+		if entry.Class == skipClass {
+			continue
+		}
+		p, _ := netip.ParsePrefix(entry.CIDR)
+		if c.Overlaps(p) {
+			return Overlap{With: p, Class: entry.Class}, false
 		}
 	}
 	return Overlap{}, true
