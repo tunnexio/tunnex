@@ -85,6 +85,8 @@ Tests precede implementation. Mutation-check each binding/purpose/revision refus
 
 ## Next executable boundary
 
+The concrete proposal is now in [the persistence contract](S-S2S-2-persistence-contract.md), including revision/retry semantics, terminal cleanup, existing destructive-path guards, migration acceptance and a bounded isolated database fixture. It is proposed, not yet dispositioned. In particular, its create-only UUID/recover-by-GET rule would replace the earlier generic create-idempotency-key proposal only after approval.
+
 After disposition, write the full state-transition and API call-site/mutation census, with a regression/failure matrix before schema or handler changes. The first backend implementation must stay behind capability and product gates and have migration/rollback, permitted/refused entitlement scenarios, applicable API build configurations, deterministic generation and assigned-gateway secret refusal evidence. Actual Linux IPsec and behind-host allow/deny tests remain mandatory before support can be claimed. Cloud provisioning or deployment requires its own concrete approved resource plan.
 
 ## Packet-path constraints found during read-only preparation
