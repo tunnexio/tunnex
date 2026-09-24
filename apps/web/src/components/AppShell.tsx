@@ -45,6 +45,7 @@ export const NAV_GROUPS: Array<{
       // screen.
       { to: "/gateways", label: "Gateways", icon: "server" },
       { to: "/sites", label: "Sites", icon: "network" },
+      { to: "/site-to-site", label: "Site-to-site", icon: "network" },
       // S14.7: Routed Ranges was BUILD, not REDESIGN — `/routed-ranges` has been served since S8.5 and
       // nothing rendered it. The answer to "does my LAN traffic go down the tunnel" was reachable only by
       // reading a device's AllowedIPs.
