@@ -93,6 +93,10 @@ func TestRuntimeControllerNative(t *testing.T) {
 			xr, _ := NewXFRMReader("/sbin/ip")
 			x, xe := xr.Read(c)
 			t.Logf("native proof keyless XFRM=%+v error=%v", x, xe)
+			for _, query := range [][]string{{"xfrm", "state", "list", "nokeys"}, {"xfrm", "policy", "list", "nosock"}} {
+				raw, readErr := runKernelCommand(c, "/sbin/ip", query...)
+				t.Logf("native keyless XFRM %v: %s error=%v", query, raw, readErr)
+			}
 		}
 		return e
 	}
