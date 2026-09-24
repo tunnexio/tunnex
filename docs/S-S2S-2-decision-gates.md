@@ -27,7 +27,7 @@ Evidence is source-based at the current feature checkout. No installation, packe
 | Routing and enforcement | Initial qualification targets customer-created AWS VPN, IPv4, non-overlapping ranges, static routing and both tunnels. Keep tunnel redundancy distinct from gateway-host HA. | Active-path selection, failure detection and withdrawal, return-path handling, nftables/XFRM order, source-prefix binding, deny proof, MTU and restart behavior |
 | Product gates and evidence | Preserve existing WireGuard access. Decide IPsec entitlement, opt-in and operator permissions explicitly. Separate configured, applied, SA, routing and verified-traffic evidence. | Exact edition/permission matrix and refusal contract, observation freshness, support-label gate and provider/version qualification matrix |
 
-These proposals correspond to D2–D11 in [the epic](EPIC-site-to-site-ipsec.md). Azure remains a later profile; Google HA VPN remains dependent on a separately qualified BGP subsystem. No provider support label follows from configuration acceptance alone.
+These gates correspond to D2–D11 in [the epic](EPIC-site-to-site-ipsec.md). The ownership/authority foundation and all-tier product decision are now approved as specified below; the engine, full lifecycle and dataplane gates remain open. Azure remains a later profile; Google HA VPN remains dependent on a separately qualified BGP subsystem. No provider support label follows from configuration acceptance alone.
 
 ## Runtime candidate evidence — not a selection
 
@@ -74,6 +74,43 @@ Envelope input bounds: 1–4096 UTF-8 bytes, not whitespace-only, no control cha
 
 Tests precede implementation. Mutation-check each binding/purpose/revision refusal; prove nonce uniqueness and static errors with synthetic credentials. Run affected Go tests/race checks, RBAC generation twice with no second-pass drift, web RBAC tests/typecheck, and independent review. No database migration, API endpoint, agent delivery, secret export or IPsec daemon is part of this increment, and unit tests do not prove those absent integrations.
 
+### First backend increment evidence — 2026-09-24
+
+- RBAC regressions failed before the owner/admin grants were added; generated client policy changed only those two roles and is byte-identical across two generator runs. All other roles, unknown roles and role-set combinations remain refused.
+- Black-box envelope tests were written before the new implementation (initial RED: missing package implementation). Round trips include the 4,096-byte boundary, Unicode and JSON/HTML-sensitive bytes, with strict refusal and no credential values in test errors.
+- Six guard mutations were each rejected by a behavioral regression: org, connection, tunnel, revision, purpose and version. The original implementation was restored byte-for-byte after each mutant; all six mutants were killed. No claim of exhaustive mutation coverage.
+- Race tests pass for `internal/ipsec`, `internal/rbac` and `internal/crypto`. The actual shared authorization seam passes new anonymous/unverified/cross-org/bootstrap-password/unrelated-role refusal cases and verified owner/admin success. No IPsec HTTP handler exists yet.
+- API server builds. Web TypeScript, all 1,583 tests across 132 files and production build pass; the existing bundle-size warning remains. Independent envelope/security and RBAC cross-reviews found no actionable findings.
+- Local evidence logs: `/private/tmp/s2s-envelope-mutations.log`, `/private/tmp/s2s-ipsec-race.log`, `/private/tmp/s2s-ipsec-authorize.log`, `/private/tmp/s2s-ipsec-web-full.log`. No database command, dependency download, daemon installation, cloud action or deployment was part of these gates. IPsec remains unavailable in the UI.
+
 ## Next executable boundary
 
 After disposition, write the full state-transition and API call-site/mutation census, with a regression/failure matrix before schema or handler changes. The first backend implementation must stay behind capability and product gates and have migration/rollback, permitted/refused entitlement scenarios, applicable API build configurations, deterministic generation and assigned-gateway secret refusal evidence. Actual Linux IPsec and behind-host allow/deny tests remain mandatory before support can be claimed. Cloud provisioning or deployment requires its own concrete approved resource plan.
+
+## Packet-path constraints found during read-only preparation
+
+- `apps/node/internal/egress/egress_linux.go:356` recognizes WireGuard and optional OpenVPN as authenticated ingress; `:746` treats forwarding outside that set as native traffic. XFRM must enter enforcement explicitly, without trusting a physical LAN interface.
+- `apps/node/internal/egress/egress_linux.go:970` site grants match prefixes/protocols. The IPsec design must additionally bind remote prefixes to authenticated tunnel identity.
+- `apps/node/internal/reconcile/reconcile.go:465` currently passes all policy routes to the WireGuard backend; `wgctrl_linux.go:949` reconciles/prunes its owned route set. New connection-owned XFRM routes must not enter that sweep or delete unrelated routes.
+- `apps/node/cmd/agent/main.go:350` logs policy-apply failure without propagating it to the next backend convergence step. IPsec activation must have an explicit successful-enforcement boundary before exposing a new SA/route.
+- `apps/node/internal/egress/egress_linux.go:775` accepts established flows before grants; removed-grant flushing follows successful atomic policy apply. Disable/delete ordering must cover established-flow withdrawal and failed cleanup without claiming completion.
+
+These source findings are requirements for the later runtime design, not proof that current WireGuard policy enforcement already covers IPsec.
+
+## Regression/failure matrix
+
+| Boundary | Required proof before that boundary ships |
+| --- | --- |
+| Ownership | Cross-org site/gateway references refuse without records, revisions or notifications; valid records own exactly their tunnel set |
+| Authority | Non-manager/unverified principals refuse; reads remain redacted; all tiers retain identical IPsec access |
+| Revision/idempotency | One concurrent expected-revision successor; exact retry makes no duplicate; conflicting retry refuses without change |
+| Envelope | Org/connection/tunnel/revision/purpose/version substitutions, tampering, wrong master key and malformed/bounded input refuse with static error and empty output |
+| Secret delivery | Assigned certificate-derived gateway only; forged body identity, other gateways, revoked principals and obsolete assignments receive no key |
+| Acknowledgement | Wrong scope/revision cannot advance state; duplicate ack is idempotent; accepted config/SA reports do not assert traffic verification |
+| Disable/delete | Offline agent remains pending cleanup; tombstone prevents stale resurrection; shared site/subnet/policy/cloud resources survive |
+| Rotation | Staging/application/withdrawal crash points preserve the defined active revision; timeout/rollback contract precedes implementation |
+| Atomicity/mixed versions | Store/seal/commit failure causes no partial state or precommit notification; unsupported nodes refuse IPsec while preserving WireGuard |
+| Migration/rollback | Isolated PostgreSQL up/down/up and cross-org constraints; populated rollback preserves data or refuses explicitly according to its documented contract |
+| Mutation tests | Removing each critical ownership/binding/revision/withdrawal guard must make a targeted behavioral regression fail; restore every mutant |
+
+Only the permission and envelope rows are implemented in the first backend increment. Database, delivery, lifecycle and packet-path evidence must not be inferred from those unit tests.
