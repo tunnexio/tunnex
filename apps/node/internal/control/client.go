@@ -21,6 +21,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
+	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
 )
 
@@ -78,10 +79,11 @@ func Enroll(ctx context.Context, apiURL, joinToken string, csrPEM []byte, nodeNa
 // The client certificate is served via GetClientCertificate reading an atomic
 // holder, so Renew can hot-swap it mid-flight without rebuilding the client.
 type Client struct {
-	base     string
-	nodeName string
-	cert     atomic.Pointer[tls.Certificate]
-	http     *http.Client
+	ipsecController atomic.Pointer[ipsec.RuntimeController]
+	base            string
+	nodeName        string
+	cert            atomic.Pointer[tls.Certificate]
+	http            *http.Client
 }
 
 // NewClient builds an mTLS client presenting certPEM/keyPEM and trusting caPEM.
@@ -224,7 +226,9 @@ type PolicyStatus struct {
 // and the applied Zero Trust policy status (S7.2 staleness).
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
 	payload := map[string]any{
-		"public_key": publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
+		// Only the actual qualified controller may advertise this protocol.
+		"ipsec_config_version": c.ipsecCapability(),
+		"public_key":           publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
 		"policy_version": ps.Version, "policy_hash": ps.Hash, "policy_error": ps.Error,
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,

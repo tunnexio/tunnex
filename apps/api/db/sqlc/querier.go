@@ -1153,6 +1153,7 @@ type Querier interface {
 	ListGroupMembers(ctx context.Context, arg ListGroupMembersParams) ([]ListGroupMembersRow, error)
 	// Compiler input: every (group, user) pair in the org.
 	ListGroupMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListGroupMembershipsByOrgRow, error)
+	ListIPsecProviderReservations(ctx context.Context, orgID uuid.UUID) ([]ListIPsecProviderReservationsRow, error)
 	// ── idp-origin membership (the reconcile target) ─────────────────────────────────
 	// Current idp-origin members of one group (user id + recorded directory external id). Filtered to
 	// origin='idp_sync' so a hand-added row could never appear here and get computed into a removal
@@ -1469,6 +1470,7 @@ type Querier interface {
 	LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	LockMembershipOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	LockNodeByLifecycleClaimForOrg(ctx context.Context, arg LockNodeByLifecycleClaimForOrgParams) (Node, error)
+	LockProviderRangeOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// lint:cross-org — callback locks its opaque server-side flow's exact connection.
 	LockSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
 	// lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
@@ -1992,6 +1994,7 @@ type Querier interface {
 	UserIsCPAdmin(ctx context.Context, id uuid.UUID) (bool, error)
 	// lint:cross-org — callback validates the locked connection against its server-side flow and rechecks administrator membership before marking this exact revision tested.
 	VerifySSOConnection(ctx context.Context, arg VerifySSOConnectionParams) (int64, error)
+	VersionProviderRangeOrganization(ctx context.Context, id uuid.UUID) error
 }
 
 var _ Querier = (*Queries)(nil)

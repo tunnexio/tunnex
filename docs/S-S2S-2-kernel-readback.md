@@ -1,0 +1,49 @@
+# S2S-2 — Read-only Linux kernel inventory
+
+Status: local implementation, 2026-09-24. Close the actual-kernel observation gap left by the pure evidence evaluator. This slice selects no IPsec daemon or persistent allocator and modifies no production reconciliation or capability. Reuse the node's context-aware command-runner pattern. No schema, dependency or UI changes.
+
+## Boundary
+
+Read the current process network namespace identity and execute only `ip -j -d link show` and `ip -j -d -N -4 route show table all`. Return namespace identity, observed XFRM links and their IPv4 route facts. Missing links are an empty observation; failed reads are errors. Do not create an `ipsec.Snapshot`, set `Consistent`, claim ownership from naming, mark candidates or report runtime capability. Sequential dumps are not atomic; namespace identity must agree before and after commands, but that alone does not prove collection consistency.
+
+The production reader uses context deadlines, fixed executable/argument vectors, bounded output (1 MiB per command), separate discarded stderr, and static errors without echoing raw command output. Use a fixed trusted ip executable supplied at construction as an absolute path; no shell. Read `/proc/self/ns/net` using the OS link target rather than caller-assigned labels. A fake runner/namespace reader supports tests. No setns, network namespace entry or write command.
+
+The pure parser validates exactly one bounded JSON array per dump, rejects duplicate property names including escaped aliases and trailing content, and validates integer widths and canonical IPv4 prefixes. Bound top-level entries to4096. Parse XFRM `linkinfo.info_kind=xfrm`, `linkinfo.info_data.if_id` (hex string), interface name/index and UP flag. Reject duplicate interface indices/names and duplicate XFRM IDs. Resolve route device names from the observed inventory, never from expected assignment.
+
+For routes on observed XFRM devices, require explicit table and protocol from detailed numeric output, unicast type, canonical destination, output interface, metric (kernel default0 when omitted), optional IPv4 gateway, scope and preferred source. Preserve scope/preferred source as separate facts beyond the existing evaluator tuple; no automatic conversion to qualification. Reject unsupported relevant multipath/nexthop-ID/encapsulation/source-selector/forwarding flags and unrecognized relevant semantic fields. Multipath/nexthop indirection without a resolvable direct device is refused conservatively, because the adapter cannot rule out XFRM use. Ignore unrelated ordinary routes only when their device association is unambiguous. No route operation, policy or SA dump; those can expose additional sensitive runtime details and are outside this slice.
+
+## Acceptance
+
+Regression-first parsing and reader tests; realistic iproute2 fixtures, hexadecimal/numeric widths, duplicate/escaped keys, missing/null fields, wrong kind, route absence, unsupported semantics, cancellation, timeout, output overflow and sanitized errors. Independently review refusal cases. Race tests and Linux cross-build; where an existing isolated Linux fixture is available, exercise the read-only commands without claiming positive XFRM or packet proof from empty output. Any actual lab object creation must be narrowly isolated and separately documented. No production capability change, CP restart, push or cloud action.
+
+## Primary-source format references
+
+- iproute2 v6.9.0 route renderer: https://raw.githubusercontent.com/iproute2/iproute2/v6.9.0/ip/iproute.c
+- iproute2 XFRM renderer: https://raw.githubusercontent.com/iproute2/iproute2/v6.9.0/ip/link_xfrm.c
+- iproute2 JSON formatting: https://raw.githubusercontent.com/iproute2/iproute2/v6.9.0/lib/json_print.c
+
+Fixture format qualification is distinct from a pinned production package/engine decision.
+
+## Implementation and evidence — 2026-09-24
+
+Implemented `ParseKernelInventory`, `NewKernelReader` and its read-only command runner under `apps/node/internal/ipsec`. Namespace identity is read twice; output is capped without embedding `bytes.Buffer` (embedding promotes `ReadFrom` and bypasses `Write`, caught by an actual subprocess regression). Errors return no command output. Existing evidence evaluation remains separate; scope and preferred-source facts are not silently discarded into qualification.
+
+Parser/reader tests preceded implementation. Independent review exposed encapsulated XFRM forwarding via an ordinary device being skipped as unrelated; regression failed before global encapsulation refusal was added. Duplicate route tuples are refused. Tests also cover escaped duplicate keys, null/missing fields, overflow, exact command allowlisting, output limits, namespace change and cancellation. Final race gates pass for all IPsec tests plus the existing capability0 report regression (`/private/tmp/s2s-kernel-final-gates.log`). Five behavioral overlay mutants (duplicate keys, encapsulation indirection, namespace identity, stdout limit, XFRM width) were killed with original source unchanged (`/private/tmp/s2s-kernel-mutations.log`). Independent review found no remaining blocking findings.
+
+Actual Linux kernel verification passed: existing immutable local node image `sha256:676b25daaec9142883c24f9187d5f645d0e188b3b876d6d9757f1c8f27e27833`, iproute2 6.9.0, project `tunnexs2sreadback0924`. The harness verifies exact container identity/image/project labels, disconnected `network=none`, no host mounts/devices, no privileged mode, dropped capabilities except namespace-scoped NET_ADMIN, and read-only root with a32MiB executable tmpfs for the synthetic test binary. Within that container alone it creates two XFRM interfaces IDs701/702 and two synthetic routes (tables220/221, protocol99, metric10, scope253). The actual reader observed both interfaces and exact route facts. No keys, SAs, daemon or packet traffic was configured. These identifiers are test fixtures, not production allocator defaults.
+
+`TestKernelReaderLinuxFixture` passed against the real objects (`/private/tmp/s2s-kernel-lab.log`). Its test performs only reads; the guarded external harness owns setup. Captured synthetic JSON is retained in `internal/ipsec/testdata/iproute2-6.9.0-{links,routes}.json` and a fixture regression. Earlier harness attempts stopped safely on Docker capability normalization/read-only copy restrictions; each created lab container was eventually verified and removed. Final run removed only its own container. No CP/database/default project/host-route or cloud changes. No dependency or schema change. Production capability remains0; no commit/push.
+
+Remaining before activation: dedicated daemon and trusted SA observation, policy/refusal readback and packet tests, persistent delivery/cleanup/restart ownership and runtime integration. This is real kernel-object observation proof, not encryption, connection ownership, atomic snapshot or traffic proof.
+
+## Exact local apply/remove adapter (2026-09-24)
+
+`KernelAllocation` is a nonsecret, pre-mutation journal reservation: current namespace, delivery generation, connection/tunnel identities, deterministic SHA256(raw UUID bytes) interface names/XFRM IDs, exact inside host prefixes, and remote prefixes. Collisions refuse. An initial route exists only on slot1, in main table254 with protocol242 and metric50001. The marker is not ownership proof; exact alias, namespace, index, route and address inventories are independently checked. No fallback path selection is implied. Earlier packet fixtures used private table220; production allocation uses main254 only after refusing competing equal/more-specific remote routes and indirect nexthops.
+
+Apply requires verified permanent prefix refusal and an exclusive journal/controller owner before its first call. It creates links without replacement, adds IPv4 addresses with `noprefixroute`, suppresses automatic IPv6 address generation on these owned links, and adds individual selected routes. Qualified Linux XFRM creation ignored the requested alias attribute; an explicit alias set follows the successful exclusive create. A crash before that stamp leaves an unresolved durable obligation: restart never adopts an unlabeled link by name alone. Unknown addresses, foreign route attachments, name/ID collisions and changed known indices refuse. An IPv4-only link's exact kernel local/broadcast address routes and IPv6 multicast route are handled separately from tunnel payload routes.
+
+Remove requires the permanent refusal guard, exact inventories and no remaining matching XFRM SAs/global policies; it deletes individual routes and links and rechecks absence. It does not flush routes, SAs, policies, or unrelated links, and never counts this partial kernel receipt as whole cleanup. A concurrent privileged third-party writer is outside this exclusive-owner contract; controller serialization alone is not a lock on arbitrary host tools.
+
+Native ARM64 candidate-image fixture `/private/tmp/s2s-kernel-apply-native.log` passed actual creation, idempotent application, foreign alias/route refusal, exact cleanup/retry and unrelated-link preservation in a fresh disconnected labeled container. This is kernel-object proof, not end-to-end controller or encrypted packet proof. Only the fixture container was removed.
+
+Integrated controller follow-up: detailed numeric observations now preserve `KernelRoute.Kind`. Payload-route proof still requires RTN_UNICAST. Strict kernel-generated local/broadcast routes for assigned link-local /30 interface addresses are admitted as distinct observations and matched back to the exact allocation; wrong table/protocol/source/scope, arbitrary non-unicast forwarding and nonmatching inside addresses refuse. This fixes real interface-address readback without treating address routes as forwarding authority.

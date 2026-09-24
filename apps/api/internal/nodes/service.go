@@ -2071,9 +2071,12 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
-	Version int    `json:"policy_version"`
-	Hash    string `json:"policy_hash"`
-	Error   string `json:"policy_error"`
+	// IPsecConfigVersion is an authenticated configuration protocol assertion.
+	// Only exact version 1 is recognized; current shipped agents report zero.
+	IPsecConfigVersion int    `json:"ipsec_config_version"`
+	Version            int    `json:"policy_version"`
+	Hash               string `json:"policy_hash"`
+	Error              string `json:"policy_error"`
 	// FailingSince (RFC3339, empty when healthy) is the agent-reported mismatch
 	// onset: when apply FIRST started failing. The stale alarm measures from here,
 	// so a normal push that applies cleanly never registers stale (finding #3).
@@ -2154,11 +2157,17 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		// arbitrary string into the operator-facing capabilities document.
 		applied.FlowLogState = "unknown"
 	}
+	// Unknown versions and legacy omission are unsupported, never an optimistic
+	// capability upgrade. Whole-document replacement also clears older evidence.
+	if applied.IPsecConfigVersion != 1 {
+		applied.IPsecConfigVersion = 0
+	}
 	// Gateway capabilities the agent probes + re-reports every reconcile (S3.7 +
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
 	caps, err := json.Marshal(map[string]any{
+		"ipsec_config_version":        applied.IPsecConfigVersion,
 		"egress_nat":                  egressNAT,
 		"egress_ipv6":                 egressIPv6,
 		"policy_version":              applied.Version,
@@ -2251,11 +2260,13 @@ func (s *Service) trackDesync(ctx context.Context, node sqlc.Node, appliedHash s
 // control plane gates on a gateway's abilities (e.g. full-tunnel egress) or surfaces
 // its applied-policy status (S7.2 staleness).
 type NodeCapabilities struct {
-	EgressNAT     bool   `json:"egress_nat"`
-	EgressIPv6    bool   `json:"egress_ipv6"`
-	PolicyVersion int    `json:"policy_version"`
-	PolicyHash    string `json:"policy_hash"`
-	PolicyError   string `json:"policy_error"`
+	// Freshness is the server-written policy_reported_at on the same node row.
+	IPsecConfigVersion int    `json:"ipsec_config_version"`
+	EgressNAT          bool   `json:"egress_nat"`
+	EgressIPv6         bool   `json:"egress_ipv6"`
+	PolicyVersion      int    `json:"policy_version"`
+	PolicyHash         string `json:"policy_hash"`
+	PolicyError        string `json:"policy_error"`
 	// PolicyFailingSince (RFC3339) is the agent-reported mismatch ONSET: when apply
 	// first started failing (empty when healthy). The stale window measures from
 	// here, not the applied-hash age -- so a normal push never false-alarms (#3).

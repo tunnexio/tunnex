@@ -19,6 +19,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/ipsecguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 	"github.com/tunnexio/tunnex/apps/api/internal/subnetguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/subnetsrc"
@@ -192,7 +193,7 @@ func (s *Service) requireGatewayCarrier(ctx context.Context, orgID, nodeID uuid.
 func (s *Service) UnbindNode(ctx context.Context, orgID, nodeID uuid.UUID) error {
 	n, err := s.q.UnbindNode(ctx, sqlc.UnbindNodeParams{ID: nodeID, OrgID: orgID})
 	if err != nil {
-		return err
+		return ipsecguard.ResourceConflict(err)
 	}
 	if n == 0 {
 		return apierr.NotFound("node_not_found", "no such node in this organization")
@@ -230,7 +231,7 @@ func (s *Service) UnbindSiteNode(ctx context.Context, orgID, siteID, nodeID uuid
 		NodeID: nodeID, OrgID: orgID, SiteID: pgtype.UUID{Bytes: siteID, Valid: true},
 	})
 	if err != nil {
-		return err
+		return ipsecguard.ResourceConflict(err)
 	}
 	if n == 0 {
 		return apierr.NotFound("node_not_bound_to_site", "no such gateway bound to this site in this organization")
@@ -295,7 +296,7 @@ func (s *Service) DeleteSite(ctx context.Context, actor, orgID, siteID uuid.UUID
 		}
 		n, err := q.DeleteSite(ctx, sqlc.DeleteSiteParams{ID: siteID, OrgID: orgID})
 		if err != nil {
-			return err
+			return ipsecguard.ResourceConflict(err)
 		}
 		if n == 0 {
 			return apierr.NotFound("site_not_found", "no such site in this organization")
@@ -326,6 +327,13 @@ func (s *Service) ListPendingSubnets(ctx context.Context, orgID uuid.UUID) ([]sq
 func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid.UUID) error {
 	var refusal *subnetguard.Overlap
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if e := q.LockDeviceKey(ctx, orgID.String()); e != nil {
+			return e
+		}
+		if _, e := q.LockProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
+
 		sub, e := q.GetSiteSubnetForOrg(ctx, sqlc.GetSiteSubnetForOrgParams{ID: subnetID, OrgID: orgID})
 		if e != nil {
 			if e == pgx.ErrNoRows {
@@ -340,9 +348,6 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 		// k8s.RegisterCluster) with the SAME org advisory lock. Without it, a subnet-approval racing a
 		// cluster registration (or a pool resize) could both pass the READ-COMMITTED check on a set that
 		// excludes the other's uncommitted range, committing an overlap the unique index can't catch.
-		if e := q.LockDeviceKey(ctx, orgID.String()); e != nil {
-			return e
-		}
 		// The candidate must be disjoint from the org's approved subnets + the pool. The candidate is
 		// PENDING, so it is NOT in the approved-only list — pass the WHOLE approved set to the validator.
 		// (A prior `a.Cidr != sub.Cidr` filter here was a BYPASS wearing a convenience costume: it
@@ -361,6 +366,9 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 			refusal = &ov // signal refusal; the tx COMMITS as a no-op, the audit + error happen OUTSIDE
 			return nil
 		}
+		if e := q.VersionProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
 		if _, e := q.ApproveSiteSubnet(ctx, subnetID); e != nil {
 			return e
 		}
@@ -370,7 +378,7 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 		return nil
 	})
 	if err != nil {
-		return err
+		return subnetsrc.ProviderConflict(err)
 	}
 	if refusal != nil {
 		// AUDIT the refusal in its own committed op (it must survive the refusal), then return typed.
@@ -391,13 +399,25 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 // full-sweep, the same path DeleteSite relies on). Audited in-tx (swallowed-audit law: the audit error
 // propagates, so a mystery commit-rollback can't hide a removal).
 func (s *Service) RemoveSubnet(ctx context.Context, actor, orgID, subnetID uuid.UUID) error {
-	return s.withTx(ctx, func(q *sqlc.Queries) error {
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if e := q.LockDeviceKey(ctx, orgID.String()); e != nil {
+			return e
+		}
+		if _, e := q.LockProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
+
 		sub, e := q.GetSiteSubnetForOrg(ctx, sqlc.GetSiteSubnetForOrgParams{ID: subnetID, OrgID: orgID})
 		if e != nil {
 			if e == pgx.ErrNoRows {
 				return apierr.NotFound("subnet_not_found", "no such site subnet in this organization")
 			}
 			return e
+		}
+		if sub.Status == "approved" {
+			if e := q.VersionProviderRangeOrganization(ctx, orgID); e != nil {
+				return e
+			}
 		}
 		if e := q.DeleteSiteSubnet(ctx, subnetID); e != nil {
 			return e
@@ -432,4 +452,5 @@ func (s *Service) RemoveSubnet(ctx context.Context, actor, orgID, subnetID uuid.
 			"cidr": sub.Cidr.String(), "was_status": sub.Status, "dns_forwards_swept": swept,
 		})
 	})
+	return subnetsrc.ProviderConflict(err)
 }

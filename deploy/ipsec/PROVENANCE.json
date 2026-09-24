@@ -1,0 +1,13 @@
+{
+  "component": "strongSwan",
+  "version": "6.1.0",
+  "source_url": "https://download.strongswan.org/strongswan-6.1.0.tar.gz",
+  "source_sha256": "d9484eea319481bda86f992fa69cbdbdd9c0d6f8b9a4bd793a7df45c0760d963",
+  "release_signer_fingerprint": "948F158A4E76A27BF3D07532DF42C170B34DBA77",
+  "base_index": "docker.io/library/alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce",
+  "base_amd64_manifest": "sha256:7c8cb692ae09657cbc4a3f3cbd0e8d5a2690ba38386aaaf252dbb060bf5eb2e6",
+  "base_arm64_manifest": "sha256:2c9d26f410d032d5b1525aa8a873e238b05b90c4ae8618743d4311f0cc827e37",
+  "base_provenance": "https://github.com/docker-library/repo-info/blob/master/repos/alpine/remote/3.22.md",
+  "patches": [],
+  "runtime_capability": "Linux ARM64 and AMD64 require successful live package, daemon, kernel and namespace qualification; packaging alone never enables capability"
+}

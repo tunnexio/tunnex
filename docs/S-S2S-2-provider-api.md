@@ -1,0 +1,33 @@
+# Disabled provider configuration API — local implementation slice
+
+This slice exposes the qualified internal provider store, preserving its approved state/permission/ownership contract. It does not add a new persisted state, activation operation, runtime claim or UI creation form. Current production gateways advertise capability0, so creation remains ineligible until independently qualified support exists. All work stays local.
+
+## Contract
+
+POST `/api/v1/organizations/{orgId}/ipsec/connections` creates a new disabled provider configuration. Require verified HUMAN `ipsec:manage` before reading the secret-bearing body. Reuse existing global session/CSRF gates, opt-in, authoritative Site/gateway ownership, exact approved local subnets, fresh authenticated capability1, envelope/audit transactions and provider conflict checks. All licence tiers remain equivalent.
+
+Input: caller-generated `id`, `name`, `site_id`, `gateway_node_id`, exactly two distinct `tunnel_ids`, and `configuration` using the existing explicit preflight DTO. Reject unknown properties, duplicate JSON keys (including escaped aliases), trailing JSON, oversized bodies (128KiB) and invalid profile data. Map fields explicitly; never serialize internal write-only inputs or expose parser/request/credential values. No defaults that infer provider fields. Caller-selected IDs preserve create-only conflict behavior; repeated IDs return409 rather than editing/replacing credentials.
+
+This concrete POST contract supersedes the earlier proposed PUT/If-None-Match transport choice. Caller-selected IDs plus atomic uniqueness retain the same create-only safety: there is no upsert or credential replacement on retry.
+
+Return201 with the existing nonsecret `IPsecConnection` DTO, ETag `"1"` and Location for its existing detail route. The response says desired intent disabled; it makes no connectivity/readiness claim. Known invalid input400, scope/notfound404, existing identity/range conflict409, prerequisites unavailable409, unavailable store/sealer503. Error bodies/logs/audit must omit supplied values and secrets.
+
+GET `/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration` uses existing `org:view` permission, matching existing connection/network visibility. Return an explicit nonsecret projection: profile ID, configuration revision and optional configuration fields (mode, outside addresses, local/remote prefixes, two inside assignments). The response type contains NO PSK, secret revision, envelope, hash or credential-status fields; do not reuse a write DTO for output. A tombstone returns only retained profile/revision, with configuration omitted. An identity-only record has no provider configuration and returns404. Disable caching with Cache-Control:no-store. Foreign-org/missing records remain indistinguishable.
+
+No edit/replace/rotation/activate endpoint or permission is introduced. The existing CAS DELETE finalizes never-delivered records and releases only their owned reservations. Readback supports review of stored configuration, not PSK export. A separate concise UI flow can build on this contract after API qualification.
+
+## Acceptance
+
+Regression-first real-router/store tests: authorized valid create/read/delete; auth-before-secret-read; opt-out, capability0/stale report, foreign ownership and exact-subnet refusal; duplicate identity; malformed/duplicate/oversized input; explicitly credential-free read shape and tombstone; metadata-only logs/audit; missing sealer fails without writes. Exercise synthetic supported capability only in isolated unique PostgreSQL fixtures. Include owner/admin create and member read/mutate boundaries. Generated server/CLI/TypeScript contracts deterministic; auth census, focused race tests, both builds and independent review. Refresh the owned local CP only after gates; no migration or remote/cloud action in this slice.
+
+## Local evidence — 2026-09-24
+
+Implemented both routes with a separate provider repository port and the existing initialized master-key sealer. Main wires the same qualified ConnectionStore to ordinary and provider handlers. The shared private input mapper is used by preflight and create, while readback has separate generated types with no credential fields. Early route middleware authorizes before bounded parsing and applies no-store; validator, strict decoder and path-binding failures all return static errors for these routes.
+
+Functional route regressions failed before implementation (`/private/tmp/s2s-provider-wire-red.log`); security authority regressions failed before implementation (`/private/tmp/s2s-provider-security-red.log`). The actual router/PostgreSQL lifecycle gate and provider/preflight security cases pass under race detection, 19.826s (`/private/tmp/s2s-provider-api-http-race.log`). The fixture verifies opt-out, unsupported/stale capability, ownership, exact local prefixes and missing sealer leave no persisted state; admin create/member read/owner deletion; 201 identity/revision headers; explicit nonsecret read; changed-secret duplicate refuses without replacing envelopes or adding a creation audit; retained tombstone metadata and identity-only404.
+
+Two source-overlay mutants independently removed early POST authority and duplicate-JSON rejection; both failed behaviorally, with production source unchanged (`/private/tmp/s2s-provider-api-mutations.log`). Independent security race tests pass (`/private/tmp/s2s-provider-security-final.log`). Poisoned internal PSKs never appear in the explicit read projection; both router and global logs remain free of synthetic secrets. Independent handler, store-boundary and integration-test reviews found no actionable issue.
+
+Provider/preflight/authentication census race tests pass18.093s (`/private/tmp/s2s-provider-api-unit-race.log`); existing HTTP/resource-guard regressions pass12.935s/6.027s (`/private/tmp/s2s-provider-api-existing-race.log`). Both API editions build; generated CLI code compiles; web typecheck passes. Pinned oapi-codegen2.4.1 and TypeScript generator7.4.4 produced byte-identical server/CLI/TypeScript artifacts across two runs (`/private/tmp/s2s-provider-api-generated-first.sha256`). No schema, runtime, UI/theme or production capability change in this slice. Positive gateway support is synthetic test evidence only. All changes remain uncommitted/local; no remote push.
+
+The owned local CP API was refreshed after qualification; schema remains159. Health, UI proxy and Site-to-site page return200; both new routes return401 without authentication (`/private/tmp/s2s-provider-api-local-smoke.log`). No stored provider configuration or simulated supported gateway was seeded into the review CP.

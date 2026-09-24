@@ -1029,6 +1029,41 @@ type Invitation struct {
 	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
+type IpsecAwsLocalPrefix struct {
+	ConnectionID uuid.UUID    `json:"connection_id"`
+	OrgID        uuid.UUID    `json:"org_id"`
+	SiteID       uuid.UUID    `json:"site_id"`
+	SubnetID     uuid.UUID    `json:"subnet_id"`
+	Cidr         netip.Prefix `json:"cidr"`
+	SubnetStatus string       `json:"subnet_status"`
+}
+
+type IpsecAwsRemotePrefix struct {
+	ConnectionID uuid.UUID    `json:"connection_id"`
+	OrgID        uuid.UUID    `json:"org_id"`
+	Cidr         netip.Prefix `json:"cidr"`
+}
+
+type IpsecAwsStaticConfig struct {
+	ConnectionID        uuid.UUID  `json:"connection_id"`
+	OrgID               uuid.UUID  `json:"org_id"`
+	SiteID              uuid.UUID  `json:"site_id"`
+	GatewayNodeID       uuid.UUID  `json:"gateway_node_id"`
+	CustomerOutsideIpv4 netip.Addr `json:"customer_outside_ipv4"`
+}
+
+type IpsecAwsTunnelConfig struct {
+	TunnelID           uuid.UUID    `json:"tunnel_id"`
+	OrgID              uuid.UUID    `json:"org_id"`
+	ConnectionID       uuid.UUID    `json:"connection_id"`
+	Slot               int16        `json:"slot"`
+	GatewayNodeID      uuid.UUID    `json:"gateway_node_id"`
+	AwsOutsideIpv4     netip.Addr   `json:"aws_outside_ipv4"`
+	InsideCidr         netip.Prefix `json:"inside_cidr"`
+	CustomerInsideIpv4 netip.Addr   `json:"customer_inside_ipv4"`
+	AwsInsideIpv4      netip.Addr   `json:"aws_inside_ipv4"`
+}
+
 type IpsecConnection struct {
 	ID                      uuid.UUID          `json:"id"`
 	OrgID                   uuid.UUID          `json:"org_id"`
@@ -1043,6 +1078,7 @@ type IpsecConnection struct {
 	FinalizedAt             pgtype.Timestamptz `json:"finalized_at"`
 	CreatedAt               time.Time          `json:"created_at"`
 	UpdatedAt               time.Time          `json:"updated_at"`
+	ProviderProfile         *string            `json:"provider_profile"`
 }
 
 type IpsecOrgSetting struct {
@@ -1051,6 +1087,86 @@ type IpsecOrgSetting struct {
 	Revision  int64     `json:"revision"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type IpsecProviderBinding struct {
+	ConnectionID          uuid.UUID `json:"connection_id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	ProfileID             string    `json:"profile_id"`
+	ConfigurationRevision int64     `json:"configuration_revision"`
+	WithdrawalStarted     bool      `json:"withdrawal_started"`
+	ConfigurationSealed   bool      `json:"configuration_sealed"`
+	CreatedAt             time.Time `json:"created_at"`
+}
+
+type IpsecRetainedGuard struct {
+	CleanupDeliveryID uuid.UUID `json:"cleanup_delivery_id"`
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	OrgID             uuid.UUID `json:"org_id"`
+	SiteID            uuid.UUID `json:"site_id"`
+	GatewayNodeID     uuid.UUID `json:"gateway_node_id"`
+	OwnershipDigest   string    `json:"ownership_digest"`
+	RetainedAt        time.Time `json:"retained_at"`
+}
+
+type IpsecRetainedLocalPrefix struct {
+	CleanupDeliveryID uuid.UUID    `json:"cleanup_delivery_id"`
+	ConnectionID      uuid.UUID    `json:"connection_id"`
+	OrgID             uuid.UUID    `json:"org_id"`
+	SiteID            uuid.UUID    `json:"site_id"`
+	SubnetID          uuid.UUID    `json:"subnet_id"`
+	Cidr              netip.Prefix `json:"cidr"`
+	SubnetStatus      string       `json:"subnet_status"`
+}
+
+type IpsecRetainedRemotePrefix struct {
+	CleanupDeliveryID uuid.UUID    `json:"cleanup_delivery_id"`
+	ConnectionID      uuid.UUID    `json:"connection_id"`
+	OrgID             uuid.UUID    `json:"org_id"`
+	Cidr              netip.Prefix `json:"cidr"`
+}
+
+type IpsecRuntimeAcknowledgement struct {
+	DeliveryID        uuid.UUID `json:"delivery_id"`
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	OrgID             uuid.UUID `json:"org_id"`
+	NodeID            uuid.UUID `json:"node_id"`
+	SiteID            uuid.UUID `json:"site_id"`
+	DesiredRevision   int64     `json:"desired_revision"`
+	Kind              string    `json:"kind"`
+	Result            string    `json:"result"`
+	OwnershipDigest   string    `json:"ownership_digest"`
+	GuardRetained     bool      `json:"guard_retained"`
+	CertificateSerial string    `json:"certificate_serial"`
+	ReceivedAt        time.Time `json:"received_at"`
+}
+
+type IpsecRuntimeDelivery struct {
+	ID                     uuid.UUID `json:"id"`
+	ConnectionID           uuid.UUID `json:"connection_id"`
+	OrgID                  uuid.UUID `json:"org_id"`
+	NodeID                 uuid.UUID `json:"node_id"`
+	SiteID                 uuid.UUID `json:"site_id"`
+	DesiredRevision        int64     `json:"desired_revision"`
+	Kind                   string    `json:"kind"`
+	ConfigurationRevision  int64     `json:"configuration_revision"`
+	OwnershipDigest        string    `json:"ownership_digest"`
+	Manifest               []byte    `json:"manifest"`
+	Lineage                []byte    `json:"lineage"`
+	CoversDeliveryRevision *int64    `json:"covers_delivery_revision"`
+	CertificateSerial      *string   `json:"certificate_serial"`
+	CreatedAt              time.Time `json:"created_at"`
+}
+
+type IpsecRuntimeState struct {
+	ConnectionID                     uuid.UUID   `json:"connection_id"`
+	OrgID                            uuid.UUID   `json:"org_id"`
+	NodeID                           uuid.UUID   `json:"node_id"`
+	SiteID                           uuid.UUID   `json:"site_id"`
+	LastPotentiallyDeliveredRevision *int64      `json:"last_potentially_delivered_revision"`
+	LastCleanedDeliveryRevision      *int64      `json:"last_cleaned_delivery_revision"`
+	CurrentCleanupID                 pgtype.UUID `json:"current_cleanup_id"`
+	AppliedRevision                  *int64      `json:"applied_revision"`
 }
 
 type IpsecTunnel struct {
@@ -1068,6 +1184,18 @@ type IpsecTunnelSecret struct {
 	ConnectionID   uuid.UUID `json:"connection_id"`
 	SecretRevision int64     `json:"secret_revision"`
 	SealedPsk      string    `json:"sealed_psk"`
+}
+
+type IpsecTunnelStatus struct {
+	ConnectionID          uuid.UUID `json:"connection_id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	NodeID                uuid.UUID `json:"node_id"`
+	DeliveryID            uuid.UUID `json:"delivery_id"`
+	DesiredRevision       int64     `json:"desired_revision"`
+	ConfigurationRevision int64     `json:"configuration_revision"`
+	CertificateSerial     string    `json:"certificate_serial"`
+	ReceivedAt            time.Time `json:"received_at"`
+	Tunnels               []byte    `json:"tunnels"`
 }
 
 type K8sBaseAuthorityAckReceipt struct {

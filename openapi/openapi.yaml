@@ -1761,7 +1761,7 @@ paths:
           description: Repeatable managed-runtime state filter. Values are ORed.
           schema:
             type: array
-            items: { type: string, enum: [not_configured, pending, healthy, degraded] }
+            items: { type: string, enum: [not_configured, pending, healthy, degraded], x-enum-varnames: [ListAgentsParamsRuntimeNotConfigured, ListAgentsParamsRuntimePending, ListAgentsParamsRuntimeHealthy, ListAgentsParamsRuntimeDegraded] }
           style: form
           explode: true
         - name: mcp
@@ -1782,7 +1782,7 @@ paths:
           description: Repeatable JIT access state filter. Values are ORed.
           schema:
             type: array
-            items: { type: string, enum: [active, pending, none] }
+            items: { type: string, enum: [active, pending, none], x-enum-varnames: [ListAgentsParamsAccessActive, ListAgentsParamsAccessPending, ListAgentsParamsAccessNone] }
           style: form
           explode: true
         - name: gateway_id
@@ -2946,6 +2946,276 @@ paths:
         "204":
           description: Set.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/configuration-check:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: checkIPsecConfiguration
+      summary: Validate an IPsec configuration without saving it
+      description: Requires verified human ipsec:manage. Checks only the proposed AWS static IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
+      tags: [ipsec]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPsecConfigurationCheckInput" }
+      responses:
+        "200":
+          description: Input satisfies the bounded preflight profile only.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConfigurationCheckResult" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/eligibility:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getIPsecEligibility
+      summary: Read an advisory IPsec gateway eligibility snapshot
+      description: Organization viewers may inspect current opt-in and gateway capability/freshness. This is not full configuration validation; create rechecks all prerequisites authoritatively. Never writes state or activates connectivity.
+      tags: [ipsec]
+      parameters:
+        - name: site_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: gateway_node_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Current advisory eligibility.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            Cache-Control: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecEligibility" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/connections:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listIPsecConnections
+      summary: List stored IPsec connection records, including tombstones
+      description: Organization viewers in every edition may read these records. They are not evidence of active connectivity. Cursor pagination orders immutable connection UUIDs; concurrent inserts may require refreshing from the first page.
+      tags: [ipsec]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: after
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Bounded page of nonsecret connection records.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnectionPage" }
+        default: { $ref: "#/components/responses/Error" }
+
+    post:
+      operationId: createIPsecProviderConnection
+      summary: Store a disabled provider connection
+      description: Requires verified human ipsec:manage. Create-only; never activates a gateway. Customer PSKs are write-only. Prerequisites unavailable or existing identity conflicts return 409; unavailable store/sealer returns 503.
+      tags: [ipsec]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPsecProviderCreateInput" }
+      responses:
+        "201":
+          description: Nonsecret disabled connection record.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            ETag: { schema: { type: string } }
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnection" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: connectionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getIPsecProviderConfiguration
+      summary: Read stored nonsecret provider configuration
+      description: Organization viewers may review network configuration. Tombstones retain profile/revision only. No credential material or credential metadata is returned.
+      tags: [ipsec]
+      responses:
+        "200":
+          description: Nonsecret stored configuration or retained tombstone metadata.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            Cache-Control: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecProviderConfiguration" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/connections/{connectionId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: connectionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getIPsecConnection
+      summary: Read a nonsecret stored IPsec connection record
+      tags: [ipsec]
+      responses:
+        "200":
+          description: Stored record, including finalized tombstones.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            ETag: { description: Quoted positive desired revision., schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnection" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteIPsecConnection
+      summary: Request deletion with acknowledged cleanup
+      description: Requires verified human ipsec:manage. Only a single canonical quoted positive decimal int64 If-Match is accepted. Stale revisions and already-deleted records conflict; retry is never silently replayed. Retains resources until exact cleanup acknowledgement when material may have been delivered.
+      tags: [ipsec]
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Nonsecret deletion intent with successor revision; finalization may remain pending.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            ETag: { description: Quoted positive successor desired revision., schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnection" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/status:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getIPsecConnectionStatus
+      summary: Read independent gateway-reported tunnel status
+      description: Read-only observation. Missing or stale evidence is unknown; selected denotes configured path, not traffic verification.
+      tags: [ipsec]
+      responses:
+        "200":
+          description: Nonsecret two-tunnel status; finalized tombstones may have no tunnel identities.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            Cache-Control: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnectionStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/intent:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setIPsecConnectionIntent
+      summary: Request enabled or disabled IPsec intent
+      description: Requires verified human ipsec:manage and exact desired revision. Runtime qualification remains authoritative. Disabled intent may require acknowledged cleanup; retained safety guards and range reservations are not implicitly released.
+      tags: [ipsec]
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [intent]
+              properties:
+                intent:
+                  type: string
+                  enum: [enabled, disabled]
+                  x-enum-varnames: [IPsecIntentEnabled, IPsecIntentDisabled]
+      responses:
+        "200":
+          description: Committed successor desired intent; not a connectivity receipt.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            ETag: { description: Quoted positive desired revision., schema: { type: string } }
+            Cache-Control: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnection" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/ipsec/settings:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getIPsecSettings
+      summary: Read organization IPsec opt-in settings
+      description: Available to organization viewers in every edition. Missing settings mean disabled at revision zero. This setting does not indicate gateway capability or active connectivity.
+      tags: [ipsec]
+      responses:
+        "200":
+          description: Current organization opt-in settings.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecSettings" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setIPsecSettings
+      summary: Configure organization IPsec opt-in settings
+      description: Requires verified ipsec:manage authority. Compare-and-set uses expected_revision; zero creates missing settings. Every accepted write advances revision, including unchanged values. Stale revision returns 409. This does not activate or remove any tunnel.
+      tags: [ipsec]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPsecSettingsUpdate" }
+      responses:
+        "200":
+          description: Committed successor settings.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecSettings" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/hub-set:
@@ -8532,6 +8802,158 @@ components:
           type: integer
           nullable: true
           description: "The admin hub pin (S8.6 D1) — lower = more preferred; null CLEARS the pin. Pinning declares a gateway a hub candidate; the PINNED set IS the HA hub set (opt-in)."
+    IPsecEligibility:
+      type: object
+      additionalProperties: false
+      required: [eligible, reason]
+      properties:
+        eligible: { type: boolean }
+        reason: { type: string, enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale] }
+    IPsecProviderCreateInput:
+      type: object
+      additionalProperties: false
+      required: [id, name, site_id, gateway_node_id, tunnel_ids, configuration]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        site_id: { type: string, format: uuid }
+        gateway_node_id: { type: string, format: uuid }
+        tunnel_ids:
+          type: array
+          minItems: 2
+          maxItems: 2
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        configuration: { $ref: "#/components/schemas/IPsecConfigurationCheckInput" }
+    IPsecProviderConfiguration:
+      type: object
+      additionalProperties: false
+      required: [profile_id, configuration_revision]
+      properties:
+        profile_id: { type: string }
+        configuration_revision: { type: integer, format: int64, minimum: 1 }
+        configuration: { $ref: "#/components/schemas/IPsecProviderNetworkConfiguration" }
+    IPsecProviderNetworkConfiguration:
+      type: object
+      additionalProperties: false
+      required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
+      properties:
+        mode: { type: string }
+        customer_outside_address: { type: string }
+        local_prefixes: { type: array, items: { type: string } }
+        remote_prefixes: { type: array, items: { type: string } }
+        tunnels:
+          type: array
+          items: { $ref: "#/components/schemas/IPsecProviderNetworkTunnel" }
+    IPsecProviderNetworkTunnel:
+      type: object
+      additionalProperties: false
+      required: [outside_address, inside_cidr, customer_inside_address, cloud_inside_address]
+      properties:
+        outside_address: { type: string }
+        inside_cidr: { type: string }
+        customer_inside_address: { type: string }
+        cloud_inside_address: { type: string }
+    IPsecConfigurationCheckInput:
+      type: object
+      additionalProperties: false
+      required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
+      properties:
+        mode: { type: string, enum: [ipv4-static] }
+        customer_outside_address: { type: string, minLength: 1, maxLength: 15 }
+        local_prefixes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: { type: string, minLength: 1, maxLength: 18 }
+        remote_prefixes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: { type: string, minLength: 1, maxLength: 18 }
+        tunnels:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: "#/components/schemas/IPsecConfigurationCheckTunnel" }
+    IPsecConfigurationCheckTunnel:
+      type: object
+      additionalProperties: false
+      required: [outside_address, inside_cidr, customer_inside_address, cloud_inside_address, psk]
+      properties:
+        outside_address: { type: string, minLength: 1, maxLength: 15 }
+        inside_cidr: { type: string, minLength: 1, maxLength: 18 }
+        customer_inside_address: { type: string, minLength: 1, maxLength: 15 }
+        cloud_inside_address: { type: string, minLength: 1, maxLength: 15 }
+        psk: { type: string, minLength: 8, maxLength: 64, writeOnly: true }
+    IPsecConfigurationCheckResult:
+      type: object
+      additionalProperties: false
+      required: [valid]
+      properties:
+        valid: { type: boolean }
+    IPsecTunnelStatus:
+      type: object
+      additionalProperties: false
+      required: [id, slot, status, selected]
+      properties:
+        id: { type: string, format: uuid }
+        slot: { type: integer, minimum: 1, maximum: 2 }
+        status: { type: string, enum: [up, down, unknown], x-enum-varnames: [IPsecTunnelUp, IPsecTunnelDown, IPsecTunnelUnknown] }
+        selected: { type: boolean, description: Configured traffic path; does not imply reachability. }
+    IPsecConnectionStatus:
+      type: object
+      additionalProperties: false
+      required: [observed_at, tunnels]
+      properties:
+        observed_at: { type: string, format: date-time, nullable: true, description: Control-plane receipt time; older than 90 seconds is unknown. }
+        tunnels:
+          type: array
+          maxItems: 2
+          items: { $ref: "#/components/schemas/IPsecTunnelStatus" }
+    IPsecConnection:
+      type: object
+      additionalProperties: false
+      required: [id, org_id, name, site_id, gateway_node_id, historical_site_id, historical_gateway_node_id, desired_revision, desired_intent, application_state, cleanup_state, deleted_at, finalized_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        name: { type: string }
+        site_id: { type: string, format: uuid, nullable: true }
+        gateway_node_id: { type: string, format: uuid, nullable: true }
+        historical_site_id: { type: string, format: uuid }
+        historical_gateway_node_id: { type: string, format: uuid }
+        desired_revision: { type: integer, format: int64, minimum: 1 }
+        desired_intent: { type: string, enum: [disabled, enabled, deleted], x-enum-varnames: [IPsecConnectionDisabled, IPsecConnectionEnabled, IPsecConnectionDeleted] }
+        application_state: { type: string, enum: [not_applied, pending, applied], x-enum-varnames: [IPsecNotApplied, IPsecApplicationPending, IPsecApplied] }
+        cleanup_state: { type: string, enum: [not_required, pending, retained_guard], x-enum-varnames: [IPsecCleanupNotRequired, IPsecCleanupPending, IPsecRetainedGuard] }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        finalized_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    IPsecConnectionPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/IPsecConnection" }
+        next_cursor: { type: string, format: uuid, nullable: true }
+    IPsecSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, revision]
+      properties:
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64, minimum: 0 }
+    IPsecSettingsUpdate:
+      type: object
+      additionalProperties: false
+      required: [enabled, expected_revision]
+      properties:
+        enabled: { type: boolean }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
     HubSet:
       type: object
       required: [generation, members]

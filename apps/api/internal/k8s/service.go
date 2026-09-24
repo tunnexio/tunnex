@@ -281,6 +281,12 @@ func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorN
 		if e := q.LockDeviceKey(ctx, orgID.String()); e != nil {
 			return e
 		}
+		if _, e := q.LockProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
+		if e := q.VersionProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
 		// The cluster must be fronted by a real site in THIS org (one gateway = one site, D1).
 		if _, e := q.GetSite(ctx, sqlc.GetSiteParams{ID: siteID, OrgID: orgID}); e != nil {
 			return apierr.NotFound("site_not_found", "no such site in this organization")
@@ -344,7 +350,7 @@ func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorN
 		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_cluster", c.ID.String(), "k8s.cluster_registered",
 			map[string]any{"name": name, "vip_range": vipRange.Masked().String(), "dns_zone": dnsZone, "connector_node_id": connectorNodeID.String()})
 	})
-	return out, err
+	return out, subnetsrc.ProviderConflict(err)
 }
 
 // SetClusterProviderMetadata corrects presentation metadata without touching

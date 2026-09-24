@@ -1,0 +1,5 @@
+# Lab helpers only; never shipped in the production gateway image.
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+RUN apk add --no-cache python3 tcpdump iproute2 coreutils \
+    && apk info -vv > /qualification-apk-manifest.txt
+CMD ["/bin/sh"]

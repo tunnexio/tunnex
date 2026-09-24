@@ -20,12 +20,16 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
-	"putaiusermodelgrant":          `{"group_id":"00000000-0000-4000-8000-000000000001","connection_id":"00000000-0000-4000-8000-000000000002","model":"openrouter/test","enabled":true,"expected_revision":0}`,
-	"savessoconnection":            `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
-	"activatessoconnection":        `{"enabled":false,"revision":1}`,
-	"testssoconnection":            `{"link_account":false}`,
-	"configureconnectivityprofile": `{"enabled":false,"relay_url":"","expected_revision":0}`,
-	"publishconnectivitysnapshot":  `{"sequence":1,"payload":"{}"}`,
+	"createipsecproviderconnection": providerWireBody(),
+	"checkipsecconfiguration":       configurationCheckFixture,
+	"setipsecconnectionintent":      `{"intent":"disabled"}`,
+	"setipsecsettings":              `{"enabled":false,"expected_revision":0}`,
+	"putaiusermodelgrant":           `{"group_id":"00000000-0000-4000-8000-000000000001","connection_id":"00000000-0000-4000-8000-000000000002","model":"openrouter/test","enabled":true,"expected_revision":0}`,
+	"savessoconnection":             `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
+	"activatessoconnection":         `{"enabled":false,"revision":1}`,
+	"testssoconnection":             `{"link_account":false}`,
+	"configureconnectivityprofile":  `{"enabled":false,"relay_url":"","expected_revision":0}`,
+	"publishconnectivitysnapshot":   `{"sequence":1,"payload":"{}"}`,
 	// ⚠ A body is required so the 401 is about AUTHENTICATION, not about a missing field. Without one the
 	// spec validator answers 400 first and the walk cannot tell "you are not signed in" from "your JSON is
 	// wrong" — which is exactly the confusion the walk exists to rule out.
@@ -151,6 +155,7 @@ var walkBodies = map[string]string{
 // structurally valid so this walk measures authentication rather than the
 // generated parameter validator. Keep values inert and non-secret.
 var walkQueries = map[string]string{
+	"getipseceligibility":                     "?site_id=00000000-0000-4000-8000-000000000001&gateway_node_id=00000000-0000-4000-8000-000000000002",
 	"getconnectivitysession":                  "?generation=1",
 	"publishconnectivitysnapshot":             "?generation=1",
 	"closeconnectivitysession":                "?generation=1",
@@ -209,6 +214,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
 
 			var body io.Reader
 			if b, ok := walkBodies[strings.ToLower(op.OperationID)]; ok {
@@ -223,6 +229,9 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			}
 			if body != nil {
 				req.Header.Set("Content-Type", "application/json")
+			}
+			if strings.EqualFold(op.OperationID, "deleteIPsecConnection") || strings.EqualFold(op.OperationID, "setIPsecConnectionIntent") {
+				req.Header.Set("If-Match", `"1"`)
 			}
 			resp, err := srv.Client().Do(req)
 			if err != nil {

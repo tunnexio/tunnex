@@ -1,0 +1,16 @@
+This image contains strongSwan 6.1.0, built from the unmodified upstream release.
+See strongSwan-COPYING for the upstream licence and exceptions. The complete
+corresponding upstream source archive, release signature/key, verifier, build
+script, Dockerfile and provenance are bundled in ../source. No written source
+offer is substituted for these actual files.
+
+Runtime dependencies are installed through Alpine's authenticated APK
+repositories. Exact build and runtime APK versions are recorded in ../source.
+OpenSSL and musl are distribution components, not part of the strongSwan archive.
+Alpine package sources are at https://gitlab.alpinelinux.org/alpine/aports
+and https://distfiles.alpinelinux.org/distfiles/ . Distribution release review
+must include dependency licences and the matching source artifacts; this notice
+is not a claim that a dependency source/notice review has been completed.
+
+The node uses its own bounded VICI codec. No govici code is redistributed.
+Shipping the daemon does not start it, create SAs or authorize IPsec traffic.

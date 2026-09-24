@@ -1271,6 +1271,9 @@ func (s *Service) ResizePool(ctx context.Context, actor, orgID uuid.UUID, newCID
 		if e := q.LockDeviceKey(ctx, orgID.String()); e != nil {
 			return e
 		}
+		if _, e := q.LockProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
 		org, e := q.GetOrganizationByID(ctx, orgID)
 		if e != nil {
 			return e
@@ -1342,6 +1345,9 @@ func (s *Service) ResizePool(ctx context.Context, actor, orgID uuid.UUID, newCID
 			}
 			return &ShrinkOrphansError{Orphans: objs}
 		}
+		if e := q.VersionProviderRangeOrganization(ctx, orgID); e != nil {
+			return e
+		}
 		updated, e := q.UpdateOrgPoolCidr(ctx, sqlc.UpdateOrgPoolCidrParams{ID: orgID, PoolCidr: masked})
 		if e != nil {
 			return e
@@ -1351,7 +1357,7 @@ func (s *Service) ResizePool(ctx context.Context, actor, orgID uuid.UUID, newCID
 			map[string]any{"from": org.PoolCidr, "to": masked})
 	})
 	if err != nil {
-		return sqlc.Organization{}, err
+		return sqlc.Organization{}, subnetsrc.ProviderConflict(err)
 	}
 	return result, nil
 }

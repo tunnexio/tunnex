@@ -1,3 +1,4 @@
+import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -327,7 +328,7 @@ export default function Sites() {
   return (
     <div className="network-management flex flex-col gap-6">
       <PageHeader
-        title="Sites"
+        title="Site-to-site"
         subtitle={org ? `${org.name}${raw ? ` · ${cards.length} sites` : ""}` : "…"}
         actions={
           view === "body" && gate.canManage ? (
@@ -342,6 +343,9 @@ export default function Sites() {
           ) : null
         }
       />
+
+      <SiteToSiteNavigation active="networks" />
+      <p className="text-sm text-ink-secondary">Office and cloud networks, gateways and ranges.</p>
 
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />

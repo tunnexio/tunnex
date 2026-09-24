@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/subnetguard"
 )
 
 // Source wraps a querier (a *sqlc.Queries, or its tx-scoped clone) as a subnetguard.RangeSource.
@@ -36,4 +37,17 @@ func (s Source) PoolCIDR(ctx context.Context, orgID uuid.UUID) (string, error) {
 
 func (s Source) VIPRangeCIDRs(ctx context.Context, orgID uuid.UUID) ([]string, error) {
 	return s.Q.ListVIPRangesForOrg(ctx, orgID)
+}
+
+// IPsecReservations includes every live address reservation, including disabled configurations.
+func (s Source) IPsecReservations(ctx context.Context, orgID uuid.UUID) ([]subnetguard.IPsecReservation, error) {
+	rows, err := s.Q.ListIPsecProviderReservations(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]subnetguard.IPsecReservation, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, subnetguard.IPsecReservation{CIDR: r.Cidr, Class: subnetguard.OverlapClass(r.Class)})
+	}
+	return out, nil
 }

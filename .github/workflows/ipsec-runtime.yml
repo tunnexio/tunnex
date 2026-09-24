@@ -1,0 +1,80 @@
+name: IPsec native qualification
+
+on:
+  push:
+    branches: [story/site-to-site-connectivity]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipsec-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  amd64:
+    name: Linux AMD64 packet and VPN compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/node/go.mod
+          cache-dependency-path: apps/node/go.sum
+      - name: Verify native host and prepare evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          test "$(docker info --format '{{.Architecture}}')" = x86_64
+          printf 'COMPOSE_PROJECT_NAME=tunnexs2sci%sx%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ipsec-evidence"
+          sudo modprobe xfrm_interface || true
+          sudo modprobe wireguard || true
+          sudo modprobe tun || true
+          test -c /dev/net/tun
+      - name: Build exact native candidate and isolated observer tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" -f deploy/docker/node.Dockerfile -t "$COMPOSE_PROJECT_NAME:node" . 2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/build.log"
+          docker build --platform linux/amd64 --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" -f deploy/ipsec/Dockerfile.qualification-tools -t "$COMPOSE_PROJECT_NAME:tools" . 2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/tools-build.log"
+          printf 'CANDIDATE_IMAGE=%s\n' "$(docker image inspect --format '{{.Id}}' "$COMPOSE_PROJECT_NAME:node")" >> "$GITHUB_ENV"
+          printf 'TOOLS_IMAGE=%s\n' "$(docker image inspect --format '{{.Id}}' "$COMPOSE_PROJECT_NAME:tools")" >> "$GITHUB_ENV"
+      - name: Compile native controller fixture and run source regressions
+        working-directory: apps/node
+        shell: bash
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=1 go test -race ./internal/ipsec ./internal/control ./cmd/agent 2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/race.log"
+          go test -c -o "$RUNNER_TEMP/ipsec-controller.test" ./internal/ipsec
+      - name: Verify source and harness refusal regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s deploy/ipsec -p 'test_*.py' -v 2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/harness-regressions.log"
+      - name: Run native encrypted traffic, status, restart, cleanup and VPN coexistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/ipsec/qualify_coexistence.py \
+            --docker-context default --native-arch amd64 \
+            --candidate-image "$CANDIDATE_IMAGE" --tools-image "$TOOLS_IMAGE" \
+            --project "$COMPOSE_PROJECT_NAME" \
+            --binary "$RUNNER_TEMP/ipsec-controller.test" \
+            --binary-sha256 "$(sha256sum "$RUNNER_TEMP/ipsec-controller.test" | cut -d' ' -f1)" \
+            --evidence-dir "$RUNNER_TEMP/ipsec-evidence/runtime" \
+            2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/runtime.log"
+      - name: Preserve qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipsec-native-amd64-${{ github.sha }}
+          path: ${{ runner.temp }}/ipsec-evidence/
+          if-no-files-found: error
+          retention-days: 14
