@@ -15,11 +15,13 @@ type View = "active" | "history" | "management";
 
 function productLabel(row: AlertOccurrence): string {
   if (row.resource_type === "kubernetes_cluster" || row.resource_type === "kubernetes_service") return "Kubernetes";
+  if (row.resource_type === "ipsec_connection") return "Site-to-site";
   return row.resource_type.charAt(0).toUpperCase() + row.resource_type.slice(1);
 }
 
 function resourceHref(row: AlertOccurrence): string | null {
   switch (row.resource_type) {
+    case "ipsec_connection": return "/site-to-site";
     case "gateway": return `/gateways/${encodeURIComponent(row.resource_id)}`;
     case "site": return `/sites?site=${encodeURIComponent(row.resource_id)}`;
     case "device": return "/devices";

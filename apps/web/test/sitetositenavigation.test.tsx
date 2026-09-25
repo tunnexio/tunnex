@@ -16,6 +16,6 @@ it("groups network inventory and connectivity under one sidebar destination", ()
 it.each(["networks", "connectivity"] as const)("names both workspaces and marks %s current", active => {
   render(<MemoryRouter><SiteToSiteNavigation active={active} /></MemoryRouter>);
   expect(screen.getByRole("link", { name: "Networks" }).getAttribute("href")).toBe("/sites");
-  expect(screen.getByRole("link", { name: "Connectivity" }).getAttribute("href")).toBe("/site-to-site");
-  expect(screen.getByRole("link", { name: active === "networks" ? "Networks" : "Connectivity" }).getAttribute("aria-current")).toBe("page");
+  expect(screen.getByRole("link", { name: "Connections" }).getAttribute("href")).toBe("/site-to-site");
+  expect(screen.getByRole("link", { name: active === "networks" ? "Networks" : "Connections" }).getAttribute("aria-current")).toBe("page");
 });

@@ -329,7 +329,7 @@ export default function Sites() {
     <div className="network-management flex flex-col gap-6">
       <PageHeader
         title="Site-to-site"
-        subtitle={org ? `${org.name}${raw ? ` · ${cards.length} sites` : ""}` : "…"}
+        subtitle={org ? `${org.name}${raw ? ` · ${cards.length} ${cards.length === 1 ? "network" : "networks"}` : ""}` : "…"}
         actions={
           view === "body" && gate.canManage ? (
           <div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link>
@@ -338,14 +338,14 @@ export default function Sites() {
                 Route a LAN
               </Button>
             )}
-            <Button onClick={() => setRegistering(true)}>Add site</Button>
+
           </div>
           ) : null
         }
       />
 
       <SiteToSiteNavigation active="networks" />
-      <p className="text-sm text-ink-secondary">Office and cloud networks, gateways and ranges.</p>
+      <p className="text-sm text-ink-secondary">Locations, gateways and local IP ranges.</p>
 
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
@@ -361,8 +361,8 @@ export default function Sites() {
           <nav aria-label="Sites workspace" className="flex flex-wrap border-b border-white/10">
             {[
               ["overview", "Overview"],
-              ["approvals", "Pending approvals"],
-              ["ha", "Hub availability"],
+              ["approvals", "Range approvals"],
+              ["ha", "WireGuard redundancy"],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -377,9 +377,21 @@ export default function Sites() {
           </nav>
           {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
+              {gate.canManage && <details className="text-cell text-ink-tertiary"><summary className="cursor-pointer">Advanced setup</summary><Button variant="ghost" onClick={() => setRegistering(true)}>Create empty location</Button></details>}
               <SiteOverviewSummary cards={cards} unboundCount={unboundGatewayNodes.length} />
+              <SiteList
+                cards={visibleCards}
+                canManage={gate.canManage}
+                query={query}
+                selectedId={selectedSiteId}
+                onSelect={selectSite}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-2">
+                <p className="text-cell text-ink-tertiary">Choose a network to manage its gateway and ranges.</p>
+                <Link className="text-cell text-ink-heading underline underline-offset-4" to="/site-to-site">View connections →</Link>
+              </div>
               <Panel
-                title="Network map"
+                title="WireGuard topology"
                 className="min-w-0"
                 actions={
                   /* D2 (ruled): scoped to the MAP, not the page. The mesh's edges are handshake-derived, so
@@ -454,25 +466,10 @@ export default function Sites() {
                   maxHeight={225}
                   empty="Route a LAN to draw your first site here."
                 />
-                <p className="text-micro text-ink-faint">Live links reflect current WireGuard handshakes; animation does not imply traffic volume.</p>
+                <p className="text-micro text-ink-faint">WireGuard links only. View Connections for IPsec tunnel status.</p>
                 </>}
               </Panel>
               <SelectedSiteStrip card={selectedCard} selectedGatewayId={selectedGatewayId} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />
-
-              {/* D3 (ruled): the mesh sits ABOVE the list and scopes it; it does not replace it. The wireframe
-              drew only a diagram because a drawing never had to manage anything.
-
-              ⛔ THE LIST IS A TABLE AND THE DETAIL IS ONE CARD. Rendering a full card per site made the page
-              grow with the network — 10 sites was 3,200px of scroll, and the two teaching accordions were
-              identical on every one of them. Now: every site is one row, and the SELECTED site alone expands
-              into the card that carries the forms. */}
-              <SiteList
-                cards={visibleCards}
-                canManage={gate.canManage}
-                query={query}
-                selectedId={selectedSiteId}
-                onSelect={selectSite}
-              />
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-3">
                 <p className="text-cell text-ink-tertiary"><strong className="font-medium text-ink-heading">Advanced Site Networking:</strong> cross-site zone forwarding is optional and is not required for FQDN access.</p>
@@ -507,7 +504,7 @@ export default function Sites() {
                 onDone={reload}
               />
             ) : (
-              <Panel title="Pending subnet approvals">
+              <Panel title="Range approvals">
                 <p className="text-cell text-ink-tertiary">You can view Sites, but approving routed ranges requires site:manage and a verified email.</p>
               </Panel>
             )
@@ -578,7 +575,7 @@ function DNSForwardsPanel({
   const columns = [
     { key: "zone", header: "Zone", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-sans text-ink-body">{row.domain}</span> },
     { key: "resolver", header: "Resolver", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-sans text-ink-tertiary">{row.resolverIp}</span> },
-    { key: "site", header: "Site", cell: (row: OrgForwardsView["rows"][number]) => <span className="text-ink-tertiary">{row.siteName}</span> },
+    { key: "site", header: "Network", cell: (row: OrgForwardsView["rows"][number]) => <span className="text-ink-tertiary">{row.siteName}</span> },
     { key: "status", header: "Status", cell: (row: OrgForwardsView["rows"][number]) => view.conflicts.includes(row.domain) ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge> },
     { key: "action", header: "", cell: (row: OrgForwardsView["rows"][number]) => canManage ? <Button variant="ghost" size="sm" onClick={() => onManageSite(row.siteId)}>Manage</Button> : <span className="text-micro text-ink-faint">Read-only</span> },
   ];
@@ -766,11 +763,11 @@ function HubSetSection({
   const HA_MIN_GATEWAYS = 2;
   if (!view && gateways.length < HA_MIN_GATEWAYS) {
     return (
-      <Panel title="Hub high-availability">
+      <Panel title="WireGuard redundancy">
         <p className="mt-1 text-xs text-slate-500">
-          High availability needs {HA_MIN_GATEWAYS} or more gateways. You have{" "}
-          {gateways.length}. Enrol another gateway and bind it to a site, then
-          pin the candidates here to create the hub set.
+          A primary and standby WireGuard hub need {HA_MIN_GATEWAYS} or more gateways. You have{" "}
+          {gateways.length}. Assign another gateway to a network, then choose the hub candidates here.
+          IPsec tunnel redundancy is shown in Connections.
         </p>
       </Panel>
     );
@@ -778,10 +775,11 @@ function HubSetSection({
 
   return (
     <Panel
-      title="Hub availability"
+      title="WireGuard redundancy"
       className="min-w-0"
       actions={view ? <Badge tone={view.promotionInEffect ? "warn" : "neutral"}>generation {view.generation}</Badge> : undefined}
     >
+      <p className="mb-3 text-cell text-ink-tertiary">Manage primary and standby WireGuard hubs. IPsec tunnel redundancy is shown in Connections.</p>
       {view ? (
         <>
           <div className="grid overflow-hidden rounded-lg border border-line sm:grid-cols-3">
@@ -875,7 +873,7 @@ function SiteOverviewSummary({
     0,
   );
   const stats = [
-    { label: "Sites", value: cards.length, detail: `${cards.filter((card) => card.gateways.length > 0).length} connected` },
+    { label: "Networks", value: cards.length, detail: `${cards.filter((card) => card.gateways.length > 0).length} with a gateway` },
     { label: "Gateways", value: gateways.length + unboundCount, detail: unboundCount > 0 ? `${unboundCount} available to bind` : "all assigned" },
     { label: "Routed ranges", value: approved, detail: "approved" },
     { label: "Pending", value: pending, detail: pending > 0 ? "needs review" : "nothing waiting", attention: pending > 0 },
@@ -957,7 +955,7 @@ function SiteList({
   const columns = [
     {
       key: "name",
-      header: "Site",
+      header: "Network",
       cell: (c: SiteCard) => (
         <button
           type="button"
@@ -981,28 +979,28 @@ function SiteList({
           </span>
         ) : (
           // NOT an empty cell: "no gateway bound" is a fact, and a blank would read as missing data.
-          <span className="text-ink-faint">none bound</span>
+          <span className="text-ink-faint">Not assigned</span>
         );
       },
     },
     {
       key: "health",
-      header: "State",
+      header: "Gateway status",
       cell: (c: SiteCard) => {
         const gw = c.gateways.find((g) => g.status === "active");
-        if (!gw) return <span className="text-ink-faint">no link</span>;
+        if (!gw) return <span className="text-ink-faint">Needs a gateway</span>;
         return gw.health ? (
           <Badge tone={gw.health.tone as "ok" | "warn" | "danger" | "neutral"}>
             {gw.health.label}
           </Badge>
         ) : (
-          <Badge tone="ok">linked</Badge>
+          <Badge tone="neutral">Assigned</Badge>
         );
       },
     },
     {
       key: "ranges",
-      header: "Ranges",
+      header: "Local IP ranges",
       cell: (c: SiteCard) =>
         c.subnets.length === 0 ? (
           <span className="text-ink-faint">none</span>
@@ -1037,7 +1035,7 @@ function SiteList({
 
   return (
     <Panel
-      title="Site inventory"
+      title="Your networks"
       actions={<span className="text-micro tabular-nums text-ink-tertiary">{cards.length} total</span>}
     >
       <DataTable
@@ -2001,28 +1999,27 @@ function PendingQueue({
 
   if (loadErr)
     return (
-      <Panel title="Pending subnet approvals">
+      <Panel title="Range approvals">
         <LoadRetry error={loadErr} onRetry={loadQueue} />
       </Panel>
     );
   if (pending == null)
     return (
-      <Panel title="Pending subnet approvals">
+      <Panel title="Range approvals">
         <Loading size="inline" label="Loading pending subnet approvals…" />
       </Panel>
     );
   if (pending.length === 0)
     return (
-      <Panel title="Pending subnet approvals">
-        <EmptyState>No advertised subnets are awaiting approval.</EmptyState>
+      <Panel title="Range approvals">
+        <EmptyState>No local IP ranges are waiting for approval. Access is controlled separately in Access Policies.</EmptyState>
       </Panel>
     );
 
   return (
-    <Panel title="Pending subnet approvals">
+    <Panel title="Range approvals">
       <p className="mt-1 text-xs text-slate-500">
-        Advertised subnets route only once approved (disjointness is checked on
-        approval).
+        Approve local IP ranges advertised by gateways so they can be routed. Access Policies control who can use them.
       </p>
       <div className="mt-3 overflow-x-auto">
         <div className="min-w-[520px]">

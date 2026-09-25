@@ -14,13 +14,13 @@ export function SitePairReview({ sites, renderDetails }: {
   const second = sites.find(site => site.id === secondId);
   return <section aria-labelledby="pair-heading" className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 id="pair-heading" className="text-lg font-semibold">Review two networks</h2>
+      <h2 id="pair-heading" className="text-lg font-semibold">Review existing network pair</h2>
       <div className="flex gap-2">
         {first && second && <Button variant="ghost" size="sm" onClick={() => { setFirstId(secondId); setSecondId(firstId); }}>Swap networks</Button>}
         {(first || second) && <Button variant="ghost" size="sm" onClick={() => { setFirstId(""); setSecondId(""); }}>Reset</Button>}
       </div>
     </div>
-    {sites.length < 2 ? <p>Add another network to review connectivity.</p> : <>
+    {sites.length < 2 ? <p>WireGuard needs a Tunnex gateway at each location. Add a second network to review the pair.</p> : <>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="First network"><Select value={first?.id ?? ""} onChange={event => {
           setFirstId(event.target.value);
@@ -30,7 +30,7 @@ export function SitePairReview({ sites, renderDetails }: {
           <option value="">Choose another network</option>{sites.filter(site => site.id !== firstId).map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
         </Select></Field>
       </div>
-      {first && second && first.id !== second.id ? renderDetails(first, second) : <p className="text-ink-secondary">Choose two networks. Configuration appears here.</p>}
+      {first && second && first.id !== second.id ? renderDetails(first, second) : <p className="text-ink-secondary">Select both networks to see their gateways and ranges.</p>}
     </>}
   </section>;
 }

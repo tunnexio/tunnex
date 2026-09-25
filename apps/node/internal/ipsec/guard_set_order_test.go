@@ -20,8 +20,8 @@ func TestGuardReadbackSetDeclarationOrderIsNotRuleOrder(t *testing.T) {
 			positions = append(positions, i)
 		}
 	}
-	if len(positions) != 2 {
-		t.Fatal("fixture requires two independent set definitions")
+	if len(positions) != 3 {
+		t.Fatal("fixture requires three independent set definitions")
 	}
 	a, b := positions[0], positions[1]
 	doc["nftables"][a], doc["nftables"][b] = doc["nftables"][b], doc["nftables"][a]

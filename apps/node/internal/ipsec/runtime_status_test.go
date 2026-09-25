@@ -275,3 +275,27 @@ func TestRecoveryGuardPermitRequiresCurrentExactMembers(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeTunnelStatusNATMappingChangeIsUnknown(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		e, d, k, x := runtimeProofFixture()
+		calls := 0
+		r := runtimeStatusReaders{daemon: func(context.Context) (DaemonInventory, error) { return d, nil }, kernel: func(context.Context) (KernelInventory, error) { return k, nil }, xfrm: func(context.Context) (XFRMInventory, error) {
+			calls++
+			snapshot := x
+			snapshot.States = append([]XFRMState(nil), x.States...)
+			snapshot.States[0].Encapsulation = XFRMEncapsulation{SourcePort: 4500, DestinationPort: 62000, OriginalAddress: netip.IPv4Unspecified()}
+			if changed && calls == 2 {
+				snapshot.States[0].Encapsulation.DestinationPort++
+			}
+			return snapshot, nil
+		}, alive: func() bool { return true }}
+		want := [2]string{"up", "up"}
+		if changed {
+			want = [2]string{"unknown", "unknown"}
+		}
+		if got := runtimeObservedStatuses(context.Background(), e, r); got != want {
+			t.Fatalf("NAT change=%v: got %v, want %v", changed, got, want)
+		}
+	}
+}

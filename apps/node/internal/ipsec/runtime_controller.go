@@ -49,6 +49,7 @@ type runtimeActive struct {
 }
 
 type RuntimeController struct {
+	standbyRetries   map[uuid.UUID]runtimeStandbyRetry
 	recoveryInitiate func(context.Context, EngineTunnel) error
 	recoveryMetrics  RecoveryMetrics
 	qualification    *RuntimePlatformQualification
@@ -423,10 +424,53 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	if c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return fail()
 	}
+	currentNamespace, e := c.namespace()
+	if e != nil {
+		return fail()
+	}
+	var resetProof *RuntimeResetCleanup
+	for _, entry := range covered {
+		if entry.Phase != RuntimeRetainedRefusal && entry.Allocation.Namespace != currentNamespace {
+			resetProof, e = c.resetCleanupReceipt(cleanup, covered)
+			if e != nil {
+				return fail()
+			}
+			break
+		}
+	}
+	// Reserve the supervisor receipt durably before any reset cleanup. The
+	// previous allocation is never rewritten to match today's namespace.
+	if resetProof != nil {
+		for n, i := range positions {
+			if covered[n].Phase == RuntimeRetainedRefusal || covered[n].Allocation.Namespace == currentNamespace {
+				continue
+			}
+			if entries[i].ResetCleanup != nil && *entries[i].ResetCleanup != *resetProof {
+				return fail()
+			}
+			entries[i].ResetCleanup = resetProof
+			covered[n].ResetCleanup = resetProof
+		}
+		if c.journal.Save(entries) != nil {
+			return fail()
+		}
+	}
+	drainEntries := make([]RuntimeJournalEntry, 0, len(covered))
 	for _, entry := range covered {
 		if entry.Phase == RuntimeRetainedRefusal {
 			continue
 		}
+		if entry.Allocation.Namespace != currentNamespace {
+			if c.proveResetAbsent(ctx, entry, resetProof) != nil {
+				return fail()
+			}
+			projected := entry
+			projected.Allocation.Namespace = currentNamespace
+			drainEntries = append(drainEntries, projected)
+			// Never remove a daemon object by an old name in the new runtime.
+			continue
+		}
+		drainEntries = append(drainEntries, entry)
 		if entry.AbsenceOnly {
 			if c.proveAbsent(ctx, entry) != nil {
 				return fail()
@@ -446,8 +490,15 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			return fail()
 		}
 	}
-	if c.config.Environment.Drain(ctx, covered) != nil {
+	if len(drainEntries) > 0 && c.config.Environment.Drain(ctx, drainEntries) != nil {
 		return fail()
+	}
+	if resetProof != nil {
+		for _, entry := range covered {
+			if entry.Phase != RuntimeRetainedRefusal && entry.Allocation.Namespace != currentNamespace && c.proveResetAbsent(ctx, entry, resetProof) != nil {
+				return fail()
+			}
+		}
 	}
 	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
@@ -514,6 +565,25 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				}
 				index := int(slot) - 1
 				g.PermittedInterfaceIndices = []int{a.Entry.Observed[index].InterfaceIndex}
+				statuses := c.observeRecovery(ctx, a.Entry)
+				// The installation observation can disagree with the earlier recovery
+				// decision. Withdraw existing authority before returning; empty reply
+				// observations must never fall back to selected-path permission.
+				if statuses[index] != "up" || (statuses[1-index] != "up" && statuses[1-index] != "down") {
+					delete(c.active, id)
+					_, _ = c.refuse(ctx, entries)
+					return ErrRuntimeController
+				}
+				remaining, err = a.Authority.RemainingForApply(a.Identity, 5*time.Second)
+				if err != nil {
+					return ErrRuntimeController
+				}
+				g.PermitFor = remaining
+				for i, status := range statuses {
+					if status == "up" {
+						g.ReplyIngressIndices = append(g.ReplyIngressIndices, a.Entry.Observed[i].InterfaceIndex)
+					}
+				}
 				g.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: a.Entry.Observed[index].InterfaceIndex, ReqID: a.Entry.Engines[index].ReqID, Peer: a.Entry.Engines[index].RemoteAddress, UnderlayInterfaceIndex: a.Environment.Underlays[index].InterfaceIndex}}
 			}
 		}

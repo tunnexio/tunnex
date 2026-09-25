@@ -15,6 +15,14 @@ type XFRMState struct {
 	Source, Destination netip.Addr
 	SPI, ReqID, IfID    uint32
 	ReplayWindow        uint8
+	Encapsulation       XFRMEncapsulation
+}
+
+// XFRMEncapsulation preserves NAT-T readback for independent snapshot comparison.
+// The zero value denotes native ESP without UDP encapsulation.
+type XFRMEncapsulation struct {
+	SourcePort, DestinationPort uint16
+	OriginalAddress             netip.Addr
 }
 type XFRMPolicy struct {
 	TemplateSPI                         uint32 // Zero means the kernel template does not constrain SPI.
@@ -144,7 +152,7 @@ func xfrmEndpoints(line string) (netip.Addr, netip.Addr, bool) {
 }
 func xfrmState(b []string) (XFRMState, bool) {
 	var s XFRMState
-	if len(b) < 7 || len(b) > 9 {
+	if len(b) < 7 || len(b) > 10 {
 		return s, false
 	}
 	// Newer kernels expose SA direction after if_id. Preserve it for runtime
@@ -157,7 +165,7 @@ func xfrmState(b []string) (XFRMState, bool) {
 		s.Direction = last[1]
 		b = b[:len(b)-1]
 	}
-	if len(b) != 7 && len(b) != 8 {
+	if len(b) < 7 || len(b) > 9 {
 		return s, false
 	}
 	var ok bool
@@ -192,18 +200,43 @@ func xfrmState(b []string) (XFRMState, bool) {
 	if b[3] != "auth-trunc hmac(sha256) <<Keys hidden>> 128" || b[4] != "enc cbc(aes) <<Keys hidden>>" {
 		return s, false
 	}
-	// The native nokeys printer adds this one observational field after an SA
-	// carries traffic. Validate its exact shape, but never use it for freshness
-	// or authorization; CP lease and independent association remain required.
+	// Native printers may include NAT-T and last-use metadata before the replay
+	// context. Neither field grants authority. Keep the encapsulation tuple in
+	// the inventory so a changed UDP mapping invalidates a double read.
 	antiReplayLine := 5
-	if len(b) == 8 {
-		const layout = "2006-01-02 15:04:05"
-		if !strings.HasPrefix(b[5], "lastused ") {
-			return s, false
-		}
-		stamp := strings.TrimPrefix(b[5], "lastused ")
-		parsed, err := time.Parse(layout, stamp)
-		if err != nil || parsed.Format(layout) != stamp {
+	seenLastUsed, seenEncap := false, false
+	for antiReplayLine < len(b)-2 {
+		line := b[antiReplayLine]
+		switch {
+		case strings.HasPrefix(line, "encap "):
+			if seenEncap {
+				return s, false
+			}
+			seenEncap = true
+			f := strings.Fields(line)
+			if len(f) != 9 || f[0] != "encap" || f[1] != "type" || f[2] != "espinudp" || f[3] != "sport" || f[5] != "dport" || f[7] != "addr" {
+				return s, false
+			}
+			sport, sok := xfrmUint(f[4], 10, 16)
+			dport, dok := xfrmUint(f[6], 10, 16)
+			// ESP-in-UDP's original address is unused for this fixed IPv4 ESP
+			// tunnel profile; nonzero NAT-OA remains unsupported.
+			if !sok || !dok || sport == 0 || dport == 0 || f[8] != "0.0.0.0" {
+				return s, false
+			}
+			s.Encapsulation = XFRMEncapsulation{SourcePort: uint16(sport), DestinationPort: uint16(dport), OriginalAddress: netip.IPv4Unspecified()}
+		case strings.HasPrefix(line, "lastused "):
+			if seenLastUsed {
+				return s, false
+			}
+			seenLastUsed = true
+			const layout = "2006-01-02 15:04:05"
+			stamp := strings.TrimPrefix(line, "lastused ")
+			parsed, err := time.Parse(layout, stamp)
+			if err != nil || parsed.Format(layout) != stamp {
+				return s, false
+			}
+		default:
 			return s, false
 		}
 		antiReplayLine++

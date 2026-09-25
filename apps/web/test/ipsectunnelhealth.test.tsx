@@ -95,8 +95,8 @@ it("shows observed Active path separately from configured Preferred path", async
  mock.get.mockResolvedValue({data:{...data,recovery_version:1,selection_sequence:7,active_slot:2}});
  render(view());await screen.findByText("Active path");
  expect(screen.getByText("Preferred path")).toBeTruthy();
- const active=screen.getByText("Active path").parentElement!;
- expect(within(active).getByRole("heading",{name:"Tunnel 2"})).toBeTruthy();
+ const active=screen.getByText("Active path").closest("tr")!;
+ expect(within(active).getByRole("rowheader",{name:"Tunnel 2"})).toBeTruthy();
 });
 it.each([
  {recovery_version:1,selection_sequence:3,active_slot:null},

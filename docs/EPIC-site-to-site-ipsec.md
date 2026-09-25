@@ -75,6 +75,10 @@ Planning direction is approved; implementation choices below are not silently tr
 
 No story skips the repository review protocol. Applicable local gates and exact-head CI are required for implementation. A unit test substitutes for, but never satisfies, live-wire acceptance. Review findings are ranked and held for disposition. Cloud test creation and teardown get exact resource plans at execution time.
 
+### S2S-4 local preparation (2026-09-25)
+
+The [AWS customer walk](S-S2S-4-aws-customer-walk.md), pending receipt template and offline `deploy/ipsec/check_aws_walk.py` checker are available locally. The checker verifies required results and artifact hashes only; it does not authenticate observations or grant a support label. An explicitly approved isolated live AWS walk is now in progress. Both tunnels established. Local fixes now pass A→B payload, asymmetric reply, exact-grant deny/restore, return-route failure/restore and CHILD rekey subcases. First-path loss switches traffic to the second path after approximately 190 seconds in the current lab; reverse failover testing is in progress. Independent reverse initiation, complete recovery/rotation qualification and cleanup remain open. See the customer walk checkpoint.
+
 ## State and security questions to resolve in S2S-0
 
 - Define draft, applying, observed, degraded, disabled, deleting and failed transitions; separate desired revision from gateway acknowledgement and observation freshness.

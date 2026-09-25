@@ -85,7 +85,12 @@ func startDaemonProcess(ctx context.Context, dir, executable string) (*DaemonPro
 	}
 	// All paths are internal constants. No provider text, PSK or includes are written.
 	socket := filepath.Join(dir, "charon.vici")
-	config := "charon {\n load = random nonce openssl kdf kernel-netlink socket-default vici\n install_routes = no\n routing_table = 0\n install_virtual_ip = no\n plugins {\n kernel-netlink { install_routes_xfrmi = no }\n vici { socket = unix://" + socket + " }\n }\n filelog { stderr { default = -1 } }\n}\n"
+	// IKEv2 DPD shares the IKE retransmission schedule. The upstream default
+	// waits about 165s before declaring a silent peer dead. Keep three retries
+	// (2 + 3 + 4.5 + 6.75 = 16.25s) so transient packet loss is tolerated while
+	// the controller can select a verified standby promptly. These settings
+	// affect only our dedicated daemon, including its negotiation and rekey.
+	config := "charon {\n load = random nonce openssl kdf kernel-netlink socket-default vici\n retransmit_timeout = 2.0\n retransmit_base = 1.5\n retransmit_tries = 3\n install_routes = no\n routing_table = 0\n install_virtual_ip = no\n plugins {\n kernel-netlink { install_routes_xfrmi = no }\n vici { socket = unix://" + socket + " }\n }\n filelog { stderr { default = -1 } }\n}\n"
 	f, e := os.OpenFile(filepath.Join(dir, "strongswan.conf"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
 		return fail()

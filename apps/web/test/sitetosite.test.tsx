@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 const mock = vi.hoisted(() => ({ org: { id: "a" } as { id: string } | null, failed: false, loading: false, verified: true, userId: "user", get: vi.fn() }));
@@ -38,13 +38,14 @@ it("hides setup when membership cannot be established", async () => {
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { error: {} } : { data: [] });
   render(app());
   await screen.findByText("No networks configured yet.");
-  expect(screen.queryByRole("link", { name: "Add a network" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create connection" })).toBeNull();
 });
 it("lets a verified owner reuse existing network setup", async () => {
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { data: [{ user_id: "user", role: "owner" }] } : { data: [] });
   render(app());
-  const link = await screen.findByRole("link", { name: "Add a network" });
-  expect(link.getAttribute("href")).toBe("/network/setup");
+  const link = await screen.findByRole("button", { name: "Create connection" });
+  fireEvent.click(link);
+  expect(screen.getByRole("dialog", { name: "Create connection" })).toBeTruthy();
 });
 it("removes already rendered site data while the next organization loads", async () => {
   mock.get.mockImplementation((path: string, opts: { params: { path: { orgId: string } } }) => {
@@ -70,7 +71,7 @@ it("recovers membership failure without presenting it as denied permission", asy
   expect(screen.queryByText(/Contact your administrator/)).toBeNull();
   unavailable = false;
   fireEvent.click(screen.getByRole("button", { name: "Retry permissions" }));
-  await screen.findByRole("link", { name: "Add a network" });
+  await screen.findByRole("button", { name: "Create connection" });
 });
 it("offers page reload for organization discovery failure rather than network retry", async () => {
   mock.org = null; mock.failed = true;
@@ -82,11 +83,11 @@ it("offers page reload for organization discovery failure rather than network re
 it("withdraws setup immediately when email verification is lost", async () => {
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { data: [{ user_id: "user", role: "owner" }] } : { data: [] });
   const view = render(app());
-  await screen.findByRole("link", { name: "Add a network" });
+  await screen.findByRole("button", { name: "Create connection" });
   mock.verified = false; view.rerender(app());
-  expect(screen.queryByRole("link", { name: "Add a network" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create connection" })).toBeNull();
   await screen.findByText("No networks configured yet.");
-  expect(screen.queryByRole("link", { name: "Add a network" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create connection" })).toBeNull();
 });
 it("resets the selected pair on user switch and ignores the previous user's pending configuration", async () => {
   let finishPrevious: (value: unknown) => void = () => {};
@@ -111,12 +112,12 @@ it("resets the selected pair on user switch and ignores the previous user's pend
 
   mock.userId = "another-user";
   view.rerender(app());
-  expect(screen.queryByRole("link", { name: "Add a network" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create connection" })).toBeNull();
   expect(screen.queryByLabelText("First network")).toBeNull();
   await screen.findByLabelText("First network");
   expect((screen.getByLabelText("First network") as HTMLSelectElement).value).toBe("");
   expect((screen.getByLabelText("Second network") as HTMLSelectElement).value).toBe("");
-  expect(screen.queryByRole("link", { name: "Add a network" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create connection" })).toBeNull();
 
   fireEvent.change(screen.getByLabelText("First network"), { target: { value: "office" } });
   fireEvent.change(screen.getByLabelText("Second network"), { target: { value: "cloud" } });
@@ -139,7 +140,7 @@ it("loads IPsec only after choosing its method and leaves WireGuard as default",
  expect(mock.get.mock.calls.some(([path]) => path.includes("/ipsec/"))).toBe(false);
  fireEvent.click(screen.getByRole("button", { name: "IPsec" }));
  await screen.findByRole("button", { name: "Enable IPsec" });
- expect(screen.queryByRole("link", { name: "Add a network" })).toBeNull();
+ expect(screen.getByRole("button", { name: "Create connection" })).toBeTruthy();
  fireEvent.click(screen.getByRole("button", { name: "WireGuard" }));
  expect(screen.queryByRole("button", { name: "Enable IPsec" })).toBeNull();
  expect(screen.getByText("No networks configured yet.")).toBeTruthy();
@@ -147,9 +148,55 @@ it("loads IPsec only after choosing its method and leaves WireGuard as default",
 it("withdraws IPsec on the first commit of same-organization loading", async () => {
  mock.get.mockImplementation(async(path:string)=>path.endsWith("/members")?{data:[{user_id:"user",role:"owner"}]}:path.endsWith("/settings")?{data:{enabled:true,revision:1}}:path.endsWith("/connections")?{data:{items:[]}}:{data:[]});
  let leaked=false;
- function Probe(){useLayoutEffect(()=>{if(mock.loading) leaked=!!screen.queryByRole("button",{name:"New connection"});});return app();}
+ function Probe(){useLayoutEffect(()=>{if(mock.loading) leaked=!!screen.queryByRole("button",{name:"Create connection"});});return app();}
  const result=render(<Probe/>);await screen.findByText("No networks configured yet.");
- fireEvent.click(screen.getByRole("button",{name:"IPsec"}));await screen.findByRole("button",{name:"New connection"});
+ fireEvent.click(screen.getByRole("button",{name:"IPsec"}));await screen.findByRole("button",{name:"Create connection"});
  mock.loading=true;result.rerender(<Probe/>);expect(leaked).toBe(false);
- expect(screen.queryByRole("button",{name:"New connection"})).toBeNull();
+ expect(screen.queryByRole("button",{name:"Create connection"})).toBeNull();
+});
+
+it("shows no links for one network without duplicating network inventory", async () => {
+  mock.get.mockImplementation(async (path: string) => path.endsWith("/members")
+    ? { data: [{ user_id: "user", role: "owner" }] }
+    : { data: [{ id: "office", name: "Home Wi-Fi lab" }] });
+  render(app());
+  expect(await screen.findByRole("heading", { name: "No WireGuard links" })).toBeTruthy();
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(screen.queryByText("Home Wi-Fi lab")).toBeNull();
+  expect(screen.getByRole("link", { name: "Go to Networks" }).getAttribute("href")).toBe("/sites");
+  expect(screen.getByText("Automatically managed links.")).toBeTruthy();
+  expect(screen.queryByLabelText("First network")).toBeNull();
+  expect(screen.queryByRole("button", { name: "New connection" })).toBeNull();
+});
+
+it("routes AWS through provider selection and does not reopen a cancelled draft on tab return", async () => {
+  mock.get.mockImplementation(async (path: string) => {
+    if (path.endsWith("/members")) return { data: [{ user_id: "user", role: "owner" }] };
+    if (path.endsWith("/settings")) return { data: { enabled: true, revision: 1 } };
+    if (path.endsWith("/connections")) return { data: { items: [] } };
+    return { data: [] };
+  });
+  render(app());
+  fireEvent.click(await screen.findByRole("button", { name: "Create connection" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /IPsec/ }));
+  for (const name of [/Azure/, /Google Cloud/, /On-premises/]) {
+    expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+  }
+  fireEvent.click(screen.getByRole("button", { name: /AWS Site-to-Site/ }));
+  await screen.findByRole("dialog", { name: "New IPsec connection" });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "WireGuard" }));
+  fireEvent.click(screen.getByRole("button", { name: "IPsec" }));
+  await screen.findByText("No IPsec connections configured.");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+it("WireGuard creation offers in-place location setup without redirecting to inventory", async () => {
+  mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { data: [{ user_id: "user", role: "owner" }] } : { data: [] });
+  render(app());
+  fireEvent.click(await screen.findByRole("button", { name: "Create connection" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /WireGuard/ }));
+  const dialog = within(screen.getByRole("dialog", { name: "Tunnex to Tunnex" }));
+  expect(dialog.getByRole("button", { name: "Add location" })).toBeTruthy();
+  expect(dialog.queryByRole("link", { name: "Go to Networks" })).toBeNull();
+  expect(dialog.queryByRole("button", { name: "Review network pair" })).toBeNull();
 });

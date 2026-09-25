@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/netip"
 	"reflect"
 	"sort"
 	"strconv"
@@ -295,6 +296,7 @@ func translateGuardMatch(expr map[string]any, links map[string]int) bool {
 	if !ok {
 		return true
 	}
+	normalizeGuardHostPrefix(match, left)
 	meta, ok := left["meta"].(map[string]any)
 	if !ok || (meta["key"] != "iif" && meta["key"] != "oif") {
 		return true
@@ -345,4 +347,33 @@ func translateGuardSet(fields map[string]any, links map[string]int) bool {
 		element["val"] = converted
 	}
 	return true
+}
+
+// nft canonicalizes IPv4 /32 payload matches to scalar addresses. Normalize
+// only this exact equivalence; preserve all other fields for strict comparison.
+func normalizeGuardHostPrefix(match, left map[string]any) {
+	if len(left) != 1 {
+		return
+	}
+	payload, ok := left["payload"].(map[string]any)
+	if !ok || len(payload) != 2 || payload["protocol"] != "ip" || (payload["field"] != "saddr" && payload["field"] != "daddr") {
+		return
+	}
+	right, ok := match["right"].(map[string]any)
+	if !ok || len(right) != 1 {
+		return
+	}
+	prefix, ok := right["prefix"].(map[string]any)
+	if !ok || len(prefix) != 2 || prefix["len"] != json.Number("32") {
+		return
+	}
+	text, ok := prefix["addr"].(string)
+	if !ok {
+		return
+	}
+	addr, err := netip.ParseAddr(text)
+	if err != nil || !addr.Is4() || addr.String() != text {
+		return
+	}
+	match["right"] = text
 }

@@ -45,6 +45,14 @@ func TestDaemonTypedStageHasNoAutomaticActivation(t *testing.T) {
 	if string(child["start_action"].scalar) != "none" || string(child["if_id_in"].scalar) != "701" || string(conn["version"].scalar) != "2" {
 		t.Fatal("unsafe connection transform")
 	}
+	// IKEv2 must actively detect a silent peer; child dpd_action alone does not
+	// schedule probes, and dpd_timeout is an IKEv1-only setting.
+	if string(conn["dpd_delay"].scalar) != "10s" || string(child["dpd_action"].scalar) != "clear" || string(child["close_action"].scalar) != "none" {
+		t.Fatal("missing bounded dead-peer probes or daemon bypasses controller recovery")
+	}
+	if _, present := conn["dpd_timeout"]; present {
+		t.Fatal("IKEv1-only DPD timeout used for IKEv2")
+	}
 	if string(secret) != "Synthetic.PSK_123" {
 		t.Fatal("mutated caller secret")
 	}

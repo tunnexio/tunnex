@@ -7711,14 +7711,14 @@ components:
       enum: [info, warning, critical]
     AlertEventKey:
       type: string
-      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable]
+      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable]
 
     AlertOccurrenceState:
       type: string
       enum: [firing, resolved]
     AlertResourceType:
       type: string
-      enum: [agent, gateway, site, device, kubernetes_cluster, kubernetes_service]
+      enum: [agent, gateway, site, device, kubernetes_cluster, kubernetes_service, ipsec_connection]
     AlertOccurrence:
       type: object
       additionalProperties: false

@@ -1,0 +1,11 @@
+-- Refuse rollback while IPsec alert data exists; never delete history.
+ALTER TABLE alert_subscriptions DROP CONSTRAINT alert_subscriptions_event_key_check;
+ALTER TABLE alert_subscriptions ADD CONSTRAINT alert_subscriptions_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable'));
+ALTER TABLE alert_deliveries DROP CONSTRAINT alert_deliveries_event_key_check;
+ALTER TABLE alert_deliveries ADD CONSTRAINT alert_deliveries_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable'));
+ALTER TABLE alert_delivery_cooldowns DROP CONSTRAINT alert_delivery_cooldowns_event_key_check;
+ALTER TABLE alert_delivery_cooldowns ADD CONSTRAINT alert_delivery_cooldowns_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable'));
+ALTER TABLE alert_occurrences DROP CONSTRAINT alert_occurrences_event_key_check;
+ALTER TABLE alert_occurrences ADD CONSTRAINT alert_occurrences_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable'));
+ALTER TABLE alert_occurrences DROP CONSTRAINT alert_occurrences_resource_type_check;
+ALTER TABLE alert_occurrences ADD CONSTRAINT alert_occurrences_resource_type_check CHECK (resource_type IN ('','agent','gateway','site','device','kubernetes_cluster','kubernetes_service'));

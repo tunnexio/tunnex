@@ -77,3 +77,48 @@ func TestXFRMInventoryNativePolicy(t *testing.T) {
 		t.Fatal("template SPI lost")
 	}
 }
+
+func TestXFRMInventoryNATT(t *testing.T) {
+	const encap = " encap type espinudp sport 4500 dport 62000 addr 0.0.0.0\n"
+	const used = " lastused 2026-09-25 06:30:00\n"
+	for _, metadata := range []string{encap, encap + used, used + encap} {
+		for _, direction := range []string{"", " dir in\n", " dir out\n"} {
+			raw := strings.Replace(xfrmStateFixture, " anti-replay", metadata+" anti-replay", 1) + direction
+			got, err := ParseXFRMInventory("net:[42]", []byte(raw), []byte(xfrmPolicyFixture))
+			if err != nil || len(got.States) != 1 {
+				t.Fatalf("valid NAT-T rejected: %v", err)
+			}
+			e := got.States[0].Encapsulation
+			if e.SourcePort != 4500 || e.DestinationPort != 62000 || e.OriginalAddress.String() != "0.0.0.0" {
+				t.Fatal("encapsulation tuple lost")
+			}
+			changed := strings.Replace(raw, "dport 62000", "dport 62001", 1)
+			other, err := ParseXFRMInventory("net:[42]", []byte(changed), []byte(xfrmPolicyFixture))
+			if err != nil || got.States[0] == other.States[0] {
+				t.Fatal("changed NAT mapping not observable")
+			}
+		}
+	}
+}
+
+func TestXFRMInventoryNATTRefusesAmbiguity(t *testing.T) {
+	const encap = " encap type espinudp sport 4500 dport 4500 addr 0.0.0.0\n"
+	for _, line := range []string{
+		encap + encap,
+		strings.Replace(encap, "espinudp", "espinudp-nonike", 1),
+		strings.Replace(encap, "sport 4500", "sport 0", 1),
+		strings.Replace(encap, "dport 4500", "dport 0", 1),
+		strings.Replace(encap, "sport 4500", "sport 65536", 1),
+		strings.Replace(encap, "dport 4500", "dport -1", 1),
+		strings.Replace(encap, "dport 4500", "dport invalid", 1),
+		strings.Replace(encap, "0.0.0.0", "192.0.2.1", 1),
+		strings.Replace(encap, "0.0.0.0", "::", 1),
+		strings.Replace(encap, "addr 0.0.0.0", "", 1),
+		strings.Replace(encap, "addr 0.0.0.0", "addr 0.0.0.0 extra", 1),
+	} {
+		raw := strings.Replace(xfrmStateFixture, " anti-replay", line+" anti-replay", 1)
+		if _, err := ParseXFRMInventory("net:[42]", []byte(raw), []byte(xfrmPolicyFixture)); !errors.Is(err, ErrXFRMInventoryInvalid) {
+			t.Fatal("accepted ambiguous NAT-T")
+		}
+	}
+}

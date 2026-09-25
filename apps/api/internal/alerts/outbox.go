@@ -108,8 +108,8 @@ func (s *PostgresOutbox) ObserveOccurrence(ctx context.Context, event Event, obs
 		INSERT INTO alert_occurrences (
 			org_id,event_key,dedup_key,resource_type,resource_id,resource_name,
 			severity,subject,fields,state,first_observed_at,last_observed_at,resolved_at,occurrence_count
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,
-			CASE WHEN $10='resolved' THEN $11 ELSE NULL END,
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,$11::timestamptz,
+			CASE WHEN $10='resolved' THEN $11::timestamptz ELSE NULL END,
 			CASE WHEN $10='firing' THEN 1 ELSE 0 END)
 		ON CONFLICT (org_id,event_key,dedup_key) DO UPDATE SET
 			resource_type=EXCLUDED.resource_type,
