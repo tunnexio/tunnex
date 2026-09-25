@@ -1099,6 +1099,18 @@ type IpsecProviderBinding struct {
 	CreatedAt             time.Time `json:"created_at"`
 }
 
+type IpsecPskRotation struct {
+	ConnectionID            uuid.UUID   `json:"connection_id"`
+	OrgID                   uuid.UUID   `json:"org_id"`
+	DesiredRevision         int64       `json:"desired_revision"`
+	PreviousRevision        int64       `json:"previous_revision"`
+	ActorID                 uuid.UUID   `json:"actor_id"`
+	AuditID                 uuid.UUID   `json:"audit_id"`
+	TunnelIds               []uuid.UUID `json:"tunnel_ids"`
+	PreviousSecretRevisions []int64     `json:"previous_secret_revisions"`
+	TransactionID           int64       `json:"transaction_id"`
+}
+
 type IpsecRetainedGuard struct {
 	CleanupDeliveryID uuid.UUID `json:"cleanup_delivery_id"`
 	ConnectionID      uuid.UUID `json:"connection_id"`
