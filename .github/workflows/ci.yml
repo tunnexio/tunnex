@@ -178,7 +178,9 @@ jobs:
       matrix:
         edition: [open, enterprise]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Full serial DB suites exceeded 25m on the enterprise runner (run 36092954758).
+    # Keep a bounded job budget; package timeouts and every acceptance gate remain intact.
+    timeout-minutes: 40
     env:
       COMPOSE_PROJECT_NAME: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
       GATE_CACHE_PREFIX: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
