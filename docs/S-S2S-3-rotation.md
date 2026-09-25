@@ -1,0 +1,75 @@
+# S2S-3: customer-provided PSK rotation
+
+Status: user approved recommended maintenance rotation on 2026-09-25 ("go with recommanded"). Implement the contract locally, including schema, API, UI and tests. This does not authorize publication or claim seamless rotation.
+
+## Recommended behavior: maintenance rotation
+
+The operator disables the connection and waits for acknowledged cleanup. A verified human with `ipsec:manage` may then replace the PSK for one tunnel or both tunnels. The connection stays disabled. The operator configures the matching keys on the remote VPN and explicitly enables the connection afterwards. Until successful negotiation, ordinary runtime refusal remains in force. Updating Tunnex cannot establish that the remote VPN has accepted its new key.
+
+A never-delivered disabled connection may replace keys without a cleanup acknowledgement, because no apply delivery could have installed the previous keys. For a delivered connection, require no current cleanup ID and exact coverage of the last potentially delivered revision by the cleanup checkpoint and its acknowledged retained guard. Timeouts, offline gateways, stale status, intent alone, or an `applied` acknowledgement are insufficient.
+
+Request: connection identity, exact expected desired revision, and one or two distinct existing tunnel IDs with write-only replacement PSKs. No caller-supplied secret revision is trusted: derive each successor under the connection/tunnel locks. Reject missing, duplicate, foreign or unknown tunnel IDs, stale CAS, overflow, invalid provider PSK values, enabled/deleted/finalized state, or incomplete cleanup. Reuse existing verified-human permission and PSK envelope behavior. Maintenance rotation does not require a licence upgrade and does not authorize connection expansion.
+
+One transaction increments desired revision exactly once and each replaced tunnel's secret revision exactly once, seals each replacement against its organization/connection/tunnel/new revision, replaces its old ciphertext, and appends a redacted rotation audit. Unchanged tunnels retain their exact revision/ciphertext. Return ordinary redacted connection state; never return PSKs, ciphertext, secret fingerprints or old keys. Repeating the old CAS returns conflict without another change. An audit/encryption/write failure rolls the entire transaction back and leaves the connection disabled.
+
+There is no overlap window, old-key export, automatic remote-device update or silent rollback to a previous PSK. After commit, restoring an earlier customer-held value is another explicit rotation with a new revision. Removal of the previous live ciphertext is not a claim to erase prior backups/WAL or remote-device memory. Existing backup retention remains unchanged.
+
+## Inspected constraints and required compatibility work
+
+Current migration 0158 defines the tunnel secret revision and immediate composite secret-to-tunnel foreign key. Its lifecycle trigger, replaced in 0160, refuses every child update. Migration 0160 additionally refuses delivered disabled-to-disabled desired-revision increments. Provider binding/configuration remains sealed and create-only; both provider and runtime delivery configuration revisions are fixed at 1. Therefore a PSK writer cannot safely be added solely in service code.
+
+Keep provider configuration, tunnel IDs/slots, ownership addresses, route reservations, profile, configuration revision and historical delivery manifests immutable. Secret revision already travels in the runtime manifest and bound PSK envelope; rotation uses that existing revision rather than changing the provider configuration revision. Historical manifests contain nonsecret references and must not be rewritten to point to new keys.
+
+Add a new migration with narrow database-enforced maintenance transitions. Child identity remains immutable; only the monotonic secret revision and corresponding sealed secret may change under the locked disabled/cleaned parent. Preserve the two-tunnel/two-secret completeness constraint. The immediate revision FK must be changed to a deferrable constraint, explicitly deferred only inside the rotation transaction, or replaced by an equally strict atomic update design; do not drop ownership/revision validation. At commit, the exact successor tunnel revision and its one live ciphertext must agree. Raw SQL must not permit independent revision bumps, key replacement under the old revision, partial one-sided updates or an unrelated parent revision bump masquerading as rotation. Specify and test transaction coherence before implementation.
+
+Follow existing provider lock ordering: org range advisory lock, live org/setting, existing assignment rows as required, connection/runtime checkpoint, then tunnel slots in deterministic order. Concurrent enable, disable/delete, delivery or second rotation must serialize and revalidate after waiting. Preserve old immutable cleanup deliveries and retained guards; rotation releases neither remote reservations nor local prefix denial. Normal subsequent enable gets a new apply delivery with new desired/secret revisions. Old delivery acknowledgement or material retry cannot recover a withdrawn PSK or authorize the new generation.
+
+Downgrade must refuse if any rotation history or noninitial secret revision exists. An empty/unexercised schema rollback may restore prior guards; do not silently discard rotation evidence or reset revisions.
+
+## Alternatives requiring a choice
+
+**Recommended: maintenance rotation above.** Allows one/both customer keys to change with explicit downtime for the whole connection; minimizes new secret lifecycle state and reuses acknowledged cleanup.
+
+**Seamless rotation:** retain old/new key generations simultaneously and coordinate negotiation, route duty, retries and withdrawal per tunnel. Requires separately reviewed overlap duration, rollback authority, remote-device behavior and crash-safe native negotiation proof. Existing two tunnels alone do not establish uninterrupted service. This is a larger persisted-state/runtime contract and is not part of the recommendation.
+
+## Evidence required before exposure
+
+Write failing tests before schema/service changes. Cover never-delivered and exactly-cleaned positives, one/both tunnel changes, unchanged partner key, stale/replayed CAS, cross-org/tunnel substitution, unknown tunnel, overflow, enabled/deleted/finalized refusal, pending/insufficient cleanup refusal and no licence expansion. Direct SQL tests must exercise each revision/ownership/completeness/coherence guard. Inject encryption, second-key write and audit failures to prove atomicity. Observe competing rotation/enable/delete/delivery locks in both winning orders; preserve historical manifests and retained reservations.
+
+Prove old-secret material withdrawal, fresh enable manifest revision binding, old acknowledgement refusal, redacted HTTP/audit/error output and password-input clearing. Native packet tests must confirm old key no longer negotiates and replacement key does, with retained refusal throughout downtime. Full CI remains a deferred acceptance gate; neither this paper nor local tests close it.
+
+## Approved transaction coherence detail
+
+A deferred revision FK alone is insufficient: it permits a tunnel+secret bump without a parent revision change and permits ciphertext replacement at the same revision. Recommend one immutable nonsecret rotation record per `(connection_id, resulting_desired_revision)`, with organization/actor, predecessor desired revision, chosen tunnel IDs and their predecessor/successor secret revisions. An insertion trigger captures the real predecessor under the parent lock and stamps the current full transaction ID; do not trust caller-supplied predecessors, timestamps or a session GUC as permission. Store no key, ciphertext, key digest or fingerprint in this record.
+
+The record insertion admits exactly one maintenance operation for that connection in the transaction. Its BEFORE guard rechecks disabled/nonfinalized state and exact cleanup coverage, validates one/two distinct existing slots, and derives all successor revisions with overflow checks. The service subsequently updates the selected tunnel revision and its ciphertext, then increments the unchanged disabled parent's desired revision once and writes the existing audit entry. Parent/child guards accept only the exact current transaction's operation and frozen field changes. Never exempt all writes merely because a rotation row exists in historical data or trigger depth is greater than one.
+
+Deferrable constraint triggers on the operation, parent, tunnels and secrets enforce the complete operation at commit: parent successor matches, each chosen tunnel advanced exactly once with a correspondingly revised secret, all unchosen identities/revisions/ciphertexts remain untouched, exactly two tunnels/secrets remain, and the operation's redacted audit exists. A child trigger rejects changed ciphertext unless its secret revision also advances exactly one through that operation. The operation row is immutable/nondeletable/nontruncatable after insertion; historical records cannot authorize later transactions. Updating either chosen row twice, rotating the parent twice in one transaction, changing name/provider/assignment while rotating, or inserting only the operation must fail. Use a named deferrable secret-revision FK and defer that constraint specifically, retaining the ordinary ownership FK checks.
+
+The new parent-trigger exception is narrow: disabled-to-disabled revision increment with unchanged name/identity and this complete rotation operation. Preserve the existing never-delivered rename exception independently. Do not rewrite migration 0160's historical file; replace its functions in a successor migration. Existing `runtimeConfig` requires `secret_revision == 1`; change that admission to a positive revision only after rotation guards/tests are present. Configuration revision stays exactly 1.
+
+If implementation instead uses a single database function to perform the full operation, retain the same commit-time invariants and ordinary table guards. Function use alone cannot protect against direct table updates by the application role. A service-only check or temporary session flag is not an alternative to coherence enforcement.
+
+## Regression fixture plan
+
+Reuse `providerFixture`, `ConnectionStore.CreateProviderDisabled`, `SetIntent`, `Material`, `Cleanup` and `Acknowledge` to build three canonical states; do not seed synthetic cleanup success by changing runtime checkpoint rows. Run through the labeled tmpfs fixture wrapper and migrate each disposable test database to the successor schema.
+
+| Fixture | Construction | Expected rotation |
+| --- | --- | --- |
+| Never delivered | Create provider connection; leave revision 1 disabled | One or both keys can change; stays disabled; partner unchanged |
+| Delivered and cleaned | Enable; obtain material; disable; fetch cleanup; submit exact cleaned acknowledgement with retained guard | Allowed only after acknowledged coverage equals last potentially delivered revision |
+| Cleanup outstanding | Enable; obtain material; disable without valid cleanup acknowledgement | Conflict; every revision, ciphertext, delivery and audit unchanged |
+
+For each accepted operation snapshot parent, both tunnel revisions/ciphertexts, historical manifests/digests, runtime checkpoints, retained guards and reservations. After commit compare exact expected changes. Decrypt only in test memory using `OpenPSK` with the new binding; the old revision must fail against replacement ciphertext. Avoid printing plaintext/ciphertext in assertion messages. Confirm unchanged partner ciphertext byte-for-byte without logging it.
+
+Raw SQL negative fixtures should attempt: secret-only same-revision replacement; tunnel-only bump; matched tunnel/secret bumps without parent/record; parent/record without key changes; record replay from a previous transaction; duplicate operation in one transaction; both updates to one selected secret; change to unchosen partner; skipped/overflowing revisions; foreign organization/tunnel substitution; deleted/finalized/enabled parent; forged cleanup marker; operation without audit; partial operation followed by `SET CONSTRAINTS ... IMMEDIATE`. Every failure rolls back the full transaction. A valid complete SQL operation is a positive control so a trigger that rejects every rotation cannot satisfy the suite.
+
+Fault injection should fail the second envelope seal, the second secret write and audit insertion independently. Concurrency tests use two database connections and observed lock barriers, not timing-only sleeps: rotation wins then stale enable/rotation loses; enable wins then rotation loses; delete wins then rotation loses; rotation wins then delete revalidates; material cannot disclose keys while disabled or using the old desired revision. A new enable must deliver the new key revisions while old apply/cleanup manifests remain immutable.
+
+Reuse the existing verified-human `ipsec:manage` authorization and redacted connection response path. A proposed POST rotation body carries `expected_desired_revision` and one/two `{tunnel_id, psk}` entries; it does not expose a caller-writable revision or secret read endpoint. HTTP tests cover member/service principal denial, unverified-human denial, wrong org, strict unknown/duplicate fields, PSK validation, conflict mapping, no-store and redacted failure responses. Licence lapse is a positive maintenance case, not permission for new connection creation.
+
+## Local validation record
+
+Migration 0162 and maintenance store are implemented. Isolated PostgreSQL tests cover one/both keys, same-current-key refusal, cleanup prerequisites, immutable old delivery material, stale CAS, observed advisory-lock ordering against enable/delete, queued old-material refusal, second-seal/second-write/audit rollback, partial SQL operations, forced early constraint checks and downgrade refusal. The real `TestUpdatedAtTablesHaveTrigger` census runs on a populated schema162 fixture in both editions. Actor and audit IDs are historical UUIDs without live foreign keys; same-transaction audit withdrawal is refused while later configured retention remains possible.
+
+The final combined local race gate passed twice (`ipsec` 92.846s, HTTP 28.214s, DB 6.178s). Full command, outputs and fixture boundary are recorded in `/private/tmp/s2s-rotation-final-validation.txt`. Two earlier intermittent failures remain unexplained: provider creation became ineligible before rotation in one run; the existing schema160 capacity test rejected material at iteration 0 in another. Neither reproduced in targeted runs or the final repeated combined gate. These are not established fixes or evidence of a relaxed freshness policy. Temporary production diagnostic logging was removed; no production freshness rule changed. CI/native/UI and actual local CP upgrade are separate gates maintained by the integrating task.

@@ -22,6 +22,7 @@ class QualificationPreflightTests(unittest.TestCase):
     def test_rejects_unsafe_coordinates_before_binary_or_docker_access(self):
         for arguments in (
             ('--project', 'default'),
+            ('--rotation',),
             ('--candidate-image', 'candidate:latest'),
             ('--tools-image', 'tools:latest'),
             ('--native-arch', 'x86_64'),

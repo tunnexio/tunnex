@@ -3144,6 +3144,32 @@ paths:
               schema: { $ref: "#/components/schemas/IPsecConnectionStatus" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/rotate-psks:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: rotateIPsecPSKs
+      summary: Replace customer-provided IPsec keys during maintenance
+      description: Requires verified human ipsec:manage, exact desired revision, disabled intent and completed cleanup or never-delivered state. Replaces one or both write-only PSKs atomically and stays disabled. Update the remote VPN before explicitly enabling. Does not return old keys or expand licence access.
+      tags: [ipsec]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPsecPSKRotationInput" }
+      responses:
+        "200":
+          description: Committed replacement; connection remains disabled.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            ETag: { description: Quoted positive desired revision., schema: { type: string } }
+            Cache-Control: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPsecConnection" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/intent:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8809,6 +8835,23 @@ components:
       properties:
         eligible: { type: boolean }
         reason: { type: string, enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale] }
+    IPsecPSKRotationInput:
+      type: object
+      additionalProperties: false
+      required: [expected_desired_revision, tunnels]
+      properties:
+        expected_desired_revision: { type: integer, format: int64, minimum: 1 }
+        tunnels:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [tunnel_id, psk]
+            properties:
+              tunnel_id: { type: string, format: uuid }
+              psk: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
     IPsecProviderCreateInput:
       type: object
       additionalProperties: false
@@ -8906,6 +8949,9 @@ components:
       additionalProperties: false
       required: [observed_at, tunnels]
       properties:
+        recovery_version: { type: integer, enum: [1], description: Explicit recovery contract of the observed delivery. }
+        selection_sequence: { type: integer, format: uint64, minimum: 1, maximum: 9007199254740991, description: Monotonic gateway observation sequence for this delivery. }
+        active_slot: { type: integer, nullable: true, minimum: 1, maximum: 2, description: Verified active path; absent or null is unknown and is separate from configured preference. }
         observed_at: { type: string, format: date-time, nullable: true, description: Control-plane receipt time; older than 90 seconds is unknown. }
         tunnels:
           type: array

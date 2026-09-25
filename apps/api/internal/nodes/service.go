@@ -2073,10 +2073,11 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 type AppliedPolicy struct {
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
-	IPsecConfigVersion int    `json:"ipsec_config_version"`
-	Version            int    `json:"policy_version"`
-	Hash               string `json:"policy_hash"`
-	Error              string `json:"policy_error"`
+	IPsecConfigVersion   int    `json:"ipsec_config_version"`
+	IPsecRecoveryVersion int    `json:"ipsec_recovery_version"`
+	Version              int    `json:"policy_version"`
+	Hash                 string `json:"policy_hash"`
+	Error                string `json:"policy_error"`
 	// FailingSince (RFC3339, empty when healthy) is the agent-reported mismatch
 	// onset: when apply FIRST started failing. The stale alarm measures from here,
 	// so a normal push that applies cleanly never registers stale (finding #3).
@@ -2162,12 +2163,16 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 {
 		applied.IPsecConfigVersion = 0
 	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecRecoveryVersion != 1 {
+		applied.IPsecRecoveryVersion = 0
+	}
 	// Gateway capabilities the agent probes + re-reports every reconcile (S3.7 +
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
 	caps, err := json.Marshal(map[string]any{
 		"ipsec_config_version":        applied.IPsecConfigVersion,
+		"ipsec_recovery_version":      applied.IPsecRecoveryVersion,
 		"egress_nat":                  egressNAT,
 		"egress_ipv6":                 egressIPv6,
 		"policy_version":              applied.Version,
@@ -2261,12 +2266,13 @@ func (s *Service) trackDesync(ctx context.Context, node sqlc.Node, appliedHash s
 // its applied-policy status (S7.2 staleness).
 type NodeCapabilities struct {
 	// Freshness is the server-written policy_reported_at on the same node row.
-	IPsecConfigVersion int    `json:"ipsec_config_version"`
-	EgressNAT          bool   `json:"egress_nat"`
-	EgressIPv6         bool   `json:"egress_ipv6"`
-	PolicyVersion      int    `json:"policy_version"`
-	PolicyHash         string `json:"policy_hash"`
-	PolicyError        string `json:"policy_error"`
+	IPsecConfigVersion   int    `json:"ipsec_config_version"`
+	IPsecRecoveryVersion int    `json:"ipsec_recovery_version"`
+	EgressNAT            bool   `json:"egress_nat"`
+	EgressIPv6           bool   `json:"egress_ipv6"`
+	PolicyVersion        int    `json:"policy_version"`
+	PolicyHash           string `json:"policy_hash"`
+	PolicyError          string `json:"policy_error"`
 	// PolicyFailingSince (RFC3339) is the agent-reported mismatch ONSET: when apply
 	// first started failing (empty when healthy). The stale window measures from
 	// here, not the applied-hash age -- so a normal push never false-alarms (#3).

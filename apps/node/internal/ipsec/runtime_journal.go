@@ -29,7 +29,18 @@ const (
 // RuntimeJournalEntry is deliberately nonsecret. Grants, PSKs, raw material,
 // permit leases and inferred readiness cannot be serialized in this schema.
 // Engines preserve the nonsecret potentially-installed lineage for exact cleanup.
+type RuntimeRecoveryState struct {
+	SelectedSlot           uint8
+	Sequence               uint64
+	PendingFrom, PendingTo uint8
+	Stage                  string
+}
+
 type RuntimeJournalEntry struct {
+	// Omitted fields preserve the original v1 canonical checksum byte for byte.
+	// Authorization is immutable; recovery state records duty, never authority.
+	ContractVersion int                   `json:",omitempty"`
+	Recovery        *RuntimeRecoveryState `json:",omitempty"`
 	// AbsenceOnly records CP-delivered lineage never observed locally; it permits
 	// only independent absence proof, never adoption or deletion of objects.
 	AbsenceOnly                                     bool
@@ -196,7 +207,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if p.Version != 1 || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -209,6 +220,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	}
 	ids := map[uuid.UUID]bool{}
 	for _, r := range p.Entries {
+		if !validJournalRecovery(r) || (p.Version == 1 && (r.ContractVersion == 2 || r.Recovery != nil)) {
+			return false
+		}
 		if r.DeliveryID == uuid.Nil || r.SiteID == uuid.Nil || ids[r.DeliveryID] || !validDigest(r.OwnershipDigest) || !validKernelAllocation(r.Allocation) {
 			return false
 		}
@@ -242,6 +256,20 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
+	if next.Version < old.Version || next.Version > old.Version+1 {
+		return false
+	}
+	if old.Version == 1 && next.Version == 2 {
+		upgrade := false
+		for _, r := range next.Entries {
+			if r.ContractVersion == 2 {
+				upgrade = true
+			}
+		}
+		if !upgrade {
+			return false
+		}
+	}
 	byID := map[uuid.UUID]RuntimeJournalEntry{}
 	for _, r := range next.Entries {
 		byID[r.DeliveryID] = r
@@ -251,8 +279,13 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		oldIDs[r.DeliveryID] = true
 	}
 	for _, r := range next.Entries {
-		if !oldIDs[r.DeliveryID] && r.Phase != RuntimeReserved {
-			return false
+		if !oldIDs[r.DeliveryID] {
+			if r.Phase != RuntimeReserved {
+				return false
+			}
+			if r.Recovery != nil && *r.Recovery != (RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}) {
+				return false
+			}
 		}
 	}
 	for _, before := range old.Entries {
@@ -260,7 +293,11 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		if !ok {
 			return false
 		}
+		if !validRecoverySuccessor(before, after) {
+			return false
+		}
 		b, a := before, after
+		b.Recovery, a.Recovery = nil, nil
 		b.Phase, a.Phase = "", ""
 		b.Observed, a.Observed = [2]Ownership{}, [2]Ownership{}
 		b.CleanupID, a.CleanupID = uuid.Nil, uuid.Nil
@@ -294,6 +331,11 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next := cloneJournal(j.payload)
 	next.Sequence++
 	next.Entries = entries
+	for _, entry := range entries {
+		if entry.ContractVersion == 2 {
+			next.Version = 2
+		}
+	}
 	return j.saveLocked(cloneJournal(next))
 }
 func (j *RuntimeJournal) saveLocked(next runtimeJournalPayload) error {
@@ -460,4 +502,50 @@ func ReadRuntimeJournalIdentity(dir string) (uuid.UUID, uuid.UUID, error) {
 		}
 	}
 	return org, p.OwnerID, nil
+}
+
+// The selected slot denotes completed route duty only. A pending record retains
+// the old slot until exact readback completes; neither stage grants permission.
+func validJournalRecovery(r RuntimeJournalEntry) bool {
+	if r.ContractVersion == 0 {
+		return r.Recovery == nil
+	}
+	if r.ContractVersion != 2 || r.Recovery == nil {
+		return false
+	}
+	v := *r.Recovery
+	if (r.AbsenceOnly || r.Phase == RuntimeReserved || r.Phase == RuntimeApplying) && v != (RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}) {
+		return false
+	}
+	if v.SelectedSlot < 1 || v.SelectedSlot > 2 {
+		return false
+	}
+	switch v.Stage {
+	case "completed":
+		return v.PendingFrom == 0 && v.PendingTo == 0 && (v.Sequence != 0 || v.SelectedSlot == 1)
+	case "pending":
+		return v.Sequence > 0 && v.PendingFrom == v.SelectedSlot && v.PendingTo == 3-v.SelectedSlot &&
+			!r.AbsenceOnly && (r.Phase == RuntimeApplied || r.Phase == RuntimeCleanupPending || r.Phase == RuntimeRetainedRefusal)
+	default:
+		return false
+	}
+}
+
+func validRecoverySuccessor(before, after RuntimeJournalEntry) bool {
+	if reflect.DeepEqual(before.Recovery, after.Recovery) {
+		return true
+	}
+	if before.ContractVersion != 2 || after.ContractVersion != 2 || before.Recovery == nil || after.Recovery == nil ||
+		before.AbsenceOnly || after.AbsenceOnly || before.Phase != RuntimeApplied || after.Phase != RuntimeApplied {
+		return false
+	}
+	b, a := *before.Recovery, *after.Recovery
+	if b.Stage == "completed" && a.Stage == "pending" {
+		return b.Sequence != ^uint64(0) && a.Sequence == b.Sequence+1 && a.SelectedSlot == b.SelectedSlot &&
+			a.PendingFrom == b.SelectedSlot && a.PendingTo == 3-b.SelectedSlot
+	}
+	if b.Stage == "pending" && a.Stage == "completed" {
+		return a.Sequence == b.Sequence && a.SelectedSlot == b.PendingTo && a.PendingFrom == 0 && a.PendingTo == 0
+	}
+	return false
 }

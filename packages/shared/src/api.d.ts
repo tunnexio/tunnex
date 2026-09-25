@@ -2762,6 +2762,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/rotate-psks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace customer-provided IPsec keys during maintenance
+         * @description Requires verified human ipsec:manage, exact desired revision, disabled intent and completed cleanup or never-delivered state. Replaces one or both write-only PSKs atomically and stays disabled. Update the remote VPN before explicitly enabling. Does not return old keys or expand licence access.
+         */
+        post: operations["rotateIPsecPSKs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/intent": {
         parameters: {
             query?: never;
@@ -7658,6 +7681,15 @@ export interface components {
             /** @enum {string} */
             reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";
         };
+        IPsecPSKRotationInput: {
+            /** Format: int64 */
+            expected_desired_revision: number;
+            tunnels: {
+                /** Format: uuid */
+                tunnel_id: string;
+                psk: string;
+            }[];
+        };
         IPsecProviderCreateInput: {
             /** Format: uuid */
             id: string;
@@ -7716,6 +7748,18 @@ export interface components {
             selected: boolean;
         };
         IPsecConnectionStatus: {
+            /**
+             * @description Explicit recovery contract of the observed delivery.
+             * @enum {integer}
+             */
+            recovery_version?: 1;
+            /**
+             * Format: uint64
+             * @description Monotonic gateway observation sequence for this delivery.
+             */
+            selection_sequence?: number;
+            /** @description Verified active path; absent or null is unknown and is separate from configured preference. */
+            active_slot?: number | null;
             /**
              * Format: date-time
              * @description Control-plane receipt time; older than 90 seconds is unknown.
@@ -13675,6 +13719,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IPsecConnectionStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rotateIPsecPSKs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IPsecPSKRotationInput"];
+            };
+        };
+        responses: {
+            /** @description Committed replacement; connection remains disabled. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    /** @description Quoted positive desired revision. */
+                    ETag?: string;
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IPsecConnection"];
                 };
             };
             default: components["responses"]["Error"];

@@ -83,7 +83,7 @@ func ipsecProviderError(err error) error {
 }
 func isIPsecProviderRequest(r *http.Request) bool {
 	p := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-	return len(p) >= 6 && p[0] == "api" && p[1] == "v1" && p[2] == "organizations" && p[4] == "ipsec" && p[5] == "connections" && ((len(p) == 6 && r.Method == http.MethodPost) || (len(p) == 8 && p[7] == "configuration" && r.Method == http.MethodGet))
+	return len(p) >= 6 && p[0] == "api" && p[1] == "v1" && p[2] == "organizations" && p[4] == "ipsec" && p[5] == "connections" && (((len(p) == 6 || (len(p) == 8 && p[7] == "rotate-psks")) && r.Method == http.MethodPost) || (len(p) == 8 && p[7] == "configuration" && r.Method == http.MethodGet))
 }
 func validateIPsecProviderRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -10,7 +10,10 @@ parser.add_argument("--tools-image",default="sha256:8e7153d3bcfa7f2f021588180613
 parser.add_argument("--native-arch",choices=("amd64","arm64"),default="arm64")
 parser.add_argument("--project",default="tunnexs2scoexist0924")
 parser.add_argument("--evidence-dir",type=pathlib.Path,help="New directory; refuses an existing path")
+parser.add_argument("--recovery",action="store_true",help="Qualify automatic alternate-path recovery")
+parser.add_argument("--rotation",action="store_true",help="Qualify acknowledged-cleanup PSK maintenance rotation; requires --recovery")
 args=parser.parse_args()
+if args.rotation and not args.recovery:parser.error("rotation requires recovery fixture")
 if not re.fullmatch(r"tunnexs2s[a-z0-9-]{1,40}",args.project):parser.error("expected dedicated tunnexs2s project")
 for value in (args.candidate_image,args.tools_image):
  if not re.fullmatch(r"sha256:[0-9a-f]{64}",value):parser.error("image must be immutable sha256 ID")
@@ -43,7 +46,7 @@ for image_id in (image,tools_image):
  metadata=json.loads(subprocess.check_output(docker+['image','inspect',image_id]))[0]
  assert metadata['Id']==image_id and metadata['Architecture']==args.native_arch and metadata['Os']=='linux'
 print('Candidate='+image+' binary_sha256='+args.binary_sha256+' native_arch='+args.native_arch+' evidence='+str(evidence),flush=True)
-receipt={'native_arch':args.native_arch,'docker_kernel':info['KernelVersion'],'candidate_image':image,'tools_image':tools_image,'binary_sha256':args.binary_sha256,'harness_sha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'project':project,'cp_lease':'synthetic','passed':False,'cleanup_complete':False}
+receipt={'native_arch':args.native_arch,'docker_kernel':info['KernelVersion'],'candidate_image':image,'tools_image':tools_image,'binary_sha256':args.binary_sha256,'harness_sha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'project':project,'recovery':args.recovery,'rotation':args.rotation,'cp_lease':'synthetic','passed':False,'cleanup_complete':False}
 (evidence/'result.json').write_text(json.dumps(receipt,indent=2)+'\n')
 psks=[secrets.choice(string.ascii_letters)+''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(47)) for _ in range(2)]
 print('COMPOSE_PROJECT_NAME='+project,flush=True)
@@ -303,7 +306,7 @@ while True:
  setup_legacy()
  legacy_payloads()
  phase('peer','stage')
- controller=subprocess.Popen(docker+['exec','-i',check('gateway'),'env','TMPDIR=/test','TUNNEX_IPSEC_CONTROLLER_LAB=1','/test/daemon.test','-test.run=^TestRuntimeControllerNative$','-test.v'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+ controller=subprocess.Popen(docker+['exec','-i',check('gateway'),'env','TMPDIR=/test','TUNNEX_IPSEC_CONTROLLER_LAB=1','TUNNEX_IPSEC_RECOVERY_LAB='+('1' if args.recovery else '0'),'TUNNEX_IPSEC_ROTATION_LAB='+('1' if args.rotation else '0'),'/test/daemon.test','-test.run=^TestRuntimeControllerNative$','-test.v'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
  observers.append(controller)
  controller.stdin.write(json.dumps({'PSKs':psks})+'\n');controller.stdin.flush()
  controller_lines=queue.Queue()
@@ -324,10 +327,39 @@ while True:
  encrypted=watch('ip proto 50 or udp port 4500');client('tcp');client('udp');out,err=encrypted.communicate(timeout=8);assert encrypted.returncode==0 and out.strip()
  legacy_payloads()
  signal('refresh');expect_marker('RUNTIME_REFRESHED');client('tcp');client('udp');legacy_payloads()
+ if args.recovery:
+  signal('failover');expect_marker('RUNTIME_RECOVERY_REFUSED')
+  plaintext=watch('dst net 10.20.0.0/24');client('tcp',False);client('udp',False);out,err=plaintext.communicate(timeout=8);assert plaintext.returncode in (0,124,143) and not out.strip() and '0 packets captured' in err and '0 packets dropped by kernel' in err
+  legacy_payloads()
+  run('peer',['ip','-4','route','replace','10.10.0.0/24','dev','tnx-lab-b','table','220','proto','99','metric','10'])
+  signal('recover');expect_marker('RUNTIME_RECOVERY_PENDING')
+  plaintext=watch('dst net 10.20.0.0/24');client('tcp',False);client('udp',False);out,err=plaintext.communicate(timeout=8);assert plaintext.returncode in (0,124,143) and not out.strip() and '0 packets captured' in err and '0 packets dropped by kernel' in err
+  legacy_payloads()
+  signal('resume-pending');expect_marker('RUNTIME_RECOVERED')
+  encrypted=watch('host 198.19.240.21 and (ip proto 50 or udp port 4500)');client('tcp');client('udp');out,err=encrypted.communicate(timeout=8);assert encrypted.returncode==0 and out.strip()
+  legacy_payloads()
+  signal('restore-primary');expect_marker('RUNTIME_NO_FAILBACK');client('tcp');client('udp');legacy_payloads()
  signal('restart');expect_marker('RUNTIME_RESTART_REFUSAL')
  plaintext=watch('dst net 10.20.0.0/24');client('tcp',False);client('udp',False);out,err=plaintext.communicate(timeout=8);assert plaintext.returncode in (0,124,143) and not out.strip() and '0 packets captured' in err and '0 packets dropped by kernel' in err
  legacy_payloads()
+ if args.recovery:
+  signal('resume');expect_marker('RUNTIME_RECOVERY_RESUMED')
+  encrypted=watch('host 198.19.240.21 and (ip proto 50 or udp port 4500)');client('tcp');client('udp');out,err=encrypted.communicate(timeout=8);assert encrypted.returncode==0 and out.strip()
+  legacy_payloads()
  signal('cleanup');expect_marker('RUNTIME_CLEANED_GUARD_RETAINED');client('tcp',False);client('udp',False);legacy_payloads()
+ if args.rotation:
+  replacement_psks=[secrets.choice(string.ascii_letters)+''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(47)) for _ in range(2)]
+  controller.stdin.write(json.dumps({'PSKs':replacement_psks})+'\n');controller.stdin.flush()
+  expect_marker('RUNTIME_ROTATION_OLD_KEY_REFUSED')
+  plaintext=watch('dst net 10.20.0.0/24');client('tcp',False);client('udp',False);out,err=plaintext.communicate(timeout=8);assert plaintext.returncode in (0,124,143) and not out.strip() and '0 packets captured' in err and '0 packets dropped by kernel' in err
+  legacy_payloads()
+  phase('peer','cleanup-all');psks.clear();psks=replacement_psks;replacement_psks=[]
+  phase('peer','stage')
+  run('peer',['ip','-4','route','replace','10.10.0.0/24','dev','tnx-lab-a','table','220','proto','99','metric','10'])
+  signal('rotated-peer-ready');expect_marker('RUNTIME_ROTATION_APPLIED');phase('peer','allow')
+  encrypted=watch('host 198.19.240.20 and (ip proto 50 or udp port 4500)');client('tcp');client('udp');out,err=encrypted.communicate(timeout=8);assert encrypted.returncode==0 and out.strip()
+  legacy_payloads()
+  signal('cleanup-rotation');expect_marker('RUNTIME_ROTATION_CLEANED');client('tcp',False);client('udp',False);legacy_payloads()
  signal('done');controller.stdin.close();controller.wait(timeout=10);assert controller.returncode==0
  observers.remove(controller)
  phase('peer','cleanup-all')

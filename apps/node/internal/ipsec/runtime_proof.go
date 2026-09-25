@@ -45,13 +45,18 @@ func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEn
 }
 
 func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kernel KernelInventory, before XFRMInventory) error {
+	slot := selectedRuntimeSlot(e)
+	if slot == 0 {
+		return ErrRuntimeController
+	}
+	selected := int(slot) - 1
 	for _, remote := range e.Allocation.Tunnels[0].RemotePrefixes {
 		count := 0
 		for _, route := range kernel.Routes {
 			if route.Destination != remote {
 				continue
 			}
-			if route.Kind != 1 || route.Table != 254 || route.Protocol != 242 || route.Metric != 50001 || route.OutputInterface != e.Observed[0].InterfaceIndex || route.Gateway.IsValid() {
+			if route.Kind != 1 || route.Table != 254 || route.Protocol != 242 || route.Metric != 50000+uint32(slot) || route.OutputInterface != e.Observed[selected].InterfaceIndex || route.Gateway.IsValid() {
 				return ErrRuntimeController
 			}
 			count++
@@ -78,7 +83,7 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 					expected = true
 				}
 			}
-			if !t.Selected || !expected || route.Table != 254 || route.Protocol != 242 || route.Metric != 50001 || route.Gateway.IsValid() {
+			if owned != selected || !expected || route.Table != 254 || route.Protocol != 242 || route.Metric != 50000+uint32(slot) || route.Gateway.IsValid() {
 				return ErrRuntimeController
 			}
 			continue
@@ -101,12 +106,19 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 		own := e.Observed[i]
 		found := false
 		for _, link := range kernel.Links {
-			if link.Name == own.InterfaceName && link.Index == own.InterfaceIndex && link.XFRMID == own.XFRMID && link.Up {
+			if link.Name == own.InterfaceName && link.Index == own.InterfaceIndex && link.XFRMID == own.XFRMID && (link.Up || (e.ContractVersion == 2 && i != selected)) {
 				found = true
 			}
 		}
 		if !found {
 			return ErrRuntimeController
+		}
+		if e.ContractVersion == 2 {
+			status := runtimeTunnelStatus(t, own, daemon, kernel, before)
+			if status == "unknown" || (i == selected && status != "up") {
+				return ErrRuntimeController
+			}
+			continue
 		}
 		matches := 0
 		var expectedSPIIn, expectedSPIOut uint32

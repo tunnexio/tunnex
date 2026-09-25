@@ -7,15 +7,15 @@ import (
 
 func TestIPsecCapabilityRequiresActualQualifiedController(t *testing.T) {
 	c := &Client{}
-	if c.ipsecCapability() != 0 {
+	if c.ipsecCapability() != 0 || c.ipsecRecoveryCapability() != 0 {
 		t.Fatal("default capability")
 	}
 	c.AttachIPsecController(&ipsec.RuntimeController{})
-	if c.ipsecCapability() != 0 {
+	if c.ipsecCapability() != 0 || c.ipsecRecoveryCapability() != 0 {
 		t.Fatal("unstarted controller advertised")
 	}
 	c.AttachIPsecController(nil)
-	if c.ipsecCapability() != 0 {
+	if c.ipsecCapability() != 0 || c.ipsecRecoveryCapability() != 0 {
 		t.Fatal("detached capability")
 	}
 }

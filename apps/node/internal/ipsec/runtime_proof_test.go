@@ -144,3 +144,25 @@ func TestRuntimeProofAndStatusRequireObservedSADirection(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeRecoveryProofSelectedAlternateWithAbsentSource(t *testing.T) {
+	e, d, k, x := runtimeProofFixture()
+	e.Phase = RuntimeApplied
+	e.ContractVersion = 2
+	e.Recovery = &RuntimeRecoveryState{SelectedSlot: 2, Sequence: 1, Stage: "completed"}
+	k.Links[0].Up = false
+	d.SAs = d.SAs[1:]
+	x.States = x.States[2:]
+	x.Policies = x.Policies[3:]
+	for i := range k.Routes {
+		k.Routes[i].Metric = 50002
+		k.Routes[i].OutputInterface = 11
+	}
+	if err := runtimeInventoryMatches(e, d, k, x); err != nil {
+		t.Fatal("healthy selected alternate refused", err)
+	}
+	x.States = append(x.States, XFRMState{IfID: e.Engines[0].XFRMID, ReqID: e.Engines[0].ReqID + 1})
+	if runtimeInventoryMatches(e, d, k, x) == nil {
+		t.Fatal("foreign source duty accepted")
+	}
+}

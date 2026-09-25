@@ -46,6 +46,8 @@ type RuntimeManifest struct {
 	LocalPrefixes          []string         `json:"local_prefixes"`
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
+	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
+	RecoveryVersion *int `json:"recovery_version,omitempty"`
 }
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`
@@ -112,6 +114,9 @@ type RuntimeTunnelStatus struct {
 	Selected bool      `json:"selected"`
 }
 type RuntimeStatusReport struct {
+	RecoveryVersion       *int                   `json:"recovery_version,omitempty"`
+	SelectionSequence     *uint64                `json:"selection_sequence,omitempty"`
+	ActiveSlot            *int                   `json:"active_slot,omitempty"`
 	DeliveryID            uuid.UUID              `json:"delivery_id"`
 	DesiredRevision       int64                  `json:"desired_revision"`
 	ConfigurationRevision int64                  `json:"configuration_revision"`

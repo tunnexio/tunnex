@@ -17,3 +17,14 @@ func (c *Client) ipsecCapability() int {
 	}
 	return 1
 }
+
+func (c *Client) ipsecRecoveryCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.RecoveryCapability()
+}

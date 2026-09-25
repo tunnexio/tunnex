@@ -30,7 +30,8 @@ func TestRuntimeControllerNative(t *testing.T) {
 	if os.Getenv("TUNNEX_IPSEC_CONTROLLER_LAB") != "1" {
 		t.Skip("isolated native controller fixture only")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	recovery := os.Getenv("TUNNEX_IPSEC_RECOVERY_LAB") == "1"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	scan := bufio.NewScanner(os.Stdin)
 	if !scan.Scan() {
@@ -42,6 +43,10 @@ func TestRuntimeControllerNative(t *testing.T) {
 	}
 	org, node, site, connection := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	m := RuntimeMaterial{RuntimeDelivery: RuntimeDelivery{ID: uuid.New(), DesiredRevision: 2, Kind: "apply", Manifest: RuntimeManifest{OrgID: org, NodeID: node, SiteID: site, ConnectionID: connection, DesiredRevision: 2, ConfigurationRevision: 1, ProfileID: "aws-static-ipv4-v1", CustomerOutsideAddress: "198.19.240.10", LocalPrefixes: []string{"10.10.0.0/24"}, RemotePrefixes: []string{"10.20.0.0/24"}}}, Policy: RuntimePolicy{Hash: strings.Repeat("a", 64)}}
+	if recovery {
+		v := 1
+		m.Manifest.RecoveryVersion = &v
+	}
 	for i := range m.Manifest.Tunnels {
 		id := uuid.New()
 		m.Manifest.Tunnels[i] = RuntimeTunnel{ID: id, Slot: i + 1, SecretRevision: 1, LinkName: KernelTunnelName(id), XFRMID: KernelTunnelID(id), ReqID: KernelTunnelID(id), OutsideAddress: []string{"198.19.240.20", "198.19.240.21"}[i], InsideCIDR: []string{"169.254.10.0/30", "169.254.10.4/30"}[i], CustomerInsideAddress: []string{"169.254.10.1", "169.254.10.5"}[i], CloudInsideAddress: []string{"169.254.10.2", "169.254.10.6"}[i], RouteTable: 254, RouteProtocol: 242, RouteMetric: uint32(50001 + i), Selected: i == 0}
@@ -158,6 +163,96 @@ func TestRuntimeControllerNative(t *testing.T) {
 		t.Fatal("routine renewal replaced live SAs")
 	}
 	fmt.Println("RUNTIME_REFRESHED")
+	if recovery {
+		if !scan.Scan() || scan.Text() != "failover" {
+			t.Fatal("missing failover control")
+		}
+		if _, e := runKernelCommand(ctx, "/sbin/ip", "link", "set", "dev", m.Manifest.Tunnels[0].LinkName, "down"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := controller.Apply(ctx, m); e == nil {
+			t.Fatal("source loss unexpectedly permitted before hold-down")
+		}
+		status, e := controller.ObserveIPsecStatus(ctx, m.RuntimeDelivery)
+		if e != nil || status.ActiveSlot != nil {
+			t.Fatal("source loss retained active telemetry", e)
+		}
+		fmt.Println("RUNTIME_RECOVERY_REFUSED")
+		if !scan.Scan() || scan.Text() != "recover" {
+			t.Fatal("missing recovery control")
+		}
+		// Inject a crash boundary after real route movement, before completion.
+		// Production has no fault switch; the pending journal and refusal are real.
+		movedBeforeCrash := false
+		controller.recoverySwitch = func(ctx context.Context, p KernelAllocation, previous [2]Ownership, target uint8) error {
+			if err := controller.kernel.ReconcileSelection(ctx, p, previous, target); err != nil {
+				return err
+			}
+			movedBeforeCrash = true
+			return ErrRuntimeController
+		}
+		var pending bool
+		for i := 0; i < 6; i++ {
+			time.Sleep(3 * time.Second)
+			if _, e := controller.Apply(ctx, m); e == nil {
+				t.Fatal("injected route boundary acknowledged")
+			}
+			entries, err := controller.journal.Entries()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if entries[0].Recovery.Stage == "pending" {
+				pending = true
+				break
+			}
+		}
+		if !pending || !movedBeforeCrash {
+			t.Fatal("alternate did not reach pending route boundary")
+		}
+		status, e = controller.ObserveIPsecStatus(ctx, m.RuntimeDelivery)
+		if e != nil || status.ActiveSlot != nil {
+			t.Fatal("pending route state reported active", e)
+		}
+		fmt.Println("RUNTIME_RECOVERY_PENDING")
+		if !scan.Scan() || scan.Text() != "resume-pending" {
+			t.Fatal("missing pending resume control")
+		}
+		if err = controller.Close(); err != nil {
+			t.Fatal(err)
+		}
+		controller, err = NewRuntimeController(config, nativeRuntimeLease{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = controller.Start(ctx); err != nil {
+			t.Fatal("pending restart refusal", err)
+		}
+		if err = controller.AttachQualification(qualification); err != nil {
+			t.Fatal("pending restart qualification", err)
+		}
+		if _, err = controller.Apply(ctx, m); err != nil {
+			t.Fatal("pending restart resume", err)
+		}
+		status, e = controller.ObserveIPsecStatus(ctx, m.RuntimeDelivery)
+		if e != nil || status.ActiveSlot == nil || *status.ActiveSlot != 2 || status.Tunnels[0].Status != "down" || status.Tunnels[1].Status != "up" {
+			t.Fatal("alternate active telemetry missing", e, status)
+		}
+		fmt.Println("RUNTIME_RECOVERED")
+		if !scan.Scan() || scan.Text() != "restore-primary" {
+			t.Fatal("missing restore control")
+		}
+		if _, e := runKernelCommand(ctx, "/sbin/ip", "link", "set", "dev", m.Manifest.Tunnels[0].LinkName, "up"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := controller.Apply(ctx, m); e != nil {
+			t.Fatal("primary restore", e)
+		}
+		status, e = controller.ObserveIPsecStatus(ctx, m.RuntimeDelivery)
+		if e != nil || status.ActiveSlot == nil || *status.ActiveSlot != 2 || status.Tunnels[0].Status != "up" {
+			t.Fatal("unexpected failback", e, status)
+		}
+		fmt.Println("RUNTIME_NO_FAILBACK")
+	}
 	if !scan.Scan() || scan.Text() != "restart" {
 		t.Fatal("missing restart control")
 	}
@@ -184,6 +279,24 @@ func TestRuntimeControllerNative(t *testing.T) {
 	}
 	t.Log("native telemetry observes independent Up/Down while forwarding remains refused")
 	fmt.Println("RUNTIME_RESTART_REFUSAL")
+	if recovery {
+		if !scan.Scan() || scan.Text() != "resume" {
+			t.Fatal("missing resume control")
+		}
+		// The daemon process and its qualification receipt are still current; only
+		// the controller restarted. Fresh CP authority must nevertheless be fetched.
+		if e = controller.AttachQualification(qualification); e != nil {
+			t.Fatal("resume qualification", e)
+		}
+		if _, e = controller.Apply(ctx, m); e != nil {
+			t.Fatal("completed selection resume", e)
+		}
+		status, e = controller.ObserveIPsecStatus(ctx, m.RuntimeDelivery)
+		if e != nil || status.ActiveSlot == nil || *status.ActiveSlot != 2 {
+			t.Fatal("restart lost selected alternate", e, status)
+		}
+		fmt.Println("RUNTIME_RECOVERY_RESUMED")
+	}
 	if !scan.Scan() || scan.Text() != "cleanup" {
 		t.Fatal("missing cleanup control")
 	}
@@ -253,6 +366,90 @@ func TestRuntimeControllerNative(t *testing.T) {
 	}
 	t.Log("native missing-journal cleanup acknowledged only after independent object absence and retained denial")
 	fmt.Println("RUNTIME_CLEANED_GUARD_RETAINED")
+	if os.Getenv("TUNNEX_IPSEC_ROTATION_LAB") == "1" {
+		if !recovery {
+			t.Fatal("rotation fixture requires recovery contract")
+		}
+		if !scan.Scan() {
+			t.Fatal("missing rotated private fixture input")
+		}
+		var rotatedInput struct{ PSKs [2]string }
+		if json.Unmarshal(scan.Bytes(), &rotatedInput) != nil {
+			t.Fatal("invalid rotated private fixture input")
+		}
+		oldDelivery := m.RuntimeDelivery
+		rotated := m
+		rotated.ID = uuid.New()
+		rotated.DesiredRevision = 5
+		rotated.Manifest.DesiredRevision = 5
+		for i := range rotated.Secrets {
+			if rotatedInput.PSKs[i] == m.Secrets[i].PSK {
+				t.Fatal("rotation fixture reused credential")
+			}
+			rotated.Manifest.Tunnels[i].SecretRevision = 2
+			rotated.Secrets[i].Revision = 2
+			rotated.Secrets[i].PSK = rotatedInput.PSKs[i]
+			rotatedInput.PSKs[i] = ""
+		}
+		runtimeReseal(&rotated)
+		if _, e = controller.Apply(ctx, rotated); e == nil {
+			t.Fatal("old peer credential unexpectedly negotiated")
+		}
+		inventory, ie := process.Client.Inspect(ctx)
+		if ie != nil || len(inventory.SAs) != 0 {
+			t.Fatal("old peer credential left established SA", ie)
+		}
+		xr, xe := NewXFRMReader("/sbin/ip")
+		if xe != nil {
+			t.Fatal(xe)
+		}
+		keyless, xe := xr.Read(ctx)
+		if xe != nil || len(keyless.States) != 0 || len(keyless.Policies) != 0 {
+			t.Fatal("old peer credential left kernel encryption state", xe)
+		}
+		fmt.Println("RUNTIME_ROTATION_OLD_KEY_REFUSED")
+		if !scan.Scan() || scan.Text() != "rotated-peer-ready" {
+			t.Fatal("missing rotated peer control")
+		}
+		if _, e = controller.Apply(ctx, rotated); e != nil {
+			t.Fatal("new credential negotiation", e)
+		}
+		status, e = controller.ObserveIPsecStatus(ctx, rotated.RuntimeDelivery)
+		if e != nil || status.ActiveSlot == nil || *status.ActiveSlot != 1 || status.Tunnels[0].Status != "up" || status.Tunnels[1].Status != "up" {
+			t.Fatal("rotated tunnel status", e)
+		}
+		inventory, ie = process.Client.Inspect(ctx)
+		if ie != nil || len(inventory.SAs) != 2 {
+			t.Fatal("rotated daemon inventory", ie)
+		}
+		for _, sa := range inventory.SAs {
+			if !strings.HasSuffix(sa.Name, "-s2") {
+				t.Fatal("retired credential identity remained")
+			}
+		}
+		for i := range m.Secrets {
+			m.Secrets[i].PSK = ""
+		}
+		fmt.Println("RUNTIME_ROTATION_APPLIED")
+		if !scan.Scan() || scan.Text() != "cleanup-rotation" {
+			t.Fatal("missing rotation cleanup control")
+		}
+		rotatedCleanup := RuntimeCleanup{RuntimeDelivery: RuntimeDelivery{ID: uuid.New(), DesiredRevision: 6, Kind: "cleanup", CoversDeliveryRevision: 5, Manifest: rotated.Manifest}, RetainGuard: true, Lineage: []RuntimeDelivery{oldDelivery, rotated.RuntimeDelivery}}
+		raw, _ := json.Marshal(rotatedCleanup.Lineage)
+		sum := sha256.Sum256(raw)
+		rotatedCleanup.OwnershipDigest = hex.EncodeToString(sum[:])
+		if ack, err := controller.Cleanup(ctx, rotatedCleanup); err != nil || !ack.GuardRetained {
+			t.Fatal("rotation lineage cleanup", err)
+		}
+		for i := range rotated.Secrets {
+			rotated.Secrets[i].PSK = ""
+		}
+		inventory, ie = process.Client.Inspect(ctx)
+		if ie != nil || len(inventory.SAs) != 0 || len(inventory.SharedKeys) != 0 || len(inventory.Connections) != 0 {
+			t.Fatal("rotation cleanup incomplete", ie)
+		}
+		fmt.Println("RUNTIME_ROTATION_CLEANED")
+	}
 	if !scan.Scan() || scan.Text() != "done" {
 		t.Fatal("missing final control")
 	}

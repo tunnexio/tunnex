@@ -28,10 +28,11 @@ type runtimeState struct {
 	cleanup                     *uuid.UUID
 }
 type runtimeLocked struct {
-	connection Connection
-	state      runtimeState
-	enabled    bool
-	eligible   bool
+	connection       Connection
+	state            runtimeState
+	enabled          bool
+	eligible         bool
+	recoveryEligible bool
 }
 
 func runtimeRevision(p *int64) int64 {
@@ -105,6 +106,8 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 		return fail(createError(e))
 	}
 	out.eligible = gatewayEligibilityReason(status, serial, revoked, reported, caps, now) == "eligible"
+	var capability map[string]json.RawMessage
+	out.recoveryEligible = out.eligible && json.Unmarshal(caps, &capability) == nil && string(capability["ipsec_recovery_version"]) == "1"
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
 		return fail(createError(e))
@@ -162,7 +165,7 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 		if e = rows.Scan(&t.ID, &t.Slot, &t.SecretRevision, &t.OutsideAddress, &t.InsideCIDR, &t.CustomerInsideAddress, &t.CloudInsideAddress); e != nil {
 			return cfg, tunnels, createError(e)
 		}
-		if t.Slot != n+1 || t.SecretRevision != 1 {
+		if t.Slot != n+1 || t.SecretRevision <= 0 {
 			return cfg, tunnels, ErrConnectionUnavailable
 		}
 		sum := sha256.Sum256(t.ID[:])

@@ -50,6 +50,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	fail := func() (RuntimeJournalEntry, []GuardGrant, error) {
 		return RuntimeJournalEntry{}, nil, ErrRuntimeController
 	}
+	recovery, recoveryErr := runtimeRecoveryContract(m.Manifest)
+	if recoveryErr != nil {
+		return fail()
+	}
 	if !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
 		return fail()
 	}
@@ -66,6 +70,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		return fail()
 	}
 	out := RuntimeJournalEntry{DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
+	if recovery {
+		out.ContractVersion = 2
+		out.Recovery = &RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}
+	}
 	for i, t := range m.Manifest.Tunnels {
 		if t.Slot != i+1 || t.ID == uuid.Nil || t.SecretRevision <= 0 || t.LinkName != KernelTunnelName(t.ID) || t.XFRMID != KernelTunnelID(t.ID) || t.ReqID != t.XFRMID || t.RouteTable != 254 || t.RouteProtocol != 242 || t.RouteMetric != uint32(50001+i) || t.Selected != (i == 0) {
 			return fail()

@@ -126,6 +126,9 @@ type ownedKernelSnapshot struct {
 // link. It does not serialize another privileged writer; the controller must hold
 // exclusive local journal/runtime ownership for the operation's entire lifetime.
 func (a *KernelApplier) snapshot(ctx context.Context, p KernelAllocation) (ownedKernelSnapshot, error) {
+	return a.snapshotSelection(ctx, p, false)
+}
+func (a *KernelApplier) snapshotSelection(ctx context.Context, p KernelAllocation, recovery bool) (ownedKernelSnapshot, error) {
 	out := ownedKernelSnapshot{}
 	fail := func() (ownedKernelSnapshot, error) { return ownedKernelSnapshot{}, ErrKernelApply }
 	if a.check(ctx, p) != nil {
@@ -322,7 +325,7 @@ func (a *KernelApplier) snapshot(ctx context.Context, p KernelAllocation) (owned
 			}
 		}
 		metric, ok := kernelNumber(obj["metric"], 32)
-		if !ok || table != 254 || protocol != 242 || kind != 1 || metric != uint64(50000+int(t.Slot)) || !t.Selected {
+		if !ok || table != 254 || protocol != 242 || kind != 1 || metric != uint64(50000+int(t.Slot)) || (!t.Selected && !recovery) {
 			return fail()
 		}
 		scope, ok := kernelDecimal(obj, "scope", 8)
@@ -331,7 +334,7 @@ func (a *KernelApplier) snapshot(ctx context.Context, p KernelAllocation) (owned
 		}
 		if f, present := obj["flags"]; present {
 			flags, ok := kernelFlags(f)
-			if !ok || len(flags) != 0 {
+			if !ok || (len(flags) != 0 && !(recovery && !out.up[owned] && len(flags) == 1 && flags[0] == "linkdown")) {
 				return fail()
 			}
 		}
@@ -459,13 +462,22 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 // Remove requires SAs/policies already absent and a verified permanent refusal
 // guard. It deletes individual exact routes/links; no flush or replacement.
 func (a *KernelApplier) Remove(ctx context.Context, p KernelAllocation, previous [2]Ownership) (KernelAbsence, error) {
+	return a.removeSelection(ctx, p, previous, false)
+}
+
+// RemoveRecovery preserves exact absence-gated cleanup for either owned route slot.
+func (a *KernelApplier) RemoveRecovery(ctx context.Context, p KernelAllocation, previous [2]Ownership) error {
+	_, err := a.removeSelection(ctx, p, previous, true)
+	return err
+}
+func (a *KernelApplier) removeSelection(ctx context.Context, p KernelAllocation, previous [2]Ownership, recovery bool) (KernelAbsence, error) {
 	fail := func() (KernelAbsence, error) { return KernelAbsence{}, ErrKernelApply }
 	if a.check(ctx, p) != nil {
 		return fail()
 	}
 	ctx, cancel := context.WithTimeout(ctx, 6*kernelReadTimeout)
 	defer cancel()
-	s, err := a.snapshot(ctx, p)
+	s, err := a.snapshotSelection(ctx, p, recovery)
 	if err != nil {
 		return fail()
 	}
@@ -499,7 +511,7 @@ func (a *KernelApplier) Remove(ctx context.Context, p KernelAllocation, previous
 			}
 		}
 		// Fresh collision/foreign-object check immediately before removing a link.
-		fresh, err := a.snapshot(ctx, p)
+		fresh, err := a.snapshotSelection(ctx, p, recovery)
 		if err != nil || fresh.ownership[i] != s.ownership[i] {
 			return fail()
 		}
@@ -507,7 +519,7 @@ func (a *KernelApplier) Remove(ctx context.Context, p KernelAllocation, previous
 			return fail()
 		}
 	}
-	s, err = a.snapshot(ctx, p)
+	s, err = a.snapshotSelection(ctx, p, recovery)
 	if err != nil {
 		return fail()
 	}
@@ -533,4 +545,65 @@ func (a *KernelApplier) Remove(ctx context.Context, p KernelAllocation, previous
 		}
 	}
 	return KernelAbsence{Namespace: p.Namespace, Generation: p.Generation, TunnelIDs: [2]uuid.UUID{p.Tunnels[0].TunnelID, p.Tunnels[1].TunnelID}}, nil
+}
+
+// ReconcileSelection requires verified prefix refusal and exclusive controller
+// ownership throughout. It moves exact routes only; it never repairs or adopts
+// links, changes immutable preference, or grants forwarding authority.
+func (a *KernelApplier) ReconcileSelection(ctx context.Context, p KernelAllocation, previous [2]Ownership, target uint8) error {
+	if target < 1 || target > 2 || a.check(ctx, p) != nil {
+		return ErrKernelApply
+	}
+	ctx, cancel := context.WithTimeout(ctx, 6*kernelReadTimeout)
+	defer cancel()
+	inspect := func() (ownedKernelSnapshot, error) {
+		s, err := a.snapshotSelection(ctx, p, true)
+		if err != nil {
+			return s, ErrKernelApply
+		}
+		for i := range previous {
+			if previous[i].InterfaceIndex == 0 || previous[i] != s.ownership[i] {
+				return s, ErrKernelApply
+			}
+		}
+		if !s.up[target-1] || !s.address[target-1] {
+			return s, ErrKernelApply
+		}
+		return s, nil
+	}
+	s, err := inspect()
+	if err != nil {
+		return ErrKernelApply
+	}
+	source := int(2 - target)
+	for _, prefix := range p.Tunnels[source].RemotePrefixes {
+		if !s.routes[source][prefix] {
+			continue
+		}
+		t := p.Tunnels[source]
+		if a.mutate(ctx, p, "-4", "route", "del", prefix.String(), "dev", t.Name, "table", "254", "proto", "242", "metric", fmt.Sprint(50000+int(t.Slot))) != nil {
+			return ErrKernelApply
+		}
+		s, err = inspect()
+		if err != nil {
+			return ErrKernelApply
+		}
+	}
+	for _, prefix := range p.Tunnels[target-1].RemotePrefixes {
+		if s.routes[target-1][prefix] {
+			continue
+		}
+		t := p.Tunnels[target-1]
+		if a.mutate(ctx, p, "-4", "route", "add", prefix.String(), "dev", t.Name, "table", "254", "proto", "242", "metric", fmt.Sprint(50000+int(t.Slot))) != nil {
+			return ErrKernelApply
+		}
+		s, err = inspect()
+		if err != nil {
+			return ErrKernelApply
+		}
+	}
+	if len(s.routes[source]) != 0 || len(s.routes[target-1]) != len(p.Tunnels[target-1].RemotePrefixes) {
+		return ErrKernelApply
+	}
+	return nil
 }

@@ -71,3 +71,45 @@ func TestRuntimeCleanupDigestBindsEntireLineage(t *testing.T) {
 		t.Fatal("changed lineage accepted")
 	}
 }
+
+// Understanding a new manifest is not proof that the controller can execute it.
+func TestRuntimeMaterialRecoveryVersionAdmission(t *testing.T) {
+	for _, version := range []int{0, 2, -1} {
+		m := runtimeMaterialFixture()
+		m.Manifest.RecoveryVersion = &version
+		runtimeReseal(&m)
+		if _, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err == nil {
+			t.Fatalf("unsupported recovery version %d activated", version)
+		}
+	}
+}
+
+func TestRuntimeMaterialRecoveryInitialDuty(t *testing.T) {
+	m := runtimeMaterialFixture()
+	version := 1
+	m.Manifest.RecoveryVersion = &version
+	runtimeReseal(&m)
+	e, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+	if err != nil || e.ContractVersion != 2 || e.Recovery == nil || e.Recovery.SelectedSlot != 1 || e.Recovery.Sequence != 0 {
+		t.Fatal("recovery duty missing", err)
+	}
+}
+
+func TestRuntimeMaterialMaintenanceRotationRevisions(t *testing.T) {
+	m := runtimeMaterialFixture()
+	m.DesiredRevision = 5
+	m.Manifest.DesiredRevision = 5
+	for i := range m.Manifest.Tunnels {
+		m.Manifest.Tunnels[i].SecretRevision = 2
+		m.Secrets[i].Revision = 2
+	}
+	runtimeReseal(&m)
+	e, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+	if err != nil || e.Engines[0].SecretRevision != 2 || e.Engines[1].SecretRevision != 2 {
+		t.Fatal("rotated revision refused", err)
+	}
+	m.Secrets[0].Revision = 1
+	if _, _, err = runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err == nil {
+		t.Fatal("old credential revision accepted for new manifest")
+	}
+}
