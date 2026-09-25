@@ -978,6 +978,11 @@ const (
 	IPsecConnectionEnabled  IPsecConnectionDesiredIntent = "enabled"
 )
 
+// Defines values for IPsecConnectionStatusRecoveryVersion.
+const (
+	N1 IPsecConnectionStatusRecoveryVersion = 1
+)
+
 // Defines values for IPsecEligibilityReason.
 const (
 	Eligible           IPsecEligibilityReason = "eligible"
@@ -4298,10 +4303,22 @@ type IPsecConnectionPage struct {
 
 // IPsecConnectionStatus defines model for IPsecConnectionStatus.
 type IPsecConnectionStatus struct {
+	// ActiveSlot Verified active path; absent or null is unknown and is separate from configured preference.
+	ActiveSlot *int `json:"active_slot"`
+
 	// ObservedAt Control-plane receipt time; older than 90 seconds is unknown.
-	ObservedAt *time.Time          `json:"observed_at"`
-	Tunnels    []IPsecTunnelStatus `json:"tunnels"`
+	ObservedAt *time.Time `json:"observed_at"`
+
+	// RecoveryVersion Explicit recovery contract of the observed delivery.
+	RecoveryVersion *IPsecConnectionStatusRecoveryVersion `json:"recovery_version,omitempty"`
+
+	// SelectionSequence Monotonic gateway observation sequence for this delivery.
+	SelectionSequence *uint64             `json:"selection_sequence,omitempty"`
+	Tunnels           []IPsecTunnelStatus `json:"tunnels"`
 }
+
+// IPsecConnectionStatusRecoveryVersion Explicit recovery contract of the observed delivery.
+type IPsecConnectionStatusRecoveryVersion int
 
 // IPsecEligibility defines model for IPsecEligibility.
 type IPsecEligibility struct {
@@ -4311,6 +4328,15 @@ type IPsecEligibility struct {
 
 // IPsecEligibilityReason defines model for IPsecEligibility.Reason.
 type IPsecEligibilityReason string
+
+// IPsecPSKRotationInput defines model for IPsecPSKRotationInput.
+type IPsecPSKRotationInput struct {
+	ExpectedDesiredRevision int64 `json:"expected_desired_revision"`
+	Tunnels                 []struct {
+		Psk      *string            `json:"psk,omitempty"`
+		TunnelId openapi_types.UUID `json:"tunnel_id"`
+	} `json:"tunnels"`
+}
 
 // IPsecProviderConfiguration defines model for IPsecProviderConfiguration.
 type IPsecProviderConfiguration struct {
@@ -6628,6 +6654,9 @@ type CreateIPsecProviderConnectionJSONRequestBody = IPsecProviderCreateInput
 // SetIPsecConnectionIntentJSONRequestBody defines body for SetIPsecConnectionIntent for application/json ContentType.
 type SetIPsecConnectionIntentJSONRequestBody SetIPsecConnectionIntentJSONBody
 
+// RotateIPsecPSKsJSONRequestBody defines body for RotateIPsecPSKs for application/json ContentType.
+type RotateIPsecPSKsJSONRequestBody = IPsecPSKRotationInput
+
 // SetIPsecSettingsJSONRequestBody defines body for SetIPsecSettings for application/json ContentType.
 type SetIPsecSettingsJSONRequestBody = IPsecSettingsUpdate
 
@@ -7867,6 +7896,11 @@ type ClientInterface interface {
 	SetIPsecConnectionIntentWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetIPsecConnectionIntent(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateIPsecPSKsWithBody request with any body
+	RotateIPsecPSKsWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RotateIPsecPSKs(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body RotateIPsecPSKsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetIPsecConnectionStatus request
 	GetIPsecConnectionStatus(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12521,6 +12555,30 @@ func (c *Client) SetIPsecConnectionIntentWithBody(ctx context.Context, orgId ope
 
 func (c *Client) SetIPsecConnectionIntent(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetIPsecConnectionIntentRequest(c.Server, orgId, connectionId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateIPsecPSKsWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateIPsecPSKsRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateIPsecPSKs(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body RotateIPsecPSKsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateIPsecPSKsRequest(c.Server, orgId, connectionId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -25690,6 +25748,60 @@ func NewSetIPsecConnectionIntentRequestWithBody(server string, orgId openapi_typ
 	return req, nil
 }
 
+// NewRotateIPsecPSKsRequest calls the generic RotateIPsecPSKs builder with application/json body
+func NewRotateIPsecPSKsRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body RotateIPsecPSKsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRotateIPsecPSKsRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewRotateIPsecPSKsRequestWithBody generates requests for RotateIPsecPSKs with any type of body
+func NewRotateIPsecPSKsRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ipsec/connections/%s/rotate-psks", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetIPsecConnectionStatusRequest generates requests for GetIPsecConnectionStatus
 func NewGetIPsecConnectionStatusRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -31830,6 +31942,11 @@ type ClientWithResponsesInterface interface {
 
 	SetIPsecConnectionIntentWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, params *SetIPsecConnectionIntentParams, body SetIPsecConnectionIntentJSONRequestBody, reqEditors ...RequestEditorFn) (*SetIPsecConnectionIntentResponse, error)
 
+	// RotateIPsecPSKsWithBodyWithResponse request with any body
+	RotateIPsecPSKsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RotateIPsecPSKsResponse, error)
+
+	RotateIPsecPSKsWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body RotateIPsecPSKsJSONRequestBody, reqEditors ...RequestEditorFn) (*RotateIPsecPSKsResponse, error)
+
 	// GetIPsecConnectionStatusWithResponse request
 	GetIPsecConnectionStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetIPsecConnectionStatusResponse, error)
 
@@ -37741,6 +37858,29 @@ func (r SetIPsecConnectionIntentResponse) StatusCode() int {
 	return 0
 }
 
+type RotateIPsecPSKsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *IPsecConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateIPsecPSKsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateIPsecPSKsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetIPsecConnectionStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -43303,6 +43443,23 @@ func (c *ClientWithResponses) SetIPsecConnectionIntentWithResponse(ctx context.C
 		return nil, err
 	}
 	return ParseSetIPsecConnectionIntentResponse(rsp)
+}
+
+// RotateIPsecPSKsWithBodyWithResponse request with arbitrary body returning *RotateIPsecPSKsResponse
+func (c *ClientWithResponses) RotateIPsecPSKsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RotateIPsecPSKsResponse, error) {
+	rsp, err := c.RotateIPsecPSKsWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateIPsecPSKsResponse(rsp)
+}
+
+func (c *ClientWithResponses) RotateIPsecPSKsWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body RotateIPsecPSKsJSONRequestBody, reqEditors ...RequestEditorFn) (*RotateIPsecPSKsResponse, error) {
+	rsp, err := c.RotateIPsecPSKs(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateIPsecPSKsResponse(rsp)
 }
 
 // GetIPsecConnectionStatusWithResponse request returning *GetIPsecConnectionStatusResponse
@@ -52433,6 +52590,39 @@ func ParseSetIPsecConnectionIntentResponse(rsp *http.Response) (*SetIPsecConnect
 	}
 
 	response := &SetIPsecConnectionIntentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IPsecConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateIPsecPSKsResponse parses an HTTP response from a RotateIPsecPSKsWithResponse call
+func ParseRotateIPsecPSKsResponse(rsp *http.Response) (*RotateIPsecPSKsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateIPsecPSKsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

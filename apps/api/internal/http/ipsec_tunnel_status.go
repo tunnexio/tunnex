@@ -28,7 +28,7 @@ func (s apiServer) GetIPsecConnectionStatus(ctx context.Context, req api.GetIPse
 	if e != nil {
 		return nil, ipsecProviderError(e)
 	}
-	body := api.IPsecConnectionStatus{ObservedAt: status.ObservedAt, Tunnels: []api.IPsecTunnelStatus{}}
+	body := api.IPsecConnectionStatus{RecoveryVersion: (*api.IPsecConnectionStatusRecoveryVersion)(status.RecoveryVersion), ActiveSlot: status.ActiveSlot, SelectionSequence: status.SelectionSequence, ObservedAt: status.ObservedAt, Tunnels: []api.IPsecTunnelStatus{}}
 	for _, t := range status.Tunnels {
 		body.Tunnels = append(body.Tunnels, api.IPsecTunnelStatus{Id: t.ID, Slot: t.Slot, Status: api.IPsecTunnelStatusStatus(t.Status), Selected: t.Selected})
 	}
@@ -44,6 +44,9 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
+		RecoveryVersion       *int      `json:"recovery_version,omitempty"`
+		SelectionSequence     *uint64   `json:"selection_sequence,omitempty"`
+		ActiveSlot            *int      `json:"active_slot,omitempty"`
 		DeliveryID            uuid.UUID `json:"delivery_id"`
 		DesiredRevision       int64     `json:"desired_revision"`
 		ConfigurationRevision int64     `json:"configuration_revision"`
@@ -74,7 +77,7 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 		writeAgentIPsec(w, r, nil, ipsec.ErrConnectionUnavailable)
 		return
 	}
-	e := store.ReportStatus(r.Context(), p, id, ipsec.RuntimeStatusReport{DeliveryID: body.DeliveryID, DesiredRevision: body.DesiredRevision, ConfigurationRevision: body.ConfigurationRevision, Tunnels: tunnels})
+	e := store.ReportStatus(r.Context(), p, id, ipsec.RuntimeStatusReport{RecoveryVersion: body.RecoveryVersion, SelectionSequence: body.SelectionSequence, ActiveSlot: body.ActiveSlot, DeliveryID: body.DeliveryID, DesiredRevision: body.DesiredRevision, ConfigurationRevision: body.ConfigurationRevision, Tunnels: tunnels})
 	if e != nil {
 		writeAgentIPsec(w, r, nil, e)
 		return

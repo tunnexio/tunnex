@@ -256,6 +256,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		// enforcement before a request is queued, never time out as DNS.
 		DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
 		IPsecConfigVersion   int `json:"ipsec_config_version"`
+		IPsecRecoveryVersion int `json:"ipsec_recovery_version"`
 		// FlowLogState is a bounded collector heartbeat. It is deliberately
 		// independent of event volume so an idle gateway can still prove that its
 		// NFLOG source is armed.
@@ -267,7 +268,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch

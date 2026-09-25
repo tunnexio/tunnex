@@ -61,6 +61,8 @@ type RuntimeManifest struct {
 	LocalPrefixes          []string         `json:"local_prefixes"`
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
+	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
+	RecoveryVersion *int `json:"recovery_version,omitempty"`
 }
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`

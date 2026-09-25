@@ -1,9 +1,12 @@
 package authctx_test
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -26,25 +29,71 @@ import (
 // census that greps for calls to `NewAgentPrincipal` would miss exactly the sites that matter — the ones
 // that build a `Principal` literal by hand.
 
-// principalLiteral matches a composite literal of authctx.Principal / Principal, which is the doorway a
-// constructor is supposed to be the only user of.
-var principalLiteral = regexp.MustCompile(`(?:authctx\.)?Principal\{`)
+// Parse actual composite-literal types and their direct fields. Field names in
+// runtime DTOs, comments, strings and nested unrelated literals are not identity
+// construction. Import aliases must not bypass the canonical constructor gate.
+type constructionHit struct{ file, line, function string }
 
-// nodeIDAssign matches an assignment into the agent identity field.
-//
-// ⛔ SCOPED TO THE PRINCIPAL BLOCK, NEVER TO THE FIELD NAME ALONE — AND THE FIRST VERSION OF THIS CENSUS GOT
-// THAT WRONG. Matching `NodeID:` anywhere hit access-log events (`accesslog/ingest.go`, `store.go`) and
-// device params (`devices/service.go`, `restore.go`), none of which build a principal. The gate would have
-// shipped permanently red.
-//
-// ⚠ AND A PERMANENTLY-RED GATE IS WORSE THAN NO GATE: it gets suppressed, and the suppression outlives the
-// reason. The census's input must be the PRINCIPAL, not a field name the codebase happens to share.
-var nodeIDAssign = regexp.MustCompile(`\bNodeID:\s`)
+func principalConstructionSites(path string, source []byte) (literals, nodeIDs []constructionHit, err error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, source, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	aliases := map[string]bool{"authctx": true}
+	for _, imp := range file.Imports {
+		value, e := strconv.Unquote(imp.Path.Value)
+		if e == nil && value == "github.com/tunnexio/tunnex/apps/api/internal/authctx" {
+			name := "authctx"
+			if imp.Name != nil {
+				name = imp.Name.Name
+			}
+			aliases[name] = true
+		}
+	}
+	isPrincipal := func(expr ast.Expr) bool {
+		switch typ := expr.(type) {
+		case *ast.Ident:
+			return typ.Name == "Principal"
+		case *ast.SelectorExpr:
+			pkg, ok := typ.X.(*ast.Ident)
+			return ok && aliases[pkg.Name] && typ.Sel.Name == "Principal"
+		}
+		return false
+	}
+	lines := strings.Split(string(source), "\n")
+	for _, decl := range file.Decls {
+		fn := ""
+		if f, ok := decl.(*ast.FuncDecl); ok {
+			fn = f.Name.Name
+		}
+		ast.Inspect(decl, func(node ast.Node) bool {
+			literal, ok := node.(*ast.CompositeLit)
+			if !ok || !isPrincipal(literal.Type) {
+				return true
+			}
+			line := fset.Position(literal.Pos()).Line
+			hit := constructionHit{file: path + ":" + strconv.Itoa(line), line: strings.TrimSpace(lines[line-1]), function: fn}
+			literals = append(literals, hit)
+			for _, element := range literal.Elts {
+				field, ok := element.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				name, ok := field.Key.(*ast.Ident)
+				if ok && name.Name == "NodeID" {
+					nodeIDs = append(nodeIDs, hit)
+				}
+			}
+			return true
+		})
+	}
+	return literals, nodeIDs, nil
+}
 
 func TestAgentPrincipalHasExactlyOneConstructionSite(t *testing.T) {
 	root := filepath.Join("..", "..")
-	type hit struct{ file, line string }
-	var literals, nodeIDs []hit
+	var literals, nodeIDs []constructionHit
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -65,31 +114,12 @@ func TestAgentPrincipalHasExactlyOneConstructionSite(t *testing.T) {
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
-		lines := strings.Split(string(b), "\n")
-		// depth > 0 means we are INSIDE a Principal composite literal; only there does NodeID mean the
-		// agent identity field rather than some other struct's column.
-		depth := 0
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
-				continue
-			}
-			loc := rel + ":" + itoa(i+1)
-			if depth == 0 && principalLiteral.MatchString(line) {
-				literals = append(literals, hit{loc, trimmed})
-				depth = 1
-				// A single-line literal opens and closes here; fall through to the brace count below.
-			}
-			if depth > 0 {
-				if nodeIDAssign.MatchString(line) {
-					nodeIDs = append(nodeIDs, hit{loc, trimmed})
-				}
-				depth += strings.Count(line, "{") - strings.Count(line, "}")
-				if depth < 0 {
-					depth = 0
-				}
-			}
+		found, assigned, parseErr := principalConstructionSites(rel, b)
+		if parseErr != nil {
+			return parseErr
 		}
+		literals = append(literals, found...)
+		nodeIDs = append(nodeIDs, assigned...)
 		return nil
 	})
 	if err != nil {
@@ -106,11 +136,14 @@ func TestAgentPrincipalHasExactlyOneConstructionSite(t *testing.T) {
 
 	// The agent identity field must be written in exactly ONE place: the constructor.
 	const constructorFile = "internal/authctx/authctx.go"
-	var offenders []hit
+	var offenders []constructionHit
 	for _, h := range nodeIDs {
-		if !strings.HasPrefix(h.file, constructorFile) {
+		if !strings.HasPrefix(h.file, constructorFile+":") || h.function != "NewAgentPrincipal" {
 			offenders = append(offenders, h)
 		}
+	}
+	if len(nodeIDs) != 1 {
+		t.Errorf("expected exactly one canonical NodeID constructor, found %d", len(nodeIDs))
 	}
 	if len(offenders) > 0 {
 		var b strings.Builder
@@ -124,16 +157,4 @@ func TestAgentPrincipalHasExactlyOneConstructionSite(t *testing.T) {
 			"What is not acceptable is a second site added quietly, inheriting a guarantee it was never inside.")
 		t.Fatal(b.String())
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
 }

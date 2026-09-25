@@ -70,6 +70,18 @@ jobs:
             --binary-sha256 "$(sha256sum "$RUNNER_TEMP/ipsec-controller.test" | cut -d' ' -f1)" \
             --evidence-dir "$RUNNER_TEMP/ipsec-evidence/runtime" \
             2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/runtime.log"
+      - name: Run native recovery, restart and maintenance key rotation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/ipsec/qualify_coexistence.py \
+            --docker-context default --native-arch amd64 --recovery --rotation \
+            --candidate-image "$CANDIDATE_IMAGE" --tools-image "$TOOLS_IMAGE" \
+            --project "$COMPOSE_PROJECT_NAME" \
+            --binary "$RUNNER_TEMP/ipsec-controller.test" \
+            --binary-sha256 "$(sha256sum "$RUNNER_TEMP/ipsec-controller.test" | cut -d' ' -f1)" \
+            --evidence-dir "$RUNNER_TEMP/ipsec-evidence/recovery" \
+            2>&1 | tee "$RUNNER_TEMP/ipsec-evidence/recovery.log"
       - name: Preserve qualification evidence
         if: always()
         uses: actions/upload-artifact@v4

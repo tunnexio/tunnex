@@ -61,7 +61,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 				controller.Close()
 			}
 		}()
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
 			if ctx.Err() != nil {

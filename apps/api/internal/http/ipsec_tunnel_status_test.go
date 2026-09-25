@@ -28,12 +28,16 @@ func TestIPsecTunnelStatusAnonymous(t *testing.T) {
 }
 
 type tunnelStatusFake struct {
-	calls int
-	err   error
+	calls  int
+	err    error
+	status *ipsec.ConnectionStatus
 }
 
 func (f *tunnelStatusFake) ReadStatus(context.Context, uuid.UUID, uuid.UUID) (ipsec.ConnectionStatus, error) {
 	f.calls++
+	if f.status != nil {
+		return *f.status, f.err
+	}
 	return ipsec.ConnectionStatus{Tunnels: []ipsec.RuntimeTunnelStatus{{ID: uuid.New(), Slot: 1, Status: "up", Selected: true}, {ID: uuid.New(), Slot: 2, Status: "unknown"}}}, f.err
 }
 func TestIPsecTunnelStatusMemberAndStaticErrors(t *testing.T) {
@@ -53,6 +57,18 @@ func TestIPsecTunnelStatusMemberAndStaticErrors(t *testing.T) {
 	w := call()
 	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" || !strings.Contains(w.Body.String(), `"status":"up"`) {
 		t.Fatal("member projection failed", w.Code)
+	}
+	one, two := 1, 2
+	sequence := uint64(7)
+	f.status = &ipsec.ConnectionStatus{RecoveryVersion: &one, SelectionSequence: &sequence, ActiveSlot: &two, Tunnels: []ipsec.RuntimeTunnelStatus{{ID: uuid.New(), Slot: 1, Selected: true, Status: "down"}, {ID: uuid.New(), Slot: 2, Status: "up"}}}
+	w = call()
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"active_slot":2`) || !strings.Contains(w.Body.String(), `"selection_sequence":7`) || !strings.Contains(w.Body.String(), `"recovery_version":1`) {
+		t.Fatal("recovery observation missing", w.Code, w.Body.String())
+	}
+	f.status.ActiveSlot = nil
+	w = call()
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"active_slot":null`) {
+		t.Fatal("unknown path not nullable", w.Code, w.Body.String())
 	}
 	f.err = errors.New("private-secret-marker")
 	w = call()

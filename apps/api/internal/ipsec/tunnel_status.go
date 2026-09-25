@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"reflect"
 	"time"
 )
 
@@ -16,12 +17,20 @@ type RuntimeTunnelStatus struct {
 	Selected bool      `json:"selected"`
 }
 type RuntimeStatusReport struct {
+	RecoveryVersion   *int    `json:"recovery_version,omitempty"`
+	SelectionSequence *uint64 `json:"selection_sequence,omitempty"`
+	ActiveSlot        *int    `json:"active_slot,omitempty"`
+
 	DeliveryID            uuid.UUID              `json:"delivery_id"`
 	DesiredRevision       int64                  `json:"desired_revision"`
 	ConfigurationRevision int64                  `json:"configuration_revision"`
 	Tunnels               [2]RuntimeTunnelStatus `json:"tunnels"`
 }
 type ConnectionStatus struct {
+	RecoveryVersion   *int    `json:"recovery_version,omitempty"`
+	SelectionSequence *uint64 `json:"selection_sequence,omitempty"`
+	ActiveSlot        *int    `json:"active_slot,omitempty"`
+
 	ObservedAt *time.Time            `json:"observed_at"`
 	Tunnels    []RuntimeTunnelStatus `json:"tunnels"`
 }
@@ -61,12 +70,42 @@ func (s *ConnectionStore) ReportStatus(ctx context.Context, p RuntimePrincipal, 
 	if json.Unmarshal(manifest, &m) != nil {
 		return ErrConnectionUnavailable
 	}
+	if !validRecoveryStatus(m, r) || !runtimeRecoveryEligible(m, l.recoveryEligible) {
+		return ErrConnectionInvalid
+	}
+	if r.ActiveSlot != nil && r.Tunnels[*r.ActiveSlot-1].Status != "up" {
+		return ErrConnectionInvalid
+	}
 	for i, t := range r.Tunnels {
 		if t.ID != m.Tunnels[i].ID || t.Slot != m.Tunnels[i].Slot || t.Selected != m.Tunnels[i].Selected {
 			return ErrConnectionInvalid
 		}
 	}
 	raw, _ := json.Marshal(r.Tunnels)
+	if r.RecoveryVersion != nil {
+		raw, _ = json.Marshal(recoveryStoredTunnels(r))
+		var oldRaw []byte
+		var oldDelivery uuid.UUID
+		e = tx.QueryRow(ctx, `SELECT delivery_id,tunnels FROM ipsec_tunnel_status WHERE connection_id=$1 FOR UPDATE`, id).Scan(&oldDelivery, &oldRaw)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return ErrConnectionUnavailable
+		}
+		if e == nil && oldDelivery == r.DeliveryID {
+			var old RuntimeStatusReport
+			if !decodeRecoveryStored(oldRaw, &old) || old.SelectionSequence == nil {
+				return ErrConnectionConflict
+			}
+			if *r.SelectionSequence < *old.SelectionSequence {
+				return ErrConnectionConflict
+			}
+			if *r.SelectionSequence == *old.SelectionSequence {
+				if !reflect.DeepEqual(recoveryStoredTunnels(old), recoveryStoredTunnels(r)) {
+					return ErrConnectionConflict
+				}
+				return tx.Commit(ctx) // Exact retry does not extend freshness.
+			}
+		}
+	}
 	_, e = tx.Exec(ctx, `INSERT INTO ipsec_tunnel_status(connection_id,org_id,node_id,delivery_id,desired_revision,configuration_revision,certificate_serial,received_at,tunnels) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp(),$8) ON CONFLICT(connection_id) DO UPDATE SET node_id=excluded.node_id,delivery_id=excluded.delivery_id,desired_revision=excluded.desired_revision,configuration_revision=excluded.configuration_revision,certificate_serial=excluded.certificate_serial,received_at=excluded.received_at,tunnels=excluded.tunnels`, id, p.OrgID, p.NodeID, r.DeliveryID, r.DesiredRevision, r.ConfigurationRevision, p.CertificateSerial, raw)
 	if e != nil {
 		return ErrConnectionUnavailable
@@ -112,22 +151,32 @@ func (s *ConnectionStore) ReadStatus(ctx context.Context, org, id uuid.UUID) (Co
 	if e != nil {
 		return out, ErrConnectionUnavailable
 	}
-	var raw []byte
+	var raw, manifestRaw []byte
 	var fresh bool
 	var now time.Time
-	e = tx.QueryRow(ctx, `SELECT clock_timestamp(),s.received_at,s.tunnels,COALESCE((s.desired_revision=$3 AND c.desired_intent='enabled' AND d.desired_revision=c.desired_revision AND d.kind='apply' AND d.configuration_revision=s.configuration_revision AND d.certificate_serial=s.certificate_serial AND n.cert_serial=s.certificate_serial AND n.status='active' AND n.revoked_at IS NULL AND n.site_id=c.site_id AND n.id=c.gateway_node_id AND n.capabilities->>'ipsec_config_version'='1' AND EXISTS(SELECT 1 FROM ipsec_org_settings o WHERE o.org_id=c.org_id AND o.enabled)),false) FROM ipsec_tunnel_status s JOIN ipsec_connections c ON c.id=s.connection_id JOIN ipsec_runtime_deliveries d ON d.id=s.delivery_id AND d.connection_id=c.id AND d.org_id=c.org_id JOIN nodes n ON n.id=s.node_id AND n.org_id=c.org_id WHERE s.connection_id=$1 AND s.org_id=$2`, id, org, c.DesiredRevision).Scan(&now, &out.ObservedAt, &raw, &fresh)
+	e = tx.QueryRow(ctx, `SELECT clock_timestamp(),s.received_at,s.tunnels,d.manifest,COALESCE((s.desired_revision=$3 AND c.desired_intent='enabled' AND d.desired_revision=c.desired_revision AND d.kind='apply' AND d.configuration_revision=s.configuration_revision AND d.certificate_serial=s.certificate_serial AND n.cert_serial=s.certificate_serial AND n.status='active' AND n.revoked_at IS NULL AND n.site_id=c.site_id AND n.id=c.gateway_node_id AND n.capabilities->>'ipsec_config_version'='1' AND n.policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp() AND (NOT(d.manifest ? 'recovery_version') OR (d.manifest->>'recovery_version'='1' AND n.capabilities->>'ipsec_recovery_version'='1')) AND EXISTS(SELECT 1 FROM ipsec_org_settings o WHERE o.org_id=c.org_id AND o.enabled)),false) FROM ipsec_tunnel_status s JOIN ipsec_connections c ON c.id=s.connection_id JOIN ipsec_runtime_deliveries d ON d.id=s.delivery_id AND d.connection_id=c.id AND d.org_id=c.org_id JOIN nodes n ON n.id=s.node_id AND n.org_id=c.org_id WHERE s.connection_id=$1 AND s.org_id=$2`, id, org, c.DesiredRevision).Scan(&now, &out.ObservedAt, &raw, &manifestRaw, &fresh)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 		return out, ErrConnectionUnavailable
 	}
 	if fresh && tunnelStatusFresh(out.ObservedAt, now) && len(out.Tunnels) == 2 {
 		var reported [2]RuntimeTunnelStatus
-		if json.Unmarshal(raw, &reported) == nil {
-			for i, t := range reported {
-				if t.ID == out.Tunnels[i].ID && t.Slot == out.Tunnels[i].Slot && (t.Status == "up" || t.Status == "down" || t.Status == "unknown") {
-					out.Tunnels[i].Status = t.Status
-				}
+		var recovery RuntimeStatusReport
+		var manifest RuntimeManifest
+		valid := json.Unmarshal(raw, &reported) == nil && json.Unmarshal(manifestRaw, &manifest) == nil
+		for i, t := range reported {
+			if t.ID != out.Tunnels[i].ID || t.Slot != out.Tunnels[i].Slot || t.Selected != out.Tunnels[i].Selected || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
+				valid = false
 			}
 		}
+		if valid {
+			for i, t := range reported {
+				out.Tunnels[i].Status = t.Status
+			}
+			if decodeRecoveryStored(raw, &recovery) && validRecoveryStatus(manifest, recovery) && (recovery.ActiveSlot == nil || reported[*recovery.ActiveSlot-1].Status == "up") {
+				out.RecoveryVersion, out.SelectionSequence, out.ActiveSlot = recovery.RecoveryVersion, recovery.SelectionSequence, recovery.ActiveSlot
+			}
+		}
+
 	}
 	if tx.Commit(ctx) != nil {
 		return out, ErrConnectionUnavailable

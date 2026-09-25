@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/google/uuid"
@@ -35,12 +36,22 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 		return invalid(e)
 	}
 	manifest := runtimeManifest(c, cfg, tunnels)
-	raw, digest := runtimeHash(manifest)
 	delivery, _, e := scanDelivery(tx.QueryRow(ctx, `SELECT `+runtimeDeliveryColumns+` FROM ipsec_runtime_deliveries WHERE connection_id=$1 AND org_id=$2 AND desired_revision=$3 AND kind='apply'`, id, p.OrgID, revision))
 	fresh := errors.Is(e, pgx.ErrNoRows)
 	if !fresh && e != nil {
 		return invalid(createError(e))
 	}
+	if fresh && locked.recoveryEligible {
+		v := 1
+		manifest.RecoveryVersion = &v
+	}
+	if !fresh {
+		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
+	}
+	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) {
+		return invalid(ErrConnectionIneligible)
+	}
+	raw, digest := runtimeHash(manifest)
 	if fresh {
 		if e = runtimeCapacity(ctx, tx, c, manifest); e != nil {
 			return invalid(e)
@@ -225,13 +236,17 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if !locked.enabled || !locked.eligible {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
-	var valid bool
-	e = tx.QueryRow(ctx, `SELECT true FROM ipsec_runtime_deliveries WHERE id=$1 AND org_id=$2 AND connection_id=$3 AND node_id=$4 AND desired_revision=$5 AND kind='apply'`, r.DeliveryID, p.OrgID, id, p.NodeID, r.DesiredRevision).Scan(&valid)
+	var manifestRaw []byte
+	e = tx.QueryRow(ctx, `SELECT manifest FROM ipsec_runtime_deliveries WHERE id=$1 AND org_id=$2 AND connection_id=$3 AND node_id=$4 AND desired_revision=$5 AND kind='apply'`, r.DeliveryID, p.OrgID, id, p.NodeID, r.DesiredRevision).Scan(&manifestRaw)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	if e != nil {
 		return RuntimeLease{}, createError(e)
+	}
+	var manifest RuntimeManifest
+	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) {
+		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)
 	if e != nil {

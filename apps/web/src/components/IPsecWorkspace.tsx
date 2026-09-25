@@ -3,6 +3,7 @@ import type { components } from "@tunnex/shared";
 import { api, loadOne, type Node, type Site, type SiteSubnet } from "../lib/api";
 import { Button, Card, ErrorText, Field, Input, Modal, Select } from "./ui";
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
+import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
 
 type Connection = components["schemas"]["IPsecConnection"];
 type Settings = components["schemas"]["IPsecSettings"];
@@ -43,6 +44,8 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Connection | null>(null);
+  const [rotating, setRotating] = useState<Connection | null>(null);
+  const [notice, setNotice] = useState("");
   const [changing, setChanging] = useState<Connection | null>(null);
   const [ready, setReady] = useState<Record<string, boolean>>({});
   useEffect(() => {
@@ -98,6 +101,7 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
     </div>
     {settings && !settings.enabled && <Card><div className="flex items-center justify-between gap-4"><span className="text-sm text-ink-secondary">IPsec is off for this organization.</span>{manage && <Button disabled={busy} onClick={() => void enable()}>Enable IPsec</Button>}</div></Card>}
     <ErrorText>{error}</ErrorText>
+    {notice && <p role="status" className="text-sm text-ink-secondary">{notice}</p>}
     {loading ? <p role="status" className="text-sm text-ink-secondary">Loading IPsec configurations…</p> : <>
       {!error && items.length === 0 && <Card><p className="text-sm text-ink-secondary">No IPsec connections configured.</p></Card>}
       {items.length > 0 && <Card><ul className="divide-y divide-line">{items.map(item => <li key={item.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
@@ -105,6 +109,7 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
         <span title={item.cleanup_state === "retained_guard" ? "Tunnel traffic is stopped. Safety guard remains; network ranges stay reserved." : item.application_state === "applied" ? "Gateway applied this revision. End-to-end traffic is not verified." : undefined} className="rounded border border-line px-2 py-1 text-xs text-ink-secondary">{connectionStatus(item)}</span>
         {manage && item.desired_intent === "enabled" && <Button variant="ghost" size="sm" aria-label={`Disable ${item.name}`} onClick={() => setChanging(item)}>Disable</Button>}
         {manage && item.desired_intent === "disabled" && item.cleanup_state !== "pending" && ready[item.id] && <Button variant="ghost" size="sm" aria-label={`Enable ${item.name}`} onClick={() => setChanging(item)}>Enable</Button>}
+        {manage && canRotateIPsecKeys(item) && <Button variant="ghost" size="sm" aria-label={`Rotate keys for ${item.name}`} onClick={() => { setNotice(""); setRotating(item); }}>Rotate keys</Button>}
         {manage && item.desired_intent !== "deleted" && <Button variant="ghost" size="sm" aria-label={`Delete ${item.name}`} onClick={() => setDeleting(item)}>Delete</Button>}
       </li>)}</ul></Card>}
       {next && <Button variant="ghost" disabled={busy} onClick={() => void more()}>Load more</Button>}
@@ -112,6 +117,7 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
     {selected && <ProviderReadback key={selected} orgId={orgId} id={selected} onClose={() => setSelected(null)} />}
     {manage && creating && settings?.enabled && <ConnectionForm orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={id => { if (!alive.current) return; setCreating(false); setSelected(id); void refresh(); }} />}
     {manage && changing && <ChangeIntent orgId={orgId} connection={changing} onClose={() => setChanging(null)} onChanged={() => { if (!alive.current) return; setChanging(null); void refresh(); }} />}
+    {manage && rotating && <IPsecRotateKeys key={rotating.id} orgId={orgId} connection={rotating} onClose={() => setRotating(null)} onSaved={() => { if (!alive.current) return; setRotating(null); setNotice("Keys saved. Update your remote VPN, then enable this connection."); void refresh(); }} />}
     {manage && deleting && <DeleteConnection orgId={orgId} connection={deleting} onClose={() => setDeleting(null)} onDeleted={() => { if (!alive.current) return; setDeleting(null); setSelected(null); void refresh(); }} />}
   </div>;
 }

@@ -49,18 +49,25 @@ type runtimeActive struct {
 }
 
 type RuntimeController struct {
-	qualification   *RuntimePlatformQualification
-	prove           func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
-	active          map[uuid.UUID]runtimeActive
-	mu              sync.Mutex
-	config          RuntimeControllerConfig
-	journal         *RuntimeJournal
-	guard           *RuntimeGuard
-	kernel          *KernelApplier
-	client          RuntimeLeaseClient
-	started, closed bool
-	namespace       func() (string, error)
-	replace         func(context.Context, GuardIntent) (GuardManifest, error)
+	recoveryInitiate func(context.Context, EngineTunnel) error
+	recoveryMetrics  RecoveryMetrics
+	qualification    *RuntimePlatformQualification
+	prove            func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
+	active           map[uuid.UUID]runtimeActive
+	recoveryHistory  map[uuid.UUID]*recoveryDecision
+	recoveryPrepared map[uuid.UUID]RuntimeEnvironment
+	recoveryClock    func() time.Duration
+	recoveryObserve  func(context.Context, RuntimeJournalEntry) [2]string
+	recoverySwitch   func(context.Context, KernelAllocation, [2]Ownership, uint8) error
+	mu               sync.Mutex
+	config           RuntimeControllerConfig
+	journal          *RuntimeJournal
+	guard            *RuntimeGuard
+	kernel           *KernelApplier
+	client           RuntimeLeaseClient
+	started, closed  bool
+	namespace        func() (string, error)
+	replace          func(context.Context, GuardIntent) (GuardManifest, error)
 }
 
 func NewRuntimeController(cfg RuntimeControllerConfig, client RuntimeLeaseClient) (*RuntimeController, error) {
@@ -236,9 +243,15 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 		same := entry
 		same.Phase = old.Phase
 		same.Observed = old.Observed
+		if entry.ContractVersion == 2 {
+			same.Recovery = old.Recovery
+		}
 		if old.Phase == RuntimeCleanupPending || old.Phase == RuntimeRetainedRefusal || !reflect.DeepEqual(old, same) {
 			return fail()
 		}
+	}
+	if entry.ContractVersion == 2 {
+		return c.applyRecovery(ctx, m, entries, pos, env, grants)
 	}
 	if c.active == nil {
 		c.active = map[uuid.UUID]runtimeActive{}
@@ -402,6 +415,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	if len(lineage) != 0 || len(positions) == 0 || c.journal.Save(entries) != nil {
 		return fail()
 	}
+	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
 	if e = c.installActive(ctx, entries); e != nil {
 		return fail()
@@ -424,13 +438,18 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 				return fail()
 			}
 		}
-		if _, e = c.kernel.Remove(ctx, entry.Allocation, entry.Observed); e != nil {
+		if entry.ContractVersion == 2 {
+			if c.kernel.RemoveRecovery(ctx, entry.Allocation, entry.Observed) != nil {
+				return fail()
+			}
+		} else if _, e = c.kernel.Remove(ctx, entry.Allocation, entry.Observed); e != nil {
 			return fail()
 		}
 	}
 	if c.config.Environment.Drain(ctx, covered) != nil {
 		return fail()
 	}
+	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
 	if e = c.installActive(ctx, entries); e != nil {
 		return fail()
@@ -489,8 +508,13 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				g.Grants = a.Grants
 				g.LocalIngressIndices = a.Environment.LocalIngressIndices
 				g.PermitFor = remaining
-				g.PermittedInterfaceIndices = []int{a.Entry.Observed[0].InterfaceIndex}
-				g.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: a.Entry.Observed[0].InterfaceIndex, ReqID: a.Entry.Engines[0].ReqID, Peer: a.Entry.Engines[0].RemoteAddress, UnderlayInterfaceIndex: a.Environment.Underlays[0].InterfaceIndex}}
+				slot := selectedRuntimeSlot(a.Entry)
+				if slot == 0 {
+					return ErrRuntimeController
+				}
+				index := int(slot) - 1
+				g.PermittedInterfaceIndices = []int{a.Entry.Observed[index].InterfaceIndex}
+				g.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: a.Entry.Observed[index].InterfaceIndex, ReqID: a.Entry.Engines[index].ReqID, Peer: a.Entry.Engines[index].RemoteAddress, UnderlayInterfaceIndex: a.Environment.Underlays[index].InterfaceIndex}}
 			}
 		}
 		intent.Connections = append(intent.Connections, g)

@@ -227,8 +227,9 @@ type PolicyStatus struct {
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
 	payload := map[string]any{
 		// Only the actual qualified controller may advertise this protocol.
-		"ipsec_config_version": c.ipsecCapability(),
-		"public_key":           publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
+		"ipsec_config_version":   c.ipsecCapability(),
+		"ipsec_recovery_version": c.ipsecRecoveryCapability(),
+		"public_key":             publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
 		"policy_version": ps.Version, "policy_hash": ps.Hash, "policy_error": ps.Error,
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,

@@ -2,8 +2,10 @@ package ipsec
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -11,6 +13,10 @@ import (
 // selection, policy leases and forwarding intent cannot manufacture Up.
 func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDelivery) (RuntimeStatusReport, error) {
 	if d.ID == uuid.Nil || d.Kind != "apply" || d.DesiredRevision <= 0 || d.Manifest.DesiredRevision != d.DesiredRevision || d.Manifest.ConfigurationRevision <= 0 {
+		return RuntimeStatusReport{}, ErrRuntimeController
+	}
+	recovery, recoveryErr := runtimeRecoveryContract(d.Manifest)
+	if recoveryErr != nil {
 		return RuntimeStatusReport{}, ErrRuntimeController
 	}
 	report := RuntimeStatusReport{DeliveryID: d.ID, DesiredRevision: d.DesiredRevision, ConfigurationRevision: d.Manifest.ConfigurationRevision}
@@ -24,6 +30,9 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 		return RuntimeStatusReport{}, ErrRuntimeController
 	}
 	if c == nil {
+		if recovery {
+			return RuntimeStatusReport{}, ErrRuntimeController
+		}
 		return report, nil
 	}
 	c.mu.Lock()
@@ -57,6 +66,22 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 			return report, nil
 		}
 	}
+	if recovery {
+		if entry.ContractVersion != 2 || entry.Recovery == nil {
+			return RuntimeStatusReport{}, ErrRuntimeController
+		}
+		// Persist an observation sequence before publishing; a restarted process
+		// cannot replay an older active selection with a fresh receipt time.
+		if c.journal.Save(entries) != nil {
+			return RuntimeStatusReport{}, ErrRuntimeController
+		}
+		_, seq, seqErr := c.journal.guardTemplates()
+		if seqErr != nil || seq == 0 || seq > 9007199254740991 {
+			return RuntimeStatusReport{}, ErrRuntimeController
+		}
+		version := 1
+		report.RecoveryVersion, report.SelectionSequence = &version, &seq
+	}
 	kr, e := NewKernelReader(c.config.IPPath)
 	if e != nil {
 		return report, nil
@@ -68,6 +93,12 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 	statuses := runtimeObservedStatuses(ctx, *entry, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
 	for i, status := range statuses {
 		report.Tunnels[i].Status = status
+	}
+	if recovery {
+		slot := c.observedRecoveryActiveSlot(ctx, *entry)
+		if slot != nil && report.Tunnels[*slot-1].Status == "up" {
+			report.ActiveSlot = slot
+		}
 	}
 	return report, nil
 }
@@ -245,4 +276,88 @@ func runtimeTunnelStatus(t EngineTunnel, own Ownership, d DaemonInventory, k Ker
 		}
 	}
 	return "up"
+}
+
+// Called with the controller lock held. Stored preference and journal completion
+// alone never establish an actively permitted path.
+func (c *RuntimeController) observedRecoveryActiveSlot(ctx context.Context, entry RuntimeJournalEntry) *int {
+	if c == nil || !c.started || c.closed || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || entry.ContractVersion != 2 || entry.Phase != RuntimeApplied || entry.Recovery == nil || entry.Recovery.Stage != "completed" || entry.Recovery.SelectedSlot < 1 || entry.Recovery.SelectedSlot > 2 {
+		return nil
+	}
+	active, ok := c.active[entry.Allocation.ConnectionID]
+	if !ok || active.Authority == nil || active.Entry.DeliveryID != entry.DeliveryID || active.Entry.OwnershipDigest != entry.OwnershipDigest || !reflect.DeepEqual(active.Entry.Recovery, entry.Recovery) || !reflect.DeepEqual(active.Entry.Observed, entry.Observed) || !reflect.DeepEqual(active.Entry.Engines, entry.Engines) {
+		return nil
+	}
+	if _, err := active.Authority.RemainingForApply(active.Identity, time.Millisecond); err != nil {
+		return nil
+	}
+	if c.proveCurrent(ctx, active.Entry, active.Environment) != nil || !c.recoveryGuardPermits(ctx, entry) {
+		return nil
+	}
+	if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+		return nil
+	}
+	if _, err := active.Authority.RemainingForApply(active.Identity, time.Millisecond); err != nil {
+		return nil
+	}
+	slot := int(entry.Recovery.SelectedSlot)
+	return &slot
+}
+
+// Read-only strict full-table verification; withdrawal matching deliberately does
+// not suffice because it permits missing (expired) lease members.
+func (c *RuntimeController) recoveryGuardPermits(ctx context.Context, entry RuntimeJournalEntry) bool {
+	if c.journal == nil || c.guard == nil || c.guard.reader == nil {
+		return false
+	}
+	templates, _, err := c.journal.guardTemplates()
+	if err != nil || len(templates) != 1 {
+		return false
+	}
+	g := templates[0]
+	if g.Namespace != entry.Allocation.Namespace {
+		return false
+	}
+	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
+	if !ok {
+		return false
+	}
+	index := int(entry.Recovery.SelectedSlot) - 1
+	required := map[string]string{guardLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(entry.Observed[index].InterfaceIndex), guardSALeaseName(entry.Allocation.ConnectionID): strconv.FormatUint(uint64(entry.Engines[index].ReqID), 10)}
+	for _, object := range objects {
+		fields, ok := object.(map[string]any)
+		if !ok {
+			return false
+		}
+		set, ok := fields["set"].(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := set["name"].(string)
+		want, needed := required[name]
+		if !needed {
+			continue
+		}
+		members, ok := set["elem"].([]any)
+		if !ok || len(members) != 1 {
+			return false
+		}
+		member, ok := members[0].(map[string]any)
+		if !ok {
+			return false
+		}
+		element, ok := member["elem"].(map[string]any)
+		if !ok {
+			return false
+		}
+		value, ok := element["val"].(json.Number)
+		if !ok || value.String() != want {
+			return false
+		}
+		delete(required, name)
+	}
+	if len(required) != 0 {
+		return false
+	}
+	return c.guard.reader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
 }
