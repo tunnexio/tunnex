@@ -191,7 +191,11 @@ func TestGuardRenderEveryPermitRequiresKernelLease(t *testing.T) {
 	for _, o := range doc.NFTables {
 		if raw, ok := o["set"]; ok {
 			sets++
-			if !strings.Contains(string(raw), `"timeout":30`) {
+			if strings.Contains(string(raw), `"name":"reply_lease_`) {
+				if strings.Contains(string(raw), `"elem"`) {
+					t.Fatal("empty reply authority gained members")
+				}
+			} else if !strings.Contains(string(raw), `"timeout":30`) {
 				t.Fatal("lease timeout lost")
 			}
 		}
@@ -199,7 +203,7 @@ func TestGuardRenderEveryPermitRequiresKernelLease(t *testing.T) {
 			t.Fatal("JSON permit bypasses lease")
 		}
 	}
-	if sets != 2 {
+	if sets != 3 {
 		t.Fatal("missing perconnection timeout set")
 	}
 }

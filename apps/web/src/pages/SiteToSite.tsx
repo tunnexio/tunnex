@@ -1,4 +1,6 @@
+import "../network-workspaces.css";
 import { Button as ActionButton } from "../components/ui/button";
+import { WireGuardDemo } from "../components/WireGuardDemo";
 import { IPsecWorkspace } from "../components/IPsecWorkspace";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -8,6 +10,7 @@ import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { siteGate } from "../lib/sitesview";
 import { Link } from "react-router-dom";
+import { ConnectionChooser } from "../components/ConnectionChooser";
 import { Button, Card, PageHeader } from "../components/ui";
 
 export type SiteToSiteState = {
@@ -49,41 +52,43 @@ export default function SiteToSite() {
     });
     return () => { cancelled = true; };
   }, [key, org?.id, loading, failed, userId, verified]);
-  return <SiteToSiteView ipsecWorkspace={!loading && org && result.key === key && result.value.kind === "ready" ? <IPsecWorkspace orgId={org.id} userId={userId} emailVerified={verified} role={result.value.role} sites={result.value.sites} /> : undefined} key={key} renderDetails={(first, second) => org ? <SitePairDetails orgId={org.id} first={first} second={second} /> : null} state={result.key === key && !loading ? result.value : initial} onRetry={() => retry(value => value + 1)} />;
+  return <SiteToSiteView orgId={org?.id} renderIPsecWorkspace={(createRequest, onRequestCreate, onCreateHandled) => !loading && org && result.key === key && result.value.kind === "ready" ? <IPsecWorkspace onCreateHandled={onCreateHandled} createRequest={createRequest} onRequestCreate={onRequestCreate} orgId={org.id} userId={userId} emailVerified={verified} role={result.value.role} sites={result.value.sites} /> : undefined} key={key} renderDetails={(first, second) => org ? <SitePairDetails orgId={org.id} first={first} second={second} /> : null} state={result.key === key && !loading ? result.value : initial} onRetry={() => retry(value => value + 1)} />;
 }
 
-export function SiteToSiteView({ state, onRetry, renderDetails, ipsecWorkspace }: { ipsecWorkspace?: ReactNode; state: SiteToSiteState; onRetry: () => void; renderDetails?: (first: Site, second: Site) => ReactNode }) {
+export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWorkspace, renderIPsecWorkspace }: { orgId?: string; ipsecWorkspace?: ReactNode; renderIPsecWorkspace?: (request: number, onCreate: () => void, onHandled: () => void) => ReactNode; state: SiteToSiteState; onRetry: () => void; renderDetails?: (first: Site, second: Site) => ReactNode }) {
   const [method, setMethod] = useState<"wireguard" | "ipsec">("wireguard");
-  return <div className="space-y-6">
-    <PageHeader title="Site-to-site" subtitle="Review network connectivity." actions={method === "wireguard" && state.canManage ?
-      <ActionButton asChild><Link to="/network/setup">Add a network</Link></ActionButton> : undefined} />
+  const [demo, setDemo] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const [createRequest, setCreateRequest] = useState(0);
+  return <div className="network-management space-y-5">
+    <PageHeader title="Site-to-site" subtitle="Connect entire networks through gateways." actions={state.canManage && !demo ? <ActionButton onClick={() => setChoosing(true)}>Create connection</ActionButton> : undefined} />
     <SiteToSiteNavigation active="connectivity" />
-    <div className="flex gap-2" role="group" aria-label="Connection method">
-      <ActionButton variant={method === "wireguard" ? "default" : "outline"} aria-pressed={method === "wireguard"} onClick={() => setMethod("wireguard")}>WireGuard</ActionButton>
-      <ActionButton variant={method === "ipsec" ? "default" : "outline"} aria-pressed={method === "ipsec"} onClick={() => setMethod("ipsec")}>IPsec</ActionButton>
+    <div className="network-filter-tabs" role="group" aria-label="Connection method">
+      <ActionButton variant="ghost" className={method === "wireguard" ? "network-filter-active" : ""} aria-pressed={method === "wireguard"} onClick={() => setMethod("wireguard")} aria-label="WireGuard">Tunnex to Tunnex · WireGuard</ActionButton>
+      <ActionButton variant="ghost" className={method === "ipsec" ? "network-filter-active" : ""} aria-pressed={method === "ipsec"} onClick={() => { setDemo(false); setMethod("ipsec"); }} aria-label="IPsec">Cloud VPN / Firewall · IPsec</ActionButton>
     </div>
-    {method === "ipsec" ? ipsecWorkspace ?? <Card><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></Card> : <>
+    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0)) : ipsecWorkspace) ?? <Card><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></Card> : demo ? <WireGuardDemo embedded onExit={() => setDemo(false)} /> : <>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="text-section font-semibold text-ink-heading">Tunnex to Tunnex</h2><p className="mt-1 text-cell text-ink-tertiary">Automatically managed links.</p></div>
+      <div className="flex gap-2"><ActionButton variant="ghost" onClick={() => setDemo(true)}>View demo</ActionButton><ActionButton variant="outline" onClick={onRetry}>Refresh</ActionButton></div>
+    </div>
     <Card>
       {state.kind === "loading" && <p role="status">Loading networks…</p>}
       {state.kind === "error" && <div role="alert"><p>{state.error}</p><Button onClick={state.reloadPage ? () => window.location.reload() : onRetry}>{state.reloadPage ? "Reload page" : "Retry networks"}</Button></div>}
       {state.kind === "ready" && <>
-        {state.sites.length === 0 ? <p>No networks configured yet.</p> : renderDetails ? <SitePairReview sites={state.sites} renderDetails={renderDetails} /> : null}
+        {state.sites.length < 2 ? <div className="flex flex-wrap items-center justify-between gap-4">
+          <div><h3 className="font-semibold text-ink-heading">No WireGuard links</h3><p className="mt-1 text-sm text-ink-secondary">{state.sites.length === 0 ? "No networks configured yet." : "A second network is required."}</p></div>
+          {state.sites.length === 1 && state.canManage && <ActionButton asChild variant="outline"><Link to="/sites">Go to Networks</Link></ActionButton>}
+        </div> : renderDetails ? <SitePairReview sites={state.sites} renderDetails={renderDetails} /> : <p className="text-sm text-ink-secondary">Link details unavailable.</p>}
         {state.permissionError && <div role="alert" className="mt-4"><p>Could not check your setup permissions.</p><Button onClick={onRetry}>Retry permissions</Button></div>}
         {!state.canManage && !state.permissionError && <p className="mt-4 text-sm text-ink-secondary">Setup requires a verified site manager. Contact your administrator for access.</p>}
       </>}
     </Card>
-    <div className="flex flex-wrap gap-3">
-      <ActionButton asChild variant="outline"><Link to="/access">Review access policies</Link></ActionButton>
-      <ActionButton asChild variant="outline"><Link to="/routed-ranges">Review routed ranges</Link></ActionButton>
-    </div>
-    <details className="text-sm text-ink-secondary">
-      <summary className="cursor-pointer font-medium text-ink-primary">Setup guide</summary>
-      <ol className="mt-3 list-decimal space-y-2 pl-5">
-        <li>Add a gateway and network ranges at each location.</li>
-        <li>Approve ranges and allow the required traffic.</li>
-        <li>Configure return routes and test between devices.</li>
-      </ol>
+    <details className="text-cell text-ink-tertiary">
+      <summary className="cursor-pointer">Setup requirements</summary>
+      <p className="mt-2">A gateway and approved ranges at each location, one reachable public WireGuard hub, access policies and return routes. Links are configured automatically.</p>
     </details>
     </>}
+    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onAWS={() => { setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
   </div>;
 }

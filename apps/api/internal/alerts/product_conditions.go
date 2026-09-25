@@ -21,6 +21,8 @@ var (
 type ProductHealthSnapshot struct {
 	OrgID  uuid.UUID
 	Events []Event
+	// RetainDedupKeys prevents missing/unknown evidence from resolving existing incidents.
+	RetainDedupKeys []string
 }
 
 type ProductHealthSource interface {
@@ -73,7 +75,14 @@ func (s *ProductConditionScanner) RunOnce(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		retained := make(map[string]bool, len(snapshot.RetainDedupKeys))
+		for _, key := range snapshot.RetainDedupKeys {
+			retained[key] = true
+		}
 		for _, previous := range active {
+			if retained[previous.DedupKey] {
+				continue
+			}
 			if _, ok := current[string(previous.Key)+"\x1f"+previous.DedupKey]; ok {
 				continue
 			}

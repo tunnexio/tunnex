@@ -434,7 +434,9 @@ func (c *DaemonClient) stageTunnel(ctx context.Context, t EngineTunnel, psk []by
 	if t.ReqID != 0 {
 		child["reqid"] = viciText(strconv.FormatUint(uint64(t.ReqID), 10))
 	}
-	conn := viciMessage{"version": viciText("2"), "local_addrs": viciList(t.LocalAddress.String()), "remote_addrs": viciList(t.RemoteAddress.String()), "proposals": viciList("aes256-sha256-modp2048"), "mobike": viciText("no"), "rekey_time": viciText("28800s"), "reauth_time": viciText("0s"), "local": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.LocalIdentity.String())}), "remote": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.RemoteIdentity.String())}), "children": viciSection(viciMessage{name: viciSection(child)})}
+	// Periodic IKEv2 liveness probes are opt-in (strongSwan defaults to zero).
+	// Failure uses normal IKE retransmissions; the controller owns route recovery.
+	conn := viciMessage{"dpd_delay": viciText("10s"), "version": viciText("2"), "local_addrs": viciList(t.LocalAddress.String()), "remote_addrs": viciList(t.RemoteAddress.String()), "proposals": viciList("aes256-sha256-modp2048"), "mobike": viciText("no"), "rekey_time": viciText("28800s"), "reauth_time": viciText("0s"), "local": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.LocalIdentity.String())}), "remote": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.RemoteIdentity.String())}), "children": viciSection(viciMessage{name: viciSection(child)})}
 	return c.success(ctx, "load-conn", viciMessage{name: viciSection(conn)})
 }
 func (c *DaemonClient) success(ctx context.Context, command string, m viciMessage) error {

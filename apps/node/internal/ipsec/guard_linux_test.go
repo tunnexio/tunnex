@@ -78,8 +78,9 @@ func TestGuardLinuxReadback(t *testing.T) {
 
 	// Exercise a live timed member using the same renderer and actual JSON grammar.
 	intent.Connections[0].PermittedInterfaceIndices = []int{inv.Links[0].Index}
+	intent.Connections[0].ReplyIngressIndices = []int{inv.Links[0].Index, inv.Links[1].Index}
 	intent.Connections[0].PermitFor = 30 * time.Second
-	intent.Connections[0].Grants = []GuardGrant{{Source: netip.MustParsePrefix("10.10.0.0/24"), Destination: netip.MustParsePrefix("10.20.0.0/24"), Protocol: GuardAny, HostOrigin: true}}
+	intent.Connections[0].Grants = []GuardGrant{{Source: netip.MustParsePrefix("10.10.0.10/32"), Destination: netip.MustParsePrefix("10.20.0.10/32"), Protocol: GuardTCP, PortLow: 443, PortHigh: 443, HostOrigin: true}}
 	manifest, err = RenderGuard(intent)
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +97,27 @@ func TestGuardLinuxReadback(t *testing.T) {
 	guardReader, err := NewGuardReader("/usr/sbin/nft")
 	if err != nil || guardReader.Check(ctx, manifest) != nil {
 		t.Fatal("bounded guard observer refused native table")
+	}
+	// flush table retains set objects: withdrawal must empty and retain every
+	// declared lease set, then permit restoration without an extra-set mismatch.
+	activeManifest := manifest
+	refusal := intent
+	refusal.Connections = append([]GuardConnection(nil), intent.Connections...)
+	refusal.Connections[0] = GuardConnection{ID: intent.Connections[0].ID, PrefixOnly: true, Local: intent.Connections[0].Local, Remote: intent.Connections[0].Remote}
+	refusal.Revision++
+	refused, err := RenderGuard(refusal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, next := range []GuardManifest{refused, activeManifest} {
+		run(next.NFTJSON, "-j", "-f", "-")
+		actual := run("", "-j", "list", "table", "inet", "tunnex_ipsec")
+		if err := VerifyGuardReadbackWithInterfaces([]byte(next.ExpectedJSON), actual, links); err != nil {
+			t.Fatalf("active-refusal-active readback differs: %v\nexpected=%s\nobserved=%s", err, next.ExpectedJSON, actual)
+		}
+		if err := guardReader.Check(ctx, next); err != nil {
+			t.Fatal("native lifecycle readback", err)
+		}
 	}
 	run("add rule inet tunnex_ipsec output_guard counter accept\n", "-f", "-")
 	if VerifyGuardReadbackWithInterfaces([]byte(manifest.ExpectedJSON), run("", "-j", "list", "table", "inet", "tunnex_ipsec"), links) == nil {

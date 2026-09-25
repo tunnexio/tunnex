@@ -107,6 +107,36 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		if withdraw() != nil {
 			return fail()
 		}
+		if entry.Phase == RuntimeApplied {
+			missing, err := c.kernel.RestartNeedsRecreation(ctx, entry.Allocation, entry.Observed)
+			if err != nil {
+				return fail()
+			}
+			if missing {
+				// Persisted Applied is not evidence that kernel links survived a
+				// restart. Recreate only independently proved complete absence,
+				// under fresh CP authority and the already installed deny guard.
+				authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash)
+				if err != nil {
+					return fail()
+				}
+				missing, err = c.kernel.RestartNeedsRecreation(ctx, entry.Allocation, entry.Observed)
+				if err != nil || !missing {
+					return fail()
+				}
+				if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
+					return fail()
+				}
+				owned, err := c.kernel.Apply(ctx, entry.Allocation, [2]Ownership{})
+				if err != nil {
+					return fail()
+				}
+				entries[pos].Observed = owned
+				if c.journal.Save(entries) != nil {
+					return fail()
+				}
+			}
+		}
 		if entry.Phase == RuntimeReserved || entry.Phase == RuntimeApplying {
 			entries[pos].Phase = RuntimeApplying
 			if c.journal.Save(entries) != nil {
@@ -298,6 +328,62 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	if _, ok := c.active[id]; !ok {
 		return fail()
 	}
+	// Retry standby establishment only after the selected route and its permits
+	// are independently proved. Initiation cannot manufacture health or grants;
+	// a later normal reconciliation must observe the resulting SA itself.
+	c.retryDownStandby(ctx, entry, authority, identity)
 	c.recoveryMetrics.complete(entry.DeliveryID, metricSequence, time.Now())
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
+}
+
+// This process-local attempt history confers no authority and is never journaled.
+type runtimeStandbyRetry struct {
+	DeliveryID, TunnelID uuid.UUID
+	At                   time.Duration
+}
+
+func (c *RuntimeController) retryDownStandby(ctx context.Context, entry RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity) {
+	slot := selectedRuntimeSlot(entry)
+	if slot < 1 || slot > 2 || !c.qualification.current() || (c.recoveryInitiate == nil && c.config.Daemon == nil) {
+		return
+	}
+	id := entry.Allocation.ConnectionID
+	if c.standbyRetries == nil {
+		c.standbyRetries = map[uuid.UUID]runtimeStandbyRetry{}
+	}
+	// Bound history to currently active connections. A new delivery never reuses
+	// an old delivery's timing decision.
+	for key := range c.standbyRetries {
+		if _, ok := c.active[key]; !ok {
+			delete(c.standbyRetries, key)
+		}
+	}
+	target := 1 - int(slot-1)
+	now := c.recoveryNow()
+	old, seen := c.standbyRetries[id]
+	if seen && old.DeliveryID == entry.DeliveryID && old.TunnelID == entry.Engines[target].TunnelID {
+		if now < old.At || now-old.At < 30*time.Second {
+			return
+		}
+	}
+	if _, err := authority.RemainingForApply(identity, 5*time.Second); err != nil {
+		return
+	}
+	started := c.recoveryNow()
+	statuses := c.observeRecovery(ctx, entry)
+	now = c.recoveryNow()
+	if now < started || now-started > 5*time.Second || statuses[slot-1] != "up" || statuses[target] != "down" || !c.qualification.current() {
+		return
+	}
+	if _, err := authority.RemainingForApply(identity, 2*time.Second); err != nil {
+		return
+	}
+	c.standbyRetries[id] = runtimeStandbyRetry{DeliveryID: entry.DeliveryID, TunnelID: entry.Engines[target].TunnelID, At: now}
+	retryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if c.recoveryInitiate != nil {
+		_ = c.recoveryInitiate(retryCtx, entry.Engines[target])
+	} else {
+		_ = c.config.Daemon.initiateTunnel(retryCtx, entry.Engines[target])
+	}
 }

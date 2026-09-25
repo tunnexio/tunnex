@@ -356,7 +356,7 @@ export default function Devices() {
         <div style={{ flex: 1 }}>
           <PageHeader
             title="Devices"
-            subtitle={org?.name ?? "Device inventory"}
+            subtitle={org ? `${org.name} · Remote-access VPN` : "Remote-access VPN"}
           />
         </div>
         {/* ⛔ THE CREATE FORM MOVES INTO A MODAL, matching Add rule. Inline, it was a permanently-open

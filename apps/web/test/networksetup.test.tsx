@@ -142,3 +142,29 @@ describe("Network setup", () => {
     expect(mock.post).not.toHaveBeenCalled();
   });
 });
+
+it("embedded connection setup creates a distinct location and returns to the wizard", async () => {
+  mock.post.mockResolvedValue({ data: {} });
+  const onComplete = vi.fn();
+  render(<MemoryRouter><NetworkSetup embedded onComplete={onComplete} /></MemoryRouter>);
+  expect(screen.queryByRole("button", { name: /Assigned/ })).toBeNull();
+  expect(screen.queryByRole("link", { name: /Back to Sites/ })).toBeNull();
+  review();
+  expect(mock.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Create network" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Continue connection setup" }));
+  expect(onComplete).toHaveBeenCalledOnce();
+  expect(mock.post).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("link", { name: /Configure access|View network/ })).toBeNull();
+});
+
+it("embedded setup reports uncertain writes so its parent cannot silently discard them", async () => {
+  mock.post.mockRejectedValue(new Error("network interrupted"));
+  const onBusyChange = vi.fn();
+  render(<MemoryRouter><NetworkSetup embedded onBusyChange={onBusyChange} /></MemoryRouter>);
+  review();
+  fireEvent.click(screen.getByRole("button", { name: "Create network" }));
+  await screen.findByText(/response was interrupted/);
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  expect((screen.getByRole("button", { name: "Back to locations" }) as HTMLButtonElement).disabled).toBe(true);
+});

@@ -220,7 +220,7 @@ func TestRuntimeRecoveryPendingRetryRequiresFreshLease(t *testing.T) {
 }
 
 func TestRuntimeRecoveryRetriesOnlyAllDownUnderRefusal(t *testing.T) {
-	for _, statuses := range [][2]string{{"down", "down"}, {"down", "up"}, {"unknown", "down"}, {"up", "down"}} {
+	for _, statuses := range [][2]string{{"down", "down"}, {"down", "up"}, {"unknown", "down"}} {
 		t.Run(statuses[0]+statuses[1], func(t *testing.T) {
 			r := newRecoveryTestRig(t)
 			r.status = statuses

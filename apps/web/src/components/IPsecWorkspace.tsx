@@ -1,7 +1,8 @@
+import "../network-workspaces.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, loadOne, type Node, type Site, type SiteSubnet } from "../lib/api";
-import { Button, Card, ErrorText, Field, Input, Modal, Select } from "./ui";
+import { Button, Card, DataTable, ErrorText, Field, Input, Modal, Select } from "./ui";
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
 import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
 
@@ -11,7 +12,7 @@ type Configuration = components["schemas"]["IPsecConfigurationCheckInput"];
 type CreateInput = components["schemas"]["IPsecProviderCreateInput"];
 type Provider = components["schemas"]["IPsecProviderConfiguration"];
 type Eligibility = { eligible: boolean; reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale" };
-type Props = { orgId: string; userId: string; emailVerified: boolean; role?: string; sites: Site[] };
+type Props = { createRequest?: number; onCreateHandled?: () => void; onRequestCreate?: () => void; orgId: string; userId: string; emailVerified: boolean; role?: string; sites: Site[] };
 function connectionStatus(item: Connection): string {
   if (item.cleanup_state === "pending") return "Cleanup pending";
   if (item.desired_intent === "deleted") return item.cleanup_state === "retained_guard" ? "Removed · guard retained" : item.finalized_at ? "Removed" : "Cleanup pending";
@@ -32,7 +33,7 @@ function useLifetime() {
 export function IPsecWorkspace(props: Props) {
   return <IPsecSession key={`${props.orgId}:${props.userId}:${props.emailVerified}:${props.role ?? ""}`} {...props} />;
 }
-function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
+function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, onRequestCreate, onCreateHandled }: Props) {
   const manage = emailVerified && (role === "owner" || role === "admin");
   const alive = useLifetime();
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -41,7 +42,9 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(createRequest > 0);
+  useEffect(() => { if (createRequest > 0) { setCreating(true); onCreateHandled?.(); } }, [createRequest, onCreateHandled]);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Connection | null>(null);
   const [rotating, setRotating] = useState<Connection | null>(null);
@@ -91,12 +94,12 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
     setItems(old => [...old, ...result.data.items.filter(item => !old.some(previous => previous.id === item.id))]);
     setNext(result.data.next_cursor ?? null);
   }
-  return <div className="space-y-4">
+  return <div className="network-management space-y-5">
     <div className="flex items-center justify-between gap-4">
-      <div><h2 className="text-lg font-semibold text-ink-heading">IPsec</h2><p className="text-sm text-ink-secondary">Connections and tunnel configuration</p></div>
+      <div><h2 className="text-lg font-semibold text-ink-heading">IPsec VPN connections</h2><p className="text-sm text-ink-secondary">IPsec · AWS</p></div>
       <div className="flex gap-2">
         <Button variant="ghost" disabled={loading || busy} onClick={() => void refresh()}>Refresh</Button>
-        {manage && settings && <Button disabled={!settings.enabled || busy} onClick={() => setCreating(true)}>New connection</Button>}
+        {manage && settings && !onRequestCreate && <Button disabled={!settings.enabled || busy} onClick={() => setCreating(true)}>New connection</Button>}
       </div>
     </div>
     {settings && !settings.enabled && <Card><div className="flex items-center justify-between gap-4"><span className="text-sm text-ink-secondary">IPsec is off for this organization.</span>{manage && <Button disabled={busy} onClick={() => void enable()}>Enable IPsec</Button>}</div></Card>}
@@ -104,33 +107,42 @@ function IPsecSession({ orgId, emailVerified, role, sites }: Props) {
     {notice && <p role="status" className="text-sm text-ink-secondary">{notice}</p>}
     {loading ? <p role="status" className="text-sm text-ink-secondary">Loading IPsec configurations…</p> : <>
       {!error && items.length === 0 && <Card><p className="text-sm text-ink-secondary">No IPsec connections configured.</p></Card>}
-      {items.length > 0 && <Card><ul className="divide-y divide-line">{items.map(item => <li key={item.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-        <button className="min-w-0 flex-1 text-left font-medium text-ink-heading hover:underline" onClick={() => setSelected(item.id)}>{item.name}</button>
-        <span title={item.cleanup_state === "retained_guard" ? "Tunnel traffic is stopped. Safety guard remains; network ranges stay reserved." : item.application_state === "applied" ? "Gateway applied this revision. End-to-end traffic is not verified." : undefined} className="rounded border border-line px-2 py-1 text-xs text-ink-secondary">{connectionStatus(item)}</span>
+      {items.length > 0 && <Card className="space-y-4">
+        <div className="flex items-center justify-between gap-3"><h3 className="font-semibold text-ink-heading">Connections</h3><span className="text-sm text-ink-secondary">{items.length}{next ? "+" : ""} loaded</span></div>
+        <Input aria-label="Search VPN connections" placeholder="Find a connection" value={search} onChange={event => setSearch(event.target.value)} />
+        <DataTable<Connection> caption="IPsec connections" rows={items.filter(item => `${item.name} ${sites.find(site => site.id === item.site_id)?.name ?? ""}`.toLowerCase().includes(search.toLowerCase()))} rowKey={item => item.id} failed={!!error} filterable={false} empty="No IPsec connections configured." columns={[
+          { key: "name", header: "Connection", cell: item => <button aria-pressed={selected === item.id} className={`text-left font-medium hover:underline ${selected === item.id ? "text-accent" : "text-ink-heading"}`} onClick={() => setSelected(item.id)}>{item.name}</button> },
+          { key: "network", header: "Local network", cell: item => sites.find(site => site.id === item.site_id)?.name ?? "Network unavailable" },
+          { key: "state", header: "Configuration", cell: item => <><span title={item.cleanup_state === "retained_guard" ? "Tunnel traffic is stopped. Safety guard remains; network ranges stay reserved." : item.application_state === "applied" ? "Gateway applied this revision. End-to-end traffic is not verified." : undefined} className="rounded border border-line px-2 py-1 text-xs text-ink-secondary">{connectionStatus(item)}</span></> },
+          { key: "actions", header: "Actions", cell: item => <div className="flex flex-wrap justify-end gap-2">
         {manage && item.desired_intent === "enabled" && <Button variant="ghost" size="sm" aria-label={`Disable ${item.name}`} onClick={() => setChanging(item)}>Disable</Button>}
         {manage && item.desired_intent === "disabled" && item.cleanup_state !== "pending" && ready[item.id] && <Button variant="ghost" size="sm" aria-label={`Enable ${item.name}`} onClick={() => setChanging(item)}>Enable</Button>}
         {manage && canRotateIPsecKeys(item) && <Button variant="ghost" size="sm" aria-label={`Rotate keys for ${item.name}`} onClick={() => { setNotice(""); setRotating(item); }}>Rotate keys</Button>}
         {manage && item.desired_intent !== "deleted" && <Button variant="ghost" size="sm" aria-label={`Delete ${item.name}`} onClick={() => setDeleting(item)}>Delete</Button>}
-      </li>)}</ul></Card>}
+          </div> },
+        ]} />
+      </Card>}
       {next && <Button variant="ghost" disabled={busy} onClick={() => void more()}>Load more</Button>}
     </>}
-    {selected && <ProviderReadback key={selected} orgId={orgId} id={selected} onClose={() => setSelected(null)} />}
+    {selected && <ProviderReadback key={selected} orgId={orgId} id={selected} name={items.find(item => item.id === selected)?.name ?? "Connection details"} onClose={() => setSelected(null)} />}
     {manage && creating && settings?.enabled && <ConnectionForm orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={id => { if (!alive.current) return; setCreating(false); setSelected(id); void refresh(); }} />}
     {manage && changing && <ChangeIntent orgId={orgId} connection={changing} onClose={() => setChanging(null)} onChanged={() => { if (!alive.current) return; setChanging(null); void refresh(); }} />}
     {manage && rotating && <IPsecRotateKeys key={rotating.id} orgId={orgId} connection={rotating} onClose={() => setRotating(null)} onSaved={() => { if (!alive.current) return; setRotating(null); setNotice("Keys saved. Update your remote VPN, then enable this connection."); void refresh(); }} />}
     {manage && deleting && <DeleteConnection orgId={orgId} connection={deleting} onClose={() => setDeleting(null)} onDeleted={() => { if (!alive.current) return; setDeleting(null); setSelected(null); void refresh(); }} />}
   </div>;
 }
-function ProviderReadback({ orgId, id, onClose }: { orgId: string; id: string; onClose: () => void }) {
+function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: string; name: string; onClose: () => void }) {
+  const [tab, setTab] = useState("tunnels");
   const [result, setResult] = useState<Provider | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { let cancelled = false; void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: id } } })).then(value => { if (cancelled) return; if (value.ok) setResult(value.data); else setError("No provider configuration could be loaded for this record."); }); return () => { cancelled = true; }; }, [orgId, id]);
-  return <Card><div className="mb-3 flex justify-between"><h3 className="font-semibold text-ink-heading">Stored configuration</h3><Button size="sm" variant="ghost" onClick={onClose}>Close details</Button></div>
+  return <Card><div className="mb-3 flex justify-between"><h3 className="font-semibold text-ink-heading">{name}</h3><Button size="sm" variant="ghost" onClick={onClose}>Close details</Button></div>
     <ErrorText>{error}</ErrorText>{!result && !error && <p role="status">Loading configuration…</p>}
     {result && <><p className="mb-3 text-xs text-ink-secondary">AWS · IPv4 static · revision {result.configuration_revision}</p>
+      <div role="tablist" aria-label="Connection details" className="mb-5 flex gap-6 border-b border-line">{[["tunnels", "Tunnel details"], ["details", "Details"]].map(([value, label]) => <button key={value} id={`ipsec-${id}-${value}-tab`} role="tab" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "tunnels" : event.key === "End" ? "details" : tab === "tunnels" ? "details" : "tunnels"; setTab(next); document.getElementById(`ipsec-${id}-${next}-tab`)?.focus(); } }} aria-selected={tab === value} aria-controls={`ipsec-${id}-${value}-panel`} onClick={() => setTab(value)} className={`border-b-2 px-1 py-3 text-sm font-medium ${tab === value ? "border-current text-ink-heading" : "border-transparent text-ink-secondary"}`}>{label}</button>)}</div>
       {!result.configuration ? <p className="text-sm text-ink-secondary">Configuration removed. Identity retained.</p> : <div className="space-y-4">
-        <dl className="grid grid-cols-3 gap-4 text-sm"><div><dt className="text-ink-secondary">Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt className="text-ink-secondary">Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt className="text-ink-secondary">Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl>
-        <IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} />
+        <div role="tabpanel" id={`ipsec-${id}-details-panel`} aria-labelledby={`ipsec-${id}-details-tab`} hidden={tab !== "details"}><h4 className="mb-4 font-medium text-ink-heading">Stored configuration</h4><dl className="grid grid-cols-3 gap-4 text-sm"><div><dt className="text-ink-secondary">Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt className="text-ink-secondary">Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt className="text-ink-secondary">Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></div>
+        <div role="tabpanel" id={`ipsec-${id}-tunnels-panel`} aria-labelledby={`ipsec-${id}-tunnels-tab`} hidden={tab !== "tunnels"}><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} /></div>
       </div>}</>}
   </Card>;
 }

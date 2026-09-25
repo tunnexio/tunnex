@@ -36,11 +36,19 @@ type RuntimeRecoveryState struct {
 	Stage                  string
 }
 
+// RuntimeResetCleanup records cleanup evidence, never apply authority.
+type RuntimeResetCleanup struct {
+	BootID        string
+	Namespace     string
+	ReceiptDigest string
+}
+
 type RuntimeJournalEntry struct {
 	// Omitted fields preserve the original v1 canonical checksum byte for byte.
 	// Authorization is immutable; recovery state records duty, never authority.
 	ContractVersion int                   `json:",omitempty"`
 	Recovery        *RuntimeRecoveryState `json:",omitempty"`
+	ResetCleanup    *RuntimeResetCleanup  `json:",omitempty"`
 	// AbsenceOnly records CP-delivered lineage never observed locally; it permits
 	// only independent absence proof, never adoption or deletion of objects.
 	AbsenceOnly                                     bool
@@ -207,7 +215,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -220,6 +228,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	}
 	ids := map[uuid.UUID]bool{}
 	for _, r := range p.Entries {
+		if !validJournalResetCleanup(r) || (r.ResetCleanup != nil && p.Version < 3) {
+			return false
+		}
 		if !validJournalRecovery(r) || (p.Version == 1 && (r.ContractVersion == 2 || r.Recovery != nil)) {
 			return false
 		}
@@ -256,8 +267,17 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > old.Version+1 {
+	if next.Version < old.Version || next.Version > 3 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3)) {
 		return false
+	}
+	if next.Version == 3 && old.Version < 3 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.ResetCleanup != nil
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if old.Version == 1 && next.Version == 2 {
 		upgrade := false
@@ -280,7 +300,7 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 	}
 	for _, r := range next.Entries {
 		if !oldIDs[r.DeliveryID] {
-			if r.Phase != RuntimeReserved {
+			if r.Phase != RuntimeReserved || r.ResetCleanup != nil {
 				return false
 			}
 			if r.Recovery != nil && *r.Recovery != (RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}) {
@@ -296,7 +316,13 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		if !validRecoverySuccessor(before, after) {
 			return false
 		}
+		if !reflect.DeepEqual(before.ResetCleanup, after.ResetCleanup) {
+			if before.ResetCleanup != nil || after.ResetCleanup == nil || before.Phase != RuntimeCleanupPending || after.Phase != RuntimeCleanupPending {
+				return false
+			}
+		}
 		b, a := before, after
+		b.ResetCleanup, a.ResetCleanup = nil, nil
 		b.Recovery, a.Recovery = nil, nil
 		b.Phase, a.Phase = "", ""
 		b.Observed, a.Observed = [2]Ownership{}, [2]Ownership{}
@@ -332,8 +358,11 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
-		if entry.ContractVersion == 2 {
+		if entry.ContractVersion == 2 && next.Version < 2 {
 			next.Version = 2
+		}
+		if entry.ResetCleanup != nil {
+			next.Version = 3
 		}
 	}
 	return j.saveLocked(cloneJournal(next))
@@ -548,4 +577,13 @@ func validRecoverySuccessor(before, after RuntimeJournalEntry) bool {
 		return a.Sequence == b.Sequence && a.SelectedSlot == b.PendingTo && a.PendingFrom == 0 && a.PendingTo == 0
 	}
 	return false
+}
+
+func validJournalResetCleanup(r RuntimeJournalEntry) bool {
+	if r.ResetCleanup == nil {
+		return true
+	}
+	v := r.ResetCleanup
+	boot, err := uuid.Parse(v.BootID)
+	return err == nil && boot != uuid.Nil && boot.String() == v.BootID && validKernelNamespace(v.Namespace) && v.Namespace != r.Allocation.Namespace && validDigest(v.ReceiptDigest) && (r.Phase == RuntimeCleanupPending || r.Phase == RuntimeRetainedRefusal)
 }

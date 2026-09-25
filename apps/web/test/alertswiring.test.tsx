@@ -114,7 +114,11 @@ describe("cross-product alerts workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "New routing policy" }));
     const dialog = screen.getByRole("dialog", { name: "New routing policy" });
     expect(dialog).toBeTruthy();
-    expect(within(dialog).getByText("Gateways & Sites")).toBeTruthy();
+    expect(within(dialog).getByText("Gateways")).toBeTruthy();
+    expect(within(dialog).getByText("Site-to-site")).toBeTruthy();
+    expect(within(dialog).getByLabelText("IPsec tunnel down")).toBeTruthy();
+    expect(within(dialog).getByLabelText("IPsec connection down")).toBeTruthy();
+    expect(within(dialog).getByLabelText("IPsec status unavailable")).toBeTruthy();
     expect(within(dialog).getByText("Devices")).toBeTruthy();
     expect(within(dialog).getByText("Kubernetes")).toBeTruthy();
     expect(within(dialog).getByText("AI agents")).toBeTruthy();

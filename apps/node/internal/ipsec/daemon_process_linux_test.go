@@ -4,8 +4,11 @@ package ipsec
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -35,6 +38,34 @@ func TestDaemonProcessNative(t *testing.T) {
 	defer p.Close()
 	if !p.Alive() {
 		t.Fatal("child not alive")
+	}
+	// Exercise the actual supervisor-generated configuration, not a separate
+	// test template. IKEv2 DPD uses this retry schedule, not dpd_timeout.
+	config, err := os.ReadFile(filepath.Join(daemonRunDirectory, "strongswan.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := map[string]float64{}
+	for _, line := range strings.Split(string(config), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 3 && strings.HasPrefix(fields[0], "retransmit_") && fields[1] == "=" {
+			value, err := strconv.ParseFloat(fields[2], 64)
+			if err != nil {
+				t.Fatal("invalid retransmission setting", err)
+			}
+			settings[fields[0]] = value
+		}
+	}
+	first, base, tries := settings["retransmit_timeout"], settings["retransmit_base"], settings["retransmit_tries"]
+	if first < 1 || base < 1 || tries < 3 || tries > 5 || math.Trunc(tries) != tries {
+		t.Fatal("missing bounded retry configuration or insufficient transient-loss tolerance")
+	}
+	var retrySeconds float64
+	for attempt := 0; attempt <= int(tries); attempt++ {
+		retrySeconds += first * math.Pow(base, float64(attempt))
+	}
+	if retrySeconds > 20 {
+		t.Fatalf("IKEv2 silent-peer retry budget %.2fs exceeds 20s", retrySeconds)
 	}
 	inventory, err := p.Client.Inspect(ctx)
 	if err != nil || inventory.Version != "6.1.0" || len(inventory.SAs) != 0 {

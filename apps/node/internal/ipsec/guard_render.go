@@ -53,8 +53,11 @@ type GuardConnection struct {
 	// It must never be persisted or reused on a later installation attempt.
 	PermitFor                 time.Duration
 	PermittedInterfaceIndices []int
-	LocalIngressIndices       []int
-	Grants                    []GuardGrant
+	// ReplyIngressIndices is separately observed healthy ingress authority, never outbound selection.
+	// It admits replies and explicitly granted remote-origin connections.
+	ReplyIngressIndices []int
+	LocalIngressIndices []int
+	Grants              []GuardGrant
 }
 type GuardIntent struct {
 	Namespace   string
@@ -114,6 +117,10 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 	}
 	for _, c := range canonical.Connections {
 		setText.WriteString(guardLeaseSetText(c))
+		// nft flush-table retains sets. Keep an empty declaration during refusal
+		// so withdrawals flush previous reply authority and readback stays exact.
+		setText.WriteString(guardReplyLeaseSetText(c))
+		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { type iface_index; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardReplyLeaseName(c.ID), guardReplyLeaseName(c.ID))
 		setText.WriteString(guardSALeaseText(c))
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { typeof ipsec out reqid; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardSALeaseName(c.ID), guardSALeaseName(c.ID))
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { type iface_index; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardLeaseName(c.ID), guardLeaseName(c.ID))
@@ -129,10 +136,39 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 		}
 		for _, g := range c.Grants {
 			outbound := withinPrefixes(g.Source, c.Local)
+			if outbound && len(c.PermittedInterfaceIndices) > 0 {
+				for _, tunnel := range c.ReplyIngressIndices {
+					if g.HostOrigin {
+						input.add(guardAllow(g, tunnel, 0, true, guardReplyLeaseName(c.ID), "iif"))
+					} else {
+						for _, local := range c.LocalIngressIndices {
+							forward.add(guardAllow(g, tunnel, local, true, guardReplyLeaseName(c.ID), "iif"))
+						}
+					}
+				}
+			}
+			// A remote peer can initiate on either independently qualified SA.
+			// Ingress health is separate from our selected outbound route. Explicit
+			// grants and the same expiring authority still gate every packet.
+			if !outbound && len(c.ReplyIngressIndices) > 0 {
+				if len(c.PermittedInterfaceIndices) > 0 {
+					for _, local := range c.LocalIngressIndices {
+						for _, tunnel := range c.ReplyIngressIndices {
+							forward.add(guardAllow(g, tunnel, local, false, guardReplyLeaseName(c.ID), "iif"))
+						}
+						for _, tunnel := range c.PermittedInterfaceIndices {
+							forward.add(guardAllow(g, local, tunnel, true, guardLeaseName(c.ID), "oif"))
+						}
+					}
+				}
+				continue
+			}
 			for _, tunnel := range c.PermittedInterfaceIndices {
 				if g.HostOrigin {
 					output.add(guardAllow(g, 0, tunnel, false, guardLeaseName(c.ID), "oif"))
-					input.add(guardAllow(g, tunnel, 0, true, guardLeaseName(c.ID), "iif"))
+					if len(c.ReplyIngressIndices) == 0 {
+						input.add(guardAllow(g, tunnel, 0, true, guardLeaseName(c.ID), "iif"))
+					}
 					continue
 				}
 				for _, local := range c.LocalIngressIndices {
@@ -145,7 +181,9 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 						leaseKey, replyLeaseKey = "iif", "oif"
 					}
 					forward.add(guardAllow(g, ingress, egress, false, guardLeaseName(c.ID), leaseKey))
-					forward.add(guardAllow(g, egress, ingress, true, guardLeaseName(c.ID), replyLeaseKey))
+					if !outbound || len(c.ReplyIngressIndices) == 0 {
+						forward.add(guardAllow(g, egress, ingress, true, guardLeaseName(c.ID), replyLeaseKey))
+					}
 				}
 			}
 		}
@@ -275,7 +313,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		allLocal = append(allLocal, c.Local...)
 		allRemote = append(allRemote, c.Remote...)
 		own := map[int]bool{}
-		if c.PrefixOnly && (c.Tunnels != [2]Ownership{} || c.PermitFor != 0 || len(c.PermittedInterfaceIndices) != 0 || len(c.EncryptedEgress) != 0 || len(c.LocalIngressIndices) != 0 || len(c.Grants) != 0) {
+		if c.PrefixOnly && (c.Tunnels != [2]Ownership{} || c.PermitFor != 0 || len(c.PermittedInterfaceIndices) != 0 || len(c.ReplyIngressIndices) != 0 || len(c.EncryptedEgress) != 0 || len(c.LocalIngressIndices) != 0 || len(c.Grants) != 0) {
 			return GuardIntent{}, false
 		}
 		for _, t := range c.Tunnels {
@@ -302,6 +340,15 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 				return GuardIntent{}, false
 			}
 		}
+		c.ReplyIngressIndices, ok = guardIndices(c.ReplyIngressIndices, 2)
+		if !ok {
+			return GuardIntent{}, false
+		}
+		for _, index := range c.ReplyIngressIndices {
+			if !own[index] {
+				return GuardIntent{}, false
+			}
+		}
 		if len(c.EncryptedEgress) > 2 {
 			return GuardIntent{}, false
 		}
@@ -324,6 +371,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		c.PermitFor = (c.PermitFor / time.Second) * time.Second
 		if c.PermitFor == 0 {
 			c.PermittedInterfaceIndices = nil
+			c.ReplyIngressIndices = nil
 			c.EncryptedEgress = nil
 		}
 		c.LocalIngressIndices, ok = guardIndices(c.LocalIngressIndices, 16)
@@ -514,6 +562,25 @@ func guardDocuments(intent GuardIntent, digest string, chains []guardChain) (str
 		if len(elements) > 0 {
 			transaction = append(transaction, map[string]any{"add": map[string]any{"element": map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardLeaseName(connection.ID), "elem": elements}}})
 		}
+		{
+			descriptor := map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardReplyLeaseName(connection.ID), "type": "iface_index", "flags": []string{"timeout"}, "timeout": 60}
+			readback := map[string]any{}
+			for key, value := range descriptor {
+				readback[key] = value
+			}
+			var elements []any
+			for _, index := range connection.ReplyIngressIndices {
+				elements = append(elements, map[string]any{"elem": map[string]any{"val": index, "timeout": int64(connection.PermitFor / time.Second)}})
+			}
+			if len(elements) > 0 {
+				readback["elem"] = elements
+			}
+			expected = append(expected, map[string]any{"set": readback})
+			transaction = append(transaction, map[string]any{"add": map[string]any{"set": descriptor}}, map[string]any{"flush": map[string]any{"set": map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardReplyLeaseName(connection.ID)}}})
+			if len(elements) > 0 {
+				transaction = append(transaction, map[string]any{"add": map[string]any{"element": map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardReplyLeaseName(connection.ID), "elem": elements}}})
+			}
+		}
 	}
 	add("chain", map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": "owner", "comment": fmt.Sprintf("tunnex-ipsec:%s:%d:%s", intent.OwnerID, intent.Revision, digest)})
 	hooks := []string{"forward", "output", "input", "postrouting", "postrouting"}
@@ -591,4 +658,10 @@ func guardEncryptedAllow(prefix netip.Prefix, e GuardEncryptedEgress, set string
 	reqid := map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": 0}}
 	peer := map[string]any{"ipsec": map[string]any{"dir": "out", "key": "daddr", "family": "ip", "spnum": 0}}
 	return guardRule{text: fmt.Sprintf("    ip daddr %s meta oif %d ipsec out reqid %d ipsec out ip daddr %s ipsec out reqid @%s counter accept\n", prefix, e.UnderlayInterfaceIndex, e.ReqID, e.Peer, set), expr: []any{guardMatch("==", guardPayload("ip", "daddr"), guardPrefixJSON(prefix)), guardMatch("==", guardMeta("oif"), e.UnderlayInterfaceIndex), guardMatch("==", reqid, e.ReqID), guardMatch("==", peer, e.Peer.String()), guardMatch("==", reqid, "@"+set), guardCounter(), guardVerdict("accept")}}
+}
+
+func guardReplyLeaseName(id uuid.UUID) string { return "reply_" + guardLeaseName(id) }
+func guardReplyLeaseSetText(c GuardConnection) string {
+	c.PermittedInterfaceIndices = c.ReplyIngressIndices
+	return strings.ReplaceAll(guardLeaseSetText(c), guardLeaseName(c.ID), guardReplyLeaseName(c.ID))
 }

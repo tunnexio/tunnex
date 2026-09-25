@@ -86,6 +86,7 @@ func TestRuntimeCombinedGuardPreservesDeadlineAndDropsExpiredConnection(t *testi
 		intents = append(intents, in)
 		return GuardManifest{}, nil
 	}, qualification: testRuntimeQualification(entry.Allocation.Namespace), active: map[uuid.UUID]runtimeActive{entry.Allocation.ConnectionID: {Entry: entry, Environment: RuntimeEnvironment{Namespace: entry.Allocation.Namespace, Underlays: [2]RuntimeUnderlay{{InterfaceIndex: 2}, {InterfaceIndex: 2}}}, Authority: authority, Identity: identity}}}
+	c.recoveryObserve = func(context.Context, RuntimeJournalEntry) [2]string { return [2]string{"up", "up"} }
 	elapsed = 10 * time.Second
 	if err = c.installActive(context.Background(), []RuntimeJournalEntry{entry}); err != nil {
 		t.Fatal(err)

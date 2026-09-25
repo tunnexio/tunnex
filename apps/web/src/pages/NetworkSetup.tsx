@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -16,7 +16,9 @@ import {
 } from "../components/ui";
 import "../network-setup.css";
 
-export default function NetworkSetup() {
+type SetupOptions = { embedded?: boolean; onComplete?: () => void; onCancel?: () => void; onBusyChange?: (busy: boolean) => void };
+
+export default function NetworkSetup(options: SetupOptions = {}) {
   const inventory = useGatewayInventory();
   const { state: auth } = useAuth();
   if (!inventory.org || inventory.state.kind === "loading") return <Loading />;
@@ -41,14 +43,14 @@ export default function NetworkSetup() {
         <Link to="/sites">View your network →</Link>
       </Card>
     );
-  return <NetworkSetupWorkspace key={inventory.org.id} inventory={inventory} />;
+  return <NetworkSetupWorkspace key={inventory.org.id} inventory={inventory} {...options} />;
 }
 
 function NetworkSetupWorkspace({
-  inventory,
+  inventory, embedded, onComplete, onCancel, onBusyChange,
 }: {
   inventory: ReturnType<typeof useGatewayInventory>;
-}) {
+} & SetupOptions) {
   const { org, state, reload, canEnroll } = inventory;
   const [step, setStep] = useState(0);
   const [nodeId, setNodeId] = useState("");
@@ -59,10 +61,11 @@ function NetworkSetupWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [uncertain, setUncertain] = useState(false);
+  useEffect(() => { onBusyChange?.(busy || uncertain); }, [busy, uncertain, onBusyChange]);
   const nodes = state.nodes.filter(
     (node) =>
       node.status === "active" &&
-      node.enrolled_kind === "gateway",
+      node.enrolled_kind === "gateway" && (!embedded || !node.site_id),
   );
   const selected = nodes.find((node) => node.id === nodeId);
   const existingSite = selected?.site_id;
@@ -98,7 +101,7 @@ function NetworkSetupWorkspace({
   }
   return (
     <div className="network-setup">
-      <PageHeader
+      {!embedded && <PageHeader
         title={done ? "Network created" : "Set up a network"}
         subtitle={org.name}
         actions={
@@ -106,7 +109,8 @@ function NetworkSetupWorkspace({
             Back to Sites →
           </Link>
         }
-      />
+      />}
+      {embedded && !done && <div><Button variant="ghost" disabled={busy || uncertain} onClick={onCancel}>Back to locations</Button></div>}
       {done ? (
         <Card>
           <div className="network-complete">
@@ -123,10 +127,10 @@ function NetworkSetupWorkspace({
             it and verify the connection from a device.
           </p>
           <div className="network-actions">
-            <Link to="/access" className="network-primary-link">
+            {embedded ? <Button onClick={onComplete}>Continue connection setup</Button> : <><Link to="/access" className="network-primary-link">
               Configure access →
             </Link>
-            <Link to="/sites">View network →</Link>
+            <Link to="/sites">View network →</Link></>}
           </div>
         </Card>
       ) : (
@@ -150,8 +154,7 @@ function NetworkSetupWorkspace({
                 <>
                   <h2>Where will this network connect?</h2>
                   <p className="network-hint">
-                    Choose an active gateway. Gateways already connected to a site
-                    will add the private range to that site.
+                    {embedded ? "Choose an unassigned gateway for this location." : "Choose an active gateway. Gateways already connected to a site will add the private range to that site."}
                   </p>
                   <div
                     className="network-gateways"
@@ -178,8 +181,7 @@ function NetworkSetupWorkspace({
                   </div>
                   {!nodes.length && (
                     <p className="network-hint">
-                      No active gateways found. Enroll one here, then refresh when
-                      it has joined.
+                      {embedded ? "No unassigned gateways. Enroll one for this location, then refresh." : "No active gateways found. Enroll one here, then refresh when it has joined."}
                     </p>
                   )}
                   <div className="network-actions">
@@ -303,10 +305,7 @@ function NetworkSetupWorkspace({
                 {selected?.name || "Choose a gateway"}
                 <small>Tunnex gateway</small>
               </div>
-              <p>
-                One gateway. One site.
-                <br />A private route between them.
-              </p>
+
             </aside>
           </div>
         </>

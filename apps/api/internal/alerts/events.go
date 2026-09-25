@@ -23,6 +23,9 @@ const (
 	EventGatewayOffline               EventKey = "gateway.offline"
 	EventGatewayPolicyDegraded        EventKey = "gateway.policy_degraded"
 	EventSiteLinkDown                 EventKey = "site.link_down"
+	EventIPsecTunnelDown              EventKey = "ipsec.tunnel_down"
+	EventIPsecConnectionDown          EventKey = "ipsec.connection_down"
+	EventIPsecStatusUnavailable       EventKey = "ipsec.status_unavailable"
 	EventDeviceOffline                EventKey = "device.offline"
 	EventDevicePostureBlocked         EventKey = "device.posture_blocked"
 	EventKubernetesConnectorDegraded  EventKey = "kubernetes.connector_degraded"
@@ -42,6 +45,7 @@ func Keys() []EventKey {
 		EventGatewayOffline,
 		EventGatewayPolicyDegraded,
 		EventSiteLinkDown,
+		EventIPsecTunnelDown, EventIPsecConnectionDown, EventIPsecStatusUnavailable,
 		EventDeviceOffline,
 		EventDevicePostureBlocked,
 		EventKubernetesConnectorDegraded,
@@ -129,7 +133,7 @@ func (e Event) Validate() error {
 
 func knownResourceType(resourceType string) bool {
 	switch resourceType {
-	case "agent", "gateway", "site", "device", "kubernetes_cluster", "kubernetes_service":
+	case "ipsec_connection", "agent", "gateway", "site", "device", "kubernetes_cluster", "kubernetes_service":
 		return true
 	default:
 		return false

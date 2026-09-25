@@ -275,7 +275,7 @@ describe("Sites — URL-backed workspace state", () => {
   it("canonicalizes a stale direct operational-section URL with replace semantics", async () => {
     withAuth(<Sites />, ["/sites?section=ha&site=s1&gateway=g1&q=aws&dns=1"]);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Hub availability" }).getAttribute("aria-current")).toBe("page"),
+      expect(screen.getByRole("button", { name: "WireGuard redundancy" }).getAttribute("aria-current")).toBe("page"),
     );
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=ha"));
   });
@@ -301,8 +301,8 @@ describe("Sites — URL-backed workspace state", () => {
   it("clears Overview-only context when changing to an operational section", async () => {
     withAuth(<Sites />, ["/sites?site=s1&gateway=g1&q=aws&dns=1"]);
     fireEvent.click(await screen.findByRole("button", { name: "Close aws-site" }));
-    await screen.findByRole("button", { name: "Pending approvals" });
-    fireEvent.click(screen.getByRole("button", { name: "Pending approvals" }));
+    await screen.findByRole("button", { name: "Range approvals" });
+    fireEvent.click(screen.getByRole("button", { name: "Range approvals" }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=approvals"));
   });
 
@@ -365,5 +365,17 @@ describe("Sites — failure path", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy(),
     );
+  });
+});
+
+
+describe("Networks — gateway assignment is not tunnel health", () => {
+  it("shows assignment without claiming a live connection when health is missing", async () => {
+    haTopology = true;
+    withAuth(<Sites />, ["/sites"]);
+    expect(await screen.findByRole("columnheader", { name: "Gateway status" })).toBeTruthy();
+    expect(screen.getAllByRole("cell", { name: "Assigned" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("cell", { name: "linked" })).toBeNull();
+    expect(screen.getByRole("link", { name: /Set up a network/ }).getAttribute("href")).toBe("/network/setup");
   });
 });

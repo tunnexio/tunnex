@@ -526,6 +526,7 @@ func main() {
 	ipsecStore.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
+		IPsecStatus:      ipsecStore,
 		IPsecRuntime:     ipsecStore,
 		IPsecEligibility: ipsecStore,
 		IPsecConnections: ipsecStore,
@@ -956,6 +957,28 @@ func main() {
 					if err := scanner.RunOnce(ctx); err != nil {
 						logger.Error("product_alert_condition_tick_failed", slog.String("error", err.Error()))
 					}
+				}
+				cancel()
+			}
+		}
+	}()
+	// Short failovers can end between the shared one-minute condition scans.
+	// Keep IPsec observation separate; the existing outbox controls delivery cooldown.
+	ipsecAlertConditions := alerts.NewScopedProductConditionScanner(alerts.NewIPsecProductHealthSource(pool, ipsecStore), alertPublisher, alerts.IPsecKeys())
+	go func() {
+		t := time.NewTicker(10 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-t.C:
+				if !mayTick() {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(electorCtx, 10*time.Second)
+				if err := ipsecAlertConditions.RunOnce(ctx); err != nil {
+					logger.Error("ipsec_alert_condition_tick_failed", slog.String("error", err.Error()))
 				}
 				cancel()
 			}

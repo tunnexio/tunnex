@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "profile": "aws-static-ipv4-v1",
+  "source_sha": "REPLACE_WITH_TESTED_COMMIT_SHA",
+  "environment": "live-aws",
+  "checks": {
+    "behind_host_tcp_udp": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "policy_allow_deny": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "bad_key_refusal": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "return_route_failure": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "mtu_payload": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "tunnel_1_failure": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "tunnel_2_failure": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "return_path_independence": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "both_tunnels_failure": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "restart_recovery": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "host_reboot": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "protocol_rekey": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "maintenance_rotation": {
+      "status": "pending",
+      "artifacts": []
+    },
+    "cleanup": {
+      "status": "pending",
+      "artifacts": []
+    }
+  }
+}
