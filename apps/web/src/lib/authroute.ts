@@ -23,3 +23,11 @@ export function resolveMfaGateRoute(
   if (!gated && pathname === ENROLL_MFA_PATH) return APP_HOME_PATH;
   return null;
 }
+
+// Both login completion and the authenticated-route guard must preserve the
+// same local destination; router transitions can render the guard first.
+export function loginDestination(next: string | null): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || /[\\\u0000-\u0020\u007f]/.test(next)) return APP_HOME_PATH;
+  if (/^\/login\/?(?:[?#]|$)/.test(next)) return APP_HOME_PATH;
+  return next;
+}

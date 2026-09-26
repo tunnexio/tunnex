@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -31,13 +31,13 @@ function filesReadingTheOrgList(): string[] {
   let scanned = 0;
 
   const walk = (dir: string) => {
-    for (const entry of readdirSync(dir)) {
-      const p = join(dir, entry);
-      if (statSync(p).isDirectory()) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name);
+      if (entry.isDirectory()) {
         walk(p);
         continue;
       }
-      if (!/\.tsx?$/.test(p)) continue;
+      if (!entry.isFile() || !/\.tsx?$/.test(p)) continue;
       scanned++;
       // ⛔ STRIPPED, NOT RAW — and the repo's census-of-censuses caught this file reading raw source
       // before a human did. THIS VERY FILE explains the endpoint it hunts for, in prose, several times.

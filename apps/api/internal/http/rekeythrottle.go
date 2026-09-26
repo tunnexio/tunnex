@@ -1,6 +1,7 @@
 package http
 
 import (
+	applog "github.com/tunnexio/tunnex/apps/api/internal/log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -107,8 +108,8 @@ func (t *rekeyThrottle) throttled(next http.HandlerFunc) http.HandlerFunc {
 			// recovery starvation was undiagnosable from the control plane's own logs — an operator could not even
 			// confirm it was happening. A bound nobody can see is not a bound.
 			slog.Warn("rekey_throttled",
-				"peer", clientIP(r.RemoteAddr),
-				"path", r.URL.Path,
+				"peer", applog.SafeText(clientIP(r.RemoteAddr)),
+				"path", applog.SafeText(r.URL.Path),
 				"limit_per_minute", t.perMin,
 				"note", "the re-key throttle keys on the RAW peer address, which behind a proxy or ingress is the "+
 					"proxy — so this budget is shared by every caller behind it. Sustained entries here mean "+

@@ -102,8 +102,9 @@ func newCustomProviderWithClient(ctx context.Context, issuer, clientID, secret, 
 		return nil, err
 	}
 	// Validate the browser-facing authorization endpoint as well. Query parameters
-	// added by AuthCodeURL are not part of the endpoint validation.
-	if u, e := url.Parse(p.AuthCodeURL("", "", "")); e != nil {
+	// belong to the login flow; inspect discovery directly without creating a
+	// synthetic authorization URL with empty CSRF state.
+	if u, e := url.Parse(p.(*oidcProvider).oauth2.Endpoint.AuthURL); e != nil {
 		return nil, e
 	} else if client != nil && issuerHasHTTPS(issuer) {
 		u.RawQuery = ""

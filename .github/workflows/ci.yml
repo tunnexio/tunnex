@@ -10,6 +10,9 @@ on:
     tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -30,7 +33,7 @@ jobs:
       web: ${{ steps.scope.outputs.web }}
       codegen: ${{ steps.scope.outputs.codegen }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Classify the diff (fails closed — anything uncertain runs everything)
@@ -99,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Installer version provenance contract
@@ -125,7 +128,7 @@ jobs:
         run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
 
       - name: Set up Helm for deployment contracts
-        uses: azure/setup-helm@v5.0.1
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.18.4
 
@@ -139,9 +142,9 @@ jobs:
         run: sh deploy/byodb-install-contract_test.sh
 
       - name: Set up Go for reproducible chart artifacts
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.13'
+          go-version: '1.26.8'
           cache-dependency-path: apps/cli/go.sum
       - name: Reuse compiler cache across chart invocations
         run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
@@ -164,7 +167,7 @@ jobs:
       COMPOSE_PROJECT_NAME: ci-codegen-${{ github.run_id }}-${{ github.run_attempt }}
       GATE_CACHE_PREFIX: ci-codegen-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
@@ -185,7 +188,7 @@ jobs:
       COMPOSE_PROJECT_NAME: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
       GATE_CACHE_PREFIX: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
@@ -208,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
@@ -221,10 +224,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: Enable pinned package manager
@@ -232,7 +235,7 @@ jobs:
       - name: Locate pnpm store
         id: pnpm
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ steps.pnpm.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('pnpm-lock.yaml') }}
@@ -247,7 +250,7 @@ jobs:
       - name: E2E specs — typecheck (compiles, not runs)
         run: |
           cd e2e
-          npm install --no-audit --no-fund --silent
+          npm ci --no-audit --no-fund --silent
           npx tsc --noEmit -p tsconfig.json
 
   # Preserve the existing required check and downstream outputs. Never convert a
@@ -262,7 +265,7 @@ jobs:
       go: ${{ needs.scope.outputs.go }}
       web: ${{ needs.scope.outputs.web }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Require every applicable lane
@@ -278,8 +281,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: apps/cli/go.mod
           cache-dependency-path: apps/cli/go.sum
@@ -307,7 +310,7 @@ jobs:
           ../../cli-artifacts/tnx-linux-amd64 help 2>&1 | grep -F 'tunnex login'
       - name: Upload Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tunnex-linux-cli
           path: |
@@ -316,7 +319,7 @@ jobs:
           if-no-files-found: error
       - name: Upload Linux managed-agent runtime artifacts
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tunnex-linux-agent-runtime
           path: |
@@ -344,7 +347,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Bring up the stack + seed
         run: |
           cp .env.example .env
@@ -363,7 +366,7 @@ jobs:
           docker compose logs --no-color > e2e/test-results/compose.log 2>&1 || true
       - name: Upload E2E failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-failure-${{ github.run_attempt }}
           path: e2e/test-results/
@@ -399,7 +402,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; advisory findings remain advisory, broken setup still fails
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Bring up the stack + seed, with the gallery route COMPILED IN
         # VITE_VISUAL_GALLERY must reach the web image's BUILD, not the running container: Vite bakes
         # `import.meta.env` into the bundle, so a runtime env var arrives after the route has already been
@@ -435,7 +438,7 @@ jobs:
             sh -c "npm ci --no-audit --no-fund && npx playwright test -c playwright.visual.config.ts --grep @pixel"
       - name: Upload the diff images for adjudication
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: visual-diff
           path: e2e/test-results/
@@ -459,7 +462,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Bring up the ENTERPRISE stack + seed (base + enterprise fixtures)
         run: |
           cp .env.example .env
@@ -479,7 +482,7 @@ jobs:
           docker compose logs --no-color > e2e/test-results/compose-enterprise.log 2>&1 || true
       - name: Upload enterprise E2E failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-enterprise-failure-${{ github.run_attempt }}
           path: e2e/test-results/
@@ -740,18 +743,18 @@ jobs:
             echo "::error::release source ledger changed before image publication"
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: docker/setup-qemu-action@v3 # arm64 emulation for the multi-arch build
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3 # arm64 emulation for the multi-arch build
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ghcr.io/${{ github.repository }}-${{ matrix.image.name }}
           # A version tag must not roll the main-tracking `latest` tag backward.
@@ -763,7 +766,7 @@ jobs:
             type=ref,event=tag
       - name: Build + push ${{ matrix.image.name }} for both architectures
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.dockerfile }}
@@ -778,7 +781,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
       - name: Attest ${{ matrix.image.name }} image provenance
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-${{ matrix.image.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -832,8 +835,7 @@ jobs:
 
             # GHCR hands anonymous callers a pull token ONLY for public packages. No token is the
             # cleanest possible signal that a package is private — it fails before any manifest request.
-            TOKEN="$(curl -fsSL "https://ghcr.io/token?scope=repository:${REPO}:pull&service=ghcr.io" \
-                     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token",""))' || true)"
+            TOKEN="$(python3 -c 'import json,sys,urllib.request; url="https://ghcr.io/token?scope=repository:"+sys.argv[1]+":pull&service=ghcr.io"; print(json.load(urllib.request.urlopen(url, timeout=15)).get("token", ""))' "$REPO" || true)"
             if [ -z "$TOKEN" ]; then
               echo "::error::ghcr.io/${REPO} is NOT publicly pullable — GHCR granted no anonymous token. Set the package to Public: https://github.com/orgs/${GITHUB_REPOSITORY_OWNER}/packages"
               FAILED=1
@@ -884,7 +886,7 @@ jobs:
       contents: read
     steps:
       - name: Dispatch exact-source installer sync
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.TUNNEX_WEB_SYNC_TOKEN }}
           script: |
@@ -924,20 +926,20 @@ jobs:
       attestations: write
       artifact-metadata: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.13'
+          go-version: '1.26.8'
           cache: false
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Helm for release charts
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: azure/setup-helm@v5.0.1
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.18.4
       - name: Refuse published tag reuse before chart publication
@@ -963,13 +965,13 @@ jobs:
           fi
       - name: Download Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tunnex-linux-cli
           path: cli-artifacts
       - name: Download Linux managed-agent runtime artifacts
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tunnex-linux-agent-runtime
           path: runtime-artifacts
@@ -1143,7 +1145,7 @@ jobs:
             deploy/install.ps1 deploy/install.ps1.sha256 \
             release.json release.json.sha256 --clobber
       - name: Attest installer and release descriptor
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
             deploy/install.sh
@@ -1179,7 +1181,7 @@ jobs:
             chart-artifacts/Tunnex-Helm-SHA256SUMS --clobber
       - name: Attest versioned Helm charts
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
             chart-artifacts/tunnex-host-posture-*.tgz

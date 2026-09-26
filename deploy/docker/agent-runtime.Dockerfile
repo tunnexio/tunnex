@@ -1,5 +1,5 @@
 # The managed runtime is a separate release artifact from tunnex-node.
-FROM golang:1.25.13-alpine AS build
+FROM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS build
 ARG TUNNEX_VERSION=dev
 WORKDIR /src
 COPY apps/cli/go.mod apps/cli/go.sum ./apps/cli/
@@ -7,7 +7,7 @@ COPY apps/cli ./apps/cli
 WORKDIR /src/apps/cli
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${TUNNEX_VERSION}" -o /out/tunnex-agent-runtime ./cmd/tunnex-agent-runtime
 
-FROM alpine:3.22
+FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
 RUN apk add --no-cache wireguard-tools openresolv \
     && mkdir -p /etc/tunnex-agent /var/lib/tunnex-agent \
     && chmod 700 /etc/tunnex-agent /var/lib/tunnex-agent
