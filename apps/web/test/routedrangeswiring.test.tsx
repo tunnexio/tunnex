@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   render as renderUI,
+  fireEvent,
   screen,
   waitFor,
   cleanup,
@@ -55,8 +56,8 @@ const inTable = () =>
   within(screen.getByRole("table", { name: /approved routed ranges/i }));
 
 const expectAddressSpaceExpanded = async () => {
-  const button = await screen.findByRole("button", { name: "Hide map" });
-  expect(button.getAttribute("aria-expanded")).toBe("true");
+  expect((await screen.findByText("Plan address space")).closest("details")?.open).toBe(true);
+  expect(await screen.findByRole("region", { name: "Address space" })).toBeTruthy();
 };
 
 const ORG = [{ id: "o1", name: "Acme" }];
@@ -365,11 +366,11 @@ describe("RoutedRanges — the address-space map", () => {
     );
     await expectAddressSpaceExpanded();
     expect(
-      await screen.findByText(/pending, withheld until approved on Sites/i),
+      await screen.findByText("Pending", { selector: ".address-map-legend span" }),
     ).toBeTruthy();
     // 1 routed · 1 pending, counted from the two different sources.
     expect(await screen.findByText(/1 routed · 1 pending/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /approve/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^approve(?:\s|$)/i })).toBeNull();
   });
 
   it("⛔ a 192.168 range is DRAWN — the handoff's fixed 10/8 grid would have hidden it", async () => {
@@ -397,10 +398,11 @@ describe("RoutedRanges — the address-space map", () => {
       </OrgProvider>,
     );
     await expectAddressSpaceExpanded();
-    const note = await screen.findByText(/outside the private blocks/i);
-    expect(note.textContent).toContain("203.0.113.0/24");
+    fireEvent.click(await screen.findByText("1 ranges outside private blocks"));
+    const note = screen.getByText("203.0.113.0/24", {selector:"code"});
+    expect(note).toBeTruthy();
     // And it must not read as "not routed" — it is routed identically; only the drawing cannot place it.
-    expect(note.textContent).toMatch(/routed exactly the same/i);
+    expect(screen.getByText(/Their routing state is shown in Network destinations/)).toBeTruthy();
   });
 
   it("renders NO map panel at all when nothing is routed, rather than an empty grid", async () => {

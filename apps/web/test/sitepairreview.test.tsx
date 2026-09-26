@@ -113,6 +113,7 @@ function renderHubs(hubSet: Loaded<HubSet>, nodes: Loaded<Node[]> = { ok: true, 
   render(<MemoryRouter><SitePairConfigurationView first={a} second={b} onRetry={() => {}} data={{
     nodes, hubSet, firstRanges: { ok: true, data: [] }, secondRanges: { ok: true, data: [] },
   }} /></MemoryRouter>);
+  if (hubSet.ok) fireEvent.click(screen.getByText("Transit hubs & routing"));
   return within(screen.getByRole("heading", { name: "Reported transit hubs" }).closest("section")!);
 }
 
