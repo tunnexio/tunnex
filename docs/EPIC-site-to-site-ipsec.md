@@ -71,9 +71,38 @@ Planning direction is approved; implementation choices below are not silently tr
 | S2S-2 | IPsec vertical slice: schema/OpenAPI, node capability, packaging, provider input, policy integration | D4–D7, D9–D11 | Both API editions, generated types, node tests; valid/invalid config; mixed-version refusal; actual Linux IPsec wire proof |
 | S2S-3 | Lifecycle, status, diagnostics, restart, key rotation and two-tunnel recovery | S2S-2 | Failure/retry/cancel/delete/redaction tests; measured rekey/reboot/tunnel-loss behavior; old secrets invalid after rotation |
 | S2S-4 | AWS customer walk, docs and qualified support label | S2S-1–3 | Independent behind-host hosts at both ends; allow/deny; bad key; return-route failure; MTU traffic; both tunnel failures individually; cleanup preview |
-| S2S-5 | Azure profile; BGP subsystem and Google HA VPN profile as separately qualified increments | S2S-4, D8 | Route filtering/max-prefix/withdrawal and peer isolation tests; separate live Azure and GCP evidence; no inherited AWS-only support claim |
+| S2S-5 | Deferred until after initial release: AWS VGW BGP, Azure profile, shared BGP subsystem and Google HA VPN as separately qualified increments | S2S-4, D8 | Route filtering/max-prefix/withdrawal and peer isolation tests; separate live Azure and GCP evidence; no inherited AWS-only support claim |
 
 No story skips the repository review protocol. Applicable local gates and exact-head CI are required for implementation. A unit test substitutes for, but never satisfies, live-wire acceptance. Review findings are ranked and held for disposition. Cloud test creation and teardown get exact resource plans at execution time.
+
+### Initial beta scope disposition (2026-09-26)
+
+The founder approved moving forward with the first five slices (S2S-0 through
+S2S-4) under the assisted-beta AWS VGW/static-IPv4 scope. The bounded live test
+results and limitations are recorded in the AWS customer walk checkpoint.
+Advanced exact-PMTU/oversized zero-loss investigation is deferred, not passed;
+controlled supervisor recovery does not qualify every host/VM crash scenario.
+Latest-change publication, exact-head CI and final evidence reconciliation remain
+release gates; this disposition does not mark unexecuted receipt checks passed.
+
+Founder-approved tracking status:
+
+| Customer slice | Story ID | Status |
+| --- | --- | --- |
+| 1 | S2S-0 | Complete — agreed assisted-beta scope |
+| 2 | S2S-1 | Complete — agreed assisted-beta scope |
+| 3 | S2S-2 | Complete — agreed assisted-beta scope |
+| 4 | S2S-3 | Complete — agreed assisted-beta scope |
+| 5 | S2S-4 | Complete — agreed assisted-beta scope; documented qualification limits remain |
+| 6 | S2S-5 | Deferred — after initial release, including AWS VGW BGP |
+
+These are scope-completion labels, not a blanket production qualification or a
+substitute for pending release gates.
+
+The sixth slice is S2S-5 (zero-based IDs). AWS VGW dynamic BGP is explicitly added
+to that later-release scope alongside Azure and Google Cloud qualification.
+Transit Gateway and generic appliance interoperability are not implied by AWS
+VGW BGP support. None of those deferred features blocks the agreed initial beta.
 
 ### S2S-4 local preparation (2026-09-25)
 

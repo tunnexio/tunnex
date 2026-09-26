@@ -49,6 +49,7 @@ type RuntimeJournalEntry struct {
 	ContractVersion int                   `json:",omitempty"`
 	Recovery        *RuntimeRecoveryState `json:",omitempty"`
 	ResetCleanup    *RuntimeResetCleanup  `json:",omitempty"`
+	Restoration     *RuntimeRestoration   `json:",omitempty"`
 	// AbsenceOnly records CP-delivered lineage never observed locally; it permits
 	// only independent absence proof, never adoption or deletion of objects.
 	AbsenceOnly                                     bool
@@ -215,7 +216,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -228,6 +229,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	}
 	ids := map[uuid.UUID]bool{}
 	for _, r := range p.Entries {
+		if !validRestoration(r) || (r.Restoration != nil && p.Version < 4) {
+			return false
+		}
 		if !validJournalResetCleanup(r) || (r.ResetCleanup != nil && p.Version < 3) {
 			return false
 		}
@@ -267,8 +271,17 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 3 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3)) {
+	if next.Version < old.Version || next.Version > 4 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4) {
 		return false
+	}
+	if next.Version == 4 && old.Version < 4 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.Restoration != nil
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 3 && old.Version < 3 {
 		upgrade := false
@@ -300,7 +313,7 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 	}
 	for _, r := range next.Entries {
 		if !oldIDs[r.DeliveryID] {
-			if r.Phase != RuntimeReserved || r.ResetCleanup != nil {
+			if r.Phase != RuntimeReserved || r.ResetCleanup != nil || r.Restoration != nil {
 				return false
 			}
 			if r.Recovery != nil && *r.Recovery != (RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}) {
@@ -313,6 +326,9 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		if !ok {
 			return false
 		}
+		if !validRestorationSuccessor(before, after) {
+			return false
+		}
 		if !validRecoverySuccessor(before, after) {
 			return false
 		}
@@ -322,6 +338,11 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 			}
 		}
 		b, a := before, after
+		if restorationAdvanced(before, after) {
+			a.Allocation = b.Allocation
+			a.Engines = b.Engines
+		}
+		b.Restoration, a.Restoration = nil, nil
 		b.ResetCleanup, a.ResetCleanup = nil, nil
 		b.Recovery, a.Recovery = nil, nil
 		b.Phase, a.Phase = "", ""
@@ -361,8 +382,11 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 		if entry.ContractVersion == 2 && next.Version < 2 {
 			next.Version = 2
 		}
-		if entry.ResetCleanup != nil {
+		if entry.ResetCleanup != nil && next.Version < 3 {
 			next.Version = 3
+		}
+		if entry.Restoration != nil {
+			next.Version = 4
 		}
 	}
 	return j.saveLocked(cloneJournal(next))

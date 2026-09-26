@@ -1,6 +1,6 @@
 # S2S-4 runtime restoration decision
 
-Status: user approved verified-reset cleanup and fresh CP authorization on 25 September 2026. Cleanup-only legacy recovery is being implemented and qualified; automatic restoration below remains a separate, unimplemented extension.
+Status: cleanup-only recovery was approved on 25 September 2026; the restoration extension was approved and implemented locally on 26 September. Unit/native controller checks and supervised live container restoration passed. End-to-end controlled lifecycle automation passed on the lab Docker host: epoch advanced without mid-run manual intervention and both fresh tunnels were established in 37.079 seconds. Arbitrary crash, VM reset and dedicated host reboot are not covered by that result.
 
 ## Problem and observed boundaries
 
@@ -79,3 +79,23 @@ The receipt binds the node owner, exact CP cleanup identity/revision, digest of 
 Receipt file stays beside the journal as an audit artifact. Future cleanup retries must match the saved receipt digest. Missing, malformed, broad, foreign, unsafe-permission or symlink receipts refuse. Old readers reject journal v3 rather than silently ignoring the new duty; downgrade is therefore not supported after a reset receipt is reserved. Preserve the complete journal and use the new reader for rollback/recovery. Never restore a pre-cleanup journal snapshot to fabricate current ownership.
 
 This first stage does not automatically reconstruct an enabled delivery or implement the local restoration epoch described above. Native namespace cleanup tests and actual lab recovery must be reported separately from dedicated host-reboot qualification.
+
+## Implementation extension authorized 26 September 2026
+
+Implement restoration as a journal v4 append-only epoch history. Each retired epoch retains the complete nonsecret prior entry (without recursively embedding history), its boot identity if known, the new boot/namespace/generation, and termination evidence. CP delivery identity remains unchanged; local allocation generation is renewed. Selected-slot and unfinished route duty are preserved verbatim. Old readers refuse v4; rollback requires the new reader, never restoring a stale journal backup.
+
+Two termination sources are allowed: a changed kernel boot ID recorded while the prior runtime was independently validated, or a root-owned exact supervisor receipt binding the prior entry digest, current boot and namespace. Same-boot container recreation is not inferred from missing interfaces. A legacy entry may acquire its first boot identity only after a successful fresh-authorized apply in the matching live namespace; no historical identity is fabricated.
+
+Before reservation, independently observe permanent refusal, fresh enabled CP material/lease and complete absence in the new namespace, twice with boot/namespace bracketing. Reserve the new allocation and retired epoch before mutation. Resume the existing strict recreation path; ambiguous partial creation remains refused for explicit cleanup. Fresh authority is rechecked by that path before permitting. Cleanup keeps retired epoch evidence and handles current-generation objects through ordinary exact cleanup; old-runtime retirement is never permission to delete foreign objects.
+
+Qualification must distinguish synthetic boot-change tests, real supervised container replacement, and a real dedicated-host reboot. No shared Colima/Mac reboot belongs in this test.
+
+
+### Current restoration limits
+
+History is bounded to sixteen restoration epochs per delivery. The next attempt refuses rather than dropping old obligations; use supported acknowledged cleanup and a fresh CP delivery before exhausting that bound. No old journal snapshot may be restored to reset this count.
+
+The Docker stop observer and receipt assembler are privileged host-supervisor tools. They do not make an arbitrary Docker restart or unexpected crash automatically recoverable. A supported lifecycle runner must capture the prior runtime before stopping it, preserve exact stop evidence, and install the next receipt without manual intervention. A kernel-boot change is a separate code path and still requires dedicated host-reboot qualification.
+
+
+Controlled lifecycle automation uses a private startup gate held from before stop until the exact new-runtime receipt is durably installed. Apply withdraws permits while that gate exists, including an unsafe or unreadable gate. The supervisor removes only the gate it created after validating identity and content. This prevents the ordinary same-namespace missing-link path from racing receipt installation when Linux reuses a namespace inode. An exact current-entry receipt is itself a restoration trigger even when the boot and namespace numbers are unchanged; complete absence and all fresh-authority checks still apply. Stale receipts cannot match the new entry digest and do not trigger another epoch.

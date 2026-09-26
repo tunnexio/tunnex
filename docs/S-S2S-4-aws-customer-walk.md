@@ -57,7 +57,7 @@ AWS chooses its egress tunnel independently and can change that choice; VGW does
 
 ## MTU and application-sized traffic
 
-Record actual interface MTUs and any existing MSS adjustment on both endpoint paths; this walk does not claim Tunnex automatically configures them. For the selected AES-CBC/SHA2-256 suite, AWS lists MTU/IPv4 MSS ceilings of 1438/1398 without NAT-T and 1422/1382 with NAT-T. The actual path may be lower. AWS VPN does not support Path MTU Discovery. [AWS customer-gateway best practices](https://docs.aws.amazon.com/vpn/latest/s2svpn/cgw-best-practice.html), [AWS gateway requirements](https://docs.aws.amazon.com/vpn/latest/s2svpn/CGRequirements.html).
+Record actual interface MTUs and any existing MSS adjustment on both endpoint paths; the AWS static IPv4 kernel applier now caps its owned XFRM interface MTU at 1422 and preserves any smaller observed value. It does not configure TCP MSS or measure the underlay PMTU. Existing interfaces converge on a successful apply; merely deploying a binary does not prove live convergence. For the selected AES-CBC/SHA2-256 suite, AWS lists MTU/IPv4 MSS ceilings of 1438/1398 without NAT-T and 1422/1382 with NAT-T. The actual path may be lower. AWS VPN does not support Path MTU Discovery. [AWS customer-gateway best practices](https://docs.aws.amazon.com/vpn/latest/s2svpn/cgw-best-practice.html), [AWS gateway requirements](https://docs.aws.amazon.com/vpn/latest/s2svpn/CGRequirements.html).
 
 Test both directions on each selected tunnel: small payload, payload near the measured path limit, and a larger application transfer. Record whether each size is ICMP/UDP payload or complete IPv4 packet length (UDP and ordinary ICMP add 28 bytes of IPv4/protocol headers). Include DF probes and TCP transfer completion with byte count/checksum; a successful small ping cannot pass this case. Record expected oversize failure/fragmentation separately from in-range success. If a lower MTU/MSS is required, obtain the scoped change approval, record its owner and rollback, then retest. Do not silently change unrelated host defaults. Recheck after failover.
 
@@ -147,3 +147,34 @@ Both lab peers were blocked for 90 seconds. CP reported both Down; second-Mac TC
 
 ### Second-Mac large TCP transfer — PASS (user output, 2026-09-25)
 At 20:43 IST, the personal Mac uploaded 32 MiB over private-IP SSH in 11 seconds and downloaded it in 16 seconds; local, remote and downloaded SHA256 matched. SSH reported original source 192.168.1.33 to AWS 10.204.20.10:22, with the Mac route via 192.168.1.40. Large TCP transfer/content integrity passes. Exact MTU, UDP/DF sizing and AWS-initiated connections are not established by this result.
+
+## 26 September: bounded beta qualification checkpoint
+
+The live AWS VGW/static-IPv4 lab additionally verified controlled supervisor
+restoration: the runner captured termination proof, installed the receipt and
+released the startup gate without manual repair or a CP toggle. Both fresh
+tunnels established in approximately 37 seconds. The client reported SSH stayed
+connected and TCP checks recovered after approximately 8–10 failed probes. This
+qualifies the controlled runner, not arbitrary container deletion, host reboot,
+or unattended recovery from every crash.
+
+Accelerated scheduled IKE renewal passed on both tunnels at 120/150-second
+intervals, with actual old-to-new IKE rekey events and installed CHILD sessions.
+All 75 observation samples contained both tunnels. Setup and restoration were
+excluded from scheduler evidence. Original eight-hour configuration and fresh
+long-countdown sessions were restored. The client reported no TCP timeouts and
+SSH recovered/connected; uninterrupted SSH survival is not established. This is
+not an eight-hour natural-duration soak.
+
+The AWS profile's 1422-byte inner MTU passed functional boundary checks with
+1394-byte UDP payloads and unfragmented outer traffic. Oversized samples generally
+succeeded with fragmentation, but one first 1395-byte payload reply was observed
+leaving AWS with DF set and did not appear on the gateway LAN. Exact loss cause
+remains unproven. Mac-origin DF was not preserved through the lab forwarding path,
+so exact end-to-end PMTU and oversized zero-loss qualification remain unqualified.
+The founder explicitly deferred those advanced checks for assisted beta; this is
+not a full MTU acceptance pass. Validate large-UDP customer workloads separately.
+
+These scoped results do not override the receipt's remaining required checks or
+exact-head CI/native architecture gates. Azure, GCP, generic appliances, Transit
+Gateway and AWS BGP are deferred beyond the initial AWS VGW/static-IPv4 beta.

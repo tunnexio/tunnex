@@ -17,6 +17,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// AWSIPv4TunnelMTU is the ceiling for the only currently supported runtime
+// profile: AWS static IPv4, AES-CBC/SHA2-256, allowing NAT-T. It is not a
+// measurement of the underlay PMTU; lower-MTU underlays need qualification.
+// https://docs.aws.amazon.com/vpn/latest/s2svpn/cgw-best-practice.html
+const AWSIPv4TunnelMTU = 1422
+
 var ErrKernelApply = errors.New("IPsec owned kernel operation refused")
 
 // KernelAllocation is nonsecret journal data, persisted before the first mutation.
@@ -118,6 +124,7 @@ func (a *KernelApplier) check(ctx context.Context, p KernelAllocation) error {
 type ownedKernelSnapshot struct {
 	ownership [2]Ownership
 	up        [2]bool
+	mtu       [2]uint64
 	address   [2]bool
 	routes    [2]map[netip.Prefix]bool
 }
@@ -191,6 +198,13 @@ func (a *KernelApplier) snapshotSelection(ctx context.Context, p KernelAllocatio
 			alias, ok := kernelString(obj, "ifalias")
 			if !ok || name != t.Name || xfrm != t.XFRMID || alias != t.Alias || out.ownership[i].InterfaceIndex != 0 {
 				return fail()
+			}
+			if rawMTU, present := obj["mtu"]; present {
+				mtu, ok := kernelNumber(rawMTU, 32)
+				if !ok || mtu < 68 || mtu > 65535 {
+					return fail()
+				}
+				out.mtu[i] = mtu
 			}
 			flags, ok := kernelFlags(obj["flags"])
 			if !ok {
@@ -428,6 +442,14 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 		if err != nil || s.ownership[i].InterfaceIndex == 0 {
 			return fail()
 		}
+		// Mutate only after exact alias/name/XFRM ownership has been observed.
+		// Reapply also upgrades legacy default-MTU allocations in place.
+		// Preserve a smaller operator-qualified MTU; never raise it to the ceiling.
+		if s.mtu[i] == 0 || s.mtu[i] > AWSIPv4TunnelMTU {
+			if a.mutate(ctx, p, "link", "set", "dev", t.Name, "mtu", strconv.Itoa(AWSIPv4TunnelMTU)) != nil {
+				return fail()
+			}
+		}
 		if !s.address[i] {
 			if a.mutate(ctx, p, "-4", "addr", "add", t.InsideAddress.String(), "dev", t.Name, "noprefixroute") != nil {
 				return fail()
@@ -452,7 +474,7 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 		return fail()
 	}
 	for i, t := range p.Tunnels {
-		if !s.address[i] || !s.up[i] || s.ownership[i].InterfaceIndex == 0 || (t.Selected && len(s.routes[i]) != len(t.RemotePrefixes)) {
+		if s.mtu[i] == 0 || s.mtu[i] > AWSIPv4TunnelMTU || !s.address[i] || !s.up[i] || s.ownership[i].InterfaceIndex == 0 || (t.Selected && len(s.routes[i]) != len(t.RemotePrefixes)) {
 			return fail()
 		}
 	}

@@ -39,9 +39,58 @@ func TestKernelApplyLinuxOwnership(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	assertMTU := func() {
+		t.Helper()
+		raw, err := a.run(ctx, "-j", "-d", "link", "show")
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects, ok := kernelObjects(raw)
+		if !ok {
+			t.Fatal("invalid links")
+		}
+		for _, tunnel := range p.Tunnels {
+			found := false
+			for _, obj := range objects {
+				name, _ := kernelString(obj, "ifname")
+				if name != tunnel.Name {
+					continue
+				}
+				mtu, ok := kernelNumber(obj["mtu"], 32)
+				if !ok || mtu != 1422 {
+					t.Fatalf("owned tunnel MTU = %d, want AWS NAT-T ceiling 1422", mtu)
+				}
+				found = true
+			}
+			if !found {
+				t.Fatal("missing owned link")
+			}
+		}
+	}
+	assertMTU()
+	// Legacy allocations had the kernel default; reapply must converge without
+	// replacing their interface identity or changing unrelated interfaces.
+	run("link", "set", "dev", p.Tunnels[0].Name, "mtu", "1500")
 	again, err := a.Apply(ctx, p, got)
 	if err != nil || got != again {
 		t.Fatal("idempotent apply failed", err)
+	}
+	assertMTU()
+	run("link", "set", "dev", p.Tunnels[0].Name, "mtu", "1300")
+	if _, err = a.Apply(ctx, p, got); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := a.run(ctx, "-j", "-d", "link", "show", "dev", p.Tunnels[0].Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects, ok := kernelObjects(raw)
+	if !ok || len(objects) != 1 {
+		t.Fatal("invalid MTU readback")
+	}
+	mtu, ok := kernelNumber(objects[0]["mtu"], 32)
+	if !ok || mtu != 1300 {
+		t.Fatal("raised a smaller operator-qualified MTU")
 	}
 	run("link", "set", "dev", p.Tunnels[0].Name, "alias", "foreign-owner")
 	if _, err = a.Remove(ctx, p, got); err != ErrKernelApply {
