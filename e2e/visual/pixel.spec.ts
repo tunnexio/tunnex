@@ -56,7 +56,7 @@ test.describe("width-sensitive specimens at full column width", () => {
     // The first attempt masked `[role="dialog"]`, which is that full-viewport overlay, and produced a
     // baseline that was ENTIRELY MAGENTA: a solid rectangle that would have compared equal forever with no
     // subject inside it. Caught only by LOOKING at the harvested image before committing it.
-    await page.locator('[role="dialog"]').click({ position: { x: 5, y: 5 } });
+    await page.getByRole("dialog").press("Escape");
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
 
     const wide = page.locator("[data-wide-specimens]");

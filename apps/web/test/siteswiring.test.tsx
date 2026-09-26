@@ -231,6 +231,7 @@ describe("Sites — served HA topology", () => {
   it("renders the fixture-shaped primary and standby as distinct keyboard-reachable topology members", async () => {
     haTopology = true;
     withAuth(<Sites />);
+    fireEvent.click(await screen.findByRole("link", { name: /^Topology/ }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /gw-us-east.*primary/i })).toBeTruthy();
@@ -239,16 +240,17 @@ describe("Sites — served HA topology", () => {
     expect(document.querySelectorAll('[data-node-kind="hub"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-node-kind="hub-standby"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-node-kind="spoke"]')).toHaveLength(4);
-    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    fireEvent.click(screen.getByRole("link", { name: /^Inventory/ }));
     expect(screen.queryByRole("figure", { name: "Site topology" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
-    expect(screen.getByText(/topology links/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^Inventory/ }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("table", { name: "Sites" })).toBeTruthy();
   });
 });
 
 describe("Sites map search is an observable focus interaction", () => {
   it("lists a Site result and keyboard-selects it into URL-backed context", async () => {
     withAuth(<Sites />, ["/sites"]);
+    fireEvent.click(await screen.findByRole("link", { name: /^Topology/ }));
     const input = await screen.findByRole("combobox", { name: "Search Sites or Gateways" });
     fireEvent.change(input, { target: { value: "aws" } });
     const result = await screen.findByRole("option", { name: /aws-site.*Site/ });
@@ -261,6 +263,7 @@ describe("Sites map search is an observable focus interaction", () => {
   it("names an eligible unbound Gateway instead of inventing a topology location", async () => {
     routeLanTopology = true;
     withAuth(<Sites />, ["/sites"]);
+    fireEvent.click(await screen.findByRole("link", { name: /^Topology/ }));
     const input = await screen.findByRole("combobox", { name: "Search Sites or Gateways" });
     fireEvent.change(input, { target: { value: "unbound" } });
     expect(await screen.findByRole("option", { name: /gw-unbound-1.*Eligible unbound Gateway/ })).toBeTruthy();
@@ -275,7 +278,7 @@ describe("Sites — URL-backed workspace state", () => {
   it("canonicalizes a stale direct operational-section URL with replace semantics", async () => {
     withAuth(<Sites />, ["/sites?section=ha&site=s1&gateway=g1&q=aws&dns=1"]);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "WireGuard redundancy" }).getAttribute("aria-current")).toBe("page"),
+      expect(screen.getByRole("link", { name: /^Failover/ }).getAttribute("aria-current")).toBe("page"),
     );
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=ha"));
   });
@@ -301,13 +304,13 @@ describe("Sites — URL-backed workspace state", () => {
   it("clears Overview-only context when changing to an operational section", async () => {
     withAuth(<Sites />, ["/sites?site=s1&gateway=g1&q=aws&dns=1"]);
     fireEvent.click(await screen.findByRole("button", { name: "Close aws-site" }));
-    await screen.findByRole("button", { name: "Range approvals" });
-    fireEvent.click(screen.getByRole("button", { name: "Range approvals" }));
+    fireEvent.click(await screen.findByRole("link", { name: /^Range approvals/ }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=approvals"));
   });
 
   it("keeps DNS forwarding out of primary navigation and exposes it as advanced Site Networking", async () => {
     withAuth(<Sites />, ["/sites"]);
+    fireEvent.click(await screen.findByText("Advanced setup"));
     expect(await screen.findByRole("button", { name: "Review DNS forwarding" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "DNS overview" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Review DNS forwarding" }));
@@ -332,6 +335,7 @@ describe("Sites — URL-backed workspace state", () => {
     expect(screen.getByRole("dialog", { name: "us-east-dc" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View details", hidden: true }).getAttribute("href")).toBe("#site-details");
     expect(screen.getByRole("button", { name: "Advertise subnet" })).toBeTruthy();
+    fireEvent.click(screen.getByText("Lifecycle actions"));
     expect(screen.getByRole("button", { name: "Unbind gateway" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete site" })).toBeTruthy();
     expect(screen.getByText("Danger zone")).toBeTruthy();

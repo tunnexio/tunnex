@@ -1,3 +1,4 @@
+import { NetworkDetailList } from "../components/NetworkDetailList";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -87,7 +88,7 @@ export default function Sites() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [routingLan, setRoutingLan] = useState(false); // S8.5 D1 one-screen "route a LAN" affordance
-  const [mapCollapsed, setMapCollapsed] = useState(false);
+  const mapCollapsed = params.get("section") !== "topology";
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchIndex, setSearchIndex] = useState(0);
   const priorOrgId = useRef<string | null>(null);
@@ -326,26 +327,23 @@ export default function Sites() {
   );
 
   return (
-    <div className="network-management flex flex-col gap-6">
+    <div className="network-management sites-workspace flex flex-col gap-5">
       <PageHeader
         title="Site-to-site"
         subtitle={org ? `${org.name}${raw ? ` · ${cards.length} ${cards.length === 1 ? "network" : "networks"}` : ""}` : "…"}
         actions={
-          view === "body" && gate.canManage ? (
-          <div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link>
-            {unboundGatewayNodes.length > 0 && (
-              <Button variant="ghost" onClick={() => setRoutingLan(true)}>
-                Route a LAN
-              </Button>
-            )}
-
-          </div>
+          view === "body" ? (
+            <div className="network-header-actions">
+              {gate.canManage && <Link className="sites-primary-action" to="/network/setup">Set up a network</Link>}
+            </div>
           ) : null
         }
       />
 
-      <SiteToSiteNavigation active="networks" />
-      <p className="text-sm text-ink-secondary">Locations, gateways and local IP ranges.</p>
+      <div className="s2s-workspace-toolbar">
+        <SiteToSiteNavigation active="networks" />
+        {view === "body" && section === "overview" && <SiteOverviewSummary cards={cards} unboundCount={unboundGatewayNodes.length} />}
+      </div>
 
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
@@ -357,40 +355,32 @@ export default function Sites() {
       )}
 
       {view === "body" && raw != null && org != null && (
-        <>
-          <nav aria-label="Sites workspace" className="flex flex-wrap border-b border-white/10">
+        <div className="sites-layout">
+          <nav className="sites-section-nav" aria-label="Network management">
             {[
-              ["overview", "Overview"],
-              ["approvals", "Range approvals"],
-              ["ha", "WireGuard redundancy"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                aria-current={section === id ? "page" : undefined}
-                onClick={() => updateQuery(id === "overview" ? { section: id } : { section: id, site: null, gateway: null, q: null, dns: null })}
-                className={`min-h-10 border-b-2 px-3 text-cell transition-colors ${section === id ? "border-ink-heading text-ink-heading" : "border-transparent text-ink-tertiary hover:border-white/20 hover:text-ink-heading"}`}
-              >
-                {label}
-              </button>
+              ["overview", "Inventory", "Your networks and gateways"],
+              ["topology", "Topology", "See how networks connect"],
+              ["approvals", "Range approvals", "Review advertised IP ranges"],
+              ["ha", "Failover", "WireGuard primary and standby"],
+              ["dns", "DNS forwarding", "Resolve names across sites"],
+            ].map(([key, label, description]) => (
+              <Link key={key} title={description} to={`?section=${key}`} aria-current={(section === "overview" && !mapCollapsed ? "topology" : section) === key ? "page" : undefined}>
+                <span>{label}</span>
+              </Link>
             ))}
           </nav>
+          <div className="sites-section-content">
           {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
-              {gate.canManage && <details className="text-cell text-ink-tertiary"><summary className="cursor-pointer">Advanced setup</summary><Button variant="ghost" onClick={() => setRegistering(true)}>Create empty location</Button></details>}
-              <SiteOverviewSummary cards={cards} unboundCount={unboundGatewayNodes.length} />
-              <SiteList
+              {mapCollapsed && <SiteList
+                toolbar={<Input aria-label="Search networks" placeholder="Search networks…" value={query} onChange={event => updateQuery({ q: event.target.value, site: null, gateway: null })} className="sites-search" />}
                 cards={visibleCards}
                 canManage={gate.canManage}
                 query={query}
                 selectedId={selectedSiteId}
                 onSelect={selectSite}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-2">
-                <p className="text-cell text-ink-tertiary">Choose a network to manage its gateway and ranges.</p>
-                <Link className="text-cell text-ink-heading underline underline-offset-4" to="/site-to-site">View connections →</Link>
-              </div>
-              <Panel
+              />}
+              {!mapCollapsed && <Panel
                 title="WireGuard topology"
                 className="min-w-0"
                 actions={
@@ -399,22 +389,13 @@ export default function Sites() {
                      rows. */
                   <div className="flex items-center gap-2">
                     <span className="text-micro text-ink-tertiary">Live topology</span>
-                    <button type="button" className="rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-expanded={!mapCollapsed} onClick={() => setMapCollapsed((collapsed) => !collapsed)}>
-                      {mapCollapsed ? "Expand" : "Collapse"}
-                    </button>
+
                   </div>
                 }
               >
                 {/* The handoff puts the hint INLINE beside the title (dc.html L454). Ours drops "hover to
                     trace a link" because we do not implement hover tracing — describing an interaction the
                     component does not have is the same class of lie as a chart with no source. */}
-                {mapCollapsed ? (
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 py-1 text-cell text-ink-tertiary">
-                    <span><strong className="font-semibold text-ink-heading">{cards.length}</strong> Sites</span>
-                    <span><strong className="font-semibold text-ink-heading">{allGateways.length}</strong> bound gateways</span>
-                    <span><strong className="font-semibold text-ink-heading">{mesh.links.length}</strong> topology links</span>
-                  </div>
-                ) : <>
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
                   <Input
                     aria-label="Search Sites or Gateways"
@@ -467,19 +448,15 @@ export default function Sites() {
                   empty="Route a LAN to draw your first site here."
                 />
                 <p className="text-micro text-ink-faint">WireGuard links only. View Connections for IPsec tunnel status.</p>
-                </>}
-              </Panel>
+              </Panel>}
               <SelectedSiteStrip card={selectedCard} selectedGatewayId={selectedGatewayId} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-3">
-                <p className="text-cell text-ink-tertiary"><strong className="font-medium text-ink-heading">Advanced Site Networking:</strong> cross-site zone forwarding is optional and is not required for FQDN access.</p>
-                <Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button>
-              </div>
+              {gate.canManage && <details className="sites-advanced"><summary>Advanced setup</summary><div>{unboundGatewayNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setRoutingLan(true)}>Route a LAN</Button>}<Button variant="ghost" size="sm" onClick={() => setRegistering(true)}>Create empty location</Button><Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button></div></details>}
 
               {selectedCard && (
                 <Modal title={selectedCard.name} size="workspace" showClose onDismiss={() => selectSite(null)}>
                   <div id="site-details">
-                  <SiteCardView
+                  <SiteCardView key={selectedCard.id}
                     card={selectedCard}
                     canManage={gate.canManage}
                     orgId={org.id}
@@ -531,7 +508,8 @@ export default function Sites() {
               />
             </div>
           )}
-        </>
+          </div>
+        </div>
       )}
       {view === "body" && raw == null && (
         <Card><Loading label="Loading Sites…" /></Card>
@@ -880,16 +858,8 @@ function SiteOverviewSummary({
   ];
 
   return (
-    <section aria-label="Sites summary" className="tnx-card-surface network-site-summary grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4">
-      {stats.map((stat) => (
-        <div key={stat.label} className="min-w-0 border-b border-line px-4 py-3 last:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r xl:[&:nth-child(4)]:border-r-0">
-          <p className="text-micro font-medium uppercase tracking-wide text-ink-tertiary">{stat.label}</p>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-title font-semibold tabular-nums text-ink-heading">{stat.value}</span>
-            <span className={`truncate text-micro ${stat.attention ? "text-warn" : "text-ink-faint"}`}>{stat.detail}</span>
-          </div>
-        </div>
-      ))}
+    <section aria-label="Sites summary" className="sites-inline-summary">
+      {stats.map(stat => <div key={stat.label} title={stat.detail}><strong className={stat.attention ? "text-warn" : "text-ink-heading"}>{stat.value}</strong><span>{stat.label.toLowerCase()}</span></div>)}
     </section>
   );
 }
@@ -940,12 +910,14 @@ function SelectedSiteStrip({ card, selectedGatewayId, unboundGateway, onRouteLan
 //
 // Selecting a row selects the same site the MESH selects — one selection, two ways in.
 function SiteList({
+  toolbar,
   cards,
   canManage,
   query,
   selectedId,
   onSelect,
 }: {
+  toolbar: import("react").ReactNode;
   cards: SiteCard[];
   canManage: boolean;
   query: string;
@@ -1036,7 +1008,7 @@ function SiteList({
   return (
     <Panel
       title="Your networks"
-      actions={<span className="text-micro tabular-nums text-ink-tertiary">{cards.length} total</span>}
+      actions={toolbar}
     >
       <DataTable
         caption="Sites"
@@ -1047,7 +1019,7 @@ function SiteList({
           query.trim()
             ? "No Sites or Gateways match this search. Clear the search to restore the inventory."
             : canManage
-            ? "No sites yet. Use Route a LAN above, or Add site for an empty one."
+            ? "Add your first network using Set up a network."
             : "No sites yet. An owner or admin can add one."
         }
         // The page blanks to a retry on any failed load, so reaching this render means the read succeeded.
@@ -1086,9 +1058,9 @@ function SiteCardView({
   } | null>(null); // WF-5
   const hasGateway = card.gateways.length > 0;
   return (
-    <Card variant="plain" className="space-y-0 overflow-hidden">
+    <Card variant="plain" className="network-site-detail space-y-0 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-        <p className="text-cell text-ink-tertiary">Gateways carry this Site&rsquo;s routed ranges.</p>
+        <p className="text-xs text-ink-tertiary">Network configuration</p>
         <div className="flex items-center gap-2 text-micro text-ink-tertiary">
           <span>{card.gateways.length} gateway{card.gateways.length === 1 ? "" : "s"}</span>
           <span aria-hidden="true">·</span>
@@ -1096,8 +1068,8 @@ function SiteCardView({
         </div>
       </div>
 
-      <div className="mt-3 grid overflow-hidden rounded-lg border border-line lg:grid-cols-2">
-        <section className="border-b border-line px-3 py-3 lg:border-b-0 lg:border-r">
+      <div className="network-detail-sections">
+        <section className="network-detail-section">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-cell font-semibold text-ink-heading">Gateways</h3>
             {canManage && unboundNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
@@ -1105,13 +1077,11 @@ function SiteCardView({
           {card.gateways.length === 0 ? (
             <p className="py-4 text-cell text-ink-tertiary">No gateway is bound to this Site.</p>
           ) : (
-            <ul className="mt-1 max-h-[8.25rem] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-              {card.gateways.map((g) => <GatewayRow key={g.id} g={g} />)}
-            </ul>
+            <NetworkDetailList label="Gateways" items={card.gateways} searchText={g => `${g.name} ${g.status}`} renderItem={g => <GatewayRow key={g.id} g={g} />} />
           )}
         </section>
 
-        <section className="px-3 py-3">
+        <section className="network-detail-section">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-cell font-semibold text-ink-heading">Routed ranges</h3>
             {canManage && <Button variant="ghost" size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
@@ -1119,15 +1089,13 @@ function SiteCardView({
           {card.subnets.length === 0 ? (
             <p className="py-4 text-cell text-ink-tertiary">No ranges advertised.</p>
           ) : (
-            <ul role="list" className="mt-1 max-h-[8.25rem] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-              {card.subnets.map((s) => (
-                <li key={s.id} role="listitem" aria-label={`${s.cidr}: ${s.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="flex min-h-10 items-center gap-2 border-b border-line/70 text-cell last:border-0">
+            <NetworkDetailList label="Routed ranges" items={card.subnets} searchText={s => `${s.cidr} ${s.status}`} renderItem={s => (
+                <li key={s.id} role="listitem" aria-label={`${s.cidr}: ${s.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="network-range-row">
                   <span className="font-sans text-ink-body">{s.cidr}</span>
                   <Badge tone={s.status === "approved" ? "ok" : "warn"}>{s.status === "approved" ? "routed" : "pending"}</Badge>
                   {canManage && <button type="button" className="ml-auto rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-label={`Remove ${s.cidr}`} onClick={() => setRemoving({ id: s.id, cidr: s.cidr, status: s.status })}>Remove</button>}
                 </li>
-              ))}
-            </ul>
+              )} />
           )}
         </section>
       </div>
@@ -1154,8 +1122,9 @@ function SiteCardView({
       )}
 
       {canManage && (
-        <div className="border-t border-line py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <details className="border-t border-line py-3">
+          <summary className="cursor-pointer text-xs text-ink-secondary">Lifecycle actions</summary>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-cell font-semibold text-ink-heading">Lifecycle</h3>
               <p className="text-micro text-ink-tertiary">Move gateways before permanently deleting this Site.</p>
@@ -1166,7 +1135,7 @@ function SiteCardView({
             </div>
           </div>
           <span className="sr-only">Danger zone</span>
-        </div>
+        </details>
       )}
 
       {modal === "subnet" && (
@@ -1230,14 +1199,15 @@ export function GatewayRow({ g }: { g: GatewayView }) {
   // silent absence. Same clock + health bool as the offline/degraded badges (no third vocabulary).
   const online = gatewayOnline(g.status, live.offline, g.health);
   return (
-    <li className="flex min-h-10 min-w-0 items-center gap-2 border-b border-line/70 text-cell last:border-0">
+    <li className="network-gateway-row">
       <a
-        className="min-w-0 flex-1 truncate font-medium text-ink-body hover:text-ink-heading hover:underline"
+        className="network-gateway-name font-medium text-ink-body hover:text-ink-heading hover:underline"
         title={g.name}
         href={`/gateways/${g.id}`}
       >
         {g.name}
       </a>
+      <div className="network-gateway-status">
       {g.isHub && (
         <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
           hub
@@ -1271,7 +1241,8 @@ export function GatewayRow({ g }: { g: GatewayView }) {
           {g.siteLinkNote.demoted && " (demoted)"}
         </span>
       )}
-      <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-slate-500">
+      </div>
+      <span className="network-gateway-meta">
         {live.lastSeen}
         {" · "}
         {g.agentVersion}
