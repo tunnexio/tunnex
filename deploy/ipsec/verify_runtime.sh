@@ -9,11 +9,15 @@ test -x /usr/local/bin/tunnex-node
 test -x /opt/tunnex-ipsec/libexec/ipsec/charon
 wg --version
 ip -Version
-nft --version
+# nft initializes NETLINK_NETFILTER even for --version on Alpine. QEMU
+# user-mode image builds cannot provide that socket. Check installed package
+# metadata and the executable dependency closure here; native qualification
+# separately exercises actual nftables operations.
+apk info -v nftables
 iptables-nft-save -V
 openvpn --version
 # Includes both common libraries and each plugin's dynamic closure.
-for binary in /opt/tunnex-ipsec/libexec/ipsec/charon \
+for binary in "$(command -v nft)" /opt/tunnex-ipsec/libexec/ipsec/charon \
  /opt/tunnex-ipsec/sbin/swanctl \
  /opt/tunnex-ipsec/lib/ipsec/*.so.*; do
     test -f "$binary"
