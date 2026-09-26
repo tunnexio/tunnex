@@ -17,7 +17,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     // vite/client supplies `import.meta.glob`, which the token reservation scan uses to read every .tsx source.
-    "types": ["vite/client"]
+    "types": ["vite/client", "node"]
   },
   // test/ IS IN SCOPE DELIBERATELY. It was `["src"]` until 2026-08-01, which meant `tsc --noEmit` — the gate
   // behind `pnpm --filter @tunnex/web typecheck` — had NEVER typechecked a single file in the component test
