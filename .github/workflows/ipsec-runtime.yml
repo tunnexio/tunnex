@@ -3,6 +3,12 @@ name: IPsec native qualification
 on:
   push:
     branches: [story/site-to-site-connectivity]
+  pull_request:
+    paths:
+      - 'deploy/ipsec/**'
+      - 'deploy/docker/node.Dockerfile'
+      - 'apps/node/**'
+      - '.github/workflows/ipsec-runtime.yml'
   workflow_dispatch:
 
 permissions:
@@ -13,6 +19,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  image-arm64:
+    name: ARM64 image build under emulation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ARM64 runtime without publication
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/node.Dockerfile
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=ipsec-arm64-check
+          cache-to: type=gha,mode=max,scope=ipsec-arm64-check
+
   amd64:
     name: Linux AMD64 packet and VPN compatibility
     runs-on: ubuntu-24.04
