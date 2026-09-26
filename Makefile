@@ -166,7 +166,7 @@ GO_IMAGE := golang:1.25.13-alpine
 GO_CACHE_DIR ?=
 GO_DOCKER_CACHE = $(if $(GO_CACHE_DIR),-v "$(GO_CACHE_DIR)/mod":/go/pkg/mod -v "$(GO_CACHE_DIR)/build":/root/.cache/go-build)
 NODE_IMAGE := node:20-alpine
-PW_IMAGE := mcr.microsoft.com/playwright:v1.48.2-jammy
+PW_IMAGE := mcr.microsoft.com/playwright:v1.55.1-jammy
 OAPI_CODEGEN_VERSION := v2.4.1
 OPENAPI_TS_VERSION := 7.4.4
 

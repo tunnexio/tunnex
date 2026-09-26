@@ -15,8 +15,9 @@ import { defineConfig } from "vitest/config";
 // foothold for the registered ledger item, not a retroactive suite for the whole app.
 export default defineConfig({
   test: {
-    environment: "node",
-    environmentMatchGlobs: [["test/**/*.test.tsx", "jsdom"]],
-    include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+    projects: [
+      { test: { name: "unit", environment: "node", include: ["test/**/*.test.ts"] } },
+      { test: { name: "components", environment: "jsdom", include: ["test/**/*.test.tsx"] } },
+    ],
   },
 });
