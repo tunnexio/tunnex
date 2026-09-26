@@ -133,3 +133,110 @@ The feature-branch IPsec native qualification workflow builds the candidate and
 observer tools on Ubuntu 24.04 AMD64, verifies native architecture, and retains
 packet/status/restart/cleanup/coexistence evidence. Until that run passes, AMD64
 qualification remains pending.
+
+### Controlled container-stop evidence
+
+`runtime_stop_proof.py` is a root-only observer for a Linux Docker host with
+cgroup v2 and a dedicated `/docker/<container-id>` cgroup. It does not stop,
+start, or reconfigure a container. Use it around an independently authorized,
+controlled gateway stop:
+
+```sh
+sudo python3 runtime_stop_proof.py snapshot \
+  --container GATEWAY_CONTAINER \
+  --journal /exact/state/mount/ipsec/journal.json \
+  --output /private/evidence/before.json
+# The authorized supervisor stops that exact container here.
+sudo python3 runtime_stop_proof.py prove \
+  --snapshot /private/evidence/before.json \
+  --output /private/evidence/stopped.json
+```
+
+The snapshot binds the container's exact state mount, current namespace and
+kernel boot, and every journal entry. The proof requires the same runtime to be
+stopped, its cgroup to be empty, no old namespace holders in host threads, file
+descriptors or namespace mounts, and a retained matching Docker termination
+event. Entries cannot change between snapshot and proof; guard metadata may
+advance during graceful shutdown. The stopped journal's exact byte digest is
+included for the separate Go receipt assembler.
+
+Outputs are private nonsecret lifecycle evidence, not controller permission.
+Missing historical events, an unsupported host layout, surviving namespace
+references, or changed journal entries refuse. Run the observer on the actual
+Docker host, never inside an ordinary container. This supervised container test
+does not prove unattended VM/host reboot recovery. Keep evidence and the current
+journal; never roll back ownership by restoring an old journal snapshot.
+
+`runtime_restore_runner.py` automates that controlled lifecycle without manual
+mid-test receipt assembly. It requires explicit container, journal, helper,
+evidence directory, daemon paths, and bounded timeouts:
+
+```sh
+sudo python3 runtime_restore_runner.py \
+  --container GATEWAY_CONTAINER \
+  --journal /exact/state/mount/ipsec/journal.json \
+  --receipt-helper /root/private/ipsec-restoration-receipt \
+  --evidence-dir /root/private/restoration-evidence \
+  --swanctl /opt/tunnex-ipsec/sbin/swanctl \
+  --strongswan-conf /run/tunnex-ipsec/strongswan.conf \
+  --vici unix:///run/tunnex-ipsec/charon.vici \
+  --stop-timeout 10 --timeout 180
+```
+
+The evidence directory must already be root-owned mode 0700. Docker restart
+policy must be `no`. The runner captures a snapshot, stops the exact container,
+proves termination, starts the same container, assembles an exact-entry receipt,
+and installs it atomically. An existing receipt is archived and replaced only
+when its digest is already recorded by the current restoration epoch. Unknown
+receipts refuse. Receipt installation still grants no traffic authority: the
+controller must acquire its fresh CP lease and pass its own ownership checks.
+
+Acceptance requires the next epoch, a new allocation,
+preserved route duty, exact current kernel interface ownership, and both named
+IKE/CHILD sessions established/installed. The result records measured stop-to-
+session-recovery time; client traffic remains a separate verification. A private startup gate is created before stop and retained through fresh receipt
+installation. The controller must support this gate and require valid termination
+evidence before restoring even if Linux recycles the same namespace inode. The
+runner removes only its own unchanged gate after the receipt is durable. On
+errors the gate remains and restoration refuses until explicit recovery.
+
+On a caught stop/proof error the runner attempts to start the same container,
+keeps the journal and evidence, and does not fabricate a receipt or toggle CP
+configuration. A runner kill, host failure, or unexpected Docker restart is not
+covered by this workflow: automatic crash detection/resumption remains
+unqualified. This is automated **controlled supervisor restoration**, not a claim
+of unattended recovery from every container, VM, or host failure.
+
+### Accelerated scheduled IKE renewal (lab only)
+
+`qualify_scheduled_ike.py` qualifies the IKE scheduler at shortened intervals;
+it does not claim an eight-hour soak. Run on the Docker host as root with explicit
+container, state journal, evidence directory, and daemon paths (same named
+arguments as the restoration runner, excluding its receipt helper/timeouts).
+The directory must be private root-owned. Both baseline tunnels must already be
+established, and the daemon must contain exactly the two scoped connections.
+
+The runner renders the existing nonsecret Engine profile, changing IKE rekey
+intervals to 120/150 seconds and jitter to zero. It preserves the original
+2880-second grace explicitly and leaves CHILD lifetimes, proposals, selectors,
+identities, interface IDs, request IDs, and PSKs unchanged. It never reads PSKs
+or calls credential-loading operations.
+
+Pinned strongSwan 6.1.0 inherits the old peer configuration during IKE rekey.
+Therefore each connection is bootstrapped with an exact terminate/initiate
+operation and a verified short countdown. These maintenance operations are
+excluded from the scheduled observation window. During observation no initiate,
+terminate, or rekey command is issued: passing requires a matching VICI
+`ike-rekey` event linking the baseline and replacement IKE serials at the expected
+time, with both replacement sessions and their CHILD SAs installed.
+
+A finally handler and a detached six-minute watchdog restore the original
+configuration and create fresh sessions whose long countdowns are verified.
+The runner refuses restoration if the container identity or CP-owned Engine
+configuration changed. Original settings alone do not update existing SA timers,
+so the restore phase also involves brief per-tunnel maintenance. Client SSH/TCP
+continuity is recorded separately from the scheduler evidence.
+
+The runner checks exact loaded connection inventory before every `--load-conns`:
+strongSwan unloads connection names missing from that file, so this qualification
+must never be used against a shared daemon containing other connections.

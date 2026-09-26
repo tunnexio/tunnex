@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sync"
@@ -208,6 +209,14 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 	if e != nil {
 		return fail()
 	}
+	// A trusted lifecycle supervisor holds this gate from before stop until the
+	// exact new-runtime receipt is durable. This also prevents inode-reuse from
+	// taking the ordinary same-namespace recreation path before proof arrives.
+	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
+		c.active = nil
+		_, _ = c.refuse(ctx, entries)
+		return fail()
+	}
 	pos := -1
 	for i, old := range entries {
 		if old.Allocation.ConnectionID != entry.Allocation.ConnectionID {
@@ -241,7 +250,31 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 		}
 	} else {
 		old := entries[pos]
+		if entry.ContractVersion == 2 {
+			boot, err := resetBootID()
+			if err != nil {
+				return fail()
+			}
+			resetNeeded := old.Allocation.Namespace != ns || (old.Restoration != nil && old.Restoration.BootID != boot)
+			if !resetNeeded {
+				// Namespace inode numbers may be reused. An exact fresh receipt
+				// proves the retired runtime even when the number did not change.
+				_, _, proofErr := c.restorationProof(old, boot, ns)
+				resetNeeded = proofErr == nil
+			}
+			if resetNeeded {
+				if c.reserveRestoration(ctx, m, entries, pos, entry, boot) != nil {
+					return fail()
+				}
+				old = entries[pos]
+			}
+		}
 		same := entry
+		same.Restoration = old.Restoration
+		same.Allocation.Generation = old.Allocation.Generation
+		for i := range same.Allocation.Tunnels {
+			same.Allocation.Tunnels[i].Alias = old.Allocation.Tunnels[i].Alias
+		}
 		same.Phase = old.Phase
 		same.Observed = old.Observed
 		if entry.ContractVersion == 2 {
@@ -252,7 +285,13 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 		}
 	}
 	if entry.ContractVersion == 2 {
-		return c.applyRecovery(ctx, m, entries, pos, env, grants)
+		ack, err := c.applyRecovery(ctx, m, entries, pos, env, grants)
+		if err == nil && c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+		return ack, err
 	}
 	if c.active == nil {
 		c.active = map[uuid.UUID]runtimeActive{}
