@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -8,13 +8,13 @@ import {
 } from "@testing-library/react";
 import { AddressBlockExplorer } from "../src/components/AddressBlockExplorer";
 import { mapAddressSpace } from "../src/lib/routedrangesview";
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it("bounds the visible map and drills down to pending allocations", () => {
   const map = mapAddressSpace([
     { cidr: "10.40.0.0/16", kind: "pending", label: "Office" },
   ]).blocks[0];
   render(<AddressBlockExplorer map={map} complete />);
-  expect(screen.getAllByRole("button")).toHaveLength(32);
+  expect(screen.getAllByRole("button")).toHaveLength(256);
   fireEvent.click(
     screen.getByRole("button", { name: "10.40.0.0/16, 1 allocations" }),
   );
@@ -55,4 +55,18 @@ it("does not report an unverified block as free", () => {
     screen.getByRole("button", { name: "10.1.0.0/16, Not verified" }),
   );
   expect(screen.getByText(/This block is not confirmed free/)).toBeTruthy();
+});
+
+it("uses one tab stop and arrow keys to move through the map", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
+  const map = mapAddressSpace([{ cidr: "10.0.0.0/24", kind: "approved", label: "Office" }]).blocks[0];
+  render(<AddressBlockExplorer map={map} complete />);
+  const first=screen.getByRole("button", { name: "10.0.0.0/16, 1 allocations" });
+  expect(screen.getAllByRole("button").filter(button => button.tabIndex === 0)).toHaveLength(1);
+  fireEvent.keyDown(first,{key:"ArrowDown"});
+  const next=screen.getByRole("button", { name: "10.32.0.0/16, No recorded allocation" });
+  expect(document.activeElement).toBe(next);
+  expect(next.tabIndex).toBe(0);
+  fireEvent.click(next);
+  expect(screen.getByRole("region",{name:"Allocations in 10.32.0.0/16"})).toBeTruthy();
 });

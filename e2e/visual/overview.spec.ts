@@ -46,7 +46,7 @@ for (const w of WIDTHS) {
     await stabilise(page);
     await page.goto("/login");
     await page.getByLabel("Email").fill(OWNER.email);
-    await page.getByLabel("Password").fill(OWNER.pass);
+    await page.getByLabel("Password", { exact: true }).fill(OWNER.pass);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
     const overflow = await page.evaluate(
