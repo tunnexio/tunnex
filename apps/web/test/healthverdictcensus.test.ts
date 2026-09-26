@@ -55,7 +55,7 @@ describe("⛔ the gateway health verdict is formed in ONE place", () => {
     // Comments stripped first: the prose explaining this rule quotes the field name, and a census that
     // counted its own explanation would be the shape this repo has filed three times.
     const offenders = files
-      .filter((f) => !f.endsWith(VERDICT_OWNER.replace("/", "/")))
+      .filter((f) => !f.endsWith(VERDICT_OWNER))
       .filter((f) =>
         /\bn(ode)?\.policy_degraded\b/.test(
           stripJsComments(readFileSync(f, "utf8")),
@@ -74,7 +74,7 @@ describe("⛔ the gateway health verdict is formed in ONE place", () => {
     // The three correct sites carried this line verbatim. That was the tell that the callee did not own
     // the rule; if it reappears, the callee has stopped owning it again.
     const restaters = files
-      .filter((f) => !f.endsWith(VERDICT_OWNER.replace("/", "/")))
+      .filter((f) => !f.endsWith(VERDICT_OWNER))
       .filter((f) =>
         /status\s*===\s*"revoked"\s*\?\s*null\s*:\s*policyHealthBadge/.test(
           stripJsComments(readFileSync(f, "utf8")),
