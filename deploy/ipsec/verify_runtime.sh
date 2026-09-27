@@ -9,11 +9,15 @@ test -x /usr/local/bin/tunnex-node
 test -x /opt/tunnex-ipsec/libexec/ipsec/charon
 wg --version
 ip -Version
-nft --version
+# nft initializes Netlink even for --version. QEMU user-mode builds may not
+# provide that socket family; verify the installed package and ELF dependency
+# closure here instead. Native packet qualification exercises nft commands.
+apk info -e nftables
 iptables-nft-save -V
 openvpn --version
 # Includes both common libraries and each plugin's dynamic closure.
-for binary in /opt/tunnex-ipsec/libexec/ipsec/charon \
+for binary in "$(command -v nft)" \
+ /opt/tunnex-ipsec/libexec/ipsec/charon \
  /opt/tunnex-ipsec/sbin/swanctl \
  /opt/tunnex-ipsec/lib/ipsec/*.so.*; do
     test -f "$binary"
