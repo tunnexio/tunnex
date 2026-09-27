@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-09",
+  "package_release": "https://github.com/tunnexio/packages/releases/tag/v0.1.25",
+  "repository_url": "https://tunnexio.github.io/packages/",
+  "workflow_run": "https://github.com/tunnexio/packages/actions/runs/34313209895",
+  "workflow_head": "2cdb706923fec3b7ccde93f7c7728bac7a40b357",
+  "upstream_source_sha": "26a36afc9be657af94127c474e173783c91318c3",
+  "gpg_fingerprint": "9A565661A108388E34E4D9C6A0C5B3B1D39A8181",
+  "native_container_install_remove_passed": [
+    "Ubuntu 24.04",
+    "Debian 12",
+    "Fedora 42",
+    "Rocky Linux 9",
+    "Amazon Linux 2023",
+    "openSUSE Leap 16.0",
+    "Alpine 3.22",
+    "Arch Linux"
+  ],
+  "refusal_proofs": [
+    "APT BADSIG on altered InRelease",
+    "GPG rejection of altered Release",
+    "unlisted manifest asset regression",
+    "Arch 0.1.100 retained over 0.1.99"
+  ],
+  "public_downloads_verified": [
+    "APT InRelease and Release signature",
+    "RPM repomd.xml signature",
+    "Arch database signature",
+    "APK indexes amd64 and arm64",
+    "DEB/RPM/APK/Arch amd64 package SHA256 matches signed release manifest"
+  ],
+  "public_native_install_run": "https://github.com/tunnexio/packages/actions/runs/34313832784",
+  "public_native_install_status": "success",
+  "limitations": [
+    "No live login or tunnel operation tested",
+    "Upstream store/index inclusion not claimed"
+  ],
+  "public_native_installs": {
+    "amd64": [
+      "APT/Ubuntu 24.04",
+      "RPM/Rocky Linux 9",
+      "APK/Alpine 3.22",
+      "pacman/Arch Linux"
+    ],
+    "arm64": [
+      "APT/Ubuntu 24.04",
+      "RPM/Rocky Linux 9",
+      "APK/Alpine 3.22"
+    ]
+  },
+  "immutable_release_commit": "2cdb706923fec3b7ccde93f7c7728bac7a40b357",
+  "retry_proof": {
+    "run": "https://github.com/tunnexio/packages/actions/runs/34313813031",
+    "head": "63edd240998ce99f52e1605b26926b8342f9b847",
+    "status": "success",
+    "behavior": "Existing signed packages verified and reused; no release assets overwritten"
+  },
+  "additional_channels": "Nix and Arch recipe publication is recorded in recipe-publication.json"
+}

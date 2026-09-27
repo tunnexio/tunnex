@@ -1,0 +1,7 @@
+{
+  "live_url": "https://get.tunnex.io/cli",
+  "sha256": "4044f51fdb53ecdf09ddfe8d7c5d9e4d10382842265e0c7640acaf451cb5532d",
+  "website_deploy": "https://github.com/tunnexio/tunnex-web/actions/runs/34323696485",
+  "tap_publish": "https://github.com/tunnexio/homebrew-tap/actions/runs/34323688420",
+  "result": "both succeeded; public bytes, checksum, dependency formula and unchanged CP verified"
+}
