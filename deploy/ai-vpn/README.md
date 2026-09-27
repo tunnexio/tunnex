@@ -49,3 +49,32 @@ VPN DNS. Failed/stale DNS must not be reported as successful rollback.
 This is not a published installer integration. Pin the custom images and retain
 the deployment overlay across upgrades. Never disable public authentication or
 trust X-Forwarded-For to make a VPN demonstration pass.
+
+## Building binary overlays
+
+Use Python 3 and Docker with an approved **repository manifest digest** for the
+existing API or node image. Floating tags and local image IDs are not accepted.
+The base must be the matching Tunnex runtime image, including its existing tools,
+entrypoint, user, healthcheck and configuration; a plain Alpine image is not a
+substitute for a deployment base.
+
+Place the Linux binaries for the base image's architecture in a build directory:
+`api` needs `tunnex-api`; `node` needs `tunnex-node` and `tunnex-ai-vpn-relay`.
+Then run from the repository root:
+
+```sh
+python3 deploy/ai-vpn/build-overlay.py api \
+  --base-image "$API_IMAGE_WITH_SHA256_DIGEST" \
+  --context "$API_BINARY_DIRECTORY" --tag tunnex-api:local-overlay
+python3 deploy/ai-vpn/build-overlay.py node \
+  --base-image "$NODE_IMAGE_WITH_SHA256_DIGEST" \
+  --context "$NODE_BINARY_DIRECTORY" --tag tunnex-node:local-overlay
+```
+
+The builder validates the digest reference and required binary files before
+invoking Docker. It supplies a literal `FROM repository@sha256:...` recipe over
+stdin, pulls that exact digest, and only copies the replacement binaries. It
+preserves inherited runtime metadata and does not deploy or restart anything.
+This replaces the old `Dockerfile.api` / `Dockerfile.node` interface with its
+unrestricted `--build-arg BASE_IMAGE`. Resolve and record the approved registry
+manifest digest before building; do not pass a tag as a fallback.

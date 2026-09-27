@@ -38,3 +38,27 @@ These are not silently dismissed or suppressed. Removing required release permis
 ## Verification
 
 Evidence and exact test totals are recorded in the pull request. Checks include workflow syntax, toolchain agreement and negative tests, frontend tests/build/audit, Go logging/OIDC/rekey regressions, Linux gateway/CLI/operator builds, API/node vulnerability scans, hash-locked Python tests, and browser E2E. CodeQL/Scorecard closure remains dependent on a fresh scan, not on this document.
+
+## Follow-up: seven remaining alerts
+
+A fresh GitHub API read after the original PR merged found seven open alerts.
+The two AI VPN overlay findings (#170/#171) are addressed by replacing the
+unrestricted Dockerfile build arguments with `deploy/ai-vpn/build-overlay.py`.
+It requires a SHA-256 registry manifest reference, renders a literal pinned
+FROM, preserves the supplied runtime base, and refuses floating tags before
+Docker runs. Regression tests are wired into the existing CI contracts job.
+Scanner closure still requires merge and a fresh Scorecard run.
+
+The other five findings are not claimed fixed:
+
+- #1: The owner explicitly chose to keep the current branch policy. Its active
+  ruleset retains one required approval and the organization-admin PR bypass.
+- #70: Independent review history requires real reviews on future changes;
+  approvals are not manufactured or retroactively added.
+- #72: GitHub reports repository creation on 2026-08-13. The under-90-days
+  finding cannot be changed through a source patch.
+- #69: The OpenSSF Best Practices badge requires an accurate owner assessment.
+- #73: [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) still lists no fixed
+  version for the unmaintained OpenPGP packages. Current application scans find
+  no affected imported package or reachable code. No dependency alias, version
+  masking, or alert dismissal is used to hide the module-level finding.
