@@ -165,7 +165,7 @@ GO_IMAGE := golang:1.26.8-alpine
 # Empty preserves local behavior. CI keys these by OS/arch/toolchain and go.sum.
 GO_CACHE_DIR ?=
 GO_DOCKER_CACHE = $(if $(GO_CACHE_DIR),-v "$(GO_CACHE_DIR)/mod":/go/pkg/mod -v "$(GO_CACHE_DIR)/build":/root/.cache/go-build)
-NODE_IMAGE := node:20-alpine
+NODE_IMAGE := node:24.21.0-alpine
 PW_IMAGE := mcr.microsoft.com/playwright:v1.55.1-jammy
 OAPI_CODEGEN_VERSION := v2.4.1
 OPENAPI_TS_VERSION := 7.4.4
@@ -206,7 +206,7 @@ generate-tokens: ## S14.1: emit the design-token artifacts from packages/shared/
 	# rbac-policy.json) rather than a new one.
 	docker run --rm -v "$(PWD)":/w -w /w/packages/shared \
 	  -v $(ROOT_NM_VOL):/w/node_modules -v $(SHARED_NM_VOL):/w/packages/shared/node_modules \
-	  node:20-alpine sh -c 'corepack enable && pnpm install --filter @tunnex/shared --no-frozen-lockfile >/dev/null && \
+	  $(NODE_IMAGE) sh -c 'corepack enable && pnpm install --filter @tunnex/shared --no-frozen-lockfile >/dev/null && \
 	    ./node_modules/.bin/tsc -p tsconfig.tokens.json && node scripts/emit-tokens.mjs'
 
 .PHONY: generate-rbac
@@ -310,8 +310,8 @@ test-k8s-charts: ## Lint and semantically render host posture, gateway, GitOps o
 	bash deploy/k8s-walk-candidate-package-contract_test.sh
 
 .PHONY: web-gate
-web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — works on any host (S11 debt repayment)
-	# The standing web-gate-local-env debt: the repo requires node>=20, hosts are often on 18, so
+web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 24 LTS — works on any host (S11 debt repayment)
+	# The standing web-gate-local-env debt: the repo requires node>=24.21.0, hosts are often on 18, so
 	# `pnpm --filter @tunnex/web typecheck` refused with ERR_PNPM_UNSUPPORTED_ENGINE and the web gate ran
 	# ONLY in CI — three stories shipped with a "gates green" claim that silently excluded web test+build.
 	# node_modules are CONTAINER-LOCAL named volumes (never the bind mount): pnpm links platform-specific
@@ -320,7 +320,7 @@ web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — wor
 	  -v $(ROOT_NM_VOL):/w/node_modules \
 	  -v $(WEB_NM_VOL):/w/apps/web/node_modules \
 	  -v $(SHARED_NM_VOL):/w/packages/shared/node_modules \
-	  node:20-alpine sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
+	  $(NODE_IMAGE) sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
 	    pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build'
 
 .PHONY: test-cli

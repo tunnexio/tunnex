@@ -8,8 +8,8 @@ upgrade is part of this candidate and must pass compatibility gates before use.
 
 The pinned Alpine digest is the official multi-platform index, not the arm64
 child digest. `PROVENANCE.json` records both child manifests and its official
-source. That index contains Alpine 3.22.5; authenticated APK installation resolves
-current packages on the supported 3.22 branch and records the resulting versions.
+source. That index contains Alpine 3.24.2; authenticated APK installation resolves
+current packages on the supported 3.24 branch and records the resulting versions.
 This pins the base and engine source, not every APK repository byte.
 
 `verify_source.py` bounds the download, checks the exact archive hash, verifies the

@@ -13,13 +13,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -o /out/tunnex-node ./cmd/agent
 
 # One verified multi-platform index for the C builder AND its runtime ABI.
-FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce AS ipsec-build
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS ipsec-build
 RUN apk add --no-cache build-base openssl-dev linux-headers python3 gnupg pax-utils ca-certificates
 COPY deploy/ipsec/build.sh deploy/ipsec/verify_source.py deploy/ipsec/PROVENANCE.json deploy/ipsec/NOTICE deploy/ipsec/STRONGSWAN-RELEASE-PGP-KEY deploy/ipsec/strongswan-6.1.0.tar.gz.sig /build/ipsec/
 COPY deploy/docker/node.Dockerfile /build/ipsec/node.Dockerfile
 RUN sh /build/ipsec/build.sh
 
-FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 # WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel
 # WireGuard module (present in most modern kernels incl. Docker's LinuxKit VM).
 # ca-certificates for the control channel. If a host lacks the module the agent
