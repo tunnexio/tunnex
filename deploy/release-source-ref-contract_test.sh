@@ -17,11 +17,18 @@ for arg in "$@"; do
 done
 case "${!#}" in
   https://ghcr.io/token) printf '%s\n' '{"token":"offline-fixture"}' ;;
-  https://ghcr.io/v2/*) printf 404 ;;
+  https://ghcr.io/v2/*)
+    if [[ "$MOCK_CASE" == shell_existing_image ]]; then printf 200; else printf 404; fi ;;
   */git/ref/tags/*)
     if [[ -f "$MOCK_STATE/ref" ]]; then printf 200; else printf 404; fi ;;
   */releases/tags/*)
-    if [[ "$MOCK_CASE" == published ]]; then
+    if [[ "$MOCK_CASE" == shell* ]]; then
+      immutable=false; assets='[]'
+      [[ "$MOCK_CASE" != shell_immutable ]] || immutable=true
+      [[ "$MOCK_CASE" != shell_unknown ]] || immutable=null
+      [[ "$MOCK_CASE" != shell_assets ]] || assets='[{"name":"existing.zip"}]'
+      printf '{"id":42,"tag_name":"v1.2.3","draft":false,"immutable":%s,"assets":%s}\n' "$immutable" "$assets" >"$out"; printf 200
+    elif [[ "$MOCK_CASE" == published ]]; then
       printf '%s\n' '{"draft":false,"assets":[]}' >"$out"; printf 200
     else printf 404; fi ;;
   *) exit 90 ;;
@@ -39,6 +46,13 @@ case "$*" in
       list_failure) exit 95 ;;
       *) printf '[[]]\n' ;;
     esac ;;
+  'api --method PATCH '*'/releases/42 -F draft=true')
+    [[ "$MOCK_CASE" != shell_patch_failure ]] || exit 96
+    if [[ "$MOCK_CASE" == shell_bad_readback ]]; then
+      printf '{"id":42,"tag_name":"v1.2.3","draft":false,"immutable":false,"assets":[]}\n'
+    else
+      printf '{"id":42,"tag_name":"v1.2.3","draft":true,"immutable":false,"assets":[]}\n'
+    fi ;;
   'release download '*) exit 1 ;;
   'release upload '*) : ;;
   'release create '*) : ;; # Real draft creation does NOT create a Git ref.
@@ -56,20 +70,32 @@ chmod +x "$TMP/bin/curl" "$TMP/bin/gh"
 export GITHUB_REPOSITORY=tunnexio/tunnex GITHUB_REPOSITORY_OWNER=tunnexio
 export GITHUB_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 export GITHUB_REF=refs/heads/main GITHUB_REF_NAME=main GITHUB_ACTOR=fixture GH_TOKEN=fixture
-for scenario in missing matching moved published draft duplicate list_failure; do
+for scenario in missing matching moved published draft duplicate list_failure shell shell_immutable shell_unknown shell_assets shell_existing_image shell_moved shell_patch_failure shell_bad_readback; do
+  export GITHUB_REF=refs/heads/main GITHUB_REF_NAME=main
+  if [[ "$scenario" == shell* ]]; then export GITHUB_REF=refs/tags/v1.2.3 GITHUB_REF_NAME=v1.2.3; fi
   mkdir "$TMP/$scenario"
   case "$scenario" in
-    matching|draft|duplicate|list_failure) printf '%s\n' "$GITHUB_SHA" >"$TMP/$scenario/ref" ;;
-    moved) printf '%s\n' bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb >"$TMP/$scenario/ref" ;;
+    matching|draft|duplicate|list_failure|shell|shell_immutable|shell_unknown|shell_assets|shell_existing_image|shell_patch_failure|shell_bad_readback) printf '%s\n' "$GITHUB_SHA" >"$TMP/$scenario/ref" ;;
+    moved|shell_moved) printf '%s\n' bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb >"$TMP/$scenario/ref" ;;
   esac
   if PATH="$TMP/bin:$PATH" MOCK_STATE="$TMP/$scenario" MOCK_CASE="$scenario" bash "$TMP/guard.sh" >"$TMP/$scenario/output" 2>&1; then
-    [[ "$scenario" == missing || "$scenario" == matching || "$scenario" == draft ]] || { echo "unexpected acceptance: $scenario"; exit 1; }
+    [[ "$scenario" == missing || "$scenario" == matching || "$scenario" == draft || "$scenario" == shell ]] || { echo "unexpected acceptance: $scenario"; exit 1; }
     [[ $(cat "$TMP/$scenario/ref") == "$GITHUB_SHA" ]]
   else
-    [[ "$scenario" == moved || "$scenario" == published || "$scenario" == duplicate || "$scenario" == list_failure ]] || { cat "$TMP/$scenario/output"; exit 1; }
+    [[ "$scenario" == moved || "$scenario" == published || "$scenario" == duplicate || "$scenario" == list_failure || "$scenario" == shell_* ]] || { cat "$TMP/$scenario/output"; exit 1; }
   fi
   if [[ "$scenario" == published ]]; then
-    grep -q "already published and immutable" "$TMP/$scenario/output"
+    grep -q "already published" "$TMP/$scenario/output"
+  fi
+  if [[ "$scenario" == shell ]]; then
+    grep -q '^api --method PATCH .*releases/42 -F draft=true' "$TMP/$scenario/calls"
+    grep -q '^release upload v1.2.3 ' "$TMP/$scenario/calls"
+    ! grep -q '^release create ' "$TMP/$scenario/calls"
+  elif [[ "$scenario" == shell_* ]]; then
+    ! grep -Eq '^release (create|upload) ' "$TMP/$scenario/calls"
+    if [[ "$scenario" != shell_patch_failure && "$scenario" != shell_bad_readback ]]; then
+      ! grep -q '^api --method PATCH ' "$TMP/$scenario/calls"
+    fi
   fi
   if [[ "$scenario" == draft ]]; then
     grep -q '^release upload ' "$TMP/$scenario/calls"
@@ -84,4 +110,4 @@ for scenario in missing matching moved published draft duplicate list_failure; d
     ! grep -q 'api --method POST .*git/refs' "$TMP/$scenario/calls"
   fi
 done
-echo 'Release source-ref lifecycle passed: draft without tag, existing exact tag, moved tag, published release'
+echo 'Release source-ref lifecycle passed: draft lookup, empty version-shell adoption, and publication refusal cases'
