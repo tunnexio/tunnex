@@ -1,0 +1,32 @@
+{
+  "date": "2026-09-09",
+  "user_disposition": "i approve",
+  "fixes": [
+    "Version and architecture in Arch source cache filenames",
+    "Reject numeric recipe rollback and changed source at same version during generation and against origin/main before publication"
+  ],
+  "regressions": {
+    "count": 10,
+    "result": "pass"
+  },
+  "review": "Two independent finders re-reviewed the folds; no remaining concrete blockers",
+  "native_run": "https://github.com/tunnexio/packages/actions/runs/34314479005",
+  "native_run_head": "3a52bc643f1ad7444e60e7073f3bf41583355336",
+  "result": "success",
+  "native_tests": [
+    "Nix build and profile install on AMD64",
+    "Nix build and profile install on ARM64",
+    "Arch makepkg build, install, version and help on AMD64"
+  ],
+  "initial_publication_run": "https://github.com/tunnexio/packages/actions/runs/34314406957",
+  "initial_publication_commit": "57082ceb21e6be6293da0f07408fc7c2eacbcf04",
+  "public_recipes": [
+    "https://github.com/tunnexio/packages/blob/main/flake.nix",
+    "https://github.com/tunnexio/packages/tree/main/aur/tunnex-cli-bin"
+  ],
+  "verification": "Fetched public Nix package and Arch PKGBUILD matched locally generated reviewed bytes using cmp",
+  "limits": [
+    "First-party recipes, not upstream nixpkgs or AUR listings",
+    "Package verification does not establish live enrollment or VPN routing"
+  ]
+}

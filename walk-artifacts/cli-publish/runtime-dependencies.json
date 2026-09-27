@@ -1,0 +1,18 @@
+{
+  "scope": "macOS/Homebrew WireGuard runtime dependency correction",
+  "user_request": "Install missing WireGuard dependencies automatically; provide uninstall command",
+  "tap_head": "05b5d6dac7b44e992fff30959ee38ed930b97add",
+  "tap_pr": "https://github.com/tunnexio/homebrew-tap/pull/1",
+  "native_tests": "https://github.com/tunnexio/homebrew-tap/actions/runs/34322709327",
+  "native_result": "macOS and Linux passed",
+  "website_pr": "https://github.com/tunnexio/tunnex-web/pull/47",
+  "website_head": "b0565d65ac50da27aac800387cf3e820a7e78b73",
+  "local_tests": "221 passed",
+  "canonical_installer_head": "0e9b3659a9d8ee04adce40094f8fa5f255ce4170",
+  "package_native_tests": "https://github.com/tunnexio/packages/actions/runs/34322867649",
+  "review": "no actionable findings",
+  "publication": "pending explicit merge approval",
+  "linux_dns": "pending user disposition; no resolver changes",
+  "website_checks": "passed on b0565d65ac50da27aac800387cf3e820a7e78b73",
+  "website_ci": "https://github.com/tunnexio/tunnex-web/actions/runs/34322958465"
+}
