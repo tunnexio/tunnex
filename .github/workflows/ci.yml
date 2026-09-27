@@ -154,7 +154,7 @@ jobs:
       - name: Native image publication contracts
         run: ruby deploy/native-image-publication_test.rb
       - name: CI aggregation and wiring contracts
-        run: node --test deploy/ci-gates_test.mjs deploy/test-api-edition_test.mjs
+        run: node --test deploy/ci-gates_test.mjs deploy/test-api-edition_test.mjs deploy/pull-ci-services_test.mjs
 
       - name: Kubernetes zero-touch chart contracts
         run: make test-k8s-charts
@@ -204,6 +204,7 @@ jobs:
       - name: Migrate isolated database and build/test edition
         run: |
           cp .env.example .env
+          sh deploy/pull-ci-services.sh postgres
           docker compose up -d --wait postgres
           make migrate
           make test-edition TEST_EDITION=${{ matrix.edition }} API_TEST_SHARD=${{ matrix.shard }}
@@ -359,6 +360,7 @@ jobs:
       - name: Bring up the stack + seed
         run: |
           cp .env.example .env
+          sh deploy/pull-ci-services.sh postgres redis
           docker compose up -d --build --wait
           make seed
       - name: Playwright E2E (SPA → API; normally under 1m after stack startup)
@@ -419,6 +421,7 @@ jobs:
         # "snapshot doesn't exist". Two different failures, one expected, one not.
         run: |
           cp .env.example .env
+          sh deploy/pull-ci-services.sh postgres redis
           docker compose up -d --build --wait
           make seed
         env:
@@ -475,6 +478,7 @@ jobs:
       - name: Bring up the ENTERPRISE stack + seed (base + enterprise fixtures)
         run: |
           cp .env.example .env
+          sh deploy/pull-ci-services.sh postgres redis
           TUNNEX_BUILD_TAGS=enterprise docker compose up -d --build --wait
           make seed
           make seed-enterprise
