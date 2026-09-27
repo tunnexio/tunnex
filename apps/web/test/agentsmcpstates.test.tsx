@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Profiler } from "react";
 import { MemoryRouter } from "react-router-dom";
 
 let mode: "denied" | "ready" = "denied";
@@ -62,6 +63,22 @@ describe("Agents MCP permission boundary", () => {
     await screen.findByRole("button", { name: "Preview assignment" });
     expect(screen.getByRole("link", { name: "Manage agent groups" }).getAttribute("href")).toBe("/agents/groups");
     expect(await assignmentImpactText()).toContain("Preview the exact shared impact before the first assignment.");
+  });
+
+  it("preserves a profile opened as soon as inventory appears while the default group is selected", async () => {
+    mode = "ready";
+    let opened = false;
+    // Click at the inventory commit, before passive default-selection effects.
+    // This fixes the event ordering instead of relying on CI load to hit the race.
+    render(<MemoryRouter><Profiler id="early-profile-selection" onRender={() => {
+      const button = screen.queryByRole("button", { name: "Jira" });
+      if (!opened && button) {
+        opened = true;
+        button.click();
+      }
+    }}><AgentsMCP /></Profiler></MemoryRouter>);
+    expect(await assignmentImpactText()).toContain("Jira can be assigned to Production.");
+    expect(screen.getByRole("button", { name: "Preview assignment" })).toBeTruthy();
   });
 
   it("tells the operator that a same active profile affects no agents when the selected group is empty", async () => {
