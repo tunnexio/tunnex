@@ -105,6 +105,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - name: Digest-pinned AI VPN overlay contract
+        run: python3 -B -m unittest discover -s deploy/ai-vpn -p 'test_*.py' -v
+
       - name: Installer version provenance contract
         run: sh deploy/install-version-provenance_test.sh
 
