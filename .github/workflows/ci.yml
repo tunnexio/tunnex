@@ -342,13 +342,14 @@ jobs:
   # If e2e proves genuinely FLAKY under blocking status, that flakiness is its own FINDING with a
   # disposition — NOT a quiet demotion back to continue-on-error.
   e2e:
-    needs: gates
-    # ⛔ always() IS LOAD-BEARING. `needs: gates` alone makes a gates FAILURE skip this job — so the
+    needs: scope
+    # ⛔ always() IS LOAD-BEARING. `needs: scope` alone makes a scope FAILURE skip this job — so the
     # integration signal disappears exactly when something is broken, which is when it is worth most.
-    # The dependency exists only to read `docs_only`, not to gate on success.
+    # Read classification directly so integration tests overlap the unit-test lanes.
+    # Publication still requires gates and both E2E jobs to succeed.
     # Docs-only diffs cannot change API or SPA behaviour. NOT a required check, so a skip here does
     # not touch branch protection.
-    if: always() && needs.gates.outputs.docs_only != 'true'
+    if: always() && needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
     steps:
@@ -402,8 +403,8 @@ jobs:
   # RE-ARM TRIGGER: EPIC 14 CLOSE — a named trigger, not a hope. Delete the two `continue-on-error` lines.
   visual:
     name: visual — ADVISORY for all of EPIC 14 (no step gates a merge)
-    needs: gates
-    if: always() && needs.gates.outputs.docs_only != 'true'
+    needs: scope
+    if: always() && needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; advisory findings remain advisory, broken setup still fails
     steps:
@@ -457,13 +458,14 @@ jobs:
   # an advisory job on the ENTERPRISE path has the same blind spot as one on the open path (S11-1
   # condition (b)). The SECURITY half of S4.5 also gates in `gates` via TestGetSsoConfigPayloadCarriesNoSecret.
   e2e-enterprise:
-    needs: gates
-    # ⛔ always() IS LOAD-BEARING. `needs: gates` alone makes a gates FAILURE skip this job — so the
+    needs: scope
+    # ⛔ always() IS LOAD-BEARING. `needs: scope` alone makes a scope FAILURE skip this job — so the
     # integration signal disappears exactly when something is broken, which is when it is worth most.
-    # The dependency exists only to read `docs_only`, not to gate on success.
+    # Read classification directly so integration tests overlap the unit-test lanes.
+    # Publication still requires gates and both E2E jobs to succeed.
     # Docs-only diffs cannot change API or SPA behaviour. NOT a required check, so a skip here does
     # not touch branch protection.
-    if: always() && needs.gates.outputs.docs_only != 'true'
+    if: always() && needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
     steps:
@@ -799,6 +801,34 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Exercise the release Dockerfile on both targets before merge. No registry writes.
+  operator-build:
+    name: Operator image ${{ matrix.arch }}
+    needs: scope
+    if: github.event_name == 'pull_request' && needs.scope.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build operator without emulation
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: apps/operator
+          file: apps/operator/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          build-args: VERSION=${{ github.sha }}
+          cache-from: |
+            type=gha,scope=operator-pr-${{ matrix.arch }}
+            type=gha,scope=operator
+          cache-to: type=gha,mode=max,scope=operator-pr-${{ matrix.arch }},timeout=2m,ignore-error=true
+
   publish:
     name: publish ${{ matrix.image.name }} — amd64 + arm64 (timeout 20m)
     if: >-
@@ -892,7 +922,7 @@ jobs:
           build-args: VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
           # Per-image scopes prevent concurrent exporters overwriting one shared `buildkit` cache.
           cache-from: type=gha,scope=${{ matrix.image.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }},timeout=2m,ignore-error=true
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: matrix.image.name == 'node-agent'
         with:

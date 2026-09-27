@@ -26,6 +26,17 @@ class NativeImagePublicationTest < Minitest::Test
     assert_equal "github.event_name == 'push'", job.fetch('steps').first.fetch('if')
   end
 
+  def test_operator_compiles_on_build_host_for_explicit_target
+    dockerfile = File.read(File.join(ROOT, 'apps/operator/Dockerfile'))
+    assert_match(/^FROM --platform=\$BUILDPLATFORM golang:/, dockerfile)
+    assert_includes dockerfile, 'ARG TARGETOS'
+    assert_includes dockerfile, 'ARG TARGETARCH'
+    assert_includes dockerfile, 'GOOS=$TARGETOS GOARCH=$TARGETARCH go build'
+    assert_includes dockerfile, 'CGO_ENABLED=0'
+    build = CI.fetch('jobs').fetch('publish').fetch('steps').find { |s| s['id'] == 'build' }.fetch('with')
+    assert_includes build.fetch('cache-to'), 'timeout=2m,ignore-error=true'
+  end
+
   def run_merge(scenario)
     Dir.mktmpdir do |d|
       digests = File.join(d, 'digests'); Dir.mkdir(digests)
