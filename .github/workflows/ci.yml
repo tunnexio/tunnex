@@ -2,6 +2,7 @@ name: CI
 
 # Control-plane, dashboard, gateway, operator and headless CLI verification.
 # Desktop builds and packaging are owned by tunnexio/tunnex-client.
+# Keep merge commit messages free of CI-skip directives: main publication requires a push-triggered run.
 
 on:
   workflow_dispatch:
