@@ -78,6 +78,10 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   assert.ok(jobs.gates.steps.some(step => step.run === 'node deploy/ci-gates.mjs' &&
     step.env.GATE_NEEDS === '${{ toJSON(needs) }}'));
   assert.deepEqual(jobs.api.strategy.matrix.edition, ['open', 'enterprise']);
+  assert.deepEqual(jobs.api.strategy.matrix.shard, ['db', 'ipsec', 'nodes', 'other']);
+  assert.match(jobs.api.env.COMPOSE_PROJECT_NAME, /matrix.shard/);
+  assert.match(jobs.api.env.GATE_CACHE_PREFIX, /matrix.shard/);
+  assert.ok(jobs.api.steps.some(s => /API_TEST_SHARD=\$\{\{ matrix.shard \}\}/.test(s.run ?? '')));
   assert.equal(jobs.api.strategy['fail-fast'], false);
   assert.match(jobs.api.env.COMPOSE_PROJECT_NAME, /matrix.edition/);
   for (const name of ['api', 'tooling']) {
@@ -93,12 +97,14 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
     for (const step of jobs[name].steps) assert.notEqual(step['continue-on-error'], true);
   }
   const makefile = readFileSync('Makefile', 'utf8');
-  assert.match(makefile, /go test -count=1 -p 1/);
+  assert.match(readFileSync('deploy/test-api-edition.sh', 'utf8'), /go test -count=1 -p 1/);
+  assert.match(makefile, /API_TEST_SHARD/);
+  assert.match(makefile, /sh \/repo\/deploy\/test-api-edition.sh/);
   assert.match(makefile, /GO_DOCKER_CACHE.*\/go\/pkg\/mod.*\/root\/\.cache\/go-build/);
   for (const [name, lane] of [['api', 'edition'], ['tooling', 'target']]) {
     const cache = jobs[name].steps.find(step =>
       step.uses === './.github/actions/go-container-cache');
-    assert.equal(cache.with.lane, '${{ matrix.' + lane + ' }}');
+    assert.equal(cache.with.lane, name === 'api' ? '${{ matrix.edition }}-${{ matrix.shard }}' : '${{ matrix.' + lane + ' }}');
   }
   const cacheAction = readFileSync('.github/actions/go-container-cache/action.yml', 'utf8');
   assert.equal((cacheAction.match(/inputs\.lane/g) ?? []).length, 2,
@@ -160,4 +166,25 @@ test('integration lanes run alongside unit gates but publication still requires 
   assert.equal(build.push, false);
   assert.equal(build.platforms, 'linux/${{ matrix.arch }}');
   assert.equal(build.file, 'apps/operator/Dockerfile');
+});
+
+test('API test runner edits select both edition test lanes', t => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const classify = JSON.parse(parsed.stdout).jobs.scope.steps.find(s => s.id === 'scope').run
+    .replaceAll('${{ github.event_name }}', 'pull_request')
+    .replaceAll('${{ github.event.pull_request.base.sha }}', 'fixture-base');
+  const dir = mkdtempSync(join(tmpdir(), 'api-shard-scope-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const output = join(dir, 'outputs');
+  const result = spawnSync('bash', ['-c', `git() {
+    [ "$1" != cat-file ] || return 0
+    case "$*" in *--diff-filter=D*) return 0;; esac
+    printf '%s\\n' deploy/test-api-edition.sh
+  }
+` + classify], { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(readFileSync(output, 'utf8'), /^go=true$/m);
+  assert.match(readFileSync(output, 'utf8'), /^docs_only=false$/m);
 });

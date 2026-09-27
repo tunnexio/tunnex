@@ -64,7 +64,7 @@ jobs:
                 # api / cli / node / operator builds — only its ABSENCE can, which DELETED covers.
                 GO_RELEVANT=$(printf '%s\n' "$CHANGED" \
                   | grep -vxF 'apps/api/cmd/seed-fixtures/fixtures.sql' \
-                  | grep -E '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/)' || true)
+                  | grep -E '(^deploy/test-api-edition\.sh$|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/)' || true)
                 DELETED_GO=$(printf '%s\n' "$DELETED" | grep -E '.' || true)
                 if [ -z "$(printf '%s' "$GO_RELEVANT$DELETED_GO" | tr -d '[:space:]')" ]; then
                   RUN_GO=false
@@ -154,7 +154,7 @@ jobs:
       - name: Native image publication contracts
         run: ruby deploy/native-image-publication_test.rb
       - name: CI aggregation and wiring contracts
-        run: node --test deploy/ci-gates_test.mjs
+        run: node --test deploy/ci-gates_test.mjs deploy/test-api-edition_test.mjs
 
       - name: Kubernetes zero-touch chart contracts
         run: make test-k8s-charts
@@ -185,26 +185,28 @@ jobs:
       fail-fast: false
       matrix:
         edition: [open, enterprise]
+        shard: [db, ipsec, nodes, other]
     runs-on: ubuntu-latest
-    # Full serial DB suites exceeded 25m on the enterprise runner (run 36092954758).
-    # Keep a bounded job budget; package timeouts and every acceptance gate remain intact.
+    # Heavy packages run on separate runners/databases; packages within each shard
+    # stay serial because integration fixtures include globally counted state.
+    # Keep the existing timeout as headroom, not as a substitute for parallelism.
     timeout-minutes: 40
     env:
-      COMPOSE_PROJECT_NAME: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
-      GATE_CACHE_PREFIX: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_PROJECT_NAME: ci-api-${{ matrix.edition }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+      GATE_CACHE_PREFIX: ci-api-${{ matrix.edition }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
         with:
-          lane: ${{ matrix.edition }}
+          lane: ${{ matrix.edition }}-${{ matrix.shard }}
       - name: Migrate isolated database and build/test edition
         run: |
           cp .env.example .env
           docker compose up -d --wait postgres
           make migrate
-          make test-edition TEST_EDITION=${{ matrix.edition }}
+          make test-edition TEST_EDITION=${{ matrix.edition }} API_TEST_SHARD=${{ matrix.shard }}
 
   tooling:
     needs: scope
