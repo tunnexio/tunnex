@@ -663,8 +663,19 @@ jobs:
             200)
               IS_DRAFT="$(jq -er '.draft | if type == "boolean" then tostring else error("release draft flag must be boolean") end' "$RELEASE_RESPONSE")"
               if [[ "$IS_DRAFT" != true ]]; then
-                echo "::error::release ${RELEASE_TAG} is already published and immutable; refusing source reuse before any image or chart publication"
-                exit 1
+                # GitHub's Publish release button creates a public, empty shell.
+                # Adopt only a mutable version shell with no prior artifacts;
+                # every downstream publication gate still requires a draft.
+                if [[ "$IS_VERSION" != true ]] || ! jq -e '.immutable == false and (.assets | type == "array" and length == 0)' "$RELEASE_RESPONSE" >/dev/null; then
+                  echo "::error::release ${RELEASE_TAG} is already published with assets or is immutable; refusing source reuse"
+                  exit 1
+                fi
+                RELEASE_ID="$(jq -er '.id | select(type == "number" and . > 0)' "$RELEASE_RESPONSE")"
+                assert_artifact_refs_absent
+                test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)" = "$GITHUB_SHA"
+                gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=true >"${MARKER_DIR}/adopted-release.json"
+                jq -e --argjson id "$RELEASE_ID" --arg tag "$RELEASE_TAG" '.id == $id and .tag_name == $tag and .draft == true and .immutable == false and (.assets | type == "array" and length == 0)' "${MARKER_DIR}/adopted-release.json" >/dev/null
+                mv "${MARKER_DIR}/adopted-release.json" "$RELEASE_RESPONSE"
               fi
               ACTUAL_MARKER="${MARKER_DIR}/actual/${MARKER_NAME}"
               mkdir -p "${MARKER_DIR}/actual"
