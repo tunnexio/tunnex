@@ -25,7 +25,7 @@ querying — notably `DemoOrgID = 01900000-0000-7000-8000-000000000001`.
 
 ## Notes
 
-- Playwright pins `@playwright/test@1.48.2` to match the
-  `mcr.microsoft.com/playwright:v1.48.2-jammy` runner image (browsers must match).
+- Playwright pins `@playwright/test@1.55.1` to match the
+  `mcr.microsoft.com/playwright:v1.55.1-jammy` runner image (browsers must match).
 - Tests must stay green on the **open build with local auth only** — no
   enterprise/SSO dependency — so the open edition is always fully testable.

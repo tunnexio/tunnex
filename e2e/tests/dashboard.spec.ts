@@ -39,13 +39,10 @@ test("dashboard renders real counts for the seeded org", async ({ page }) => {
 test("a fresh org shows the empty-state onboarding funnel", async ({
   page,
 }) => {
+  // Enterprise seed includes a gateway. Make this empty-state subject explicit
+  // instead of relying on which edition's shared seed happened to run.
+  await page.route("**/api/v1/organizations/*/nodes", route => route.fulfill({ json: [] }));
   await login(page);
-  // No gateway is enrolled in the seed, so the onboarding call-to-enroll shows.
-  // This is the durable empty-state: nothing in the test suite ever enrolls a
-  // real node. (We deliberately do NOT assert "No activity yet" here — audit
-  // activity legitimately accumulates as other tests invite/change roles, and
-  // audit_logs is append-only. The empty activity RENDER is covered
-  // deterministically below with a mocked overview.)
   await expect(page.getByText("No gateway enrolled yet.")).toBeVisible();
 });
 

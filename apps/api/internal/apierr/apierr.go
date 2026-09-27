@@ -8,10 +8,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
-	"unicode"
 
 	"github.com/go-chi/chi/v5/middleware"
+	applog "github.com/tunnexio/tunnex/apps/api/internal/log"
 )
 
 // Detail is a field-level problem (e.g. a validation failure).
@@ -69,7 +68,6 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 		// reproduced against the DB directly. The request_id ties the log line to the client's response.
 		// All request-derived fields and the wrapped cause are normalized to a bounded,
 		// single-line value before reaching the structured log sink.
-		// codeql[go/log-injection]
 		slog.ErrorContext(r.Context(), "internal_error",
 			"request_id", safeLogText(reqID), "method", safeLogText(r.Method), "path", safeLogText(r.URL.Path), "cause", safeLogText(err.Error()))
 		apiErr = Internal()
@@ -89,17 +87,4 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func safeLogText(value string) string {
-	var out strings.Builder
-	for _, r := range value {
-		if out.Len() >= 2048 {
-			break
-		}
-		if unicode.IsControl(r) {
-			out.WriteByte(' ')
-			continue
-		}
-		out.WriteRune(r)
-	}
-	return out.String()
-}
+func safeLogText(value string) string { return applog.SafeText(value) }

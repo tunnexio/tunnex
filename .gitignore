@@ -83,3 +83,6 @@ walk-artifacts/**/*.key
 /packages/shared/dist/
 
 walk-artifacts/sso-improvement/local-runtime/
+
+# Local Go build output; fixtures run from source via make seed-fixtures.
+/apps/api/seed-fixtures

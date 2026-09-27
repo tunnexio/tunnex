@@ -1,3 +1,4 @@
+import { loginDestination } from "../lib/authroute";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, apiErrorMessage, type Meta } from "../lib/api";
@@ -95,12 +96,7 @@ function BrowserLogin() {
   }
 
   function finish() {
-    const next = params.get("next");
-    const dest =
-      next && next.startsWith("/") && !next.startsWith("//")
-        ? next
-        : "/dashboard";
-    navigate(dest, { replace: true });
+    navigate(loginDestination(params.get("next")), { replace: true });
   }
 
   async function verify(e: FormEvent) {

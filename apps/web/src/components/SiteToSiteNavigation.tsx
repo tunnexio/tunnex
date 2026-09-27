@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 /** One workspace, with existing URLs retained for shared site/gateway deep links. */
 export function SiteToSiteNavigation({ active }: { active: "networks" | "connectivity" }) {
-  return <nav aria-label="Site-to-site workspace" className="workspace-tabs">
+  return <nav aria-label="Site-to-site workspace" className="s2s-workspace-switch">
     {([
       ["networks", "/sites", "Networks"],
       ["connectivity", "/site-to-site", "Connections"],

@@ -2,7 +2,12 @@ package sso
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/netip"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -103,6 +108,42 @@ func TestCustomUserInfoCompletion(t *testing.T) {
 			}
 			if f.userinfoCalls != tc.calls {
 				t.Fatalf("calls=%d want %d", f.userinfoCalls, tc.calls)
+			}
+		})
+	}
+}
+
+type discoveryEndpointTransport func(*http.Request) (*http.Response, error)
+
+func (f discoveryEndpointTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestCustomProviderValidatesDiscoveredAuthorizationEndpoint(t *testing.T) {
+	for _, endpoint := range []string{"http://id.example.com/auth", "https://127.0.0.1/auth", "https://user:pass@id.example.com/auth", "https://id.example.com/auth?tenant=one"} {
+		t.Run(endpoint, func(t *testing.T) {
+			client := &http.Client{Transport: discoveryEndpointTransport(func(r *http.Request) (*http.Response, error) {
+				raw, _ := json.Marshal(map[string]any{"issuer": "https://id.example.com", "authorization_endpoint": endpoint, "token_endpoint": "https://id.example.com/token", "jwks_uri": "https://id.example.com/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(raw)))}, nil
+			})}
+			p, err := newCustomProviderWithClient(context.Background(), "https://id.example.com", "client", "secret", "https://app.example.com/callback", client)
+			if endpoint != "https://id.example.com/auth?tenant=one" {
+				if err == nil {
+					t.Fatal("unsafe authorization endpoint accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			state, err := RandomToken()
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := url.Parse(p.AuthCodeURL(state, "nonce", "challenge"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if target.Query().Get("state") != state || target.Query().Get("tenant") != "one" {
+				t.Fatal("login state or provider parameters lost")
 			}
 		})
 	}

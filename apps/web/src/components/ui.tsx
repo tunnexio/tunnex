@@ -111,7 +111,7 @@ export function Input({
   if (props.type === "datetime-local" || props.type === "date") return <DateTimeInput {...props} className={className} />;
   return (
     <input
-      className={cn("min-h-9 w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm text-ink-heading shadow-sm placeholder:text-ink-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50", className)}
+      className={cn("min-h-9 w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm text-ink-heading shadow-sm placeholder:text-ink-secondary disabled:cursor-not-allowed disabled:opacity-50", className)}
       {...props}
     />
   );
@@ -156,7 +156,7 @@ export function Select({
 }) {
   return (
     <select
-      className={cn("min-h-9 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink-heading shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50", width === "auto" ? "w-auto min-w-[9rem]" : "w-full", className)}
+      className={cn("min-h-9 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink-heading shadow-sm disabled:opacity-50", width === "auto" ? "w-auto min-w-[9rem]" : "w-full", className)}
       {...props}
     >
       {children}

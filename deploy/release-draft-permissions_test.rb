@@ -16,7 +16,7 @@ class ReleaseDraftPermissionsTest < Minitest::Test
     %w[release-version-guard publish release-assets].each do |name|
       assert_equal 'write', CI.fetch('jobs').fetch(name).fetch('permissions').fetch('contents'), name
     end
-    assert_equal false, JOB.fetch('steps').find { |s| s['uses'] == 'actions/checkout@v4' }
+    assert_equal false, JOB.fetch('steps').find { |s| s.fetch('uses', '').match?(%r{\Aactions/checkout@[0-9a-f]{40}\z}) }
       .fetch('with').fetch('persist-credentials')
   end
 

@@ -160,13 +160,13 @@ sqlc: ## Regenerate typed query code from db/queries
 # The module path matches the canonical repository at github.com/tunnexio/tunnex.
 # Keep -mod=readonly so builds remain reproducible and cannot silently rewrite
 # go.mod/go.sum while resolving dependencies.
-GO_IMAGE := golang:1.25.13-alpine
+GO_IMAGE := golang:1.26.8-alpine
 # Opt-in host directories for disposable CI runners; never cache database state.
 # Empty preserves local behavior. CI keys these by OS/arch/toolchain and go.sum.
 GO_CACHE_DIR ?=
 GO_DOCKER_CACHE = $(if $(GO_CACHE_DIR),-v "$(GO_CACHE_DIR)/mod":/go/pkg/mod -v "$(GO_CACHE_DIR)/build":/root/.cache/go-build)
 NODE_IMAGE := node:20-alpine
-PW_IMAGE := mcr.microsoft.com/playwright:v1.48.2-jammy
+PW_IMAGE := mcr.microsoft.com/playwright:v1.55.1-jammy
 OAPI_CODEGEN_VERSION := v2.4.1
 OPENAPI_TS_VERSION := 7.4.4
 

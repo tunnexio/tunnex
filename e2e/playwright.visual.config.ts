@@ -13,6 +13,8 @@ import { defineConfig, devices } from "@playwright/test";
 // committed .png, so a silent re-baseline is impossible — it would have to appear in a diff.
 export default defineConfig({
   testDir: "./visual",
+  // Keep the committed gallery baselines after the pixel specs moved into their own file.
+  snapshotPathTemplate: "{testDir}/visual.spec.ts-snapshots/{arg}-{projectName}-{platform}{ext}",
   timeout: 60_000,
   expect: {
     timeout: 15_000,
@@ -22,6 +24,7 @@ export default defineConfig({
   },
   // A visual test that passes on a retry is a flaky test, and a flaky visual suite gets rubber-stamped.
   retries: 0,
+  updateSnapshots: "none",
   reporter: [["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost",

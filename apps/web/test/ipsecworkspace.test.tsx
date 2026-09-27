@@ -148,3 +148,27 @@ it("offers no lifecycle writes to a viewer",async()=>{
  render(<IPsecWorkspace orgId="org-a" userId="viewer-a" emailVerified role="member" sites={sites}/>);
  await screen.findByText("Applied");expect(screen.queryByRole("button",{name:"Disable Office to cloud"})).toBeNull();expect(screen.queryByRole("button",{name:"Delete Office to cloud"})).toBeNull();expect(screen.queryByRole("button",{name:"New connection"})).toBeNull();
 });
+
+it("combines intent filters with network search and clears unmatched filters", async () => {
+ const original = mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [
+  { ...record, site_id: "site-a" },
+  { ...record, id: "active", name: "Production AWS", site_id: "site-a", desired_intent: "enabled", application_state: "applied" },
+ ] } } : original(path, opts));
+ render(view());
+ fireEvent.change(await screen.findByRole("combobox", { name: "Connection status" }), { target: { value: "enabled" } });
+ expect(screen.queryByRole("button", { name: "Office to cloud" })).toBeNull();
+ fireEvent.change(screen.getByLabelText("Search VPN connections"), { target: { value: " office " } });
+ expect(screen.getByRole("button", { name: "Production AWS" })).toBeTruthy();
+ fireEvent.change(screen.getByLabelText("Search VPN connections"), { target: { value: "missing" } });
+ expect(screen.getByText("No connections match your filters.")).toBeTruthy();
+ fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+ expect(screen.getByRole("button", { name: "Office to cloud" })).toBeTruthy();
+ expect(screen.getByRole("button", { name: "Production AWS" })).toBeTruthy();
+});
+it("shows all server-loaded connections without a second client pagination layer", async () => {
+ const original = mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: Array.from({ length: 26 }, (_, i) => ({ ...record, id: `item-${i}`, name: `VPN ${i + 1}` })) } } : original(path, opts));
+ render(view());
+ expect(await screen.findByRole("button", { name: "VPN 26" })).toBeTruthy();
+});

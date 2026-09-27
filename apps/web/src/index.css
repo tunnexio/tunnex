@@ -341,7 +341,6 @@ select:not([multiple]) {
   cursor:pointer;
 }
 select:not([multiple]):hover:not(:disabled) { border-color:#687382; }
-select:not([multiple]):focus-visible { outline:2px solid var(--tnx-focus); outline-offset:2px; }
 select:disabled { opacity:.45; cursor:not-allowed; }
 @supports (appearance:base-select) {
   select:not([multiple]),select:not([multiple])::picker(select) { appearance:base-select; }
@@ -378,3 +377,19 @@ select:disabled { opacity:.45; cursor:not-allowed; }
 .tnx-modal-overlay[data-placement="right"] .tnx-modal-panel { width:min(100%,680px); max-width:680px; height:100dvh; max-height:100dvh; border-radius:0; border-width:0 0 0 1px; background:var(--tnx-surface); }
 .tnx-modal-overlay[data-placement="right"] .tnx-modal-body { flex:1; overscroll-behavior:contain; }
 body:has(.tnx-modal-overlay[data-placement="right"]) { overflow:hidden; }
+
+/* Shared and native form fields use one crisp focus edge, without stacked rings.
+   An inset outline preserves focus in forced-colors mode and follows the radius. */
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="color"]):not([type="file"]):not([type="image"]), textarea, select):focus {
+  border-color:var(--tnx-focus);
+  outline:1px solid var(--tnx-focus);
+  outline-offset:-1px;
+  box-shadow:none;
+}
+:is(input, textarea, select)[aria-invalid="true"]:focus {
+  border-color:var(--tnx-danger);
+  outline-color:var(--tnx-danger);
+}
+@media(forced-colors:active) {
+  :is(input, textarea, select):focus-visible { outline:2px solid Highlight; outline-offset:2px; }
+}

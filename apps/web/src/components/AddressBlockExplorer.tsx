@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { BlockMap } from "../lib/routedrangesview";
 import "../address-block-explorer.css";
 const ip = (n: number) =>
@@ -16,16 +16,11 @@ export function AddressBlockExplorer({
   map: BlockMap;
   complete: boolean;
 }) {
-  const groupSize = 16;
-  const [group, setGroup] = useState(() =>
-    Math.floor((map.lit[0]?.index ?? 0) / groupSize),
-  );
   const [cell, setCell] = useState<number | null>(null);
   const [page, setPage] = useState(0);
-  const currentGroup = Math.min(
-    group,
-    Math.ceil(map.block.cells / groupSize) - 1,
-  );
+  const [focus, setFocus] = useState(0);
+  const [hover, setHover] = useState<number | null>(null);
+  const tiles = useRef<Array<HTMLButtonElement | null>>([]);
   const chosen =
     cell === null ? undefined : map.lit.find((c) => c.index === cell);
   const cidr = (index: number) =>
@@ -42,97 +37,29 @@ export function AddressBlockExplorer({
         <strong>{map.block.label}</strong>
         <span>{(map.claimed * 100).toFixed(1)}% allocated</span>
       </div>
-      <p className="address-explorer-summary">{summary}</p>
-      <p className="address-group-label">
-        Block groups · /{map.block.cellPrefix}
-      </p>
-      <div className="address-overview" aria-label="Address groups">
-        {Array.from(
-          { length: Math.ceil(map.block.cells / groupSize) },
-          (_, index) => {
-            const occupied = map.lit.filter(
-              (c) => Math.floor(c.index / groupSize) === index,
-            ).length;
-            return (
-              <button
-                key={index}
-                data-occupied={occupied > 0}
-                aria-label={`Explore ${cidr(index * groupSize)} through ${cidr(Math.min((index + 1) * groupSize - 1, map.block.cells - 1))}, ${occupied} occupied blocks`}
-                aria-pressed={currentGroup === index}
-                onClick={() => {
-                  setGroup(index);
-                  setCell(null);
-                  setPage(0);
-                }}
-              >
-                <span>
-                  {index * groupSize}–
-                  {Math.min((index + 1) * groupSize - 1, map.block.cells - 1)}
-                </span>
-                <i style={{ width: `${(occupied / groupSize) * 100}%` }} />
-                <small>
-                  {occupied
-                    ? `${occupied} occupied`
-                    : complete
-                      ? "Empty"
-                      : "Not verified"}
-                </small>
-              </button>
-            );
-          },
-        )}
+      <p className="sr-only">{summary}</p>
+      <div className="address-map-caption"><span>Each tile = /{map.block.cellPrefix} · colored tiles contain allocations</span><span>{hover !== null ? cidr(hover) : "Select a tile"}</span></div>
+      <div className="address-tiles" aria-label="Address blocks">
+        {Array.from({length:map.block.cells},(_, index)=>{
+          const data=map.lit.find(c=>c.index===index);
+          const kinds=Array.from(new Set(data?.allocs.map(a=>a.kind)));
+          const label=`${cidr(index)}, ${data ? `${data.allocs.length} allocations` : complete ? "No recorded allocation" : "Not verified"}`;
+          return <button key={index} ref={el=>{tiles.current[index]=el;}} type="button" tabIndex={focus===index ? 0 : -1}
+            aria-label={label} title={label} aria-pressed={cell===index} data-kind={kinds.length>1 ? "mixed" : kinds[0] ?? "empty"}
+            onMouseEnter={()=>setHover(index)} onMouseLeave={()=>setHover(null)} onFocus={()=>{setFocus(index);setHover(index);}}
+            onClick={()=>{setCell(index);setPage(0);}}
+            onKeyDown={event=>{
+              const columns=window.matchMedia("(max-width:600px)").matches ? 16 : 32;
+              const offset=event.key==="ArrowRight" ? 1 : event.key==="ArrowLeft" ? -1 : event.key==="ArrowDown" ? columns : event.key==="ArrowUp" ? -columns : 0;
+              if(offset || event.key==="Home" || event.key==="End") {
+                event.preventDefault();
+                const next=event.key==="Home" ? 0 : event.key==="End" ? map.block.cells-1 : Math.max(0,Math.min(map.block.cells-1,index+offset));
+                tiles.current[next]?.focus();
+              }
+            }}><span className="sr-only">{label}</span></button>;
+        })}
       </div>
-      <div className="address-zoom-heading">
-        <span>
-          {cidr(currentGroup * groupSize)} Not available{" "}
-          {cidr(
-            Math.min((currentGroup + 1) * groupSize - 1, map.block.cells - 1),
-          )}
-        </span>
-        <small>Select a block to inspect</small>
-      </div>
-      <div className="address-zoom">
-        {Array.from(
-          {
-            length: Math.min(
-              groupSize,
-              map.block.cells - currentGroup * groupSize,
-            ),
-          },
-          (_, offset) => {
-            const index = currentGroup * groupSize + offset;
-            const data = map.lit.find((c) => c.index === index);
-            return (
-              <button
-                key={index}
-                aria-pressed={cell === index}
-                aria-label={`${cidr(index)}, ${data ? `${data.allocs.length} allocations` : complete ? "No recorded allocation" : "Not verified"}`}
-                data-occupied={!!data}
-                onClick={() => {
-                  setCell(index);
-                  setPage(0);
-                }}
-              >
-                <strong>{cidr(index)}</strong>
-                <small>
-                  {data
-                    ? `${data.allocs.length} allocation${data.allocs.length === 1 ? "" : "s"}`
-                    : complete
-                      ? "Empty"
-                      : "Not verified"}
-                </small>
-                <span className="address-state-dots" aria-hidden="true">
-                  {Array.from(new Set(data?.allocs.map((a) => a.kind))).map(
-                    (kind) => (
-                      <i key={kind} data-kind={kind} />
-                    ),
-                  )}
-                </span>
-              </button>
-            );
-          },
-        )}
-      </div>
+      <div className="address-map-legend">{[["approved","Published"],["pending","Pending"],["pool","Device pool"],["vip","Kubernetes"],["mixed","Mixed"],["empty",complete ? "Unallocated" : "Unverified"]].map(([kind,label])=><span key={kind}><i data-kind={kind}/>{label}</span>)}</div>
       {cell !== null && (
         <section
           className="address-cell-details"

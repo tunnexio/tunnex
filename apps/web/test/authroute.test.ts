@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveMfaGateRoute } from "../src/lib/authroute";
+import { loginDestination, resolveMfaGateRoute } from "../src/lib/authroute";
 
 // Pins the MFA-enrollment gate's client routing in BOTH directions (S7.5.5 D8 + the WF-3 UI-walk
 // finding). The original code had only the confinement direction; a user whose gate had cleared while
@@ -25,5 +25,15 @@ describe("resolveMfaGateRoute — MFA-enrollment gate routing (confine + release
   it("non-gated user already in the app → render through (no redirect)", () => {
     expect(resolveMfaGateRoute(false, "/dashboard")).toBeNull();
     expect(resolveMfaGateRoute(false, "/settings")).toBeNull();
+  });
+});
+
+describe("login destination", () => {
+  it("preserves the CLI consent query through authentication", () => {
+    const path = "/cli-auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A54321%2Fcallback&state=opaque";
+    expect(loginDestination(path)).toBe(path);
+  });
+  it.each([null, "https://evil.example", "//evil.example", "/\\evil.example", "/\nevil", "/login", "/login?next=/login", "/login/"])("rejects unsafe or recursive destination %s", next => {
+    expect(loginDestination(next)).toBe("/dashboard");
   });
 });

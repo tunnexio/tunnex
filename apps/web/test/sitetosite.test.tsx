@@ -138,10 +138,10 @@ it("loads IPsec only after choosing its method and leaves WireGuard as default",
  });
  render(app()); await screen.findByText("No networks configured yet.");
  expect(mock.get.mock.calls.some(([path]) => path.includes("/ipsec/"))).toBe(false);
- fireEvent.click(screen.getByRole("button", { name: "IPsec" }));
+ fireEvent.click(screen.getByRole("radio", { name: /To a cloud VPN/ }));
  await screen.findByRole("button", { name: "Enable IPsec" });
  expect(screen.getByRole("button", { name: "Create connection" })).toBeTruthy();
- fireEvent.click(screen.getByRole("button", { name: "WireGuard" }));
+ fireEvent.click(screen.getByRole("radio", { name: /Between your networks/ }));
  expect(screen.queryByRole("button", { name: "Enable IPsec" })).toBeNull();
  expect(screen.getByText("No networks configured yet.")).toBeTruthy();
 });
@@ -150,7 +150,7 @@ it("withdraws IPsec on the first commit of same-organization loading", async () 
  let leaked=false;
  function Probe(){useLayoutEffect(()=>{if(mock.loading) leaked=!!screen.queryByRole("button",{name:"Create connection"});});return app();}
  const result=render(<Probe/>);await screen.findByText("No networks configured yet.");
- fireEvent.click(screen.getByRole("button",{name:"IPsec"}));await screen.findByRole("button",{name:"Create connection"});
+ fireEvent.click(screen.getByRole("radio", { name: /To a cloud VPN/ }));await screen.findByRole("button",{name:"Create connection"});
  mock.loading=true;result.rerender(<Probe/>);expect(leaked).toBe(false);
  expect(screen.queryByRole("button",{name:"Create connection"})).toBeNull();
 });
@@ -164,7 +164,7 @@ it("shows no links for one network without duplicating network inventory", async
   expect(screen.queryByRole("table")).toBeNull();
   expect(screen.queryByText("Home Wi-Fi lab")).toBeNull();
   expect(screen.getByRole("link", { name: "Go to Networks" }).getAttribute("href")).toBe("/sites");
-  expect(screen.getByText("Automatically managed links.")).toBeTruthy();
+  expect(screen.getByRole("radio", { name: /Between your networks/ })).toBeTruthy();
   expect(screen.queryByLabelText("First network")).toBeNull();
   expect(screen.queryByRole("button", { name: "New connection" })).toBeNull();
 });
@@ -185,8 +185,8 @@ it("routes AWS through provider selection and does not reopen a cancelled draft 
   fireEvent.click(screen.getByRole("button", { name: /AWS Site-to-Site/ }));
   await screen.findByRole("dialog", { name: "New IPsec connection" });
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  fireEvent.click(screen.getByRole("button", { name: "WireGuard" }));
-  fireEvent.click(screen.getByRole("button", { name: "IPsec" }));
+  fireEvent.click(screen.getByRole("radio", { name: /Between your networks/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /To a cloud VPN/ }));
   await screen.findByText("No IPsec connections configured.");
   expect(screen.queryByRole("dialog")).toBeNull();
 });
@@ -199,4 +199,18 @@ it("WireGuard creation offers in-place location setup without redirecting to inv
   expect(dialog.getByRole("button", { name: "Add location" })).toBeTruthy();
   expect(dialog.queryByRole("link", { name: "Go to Networks" })).toBeNull();
   expect(dialog.queryByRole("button", { name: "Review network pair" })).toBeNull();
+});
+
+it("opens IPsec directly from a shared connection-method URL", async () => {
+  mock.get.mockImplementation(async (path: string) => {
+    if (path.endsWith("/members")) return { data: [{ user_id: "user", role: "owner" }] };
+    if (path.endsWith("/settings")) return { data: { enabled: true, revision: 1 } };
+    if (path.endsWith("/connections")) return { data: { items: [] } };
+    return { data: [] };
+  });
+  render(<MemoryRouter initialEntries={["/site-to-site?method=ipsec"]}><SiteToSite /></MemoryRouter>);
+  expect(await screen.findByRole("heading", { name: "IPsec VPN connections" })).toBeTruthy();
+  expect((screen.getByRole("radio", { name: /To a cloud VPN/ }) as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(screen.getByRole("radio", { name: /Between your networks/ }));
+  expect(screen.queryByRole("heading", { name: "IPsec VPN connections" })).toBeNull();
 });

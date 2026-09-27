@@ -10,7 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -52,13 +55,13 @@ func Requests(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(ww, r)
 
 			logger.LogAttrs(r.Context(), slog.LevelInfo, "http_request",
-				slog.String("request_id", reqID),
-				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
+				slog.String("request_id", SafeText(reqID)),
+				slog.String("method", SafeText(r.Method)),
+				slog.String("path", SafeText(r.URL.Path)),
 				slog.Int("status", ww.Status()),
 				slog.Int("bytes", ww.BytesWritten()),
 				slog.Duration("duration", time.Since(start)),
-				slog.String("remote", r.RemoteAddr),
+				slog.String("remote", SafeText(r.RemoteAddr)),
 			)
 		})
 	}
@@ -67,3 +70,20 @@ func Requests(logger *slog.Logger) func(http.Handler) http.Handler {
 // FromContext is a placeholder for request-scoped logger retrieval used by later
 // stories; for now it returns the default logger.
 func FromContext(_ context.Context) *slog.Logger { return slog.Default() }
+
+// SafeText bounds request-derived log values and removes display controls even
+// when a caller supplies a non-JSON handler. Explicit CR/LF replacements also
+// let static analyzers verify the single-line guarantee.
+func SafeText(value string) string {
+	var out strings.Builder
+	for _, r := range value {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
+			r = ' '
+		}
+		if out.Len()+utf8.RuneLen(r) > 2048 {
+			break
+		}
+		out.WriteRune(r)
+	}
+	return strings.ReplaceAll(strings.ReplaceAll(out.String(), "\n", " "), "\r", " ")
+}

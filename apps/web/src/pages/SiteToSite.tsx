@@ -1,6 +1,6 @@
 import "../network-workspaces.css";
 import { Button as ActionButton } from "../components/ui/button";
-import { WireGuardDemo } from "../components/WireGuardDemo";
+import { Icon } from "../components/Icon";
 import { IPsecWorkspace } from "../components/IPsecWorkspace";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -9,7 +9,7 @@ import { SitePairReview, SitePairDetails } from "../components/SitePairReview";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { siteGate } from "../lib/sitesview";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ConnectionChooser } from "../components/ConnectionChooser";
 import { Button, Card, PageHeader } from "../components/ui";
 
@@ -56,22 +56,31 @@ export default function SiteToSite() {
 }
 
 export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWorkspace, renderIPsecWorkspace }: { orgId?: string; ipsecWorkspace?: ReactNode; renderIPsecWorkspace?: (request: number, onCreate: () => void, onHandled: () => void) => ReactNode; state: SiteToSiteState; onRetry: () => void; renderDetails?: (first: Site, second: Site) => ReactNode }) {
-  const [method, setMethod] = useState<"wireguard" | "ipsec">("wireguard");
-  const [demo, setDemo] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const method = params.get("method") === "ipsec" ? "ipsec" : "wireguard";
+  const setMethod = (value: "wireguard" | "ipsec") => setParams(previous => { const next = new URLSearchParams(previous); next.set("method", value); return next; });
   const [choosing, setChoosing] = useState(false);
   const [createRequest, setCreateRequest] = useState(0);
   return <div className="network-management space-y-5">
-    <PageHeader title="Site-to-site" subtitle="Connect entire networks through gateways." actions={state.canManage && !demo ? <ActionButton onClick={() => setChoosing(true)}>Create connection</ActionButton> : undefined} />
-    <SiteToSiteNavigation active="connectivity" />
-    <div className="network-filter-tabs" role="group" aria-label="Connection method">
-      <ActionButton variant="ghost" className={method === "wireguard" ? "network-filter-active" : ""} aria-pressed={method === "wireguard"} onClick={() => setMethod("wireguard")} aria-label="WireGuard">Tunnex to Tunnex · WireGuard</ActionButton>
-      <ActionButton variant="ghost" className={method === "ipsec" ? "network-filter-active" : ""} aria-pressed={method === "ipsec"} onClick={() => { setDemo(false); setMethod("ipsec"); }} aria-label="IPsec">Cloud VPN / Firewall · IPsec</ActionButton>
+    <PageHeader title="Site-to-site" subtitle="Connect entire networks through gateways." actions={state.canManage ? <ActionButton onClick={() => setChoosing(true)}>Create connection</ActionButton> : undefined} />
+    <div className="s2s-workspace-toolbar">
+      <SiteToSiteNavigation active="connectivity" />
+      {method === "wireguard" && <ActionButton variant="ghost" onClick={onRetry}>Refresh</ActionButton>}
     </div>
-    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0)) : ipsecWorkspace) ?? <Card><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></Card> : demo ? <WireGuardDemo embedded onExit={() => setDemo(false)} /> : <>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="text-section font-semibold text-ink-heading">Tunnex to Tunnex</h2><p className="mt-1 text-cell text-ink-tertiary">Automatically managed links.</p></div>
-      <div className="flex gap-2"><ActionButton variant="ghost" onClick={() => setDemo(true)}>View demo</ActionButton><ActionButton variant="outline" onClick={onRetry}>Refresh</ActionButton></div>
-    </div>
+    <fieldset className="connection-purpose">
+      <legend className="sr-only">What would you like to connect?</legend>
+      <label className={`connection-purpose-option ${method === "wireguard" ? "is-selected" : ""}`}>
+        <input type="radio" name="connection-purpose" value="wireguard" checked={method === "wireguard"} onChange={() => setMethod("wireguard")} />
+        <Icon name="network" size={20} />
+        <span><strong>Between your networks</strong><span>Tunnex gateways at both locations.</span><small>WireGuard · managed by Tunnex</small></span>
+      </label>
+      <label className={`connection-purpose-option ${method === "ipsec" ? "is-selected" : ""}`}>
+        <input type="radio" name="connection-purpose" value="ipsec" checked={method === "ipsec"} onChange={() => setMethod("ipsec")} />
+        <Icon name="shield" size={20} />
+        <span><strong>To a cloud VPN</strong><span>A Tunnex gateway connects to your AWS VPN.</span><small>IPsec · AWS supported</small></span>
+      </label>
+    </fieldset>
+    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0)) : ipsecWorkspace) ?? <Card><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></Card> : <>
     <Card>
       {state.kind === "loading" && <p role="status">Loading networks…</p>}
       {state.kind === "error" && <div role="alert"><p>{state.error}</p><Button onClick={state.reloadPage ? () => window.location.reload() : onRetry}>{state.reloadPage ? "Reload page" : "Retry networks"}</Button></div>}

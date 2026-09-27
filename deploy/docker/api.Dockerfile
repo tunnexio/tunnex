@@ -1,7 +1,7 @@
 # Tunnex control-plane API — multi-stage Go build.
 # Build context is the repo root (see docker-compose.yml).
 
-FROM golang:1.25.13-alpine AS build
+FROM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS build
 WORKDIR /src
 
 # Download deps first for layer caching. go.sum is created on first build.
@@ -30,7 +30,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -tags "$TUNNEX_BUILD_TAGS" -trimpath -ldfl
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tunnex-ai-egress ./cmd/ai-egress
 
-FROM alpine:3.23
+FROM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
 RUN apk add --no-cache ca-certificates wget postgresql16-client postgresql17-client postgresql18-client && adduser -D -u 10001 tunnex
 # Pre-own the secrets mountpoint as uid 10001 so the named volume inherits uid-10001 on first
 # init and the non-root process can write 0600 files.

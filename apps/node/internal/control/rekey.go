@@ -290,8 +290,7 @@ var ErrIssuedCertUntrusted = errors.New("the issued certificate does not chain t
 // construction — adding the length-prefixing the API's own comment contemplates, say — the golden fails on that
 // side, loudly, instead of the fleet silently losing the ability to recover.
 func signedMessage(nonce, csrDER []byte) []byte {
-	msg := make([]byte, 0, len(nonce)+len(csrDER))
-	msg = append(msg, nonce...)
+	msg := append([]byte(nil), nonce...)
 	return append(msg, csrDER...)
 }
 

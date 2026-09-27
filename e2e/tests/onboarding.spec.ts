@@ -306,6 +306,15 @@ test("/create-org bounces a member who already has an org, and admits a capabili
 test("enrolling a gateway shows the join token exactly once (one-time-secret ceremony)", async ({
   page,
 }) => {
+  // This test already mocks token issuance; keep enrollment capacity deterministic
+  // when the enterprise fixture includes a gateway at the unlicensed node ceiling.
+  await page.route("**/api/v1/organizations/*/nodes", route => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/license", async route => {
+    const response = await route.fetch();
+    if (!response.ok()) return route.fulfill({ response });
+    const license = await response.json();
+    return route.fulfill({ response, json: { ...license, gateways_in_use: 0 } });
+  });
   const TOKEN = "jt-onboarding-secret-xyz";
   let issued = 0;
   await page.route("**/api/v1/organizations/*/nodes/join-token", (route) => {

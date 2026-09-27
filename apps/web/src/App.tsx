@@ -4,7 +4,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "./brand";
 import { api } from "./lib/api";
-import { resolveMfaGateRoute } from "./lib/authroute";
+import { loginDestination, resolveMfaGateRoute } from "./lib/authroute";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { AuthLayout } from "./components/AuthLayout";
 import { MfaSettings } from "./components/MfaSettings";
@@ -388,8 +388,9 @@ function RequireOrg({ children }: { children: React.ReactNode }) {
 // AnonOnly keeps an authenticated user off the login page (sends them to the app).
 function AnonOnly({ children }: { children: React.ReactNode }) {
   const { state } = useAuth();
+  const location = useLocation();
   if (state.status === "loading") return <FullScreenLoading />;
-  if (state.status === "authed") return <Navigate to="/dashboard" replace />;
+  if (state.status === "authed") return <Navigate to={loginDestination(new URLSearchParams(location.search).get("next"))} replace />;
   return <>{children}</>;
 }
 

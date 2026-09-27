@@ -201,6 +201,9 @@ describe("the managed bootstrap command — F03", () => {
     expect(cmd).not.toContain("/etc/tunnex-agent-credential");
   });
 
+  // Three full shell executions (rollback, tamper rejection, success) spawn
+  // several subprocesses. Bound each command below and allow the combined
+  // integration check more than the five-second unit-test default under load.
   it("executes the generated command and substitutes a valid config byte-for-byte", () => {
     const dir = mkdtempSync(join(tmpdir(), "tunnex-bootstrap-exec-"));
     const bin = join(dir, "bin");
@@ -320,6 +323,7 @@ esac`);
       const execute = (startFails: boolean) =>
         execFileSync("/bin/sh", [], {
           input: generated,
+          timeout: 5_000,
           env: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH ?? ""}`,
@@ -374,7 +378,7 @@ esac`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it("refuses a missing resolver before key generation, redemption, or file writes", () => {
     const dir = mkdtempSync(join(tmpdir(), "tunnex-bootstrap-prereq-"));
