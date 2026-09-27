@@ -1,7 +1,7 @@
 # Tunnex web SPA — build with Node, serve static files with nginx (non-root).
 # Build context is the repo root.
 
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS build
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 RUN corepack enable
 
@@ -9,7 +9,7 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN pnpm install --filter @tunnex/web... --no-frozen-lockfile
+RUN pnpm install --filter @tunnex/web... --frozen-lockfile
 
 COPY packages/shared/ packages/shared/
 COPY apps/web/ apps/web/
@@ -26,7 +26,7 @@ ENV VITE_VISUAL_GALLERY=$VITE_VISUAL_GALLERY
 RUN pnpm --filter @tunnex/web build
 
 # nginx-unprivileged runs as a non-root user and listens on 8080.
-FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
 COPY deploy/nginx/spa.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080
