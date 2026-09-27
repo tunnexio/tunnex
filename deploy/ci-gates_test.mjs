@@ -135,3 +135,29 @@ for (const [workflow, stepId, expected] of [
   const values = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
   assert.deepEqual(values, expected);
 });
+
+test('integration lanes run alongside unit gates but publication still requires all gates', () => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const { jobs } = JSON.parse(parsed.stdout);
+  for (const name of ['e2e', 'e2e-enterprise', 'visual']) {
+    assert.equal(jobs[name].needs, 'scope');
+    assert.equal(jobs[name].if, "always() && needs.scope.outputs.docs_only != 'true'");
+  }
+  for (const name of ['release-version-guard', 'publish']) {
+    for (const gate of ['gates', 'e2e', 'e2e-enterprise']) {
+      assert.ok(jobs[name].needs.includes(gate));
+      assert.ok(jobs[name].if.includes(`needs.${gate}.result == 'success'`));
+    }
+  }
+  const operator = jobs['operator-build'];
+  assert.equal(operator.needs, 'scope');
+  assert.ok(operator.if.includes("github.event_name == 'pull_request'"));
+  assert.deepEqual(operator.strategy.matrix.arch, ['amd64', 'arm64']);
+  assert.ok(!operator.steps.some(step => /setup-qemu/.test(step.uses ?? '')));
+  const build = operator.steps.find(step => step.id === 'build').with;
+  assert.equal(build.push, false);
+  assert.equal(build.platforms, 'linux/${{ matrix.arch }}');
+  assert.equal(build.file, 'apps/operator/Dockerfile');
+});
