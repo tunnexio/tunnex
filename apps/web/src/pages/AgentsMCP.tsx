@@ -45,7 +45,9 @@ export default function AgentsMCP() {
   const [busy, setBusy] = useState(false);
   const [impact, setImpact] = useState<Impact | null>(null);
   const [dialog, setDialog] = useState<"replace" | "unassign" | "archive" | null>(null);
-  const groupId = search.get("group") ?? "";
+  // Derive the initial group without a second navigation that can overwrite a
+  // profile click made while inventory is first appearing.
+  const groupId = search.get("group") || (groups.kind === "ready" ? groups.data[0]?.id ?? "" : "");
   const profileId = search.get("profile") ?? "";
   const [managementEnabled, setManagementEnabled] = useState(Boolean(org?.agent_policy_templates_enabled));
   const enabled = managementEnabled;
@@ -56,6 +58,7 @@ export default function AgentsMCP() {
   const activeAssignment = useMemo(() => assignments.kind === "ready" ? assignments.data.find((assignment) => assignment.group_id === groupId && assignment.state === "active") : undefined, [assignments, groupId]);
   function select(values: Record<string, string | null>) {
     const next = new URLSearchParams(search);
+    if (!next.get("group") && groupId) next.set("group", groupId);
     for (const [key, value] of Object.entries(values)) value ? next.set(key, value) : next.delete(key);
     setSearch(next);
   }
@@ -72,13 +75,6 @@ export default function AgentsMCP() {
     setAssignments(assignmentResult.ok ? { kind: "ready", data: assignmentResult.data } : { kind: "error", message: assignmentResult.error });
   }
   useEffect(() => { void reload(); }, [org?.id, enabled]);
-  useEffect(() => {
-    if (profiles.kind !== "ready" || groups.kind !== "ready") return;
-    const next = new URLSearchParams(search);
-    let changed = false;
-    if (!groupId && groups.data[0]) { next.set("group", groups.data[0].id); changed = true; }
-    if (changed) setSearch(next);
-  }, [groups, groupId, profileId, profiles, search, setSearch]);
   useEffect(() => {
     if (!org || !enabled || !groupId) { setMembers({ kind: "ready", data: [] }); return; }
     let cancelled = false;
