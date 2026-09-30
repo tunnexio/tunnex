@@ -5,3 +5,6 @@ CREATE TABLE server_email_settings (
     config_ciphertext text NOT NULL,
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON server_email_settings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
