@@ -798,6 +798,23 @@ describe("Directory provisioning entitlement", () => {
 
 
 describe("Settings — server email permission", () => {
+  it("keeps Organization as the default for a server administrator", async () => {
+    serverAdmin = true;
+    withAuth(<Settings />);
+    await screen.findByRole("tab", { name: "Organization" });
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("organization"));
+    expect(screen.getByRole("tab", { name: "Organization" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Email delivery" }).getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("still opens a direct email settings link for a server administrator", async () => {
+    serverAdmin = true;
+    window.history.replaceState({}, "", "/settings?section=email-delivery");
+    withAuth(<Settings />);
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("email-delivery"));
+    expect(screen.getByRole("tab", { name: "Email delivery" }).getAttribute("aria-selected")).toBe("true");
+  });
+
   it("hides shared SMTP from an organization owner who is not a server administrator", async () => {
     withAuth(<Settings />);
     await screen.findByRole("tab", {name:/Access & security/});

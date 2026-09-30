@@ -1698,7 +1698,6 @@ const RAIL: ReadonlyArray<{
   needsOrg?: boolean;
   danger?: boolean;
 }> = [
-  { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   {
     id: "organization",
     needsOrg: true,
@@ -1762,6 +1761,7 @@ const RAIL: ReadonlyArray<{
     label: "Licence & plan",
     hint: "Manage your licence and subscription.",
   },
+  { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,
