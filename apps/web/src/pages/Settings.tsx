@@ -1,3 +1,4 @@
+import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
 import { SsoSelfLink } from "../components/SsoSelfLink";
 import { SsoConnections } from "../components/SsoConnections";
 import { RelayFallbackSettings } from "../components/RelayFallbackSettings";
@@ -86,6 +87,7 @@ export default function Settings() {
   // fetched itself, which is what made a second organization unreachable.
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const { state } = useAuth();
+  const serverAdmin = state.status === "authed" && Boolean(state.user.cp_admin);
   const myId = state.status === "authed" ? state.user.id : "";
   const emailVerified = state.status === "authed" && state.user.email_verified;
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -175,12 +177,13 @@ export default function Settings() {
     () =>
       RAIL.filter(
         (r) =>
+          (!r.serverAdminOnly || serverAdmin) &&
           (!r.requiredPermission || can(myRole, r.requiredPermission)) &&
           (!r.requiredAnyPermission ||
             r.requiredAnyPermission.some((permission) => can(myRole, permission))) &&
           (!r.needsOrg || org !== null),
       ),
-    [myRole, org],
+    [myRole, org, serverAdmin],
   );
   const [section, setSection] = useState<string>(() => sectionFromLocation());
   // ⚠ FALL BACK WHEN THE SELECTION STOPS EXISTING. Switching to an org where you are a plain member must not
@@ -230,7 +233,7 @@ export default function Settings() {
             : "Manage your account security and view your plan."
         }
       />
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{active === "email-delivery" ? null : error}</ErrorText>
 
       {/* Desktop-only: server connection + sign-out for THIS client (renders nothing
           in the browser build). Above the org sections — it's a device concern, not
@@ -273,6 +276,11 @@ export default function Settings() {
         />
         <div className="settings-content">
           <p className="settings-section-hint">{shown.find(section => section.id === active)?.hint}</p>
+        {serverAdmin && active === "email-delivery" && state.status === "authed" && (
+          <SettingGroup id="email-delivery" title="Email delivery" tabpanel>
+            <EmailDeliverySettings key={state.user.id} email={state.user.email} canEdit={emailVerified && !state.user.must_change_password} />
+          </SettingGroup>
+        )}
         {org && isAdmin && active === "organization" && (
           <SettingGroup id="organization" title="Organization"
             tabpanel>
@@ -1671,6 +1679,7 @@ function providerLabel(p: string): string {
  * A vertical `tablist`, matching the tab pattern already in Access.tsx.
  */
 const RAIL: ReadonlyArray<{
+  serverAdminOnly?: boolean;
   id: string;
   label: string;
   hint: string;
@@ -1689,6 +1698,7 @@ const RAIL: ReadonlyArray<{
   needsOrg?: boolean;
   danger?: boolean;
 }> = [
+  { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   {
     id: "organization",
     needsOrg: true,

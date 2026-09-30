@@ -1,3 +1,4 @@
+import { SetupChoices } from "./Setup";
 import "../overview-scan.css";
 import { useEffect, useState, type ReactNode } from "react";
 import { useOrg } from "../lib/useOrg";
@@ -225,7 +226,7 @@ export default function Dashboard() {
     // applied to exactly one element. Every screen root must therefore repeat this — see docs/S14.4.
     <div className="overview-scan flex flex-col gap-4">
       {/* README: PAGE HEADER = title + subtitle, its own block above the body. */}
-      <PageHeader title="Overview" subtitle={orgName || "…"} actions={<Link className="rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink-heading" to="/network/setup">Set up a network →</Link>} />
+      <PageHeader title="Overview" subtitle={orgName || "…"} actions={<Link className="rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink-heading" to="/setup">Set up Tunnex →</Link>} />
       <ErrorText>{error}</ErrorText>
       <UpgradeCenter />
 
@@ -284,7 +285,10 @@ export default function Dashboard() {
               ? agentSummary(agentsRes.data)
               : null;
             const agentSub = agentSum?.note ?? null;
-            const fresh = isFreshOrg(gateways, devices, members);
+            const fresh = isFreshOrg(gateways, devices, members) || (
+              devices.state === "ok" && devices.value === 0 &&
+              sitesRes?.ok === true && sitesRes.data.length === 0
+            );
 
             return (
               // The same reason, one level down: these three sections are siblings and need the page rhythm
@@ -409,19 +413,7 @@ export default function Dashboard() {
                     {/* The floating "Get started" widget is CUT — it becomes this. Rendered only when we KNOW
                         the org is empty: showing it because a fetch failed would tell a founder with a working
                         fleet that they have nothing. */}
-                    <ol className="space-y-1.5 text-explainer leading-[1.55] text-ink-body">
-                      <li>
-                        1. Enroll a tunnex-node agent to serve WireGuard peers.
-                      </li>
-                      <li>2. Add your first device and download its config.</li>
-                      <li>3. Define who may reach what under Access.</li>
-                    </ol>
-                    <Link
-                      to="/devices"
-                      className="mt-2.5 inline-block text-mono text-ink-emphasis hover:text-ink-heading"
-                    >
-                      Enroll a gateway →
-                    </Link>
+                    <SetupChoices />
                   </Panel>
                 )}
 

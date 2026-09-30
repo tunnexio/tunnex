@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, apiErrorMessage } from "../lib/api";
 import { AuthLayout } from "../components/AuthLayout";
 import { Button, ErrorText, Field, Input } from "../components/ui";
+import { CLIENT_DOWNLOAD_URL } from "../components/ClientConnection";
 
 /**
  * AcceptInvite is the landing page for the invitation link
@@ -72,14 +73,15 @@ export default function AcceptInvite() {
       <AuthLayout>
         <h1 className="text-xl font-semibold text-white">You're in</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Your account is ready. Sign in to open your organization.
+          Your account is ready. Download the Tunnex client, then sign in to see your server address and connection steps.
         </p>
         <Link
-          to="/login"
+          to="/login?next=%2Fconnect"
           className="mt-5 inline-block text-xs text-accent-400 hover:text-accent-500"
         >
-          Go to sign in
+          Sign in and connect
         </Link>
+        <a href={CLIENT_DOWNLOAD_URL} target="_blank" rel="noreferrer" className="mt-4 block text-sm text-accent-400 hover:underline">Download Client</a>
       </AuthLayout>
     );
   }

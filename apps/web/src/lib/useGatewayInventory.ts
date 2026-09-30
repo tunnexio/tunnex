@@ -25,6 +25,7 @@ export type GatewayInventoryState = {
   orgId: string | null;
   error?: string;
   nodes: Node[];
+  devices?: Device[] | null;
   siteNames: Record<string, string>;
   homedCounts: Record<string, number> | null;
   licence: GatewayLicence | null;
@@ -35,6 +36,7 @@ const loadingState = (orgId: string | null = null): GatewayInventoryState => ({
   kind: "loading",
   orgId,
   nodes: [],
+  devices: null,
   siteNames: {},
   homedCounts: null,
   licence: null,
@@ -128,6 +130,7 @@ export function useGatewayInventory() {
       kind: "ready",
       orgId: org.id,
       nodes: nodesResult.data,
+      devices: devicesResult.ok ? devicesResult.data : null,
       siteNames: sitesResult.ok
         ? Object.fromEntries(sitesResult.data.map((site) => [site.id, site.name]))
         : {},

@@ -41,6 +41,7 @@ afterEach(() => {
 let provisioningAllowed = true;
 let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup never registers
 
+let serverAdmin = false;
 let edition: "open" | "enterprise" = "enterprise";
 let currentRole: "owner" | "admin" | "member" = "owner";
 let ovpnEnabled = false;
@@ -85,7 +86,7 @@ vi.mock("../src/lib/api", async () => {
         if (path === "/api/v1/organizations/{orgId}/idp-sync/{provider}/health")
           return { data: { provider: "microsoft", sync_health: "ok", last_sync_ok: true, provisioning_allowed: provisioningAllowed } };
         if (path === "/api/v1/auth/me")
-          return { data: { id: "u1", email: "a@b.c", email_verified: true } };
+          return { data: { id: "u1", email: "a@b.c", email_verified: true, cp_admin: serverAdmin } };
         if (path === "/api/v1/meta") return { data: { edition } };
         if (path === "/api/v1/license") {
           if (deferNewOrgSecurityLoad) return new Promise((resolve) => { resolveDeferredLicence = () => resolve({ data: { features: ["agent_jit_access"] } }); });
@@ -273,6 +274,7 @@ const withAuthAndSwitch = () => render(
 const defaultGetImplementation = vi.mocked(api.GET).getMockImplementation()!;
 beforeEach(() => {
   vi.mocked(api.GET).mockImplementation(defaultGetImplementation);
+  serverAdmin = false;
   provisioningAllowed = true;
   if (typeof window.localStorage.removeItem === "function") {
     window.localStorage.removeItem("tunnex.currentOrg");
@@ -791,5 +793,19 @@ describe("Directory provisioning entitlement", () => {
     fireEvent.click(manage[0]);
     expect(await screen.findByText("User provisioning paused, licence required")).toBeTruthy();
     expect(screen.getByText(/Directory removals and disabled-user revocations continue/)).toBeTruthy();
+  });
+});
+
+
+describe("Settings — server email permission", () => {
+  it("hides shared SMTP from an organization owner who is not a server administrator", async () => {
+    withAuth(<Settings />);
+    await screen.findByRole("tab", {name:/Access & security/});
+    expect(screen.queryByRole("tab", {name:/Email delivery/})).toBeNull();
+  });
+  it("offers shared email settings to the server administrator", async () => {
+    serverAdmin = true;
+    withAuth(<Settings />);
+    expect(await screen.findByRole("tab", {name:/Email delivery/})).toBeTruthy();
   });
 });

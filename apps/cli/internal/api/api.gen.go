@@ -1397,6 +1397,19 @@ const (
 	RuntimeMCPToolApprovalPermitStatePending  RuntimeMCPToolApprovalPermitState = "pending"
 )
 
+// Defines values for ServerEmailSettingsSource.
+const (
+	Installer ServerEmailSettingsSource = "installer"
+	Server    ServerEmailSettingsSource = "server"
+)
+
+// Defines values for ServerEmailSettingsInputPasswordAction.
+const (
+	Clear   ServerEmailSettingsInputPasswordAction = "clear"
+	Keep    ServerEmailSettingsInputPasswordAction = "keep"
+	Replace ServerEmailSettingsInputPasswordAction = "replace"
+)
+
 // Defines values for SetK8sConnectorPoolHAModeRequestRequestedMode.
 const (
 	SetK8sConnectorPoolHAModeRequestRequestedModeFencedHa SetK8sConnectorPoolHAModeRequestRequestedMode = "fenced_ha"
@@ -5641,6 +5654,36 @@ type RuntimeMCPToolPolicy struct {
 	Version int64 `json:"version"`
 }
 
+// ServerEmailSettings defines model for ServerEmailSettings.
+type ServerEmailSettings struct {
+	Enabled            bool                      `json:"enabled"`
+	From               string                    `json:"from"`
+	Host               string                    `json:"host"`
+	PasswordConfigured bool                      `json:"password_configured"`
+	Port               int                       `json:"port"`
+	Revision           int64                     `json:"revision"`
+	Source             ServerEmailSettingsSource `json:"source"`
+	Username           string                    `json:"username"`
+}
+
+// ServerEmailSettingsSource defines model for ServerEmailSettings.Source.
+type ServerEmailSettingsSource string
+
+// ServerEmailSettingsInput defines model for ServerEmailSettingsInput.
+type ServerEmailSettingsInput struct {
+	Enabled        bool                                   `json:"enabled"`
+	From           string                                 `json:"from"`
+	Host           string                                 `json:"host"`
+	Password       *string                                `json:"password,omitempty"`
+	PasswordAction ServerEmailSettingsInputPasswordAction `json:"password_action"`
+	Port           int                                    `json:"port"`
+	Revision       int64                                  `json:"revision"`
+	Username       string                                 `json:"username"`
+}
+
+// ServerEmailSettingsInputPasswordAction defines model for ServerEmailSettingsInput.PasswordAction.
+type ServerEmailSettingsInputPasswordAction string
+
 // SetAgentGroupMCPProfileRequest defines model for SetAgentGroupMCPProfileRequest.
 type SetAgentGroupMCPProfileRequest struct {
 	ProfileId openapi_types.UUID `json:"profile_id"`
@@ -6340,6 +6383,12 @@ type AiRerankJSONRequestBody = AIRerankRequest
 // AiVideoGenerationJSONRequestBody defines body for AiVideoGeneration for application/json ContentType.
 type AiVideoGenerationJSONRequestBody = AIVideoRequest
 
+// UpdateServerEmailSettingsJSONRequestBody defines body for UpdateServerEmailSettings for application/json ContentType.
+type UpdateServerEmailSettingsJSONRequestBody = ServerEmailSettingsInput
+
+// TestServerEmailSettingsJSONRequestBody defines body for TestServerEmailSettings for application/json ContentType.
+type TestServerEmailSettingsJSONRequestBody = ServerEmailSettingsInput
+
 // UpdateGatewayEndpointJSONRequestBody defines body for UpdateGatewayEndpoint for application/json ContentType.
 type UpdateGatewayEndpointJSONRequestBody = UpdateGatewayEndpointRequest
 
@@ -7009,6 +7058,19 @@ type ClientInterface interface {
 
 	// AiVideoContent request
 	AiVideoContent(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerEmailSettings request
+	GetServerEmailSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateServerEmailSettingsWithBody request with any body
+	UpdateServerEmailSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateServerEmailSettings(ctx context.Context, body UpdateServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestServerEmailSettingsWithBody request with any body
+	TestServerEmailSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestServerEmailSettings(ctx context.Context, body TestServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetGatewayEndpoint request
 	GetGatewayEndpoint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8575,6 +8637,66 @@ func (c *Client) AiVideoStatus(ctx context.Context, jobId openapi_types.UUID, re
 
 func (c *Client) AiVideoContent(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAiVideoContentRequest(c.Server, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerEmailSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerEmailSettingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerEmailSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerEmailSettingsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerEmailSettings(ctx context.Context, body UpdateServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerEmailSettingsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestServerEmailSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestServerEmailSettingsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestServerEmailSettings(ctx context.Context, body TestServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestServerEmailSettingsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15014,6 +15136,113 @@ func NewAiVideoContentRequest(server string, jobId openapi_types.UUID) (*http.Re
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetServerEmailSettingsRequest generates requests for GetServerEmailSettings
+func NewGetServerEmailSettingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/email-settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateServerEmailSettingsRequest calls the generic UpdateServerEmailSettings builder with application/json body
+func NewUpdateServerEmailSettingsRequest(server string, body UpdateServerEmailSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateServerEmailSettingsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateServerEmailSettingsRequestWithBody generates requests for UpdateServerEmailSettings with any type of body
+func NewUpdateServerEmailSettingsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/email-settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestServerEmailSettingsRequest calls the generic TestServerEmailSettings builder with application/json body
+func NewTestServerEmailSettingsRequest(server string, body TestServerEmailSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestServerEmailSettingsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewTestServerEmailSettingsRequestWithBody generates requests for TestServerEmailSettings with any type of body
+func NewTestServerEmailSettingsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/email-settings/test")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -31055,6 +31284,19 @@ type ClientWithResponsesInterface interface {
 	// AiVideoContentWithResponse request
 	AiVideoContentWithResponse(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiVideoContentResponse, error)
 
+	// GetServerEmailSettingsWithResponse request
+	GetServerEmailSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerEmailSettingsResponse, error)
+
+	// UpdateServerEmailSettingsWithBodyWithResponse request with any body
+	UpdateServerEmailSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerEmailSettingsResponse, error)
+
+	UpdateServerEmailSettingsWithResponse(ctx context.Context, body UpdateServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerEmailSettingsResponse, error)
+
+	// TestServerEmailSettingsWithBodyWithResponse request with any body
+	TestServerEmailSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestServerEmailSettingsResponse, error)
+
+	TestServerEmailSettingsWithResponse(ctx context.Context, body TestServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*TestServerEmailSettingsResponse, error)
+
 	// GetGatewayEndpointWithResponse request
 	GetGatewayEndpointWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGatewayEndpointResponse, error)
 
@@ -32658,6 +32900,77 @@ func (r AiVideoContentResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AiVideoContentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerEmailSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerEmailSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerEmailSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerEmailSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateServerEmailSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerEmailSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateServerEmailSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateServerEmailSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestServerEmailSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Accepted bool `json:"accepted"`
+	}
+	JSONDefault *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestServerEmailSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestServerEmailSettingsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -40566,6 +40879,49 @@ func (c *ClientWithResponses) AiVideoContentWithResponse(ctx context.Context, jo
 	return ParseAiVideoContentResponse(rsp)
 }
 
+// GetServerEmailSettingsWithResponse request returning *GetServerEmailSettingsResponse
+func (c *ClientWithResponses) GetServerEmailSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerEmailSettingsResponse, error) {
+	rsp, err := c.GetServerEmailSettings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerEmailSettingsResponse(rsp)
+}
+
+// UpdateServerEmailSettingsWithBodyWithResponse request with arbitrary body returning *UpdateServerEmailSettingsResponse
+func (c *ClientWithResponses) UpdateServerEmailSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerEmailSettingsResponse, error) {
+	rsp, err := c.UpdateServerEmailSettingsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerEmailSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateServerEmailSettingsWithResponse(ctx context.Context, body UpdateServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerEmailSettingsResponse, error) {
+	rsp, err := c.UpdateServerEmailSettings(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerEmailSettingsResponse(rsp)
+}
+
+// TestServerEmailSettingsWithBodyWithResponse request with arbitrary body returning *TestServerEmailSettingsResponse
+func (c *ClientWithResponses) TestServerEmailSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestServerEmailSettingsResponse, error) {
+	rsp, err := c.TestServerEmailSettingsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestServerEmailSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestServerEmailSettingsWithResponse(ctx context.Context, body TestServerEmailSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*TestServerEmailSettingsResponse, error) {
+	rsp, err := c.TestServerEmailSettings(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestServerEmailSettingsResponse(rsp)
+}
+
 // GetGatewayEndpointWithResponse request returning *GetGatewayEndpointResponse
 func (c *ClientWithResponses) GetGatewayEndpointWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGatewayEndpointResponse, error) {
 	rsp, err := c.GetGatewayEndpoint(ctx, reqEditors...)
@@ -45267,6 +45623,107 @@ func ParseAiVideoContentResponse(rsp *http.Response) (*AiVideoContentResponse, e
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerEmailSettingsResponse parses an HTTP response from a GetServerEmailSettingsWithResponse call
+func ParseGetServerEmailSettingsResponse(rsp *http.Response) (*GetServerEmailSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerEmailSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerEmailSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateServerEmailSettingsResponse parses an HTTP response from a UpdateServerEmailSettingsWithResponse call
+func ParseUpdateServerEmailSettingsResponse(rsp *http.Response) (*UpdateServerEmailSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateServerEmailSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerEmailSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestServerEmailSettingsResponse parses an HTTP response from a TestServerEmailSettingsWithResponse call
+func ParseTestServerEmailSettingsResponse(rsp *http.Response) (*TestServerEmailSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestServerEmailSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Accepted bool `json:"accepted"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

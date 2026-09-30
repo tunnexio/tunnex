@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useGatewayInventory } from "../lib/useGatewayInventory";
 import { siteGate } from "../lib/sitesview";
+import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
 import {
   Button,
@@ -52,6 +53,9 @@ function NetworkSetupWorkspace({
   inventory: ReturnType<typeof useGatewayInventory>;
 } & SetupOptions) {
   const { org, state, reload, canEnroll } = inventory;
+  const [params] = useSearchParams();
+  const fromGuide = params.get("from") === "setup";
+  const guidePath = setupReturnPath("vpn", params.get("setupStep") ?? "2");
   const [step, setStep] = useState(0);
   const [nodeId, setNodeId] = useState("");
   const [name, setName] = useState("");
@@ -105,8 +109,8 @@ function NetworkSetupWorkspace({
         title={done ? "Network created" : "Set up a network"}
         subtitle={org.name}
         actions={
-          <Link className="text-sm text-ink-secondary" to="/sites">
-            Back to Sites →
+          <Link className="text-sm text-ink-secondary" to={fromGuide ? guidePath : "/sites"}>
+            {fromGuide ? "Back to setup guide →" : "Back to Sites →"}
           </Link>
         }
       />}
@@ -127,10 +131,10 @@ function NetworkSetupWorkspace({
             it and verify the connection from a device.
           </p>
           <div className="network-actions">
-            {embedded ? <Button onClick={onComplete}>Continue connection setup</Button> : <><Link to="/access" className="network-primary-link">
+            {embedded ? <Button onClick={onComplete}>Continue connection setup</Button> : <><Link to={fromGuide ? "/access?from=setup&purpose=vpn&setupStep=3" : "/access"} className="network-primary-link">
               Configure access →
             </Link>
-            <Link to="/sites">View network →</Link></>}
+            <Link to={fromGuide ? guidePath : "/sites"}>{fromGuide ? "Continue setup guide →" : "View network →"}</Link></>}
           </div>
         </Card>
       ) : (

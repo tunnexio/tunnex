@@ -130,3 +130,6 @@ export function apiErrorCode(error: unknown): string | undefined {
   const e = error as { error?: { code?: string } } | undefined;
   return e?.error?.code;
 }
+
+export type ServerEmailSettings = components["schemas"]["ServerEmailSettings"];
+export type ServerEmailSettingsInput = components["schemas"]["ServerEmailSettingsInput"];

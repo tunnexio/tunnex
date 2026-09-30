@@ -73,7 +73,7 @@ export default function GatewaysPage() {
       .filter((row) => matchesHealthFilter(row, filter))
       .filter((row) =>
         needle
-          ? `${row.name} ${row.siteName ?? ""} ${row.agentVersion} ${lifecycle(row)}`
+          ? `${row.name} ${row.siteName ?? ""} ${row.endpoint ?? ""} ${row.agentVersion} ${lifecycle(row)}`
               .toLowerCase()
               .includes(needle)
           : true,
@@ -126,6 +126,18 @@ export default function GatewaysPage() {
           </Link>
           <span className="text-micro text-ink-faint">
             {row.siteName ? `Site: ${row.siteName}` : "No site assigned"}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "address",
+      header: "IP / hostname",
+      cell: (row: GatewayRow) => (
+        <span className="flex flex-col gap-0.5">
+          <span className="font-mono text-cell text-ink-body break-all">{row.address ?? "Not reported"}</span>
+          <span className="text-micro text-ink-faint">
+            {row.address ? (row.status === "revoked" ? "Last reported address" : "VPN endpoint address") : "Awaiting gateway address"}
           </span>
         </span>
       ),
@@ -226,7 +238,7 @@ export default function GatewaysPage() {
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <input
                   aria-label="Search gateways"
-                  placeholder="Search gateway, site, version, or state"
+              placeholder="Search gateway, IP, site, version, or state"
                   value={q}
                   onChange={(event) => setParam("q", event.target.value)}
                   className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"

@@ -123,19 +123,22 @@ function Show-TunnexUiPreview {
     Write-Host "  ·  Sample data / no installation"
     Write-TunnexStage 1 "Checking this host" 5
     Show-TunnexPreviewActivity "Checking host requirements"
-    Write-TunnexInfo "macOS / Windows · Portable control plane"
+    Write-TunnexInfo "macOS / Windows · Portable Tunnex Server"
     Write-TunnexStage 2 "Selecting a verified Tunnex release" 5
     Show-TunnexPreviewActivity "Verifying release signature"
     Write-TunnexInfo "Signed release · Images pinned by digest (sample)"
-    Write-TunnexStage 3 "Configuring your control plane" 5
+    Write-TunnexStage 3 "Configuring your Tunnex Server" 5
     Write-TunnexPlanStart
     Write-TunnexPlanItem "Dashboard" "https://vpn.example.com"
     Write-TunnexPlanItem "Administrator" "owner@example.com"
+    Write-TunnexPlanItem "First organization" "Example organization"
     Write-TunnexPlanEnd
     Write-TunnexStage 4 "Reviewing the installation plan" 5
     Write-TunnexPlanStart
-    Write-TunnexPlanItem "Mode" "QuickStart (recommended)"
-    Write-TunnexPlanItem "Gateway" "Separate Linux host"
+    Write-TunnexPlanItem "Mode" "Tunnex Server setup"
+    Write-TunnexPlanItem "Gateway" "Separate Linux host (recommended)"
+    Write-TunnexPlanItem "Alternative" "Same Linux host: quick start, not recommended for production; requires yes"
+    Write-TunnexPlanItem "VPN traffic" "Split tunnel — configured private networks only"
     Write-TunnexPlanItem "Changes" "UI preview only; no host changes"
     Write-TunnexPlanEnd
     Write-Host ""
@@ -144,7 +147,7 @@ function Show-TunnexUiPreview {
     Write-Host "Y / n" -ForegroundColor DarkGray
     Write-TunnexStage 5 "Installing and verifying Tunnex" 5
     Show-TunnexPreviewActivity "Pulling verified images"
-    Show-TunnexPreviewActivity "Waiting for control-plane health"
+    Show-TunnexPreviewActivity "Waiting for Tunnex Server health"
     Write-Host ""
     Write-Host "  ╭─ " -NoNewline -ForegroundColor Cyan
     Write-Host "PREVIEW COMPLETE" -ForegroundColor White

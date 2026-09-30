@@ -8,6 +8,7 @@ import {
   gatewayEgressLabel,
   gatewayEgressDetail,
   gatewayOperationalLabel,
+  gatewayAddress,
 } from "../src/lib/gatewaysview";
 import type { Node } from "../src/lib/api";
 
@@ -19,6 +20,19 @@ const node = (p: Partial<Node> & { id: string; name: string }): Node =>
     last_seen_at: "2099-01-01T00:00:00Z",
     ...p,
   }) as Node;
+
+describe("gateway advertised address", () => {
+  it.each([
+    ["203.0.113.10:51820", "203.0.113.10"],
+    ["[2001:db8::10]:51820", "2001:db8::10"],
+    ["gateway.example.com:51820", "gateway.example.com"],
+    ["", null],
+    [undefined, null],
+  ])("renders %s without inventing an IP", (endpoint, expected) => {
+    expect(gatewayAddress(endpoint)).toBe(expected);
+    expect(toGatewayRow(node({ id: "a", name: "gateway", endpoint })).address).toBe(expected);
+  });
+});
 
 describe("⛔ DEGRADED FIRST — the ACTING surface leads with what is wrong", () => {
   it("orders the groups degraded, healthy, revoked", () => {

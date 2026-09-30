@@ -77,6 +77,8 @@ services:
     image: ${TUNNEX_API_IMAGE}
     environment:
       TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}
+      TUNNEX_BOOTSTRAP_ORG_NAME: ${TUNNEX_BOOTSTRAP_ORG_NAME:-}
+      TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256: ${TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256:-}
 # bundled-db
 YAML
 	;;
@@ -153,15 +155,15 @@ for expected in \
 	'TUNNEX / GUIDED SETUP' \
 	'TUNNEX SETUP' \
 	'Security boundary' \
-	'QuickStart is recommended.' \
+	'A separate Linux gateway is recommended.' \
 	'[1/5] Checking this host' \
 	'Detected: ubuntu' \
 	'Install or complete Docker Engine, Compose v2, and required utilities for ubuntu' \
 	'[2/5] Selecting a verified Tunnex release' \
-	'[3/5] Configuring your control plane' \
+	'[3/5] Configuring your Tunnex Server' \
 	'[4/5] Reviewing the installation plan' \
 	'╭─ QuickStart plan' \
-	'Mode               QuickStart (recommended)' \
+	'Mode               Tunnex Server setup' \
 	'Public URL         https://preview.tunnex.test' \
 	'TLS mode           terminated' \
 	'[5/5] Installing and verifying Tunnex' \
@@ -174,12 +176,33 @@ grep -Fq 'docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-comp
 	fail 'fresh Ubuntu preview did not install the complete Docker Engine + Compose set'
 grep -Fq 'TUNNEX_TLS_MODE=terminated' "$TMP/control-plane/.env" ||
 	fail 'generated environment lost the selected TLS mode'
-grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=false' "$TMP/control-plane/.env" ||
-	fail 'Linux install was not recorded as the co-located gateway shape'
+grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=true' "$TMP/control-plane/.env" ||
+	fail 'Linux CP-only install did not retain scale-zero compatibility with older upgrade helpers'
 grep -Fq 'TUNNEX_RELEASE_SOURCE_SHA=0123456789abcdef0123456789abcdef01234567' "$TMP/control-plane/.env" ||
 	fail 'generated environment lost verified release provenance'
 grep -Fq 'COMPOSE_PROJECT_NAME=control-plane' "$TMP/control-plane/.env" ||
 	fail 'installer did not persist an installation-specific Compose project name'
+grep -Fq 'TUNNEX_GATEWAY_PLACEMENT=separate' "$TMP/control-plane/.env" ||
+	fail 'fresh Linux installation did not default to a separate gateway'
+
+# The opt-in local path must pass the first organization and name-bound token
+# through Compose, check readiness, and remove the consumed token from .env.
+PATH="$TEST_PATH" TUNNEX_TEST_BIN="$BIN" TUNNEX_TEST_APT_LOG="$APT_LOG" \
+TUNNEX_TEST_DOCKER_LOG="$TMP/local-gateway-compose.log" \
+TUNNEX_OS_RELEASE_FILE="$TMP/os-release" TUNNEX_VERSION=v9.9.9 TUNNEX_SOURCE_REF="$SOURCE_SHA" \
+TUNNEX_PUBLIC_BASE_URL=https://preview.tunnex.test TUNNEX_TLS_MODE=terminated \
+TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test TUNNEX_SMTP=skip \
+TUNNEX_BOOTSTRAP_ORG_NAME='First office' TUNNEX_GATEWAY_PLACEMENT=same-host \
+TUNNEX_COLOCATED_GATEWAY_CONFIRM=yes TUNNEX_GATEWAY_ADDRESS=203.0.113.24 \
+TUNNEX_DIR="$TMP/local-gateway" sh "$INSTALLER" --yes >"$TMP/local-gateway-output.txt"
+grep -Fq 'TUNNEX_BOOTSTRAP_ORG_NAME="First office"' "$TMP/local-gateway/.env" || fail 'first organization was not saved'
+grep -Fq 'TUNNEX_NODE_NAME=quickstart-gateway' "$TMP/local-gateway/.env" || fail 'local gateway name pin was not saved'
+grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=false' "$TMP/local-gateway/.env" || fail 'same-host install was incorrectly marked CP-only'
+grep -Fq 'TUNNEX_NODE_ENDPOINT=203.0.113.24:51820' "$TMP/local-gateway/.env" || fail 'local gateway address was not saved'
+grep -Fxq 'TUNNEX_JOIN_TOKEN=' "$TMP/local-gateway/.env" || fail 'consumed join token was retained in dotenv'
+grep -Fxq 'TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256=' "$TMP/local-gateway/.env" || fail 'consumed join hash was retained in dotenv'
+grep -Fq '/readyz' "$TMP/local-gateway-compose.log" || fail 'local gateway success did not check readiness'
+grep -Fq 'Local gateway enrolled and ready in your first organization.' "$TMP/local-gateway-output.txt" || fail 'local enrollment success missing'
 
 # OpenClaw-style local preview must show the complete, host-specific plan while
 # stopping before Docker/bootstrap, download, or product mutations.
@@ -257,7 +280,7 @@ TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test \
 TUNNEX_SMTP=skip \
 TUNNEX_DIR="$TMP/macos-portable" \
 	sh "$INSTALLER" --yes >"$TMP/portable-output.txt"
-grep -Fq 'Portable control plane; enroll the gateway on a separate Linux host' "$TMP/portable-output.txt" ||
+grep -Fq 'Portable Tunnex Server; enroll the gateway on a separate Linux host' "$TMP/portable-output.txt" ||
 	fail 'portable deployment shape was not visible in the onboarding review'
 grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=true' "$TMP/macos-portable/.env" ||
 	fail 'portable deployment shape was not persisted'
@@ -284,7 +307,7 @@ PATH="$TEST_PATH" \
 	TUNNEX_SMTP=skip \
 	TUNNEX_DIR="$TMP/windows-portable" \
 	sh "$INSTALLER" --yes >"$TMP/windows-portable-output.txt"
-grep -Fq 'Portable control plane; enroll the gateway on a separate Linux host' "$TMP/windows-portable-output.txt" ||
+grep -Fq 'Portable Tunnex Server; enroll the gateway on a separate Linux host' "$TMP/windows-portable-output.txt" ||
 	fail 'Windows/Git Bash onboarding did not disclose the portable control-plane boundary'
 grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=true' "$TMP/windows-portable/.env" ||
 	fail 'Windows/Git Bash install did not persist the portable control-plane boundary'
@@ -332,7 +355,9 @@ dialogue = [
     (b"SMTP username:", b"support@preview.tunnex.test\r"),
     (b"SMTP password:", b"preview-smtp-secret\r"),
     (b"From address [no-reply@preview.tunnex.test]:", b"support@preview.tunnex.test\r"),
-    (b"CP database: bundled or external PostgreSQL? [bundled]:", b"bundled\r"),
+    (b"Server database: bundled or external PostgreSQL? [bundled]:", b"bundled\r"),
+    (b"Your first organization [My organization]:", b"Preview organization\r"),
+    (b"Gateway location [separate / same-host] [separate]:", b"separate\r"),
     (b"Proceed with this installation? [Y/n]:", b"y\r"),
 ]
 
@@ -450,11 +475,11 @@ for expected in \
 	'SMTP username:' \
 	'SMTP password:' \
 	'From address [no-reply@preview.tunnex.test]:' \
-	'CP database: bundled or external PostgreSQL? [bundled]:' \
+	'Server database: bundled or external PostgreSQL? [bundled]:' \
 	'Proceed with this installation? [Y/n]:' \
 	'Downloading the signed release verifier' \
 	'Pulling verified Tunnex images' \
-	'Starting the control plane and Linux gateway' \
+	'Starting the Tunnex Server (initial migrations' \
 	'Email              mail.preview.tunnex.test:587 as support@preview.tunnex.test' \
 	'Tunnex v9.9.9 is running.'; do
 	grep -Fq "$expected" "$TMP/interactive-output-normalized.txt" ||

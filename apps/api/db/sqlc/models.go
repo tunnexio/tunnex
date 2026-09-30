@@ -2044,6 +2044,13 @@ type Resource struct {
 	Label     *string   `json:"label"`
 }
 
+type ServerEmailSetting struct {
+	Singleton        bool      `json:"singleton"`
+	Revision         int64     `json:"revision"`
+	ConfigCiphertext string    `json:"config_ciphertext"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 type Site struct {
 	ID            uuid.UUID `json:"id"`
 	OrgID         uuid.UUID `json:"org_id"`

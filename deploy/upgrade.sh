@@ -157,6 +157,10 @@ compose() {
   fi
 }
 compose_up() {
+  if [ "$(dotenv_value TUNNEX_GATEWAY_PLACEMENT)" = separate ]; then
+    compose up "$@" --scale node-agent=0
+    return
+  fi
   case "$(dotenv_value TUNNEX_PORTABLE_CONTROL_PLANE)" in
     true) compose up "$@" --scale node-agent=0 ;;
     *) compose up "$@" ;;

@@ -53,6 +53,7 @@ import (
 	applog "github.com/tunnexio/tunnex/apps/api/internal/log"
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mail"
+	"github.com/tunnexio/tunnex/apps/api/internal/mailsettings"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolapproval"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
@@ -110,30 +111,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ⛔ A DEPLOYMENT WITH NO SMTP SAYS SO AT STARTUP, LOUDLY — not when an invitation is sent and an
-	// operator is watching a spinner while a recipient waits for a link that never comes.
-	//
-	// ⚠ INVITATIONS ARE NOW THE ONLY WAY ANYONE JOINS. Without mail, a fresh deployment cannot admit a
-	// second person at all — the CP admin can create invitations and nobody ever receives one. That is a
-	// deployment which looks healthy on every screen and is unusable.
-	if !mail.Configured(mail.Config{Host: cfg.SMTP.Host}) {
-		fmt.Fprint(os.Stdout, "\n"+
-			"==========================================================================\n"+
-			"  ⛔ EMAIL IS NOT CONFIGURED — invitations cannot be delivered\n"+
-			"==========================================================================\n\n"+
-			"  Invitations are the only way people join this deployment, and password\n"+
-			"  resets and email verification also depend on mail.\n\n"+
-			"  Set these in .env and restart:\n"+
-			"    SMTP_HOST      your provider's server, e.g. smtp.example.net\n"+
-			"    SMTP_PORT      usually 587\n"+
-			"    SMTP_FROM      the address mail is sent as\n"+
-			"    SMTP_USERNAME  if your provider requires auth\n"+
-			"    SMTP_PASSWORD  if your provider requires auth\n\n"+
-			"  Until then, invitations are still CREATED and the dashboard shows a\n"+
-			"  copyable link you can send yourself. Nothing silently succeeds.\n\n"+
-			"==========================================================================\n\n")
-	}
-
 	mailCfg := mail.Config{
 		Host:     cfg.SMTP.Host,
 		Port:     cfg.SMTP.Port,
@@ -146,7 +123,7 @@ func main() {
 		// It was sending. One flag must not govern two unrelated things.
 		DevLogging: cfg.SMTP.DevLog,
 	}
-	mailer := mail.New(mailCfg, logger)
+	var mailer mail.Mailer = mail.New(mailCfg, logger)
 
 	// Log fingerprints (never the secrets). Stable fingerprints across restarts
 	// prove keys were reused, not regenerated.
@@ -162,7 +139,7 @@ func main() {
 	// another, and the second reader has no way to discover they were wrong except by not receiving an
 	// email. This says where mail goes, in words, so the question is answered at install rather than at the
 	// first missing invitation.
-	logger.Info("mail_destination", slog.String("mail_goes_to", mail.Destination(mailCfg)))
+	// The effective destination is logged after loading the saved server override.
 
 	// sealer and mailer are consumed by auth/SSO flows starting in EPIC 2.
 	_ = sealer
@@ -196,6 +173,20 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	emailSettings := mailsettings.New(pool, sealer, mailCfg, logger)
+	mailer = emailSettings
+	emailView, mailErr := emailSettings.Get(context.Background())
+	mailReady := emailView.Enabled
+	if mailErr != nil {
+		// Email delivery refuses until the saved configuration can be read again;
+		// unrelated server functions remain available for diagnosis and recovery.
+		logger.Error("email_configuration_unavailable", slog.String("delivery", "blocked; no fallback provider used"))
+	} else {
+		logger.Info("mail_destination", slog.Bool("smtp_configured", mailReady), slog.String("configuration_source", emailView.Source))
+		if !mailReady {
+			fmt.Fprintln(os.Stdout, "Email delivery is disabled. Configure it in Settings > Email delivery after sign-in. Invitations can be shared manually until then.")
+		}
+	}
 	logger.Info("db_pool_configured", slog.Int("max_connections", int(pool.Config().MaxConns)))
 
 	// S10.1/S6.6 validate-never-generate: pgxpool.New is LAZY, so an unreachable
@@ -281,8 +272,20 @@ func main() {
 	// ⛔ THE ONLY WAY INTO A FRESH DEPLOYMENT. There is no public signup, so without this a new install has
 	// no account and no way to make one. Idempotent: on any deployment that has ever had a user it does
 	// nothing and prints nothing — a restart must not be a security event.
-	if e := bootstrap.EnsureAdmin(context.Background(), sqlc.New(pool), logger, os.Stdout, cfg.AdminEmail, mailer); e != nil {
-		logger.Error("bootstrap_admin_failed", slog.String("err", e.Error()))
+	if cfg.BootstrapOrgName == "" && cfg.BootstrapGatewayTokenHash == "" {
+		// Existing non-installer deployments retain their established bootstrap.
+		if e := bootstrap.EnsureAdmin(context.Background(), sqlc.New(pool), logger, os.Stdout, cfg.AdminEmail, mailer); e != nil {
+			logger.Error("bootstrap_admin_failed", slog.String("err", e.Error()))
+		}
+	} else {
+		if e := bootstrap.EnsureInstallation(context.Background(), pool, logger, os.Stdout, cfg.AdminEmail, mailer, bootstrap.Installation{
+			OrganizationName: cfg.BootstrapOrgName,
+			GatewayTokenHash: cfg.BootstrapGatewayTokenHash,
+			GatewayName:      cfg.BootstrapGatewayName,
+		}); e != nil {
+			logger.Error("bootstrap_admin_failed", slog.String("err", e.Error()))
+			os.Exit(1)
+		}
 	}
 	licenceMgr := (&licence.Manager{}).WithStore(
 		apphttp.NewLicenceStore(pool), licence.DefaultRefreshInterval, logger)
@@ -585,7 +588,8 @@ func main() {
 		ReleaseBootstrap:      releaseBootstrap,
 		ReleaseStatusProvider: releaseStatusProvider,
 		HostUpgrade:           hostUpgradeSvc,
-		SMTPConfigured:        mail.Configured(mail.Config{Host: cfg.SMTP.Host}),
+		SMTPConfigured:        mailReady,
+		EmailSettings:         emailSettings,
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
 		AuthFn:                apphttp.SessionAuth(sessions, sqlc.New(pool)),
 		BearerFn:              apphttp.BearerAuth(sqlc.New(pool)),

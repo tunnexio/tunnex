@@ -188,6 +188,7 @@ func requireVerifiedSessionUser(ctx context.Context) (*authctx.Principal, error)
 // typed responses on success and plain errors on failure; the strict handler's
 // ResponseErrorHandlerFunc renders those errors as the standard envelope.
 type apiServer struct {
+	emailSettings    emailSettingsRepository
 	ipsecRuntime     ipsecRuntimeRepository
 	ipsecStatus      ipsecStatusRepository
 	ipsecEligibility ipsecEligibilityRepository

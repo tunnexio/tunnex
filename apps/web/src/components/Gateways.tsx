@@ -131,13 +131,13 @@ export function cpEndpoints(
     // Only a CONFIGURED url reaches here (the browser origin always parses) → an operator APP_BASE_URL typo.
     return {
       ok: false,
-      reason: `The control plane's configured public URL (${base}) is not a valid URL.`,
+      reason: `The Tunnex Server's configured public URL (${base}) is not a valid URL.`,
     };
   }
   if (!u.hostname)
     return {
       ok: false,
-      reason: `The control plane's configured public URL (${base}) has no host.`,
+      reason: `The Tunnex Server's configured public URL (${base}) has no host.`,
     };
   let agentURL = `https://${u.hostname}:8443`;
   const configuredAgent = gatewayControlURL?.trim() || "";
@@ -396,7 +396,7 @@ export function Gateways({
               {busy
                 ? "Generating…"
                 : !metaLoaded || !gatewayEndpointSettled
-                  ? "Checking control plane…"
+                  ? "Checking Tunnex Server…"
                   : "Generate join token"}
             </Button>
           </div>}
@@ -417,7 +417,7 @@ export function Gateways({
           <div className="min-w-0">
             <p className="text-micro font-medium uppercase tracking-wide text-ink-faint">Control connection</p>
             <p className="mt-0.5 truncate text-cell text-ink-body">
-              {gatewayControlURL ? controlEndpointHostname(gatewayControlURL) : "Automatic from control-plane URL"}
+              {gatewayControlURL ? controlEndpointHostname(gatewayControlURL) : "Automatic from Tunnex Server URL"}
               <span className={`ml-2 text-micro ${gatewayControlURL ? "text-ok" : "text-ink-faint"}`}>
                 {gatewayControlURL ? "Configured" : "Default"}
               </span>
@@ -472,13 +472,13 @@ export function Gateways({
           Only judged once meta has SETTLED (metaLoaded) — an in-flight fetch isn't an error. */}
       {open && metaLoaded && !ep.ok && (
         <ErrorText>
-          {ep.reason} Fix the control plane's public address (APP_BASE_URL)
+          {ep.reason} Fix the Tunnex Server's public address (APP_BASE_URL)
           before enrolling a gateway.
         </ErrorText>
       )}
       {open && ep.ok && ep.usedFallback && metaError && (
         <p className="mt-2 text-xs text-amber-400">
-          Couldn't confirm the control plane's public URL (metadata unavailable)
+          Couldn't confirm the Tunnex Server's public URL (metadata unavailable)
           so the command below uses this dashboard's origin. Verify the gateway
           can reach <span className="font-mono">{ep.apiURL}</span>.
         </p>
@@ -500,7 +500,7 @@ export function Gateways({
             {busy
               ? "Generating…"
               : !metaLoaded || !gatewayEndpointSettled
-                ? "Checking control plane…"
+                ? "Checking Tunnex Server…"
                 : "Generate join token"}
           </Button>
         </div>
@@ -537,7 +537,7 @@ export function Gateways({
                   the hub; other peers can't dial it).
                 </>
               )}{" "}
-              (Installing on the SAME host as the control plane? See{" "}
+              (Installing on the SAME host as Tunnex Server? See{" "}
               <span className="font-mono">docs/deploy-cloud-gateway.md</span>{" "}
               for the co-located compose form. It carries this same token.)
             </>

@@ -4894,6 +4894,59 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/admin/email-settings:
+    get:
+      operationId: getServerEmailSettings
+      summary: Read deployment-wide email settings (verified server administrator)
+      tags: [admin]
+      responses:
+        "200":
+          description: Effective non-secret settings; installer values until an override is saved.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerEmailSettings" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateServerEmailSettings
+      summary: Save encrypted email settings with a revision precondition
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServerEmailSettingsInput" }
+      responses:
+        "200":
+          description: Saved settings. Does not send email. Used for subsequent sends on all replicas.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerEmailSettings" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/email-settings/test:
+    post:
+      operationId: testServerEmailSettings
+      summary: Test candidate SMTP settings without saving
+      description: Sends one fixed message only to the authenticated verified server administrator. Limited to one attempt per administrator per 30 seconds. Acceptance does not prove inbox delivery.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServerEmailSettingsInput" }
+      responses:
+        "200":
+          description: SMTP provider accepted the message; configuration was not saved.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: { type: boolean }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/admin/upgrade:
     get:
       operationId: getHostUpgrade
@@ -11519,6 +11572,31 @@ components:
           x-enum-varnames: [NotNeeded, RestoreFromBackup, Available, InProgress, Failed]
         approval_mode: { type: string, enum: [host_command_only, host_updater] }
 
+    ServerEmailSettings:
+      type: object
+      required: [enabled, host, port, from, username, password_configured, source, revision]
+      properties:
+        enabled: { type: boolean }
+        host: { type: string }
+        port: { type: integer }
+        from: { type: string }
+        username: { type: string }
+        password_configured: { type: boolean }
+        source: { type: string, enum: [installer, server] }
+        revision: { type: integer, format: int64 }
+    ServerEmailSettingsInput:
+      type: object
+      additionalProperties: false
+      required: [enabled, host, port, from, username, revision, password_action]
+      properties:
+        enabled: { type: boolean }
+        host: { type: string, maxLength: 253 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        from: { type: string, maxLength: 320 }
+        username: { type: string, maxLength: 320 }
+        revision: { type: integer, format: int64, minimum: 0 }
+        password_action: { type: string, enum: [keep, replace, clear] }
+        password: { type: string, writeOnly: true, maxLength: 4096 }
     HostUpgradeStatus:
       type: object
       additionalProperties: false
