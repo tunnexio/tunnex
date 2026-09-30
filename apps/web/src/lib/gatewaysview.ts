@@ -26,6 +26,8 @@ export interface GatewayRow {
   /** Verified internet egress mode used by newly generated full-tunnel profiles. */
   egressMode: Node["egress_mode"];
   agentVersion: string;
+  endpoint: string | null;
+  address: string | null;
   siteId: string | null;
   /** The bound site's NAME, when the caller knows it. `null` = unbound, or the caller did not load sites. */
   siteName: string | null;
@@ -37,6 +39,15 @@ export interface GatewayRow {
 export interface GatewayGroup {
   key: GatewayGroupKey;
   rows: GatewayRow[];
+}
+
+/** Report the advertised host without presenting a DNS name as a discovered IP. */
+export function gatewayAddress(endpoint?: string | null): string | null {
+  if (!endpoint) return null;
+  const ipv6 = /^\[([^\]]+)\]:\d+$/.exec(endpoint);
+  if (ipv6) return ipv6[1];
+  const host = /^([^:]+):\d+$/.exec(endpoint);
+  return host ? host[1] : endpoint;
 }
 
 /**
@@ -81,6 +92,8 @@ export function toGatewayRow(
     ovpnHealth,
     egressMode: n.egress_mode ?? null,
     agentVersion: n.agent_version,
+    endpoint: n.endpoint || null,
+    address: gatewayAddress(n.endpoint),
     siteId: n.site_id ?? null,
     siteName: n.site_id ? (siteNames?.[n.site_id] ?? null) : null,
     isHub: n.is_site_hub === true,

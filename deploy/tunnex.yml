@@ -72,6 +72,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       # The installer collects this address so first-boot can deliver the one-time admin credential.
       TUNNEX_ADMIN_EMAIL: ${TUNNEX_ADMIN_EMAIL:-}
+      # First boot only: created atomically with the administrator and owner membership.
+      TUNNEX_BOOTSTRAP_ORG_NAME: ${TUNNEX_BOOTSTRAP_ORG_NAME:-}
+      TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256: ${TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256:-}
+      TUNNEX_BOOTSTRAP_GATEWAY_NAME: ${TUNNEX_BOOTSTRAP_GATEWAY_NAME:-}
       # A signed descriptor is mounted read-only. The API treats absent or invalid
       # metadata as no update / blocked update, never as a mutable-tag upgrade.
       TUNNEX_RELEASE_MANIFEST_PATH: ${TUNNEX_RELEASE_MANIFEST_PATH:-}

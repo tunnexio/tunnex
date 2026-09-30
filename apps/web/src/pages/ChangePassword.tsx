@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { loginDestination } from "../lib/authroute";
 
 import { AuthLayout } from "../components/AuthLayout";
 import { Button, ErrorText, Field, Input } from "../components/ui";
@@ -23,6 +24,7 @@ import { useAuth } from "../lib/auth";
 export function ChangePassword() {
   const { state, setUser } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -51,7 +53,8 @@ export function ChangePassword() {
       if (state.status === "authed") {
         setUser({ ...state.user, must_change_password: false });
       }
-      navigate("/dashboard", { replace: true });
+      const destination = loginDestination(params.get("next"));
+      navigate(destination.startsWith("/change-password") ? "/dashboard" : destination, { replace: true });
     } catch {
       setError("Could not reach the API.");
     } finally {

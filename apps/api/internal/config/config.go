@@ -62,7 +62,10 @@ type Config struct {
 	AILiteLLMAdminToken         string
 	// AdminEmail receives the one-time first-run administrator credential when SMTP is configured.
 	// Empty falls back to bootstrap's local address for non-installer deployments.
-	AdminEmail string
+	AdminEmail                string
+	BootstrapOrgName          string
+	BootstrapGatewayTokenHash string
+	BootstrapGatewayName      string
 	// NodeAgentImage is the gateway agent image the dashboard bakes into the emitted enroll command
 	// (S8.2c WF-2). One-truth applied to the artifact version: pin it to a DIGEST
 	// (ghcr.io/…/tunnex-node-agent@sha256:…) and the stale-`:latest` drift that mis-convicted D2 becomes
@@ -183,6 +186,9 @@ func Load() Config {
 		AILiteLLMURL:                getenv("TUNNEX_AI_LITELLM_URL", ""),
 		AILiteLLMAdminToken:         getenv("TUNNEX_AI_LITELLM_ADMIN_TOKEN", ""),
 		AdminEmail:                  getenv("TUNNEX_ADMIN_EMAIL", ""),
+		BootstrapOrgName:            getenv("TUNNEX_BOOTSTRAP_ORG_NAME", ""),
+		BootstrapGatewayTokenHash:   getenv("TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256", ""),
+		BootstrapGatewayName:        getenv("TUNNEX_BOOTSTRAP_GATEWAY_NAME", ""),
 		NodeAgentImage:              getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
 		K8sHAEnabled:                getbool("TUNNEX_K8S_HA_ENABLED", false),
 		ReleaseManifestPath:         getenv("TUNNEX_RELEASE_MANIFEST_PATH", ""),

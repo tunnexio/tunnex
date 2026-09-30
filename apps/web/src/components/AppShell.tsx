@@ -13,6 +13,7 @@ import { Logo, Tagline } from "../brand";
 import { useAuth } from "../lib/auth";
 import { useResendVerification } from "../lib/useResendVerification";
 import { Button } from "./ui";
+import { SetupReturn } from "./SetupReturn";
 import { IdentityBadges } from "./IdentityBadges";
 import { useLayoutCapability } from "./ComposeGate";
 import { CommandPalette } from "./CommandPalette";
@@ -572,6 +573,7 @@ export function AppShell() {
             {state.status === "authed" && !state.user.email_verified && (
               <VerifyEmailBanner />
             )}
+            <SetupReturn />
             <Outlet />
           </main>
         </div>

@@ -1,3 +1,4 @@
+import ClientConnectPage from "./pages/Connect";
 import NetworkSetup from "./pages/NetworkSetup";
 import SiteToSite from "./pages/SiteToSite";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -31,6 +32,7 @@ import Gateways from "./pages/Gateways";
 import GatewayDetail from "./pages/GatewayDetail";
 import Sites from "./pages/Sites";
 import RoutedRanges from "./pages/RoutedRanges";
+import Setup from "./pages/Setup";
 import Kubernetes from "./pages/Kubernetes";
 import AgentsIndex from "./pages/AgentsIndex";
 import AgentDetail from "./pages/AgentDetail";
@@ -178,6 +180,8 @@ function ProductApp() {
             <Route path="/gateways" element={<Gateways />} />
             <Route path="/gateways/:gatewayId" element={<GatewayDetail />} />
             <Route path="/sites" element={<Sites />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="/connect" element={<ClientConnectPage />} />
             <Route path="/site-to-site" element={<SiteToSite />} />
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
@@ -242,7 +246,7 @@ function RequireAuth() {
     state.user.must_change_password &&
     location.pathname !== "/change-password"
   ) {
-    return <Navigate to="/change-password" replace />;
+    return <Navigate to={`/change-password?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
   }
   const gateRoute = resolveMfaGateRoute(
     Boolean(state.user.mfa_enrollment_required),

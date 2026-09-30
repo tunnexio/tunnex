@@ -96,7 +96,7 @@ describe("Gateway enrollment ceremony", () => {
     mocks.meta.gatewayControlURL = "";
     render(<Gateways org={org} initiallyOpen hideHeader />);
 
-    expect(await screen.findByText("Automatic from control-plane URL")).toBeTruthy();
+    expect(await screen.findByText("Automatic from Tunnex Server URL")).toBeTruthy();
     expect(screen.queryByLabelText("Gateway control URL (DNS hostname)")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
     const controlURL = await screen.findByLabelText(
@@ -191,7 +191,7 @@ describe("Gateway enrollment ceremony", () => {
           .disabled,
       ).toBe(false),
     );
-    expect(screen.getByText("Automatic from control-plane URL")).toBeTruthy();
+    expect(screen.getByText("Automatic from Tunnex Server URL")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Generate join token" }));
     expect(await screen.findByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeTruthy();
     expect(screen.getByText(/TUNNEX_AGENT_URL="https:\/\/cp.example.com:8443"/)).toBeTruthy();

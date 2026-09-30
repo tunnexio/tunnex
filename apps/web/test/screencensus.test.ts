@@ -25,17 +25,6 @@ const PAGES_DIR = join(__dirname, "..", "src", "pages");
 
 // EXEMPT — the reason is part of the datum, not documentation about it.
 const EXEMPT: Record<string, string> = {
-  // ⛔ PENDING, WITH ITS REASON AND ITS TRIGGER. ChangePassword is the door in the forced-password wall:
-  // the server refused every route with `password_change_required` and the client had nowhere to send
-  // anyone, so an operator signed in with the log-printed credential and read a red error under a button
-  // that could never work.
-  //
-  // ⚠ IT SHIPPED WITHOUT A WIRING TEST BECAUSE THE OPERATOR WAS BLOCKED, and that is a reason, not an
-  // excuse. TRIGGER: the next piece of the onboarding rebuild (invitations + forced password SET for
-  // invitees) touches this same flow — the wiring test lands with it, covering both screens at once
-  // rather than testing this one twice.
-  "ChangePassword.tsx":
-    "PENDING — forced first-login change; wiring test lands with the invitation flow, which shares it",
   // ⛔ NOT A PRODUCT SCREEN, AND NOT SHIPPED. The visual gallery is a fixture surface behind
   // `VITE_VISUAL_GALLERY`, unset in every production build. It renders primitives with literal props, calls no
   // API, and makes no decision — so a wiring test would assert that a fixture equals itself.
@@ -57,7 +46,6 @@ const EXEMPT: Record<string, string> = {
     "terminal status page — renders a fixed state, no list, no derivation",
   "VerifyPending.tsx":
     "terminal status page — renders a fixed state, no list, no derivation",
-  "AcceptInvite.tsx": "one-shot token redemption; no ongoing backend concept",
   "CreateOrg.tsx": "one form, one POST, no rendered backend state",
   // TESTED ELSEWHERE, not skipped — the distinction matters and is why the reason names the coverage.
   "CliAuth.tsx":
@@ -78,6 +66,10 @@ const EXEMPT: Record<string, string> = {
 
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
+  "Connect.tsx": "test/setuphandoff.test.tsx — native client handoff, authoritative address and failed metadata",
+  "ChangePassword.tsx": "test/setuphandoff.test.tsx — safe return destination and failed password save",
+  "AcceptInvite.tsx": "test/setuphandoff.test.tsx — client handoff without session minting and expired invitation refusal",
+  "Setup.tsx": "test/setupwiring.test.tsx — existing gateway reuse, failed reads, organization change and permission refusal",
   "SiteToSite.tsx":
     "test/sitetosite.test.tsx + sitepairreview.test.tsx — organization-scoped inventory, permission recovery, selected subnet reads, and stale/failed read separation",
   "AgentsAIGateway.tsx": "AI policy expected-revision writes, failure handling and scoped usage - aigatewaypolicy.test.tsx",
@@ -199,7 +191,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(15);
+    expect(Object.keys(COVERED).length).toBe(19);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -219,7 +211,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 27 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(27);
+  it("the ledger is a snapshot of today — 31 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(31);
   });
 });

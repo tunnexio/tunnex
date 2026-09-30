@@ -4022,6 +4022,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/email-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read deployment-wide email settings (verified server administrator) */
+        get: operations["getServerEmailSettings"];
+        /** Save encrypted email settings with a revision precondition */
+        put: operations["updateServerEmailSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/email-settings/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test candidate SMTP settings without saving
+         * @description Sends one fixed message only to the authenticated verified server administrator. Limited to one attempt per administrator per 30 seconds. Acceptance does not prove inbox delivery.
+         */
+        post: operations["testServerEmailSettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/upgrade": {
         parameters: {
             query?: never;
@@ -9509,6 +9547,30 @@ export interface components {
             rollback_state?: "not_needed" | "restore_from_backup" | "available" | "in_progress" | "failed";
             /** @enum {string} */
             approval_mode?: "host_command_only" | "host_updater";
+        };
+        ServerEmailSettings: {
+            enabled: boolean;
+            host: string;
+            port: number;
+            from: string;
+            username: string;
+            password_configured: boolean;
+            /** @enum {string} */
+            source: "installer" | "server";
+            /** Format: int64 */
+            revision: number;
+        };
+        ServerEmailSettingsInput: {
+            enabled: boolean;
+            host: string;
+            port: number;
+            from: string;
+            username: string;
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            password_action: "keep" | "replace" | "clear";
+            password?: string;
         };
         HostUpgradeStatus: {
             available: boolean;
@@ -15946,6 +16008,82 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerEmailSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective non-secret settings; installer values until an override is saved. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerEmailSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerEmailSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerEmailSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Saved settings. Does not send email. Used for subsequent sends on all replicas. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerEmailSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testServerEmailSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerEmailSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description SMTP provider accepted the message; configuration was not saved. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        accepted: boolean;
+                    };
+                };
             };
             default: components["responses"]["Error"];
         };

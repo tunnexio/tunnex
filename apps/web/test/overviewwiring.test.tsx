@@ -21,12 +21,13 @@ let overviewFail = false;
 let sitesFail = false;
 let nodesFail = false;
 let empty = false;
+let preEnrolledGateway = false;
 let edition: string | null = "enterprise";
 
 const OV = () => ({
   members: empty ? 0 : 4,
   devices: empty ? 0 : 7,
-  nodes: empty ? 0 : 2,
+  nodes: preEnrolledGateway ? 1 : empty ? 0 : 2,
   online: empty ? 0 : 1,
   recent_activity: empty
     ? []
@@ -189,6 +190,7 @@ beforeEach(() => {
   sitesFail = false;
   nodesFail = false;
   empty = false;
+  preEnrolledGateway = false;
 });
 
 describe("the six cards resolve INDEPENDENTLY — one failure degrades one card", () => {
@@ -325,7 +327,18 @@ describe("the get-started state appears only when the org is KNOWN to be empty",
     empty = true;
     show();
     await waitFor(() => expect(screen.getByText("Get started")).toBeTruthy());
-    expect(screen.getByText(/Enroll a tunnex-node agent/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Company VPN/ }).getAttribute("href")).toBe("/setup?purpose=vpn");
+  });
+
+  it("offers setup after installer enrollment without making the user enroll again", async () => {
+    empty = true; preEnrolledGateway = true; show();
+    expect(await screen.findByRole("link", {name:/Company VPN/})).toBeTruthy();
+  });
+
+  it("a failed site read does not invent first-time setup for an existing gateway", async () => {
+    empty = true; preEnrolledGateway = true; sitesFail = true; show();
+    await screen.findByText("could not load");
+    expect(screen.queryByRole("link", {name:/Company VPN/})).toBeNull();
   });
 
   it("a POPULATED org shows no get-started panel", async () => {

@@ -44,7 +44,15 @@ func (s apiServer) editionName() string {
 func (s apiServer) GetMeta(ctx context.Context, _ api.GetMetaRequestObject) (api.GetMetaResponseObject, error) {
 	// ⚠ UNAUTHENTICATED, like everything else here, and that is safe: "this deployment cannot send mail"
 	// is not a secret — it is a fact any visitor discovers the moment a reset email does not arrive.
-	smtp := s.smtpConfigured
+	smtp := &s.smtpConfigured
+	if s.emailSettings != nil {
+		// A failed email read is unknown, not disabled, and must not hide unrelated
+		// login/edition metadata. Actual sends still refuse without saved settings.
+		smtp = nil
+		if configured, err := s.emailSettings.Configured(ctx); err == nil {
+			smtp = &configured
+		}
+	}
 	providers := []api.MetaSsoProviders{}
 	connections := []struct {
 		Id       uuid.UUID                      `json:"id"`
@@ -129,7 +137,7 @@ func (s apiServer) GetMeta(ctx context.Context, _ api.GetMetaRequestObject) (api
 		}
 	}
 	return api.GetMeta200JSONResponse{
-		Body:    api.Meta{Edition: api.MetaEdition(s.editionName()), SsoProviders: providers, SsoConnections: &connections, ProtocolVersion: policyspec.ProtocolVersion, PublicBaseUrl: &base, GatewayControlUrl: &gatewayURL, SetupComplete: &setup, NodeAgentImage: &img, SmtpConfigured: &smtp, Upgrade: upgrade},
+		Body:    api.Meta{Edition: api.MetaEdition(s.editionName()), SsoProviders: providers, SsoConnections: &connections, ProtocolVersion: policyspec.ProtocolVersion, PublicBaseUrl: &base, GatewayControlUrl: &gatewayURL, SetupComplete: &setup, NodeAgentImage: &img, SmtpConfigured: smtp, Upgrade: upgrade},
 		Headers: api.GetMeta200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }

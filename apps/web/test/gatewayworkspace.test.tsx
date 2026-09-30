@@ -21,6 +21,7 @@ const readyState = {
       last_seen_at: "2099-08-24T00:00:00Z",
       site_id: "site-1",
       egress_mode: "dual_stack",
+      endpoint: "203.0.113.24:51820",
     },
     {
       id: "gw-2",
@@ -87,6 +88,13 @@ beforeEach(() => {
 });
 
 describe("S20 Gateway inventory", () => {
+  it("shows the advertised gateway IP and supports searching by address", () => {
+    render(<MemoryRouter initialEntries={["/gateways?q=203.0.113.24"]}><Gateways /></MemoryRouter>);
+    expect(screen.getByRole("columnheader", { name: "IP / hostname" })).toBeTruthy();
+    expect(screen.getByText("203.0.113.24")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "edge-london" })).toBeTruthy();
+    expect(screen.queryByText("edge-paris")).toBeNull();
+  });
   it("uses URL-backed search/filter/sort state and links every row to detail", () => {
     render(
       <MemoryRouter initialEntries={["/gateways?q=london&health=healthy&sort=seen&dir=desc"]}>

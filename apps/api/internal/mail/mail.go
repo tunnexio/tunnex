@@ -86,6 +86,7 @@ type Mailer interface {
 
 // Config controls mailer selection.
 type Config struct {
+	Disabled bool // Explicit server-settings override; keeps editable fields while delivery is off.
 	Host     string
 	Port     string
 	From     string
@@ -107,7 +108,7 @@ var ErrNotConfigured = errors.New("no SMTP host configured — email is disabled
 
 // Configured reports whether this deployment can send mail at all. ⭐ Read at STARTUP and by /meta, so an
 // operator learns the state when they install rather than when a recipient does not receive something.
-func Configured(cfg Config) bool { return strings.TrimSpace(cfg.Host) != "" }
+func Configured(cfg Config) bool { return !cfg.Disabled && strings.TrimSpace(cfg.Host) != "" }
 
 // New builds the appropriate Mailer for the given configuration.
 func New(cfg Config, logger *slog.Logger) Mailer {
@@ -205,7 +206,7 @@ type SMTPMailer struct {
 
 func (m *SMTPMailer) Kind() string { return "smtp" }
 
-func (m *SMTPMailer) Send(_ context.Context, msg Message) error {
+func (m *SMTPMailer) Send(ctx context.Context, msg Message) error {
 	addr := m.cfg.Host + ":" + m.cfg.Port
 	from, err := canonicalAddress(m.cfg.From)
 	if err != nil {
@@ -238,7 +239,7 @@ func (m *SMTPMailer) Send(_ context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("smtp client: %w", err)
 	}
-	if err := client.DialAndSend(message); err != nil {
+	if err := client.DialAndSendWithContext(ctx, message); err != nil {
 		return fmt.Errorf("smtp send to %s: %w", addr, err)
 	}
 	// ⛔ SUCCESS IS AS VISIBLE AS FAILURE, AND UNTIL NOW ONLY FAILURE LOGGED (S12.13 D2). That made an empty

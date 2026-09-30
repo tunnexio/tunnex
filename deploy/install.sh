@@ -23,6 +23,7 @@
 # Idempotent: re-running against an existing ./tunnex REUSES the generated DB password (a fresh one
 # would not match the existing postgres volume) and never leaves a half-written .env (write-then-move).
 set -eu
+umask 077
 
 REPO="tunnexio/tunnex"
 RAW="https://raw.githubusercontent.com/${REPO}"
@@ -35,7 +36,7 @@ say() { printf '%s\n' "$*"; }
 die() { printf '%s✗%s %s\n' "${TUNNEX_ERROR:-}" "${TUNNEX_RESET:-}" "$*" >&2; exit 1; }
 as_root() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"; return; fi
-	command -v sudo >/dev/null 2>&1 || die "sudo is required to prepare this control-plane host"
+	command -v sudo >/dev/null 2>&1 || die "sudo is required to prepare this Tunnex Server host"
 	sudo "$@"
 }
 file_sha256() {
@@ -155,12 +156,12 @@ preview_complete() {
 show_setup_boundary() {
 	printf '\n%sTUNNEX SETUP%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
 	printf '%s╭─%s %sSecurity boundary%s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_WHITE" "$TUNNEX_RESET"
-	printf '  %s│%s Tunnex is a self-hosted control plane for users and Linux gateways.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s│%s Tunnex Server manages your users, Linux gateways and access settings.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
 	printf '  %s│%s Your public URL is used for sign-in, email links, and gateway enrollment.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
 	printf '  %s│%s Keep the host patched and expose only the ports required by your TLS mode.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
-	printf '  %s│%s macOS and Windows run a portable control plane; their gateway stays on Linux.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s│%s macOS and Windows run Tunnex Server; their gateway stays on Linux.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
 	printf '%s╰────────────────────────────────────────────────────────────%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
-	info 'QuickStart is recommended. You will review every change before Tunnex changes this host.'
+	info 'A separate Linux gateway is recommended. Review every change before installation.'
 }
 # Run a command while keeping an interactive terminal informed. Unlike the
 # OpenClaw installer, this needs no downloaded UI binary: the loader is native
@@ -679,25 +680,28 @@ ui_preview() {
 	printf '\n    %sDESIGN PREVIEW%s  ·  Sample data / no installation\n' "$TUNNEX_CYAN" "$TUNNEX_RESET"
 	stage 1 'Checking this host'
 	run_with_loader 'Checking host requirements' sleep 1
-	info 'macOS / Windows · Portable control plane'
+	info 'macOS / Windows · Portable Tunnex Server'
 	stage 2 'Selecting a verified Tunnex release'
 	run_with_loader 'Verifying release signature' sleep 1
 	info 'Signed release · Images pinned by digest (sample)'
-	stage 3 'Configuring your control plane'
+	stage 3 'Configuring your Tunnex Server'
 	plan_start
 	plan_item 'Dashboard' 'https://vpn.example.com'
 	plan_item 'Administrator' 'owner@example.com'
+	plan_item 'First organization' 'Example organization'
 	plan_end
 	stage 4 'Reviewing the installation plan'
 	plan_start
-	plan_item 'Mode' 'QuickStart (recommended)'
-	plan_item 'Gateway' 'Separate Linux host'
+	plan_item 'Mode' 'Tunnex Server setup'
+	plan_item 'Gateway' 'Separate Linux host (recommended)'
+	plan_item 'Alternative' 'Same Linux host: quick start, not recommended for production; requires yes'
+	plan_item 'VPN traffic' 'Split tunnel — configured private networks only'
 	plan_item 'Changes' 'UI preview only; no host changes'
 	plan_end
 	printf '\n    %s›%s Proceed with this installation? %sY / n%s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_DIM" "$TUNNEX_RESET"
 	stage 5 'Installing and verifying Tunnex'
 	run_with_loader 'Pulling verified images' sleep 1
-	run_with_loader 'Waiting for control-plane health' sleep 1
+	run_with_loader 'Waiting for Tunnex Server health' sleep 1
 	preview_complete
 }
 
@@ -735,10 +739,10 @@ Linux) HOST_DISPLAY_NAME="${HOST_OS_ID:-Linux}" ;;
 esac
 if host_is_portable_control_plane; then
 	PORTABLE_CONTROL_PLANE=true
-	DEPLOYMENT_SHAPE="Portable control plane; enroll the gateway on a separate Linux host"
+	DEPLOYMENT_SHAPE="Portable Tunnex Server; enroll the gateway on a separate Linux host"
 else
 	PORTABLE_CONTROL_PLANE=false
-	DEPLOYMENT_SHAPE="Control plane with the co-located Linux gateway"
+	DEPLOYMENT_SHAPE="Tunnex Server; separate Linux gateway recommended"
 fi
 success "Detected: ${HOST_DISPLAY_NAME}"
 info "${HOST_PLAN}"
@@ -752,7 +756,7 @@ info "Installing Tunnex ${DISPLAY_VERSION} (image tag ${VERSION})"
 info "Provenance: ${VERSION_PROVENANCE}"
 
 # ── 2. public address — env override OR prompt; loopback refused at the SOURCE (both paths) ───────
-stage 3 "Configuring your control plane"
+stage 3 "Configuring your Tunnex Server"
 BASE_URL="${TUNNEX_PUBLIC_BASE_URL:-${TUNNEX_PUBLIC_ADDR:-}}"
 if [ -n "$BASE_URL" ]; then
 	public_base_url_ok "$BASE_URL" || die "TUNNEX_PUBLIC_BASE_URL='${BASE_URL}' is not a usable public URL. Set an http:// or https:// URL with no path, credentials, or query (for example, https://vpn.acme.com)."
@@ -815,8 +819,7 @@ warn 'SMTP skipped — invitations, password resets, and verification emails are
 	say "   Invitations are the only way people join, and they are delivered by email. Password resets"
 	say "   and address verification need it too. You can still sign in as the administrator, and the"
 	say "   dashboard shows a copyable invitation link you can send by hand."
-	say "   Enable it later: set SMTP_HOST/SMTP_PORT/SMTP_FROM (and SMTP_USERNAME/SMTP_PASSWORD if your"
-	say "   provider needs auth) in .env, then \`docker compose -f tunnex.yml up -d api\`."
+	say "   Enable it later in Dashboard -> Settings -> Email delivery (server administrator)."
 	;;
 *)
 	die "TUNNEX_SMTP must be 'skip' or 'configure' (got '${SMTP_MODE}')."
@@ -851,7 +854,7 @@ configure_database() {
 		if [ -n "$DB_URL" ] || [ -n "${TUNNEX_DATABASE_URL_FILE:-}" ]; then
 			DB_MODE=external
 		elif have_tty; then
-			DB_MODE=$(ask 'CP database: bundled or external PostgreSQL? [bundled]: ')
+			DB_MODE=$(ask 'Server database: bundled or external PostgreSQL? [bundled]: ')
 		fi
 	fi
 	DB_MODE=${DB_MODE:-bundled}
@@ -887,11 +890,121 @@ configure_database() {
 # END BYODB INPUT
 configure_database
 
+# BEGIN FIRST ORGANIZATION AND GATEWAY — safe to exercise without host mutation.
+configure_first_organization_and_gateway() {
+	FIRST_ORG_NAME=${TUNNEX_BOOTSTRAP_ORG_NAME:-}
+	GATEWAY_PLACEMENT=${TUNNEX_GATEWAY_PLACEMENT:-}
+	EXISTING_INSTALL=false
+	if [ -f "$DIR/.env" ]; then
+		EXISTING_INSTALL=true
+		_saved_gateway=$(sed -n 's/^TUNNEX_GATEWAY_PLACEMENT=//p' "$DIR/.env" | head -1)
+		if [ -z "$_saved_gateway" ]; then
+			_saved_cp_only=$(sed -n 's/^TUNNEX_PORTABLE_CONTROL_PLANE=//p' "$DIR/.env" | head -1)
+			if [ "$_saved_cp_only" = true ] || [ "$PORTABLE_CONTROL_PLANE" = true ]; then _saved_gateway=separate; else _saved_gateway=same-host; fi
+		fi
+		[ -z "$GATEWAY_PLACEMENT" ] || [ "$GATEWAY_PLACEMENT" = "$_saved_gateway" ] || die 'Gateway placement is preserved on reinstall; move gateways through a planned migration.'
+		[ -z "$FIRST_ORG_NAME" ] || info 'Existing installation: first-organization input is not applied on rerun; existing organizations are preserved.'
+		GATEWAY_PLACEMENT=$_saved_gateway
+		FIRST_ORG_NAME='Existing organization settings preserved'
+	else
+		if [ "${FIRST_ORG_SUPPORTED:-true}" != true ]; then
+			[ -z "$FIRST_ORG_NAME" ] || die 'The selected release does not support automatic first-organization setup. Select a newer release or use its existing dashboard setup.'
+			FIRST_ORG_NAME='Create in dashboard (selected release)'
+			GATEWAY_PLACEMENT=${GATEWAY_PLACEMENT:-separate}
+			[ "$GATEWAY_PLACEMENT" = separate ] || die 'Automatic same-host enrollment requires a release with first-organization support.'
+			DEPLOYMENT_SHAPE='Separate Linux gateway (recommended)'
+			return
+		fi
+		if [ -z "$FIRST_ORG_NAME" ] && have_tty; then
+			FIRST_ORG_NAME=$(ask 'Your first organization [My organization]: ')
+		fi
+		FIRST_ORG_NAME=${FIRST_ORG_NAME:-My organization}
+		case "$FIRST_ORG_NAME" in *'
+'*) die 'Organization name must be a single line.' ;; esac
+		# Prevent multiline dotenv injection and terminal control sequences.
+		[ "${#FIRST_ORG_NAME}" -le 120 ] && ! printf '%s' "$FIRST_ORG_NAME" | LC_ALL=C grep -q '[[:cntrl:]]' || die 'Organization name must be at most 120 characters without control characters.'
+		[ -n "$(printf '%s' "$FIRST_ORG_NAME" | tr -d '[:space:]')" ] || die 'Organization name cannot be blank.'
+		if [ -z "$GATEWAY_PLACEMENT" ] && [ "$PORTABLE_CONTROL_PLANE" != true ] && have_tty; then
+			info 'Separate Linux gateway (recommended): isolates VPN traffic from the Tunnex Server.'
+			warn 'Same host (quick start): not recommended for production; shares resources and failure impact.'
+			GATEWAY_PLACEMENT=$(ask 'Gateway location [separate / same-host] [separate]: ')
+		fi
+		GATEWAY_PLACEMENT=${GATEWAY_PLACEMENT:-separate}
+	fi
+	case "$GATEWAY_PLACEMENT" in
+	separate) DEPLOYMENT_SHAPE='Separate Linux gateway (recommended)' ;;
+	same-host)
+		[ "$PORTABLE_CONTROL_PLANE" != true ] || die 'Same-host gateways require Linux. Use a separate Linux gateway for macOS or Windows.'
+		DEPLOYMENT_SHAPE='Same Linux host — quick start; not recommended for production'
+		if [ "$EXISTING_INSTALL" != true ]; then
+			_local_consent=${TUNNEX_COLOCATED_GATEWAY_CONFIRM:-}
+			if [ -z "$_local_consent" ] && have_tty; then
+				_local_consent=$(ask 'Automatically enroll a gateway on this Tunnex Server machine? Not recommended for production. [y/N]: ')
+			fi
+			case "$_local_consent" in y|Y|yes|YES) ;; *) die 'Same-host enrollment needs explicit yes consent (TUNNEX_COLOCATED_GATEWAY_CONFIRM=yes for unattended setup).' ;; esac
+			GATEWAY_ADDRESS=${TUNNEX_GATEWAY_ADDRESS:-}
+			if [ -z "$GATEWAY_ADDRESS" ] && have_tty; then
+				GATEWAY_ADDRESS=$(ask "Gateway IP or hostname clients reach directly (not an HTTP proxy) [${ADDR}]: ")
+			fi
+			GATEWAY_ADDRESS=${GATEWAY_ADDRESS:-$ADDR}
+			public_base_url_ok "http://${GATEWAY_ADDRESS}" || die 'Gateway address must be a reachable IP or hostname (bracket IPv6 addresses).'
+			[ "$(public_base_url_host "http://${GATEWAY_ADDRESS}")" = "$GATEWAY_ADDRESS" ] || die 'Gateway address must not contain a port; this installer uses UDP 51820.'
+		fi
+		;;
+	*) die 'TUNNEX_GATEWAY_PLACEMENT must be separate or same-host.' ;;
+	esac
+}
+gateway_network_guidance() {
+	case "$TLS_MODE" in
+	direct) info 'Server firewall: allow inbound TCP 80 and 443 for HTTPS and certificate issuance.' ;;
+	terminated) info 'Server firewall: allow TCP 80 only from your TLS proxy/load balancer; expose HTTPS on that proxy.' ;;
+	http) info 'Server firewall: allow inbound TCP 80 from intended users; HTTP is unencrypted.' ;;
+	esac
+	if [ "$GATEWAY_PLACEMENT" = separate ]; then
+		info 'Server firewall: allow TCP 8443 from gateway hosts for the authenticated control channel.'
+	fi
+	info 'Gateway firewall: allow inbound UDP 51820 from VPN clients and required peer gateways; configure NAT port forwarding if needed.'
+	info 'Gateway needs Linux, /dev/net/tun, WireGuard support and NET_ADMIN. Compose enables IPv4 forwarding in the local gateway container.'
+	info 'Allow outbound DNS and HTTPS for installation; gateways also need access to the server control channel.'
+	info 'Apply these rules to host firewalls AND cloud security groups. The installer does not open them.'
+	info 'Private access uses split tunnel. Configure private routes and access permissions in the dashboard; full tunnel is a later admin choice.'
+}
+wait_for_local_gateway() {
+	_gateway_attempt=0
+	while ! tunnex_compose exec -T node-agent wget -qO- http://127.0.0.1:9091/readyz >/dev/null 2>&1; do
+		_gateway_attempt=$((_gateway_attempt + 1))
+		[ "$_gateway_attempt" -lt 60 ] || return 1
+		sleep 2
+	done
+}
+# END FIRST ORGANIZATION AND GATEWAY
+# The launcher on main can precede the signed release. Preserve the established
+# manual setup for older payloads, but never silently ignore an explicit new input.
+FIRST_ORG_SUPPORTED=true
+if [ ! -f "$DIR/.env" ]; then
+	_contract_file=$(mktemp "${TMPDIR:-/tmp}/tunnex-bootstrap-contract.XXXXXX")
+	if ! curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$_contract_file"; then
+		rm -f "$_contract_file"
+		die 'Could not verify setup capabilities in the selected release.'
+	fi
+	if ! grep -Fq 'TUNNEX_BOOTSTRAP_ORG_NAME:' "$_contract_file" || ! grep -Fq 'TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256:' "$_contract_file"; then
+		FIRST_ORG_SUPPORTED=false
+		info 'This release uses manual organization setup and gateway enrollment in the dashboard. Automatic setup will be available in a newer release.'
+	fi
+	rm -f "$_contract_file"
+fi
+configure_first_organization_and_gateway
+# Older upgrade helpers understand only this existing scale-zero flag. Keep it
+# true for every CP-only install, including Linux with a separate gateway.
+CP_ONLY=false
+[ "$GATEWAY_PLACEMENT" != separate ] || CP_ONLY=true
+
 # ── 4. review once, then prepare the host and versioned compose ──────────────────────────────────
 stage 4 "Reviewing the installation plan"
 plan_start
-plan_item 'Mode' 'QuickStart (recommended)'
-plan_item 'CP database' "$DB_MODE PostgreSQL (credentials hidden)"
+plan_item 'Mode' 'Tunnex Server setup'
+plan_item 'First organization' "$FIRST_ORG_NAME"
+plan_item 'Server database' "$DB_MODE PostgreSQL (credentials hidden)"
 plan_item 'Version' "${DISPLAY_VERSION}"
 plan_item 'Public URL' "${BASE_URL}"
 plan_item 'TLS mode' "${TLS_MODE}"
@@ -902,6 +1015,10 @@ skip) plan_item 'Email' 'skipped' ;;
 esac
 plan_item 'Host readiness' "${HOST_PLAN}"
 plan_item 'Deployment' "${DEPLOYMENT_SHAPE}"
+plan_item 'VPN traffic' 'Split tunnel — configured private networks only'
+if [ "$GATEWAY_PLACEMENT" = same-host ] && [ "$EXISTING_INSTALL" != true ]; then
+	plan_item 'Gateway endpoint' "${GATEWAY_ADDRESS}:51820/UDP"
+fi
 case "$DIR" in
 /*) INSTALL_PLAN_DIR=$DIR ;;
 *) INSTALL_PLAN_DIR="$(pwd)/${DIR}" ;;
@@ -921,11 +1038,13 @@ plan_item 'Compose project' "${INSTALL_COMPOSE_PROJECT}"
 if [ "$DRY_RUN" = true ]; then
 	plan_item 'Changes' 'Preview only (no host or product changes)'
 	plan_end
+	gateway_network_guidance
 	stage 5 "Preview complete"
 	success "Onboarding preview complete. Re-run without --dry-run when you are ready."
 	exit 0
 fi
 plan_end
+gateway_network_guidance
 confirm_installation
 
 stage 5 "Installing and verifying Tunnex"
@@ -1075,6 +1194,16 @@ if [ -f .env ]; then
 	say ">> Preserving existing .env configuration (backup retained)."
 else
 	umask 077
+	FIRST_ORG_DOTENV=$(printf '%s' "$FIRST_ORG_NAME" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/$$/g')
+	[ "$FIRST_ORG_SUPPORTED" = true ] || FIRST_ORG_DOTENV=''
+	BOOTSTRAP_GATEWAY_TOKEN=''
+	BOOTSTRAP_GATEWAY_HASH=''
+	BOOTSTRAP_GATEWAY_NAME=''
+	if [ "$GATEWAY_PLACEMENT" = same-host ]; then
+		BOOTSTRAP_GATEWAY_TOKEN=$(openssl rand -hex 32)
+		BOOTSTRAP_GATEWAY_HASH=$(printf '%s' "$BOOTSTRAP_GATEWAY_TOKEN" | openssl dgst -sha256 | awk '{print $NF}')
+		BOOTSTRAP_GATEWAY_NAME=quickstart-gateway
+	fi
 	cat >.env.new <<EOF
 # Tunnex deployment config — generated by install.sh. Safe to edit these values; do NOT hand-edit
 # tunnex.yml. Upgrade through the dashboard or run ./upgrade.sh on this host.
@@ -1093,8 +1222,14 @@ APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
 TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
 TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
-TUNNEX_NODE_ENDPOINT=${ADDR}:51820
-TUNNEX_PORTABLE_CONTROL_PLANE=${PORTABLE_CONTROL_PLANE}
+TUNNEX_NODE_ENDPOINT=${GATEWAY_ADDRESS:-$ADDR}:51820
+TUNNEX_PORTABLE_CONTROL_PLANE=${CP_ONLY}
+TUNNEX_GATEWAY_PLACEMENT=${GATEWAY_PLACEMENT}
+TUNNEX_BOOTSTRAP_ORG_NAME="${FIRST_ORG_DOTENV}"
+TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256=${BOOTSTRAP_GATEWAY_HASH}
+TUNNEX_BOOTSTRAP_GATEWAY_NAME=${BOOTSTRAP_GATEWAY_NAME}
+TUNNEX_NODE_NAME=${BOOTSTRAP_GATEWAY_NAME}
+TUNNEX_JOIN_TOKEN=${BOOTSTRAP_GATEWAY_TOKEN}
 TUNNEX_HOST_UPGRADE_REQUEST_SOURCE=${TUNNEX_HOST_UPGRADE_REQUEST_SOURCE:-./upgrade-state/requests}
 TUNNEX_HOST_UPGRADE_STATUS_SOURCE=${TUNNEX_HOST_UPGRADE_STATUS_SOURCE:-./upgrade-state/status}
 POSTGRES_USER=tunnex
@@ -1140,7 +1275,7 @@ for RELEASE_KEY in TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_N
 	set_dotenv "$RELEASE_KEY" "$RELEASE_VALUE"
 done
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
-set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$PORTABLE_CONTROL_PLANE"
+set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$CP_ONLY"
 case "$DB_MODE" in
 bundled) set_dotenv COMPOSE_PROFILES bundled-db ;;
 external) set_dotenv COMPOSE_PROFILES external-db ;;
@@ -1152,15 +1287,15 @@ tunnex_compose() {
 run_with_loader 'Pulling verified Tunnex images' tunnex_compose pull || die 'could not pull the verified Tunnex images'
 success 'Signed release verified; images pinned by digest.'
 if [ "$DB_MODE" = external ]; then
-	run_with_loader 'Checking private PostgreSQL from the CP network' tunnex_compose run --rm --no-deps --entrypoint preflight api --database-only ||
-		die 'External database preflight failed; CP was not started. Fix the installed database configuration and rerun.'
+	run_with_loader 'Checking private PostgreSQL from the Tunnex Server network' tunnex_compose run --rm --no-deps --entrypoint preflight api --database-only ||
+		die 'External database preflight failed; Tunnex Server was not started. Fix the installed database configuration and rerun.'
 fi
-if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
-	run_with_loader 'Starting the portable control plane (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --scale node-agent=0 --wait-timeout 900 ||
-		die 'control plane did not become healthy'
+if [ "$GATEWAY_PLACEMENT" = separate ]; then
+	run_with_loader 'Starting the Tunnex Server (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --scale node-agent=0 --wait-timeout 900 ||
+		die 'Tunnex Server did not become healthy'
 else
-	run_with_loader 'Starting the control plane and Linux gateway (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --wait-timeout 900 ||
-		die 'control plane and Linux gateway did not become healthy'
+	run_with_loader 'Starting the Tunnex Server and Linux gateway (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --wait-timeout 900 ||
+		die 'Tunnex Server and Linux gateway did not become healthy'
 fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;
@@ -1172,23 +1307,50 @@ if printf '%s' "$CREDS" | grep -q 'password'; then
 	say "$CREDS"
 fi
 
+# Container health is process liveness. Enrollment success needs a functioning
+# control session and WireGuard backend, as reported by the existing readiness probe.
+if [ "$GATEWAY_PLACEMENT" = same-host ] && [ "$EXISTING_INSTALL" != true ]; then
+	info 'Waiting for the local gateway to enroll and become ready'
+	wait_for_local_gateway || die 'Tunnex Server started, but the local gateway is not ready. Check gateway logs and Linux/TUN requirements. If its one-hour join token expired, issue a new token from the dashboard; rerunning setup never mints another.'
+	# Remove the consumed token from the installed configuration. Agent identity
+	# lives in its existing state volume, so recreation no longer needs the token.
+	set_dotenv TUNNEX_JOIN_TOKEN ''
+	set_dotenv TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256 ''
+	unset BOOTSTRAP_GATEWAY_TOKEN BOOTSTRAP_GATEWAY_HASH
+	success 'Local gateway enrolled and ready in your first organization.'
+fi
+
 # ── 8. NEXT STEPS (the customer's first experience — a real hand-off, not an echo) ───────────────
 say ''
 printf '  %s────────────────────────────────────────%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
 success "Tunnex ${VERSION} is running."
 say ''
 say "   1. Open the dashboard:   ${BASE_URL}/"
+if [ "$FIRST_ORG_SUPPORTED" = true ]; then
+	say "      Continue setup:      ${BASE_URL}/setup"
+fi
 say "   2. Sign in as ${ADMIN_EMAIL}; set the one-time password to your own password."
-say '   3. Create your first organization.'
-if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
+if [ "$EXISTING_INSTALL" = true ]; then
+	say '   3. Your existing organization and gateway configuration are preserved.'
+elif [ "$FIRST_ORG_SUPPORTED" != true ]; then
+	say '   3. Create your first organization in the dashboard (this release uses manual setup).'
+else
+	say "   3. Fresh databases are ready with ${FIRST_ORG_NAME}; you are its owner."
+	say '      When reusing a database, its existing accounts and organizations are preserved.'
+fi
+if [ "$GATEWAY_PLACEMENT" = separate ]; then
 	say '   4. Enroll a gateway:     Dashboard → Gateways → “Generate join token”.'
 	say '      Run its ONE command on a Linux gateway host with /dev/net/tun and NET_ADMIN.'
-	say '      This portable host runs the control plane only; it does not pretend to be a gateway.'
+	say '      This host runs the Tunnex Server only.'
 else
-	say '   4. Enroll this gateway: Dashboard → Gateways → “Generate join token”.'
-	say '      Copy the ONE command it shows and run it in this folder to bring the'
-	say '      co-located Linux gateway online.'
+	if [ "$EXISTING_INSTALL" = true ]; then
+		say '   4. Check your existing gateway status in Dashboard → Gateways.'
+	else
+		say '   4. Your same-host gateway is enrolled. View its address in Dashboard → Gateways.'
+	fi
 fi
+say '   5. Configure private routes and access permissions, then invite users to connect.'
+say '      Split tunnel keeps normal internet traffic local. Full tunnel can be enabled later.'
 say ''
 say "   Config:   $(pwd)/.env       (edit values here; never hand-edit tunnex.yml)"
 say '   Upgrade:  use the dashboard when an update appears, or run ./upgrade.sh for a dry run.'

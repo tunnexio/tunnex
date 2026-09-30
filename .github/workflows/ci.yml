@@ -116,7 +116,9 @@ jobs:
         run: bash deploy/gate-cache-isolation-contract_test.sh
 
       - name: Installer fresh-host bootstrap contract
-        run: sh deploy/install-host-bootstrap_test.sh
+        run: |
+          sh deploy/install-host-bootstrap_test.sh
+          python3 deploy/install-first-organization_test.py
 
       - name: Installer Windows fresh-host bootstrap contract
         shell: pwsh
