@@ -149,7 +149,7 @@ anyio==4.15.1 \
 apscheduler==3.11.3 \
     --hash=sha256:bbeb2ec02d23d3c06a6c07ed7f0f3939ada6680eb121fae809a69bb42c537a30 \
     --hash=sha256:cd2fcc9330039a81a5893472ad49facf23a6d5604cbe1d918c835c6de7834d5a
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
@@ -166,20 +166,20 @@ azure-core==1.41.0 \
 azure-identity==1.25.3 \
     --hash=sha256:ab23c0d63015f50b630ef6c6cf395e7262f439ce06e5d07a64e874c724f8d9e6 \
     --hash=sha256:f4d0b956a8146f30333e071374171f3cfa7bdb8073adb8c3814b65567aa7447c
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 azure-storage-blob==12.30.1 \
     --hash=sha256:7a24f978c51d56a0375beebffcbe8453e59ae390d2695705848edc75083e4184 \
     --hash=sha256:7dc09c37f4f58508e20532b4b4c178f4763f41b01e0b9063835b994fd9d2a7b3
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 backoff==2.2.1 \
     --hash=sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba \
     --hash=sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 boto3==1.43.89 \
     --hash=sha256:c28abbe472e9b7cad08807356311aeec51bde5218c18489da827045d2267bfd9 \
     --hash=sha256:fe4190afe63eb562b6ba6a3911cf4427473b35fa047adde093bf696d3ae09fc0
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   litellm
 botocore==1.43.89 \
     --hash=sha256:d7211220c815427fe71225acc6909e4ab5dfab3b03770e72fd16cf9eb86b3d1a \
@@ -484,10 +484,6 @@ click==8.5.0 \
     #   prisma
     #   rq
     #   uvicorn
-colorama==0.4.6 ; sys_platform == 'win32' \
-    --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
-    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
-    # via tqdm
 croniter==6.2.4 \
     --hash=sha256:8ef3d544107a5c05a150a2d78f8bf5a8eb9c5c4d93405a736b824109574e3f4d \
     --hash=sha256:fc124f751b1b04805c2a04b061898b436b45ab2320b045e1e052ea895de65189
@@ -540,7 +536,7 @@ cryptography==50.0.1 \
     --hash=sha256:fd3718b960d0b5dd213cdf03f3bcb7000e69dda0de8b956061947ff6bcff5558 \
     --hash=sha256:ff838d62ec1bfce4f9ba7fa16f4a7b554cd8d0c299e6be37502161a660c84eef
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   azure-identity
     #   azure-storage-blob
     #   msal
@@ -560,17 +556,17 @@ email-validator==2.3.0 \
 expression==5.7.0 \
     --hash=sha256:4c5ea4247f871b8724ad580911ad73c1550fc653bb669daf2d49e4b645cc4770 \
     --hash=sha256:d8d903cb9ddcb252dbd64612e329bd86f09d770c7812eaf8f9cc0b9f8e6480bd
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 fastapi==0.141.1 \
     --hash=sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3 \
     --hash=sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   fastapi-sso
 fastapi-sso==0.22.0 \
     --hash=sha256:7b6bc60a510a117dfbd2a3d97871159738677dceb00fd3ad1bfc9c4751226924 \
     --hash=sha256:94a71869097fba7c1d36a24939b9fe31cc59ba1c31d25ac661a35f6c810968ea
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 fastuuid==0.14.0 \
     --hash=sha256:05a8dde1f395e0c9b4be515b7a521403d1e8349443e7641761af07c7ad1624b1 \
     --hash=sha256:0737606764b29785566f968bd8005eace73d3666bd0862f33a760796e26d1ede \
@@ -883,18 +879,18 @@ granian==2.8.2 \
     --hash=sha256:f2738a9c49015c65c83a077a8c35a0e525152a6505ac267ba25d7b25a4547bb8 \
     --hash=sha256:f42da6a579030774a25df67b5432ced73bd2f8eda36df11d79739059c03c4740 \
     --hash=sha256:f5967b021e36448d870012c0853342a119d7427ea67e3b23abb8798897bf14be
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 gunicorn==23.0.0 \
     --hash=sha256:ec400d38950de4dfd418cff8328b2c8faed0edb0d517d3394e457c317908ca4d \
     --hash=sha256:f014447a0101dc57e294f6c18ca6b40227a4c90e9bdb586042628030cba004ec
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.6.0 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
+hf-xet==1.6.0 \
     --hash=sha256:0e6e21fa3cdfcdcd76748564bf593870a5e013f47d97cf10aed63aa222cff5b7 \
     --hash=sha256:23379c2f9ec8696d952b16414a2bae72cad86a52df869b050698ba60f538c675 \
     --hash=sha256:2e58454a340b3556dfa4972d5451aff4fba8dd42a236600ba1a1d2b1514f0fef \
@@ -1026,7 +1022,7 @@ hiredis==3.4.1 \
     --hash=sha256:fd69048bb3870b962a2e09aff2ebfd0a3a4ee868bd280404c553235c36d43f7f \
     --hash=sha256:ffa742a05493eefa1c8d37ea8296b35cc4c26a6f589540fad71c6f58322bc960 \
     --hash=sha256:fffa6cb2d713bd2ec45a1b68aa2ba37d01aefecf127acd323fbd5df564dab274
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
@@ -1065,7 +1061,7 @@ importlib-metadata==8.9.0 \
 inquirerpy==0.3.4 \
     --hash=sha256:89d2ada0111f337483cb41ae31073108b2ec1e618a49d7110b0d7ade89fc197e \
     --hash=sha256:c65fdfbac1fa00e3ee4fb10679f4d3ed7a012abf4833910e63c295827fe2a7d4
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 isodate==0.7.2 \
     --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
     --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
@@ -1208,11 +1204,11 @@ litellm==1.100.0 \
     --hash=sha256:c6f2f56808d05d8d2a7766129d958101eafb1a47e30ba5ddcfa900cdbc50af67 \
     --hash=sha256:e3787fb7ad1f20aebdde7686a85061880bba6550c9d62bfa1cf8df089fe7899b \
     --hash=sha256:ece94e817a453a5b3a9517c03547c428d501cea719edb728c1b260e53f78ea35
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 litellm-proxy-extras==0.4.91 \
     --hash=sha256:5cac5f06f9addd023b5c99a05c2c4c5147eaf799d8f00567e3ee8f04e4595c0b \
     --hash=sha256:d19fe53591b0bbd48aff24cb1a166b0c68ff2491469ceec88eaa83c6a364562d
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 markdown-it-py==4.2.0 \
     --hash=sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49 \
     --hash=sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
@@ -1311,7 +1307,7 @@ markupsafe==3.0.3 \
 mcp==1.30.0 \
     --hash=sha256:445414625fce5c295faa505bb11bacece661ab6f4028d57c935db57820b7a3e4 \
     --hash=sha256:666edb5009503e1047c9d60346a756f94b261f05cc2625f23d41c728ffc484d0
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
@@ -1622,7 +1618,7 @@ orjson==3.12.0 \
     --hash=sha256:f06dd838d1e07d9b1de0932ec0485ec92c4d5f5d1ad4817a656268c3e88be1e1 \
     --hash=sha256:f3c0683136acdc29afdf88a5bc2f7d3d0e34087788d1d63c0144b805a87a196f \
     --hash=sha256:fb2539159dfe8d371914f354360fa50e4a577cc89222a3828b9650a5e5040252
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 packaging==26.3 \
     --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
     --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
@@ -1636,7 +1632,7 @@ pfzy==0.3.4 \
 polars==1.44.1 \
     --hash=sha256:1fa62fc1c88fba77a68b28291b5aabdd69e5f38b34e59721a064ae3169b59bb5 \
     --hash=sha256:ef3c89e9ebbbe8eb343c06873f1945683f8b6f97a1bdf001c60551c6c5e3cda1
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 polars-runtime-32==1.44.1 \
     --hash=sha256:04e2c0f46e7a9906fffb1897f18f23b079b74f83c56b50060bace9e7b9b49b1a \
     --hash=sha256:0580807dc3eed258f0db70bb65d905dd43f0135392119ec25308033ae24258fb \
@@ -1651,7 +1647,7 @@ polars-runtime-32==1.44.1 \
 prisma==0.15.0 \
     --hash=sha256:5cd6402aa8322625db3fc1152040404e7fc471fe7f8fa3a314fa8a99529ca107 \
     --hash=sha256:de949cc94d3d91243615f22ff64490aa6e2d7cb81aabffce53d92bd3977c09a4
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 prompt-toolkit==3.0.53 \
     --hash=sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2 \
     --hash=sha256:9ec8a0ad96d5c56148b3f914aa79c1564c3fde5d2e6b876e7bc327e353cf8fa6
@@ -1781,7 +1777,7 @@ propcache==0.5.2 \
     # via
     #   aiohttp
     #   yarl
-pycparser==3.0 ; implementation_name != 'PyPy' \
+pycparser==3.0 \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
     # via cffi
@@ -1928,11 +1924,11 @@ pygments==2.21.0 \
     --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9 \
     --hash=sha256:610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c
     # via rich
-pyjwt[crypto]==2.13.0 \
-    --hash=sha256:41571c89ca91598c79e8ef18a2d07367d4810fbbd6f637794879baf1b7703423 \
-    --hash=sha256:66adcc2aff09b3f1bbd95fc1e1577df8ac8723c978552fd43304c8a290ac5728
+pyjwt[crypto]==2.14.0 \
+    --hash=sha256:77283c83fb56ecf566a886c757a714bc83668e38156de2cce8263302f42e0b86 \
+    --hash=sha256:ad0cef71c756a56e74863c2919cf0985f72decbcfcb550ee2f422e7c62b5eedc
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   fastapi-sso
     #   mcp
     #   msal
@@ -1962,13 +1958,13 @@ pynacl==1.6.2 \
     --hash=sha256:d071c6a9a4c94d79eb665db4ce5cedc537faf74f2355e4d502591d850d3913c0 \
     --hash=sha256:d29bfe37e20e015a7d8b23cfc8bd6aa7909c92a1b8f41ee416bbb3e79ef182b2 \
     --hash=sha256:fe9847ca47d287af41e82be1dd5e23023d3c31a951da134121ab02e42ac218c9
-    # via -r apps/ai-proxy/requirements.in
-pyroscope-io==0.8.16 ; sys_platform != 'win32' \
+    # via -r requirements.in
+pyroscope-io==0.8.16 ; sys_platform != "win32" \
     --hash=sha256:6b91ce5b240f8de756c16a17022ca8e25ef8a4eed461c7d074b8a0841cf7b445 \
     --hash=sha256:86f0f047554ff62bd92c3e5a26bc2809ccd467d11fbacb9fef898ba299dbda59 \
     --hash=sha256:dc98355e27c0b7b61f27066500fe1045b70e9459bb8b9a3082bc4755cb6392b6 \
     --hash=sha256:e07edcfd59f5bdce42948b92c9b118c824edbd551730305f095a6b9af401a9e8
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
@@ -1986,31 +1982,8 @@ python-multipart==0.0.32 \
     --hash=sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e \
     --hash=sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   mcp
-pywin32==312 ; sys_platform == 'win32' \
-    --hash=sha256:02ebca0f0242b75292e218065004310d6a477407c09fa449bfe4f6022bc0c0fc \
-    --hash=sha256:17948aeadbdb091f0ced6ef0841620794e68327b94ee415571c1203594b7215c \
-    --hash=sha256:3020656e34f1cf7faeb7bccd2b84653a607c6ff0c55ada85e6487d61716deabd \
-    --hash=sha256:59aba5d5940842075343a5ddc6b11f1cdf0d1567fe745290359dfbcc7c2eb831 \
-    --hash=sha256:5c1fbe4a937a73ae9297384a3da38518cbc694c68ad8a809b2e19acd350f03ed \
-    --hash=sha256:5dbc35d2b5320dc07f25fa31269cfb767471002b17de5eb067d03da68c7cb2db \
-    --hash=sha256:6017c58e12f6809fbb0555b75df144c2922a9ffd18e4b9b5afa863b6c1a9d950 \
-    --hash=sha256:772235332b5d1024c696f11cea1ae4be7930f0a8b894bb43db14e3f435f1ff7e \
-    --hash=sha256:7a27df850933d16a8eabfbaeb73d52b273e2da667f80d70b01a89d1f6828d02c \
-    --hash=sha256:9fce94568364e0155e6dfb781ac5d95903be8baf28670632beab1b523f300daa \
-    --hash=sha256:a4dd3a848290ef724347b19f301045831d8e802fa4464f491b98b1e0a081432e \
-    --hash=sha256:a77a90fbb6881238d2ca9c6fd797b25817f3768fe78d214a90137ff055a75f5b \
-    --hash=sha256:a8597d28f267b39074aef51fa593530082b39cbe5a074226096857b1fed2dfb9 \
-    --hash=sha256:b2200a054ca6d6625c4842fc56a4976a4b47f96b73dbe5538c3f813a80359f47 \
-    --hash=sha256:b457f6d628a47e8a7346ce22acb7e1a46a4a78b52e1d17e1af56871bd19a93bc \
-    --hash=sha256:c2f03a0f73f804a13c2735b99392b0cd426bb4f2c4d0178e5ac966a0f21618d5 \
-    --hash=sha256:c53e878d15a1c44788082bfe712a905433473aa38f86375b7cf8b45e3acbaaf9 \
-    --hash=sha256:d11417d84412f859b722fad0841b3614459ed0047f7542d8362e77884f6b6e8a \
-    --hash=sha256:d620900033cc7531e50727c3c8333091df5dd3ffe6d68cdca38c03f5821408d5 \
-    --hash=sha256:dab4f65ac9c4e48400a2a0530c46c3c579cd5905ecd11b80692373915269208b \
-    --hash=sha256:dc90147579a905b8635e1b0ec6514967dcb07e6e0d9c42f1477feef14cac23bb
-    # via mcp
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
     --hash=sha256:0150219816b6a1fa26fb4699fb7daa9caf09eb1999f3b70fb6e786805e80375a \
@@ -2086,7 +2059,7 @@ pyyaml==6.0.3 \
     --hash=sha256:fa160448684b4e94d80416c0fa4aac48967a969efe22931448d853ada8baf926 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   huggingface-hub
 redis==8.1.0 \
     --hash=sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25 \
@@ -2240,11 +2213,11 @@ requests==2.34.2 \
 restrictedpython==8.5 \
     --hash=sha256:4ed1269dbe3caa88db650d1af325198a952aeb1451eca05df0cfa65db4466215 \
     --hash=sha256:6c70e0a3af13e830d37225788cdc8ab5804a8df4b500c135086eaef34b5c01e0
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 rich==13.9.4 \
     --hash=sha256:439594978a49a09530cff7ebc4b5c7103ef57baf48d5ea3184f21d9a2befa098 \
     --hash=sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 rpds-py==2026.6.3 \
     --hash=sha256:0be972be84cfcaf46c8c6edf690ca0f154ac17babf1f6a955a51579b34ad2dc5 \
     --hash=sha256:127565fead0a10943b282957bd5447804ff3160ad79f2ad2635e6d249e380680 \
@@ -2368,7 +2341,7 @@ rpds-py==2026.6.3 \
 rq==2.12.0 \
     --hash=sha256:78116d0c860f6285817b52d7d6d0b16a726372073ce8ea1d229732ce74ef9378 \
     --hash=sha256:97e349a00e9f2a18962102b3dca156cb5ce315d3ef38145e24ba9cabd16a9361
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 s3transfer==0.19.2 \
     --hash=sha256:ba0309fd86be3c27dbf78cdd813c13c5e1df16e5874b99d2535ebbdfb9892993 \
     --hash=sha256:d8168eccca828cbb2cd573675333f3bddd254313a9c42494b84c76b539e8ba25
@@ -2391,7 +2364,7 @@ soundfile==0.14.0 \
     --hash=sha256:d828d35a059626da52f1415b5faee610aeab393319cb3fc4a9aef47b619fc14c \
     --hash=sha256:e090704718e124e7c844695236f1fce8d18a5e761eaf7c82dfcd124620805f98 \
     --hash=sha256:e85724a90bc99a6e8062c0b4ddf725f53b2a3b70afd4da875e9d2cfc4e92f377
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 sse-starlette==3.4.11 \
     --hash=sha256:1bae716c02f3e6f294be41ff333220692dae7c3cbab077c900f159676719dade \
     --hash=sha256:c7b2244bdff016fe7f64e10075e89a3e6bbf899649cc89b0fe884b5545042453
@@ -2400,7 +2373,7 @@ starlette==1.6.0 \
     --hash=sha256:a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c \
     --hash=sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   fastapi
     #   mcp
     #   sse-starlette
@@ -2503,8 +2476,6 @@ typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
-    #   aiohttp
-    #   aiosignal
     #   anyio
     #   azure-core
     #   azure-identity
@@ -2517,9 +2488,7 @@ typing-extensions==4.16.0 \
     #   prisma
     #   pydantic
     #   pydantic-core
-    #   referencing
     #   soundfile
-    #   starlette
     #   typing-inspection
 typing-inspection==0.4.4 \
     --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
@@ -2529,10 +2498,6 @@ typing-inspection==0.4.4 \
     #   mcp
     #   pydantic
     #   pydantic-settings
-tzdata==2026.3 ; sys_platform == 'win32' \
-    --hash=sha256:4a1518b8993086a7982523e071643f3c0e5f213e75b21318e78bcabfff9d1415 \
-    --hash=sha256:dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931
-    # via tzlocal
 tzlocal==5.4.4 \
     --hash=sha256:8dbb8660838688a7b6ba4fed31d18dedf842afb4d47ca050d6d891c2c15f3be4 \
     --hash=sha256:aae09f0126a8a86fa736be266eb4a471380d26a0de3bc14844e7821fee3e2a15
@@ -2547,9 +2512,9 @@ uvicorn==0.52.4 \
     --hash=sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86 \
     --hash=sha256:f86e41a149d7d05a9969337e3946a9c171c06a5d42680896daaba624aeac8da1
     # via
-    #   -r apps/ai-proxy/requirements.in
+    #   -r requirements.in
     #   mcp
-uvloop==0.22.1 ; sys_platform != 'win32' \
+uvloop==0.22.1 ; sys_platform != "win32" \
     --hash=sha256:017bd46f9e7b78e81606329d07141d3da446f8798c6baeec124260e22c262772 \
     --hash=sha256:0530a5fbad9c9e4ee3f2b33b148c6a64d47bbad8000ea63704fa8260f4cf728e \
     --hash=sha256:05e4b5f86e621cf3927631789999e697e58f0d2d32675b67d9ca9eb0bca55743 \
@@ -2599,7 +2564,7 @@ uvloop==0.22.1 ; sys_platform != 'win32' \
     --hash=sha256:ea721dd3203b809039fcc2983f14608dae82b212288b346e0bfe46ec2fab0b7c \
     --hash=sha256:ef6f0d4cc8a9fa1f6a910230cd53545d9a14479311e87e3cb225495952eb672c \
     --hash=sha256:fe94b4564e865d968414598eea1a6de60adba0c040ba4ed05ac1300de402cd42
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 wcwidth==0.8.3 \
     --hash=sha256:d128512515fbf4612e0ff21fd6380399210318b7b54a9af59dff8454cf9730eb \
     --hash=sha256:d5b73dba6158a595ec9370350e7f2637bcac8d6c5e4fde34f30fcffb6103a5e4
@@ -2674,7 +2639,7 @@ websockets==15.0.1 \
     --hash=sha256:f29d80eb9a9263b8d109135351caf568cc3f80b9928bccde535c235de55c22d9 \
     --hash=sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f \
     --hash=sha256:fcd5cf9e305d7b8338754470cf69cf81f420459dbae8a3b40cee57417f4614a7
-    # via -r apps/ai-proxy/requirements.in
+    # via -r requirements.in
 yarl==1.24.5 \
     --hash=sha256:0055afc45e864b92729ac7600e2d102c17bef060647e74bca75fa84d66b9ff36 \
     --hash=sha256:0465ec8cedc2349b97a6b595ace64084a50c6e839eca40aa0626f38b8350e331 \
