@@ -127,6 +127,8 @@ jobs:
 
       - name: Installer fresh-host bootstrap contract
         run: |
+          sh deploy/public-url-contract_test.sh
+          sh deploy/edge-tls-contract_test.sh
           sh deploy/install-host-bootstrap_test.sh
           python3 deploy/install-first-organization_test.py
 

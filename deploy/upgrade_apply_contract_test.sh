@@ -30,6 +30,12 @@ case "$url" in
   https://updates.example.test/release.json) cp "$MOCK_CATALOG" "$out" ;;
   https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/tunnex.yml)
     printf '%s\n' 'services:' '  api:' '    environment:' '      TUNNEX_ENV: production' '      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}' '# bundled-db' >"$out"
+    if [ -n "${MOCK_EDGE:-}" ]; then
+      printf '%s\n' '  caddy:' '    environment:' '      TUNNEX_EDGE_LISTEN: ${TUNNEX_EDGE_LISTEN:?configured}' >>"$out"
+      if [ "$MOCK_EDGE" = public-ip ]; then
+        printf '%s\n' '      TUNNEX_EDGE_PUBLIC_IP: ${TUNNEX_EDGE_PUBLIC_IP:-}' >>"$out"
+      fi
+    fi
     if [ "${MOCK_AI:-}" = 1 ]; then
       printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?signed}' >>"$out"
     fi
@@ -212,6 +218,88 @@ for outcome in success backup archive; do
   fi
   grep -Fq 'api preflight --database-dump' "$TMP/external-$outcome.log"
   ! grep -Fq 'exec -T postgres' "$TMP/external-$outcome.log"
+done
+
+# The target must preserve the existing edge's certificate behavior. Exercise
+# the real apply flow so a missing capability cannot damage .env or Compose.
+make_edge_install() {
+  edge_dir="$TMP/edge-$1"
+  mkdir "$edge_dir"
+  cp "$ROOT/deploy/upgrade.sh" "$edge_dir/upgrade.sh"
+  printf '%s\n' '# installed deployment' >"$edge_dir/tunnex.yml"
+  printf '%s\n' '{"fixture":"installed release"}' >"$edge_dir/release.json"
+  cat >"$edge_dir/.env" <<ENV
+TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
+TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
+APP_BASE_URL=$2
+TUNNEX_TLS_MODE=$3
+TUNNEX_COOKIE_SECURE=false
+TUNNEX_EDGE_PUBLIC_IP=51.20.98.153
+ENV
+  for edge_file in .env tunnex.yml release.json upgrade.sh; do
+    cp "$edge_dir/$edge_file" "$edge_dir/$edge_file.before"
+  done
+}
+run_edge_upgrade() (
+  cd "$edge_dir"
+  PATH="$TMP/bin:$PATH" MOCK_CATALOG="$TMP/catalog.json" \
+    MOCK_DOCKER_LOG="$edge_dir/docker.log" MOCK_EDGE="${1:-public-ip}" \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" \
+    TUNNEX_UPGRADE_STATUS_FILE="$edge_dir/status" ./upgrade.sh --apply
+)
+assert_edge_unmodified() {
+  for edge_file in .env tunnex.yml release.json upgrade.sh; do
+    cmp -s "$edge_dir/$edge_file.before" "$edge_dir/$edge_file"
+  done
+  grep -Fxq 'state=failed' "$edge_dir/status"
+  ! grep -Eq '^pull |^compose .* (pull|up|stop|start)( |$)' "$edge_dir/docker.log"
+}
+for edge_case in public-ip public-ip-port dns terminated implicit-terminated http; do
+  case "$edge_case" in
+    public-ip) edge_url=https://51.20.98.153; edge_mode=direct; edge_ip=51.20.98.153 ;;
+    public-ip-port) edge_url=https://51.20.98.153:443; edge_mode=direct; edge_ip=51.20.98.153 ;;
+    dns) edge_url=https://vpn.example.test; edge_mode=direct; edge_ip= ;;
+    terminated) edge_url=https://51.20.98.153:8443; edge_mode=terminated; edge_ip= ;;
+    implicit-terminated) edge_url=https://51.20.98.153; edge_mode=; edge_ip= ;;
+    http) edge_url=http://51.20.98.153; edge_mode=http; edge_ip= ;;
+  esac
+  make_edge_install "$edge_case" "$edge_url" "$edge_mode"
+  # Derivation must also work when the public-IP field was not installed yet.
+  if [ "$edge_case" = public-ip ]; then
+    sed '/^TUNNEX_EDGE_PUBLIC_IP=/d' "$edge_dir/.env" >"$edge_dir/.env.next"
+    mv "$edge_dir/.env.next" "$edge_dir/.env"
+  fi
+  run_edge_upgrade >"$edge_dir/output"
+  grep -Fxq 'state=healthy' "$edge_dir/status"
+  grep -Fxq "TUNNEX_EDGE_PUBLIC_IP=$edge_ip" "$edge_dir/.env"
+  [ -n "$edge_mode" ] || edge_mode=terminated
+  grep -Fxq "TUNNEX_TLS_MODE=$edge_mode" "$edge_dir/.env"
+  case "$edge_mode" in direct) edge_listen=$edge_url ;; *) edge_listen=http://:80 ;; esac
+  grep -Fxq "TUNNEX_EDGE_LISTEN=$edge_listen" "$edge_dir/.env"
+  case "$edge_url" in https:*) edge_secure=true ;; *) edge_secure=false ;; esac
+  grep -Fxq "TUNNEX_COOKIE_SECURE=$edge_secure" "$edge_dir/.env"
+done
+
+make_edge_install unsupported https://51.20.98.153 direct
+if (MOCK_AI=1 MOCK_AI_OLD_VERIFIER=1 run_edge_upgrade legacy) >"$edge_dir/output" 2>&1; then
+  echo 'target without public-IP TLS support replaced the working deployment' >&2; exit 1
+fi
+grep -Fq 'target release does not support the installed public-IP HTTPS endpoint' "$edge_dir/output"
+assert_edge_unmodified
+
+# A pre-IP target remains usable for DNS and externally terminated TLS.
+make_edge_install legacy-dns https://vpn.example.test direct
+run_edge_upgrade legacy >"$edge_dir/output"
+grep -Fxq 'state=healthy' "$edge_dir/status"
+grep -Fxq 'TUNNEX_EDGE_PUBLIC_IP=' "$edge_dir/.env"
+
+for edge_invalid in 10.0.0.1 192.0.2.10 127.0.0.1 224.0.0.1 51.020.98.153 51.20.98.999 51.20.98 51.20.98.153.1 51.20.98.153:8443 '[2001:4860:4860::8888]'; do
+  make_edge_install "invalid-$edge_invalid" "https://$edge_invalid" direct
+  if run_edge_upgrade >"$edge_dir/output" 2>&1; then
+    echo "direct IP HTTPS accepted unsupported address: $edge_invalid" >&2; exit 1
+  fi
+  grep -Fq 'direct IP HTTPS requires a public IPv4 address on port 443' "$edge_dir/output"
+  assert_edge_unmodified
 done
 
 # A legacy installed verifier can authenticate the extra signed image but does

@@ -81,6 +81,9 @@ services:
       TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256: ${TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256:-}
 # bundled-db
 YAML
+	if [ "${TUNNEX_TEST_IP_TLS:-1}" = 1 ]; then
+		printf '%s\n' '# TUNNEX_EDGE_PUBLIC_IP' >>"$out"
+	fi
 	if [ "${TUNNEX_TEST_AI:-}" = 1 ]; then
 		printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?set by signed release verification}' >>"$out"
 	fi
@@ -187,6 +190,8 @@ grep -Fq 'docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-comp
 	fail 'fresh Ubuntu preview did not install the complete Docker Engine + Compose set'
 grep -Fq 'TUNNEX_TLS_MODE=terminated' "$TMP/control-plane/.env" ||
 	fail 'generated environment lost the selected TLS mode'
+grep -qx 'TUNNEX_EDGE_PUBLIC_IP=' "$TMP/control-plane/.env" ||
+	fail 'externally terminated TLS incorrectly requested an IP certificate'
 grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=true' "$TMP/control-plane/.env" ||
 	fail 'Linux CP-only install did not retain scale-zero compatibility with older upgrade helpers'
 grep -Fq 'TUNNEX_RELEASE_SOURCE_SHA=0123456789abcdef0123456789abcdef01234567' "$TMP/control-plane/.env" ||
@@ -733,6 +738,53 @@ run_ai_install() {
 	TUNNEX_PUBLIC_BASE_URL="$2" TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test \
 	TUNNEX_SMTP=skip TUNNEX_DIR="$1" sh "$INSTALLER" --yes
 }
+# Public-IP HTTPS must provision trusted edge mode and usable AI together.
+# Every network and Docker command remains stubbed: no real certificate request.
+run_ai_install "$TMP/ai-public-ip" https://51.20.98.153:443 >"$TMP/ai-public-ip-output"
+for value in APP_BASE_URL=https://51.20.98.153:443 TUNNEX_TLS_MODE=direct TUNNEX_EDGE_LISTEN=https://51.20.98.153:443 TUNNEX_EDGE_PUBLIC_IP=51.20.98.153 TUNNEX_COOKIE_SECURE=true TUNNEX_AI_GATEWAY_URL=http://bifrost:8080; do
+	grep -qx "$value" "$TMP/ai-public-ip/.env" || fail "public-IP HTTPS configuration missing: $value"
+done
+"$PYTHON3" -c 'import json,sys; assert "51.20.98.153" in json.load(open(sys.argv[1]))["protected_hosts"]' \
+	"$TMP/ai-public-ip/ai-egress-policy.json" || fail 'public-IP HTTPS left its control-plane IP unprotected'
+grep -Fq 'allow public TCP 443 for HTTPS and certificate renewal' "$TMP/ai-public-ip-output" || fail 'IP HTTPS omitted its renewal network requirement'
+cp "$TMP/ai-public-ip/.env" "$TMP/ai-public-ip-before.env"
+cp "$TMP/ai-public-ip/tunnex.yml" "$TMP/ai-public-ip-before.yml"
+run_ai_install "$TMP/ai-public-ip" https://51.20.98.153:443 >"$TMP/ai-public-ip-rerun-output"
+cmp -s "$TMP/ai-public-ip-before.env" "$TMP/ai-public-ip/.env" || fail 'IP HTTPS rerun changed durable configuration or keys'
+if (TUNNEX_TEST_IP_TLS=0 run_ai_install "$TMP/ai-public-ip" https://51.20.98.153:443) >"$TMP/ai-public-ip-unsupported-output" 2>&1; then
+	fail 'IP HTTPS accepted an older signed deployment without IP certificate support'
+fi
+grep -Fq 'selected signed release does not support public IPv4 HTTPS' "$TMP/ai-public-ip-unsupported-output" || fail 'old IP HTTPS release failed outside the capability guard'
+cmp -s "$TMP/ai-public-ip-before.env" "$TMP/ai-public-ip/.env" || fail 'old IP HTTPS release changed protected configuration'
+cmp -s "$TMP/ai-public-ip-before.yml" "$TMP/ai-public-ip/tunnex.yml" || fail 'old IP HTTPS release replaced the deployment'
+# The input URL does not replace .env on a rerun. Changing that input must
+# not bypass the capability requirement of the retained direct-IP deployment.
+for requested_url in https://preview.tunnex.test http://51.20.98.153; do
+	if (TUNNEX_TEST_IP_TLS=0 run_ai_install "$TMP/ai-public-ip" "$requested_url") >"$TMP/ai-public-ip-conflict-output" 2>&1; then
+		fail 'different rerun URL bypassed the installed IP HTTPS capability guard'
+	fi
+	grep -Fq 'selected signed release does not support public IPv4 HTTPS' "$TMP/ai-public-ip-conflict-output" || fail 'retained IP HTTPS failed outside the capability guard'
+	cmp -s "$TMP/ai-public-ip-before.env" "$TMP/ai-public-ip/.env" || fail 'conflicting rerun URL changed protected settings'
+	cmp -s "$TMP/ai-public-ip-before.yml" "$TMP/ai-public-ip/tunnex.yml" || fail 'conflicting rerun URL replaced the IP HTTPS deployment'
+done
+# A missing derived hint cannot hide an installed explicit direct-IP origin.
+sed '/^TUNNEX_EDGE_PUBLIC_IP=/d' "$TMP/ai-public-ip-before.env" >"$TMP/ai-public-ip/.env"
+cp "$TMP/ai-public-ip/.env" "$TMP/ai-public-ip-no-hint.env"
+if (TUNNEX_TEST_IP_TLS=0 run_ai_install "$TMP/ai-public-ip" https://preview.tunnex.test) >"$TMP/ai-public-ip-no-hint-output" 2>&1; then
+	fail 'missing derived IP hint bypassed the installed direct-IP capability guard'
+fi
+grep -Fq 'selected signed release does not support public IPv4 HTTPS' "$TMP/ai-public-ip-no-hint-output" || fail 'direct-IP origin failed outside the capability guard'
+cmp -s "$TMP/ai-public-ip-no-hint.env" "$TMP/ai-public-ip/.env" || fail 'direct-IP origin guard changed protected settings'
+cmp -s "$TMP/ai-public-ip-before.yml" "$TMP/ai-public-ip/tunnex.yml" || fail 'direct-IP origin guard replaced the deployment'
+cp "$TMP/ai-public-ip-before.env" "$TMP/ai-public-ip/.env"
+if run_ai_install "$TMP/ai-private-direct" https://172.31.20.253 >"$TMP/ai-private-direct-output" 2>&1; then
+	fail 'direct TLS accepted a private IPv4 certificate'
+fi
+[ ! -e "$TMP/ai-private-direct/.env" ] || fail 'invalid direct TLS wrote deployment configuration'
+(TUNNEX_TLS_MODE=terminated run_ai_install "$TMP/ai-public-ip-terminated" https://51.20.98.153:8443) >"$TMP/ai-public-ip-terminated-output"
+grep -qx 'TUNNEX_EDGE_PUBLIC_IP=' "$TMP/ai-public-ip-terminated/.env" || fail 'external IP TLS requested direct certificate management'
+(TUNNEX_EDGE_PUBLIC_IP=51.20.98.153 run_ai_install "$TMP/ai-stale-ip" https://preview.tunnex.test) >"$TMP/ai-stale-ip-output"
+grep -qx 'TUNNEX_EDGE_PUBLIC_IP=' "$TMP/ai-stale-ip/.env" || fail 'DNS TLS retained an injected IP certificate address'
 (TUNNEX_COMPOSE_PROJECT=custom-ai-project run_ai_install "$TMP/ai-https" https://preview.tunnex.test) >"$TMP/ai-https-output"
 grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-https/.env" || fail 'HTTPS bootstrap did not integrate its private backend'
 grep -qx 'TUNNEX_AI_BOOTSTRAP_VERSION=1' "$TMP/ai-https/.env" || fail 'AI bootstrap provenance was not recorded'

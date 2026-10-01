@@ -22,6 +22,12 @@ single-host control plane and gateway. macOS and Windows install a portable cont
 you to enroll the WireGuard gateway on a separate Linux host. A usable runtime is preserved. The installer
 does not provision the server, DNS, firewall, load balancer, or public IP.
 
+For direct HTTPS, use a DNS hostname or a public IPv4 address on port 443.
+Public-IP certificates renew automatically through TCP 443; keep that port
+publicly reachable and retain the Caddy volumes. This requires a signed release
+containing [public-IP HTTPS support](docs/S-public-ip-https-decisions.md);
+v0.1.36 and older do not include it.
+
 **Recommended — download, verify, inspect, then run** (our audience is sovereignty/security-conscious;
 never pipe a script you haven't read into a root shell):
 

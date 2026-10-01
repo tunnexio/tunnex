@@ -133,10 +133,12 @@ or substitute a false origin to make a status card green.
 
 ## Test a fresh bootstrap
 
-Use a separate clean VM with a real HTTPS hostname after the new signed release
-and matching installer website deployment are complete. The current v0.1.34
-public installer cannot exercise this bootstrap. Follow the normal verified
-installer flow; do not copy newer Compose files into an older installation.
+Use a separate clean VM with a reachable HTTPS hostname. Direct HTTPS on a
+public IPv4 address also works with a signed release containing
+[public-IP HTTPS support](S-public-ip-https-decisions.md); v0.1.36 and older
+do not include that edge configuration. Keep TCP 443 public for certificate
+issuance and renewal. Follow the normal verified installer flow; do not copy
+newer Compose files into an older installation.
 
 1. Complete installation without entering provider keys. The three services
    above should be healthy, with no host ports for the engine or proxy.

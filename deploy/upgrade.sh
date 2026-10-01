@@ -306,16 +306,50 @@ public_url_is_ip() {
   esac
   case "$_host" in
     \[*:*\]) return 0 ;;
-    *.*.*.*) case "$_host" in *[!0-9.]* | .* | *.) return 1 ;; esac; return 0 ;;
+    *[!0-9.]* | '') return 1 ;;
+    *) return 0 ;;
   esac
   return 1
 }
-ensure_edge_config() {
-  # Upgrading a pre-edge install must not fail Compose interpolation. Preserve
-  # an explicit operator choice; derive a conservative mode only when absent.
-  grep -Fq 'TUNNEX_EDGE_LISTEN' "$COMPOSE" || return 0
+public_ipv4_ok() {
+	printf '%s\n' "$1" | awk -F. '
+		NF != 4 { exit 1 }
+		{
+			for (i = 1; i <= 4; i++) {
+				if ($i !~ /^[0-9]+$/ || length($i) > 3 || $i ~ /^0[0-9]/ || $i + 0 > 255) exit 1
+			}
+			a = $1 + 0; b = $2 + 0; c = $3 + 0
+			if (a == 0 || a == 10 || a == 127 || a >= 224 ||
+			    (a == 100 && b >= 64 && b <= 127) ||
+			    (a == 169 && b == 254) || (a == 172 && b >= 16 && b <= 31) ||
+			    (a == 192 && (b == 168 || (b == 0 && (c == 0 || c == 2)) || (b == 88 && c == 99))) ||
+			    (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
+			    (a == 203 && b == 0 && c == 113)) exit 1
+		}'
+}
+prepare_edge_config() {
+  # Validate the downloaded target before replacing any deployment settings.
+  # A legacy target must not silently replace working public-IP ACME with
+  # Caddy's default internal certificate issuer.
+  EDGE_CONFIG_REQUIRED=false
+  EDGE_PUBLIC_IP=
   _base=$(dotenv_value APP_BASE_URL)
   _mode=$(dotenv_value TUNNEX_TLS_MODE)
+  if [ "$_mode" = direct ] && [ "${_base#https://}" != "$_base" ] && public_url_is_ip "$_base"; then
+    _authority=${_base#https://}
+    _host=${_authority%%:*}
+    if ! public_ipv4_ok "$_host" || { [ "$_authority" != "$_host" ] && [ "$_authority" != "$_host:443" ]; }; then
+      echo 'error: upgrade blocked; direct IP HTTPS requires a public IPv4 address on port 443' >&2
+      exit 13
+    fi
+    EDGE_PUBLIC_IP=$_host
+    grep -Fq 'TUNNEX_EDGE_PUBLIC_IP' "$1" && grep -Fq 'TUNNEX_EDGE_LISTEN' "$1" || {
+      echo 'error: upgrade blocked; target release does not support the installed public-IP HTTPS endpoint' >&2
+      exit 13
+    }
+  fi
+  grep -Fq 'TUNNEX_EDGE_LISTEN' "$1" || return 0
+  EDGE_CONFIG_REQUIRED=true
   _scheme=$(public_url_scheme "$_base") || {
     echo "error: upgrade blocked; APP_BASE_URL must be an http:// or https:// URL before the public edge can be configured" >&2
     exit 13
@@ -325,15 +359,21 @@ ensure_edge_config() {
       http) _mode=http ;;
       https) if public_url_is_ip "$_base"; then _mode=terminated; else _mode=direct; fi ;;
     esac
-    set_dotenv TUNNEX_TLS_MODE "$_mode"
   fi
   case "$_mode" in
-    direct) _listen=$_base ;;
-    terminated|http) _listen=http://:80 ;;
+    direct) EDGE_LISTEN=$_base ;;
+    terminated|http) EDGE_LISTEN=http://:80 ;;
     *) echo "error: upgrade blocked; TUNNEX_TLS_MODE must be direct, terminated, or http" >&2; exit 13 ;;
   esac
-  set_dotenv TUNNEX_EDGE_LISTEN "$_listen"
-  case "$_scheme" in https) set_dotenv TUNNEX_COOKIE_SECURE true ;; http) set_dotenv TUNNEX_COOKIE_SECURE false ;; esac
+  EDGE_MODE=$_mode
+  case "$_scheme" in https) EDGE_COOKIE_SECURE=true ;; http) EDGE_COOKIE_SECURE=false ;; esac
+}
+ensure_edge_config() {
+  [ "$EDGE_CONFIG_REQUIRED" = true ] || return 0
+  set_dotenv TUNNEX_TLS_MODE "$EDGE_MODE"
+  set_dotenv TUNNEX_EDGE_LISTEN "$EDGE_LISTEN"
+  set_dotenv TUNNEX_EDGE_PUBLIC_IP "$EDGE_PUBLIC_IP"
+  set_dotenv TUNNEX_COOKIE_SECURE "$EDGE_COOKIE_SECURE"
 }
 SOURCE_SHA=$(release_value TUNNEX_RELEASE_SOURCE_SHA)
 VERSION=$(release_value TUNNEX_RELEASE_VERSION)
@@ -349,6 +389,7 @@ if [ "$(dotenv_value TUNNEX_DATABASE_MODE)" = external ]; then
     echo 'error: upgrade blocked; target release does not support the existing external database' >&2; exit 13;
   }
 fi
+prepare_edge_config "$TMPDIR/tunnex.yml"
 AI_BUNDLED=false
 if grep -Fq '${TUNNEX_AI_ENGINE_IMAGE:' "$TMPDIR/tunnex.yml"; then
   AI_BUNDLED=true
