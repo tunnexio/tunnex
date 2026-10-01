@@ -17,7 +17,7 @@ TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
 POSTGRES_USER=tunnex
 POSTGRES_DB=tunnex
 ENV
-: >"$TMP/catalog.json"
+printf '%s\n' '{"fixture":"signed catalog for stdin transfer"}' >"$TMP/catalog.json"
 
 cat >"$TMP/bin/curl" <<'SH'
 #!/bin/sh
@@ -49,6 +49,15 @@ set -eu
 [ "$1" = -manifest ]
 [ "$3" = -public-key ]
 [ "$4" = test-public-key ]
+if [ "${MOCK_AI_TARGET_VERIFIER:-}" = 1 ]; then
+  [ "$#" -eq 7 ]
+  [ -s "$2" ]
+  cmp -s "$2" "$MOCK_CATALOG"
+  [ "$5" = -expected-source-sha ]
+  [ "$6" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]
+  [ "$7" = -print-env ]
+  [ "${MOCK_AI_VERIFIER_FAIL:-}" != 1 ] || exit 42
+fi
 case " $* " in *' -print-env '*)
   cat <<'ENV'
 TUNNEX_RELEASE_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -80,8 +89,36 @@ cat >"$TMP/bin/docker" <<'SH'
 set -eu
 printf '%s\n' "$*" >>"$MOCK_DOCKER_LOG"
 case "$*" in
-  *'--entrypoint releaseverify'* )
-    MOCK_AI_OLD_VERIFIER=0 "$MOCK_RELEASEVERIFY" -manifest fixture -public-key test-public-key -print-env ;;
+  *releaseverify*)
+    # The Docker daemon cannot bind the runner's PrivateTmp files. Require the
+    # already verified API image to receive the catalog through stdin instead.
+    [ "$1" = run ]
+    shift
+    interactive=false network_none=false shell_entrypoint=false disposable=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --rm) disposable=true; shift ;;
+        -i|--interactive) interactive=true; shift ;;
+        --network) [ "$2" = none ]; network_none=true; shift 2 ;;
+        --entrypoint) [ "$2" = sh ]; shell_entrypoint=true; shift 2 ;;
+        api@sha256:aaa) shift; break ;;
+        *) echo "unexpected target verifier Docker argument: $1" >&2; exit 1 ;;
+      esac
+    done
+    [ "$interactive" = true ] && [ "$network_none" = true ] &&
+      [ "$shell_entrypoint" = true ] && [ "$disposable" = true ]
+    [ "$1" = -c ]
+    container_tmp=$(mktemp -d "${MOCK_DOCKER_LOG}.verifier.XXXXXX")
+    trap 'rm -rf "$container_tmp"' EXIT HUP INT TERM
+    cat >"$container_tmp/stdin"
+    [ -s "$container_tmp/stdin" ]
+    cmp -s "$container_tmp/stdin" "$MOCK_CATALOG"
+    # Execute the actual container shell command in an isolated fixture /tmp.
+    # The verifier validates the resulting file and original key/source args.
+    verifier_script=$(printf '%s' "$2" | sed "s|/tmp/|$container_tmp/|g")
+    shift 2
+    MOCK_AI_TARGET_VERIFIER=1 MOCK_AI_OLD_VERIFIER=0 \
+      sh -c "$verifier_script" "$@" <"$container_tmp/stdin" ;;
   *'tar -czf - -C /snapshot config logs'*)
     [ "${MOCK_AI_SNAPSHOT_FAIL:-}" != 1 ] || exit 42
     printf fixture-ai-snapshot ;;
@@ -194,8 +231,41 @@ run_ai_upgrade() (
     MOCK_RELEASEVERIFY="$TMP/bin/releaseverify" MOCK_DOCKER_LOG="$TMP/ai-upgrade.log" \
     TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" ./upgrade.sh --apply
 )
+# Rejection by the target verifier must retain the verified database backup and
+# original deployment files, without pulling the Compose stack or restarting it.
+mkdir "$TMP/ai-verifier-failure"
+cp "$TMP/ai-upgrade/upgrade.sh" "$TMP/ai-verifier-failure/upgrade.sh"
+cp "$TMP/ai-upgrade/.env" "$TMP/ai-verifier-failure/.env"
+cp "$TMP/ai-upgrade/tunnex.yml" "$TMP/ai-verifier-failure/tunnex.yml"
+printf '%s\n' '{"fixture":"installed release"}' >"$TMP/ai-verifier-failure/release.json"
+cp "$TMP/ai-verifier-failure/release.json" "$TMP/ai-installed-release.json"
+: >"$TMP/ai-upgrade.log"
+if (MOCK_AI_OLD_VERIFIER=1 MOCK_AI_VERIFIER_FAIL=1 \
+  TUNNEX_UPGRADE_STATUS_FILE="$TMP/ai-verifier-failure/status" \
+  TUNNEX_UPGRADE_REQUEST_ID=target-verifier-failure \
+  run_ai_upgrade "$TMP/ai-verifier-failure") >"$TMP/ai-verifier-failure-output" 2>&1; then
+  echo 'target verifier failure did not block upgrade' >&2; exit 1
+fi
+grep -Fq 'target release verification failed' "$TMP/ai-verifier-failure-output"
+grep -Fxq 'state=failed' "$TMP/ai-verifier-failure/status"
+grep -Fxq 'reason_code=pulling_failed' "$TMP/ai-verifier-failure/status"
+for file in .env tunnex.yml upgrade.sh; do
+  cmp -s "$TMP/ai-upgrade/$file" "$TMP/ai-verifier-failure/$file"
+done
+cmp -s "$TMP/ai-installed-release.json" "$TMP/ai-verifier-failure/release.json"
+[ ! -e "$TMP/ai-verifier-failure/ai-bootstrap.sh" ]
+[ ! -e "$TMP/ai-verifier-failure/ai-engine.json" ]
+[ ! -e "$TMP/ai-verifier-failure/ai-egress-policy.json" ]
+for key in backup_dump backup_manifest; do
+  backup=$(sed -n "s/^$key=//p" "$TMP/ai-verifier-failure/status")
+  [ -n "$backup" ] && [ -s "$TMP/ai-verifier-failure/backups/$backup" ]
+done
+grep -Fxq 'pull api@sha256:aaa' "$TMP/ai-upgrade.log"
+! grep -Eq '^compose .* (pull|up|stop|start)( |$)' "$TMP/ai-upgrade.log"
+
+: >"$TMP/ai-upgrade.log"
 MOCK_AI_OLD_VERIFIER=1 run_ai_upgrade >"$TMP/ai-upgrade-output"
-grep -Fq -- '--entrypoint releaseverify' "$TMP/ai-upgrade.log"
+grep -Fq -- '--entrypoint sh' "$TMP/ai-upgrade.log"
 grep -qx 'TUNNEX_AI_GATEWAY_URL=' "$TMP/ai-upgrade/.env"
 grep -Fq 'real HTTPS public URL' "$TMP/ai-upgrade-output"
 [ -f "$TMP/ai-upgrade/ai-engine.json" ]
