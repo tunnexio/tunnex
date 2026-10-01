@@ -31,6 +31,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/aiegress"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
+	"github.com/tunnexio/tunnex/apps/api/internal/aitransport"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
@@ -512,7 +513,7 @@ func main() {
 			}
 		}
 		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
-		aiWorkloads, engineErr = aigateway.NewWorkloads(aiPolicies, cfg.AppBaseURL, aigateway.WorkloadOptions{AllowPrivateHTTP: cfg.AIAllowPrivateHTTP})
+		aiWorkloads, engineErr = aigateway.NewWorkloads(aiPolicies, cfg.AppBaseURL, aigateway.WorkloadOptions{TransportPolicyManaged: true})
 		if engineErr != nil {
 			logger.Error("ai_workload_invalid_configuration")
 			os.Exit(1)
@@ -552,6 +553,7 @@ func main() {
 		AIPolicies:         aiPolicies,
 		AIEngineInstalled:  cfg.AIBootstrapInstalled,
 		AIAllowPrivateHTTP: cfg.AIAllowPrivateHTTP,
+		AITransport:        aitransport.New(pool),
 		AIAdapter:          aiAdapter,
 		AgentRuntimePool:   pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
@@ -593,6 +595,7 @@ func main() {
 		DeviceHealthEnabled:   apphttp.NewDeviceHealthEdition(),
 		MfaEnforceEnabled:     apphttp.NewMfaEnforceEdition(),
 		CookieSecure:          cfg.CookieSecure,
+		TrustedProxies:        cfg.TrustedProxies,
 		AppBaseURL:            cfg.AppBaseURL,
 		GatewayControlURL:     cfg.GatewayControlURL,
 		NodeAgentImage:        cfg.NodeAgentImage,

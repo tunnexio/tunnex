@@ -84,6 +84,9 @@ YAML
 	if [ "${TUNNEX_TEST_IP_TLS:-1}" = 1 ]; then
 		printf '%s\n' '# TUNNEX_EDGE_PUBLIC_IP' >>"$out"
 	fi
+	if [ "${TUNNEX_TEST_EDGE_TRUST:-}" = 1 ]; then
+		printf '%s\n' '# TUNNEX_EDGE_TRUSTED_PROXIES' >>"$out"
+	fi
 	if [ "${TUNNEX_TEST_AI:-}" = 1 ]; then
 		printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?set by signed release verification}' >>"$out"
 	fi
@@ -738,6 +741,33 @@ run_ai_install() {
 	TUNNEX_PUBLIC_BASE_URL="$2" TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test \
 	TUNNEX_SMTP=skip TUNNEX_DIR="$1" sh "$INSTALLER" --yes
 }
+# New terminated releases require trust before publishing any managed payload.
+if (TUNNEX_TEST_EDGE_TRUST=1 TUNNEX_TLS_MODE=terminated run_ai_install "$TMP/no-proxy-peers" https://preview.tunnex.test) >"$TMP/no-proxy-peers-output" 2>&1; then
+  fail 'new terminated TLS deployment accepted missing proxy peers'
+fi
+grep -Fq 'Externally terminated HTTPS requires TUNNEX_EDGE_TRUSTED_PROXIES' "$TMP/no-proxy-peers-output" || fail 'missing proxy peers failed outside preflight'
+[ ! -e "$TMP/no-proxy-peers/.env" ] && [ ! -e "$TMP/no-proxy-peers/tunnex.yml" ] || fail 'missing proxy peers published deployment files'
+(TUNNEX_TEST_EDGE_TRUST=1 TUNNEX_TLS_MODE=terminated TUNNEX_EDGE_TRUSTED_PROXIES='10.20.0.12/32 2001:db8::12/128' run_ai_install "$TMP/proxy-peers" https://preview.tunnex.test) >"$TMP/proxy-peers-output"
+grep -Fxq 'TUNNEX_EDGE_TRUSTED_PROXIES=10.20.0.12/32 2001:db8::12/128' "$TMP/proxy-peers/.env" || fail 'explicit proxy peers were not persisted'
+cp "$TMP/proxy-peers/.env" "$TMP/proxy-peers-before.env"
+(TUNNEX_TEST_EDGE_TRUST=1 run_ai_install "$TMP/proxy-peers" http://51.20.98.153) >"$TMP/proxy-peers-rerun-output"
+cmp -s "$TMP/proxy-peers-before.env" "$TMP/proxy-peers/.env" || fail 'rerun did not preserve the installed terminated transport'
+# A retained terminated origin still needs peers even with a new input URL.
+sed '/^TUNNEX_EDGE_TRUSTED_PROXIES=/d' "$TMP/proxy-peers/.env" >"$TMP/proxy-peers/.env.next"
+mv "$TMP/proxy-peers/.env.next" "$TMP/proxy-peers/.env"
+cp "$TMP/proxy-peers/.env" "$TMP/proxy-peers-missing-before.env"
+cp "$TMP/proxy-peers/tunnex.yml" "$TMP/proxy-peers-before.yml"
+if (TUNNEX_TEST_EDGE_TRUST=1 run_ai_install "$TMP/proxy-peers" http://51.20.98.153) >"$TMP/proxy-peers-missing-output" 2>&1; then
+  fail 'a conflicting rerun URL bypassed required proxy trust'
+fi
+cmp -s "$TMP/proxy-peers-missing-before.env" "$TMP/proxy-peers/.env" || fail 'missing retained peers changed installed settings'
+cmp -s "$TMP/proxy-peers-before.yml" "$TMP/proxy-peers/tunnex.yml" || fail 'missing retained peers replaced Compose'
+for invalid_peers in '0.0.0.0/0' '::/0' '10.20.0.12/33' '1::2::3' '10.0.0.1; echo injected'; do
+  if (TUNNEX_TEST_EDGE_TRUST=1 TUNNEX_TLS_MODE=terminated TUNNEX_EDGE_TRUSTED_PROXIES="$invalid_peers" run_ai_install "$TMP/bad-proxy-peers" https://preview.tunnex.test) >"$TMP/bad-proxy-peers-output" 2>&1; then
+    fail 'invalid proxy peers passed installer preflight'
+  fi
+  [ ! -e "$TMP/bad-proxy-peers/.env" ] && [ ! -e "$TMP/bad-proxy-peers/tunnex.yml" ] || fail 'invalid proxy peers published deployment files'
+done
 # Public-IP HTTPS must provision trusted edge mode and usable AI together.
 # Every network and Docker command remains stubbed: no real certificate request.
 run_ai_install "$TMP/ai-public-ip" https://51.20.98.153:443 >"$TMP/ai-public-ip-output"
@@ -937,14 +967,14 @@ grep -Fq 'policy path must be absolute' "$TMP/ai-windows-relative-output" || fai
 rm "$BIN/cygpath"
 
 run_ai_install "$TMP/ai-http" http://192.0.2.10 >"$TMP/ai-http-output"
-grep -qx 'TUNNEX_AI_GATEWAY_URL=' "$TMP/ai-http/.env" || fail 'remote HTTP exposed AI integration'
+grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-http/.env" || fail 'HTTP bootstrap omitted the internal backend needed for UI opt-in'
 [ -f "$TMP/ai-http/ai-engine.json" ] || fail 'HTTP evaluation omitted its backend'
-grep -Fq 'HTTP evaluation keeps AI access off' "$TMP/ai-http-output" || fail 'HTTP bootstrap did not explain the HTTPS prerequisite'
+grep -Fq 'Settings > AI Gateway transport' "$TMP/ai-http-output" || fail 'HTTP bootstrap did not explain the admin setting'
 grep -qx 'TUNNEX_AI_ALLOW_PRIVATE_HTTP=false' "$TMP/ai-http/.env" || fail 'private HTTP AI was not disabled by default'
 (TUNNEX_AI_ALLOW_PRIVATE_HTTP=true run_ai_install "$TMP/ai-http-private" http://192.0.2.10) >"$TMP/ai-private-http-output"
 grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-http-private/.env" || fail 'explicit private HTTP policy did not enable integration'
 grep -qx 'TUNNEX_AI_ALLOW_PRIVATE_HTTP=true' "$TMP/ai-http-private/.env" || fail 'explicit private HTTP policy was not persisted'
-grep -Fq 'private/VPN-only' "$TMP/ai-private-http-output" || fail 'private HTTP operator responsibility was not explained'
+grep -Fq 'separate instance-admin opt-in' "$TMP/ai-private-http-output" || fail 'legacy environment policy was presented as the UI opt-in'
 cp "$TMP/ai-http-private/.env" "$TMP/ai-private-before.env"
 run_ai_install "$TMP/ai-http-private" http://192.0.2.10 >"$TMP/ai-private-rerun-output"
 cmp -s "$TMP/ai-private-before.env" "$TMP/ai-http-private/.env" || fail 'rerun changed the explicit private HTTP policy or durable keys'

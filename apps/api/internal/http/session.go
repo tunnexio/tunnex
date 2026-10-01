@@ -16,7 +16,7 @@ import (
 // for any missing/invalid session, so gated endpoints fail closed.
 func SessionAuth(store *session.Store, q *sqlc.Queries) AuthFunc {
 	return func(r *http.Request) *authctx.Principal {
-		c, err := r.Cookie(session.CookieName)
+		c, err := r.Cookie(sessionCookieName(r.Context()))
 		if err != nil {
 			return nil
 		}
@@ -75,7 +75,7 @@ func SessionAuth(store *session.Store, q *sqlc.Queries) AuthFunc {
 func csrfGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isUnsafeMethod(r.Method) {
-			if _, err := r.Cookie(session.CookieName); err == nil {
+			if _, err := r.Cookie(sessionCookieName(r.Context())); err == nil {
 				if r.Header.Get("X-Tunnex-CSRF") == "" {
 					apierr.Write(w, r, apierr.New(http.StatusForbidden, "csrf",
 						"missing X-Tunnex-CSRF header on a state-changing request"))

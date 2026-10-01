@@ -5,14 +5,14 @@ import AgentsAIGateway from "../src/pages/AgentsAIGateway";
 import { LegacyWorkspaceRedirect } from "../src/components/LegacyWorkspaceRedirect";
 import { AIGroupAccess } from "../src/components/AIUserAccess";
 import { NAV_GROUPS } from "../src/components/AppShell";
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), roles: ["admin"] }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), roles: ["admin"], cpAdmin: false }));
 vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mocks.get, POST: mocks.post } }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org", agent_policy_templates_enabled: true }, orgs: [{ id: "org", name: "Test organization" }], loading: false, failed: false }) }));
-vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "person", email_verified: true } } }) }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "person", email_verified: true, cp_admin: mocks.cpAdmin } } }) }));
 const connection = { id: "saved-azure", name: "azure", provider: "azure_foundry", models: ["custom-saved-azure/gpt-5"], model_modes: { "custom-saved-azure/gpt-5": "chat" }, status: "applied", enabled: true, revision: 1, applied_revision: 1 };
 const inventory = { items: [connection], definitions: [{ id: "azure_foundry", name: "Azure AI Foundry" }], management_available: true, legacy_key_ids: [] };
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.roles = ["admin"];
+  vi.clearAllMocks(); mocks.roles = ["admin"]; mocks.cpAdmin = false;
   mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "person", role: "member", roles: mocks.roles }]
     : path.endsWith("/providers") ? inventory : path.endsWith("/user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }]
     : path.endsWith("/my-models") ? [{ model: connection.models[0], mode: "chat" }] : [] }));
@@ -27,12 +27,30 @@ function mount(path: string) {
     <Route path="/access/groups" element={<LegacyWorkspaceRedirect groups />} />
     <Route path="/users/groups" element={<p>User groups</p>} />
     <Route path="/agents/groups" element={<p>Agent groups</p>} />
+    <Route path="/settings" element={<h1>AI Gateway transport controls</h1>} />
     <Route path="/ai-gateway" element={<AgentsAIGateway />} />
     <Route path="/ai-gateway/:section" element={<AgentsAIGateway />} />
     <Route path="/ai-gateway/models/new" element={<AgentsAIGateway />} />
   </Routes></MemoryRouter>);
 }
 describe("AI and identity navigation", () => {
+  it.each([true, false])("uses server-admin identity for the blocked transport link (cp_admin=%s)", async (cpAdmin) => {
+    mocks.cpAdmin = cpAdmin;
+    mocks.get.mockImplementation(async (path: string) => path.endsWith("/members")
+      ? { data: [{ user_id: "person", role: "owner", roles: ["owner"] }] }
+      : { error: { error: { code: "ai_https_required" } }, response: new Response(null, { status: 403 }) });
+    mount("/ai-gateway/models");
+    await screen.findByRole("alert");
+    const link = screen.queryByRole("link", { name: "Open AI Gateway transport settings" });
+    if (cpAdmin) {
+      expect(link?.getAttribute("href")).toBe("/settings?section=ai-transport");
+      fireEvent.click(link!);
+      await screen.findByRole("heading", { name: "AI Gateway transport controls" });
+      expect(screen.getByLabelText("Current route").textContent).toBe("/settings?section=ai-transport");
+      expect(screen.queryByRole("button", { name: "Add Model" })).toBeNull();
+    } else expect(link).toBeNull();
+  });
+
   it("separates AI destinations from Network and puts identity beside access", () => {
     expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents", "/mcp"]);
     expect(NAV_GROUPS.find((g) => g.group === "NETWORK")?.items.some((i) => i.to.startsWith("/agents"))).toBe(false);

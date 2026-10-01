@@ -2,6 +2,7 @@
 # Shared hosted-install/upgrade setup. Callers supply ai_fail, ai_docker and
 # ai_set_env; configuration is parsed as data, never sourced as shell code.
 # BEGIN HOSTED AI BOOTSTRAP
+AI_HTTP_UI_POLICY=true
 ai_env_value() {
   [ -f "$AI_ENV_FILE" ] || return 0
   sed -n "s/^$1=//p" "$AI_ENV_FILE" | head -1
@@ -201,19 +202,10 @@ ai_prepare_config() {
   _ai_private_http=$(ai_env_value TUNNEX_AI_ALLOW_PRIVATE_HTTP)
   [ -n "$_ai_private_http" ] || _ai_private_http=false
   ai_set_env TUNNEX_AI_ALLOW_PRIVATE_HTTP "$_ai_private_http"
-  # HTTP remains disabled by default. An explicit operator policy is permitted
-  # only after the operator verifies exclusive private/VPN endpoint access.
-  # Setup never infers those protections from an IP address or hostname.
-  case "$(ai_env_value APP_BASE_URL)" in
-    https://*) ai_set_env TUNNEX_AI_GATEWAY_URL http://bifrost:8080 ;;
-    *)
-      if [ "$_ai_private_http" = true ]; then
-        ai_set_env TUNNEX_AI_GATEWAY_URL http://bifrost:8080
-      else
-        ai_set_env TUNNEX_AI_GATEWAY_URL ''
-      fi
-      ;;
-  esac
+  # Always prepare the internal backend. The persisted instance-admin policy
+  # gates HTTP requests at the API; blanking this URL would make the UI opt-in
+  # ineffective until an operator edits the host and restarts the application.
+  ai_set_env TUNNEX_AI_GATEWAY_URL http://bifrost:8080
   chmod 0600 "$AI_ENV_FILE"
 }
 # END HOSTED AI BOOTSTRAP

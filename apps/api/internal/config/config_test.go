@@ -116,3 +116,15 @@ func TestAIProviderManagementRequiresExplicitDeploymentOptIn(t *testing.T) {
 		t.Fatal("invalid deployment setting must not enable management")
 	}
 }
+
+func TestTrustedProxiesRequireExplicitConfiguration(t *testing.T) {
+	t.Setenv("TUNNEX_TRUSTED_PROXIES", "")
+	if len(Load().TrustedProxies) != 0 {
+		t.Fatal("proxy trust must be explicit")
+	}
+	t.Setenv("TUNNEX_TRUSTED_PROXIES", "nginx, 192.0.2.1, 2001:db8::/32")
+	peers := Load().TrustedProxies
+	if len(peers) != 3 || peers[0] != "nginx" || peers[1] != "192.0.2.1" || peers[2] != "2001:db8::/32" {
+		t.Fatalf("proxy peers = %q", peers)
+	}
+}

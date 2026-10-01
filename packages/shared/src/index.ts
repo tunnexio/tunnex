@@ -58,7 +58,10 @@ export function setApiOrigin(origin: string | null): void {
  * on every mutation is always correct and never leaks anything.
  */
 export function createTunnexClient(baseUrl = "/"): TunnexClient {
-  const client = createClient<paths>({ baseUrl });
+  // API responses may carry secrets and must always reach the current origin.
+  // Bypass cached permanent redirects left by an earlier HTTP-to-HTTPS setup:
+  // following one silently changes the origin and drops its session cookie.
+  const client = createClient<paths>({ baseUrl, cache: "no-store" });
   client.use({
     async onRequest({ request }) {
       let req = request;
@@ -79,6 +82,7 @@ export function createTunnexClient(baseUrl = "/"): TunnexClient {
           body,
           signal: request.signal,
           redirect: request.redirect,
+          cache: request.cache,
         });
       }
       if (UNSAFE_METHODS.has(req.method)) {

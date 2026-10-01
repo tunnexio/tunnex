@@ -72,6 +72,8 @@ type Deps struct {
 	AIPolicies         *aigateway.Policies
 	AIEngineInstalled  bool
 	AIAllowPrivateHTTP bool
+	AITransport        aiTransportRepository
+	TrustedProxies     []string
 	AIAdapter          *aigateway.Adapter
 	Connectivity       *connectivity.Store
 	System             *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
@@ -169,6 +171,11 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	// first — the amplification the throttle exists to prevent was being spent before the throttle was consulted.
 	r.Use(rekeyOnly(newRekeyThrottle(rekeyAttemptsPerMinute)))
 
+	transport, err := newRequestTransport(d.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
+	r.Use(transport.middleware)
 	r.Use(middleware.RealIP)
 	// CORS runs early: it answers cross-origin preflights (OPTIONS) for the
 	// allowlisted desktop origin before auth/validation, and never sends
@@ -194,6 +201,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		})
 	})
 
+	r.Use(aiTransportMiddleware(d.AITransport))
 	r.Use(workloadMiddleware(d.AIWorkloads, d.AIAdapter))
 	// Attach the authenticated principal (if any) so downstream authorization can
 	// fail closed. The org used for scoping is derived from this principal's
@@ -289,6 +297,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
 	srv := apiServer{emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	srv.connectivity = d.Connectivity
+	srv.aiTransport = d.AITransport
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
 	// wraps every operation (self-arming — a new endpoint is gated by construction).

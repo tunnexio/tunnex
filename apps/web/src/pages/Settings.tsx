@@ -1,3 +1,4 @@
+import { AITransportSettings } from "../components/AITransportSettings";
 import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
 import { SsoSelfLink } from "../components/SsoSelfLink";
 import { SsoConnections } from "../components/SsoConnections";
@@ -233,7 +234,7 @@ export default function Settings() {
             : "Manage your account security and view your plan."
         }
       />
-      <ErrorText>{active === "email-delivery" ? null : error}</ErrorText>
+      <ErrorText>{active === "email-delivery" || active === "ai-transport" ? null : error}</ErrorText>
 
       {/* Desktop-only: server connection + sign-out for THIS client (renders nothing
           in the browser build). Above the org sections — it's a device concern, not
@@ -279,6 +280,11 @@ export default function Settings() {
         {serverAdmin && active === "email-delivery" && state.status === "authed" && (
           <SettingGroup id="email-delivery" title="Email delivery" tabpanel>
             <EmailDeliverySettings key={state.user.id} email={state.user.email} canEdit={emailVerified && !state.user.must_change_password} />
+          </SettingGroup>
+        )}
+        {serverAdmin && active === "ai-transport" && state.status === "authed" && (
+          <SettingGroup id="ai-transport" title="AI Gateway transport" tabpanel>
+            <AITransportSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
         {org && isAdmin && active === "organization" && (
@@ -1762,6 +1768,7 @@ const RAIL: ReadonlyArray<{
     hint: "Manage your licence and subscription.",
   },
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
+  { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,

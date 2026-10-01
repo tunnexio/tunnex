@@ -26,3 +26,8 @@ img renders a full image ref. Usage: include "tunnex-cp.img" (dict "root" $ "rep
 {{- define "tunnex-cp.img" -}}
 {{- printf "%s/%s:%s" .root.Values.image.registry .repo .root.Values.image.tag -}}
 {{- end -}}
+
+{{/* A headless peer identity resolves edge pod addresses, not its ClusterIP. */}}
+{{- define "tunnex-cp.edgeProxyService" -}}
+{{- printf "%s-edge-proxies" (include "tunnex-cp.fullname" . | trunc 50 | trimSuffix "-") -}}
+{{- end -}}

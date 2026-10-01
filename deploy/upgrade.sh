@@ -327,6 +327,41 @@ public_ipv4_ok() {
 			    (a == 203 && b == 0 && c == 113)) exit 1
 		}'
 }
+# BEGIN EXPLICIT EDGE PROXY VALIDATION
+edge_trusted_proxies_ok() {
+  printf '%s\n' "$1" | LC_ALL=C awk '
+    function ipv4(ip, a,n,i) {
+      n=split(ip,a,"."); if(n!=4) return 0
+      for(i=1;i<=n;i++) if(a[i]!~/^[0-9]+$/ || length(a[i])>3 || a[i]~/^0[0-9]/ || a[i]+0>255) return 0
+      return 1
+    }
+    function groups(ip, a,n,i) {
+      if(ip=="") return 0
+      n=split(ip,a,":")
+      for(i=1;i<=n;i++) if(a[i]!~/^[0-9a-fA-F]+$/ || length(a[i])>4) return -1
+      return n
+    }
+    function ipv6(ip, a,n,l,r) {
+      if(ip!~/^[0-9a-fA-F:]+$/) return 0
+      n=split(ip,a,"::")
+      if(n==1) return groups(ip)==8
+      if(n!=2) return 0
+      l=groups(a[1]); r=groups(a[2])
+      return l>=0 && r>=0 && l+r<8
+    }
+    NR!=1 || length($0)>4096 || /[^0-9a-fA-F.:\/ ]/ || NF<1 || NF>64 { exit 1 }
+    {
+      for(j=1;j<=NF;j++) {
+        n=split($j,part,"/"); if(n>2) exit 1
+        if(ipv4(part[1])) bits=32
+        else if(ipv6(part[1])) bits=128
+        else exit 1
+        if(n==2 && (part[2]!~/^[1-9][0-9]*$/ || part[2]+0>bits)) exit 1
+      }
+    }'
+}
+# END EXPLICIT EDGE PROXY VALIDATION
+
 prepare_edge_config() {
   # Validate the downloaded target before replacing any deployment settings.
   # A legacy target must not silently replace working public-IP ACME with
@@ -365,6 +400,12 @@ prepare_edge_config() {
     terminated|http) EDGE_LISTEN=http://:80 ;;
     *) echo "error: upgrade blocked; TUNNEX_TLS_MODE must be direct, terminated, or http" >&2; exit 13 ;;
   esac
+  if grep -Fq 'TUNNEX_EDGE_TRUSTED_PROXIES' "$1" && [ "$_mode" = terminated ]; then
+    edge_trusted_proxies_ok "$(dotenv_value TUNNEX_EDGE_TRUSTED_PROXIES)" || {
+      echo 'error: upgrade blocked; set TUNNEX_EDGE_TRUSTED_PROXIES in .env to explicit load-balancer IPs/CIDRs (space-separated, no /0) for externally terminated HTTPS' >&2
+      exit 13
+    }
+  fi
   EDGE_MODE=$_mode
   case "$_scheme" in https) EDGE_COOKIE_SECURE=true ;; http) EDGE_COOKIE_SECURE=false ;; esac
 }
@@ -512,7 +553,9 @@ if [ "$AI_BUNDLED" = true ]; then
   chmod 0644 "$DIR/ai-engine.json" "$DIR/ai-bootstrap.sh"
   ai_set_env() { set_dotenv "$@"; }
   ai_prepare_config
-  if [ -z "$(ai_env_value TUNNEX_AI_GATEWAY_URL)" ]; then
+  if [ "${AI_HTTP_UI_POLICY:-false}" = true ]; then
+    echo 'Private AI backend ready; saved HTTP policy is retained in Settings > AI Gateway transport. HTTPS remains available.'
+  elif [ -z "$(ai_env_value TUNNEX_AI_GATEWAY_URL)" ]; then
     echo 'Private AI backend installed; AI configuration and access remain off until a real HTTPS public URL is configured.'
   elif [ "$(ai_env_value TUNNEX_AI_ALLOW_PRIVATE_HTTP)" = true ]; then
     echo 'Private HTTP AI is enabled by operator policy; keep the real control-plane endpoint private/VPN-only and network restrictions verified.'

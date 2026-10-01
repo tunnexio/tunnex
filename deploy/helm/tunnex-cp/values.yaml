@@ -122,6 +122,10 @@ web:
     limits:
       memory: 128Mi
 edge:
+  # Exact ingress-controller source IPs/CIDRs as observed by edge pods. Only
+  # these peers may report the original client scheme in X-Forwarded-Proto.
+  # Supply them before upgrading a TLS ingress; no pod/private range is inferred.
+  trustedIngressCIDRs: []
   # nginx: TLS termination + routing. Sized for connection handling, not computation.
   replicas: 2
   resources:

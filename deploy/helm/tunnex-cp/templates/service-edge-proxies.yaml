@@ -1,0 +1,20 @@
+# Used only to identify the managed immediate proxy peers at the API boundary.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tunnex-cp.edgeProxyService" . }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  clusterIP: None
+  # Edge readiness goes through API /healthz. Publish peers before Ready so
+  # transport validation does not create a circular readiness dependency.
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: edge
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

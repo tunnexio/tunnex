@@ -35,8 +35,8 @@ partial credentials, or an unfamiliar operator proxy requires repair or a
 reviewed migration; setup does not replace those settings silently.
 
 Plain HTTP evaluation still installs the backend, but AI configuration and access
-remain unavailable by default. Use HTTPS, or the explicit restricted-network
-policy below. VPN setup remains available.
+remain unavailable by default. Use HTTPS, or enable the server setting below.
+VPN setup remains available.
 Do not substitute localhost or merely change the URL scheme: workload receipts
 and signed assertions use the actual public origin.
 
@@ -45,34 +45,31 @@ original installation behavior. Installing such a release does not add the
 backend. Use a release with the bundled-engine capability rather than applying
 unmatched deployment files to an older control plane.
 
-## Optional private HTTP policy
+## Optional HTTP access
 
-`TUNNEX_AI_ALLOW_PRIVATE_HTTP` defaults to `false`. An installation administrator
-may explicitly set `TUNNEX_AI_ALLOW_PRIVATE_HTTP=true` only after verifying that
-the real control-plane origin is restricted to a trusted private or VPN network.
-Set `APP_BASE_URL` to that exact tested origin; workload receipts and assertions
-use it. The installer
-accepts the origin through `TUNNEX_PUBLIC_BASE_URL`.
+In releases with **Settings → AI Gateway transport**, a server administrator can
+turn on **Allow AI Gateway over HTTP** and select **Save changes**. The setting
+is off by default and applies to every organization, including public HTTP
+endpoints. Editing it requires a verified email and a changed initial password.
 
-The option does not detect a VPN, classify an address as safe, configure a
-firewall, or infer permission from request headers or a client IP. The operator
-owns the network restrictions and must verify both permitted access and rejected
-public access before enabling it.
+HTTP does not encrypt credentials or requests; someone on the network path can
+read or change them. Prefer HTTPS. HTTPS remains available when HTTP is enabled.
 
-The review sandbox illustrates one bounded design: the public port-80 listener
-unconditionally rejects AI routes, while the full console is published only at
-`172.31.20.253:8082`. No security-group rule permits TCP `8082`, the instance has
-no IPv6 address, and an enforced gateway rule permits only the owner's exact
-device `/32` to that private destination and TCP port through `wg0`. Verify the
-client's native tunnel route, the private console response, public-port refusal,
-and public AI-route denial even with spoofed forwarding headers. Merely binding
-to a private address is insufficient evidence.
+The saved choice persists in the database across restarts and upgrades. Changes
+apply to subsequent requests without restarting the backend. Turning it off
+blocks new HTTP AI requests; requests already accepted keep their bounded
+completion window. The old `TUNNEX_AI_ALLOW_PRIVATE_HTTP` environment flag does
+not enable or override this saved policy.
 
-This policy changes only the accepted control-plane HTTP origin. Authentication,
-encrypted provider storage, workload proof checks, organization opt-in, model
-grants, and provider upstream TLS validation remain required. Provider keys and
-inference are still separate explicit setup steps; enabling this policy sends no
-provider request.
+Authentication, encrypted provider storage, organization access, model grants,
+workload proofs, and provider TLS verification still apply. Saving the setting
+does not contact a provider or grant model access. The workload CLI retains its
+own HTTPS requirement, except for loopback development.
+
+Keep `APP_BASE_URL` set to the actual canonical origin; the installer accepts it
+as `TUNNEX_PUBLIC_BASE_URL`. Behind a TLS proxy, follow
+[trusted proxy configuration](trusted-proxy-transport.md) so the API can identify
+the original connection correctly.
 
 ## Connect a provider
 
@@ -125,11 +122,12 @@ listener requires authentication, without sending inference or displaying secret
 Administrator and inference endpoints require authentication. A healthy backend
 alone does not prove a provider key, model entitlement or grant works.
 
-If the console reports an HTTPS prerequisite, configure the actual TLS endpoint
-and matching public origin, or complete the restricted-network checks before
-explicitly selecting private HTTP, then rerun normal setup. Keep the existing
-project name, encrypted engine storage and encryption key. Do not reset volumes
-or substitute a false origin to make a status card green.
+If the console reports an HTTPS prerequisite, open the HTTPS console or ask a
+server administrator to enable **Settings → AI Gateway transport → Allow AI
+Gateway over HTTP**. Saving this policy needs no installer rerun. If the backend
+is missing, use a signed release that includes it. Keep the existing project,
+encrypted engine storage and encryption key; do not reset volumes or substitute
+a false origin.
 
 ## Test a fresh bootstrap
 
@@ -150,6 +148,11 @@ newer Compose files into an older installation.
 4. Re-run the same installer with the same installation directory and project.
    Confirm the existing engine state, durable key, proxy credentials, and policy
    survive; do not delete volumes or print `.env` while checking.
+
+To test HTTP access, open the actual HTTP console. AI setup should be blocked
+initially. Save the server HTTP option, reopen **AI Gateway**, and confirm setup
+is available. Turn the option off and confirm new HTTP AI requests are blocked
+while HTTPS continues to work. A provider test remains a separate explicit action.
 
 For a local source check without creating a VM or contacting a provider, run:
 
@@ -173,6 +176,11 @@ preserves existing managed configuration and credentials. Incomplete credentials
 or retained encrypted storage without its matching key block setup before a
 replacement key is generated. File-managed provider installations require a
 reviewed transition; startup configuration must not remove existing keys.
+
+The first upgrade introducing the server HTTP setting starts with HTTP AI access
+off, even if an older installation used the private-HTTP environment flag. Review
+the saved policy in **Settings → AI Gateway transport** after upgrading. Later
+upgrades retain the database choice.
 
 The v0.1.34 host updater predates AI bootstrap. Its first dashboard upgrade to a
 release requiring the engine cannot prepare the new settings; replacing its

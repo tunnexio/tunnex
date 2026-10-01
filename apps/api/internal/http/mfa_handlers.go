@@ -60,14 +60,15 @@ func (s apiServer) MfaDisenroll(ctx context.Context, req api.MfaDisenrollRequest
 
 // mfaVerifyResponse sets the session cookie once the login challenge is passed (mirrors loginResponse).
 type mfaVerifyResponse struct {
-	body      api.AuthUser
-	sess      session.Session
-	secure    bool
-	requestID string
+	body       api.AuthUser
+	sess       session.Session
+	secure     bool
+	cookieName string
+	requestID  string
 }
 
 func (r mfaVerifyResponse) VisitMfaVerifyResponse(w http.ResponseWriter) error {
-	session.SetCookie(w, r.sess, r.secure)
+	session.SetNamedCookie(w, r.sess, r.cookieName, r.secure)
 	w.Header().Set("X-Request-Id", r.requestID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -94,5 +95,5 @@ func (s apiServer) MfaVerify(ctx context.Context, req api.MfaVerifyRequestObject
 	if n, e := s.mfa.CountRecoveryRemaining(ctx, user.ID); e == nil {
 		au.RecoveryCodesRemaining = &n
 	}
-	return mfaVerifyResponse{body: au, sess: sess, secure: s.cookieSecure, requestID: reqID(ctx)}, nil
+	return mfaVerifyResponse{body: au, sess: sess, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), requestID: reqID(ctx)}, nil
 }

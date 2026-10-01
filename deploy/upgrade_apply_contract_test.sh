@@ -36,6 +36,9 @@ case "$url" in
         printf '%s\n' '      TUNNEX_EDGE_PUBLIC_IP: ${TUNNEX_EDGE_PUBLIC_IP:-}' >>"$out"
       fi
     fi
+    if [ "${MOCK_EDGE_TRUST:-}" = 1 ]; then
+      printf '%s\n' '# TUNNEX_EDGE_TRUSTED_PROXIES' >>"$out"
+    fi
     if [ "${MOCK_AI:-}" = 1 ]; then
       printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?signed}' >>"$out"
     fi
@@ -302,6 +305,34 @@ for edge_invalid in 10.0.0.1 192.0.2.10 127.0.0.1 224.0.0.1 51.020.98.153 51.20.
   assert_edge_unmodified
 done
 
+# New scheme-aware releases require verified TLS proxy peers before mutation.
+for trust_case in missing broad bad-ip valid legacy; do
+  make_edge_install "proxy-$trust_case" https://vpn.example.test terminated
+  case "$trust_case" in
+    broad) peers='0.0.0.0/0' ;;
+    bad-ip) peers='10.0.0.1/33' ;;
+    valid) peers='10.20.0.12/32 2001:db8::12/128' ;;
+    *) peers= ;;
+  esac
+  printf 'TUNNEX_EDGE_TRUSTED_PROXIES=%s\n' "$peers" >>"$edge_dir/.env"
+  cp "$edge_dir/.env" "$edge_dir/.env.before"
+  trust_feature=1; [ "$trust_case" != legacy ] || trust_feature=0
+  if (MOCK_EDGE_TRUST=$trust_feature run_edge_upgrade) >"$edge_dir/output" 2>&1; then
+    case "$trust_case" in valid|legacy) ;; *) echo 'terminated upgrade accepted missing/invalid peers' >&2; exit 1 ;; esac
+    grep -Fxq 'state=healthy' "$edge_dir/status"
+    grep -Fxq "TUNNEX_EDGE_TRUSTED_PROXIES=$peers" "$edge_dir/.env"
+  else
+    case "$trust_case" in valid|legacy) cat "$edge_dir/output"; exit 1 ;; esac
+    grep -Fq 'set TUNNEX_EDGE_TRUSTED_PROXIES' "$edge_dir/output"
+    assert_edge_unmodified
+  fi
+done
+# Implicit legacy HTTPS-on-IP also means external termination; no bypass.
+make_edge_install proxy-implicit https://51.20.98.153 ''
+if (MOCK_EDGE_TRUST=1 run_edge_upgrade) >"$edge_dir/output" 2>&1; then
+  echo 'implicit terminated upgrade bypassed explicit proxy trust' >&2; exit 1
+fi
+assert_edge_unmodified
 # A legacy installed verifier can authenticate the extra signed image but does
 # not export it. The upgrade obtains that pin from the verified target API.
 mkdir "$TMP/ai-upgrade"
@@ -354,8 +385,8 @@ grep -Fxq 'pull api@sha256:aaa' "$TMP/ai-upgrade.log"
 : >"$TMP/ai-upgrade.log"
 MOCK_AI_OLD_VERIFIER=1 run_ai_upgrade >"$TMP/ai-upgrade-output"
 grep -Fq -- '--entrypoint sh' "$TMP/ai-upgrade.log"
-grep -qx 'TUNNEX_AI_GATEWAY_URL=' "$TMP/ai-upgrade/.env"
-grep -Fq 'real HTTPS public URL' "$TMP/ai-upgrade-output"
+grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-upgrade/.env"
+grep -Fq 'saved HTTP policy is retained in Settings > AI Gateway transport' "$TMP/ai-upgrade-output"
 [ -f "$TMP/ai-upgrade/ai-engine.json" ]
 [ -f "$TMP/ai-upgrade/ai-egress-policy.json" ]
 python3 - "$TMP/ai-upgrade" <<'PYTHON'

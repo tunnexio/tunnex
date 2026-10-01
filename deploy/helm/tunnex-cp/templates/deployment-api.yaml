@@ -60,6 +60,8 @@ spec:
               value: {{ .Values.database.requireTLS | quote }}
             - name: TUNNEX_COOKIE_SECURE
               value: "true"
+            - name: TUNNEX_TRUSTED_PROXIES
+              value: {{ printf "%s.%s.svc" (include "tunnex-cp.edgeProxyService" .) .Release.Namespace | quote }}
             - name: TUNNEX_SECRETS_DIR
               value: {{ .Values.api.secretsDir | quote }}
             # Master key as a mounted FILE (Slice 1 posture — never env).

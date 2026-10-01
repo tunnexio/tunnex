@@ -81,16 +81,17 @@ func (s apiServer) Signup(ctx context.Context, req api.SignupRequestObject) (api
 // ONLY when the login fully authenticated (setCookie). On an MFA challenge (D6) no
 // cookie is set — the pending state is a challenge token, never a session.
 type loginResponse struct {
-	body      api.LoginResult
-	sess      session.Session
-	setCookie bool
-	secure    bool
-	requestID string
+	body       api.LoginResult
+	sess       session.Session
+	setCookie  bool
+	secure     bool
+	cookieName string
+	requestID  string
 }
 
 func (r loginResponse) VisitLoginResponse(w http.ResponseWriter) error {
 	if r.setCookie {
-		session.SetCookie(w, r.sess, r.secure)
+		session.SetNamedCookie(w, r.sess, r.cookieName, r.secure)
 	}
 	w.Header().Set("X-Request-Id", r.requestID)
 	w.Header().Set("Content-Type", "application/json")
@@ -149,7 +150,7 @@ func (s apiServer) Login(ctx context.Context, req api.LoginRequestObject) (api.L
 		result.User = &au
 		result.EnrollmentRequired = &tr
 	}
-	return loginResponse{body: result, sess: sess, setCookie: true, secure: s.cookieSecure, requestID: reqID}, nil
+	return loginResponse{body: result, sess: sess, setCookie: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), requestID: reqID}, nil
 }
 
 func authUser(user sqlc.User) api.AuthUser {
@@ -168,12 +169,13 @@ func authUser(user sqlc.User) api.AuthUser {
 
 // logoutResponse clears the session cookie in its Visit.
 type logoutResponse struct {
-	secure    bool
-	requestID string
+	secure     bool
+	cookieName string
+	requestID  string
 }
 
 func (r logoutResponse) VisitLogoutResponse(w http.ResponseWriter) error {
-	session.ClearCookie(w, r.secure)
+	clearSessionCookies(w, r.cookieName, r.secure)
 	w.Header().Set("X-Request-Id", r.requestID)
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -253,7 +255,7 @@ func (s apiServer) Logout(ctx context.Context, _ api.LogoutRequestObject) (api.L
 	if p, ok := authctx.PrincipalFrom(ctx); ok && p.SessionID != "" {
 		_ = s.sessions.Delete(ctx, p.SessionID)
 	}
-	return logoutResponse{secure: s.cookieSecure, requestID: middleware.GetReqID(ctx)}, nil
+	return logoutResponse{secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), requestID: middleware.GetReqID(ctx)}, nil
 }
 
 // VerifyEmail implements POST /api/v1/auth/verify-email.

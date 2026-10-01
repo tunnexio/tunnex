@@ -1,4 +1,5 @@
 import { createElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
@@ -37,6 +38,43 @@ beforeEach(() => {
   api.POST.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/test-connection") ? { status: "success", duration_ms: 20 } : path.endsWith("/model-catalog") ? { items: [{ id: c.models[0], name: "GPT-4o mini" }], total: 1, limit: 50, offset: 0 } : { ...c, models: [] }, response: response() })); api.PUT.mockResolvedValue({ data: c, response: response() }); api.DELETE.mockResolvedValue({ response: response(204) });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+describe("AI provider transport prerequisite", () => {
+  it.each(["models", "connections"] as const)("links server administrators to transport settings from %s", async (view) => {
+    api.GET.mockResolvedValue({ error: { error: { code: "ai_https_required" } }, response: response(403) });
+    render(createElement(AIProviderWorkspace, { orgId: "org-a", view, canManageTransport: true }), { wrapper: MemoryRouter });
+    expect((await screen.findByRole("alert")).textContent).toContain("AI Gateway access over HTTP is disabled.");
+    expect(screen.getByRole("link", { name: "Open AI Gateway transport settings" }).getAttribute("href")).toBe("/settings?section=ai-transport");
+    expect((screen.getByRole("button", { name: view === "models" ? "Add Model" : "Add Credentials" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.GET).toHaveBeenCalledTimes(1);
+  });
+
+  it("directs an organization administrator to the server administrator without exposing a settings link", async () => {
+    api.GET.mockResolvedValue({ error: { error: { code: "ai_https_required" } }, response: response(403) });
+    render(createElement(AIProviderWorkspace, { orgId: "org-a", view: "models", canManage: true }), { wrapper: MemoryRouter });
+    expect((await screen.findByRole("alert")).textContent).toContain("ask your server administrator");
+    expect(screen.queryByRole("link", { name: "Open AI Gateway transport settings" })).toBeNull();
+  });
+
+  it.each(["forbidden", "network"])("keeps %s failures distinct from the HTTP policy", async (failure) => {
+    if (failure === "network") api.GET.mockRejectedValue(new Error("offline"));
+    else api.GET.mockResolvedValue({ error: { error: { code: "forbidden" } }, response: response(403) });
+    render(createElement(AIProviderWorkspace, { orgId: "org-a", view: "models", canManageTransport: true }), { wrapper: MemoryRouter });
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load provider connections.");
+    expect(screen.queryByRole("link", { name: "Open AI Gateway transport settings" })).toBeNull();
+  });
+
+  it("clears the HTTP policy message after settings change and refresh succeeds", async () => {
+    api.GET.mockResolvedValueOnce({ error: { error: { code: "ai_https_required" } }, response: response(403) });
+    render(createElement(AIProviderWorkspace, { orgId: "org-a", view: "models", canManageTransport: true }), { wrapper: MemoryRouter });
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Retry provider connections" }));
+    await screen.findByText("Engineering");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open AI Gateway transport settings" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Add Model" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
 describe("AI provider onboarding", () => {
   it.each([
     { failure: { kind: "http_error", source: "provider", http_status: 403 }, title: "Connection test failed · Provider HTTP 403", detail: /Access denied/ },

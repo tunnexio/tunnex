@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
+	"github.com/tunnexio/tunnex/apps/api/internal/aitransport"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
@@ -148,7 +149,11 @@ func TestWorkloadCLIHTTPWire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), Deps{Orgs: tenancy.NewService(pool), AIAdapter: adapter, AIPolicies: policies, AIWorkloads: workloads, AuthFn: func(*http.Request) *authctx.Principal { humanAuthCalls.Add(1); return nil }})
+	transportPolicy := aitransport.New(pool)
+	if _, err := transportPolicy.Save(ctx, owner, aitransport.Settings{AllowHTTP: true, Revision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), Deps{Orgs: tenancy.NewService(pool), AIAdapter: adapter, AIPolicies: policies, AIWorkloads: workloads, AITransport: transportPolicy, AuthFn: func(*http.Request) *authctx.Principal { humanAuthCalls.Add(1); return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

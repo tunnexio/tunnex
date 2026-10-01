@@ -29,6 +29,14 @@ Safe, but you will want to know: that is what preflight is for.
 
 ## Verified host upgrade (online or air-gapped)
 
+When upgrading to a release that introduces **Settings → AI Gateway transport**,
+HTTP AI access starts disabled. The former `TUNNEX_AI_ALLOW_PRIVATE_HTTP` flag
+does not override the new database policy. HTTPS continues to work; a server
+administrator may enable HTTP, including public HTTP, in that screen after
+reviewing its unencrypted-transport warning. Subsequent upgrades preserve the
+saved choice. See [AI Gateway upgrade guidance](AI-gateway-setup.md#preserve-state-during-upgrades)
+for bundled-engine installation and backup requirements.
+
 A single-host Docker deployment installed through `get.tunnex.io` includes a
 fixed-purpose local runner. A verified deployment administrator can approve the
 exact signed release shown on the dashboard and follow backup, preflight, restart,

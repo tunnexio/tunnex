@@ -2,9 +2,7 @@ package http
 
 import (
 	"context"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
@@ -15,20 +13,29 @@ import (
 
 type aiRuntimeBearerContextKey struct{}
 
-func (s apiServer) aiGatewaySettings(enabled, available bool, revision int64) api.AIGatewaySettings {
+func (s apiServer) aiGatewaySettings(ctx context.Context, enabled, available bool, revision int64) (api.AIGatewaySettings, error) {
 	installed := s.aiEngineInstalled || available
-	out := api.AIGatewaySettings{Enabled: enabled, Available: available, Revision: revision, EngineInstalled: &installed, PrivateHttpAllowed: &s.aiAllowPrivateHTTP}
-	if !available {
-		reason := api.EngineNotConfigured
-		if u, err := url.Parse(s.appBaseURL); err == nil && u.Scheme == "http" && !s.aiAllowPrivateHTTP {
-			ip := net.ParseIP(u.Hostname())
-			if u.Hostname() != "localhost" && !(ip != nil && ip.IsLoopback()) {
-				reason = api.HttpsRequired
-			}
+	allowHTTP := false
+	if s.aiTransport != nil {
+		settings, err := s.aiTransport.Get(ctx)
+		if err != nil {
+			return api.AIGatewaySettings{}, aiTransportError(err)
 		}
+		allowHTTP = settings.AllowHTTP
+	}
+	// Retain the legacy field in the response, but report the effective saved
+	// policy rather than allowing an old environment flag to override it.
+	out := api.AIGatewaySettings{Enabled: enabled, Available: available, Revision: revision, EngineInstalled: &installed, HttpAllowed: &allowHTTP, PrivateHttpAllowed: &allowHTTP}
+	secure, known := requestHTTPS(ctx)
+	if !(known && secure) && !allowHTTP {
+		out.Available = false
+		reason := api.HttpsRequired
+		out.UnavailableReason = &reason
+	} else if !available {
+		reason := api.EngineNotConfigured
 		out.UnavailableReason = &reason
 	}
-	return out
+	return out, nil
 }
 
 func (s apiServer) IssueAICredential(ctx context.Context, _ api.IssueAICredentialRequestObject) (api.IssueAICredentialResponseObject, error) {
@@ -49,13 +56,15 @@ func (s apiServer) GetAIGatewaySettings(ctx context.Context, req api.GetAIGatewa
 		return nil, err
 	}
 	if s.aiCredentials == nil {
-		return api.GetAIGatewaySettings200JSONResponse(s.aiGatewaySettings(false, false, 0)), nil
+		v, err := s.aiGatewaySettings(ctx, false, false, 0)
+		return api.GetAIGatewaySettings200JSONResponse(v), err
 	}
 	v, err := s.aiCredentials.Settings(ctx, req.OrgId)
 	if err != nil {
 		return nil, err
 	}
-	return api.GetAIGatewaySettings200JSONResponse(s.aiGatewaySettings(v.Enabled, v.Available, v.Revision)), nil
+	out, err := s.aiGatewaySettings(ctx, v.Enabled, v.Available, v.Revision)
+	return api.GetAIGatewaySettings200JSONResponse(out), err
 }
 
 func (s apiServer) SetAIGatewaySettings(ctx context.Context, req api.SetAIGatewaySettingsRequestObject) (api.SetAIGatewaySettingsResponseObject, error) {
@@ -77,7 +86,8 @@ func (s apiServer) SetAIGatewaySettings(ctx context.Context, req api.SetAIGatewa
 	if err != nil {
 		return nil, err
 	}
-	return api.SetAIGatewaySettings200JSONResponse(s.aiGatewaySettings(v.Enabled, v.Available, v.Revision)), nil
+	out, err := s.aiGatewaySettings(ctx, v.Enabled, v.Available, v.Revision)
+	return api.SetAIGatewaySettings200JSONResponse(out), err
 }
 
 // The generated contract documents these paths. The raw transport below owns

@@ -255,6 +255,7 @@ type apiServer struct {
 	appBaseURL            string
 	aiEngineInstalled     bool
 	aiAllowPrivateHTTP    bool
+	aiTransport           aiTransportRepository
 	nodeAgentImage        string
 	releaseStatus         *release.Status
 	releaseStatusProvider func() *release.Status

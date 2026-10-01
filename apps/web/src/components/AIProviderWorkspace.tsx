@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api } from "../lib/api";
 import { Badge, Button, Field, Input, Modal } from "./ui";
@@ -46,14 +47,14 @@ function endpointBase(value: string): string {
 }
 type WorkspaceView = "connections" | "models" | "add";
 type WorkspaceProps = {
-  orgId: string; canManage?: boolean; view?: WorkspaceView;
+  orgId: string; canManage?: boolean; canManageTransport?: boolean; view?: WorkspaceView;
   onViewChange?: (view: WorkspaceView) => void;
   onGrantAccess?: (connection: string, model: string) => void;
 };
 export function AIProviderWorkspace(props: WorkspaceProps) {
   return <ProviderWorkspace key={props.orgId} {...props} />;
 }
-function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewChange, onGrantAccess }: WorkspaceProps) {
+function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false, view: routeView, onViewChange, onGrantAccess }: WorkspaceProps) {
   const [credentialSearch, setCredentialSearch] = useState("");
   const [credentialProvider, setCredentialProvider] = useState("");
   const [selectedCredentials, setSelectedCredentials] = useState<string[]>([]);
@@ -64,6 +65,10 @@ function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewCha
   const [inventory, setInventory] = useState<S["AIProviderList"] | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [httpsRequired, setHTTPSRequired] = useState(false);
+  const transportMessage = canManageTransport
+    ? "AI Gateway access over HTTP is disabled. Use HTTPS, or enable Allow AI Gateway over HTTP in Settings → AI Gateway transport."
+    : "AI Gateway access over HTTP is disabled. Use HTTPS, or ask your server administrator to enable Allow AI Gateway over HTTP in Settings → AI Gateway transport.";
   const drafts = useRef<Record<string, EditorDraft>>({});
   const [editing, setEditing] = useState<AIProviderConnection | "new" | null>(null);
   const [localView, setLocalView] = useState<WorkspaceView>("models");
@@ -77,16 +82,25 @@ function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewCha
   async function reload() {
     const n = ++serial.current;
     setLoading(true);
+    setHTTPSRequired(false);
     try {
       const r = await api.GET("/api/v1/organizations/{orgId}/ai-gateway/providers", { params: { path: { orgId } } });
       if (!alive.current || n !== serial.current) return;
       if (r.error || !r.data) {
+        if (r.error?.error?.code === "ai_https_required") {
+          setInventory(null);
+          setHTTPSRequired(true);
+          setError(transportMessage);
+          return;
+        }
         if (r.response.status === 503) {
           const settings = await api.GET("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId } } });
           if (!alive.current || n !== serial.current) return;
           if (settings.data && !settings.data.available) {
             setInventory(null);
-            setError(aiGatewayPrerequisite(settings.data));
+            const needsHTTPS = settings.data.unavailable_reason === "https_required";
+            setHTTPSRequired(needsHTTPS);
+            setError(needsHTTPS ? transportMessage : aiGatewayPrerequisite(settings.data));
             return;
           }
         }
@@ -156,7 +170,7 @@ function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewCha
   </div></div>;
   return <section className="ai-provider-workspace" aria-label="Models and endpoints">
     <header className="ai-inventory-toolbar"><h2>{view === "connections" ? "Credentials" : "Models"}<span className="ai-inventory-count">{inventory ? view === "connections" ? inventory.items.length : modelRows.length : ""}</span><HelpTooltip label="About models and credentials">Connect a provider, then grant access. Credentials can be reused across models.</HelpTooltip></h2><div className="ai-inventory-actions"><Button size="sm" disabled={loading || busy} onClick={() => { setError(""); void reload(); }}>Refresh</Button>{routeView && view !== "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => changeView("add")}>Add Model</Button>}{view === "connections" && <Button disabled={loading || busy || !canManage || !inventory?.management_available || !definitions.length} onClick={() => setEditing("new")}>Add Credentials</Button>}</div></header>
-    {error && !editing && !removing && <p role="alert" className="ai-provider-alert">{error}</p>}
+    {error && !editing && !removing && <p role="alert" className="ai-provider-alert">{error}{httpsRequired && canManageTransport && <> <Link to="/settings?section=ai-transport" className="underline">Open AI Gateway transport settings</Link></>}</p>}
     {notice && <p role="status" className="ai-provider-notice">{notice}</p>}
     {connectionModel && <Modal title="Connect to model" size="wide" onDismiss={() => setConnectionModel(null)} showClose actions={<Button onClick={() => setConnectionModel(null)}>Close</Button>}><Field label="Model"><select value={connectionModel} onChange={event => setConnectionModel(event.target.value)}>{[...new Set([connectionModel, ...(inventory?.items ?? []).flatMap(c => c.models)])].map(model => <option key={model} value={model}>{modelDisplayName(model)}</option>)}</select></Field><AIModelConnectionDetails key={connectionModel} orgId={orgId} model={connectionModel} mode={inventory?.items.find(c => c.models.includes(connectionModel))?.model_modes?.[connectionModel] ?? "chat"} /></Modal>}
     {loading && !inventory ? <p role="status">Loading provider connections…</p> : !inventory ? <Button onClick={() => { setError(""); void reload(); }}>Retry provider connections</Button> : <>

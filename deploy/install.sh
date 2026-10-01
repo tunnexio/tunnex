@@ -674,6 +674,41 @@ public_base_url_tls_mode_ok() {
 	esac
 	return 1
 }
+# BEGIN EXPLICIT EDGE PROXY VALIDATION
+edge_trusted_proxies_ok() {
+  printf '%s\n' "$1" | LC_ALL=C awk '
+    function ipv4(ip, a,n,i) {
+      n=split(ip,a,"."); if(n!=4) return 0
+      for(i=1;i<=n;i++) if(a[i]!~/^[0-9]+$/ || length(a[i])>3 || a[i]~/^0[0-9]/ || a[i]+0>255) return 0
+      return 1
+    }
+    function groups(ip, a,n,i) {
+      if(ip=="") return 0
+      n=split(ip,a,":")
+      for(i=1;i<=n;i++) if(a[i]!~/^[0-9a-fA-F]+$/ || length(a[i])>4) return -1
+      return n
+    }
+    function ipv6(ip, a,n,l,r) {
+      if(ip!~/^[0-9a-fA-F:]+$/) return 0
+      n=split(ip,a,"::")
+      if(n==1) return groups(ip)==8
+      if(n!=2) return 0
+      l=groups(a[1]); r=groups(a[2])
+      return l>=0 && r>=0 && l+r<8
+    }
+    NR!=1 || length($0)>4096 || /[^0-9a-fA-F.:\/ ]/ || NF<1 || NF>64 { exit 1 }
+    {
+      for(j=1;j<=NF;j++) {
+        n=split($j,part,"/"); if(n>2) exit 1
+        if(ipv4(part[1])) bits=32
+        else if(ipv6(part[1])) bits=128
+        else exit 1
+        if(n==2 && (part[2]!~/^[1-9][0-9]*$/ || part[2]+0>bits)) exit 1
+      }
+    }'
+}
+# END EXPLICIT EDGE PROXY VALIDATION
+
 select_tls_mode() {
 	TLS_MODE="${TUNNEX_TLS_MODE:-}"
 	SCHEME="$(public_base_url_scheme "$BASE_URL")"
@@ -805,17 +840,10 @@ AI_ALLOW_PRIVATE_HTTP=${TUNNEX_AI_ALLOW_PRIVATE_HTTP:-}
 if [ -z "$AI_ALLOW_PRIVATE_HTTP" ] && [ -f "$DIR/.env" ]; then
 	AI_ALLOW_PRIVATE_HTTP=$(sed -n 's/^TUNNEX_AI_ALLOW_PRIVATE_HTTP=//p' "$DIR/.env" | head -1)
 fi
-if [ -z "$AI_ALLOW_PRIVATE_HTTP" ] && [ "$TLS_MODE" = http ] && have_tty && [ "$AUTO_CONFIRM" != true ]; then
-	warn 'AI over HTTP requires a private/VPN-only control-plane endpoint and verified network restrictions. Setup does not detect or enforce these protections.'
-	case "$(ask 'I verified private/VPN-only reachability and accept responsibility for HTTP AI access. Enable it? [y/N]: ')" in
-	[yY]|[yY][eE][sS]) AI_ALLOW_PRIVATE_HTTP=true ;;
-	*) AI_ALLOW_PRIVATE_HTTP=false ;;
-	esac
-fi
 AI_ALLOW_PRIVATE_HTTP=${AI_ALLOW_PRIVATE_HTTP:-false}
 case "$AI_ALLOW_PRIVATE_HTTP" in true|false) ;; *) die 'TUNNEX_AI_ALLOW_PRIVATE_HTTP must be true or false.' ;; esac
 if [ "$AI_ALLOW_PRIVATE_HTTP" = true ]; then
-	warn 'Private HTTP AI policy selected. You must keep the real control-plane endpoint private/VPN-only; provider credentials and workload tokens must never cross public HTTP.'
+	warn 'Legacy private HTTP policy retained. Releases with AI transport settings require a separate instance-admin opt-in in the console.'
 fi
 
 ADMIN_EMAIL="${TUNNEX_ADMIN_EMAIL:-admin@${ADDR}}"
@@ -1059,7 +1087,7 @@ plan_item 'Server database' "$DB_MODE PostgreSQL (credentials hidden)"
 plan_item 'Version' "${DISPLAY_VERSION}"
 plan_item 'Public URL' "${BASE_URL}"
 plan_item 'TLS mode' "${TLS_MODE}"
-plan_item 'Private HTTP AI' "${AI_ALLOW_PRIVATE_HTTP} (operator policy; no network detection)"
+plan_item 'Legacy HTTP flag' "${AI_ALLOW_PRIVATE_HTTP} (older releases only; current releases use Settings → AI Gateway transport)"
 plan_item 'Administrator' "${ADMIN_EMAIL}"
 case "$SMTP_MODE" in
 configure) plan_item 'Email' "${SMTP_HOST}:${SMTP_PORT} as ${SMTP_FROM}" ;;
@@ -1139,6 +1167,34 @@ if [ -f .env ]; then
 fi
 if [ "$IP_TLS_REQUIRED" = true ] && ! grep -Fq 'TUNNEX_EDGE_PUBLIC_IP' "$STAGE_DIR/tunnex.yml"; then
 	die 'The selected signed release does not support public IPv4 HTTPS. Select a release with that capability.'
+fi
+# New releases verify the complete externally terminated TLS chain. Old signed
+# targets retain their existing behavior. Reruns preserve the installed origin.
+EDGE_TRUST_REQUIRED=false
+EDGE_TRUSTED_PROXIES=${TUNNEX_EDGE_TRUSTED_PROXIES:-}
+_effective_base=$BASE_URL
+_effective_mode=$TLS_MODE
+if [ -f .env ]; then
+  _effective_base=$(sed -n 's/^APP_BASE_URL=//p' .env | head -1)
+  _effective_mode=$(sed -n 's/^TUNNEX_TLS_MODE=//p' .env | head -1)
+  [ -n "$EDGE_TRUSTED_PROXIES" ] || EDGE_TRUSTED_PROXIES=$(sed -n 's/^TUNNEX_EDGE_TRUSTED_PROXIES=//p' .env | head -1)
+  if [ -z "$_effective_mode" ]; then
+    case "$_effective_base" in
+      https://*) if public_base_url_is_ip "$_effective_base"; then _effective_mode=terminated; else _effective_mode=direct; fi ;;
+      http://*) _effective_mode=http ;;
+    esac
+  fi
+fi
+if [ -n "$EDGE_TRUSTED_PROXIES" ]; then
+  edge_trusted_proxies_ok "$EDGE_TRUSTED_PROXIES" || die 'TUNNEX_EDGE_TRUSTED_PROXIES must contain explicit IPs/CIDRs, separated by spaces; no /0 or other syntax is allowed.'
+fi
+if grep -Fq 'TUNNEX_EDGE_TRUSTED_PROXIES' "$STAGE_DIR/tunnex.yml" && [ "$_effective_mode" = terminated ]; then
+  EDGE_TRUST_REQUIRED=true
+  if [ -z "$EDGE_TRUSTED_PROXIES" ] && have_tty; then
+    EDGE_TRUSTED_PROXIES=$(ask 'Trusted TLS proxy IPs/CIDRs (space-separated, as seen by this VM): ')
+  fi
+  edge_trusted_proxies_ok "$EDGE_TRUSTED_PROXIES" ||
+    die 'Externally terminated HTTPS requires TUNNEX_EDGE_TRUSTED_PROXIES with explicit load-balancer IPs/CIDRs (space-separated, no /0). Configure them before installing or upgrading.'
 fi
 curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade.sh" -o "$STAGE_DIR/upgrade.sh" || die "could not download deploy/upgrade.sh at ${SOURCE_REF}"
 sh -n "$STAGE_DIR/upgrade.sh" || die "downloaded deploy/upgrade.sh is not valid shell"
@@ -1328,6 +1384,7 @@ APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
 TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
 TUNNEX_EDGE_PUBLIC_IP=${EDGE_PUBLIC_IP}
+TUNNEX_EDGE_TRUSTED_PROXIES=${EDGE_TRUSTED_PROXIES}
 TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
 TUNNEX_AI_ALLOW_PRIVATE_HTTP=${AI_ALLOW_PRIVATE_HTTP}
 TUNNEX_NODE_ENDPOINT=${GATEWAY_ADDRESS:-$ADDR}:51820
@@ -1388,11 +1445,20 @@ set_dotenv TUNNEX_VERSION "$VERSION"
 set_dotenv TUNNEX_SOURCE_REF "$SOURCE_REF"
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
 set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$CP_ONLY"
+if [ "$EDGE_TRUST_REQUIRED" = true ]; then
+	set_dotenv TUNNEX_EDGE_TRUSTED_PROXIES "$EDGE_TRUSTED_PROXIES"
+	set_dotenv TUNNEX_TLS_MODE terminated
+	set_dotenv TUNNEX_EDGE_LISTEN http://:80
+	set_dotenv TUNNEX_EDGE_PUBLIC_IP ''
+	set_dotenv TUNNEX_COOKIE_SECURE true
+fi
 if [ "$AI_BUNDLED" = true ]; then
 	ai_set_env() { set_dotenv "$@"; }
 	set_dotenv TUNNEX_AI_ALLOW_PRIVATE_HTTP "$AI_ALLOW_PRIVATE_HTTP"
 	ai_prepare_config
-	if [ -z "$(ai_env_value TUNNEX_AI_GATEWAY_URL)" ]; then
+	if [ "${AI_HTTP_UI_POLICY:-false}" = true ]; then
+		info 'The private AI backend is included. HTTPS is the default. An instance administrator can allow HTTP in Settings > AI Gateway transport; HTTP does not encrypt credentials or requests.'
+	elif [ -z "$(ai_env_value TUNNEX_AI_GATEWAY_URL)" ]; then
 		warn 'The private AI backend is installed. AI configuration and access require a real HTTPS public URL; HTTP evaluation keeps AI access off.'
 	else
 		[ "$AI_ALLOW_PRIVATE_HTTP" != true ] || warn 'HTTP AI access is allowed by explicit operator policy. Keep this control-plane endpoint private/VPN-only and its network restrictions verified.'

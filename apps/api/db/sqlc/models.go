@@ -2044,6 +2044,13 @@ type Resource struct {
 	Label     *string   `json:"label"`
 }
 
+type ServerAiTransportSetting struct {
+	Singleton bool      `json:"singleton"`
+	AllowHttp bool      `json:"allow_http"`
+	Revision  int64     `json:"revision"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type ServerEmailSetting struct {
 	Singleton        bool      `json:"singleton"`
 	Revision         int64     `json:"revision"`
