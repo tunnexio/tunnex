@@ -10,14 +10,59 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
+
+func TestAIProviderProbeEndpointSetupWithoutNativeRequest(t *testing.T) {
+	calls := 0
+	s := catalogPolicies(t, func(http.ResponseWriter, *http.Request) { calls++ })
+	closedPolicy := customFixturePolicy(t)
+	engine := s.engine.(*Engine)
+	for _, tc := range []struct{ provider, endpoint string }{
+		{"azure_foundry", "https://resource.services.ai.azure.com/anthropic"},
+		{"custom", "http://unapproved.internal:8080"},
+		{"sagemaker", "https://runtime.us-east-1.amazonaws.com"},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			for _, setup := range []string{"missing_policy", "missing_proxy", "denied"} {
+				s.customPolicy = nil
+				engine.customProxy = nil
+				wantStatus, wantCode := 503, "ai_provider_egress_unavailable"
+				if setup != "missing_policy" {
+					s.customPolicy = closedPolicy
+				}
+				if setup == "denied" {
+					if err := engine.ConfigureCustomProxy("http://fixture-user:fixture-password@proxy:8190"); err != nil {
+						t.Fatal(err)
+					}
+					wantStatus, wantCode = 403, "ai_provider_endpoint_denied"
+				}
+				_, err := s.ProbeProvider(context.Background(), uuid.New(), uuid.New(), ProviderProbeInput{Provider: tc.provider, EndpointURL: &tc.endpoint, Model: "deployment", Mode: ModeChat, Secret: "PRIVATE_KEY_MUST_NOT_APPEAR"})
+				out, ok := err.(*apierr.Error)
+				if !ok || out.Status != wantStatus || out.Code != wantCode || strings.Contains(out.Error(), "PRIVATE_KEY_MUST_NOT_APPEAR") {
+					t.Fatalf("unsafe setup result: %v", err)
+				}
+			}
+		})
+	}
+	s.customPolicy = nil
+	for _, endpoint := range []string{"http://resource.services.ai.azure.com/anthropic", "https://127.0.0.1/anthropic", "https://user:pass@resource.services.ai.azure.com/anthropic", "https://resource.services.ai.azure.com/anthropic?override=x"} {
+		_, err := s.ProbeProvider(context.Background(), uuid.New(), uuid.New(), ProviderProbeInput{Provider: "azure_foundry", EndpointURL: &endpoint, Model: "deployment", Secret: "fixture"})
+		if usageStatus(err) != 400 {
+			t.Fatalf("invalid endpoint no longer rejected: %v", err)
+		}
+	}
+	if calls != 0 || s.probes.active != 0 || len(s.probes.windows) != 0 {
+		t.Fatal("unapproved test invoked the engine or consumed provider admission")
+	}
+}
 
 func TestAIProviderProbe(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.URL.Path != "/test-connection" || r.Header.Get("Authorization") != "Bearer fixture-admin-token" {
-			t.Error("bridge auth/path")
+		if r.URL.Path != "/api/tunnex/test-connection" || !testEngineAdminAuth(r) {
+			t.Error("engine auth/path")
 		}
 		var p map[string]any
 		json.NewDecoder(r.Body).Decode(&p)
@@ -28,7 +73,7 @@ func TestAIProviderProbe(t *testing.T) {
 	}))
 	defer srv.Close()
 	s := &Policies{providerManagement: true}
-	if err := s.ConfigureLiteLLMBridge(srv.URL, "fixture-admin-token"); err != nil {
+	if err := configureNativeTestEngine(s, srv.URL); err != nil {
 		t.Fatal(err)
 	}
 	org, actor := uuid.New(), uuid.New()
@@ -46,14 +91,10 @@ func TestAIProviderProbe(t *testing.T) {
 	if _, e := s.ProbeProvider(context.Background(), uuid.New(), actor, in); usageStatus(e) != 400 || calls != 6 {
 		t.Fatal("cross provider")
 	}
-	for _, raw := range []string{"http://public.example", "https://user:pass@example.com", "https://example.com/path", "https://example.com?x=y"} {
-		if s.ConfigureLiteLLMBridge(raw, "fixture-admin-token") == nil {
-			t.Fatal("bad URL admitted")
-		}
-	}
+
 }
 func TestAIProviderProbeBounds(t *testing.T) {
-	b := &providerBridge{windows: map[uuid.UUID]probeWindow{}}
+	b := &providerOperations{windows: map[uuid.UUID]probeWindow{}}
 	now := time.Now()
 	org := uuid.New()
 	if !b.admit(org, now) || b.admit(org, now) {
@@ -92,7 +133,7 @@ func TestAIProviderProbeSanitized(t *testing.T) {
 	for _, body := range []string{`{"status":"other","error":"private-key"}`, `not-json private-key`, strings.Repeat("x", 4097)} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 		s := &Policies{providerManagement: true}
-		s.ConfigureLiteLLMBridge(srv.URL, "fixture-admin-token")
+		configureNativeTestEngine(s, srv.URL)
 		_, err := s.ProbeProvider(context.Background(), uuid.New(), uuid.New(), ProviderProbeInput{Provider: "openai", Model: "openai/test", Secret: "private-key"})
 		if usageStatus(err) != 503 || strings.Contains(err.Error(), "private-key") {
 			t.Fatal("unsafe result", err)
@@ -114,7 +155,7 @@ func TestAIProviderProbeCancellationAdmission(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 	s := &Policies{providerManagement: true}
-	s.ConfigureLiteLLMBridge(srv.URL, "fixture-admin-token")
+	configureNativeTestEngine(s, srv.URL)
 	org, actor := uuid.New(), uuid.New()
 	in := ProviderProbeInput{Provider: "openai", Model: "openai/test", Secret: "fixture-key"}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -132,8 +173,21 @@ func TestAIProviderProbeCancellationAdmission(t *testing.T) {
 	if err := <-done; usageStatus(err) != 503 {
 		t.Fatal("cancellation", err)
 	}
-	if !s.bridge.admit(org, time.Now()) {
+	if !s.probes.admit(org, time.Now()) {
 		t.Fatal("cancellation leaked slot")
 	}
-	s.bridge.release(org)
+	s.probes.release(org)
+}
+
+func configureNativeTestEngine(s *Policies, raw string) error {
+	engine, err := NewEngine(raw, "fixture-admin", "fixture-admin-password")
+	if err != nil {
+		return err
+	}
+	s.engine = engine
+	return s.ConfigureNativeProviderOperations()
+}
+func testEngineAdminAuth(r *http.Request) bool {
+	user, password, ok := r.BasicAuth()
+	return ok && user == "fixture-admin" && password == "fixture-admin-password"
 }

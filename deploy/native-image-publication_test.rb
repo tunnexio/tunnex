@@ -19,11 +19,13 @@ class NativeImagePublicationTest < Minitest::Test
     publish = CI.fetch('jobs').fetch('publish')
     assert_includes publish.fetch('needs'), 'node-native'
     assert_includes publish.fetch('if'), "needs.node-native.result == 'success'"
-    assert_equal "matrix.image.name != 'node-agent'", publish.fetch('steps').find { |s| s['id'] == 'build' }.fetch('if')
+    assert_equal "matrix.image.name != 'node-agent' && matrix.image.name != 'ai-engine'", publish.fetch('steps').find { |s| s['id'] == 'build' }.fetch('if')
     assert_includes publish.fetch('steps').last.fetch('with').fetch('subject-digest'), 'steps.node-index.outputs.digest'
     # Native digest uploads inherit precisely the same source-ledger check.
     assert_equal publish.fetch('steps').first.fetch('run'), job.fetch('steps').first.fetch('run')
     assert_equal "github.event_name == 'push'", job.fetch('steps').first.fetch('if')
+    assert CI.fetch('jobs').fetch('contracts').fetch('steps').any? { |s| s['run'] == 'ruby deploy/release-draft-permissions_test.rb' },
+      'required contracts must run the draft release permission regression'
   end
 
   def test_operator_compiles_on_build_host_for_explicit_target
@@ -74,6 +76,32 @@ class NativeImagePublicationTest < Minitest::Test
     assert ok, err
     assert published
     assert_match(/^digest=sha256:[a-f0-9]{64}$/, output.strip)
+  end
+  def test_native_ai_engine_retains_source_platform_and_release_guards
+    job = CI.fetch('jobs').fetch('ai-native')
+    assert_equal [['amd64', 'ubuntu-24.04'], ['arm64', 'ubuntu-24.04-arm']],
+      job.fetch('strategy').fetch('matrix').fetch('include').map { |m| m.values_at('arch', 'runner') }
+    refute job.fetch('steps').any? { |s| s.fetch('uses', '').include?('setup-qemu') }
+    assert_operator job.fetch('timeout-minutes'), :>=, 60
+    build = job.fetch('steps').find { |s| s['id'] == 'build' }.fetch('with')
+    assert_equal '.', build.fetch('context')
+    assert_equal 'apps/ai-engine/Dockerfile', build.fetch('file')
+    assert_equal 'linux/${{ matrix.arch }}', build.fetch('platforms')
+    assert_includes build.fetch('outputs'), 'name=ghcr.io/${{ github.repository }}-ai-engine'
+    assert_includes build.fetch('outputs'), "push=${{ github.event_name == 'push' }}"
+    publish = CI.fetch('jobs').fetch('publish')
+    assert_equal publish.fetch('steps').first.fetch('run'), job.fetch('steps').first.fetch('run')
+    assert_includes publish.fetch('if'), "needs.ai-native.result == 'success'"
+    assert_includes publish.fetch('needs'), 'ai-native'
+    assert_includes publish.fetch('steps').last.fetch('with').fetch('subject-digest'), 'steps.ai-index.outputs.digest'
+    anonymous = CI.fetch('jobs').fetch('publish-pullable').fetch('steps').find { |s| s['run'] }.fetch('run')
+    assert_match(/IMAGES="[^"]* ai-engine"/, anonymous)
+    manifest = CI.fetch('jobs').fetch('release-assets').fetch('steps').find { |s| s['name'] == 'Build and sign the immutable release manifest' }.fetch('run')
+    assert_includes manifest, '"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64}'
+    dockerfile = File.read(File.join(ROOT, 'apps/ai-engine/Dockerfile'))
+    assert_includes dockerfile, 'extension/build.py /build/source /build/engine --test'
+    assert_includes dockerfile, '/app/catalog/'
+    refute_includes dockerfile, 'pip install'
   end
   def test_refuses_incomplete_or_duplicate_platforms_before_tagging
     %w[missing duplicate].each do |scenario|

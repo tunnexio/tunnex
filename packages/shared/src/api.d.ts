@@ -611,7 +611,7 @@ export interface paths {
         parameters: {
             query?: {
                 mode?: components["schemas"]["AIModelMode"];
-                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;
@@ -6245,6 +6245,15 @@ export interface components {
             available: boolean;
             /** Format: int64 */
             revision: number;
+            /** @description The installation has prepared its bundled private AI backend. This does not certify runtime health. */
+            engine_installed?: boolean;
+            /** @description Explicit operator policy allows HTTP for an endpoint restricted to a trusted private or VPN network. Never inferred from a request or client address. */
+            private_http_allowed?: boolean;
+            /**
+             * @description Deployment prerequisite when AI is unavailable.
+             * @enum {string}
+             */
+            unavailable_reason?: "https_required" | "engine_not_configured";
         };
         AIInferenceRequest: {
             /** @description Exact provider/model identifier; aliases and caller fallback are not supported. */
@@ -10615,7 +10624,7 @@ export interface operations {
         parameters: {
             query?: {
                 mode?: components["schemas"]["AIModelMode"];
-                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;

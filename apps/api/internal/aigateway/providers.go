@@ -521,7 +521,7 @@ func (s *Policies) ApprovedFoundryEndpoints() []aiegress.Endpoint {
 	return s.approvedEndpoints("azure_foundry")
 }
 func (s *Policies) SageMakerAvailable() bool {
-	return s.PublicEndpointsAvailable() || len(s.approvedEndpoints("sagemaker")) > 0
+	return len(s.approvedEndpoints("sagemaker")) > 0
 }
 func (s *Policies) ApprovedCustomEndpoints() []aiegress.Endpoint {
 	return s.approvedEndpoints("custom")
@@ -542,7 +542,7 @@ func (s *Policies) endpointEligible(provider, raw string) bool {
 			return true
 		}
 	}
-	return (provider == "custom" || provider == "sagemaker" || provider == "azure_foundry" && aiegress.FoundryEndpoint(normalized)) && s.customPolicy.AllowsPublicEndpoint(normalized)
+	return (provider == "custom" || provider == "azure_foundry" && aiegress.FoundryEndpoint(normalized)) && s.customPolicy.AllowsPublicEndpoint(normalized)
 }
 func nativeConnectionProvider(p ProviderConnection) string {
 	if endpointProvider(p.Provider) {

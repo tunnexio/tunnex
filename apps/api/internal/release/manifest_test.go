@@ -45,6 +45,36 @@ func TestVerifyAcceptsSignedImmutableManifest(t *testing.T) {
 	}
 }
 
+func TestVerifyOptionalBundledAIEngine(t *testing.T) {
+	for _, tc := range []struct {
+		name, amd64, arm64 string
+		valid              bool
+	}{
+		{"both_architectures", "sha256:" + strings.Repeat("a", 64), "sha256:" + strings.Repeat("b", 64), true},
+		{"missing_arm64", "sha256:" + strings.Repeat("a", 64), "", false},
+		{"non_hex", "sha256:" + strings.Repeat("z", 64), "sha256:" + strings.Repeat("b", 64), false},
+		{"uppercase", "sha256:" + strings.Repeat("A", 64), "sha256:" + strings.Repeat("b", 64), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := signedFixture(t)
+			s.Manifest.Images["ai-engine"] = Images{AMD64Digest: tc.amd64, ARM64Digest: tc.arm64}
+			pub, private, err := ed25519.GenerateKey(rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(s.Manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, raw))
+			err = Verify(s, pub)
+			if tc.valid && err != nil || !tc.valid && (err == nil || !strings.Contains(err.Error(), `image "ai-engine"`)) {
+				t.Fatalf("unexpected verification: %v", err)
+			}
+		})
+	}
+}
+
 func TestVerifyRejectsTamperingAndMissingArchitecture(t *testing.T) {
 	s, pub := signedFixture(t)
 	s.Manifest.Version = "0.4.1"

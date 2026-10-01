@@ -574,6 +574,7 @@ export function AppShell() {
               <VerifyEmailBanner />
             )}
             <SetupReturn />
+            {import.meta.env.VITE_REVIEW_BUILD && <p role="status" className="mb-4 rounded-input border border-line px-3 py-2 text-sm text-ink-secondary">Review build · {import.meta.env.VITE_REVIEW_BUILD} · awaiting approval</p>}
             <Outlet />
           </main>
         </div>

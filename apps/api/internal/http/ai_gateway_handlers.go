@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
@@ -12,6 +14,22 @@ import (
 )
 
 type aiRuntimeBearerContextKey struct{}
+
+func (s apiServer) aiGatewaySettings(enabled, available bool, revision int64) api.AIGatewaySettings {
+	installed := s.aiEngineInstalled || available
+	out := api.AIGatewaySettings{Enabled: enabled, Available: available, Revision: revision, EngineInstalled: &installed, PrivateHttpAllowed: &s.aiAllowPrivateHTTP}
+	if !available {
+		reason := api.EngineNotConfigured
+		if u, err := url.Parse(s.appBaseURL); err == nil && u.Scheme == "http" && !s.aiAllowPrivateHTTP {
+			ip := net.ParseIP(u.Hostname())
+			if u.Hostname() != "localhost" && !(ip != nil && ip.IsLoopback()) {
+				reason = api.HttpsRequired
+			}
+		}
+		out.UnavailableReason = &reason
+	}
+	return out
+}
 
 func (s apiServer) IssueAICredential(ctx context.Context, _ api.IssueAICredentialRequestObject) (api.IssueAICredentialResponseObject, error) {
 	if s.aiCredentials == nil {
@@ -31,13 +49,13 @@ func (s apiServer) GetAIGatewaySettings(ctx context.Context, req api.GetAIGatewa
 		return nil, err
 	}
 	if s.aiCredentials == nil {
-		return api.GetAIGatewaySettings200JSONResponse{Enabled: false, Available: false, Revision: 0}, nil
+		return api.GetAIGatewaySettings200JSONResponse(s.aiGatewaySettings(false, false, 0)), nil
 	}
 	v, err := s.aiCredentials.Settings(ctx, req.OrgId)
 	if err != nil {
 		return nil, err
 	}
-	return api.GetAIGatewaySettings200JSONResponse{Enabled: v.Enabled, Available: v.Available, Revision: v.Revision}, nil
+	return api.GetAIGatewaySettings200JSONResponse(s.aiGatewaySettings(v.Enabled, v.Available, v.Revision)), nil
 }
 
 func (s apiServer) SetAIGatewaySettings(ctx context.Context, req api.SetAIGatewaySettingsRequestObject) (api.SetAIGatewaySettingsResponseObject, error) {
@@ -59,7 +77,7 @@ func (s apiServer) SetAIGatewaySettings(ctx context.Context, req api.SetAIGatewa
 	if err != nil {
 		return nil, err
 	}
-	return api.SetAIGatewaySettings200JSONResponse{Enabled: v.Enabled, Available: v.Available, Revision: v.Revision}, nil
+	return api.SetAIGatewaySettings200JSONResponse(s.aiGatewaySettings(v.Enabled, v.Available, v.Revision)), nil
 }
 
 // The generated contract documents these paths. The raw transport below owns

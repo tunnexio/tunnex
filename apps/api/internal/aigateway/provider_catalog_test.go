@@ -29,7 +29,7 @@ func catalogPolicies(t *testing.T, handler http.HandlerFunc) *Policies {
 	}
 	s := &Policies{providerManagement: true, pool: &pgxpool.Pool{}, engine: newProviderFixtureEngine()}
 	s.ConfigureCustomProviders(policy)
-	if err := s.ConfigureLiteLLMBridge(srv.URL, "fixture-admin-token"); err != nil {
+	if err := configureNativeTestEngine(s, srv.URL); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -39,7 +39,7 @@ func TestAIProviderDraftCatalog(t *testing.T) {
 	calls := 0
 	s := catalogPolicies(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Method != "POST" || r.URL.Path != "/model-catalog" || r.Header.Get("Authorization") != "Bearer fixture-admin-token" {
+		if r.Method != "POST" || r.URL.Path != "/api/tunnex/model-catalog" || !testEngineAdminAuth(r) {
 			t.Error("request boundary")
 		}
 		var body map[string]any
@@ -85,7 +85,7 @@ func TestAIProviderDraftCatalog(t *testing.T) {
 		t.Fatal("missing actor", err)
 	}
 	if calls != 6 {
-		t.Fatal("invalid draft reached bridge")
+		t.Fatal("invalid draft reached engine")
 	}
 }
 

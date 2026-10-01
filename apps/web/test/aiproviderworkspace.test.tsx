@@ -243,7 +243,10 @@ describe("AI provider onboarding", () => {
   it("explains referenced delete refusal without leaking raw errors", async () => {
     api.DELETE.mockResolvedValue({ error: { unsafe: "DO_NOT_DISPLAY" }, response: response(409) }); render(show()); await screen.findByText("Engineering");
     fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ })); fireEvent.click(credentialAction("Delete")); expect(screen.getByText(/Usage history is preserved/)).toBeTruthy(); fireEvent.click(screen.getByRole("button", { name: "Confirm deletion" }));
-    await screen.findByRole("alert"); expect(screen.getByRole("alert").textContent).toContain("referenced by a team policy"); expect(document.body.textContent).not.toContain("DO_NOT_DISPLAY");
+    const dialog = screen.getByRole("dialog", { name: "Delete Engineering?" });
+    const refusal = await within(dialog).findByRole("alert"); expect(refusal.textContent).toContain("referenced by a team policy"); expect(document.body.textContent).not.toContain("DO_NOT_DISPLAY");
+    await waitFor(() => expect((within(dialog).getByRole("button", { name: "Confirm deletion" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(within(dialog).getByRole("alert").textContent).toContain("referenced by a team policy");
     expect(api.DELETE).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { expected_revision: 3 } }));
   });
   it("clears unsent secrets on organization switch", async () => {
@@ -317,7 +320,7 @@ describe("custom provider approved endpoints", () => {
     api.GET.mockResolvedValue({ data: { ...customInventory, custom_available: false } }); render(show()); await screen.findByText(custom.name);
     fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider("Custom");
     expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLInputElement).value).toBe("Custom");
-    expect(screen.getByText(/This endpoint may need private network access/)).toBeTruthy();
+    expect(screen.getByText(/This endpoint may need installation network setup/)).toBeTruthy();
     expect(screen.getByLabelText("Upstream API Base")).toBeTruthy(); advanceWizard(1); expect((screen.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true); expect(api.POST).not.toHaveBeenCalled();
   });
   it("explicitly switches native credentials to Custom and clears keys, models and test proof", async () => {
@@ -366,9 +369,14 @@ describe("custom provider approved endpoints", () => {
     expect(screen.getByText(base + "/v1/chat/completions")).toBeTruthy(); await passTest();
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "custom", model: "model-a", mode: "chat", api_key: "synthetic-custom-key", endpoint_url: base } }));
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://unapproved.internal" } });
-    expect(screen.getByText(/This endpoint needs configured network access/)).toBeTruthy(); expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
+    expect(screen.getAllByText(/This endpoint may need installation network setup/).length).toBeGreaterThan(0); expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
     expect(screen.queryByText(/Test succeeded/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-secret" } }); advanceWizard(3); fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); expect(api.POST).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-secret" } }); advanceWizard(3);
+    api.POST.mockResolvedValueOnce({ error: { error: { code: "ai_provider_endpoint_denied" } }, response: response(403) });
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    await screen.findByRole("alert"); expect(api.POST).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert").textContent).toContain("Endpoint network policy denied");
+    expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://user:secret@inference.internal" } }); expect(screen.getByText(/without embedded credentials/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: base } }); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-custom-key" } }); await passTest();
     fireEvent.click(saveModel()); await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: expect.objectContaining({ endpoint_url: base }) })));
@@ -440,12 +448,17 @@ describe("pre-save inference check", () => {
     fireEvent.change(manualModelInput(), { target: { value: "openrouter/another-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     expect(screen.queryByText(/Test succeeded for/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
   });
-  it("expires success at five minutes and explains missing bridge setup", async () => {
+  it("expires success at five minutes and permits testing when setup inventory is unavailable", async () => {
     await prepare(); await passTest(); const now = Date.now(); const clock = vi.spyOn(Date, "now").mockReturnValue(now + 300001);
     fireEvent.change(screen.getByLabelText("Credential name (optional)"), { target: { value: "Same settings" } });
     expect((saveModel() as HTMLButtonElement).disabled).toBe(true); clock.mockRestore(); cleanup();
     api.GET.mockResolvedValue({ data: { ...inventory, test_available: false } }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider();
-    expect((screen.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true); expect(screen.getByText(/Connection testing is not configured/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(false); expect(screen.getByText(/Test Connect will report its current availability/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key" } });
+    fireEvent.change(manualModelInput(), { target: { value: c.models[0] } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    api.POST.mockResolvedValueOnce({ error: { error: { code: "ai_unavailable" } }, response: response(503) });
+    advanceWizard(3); const test = screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement; expect(test.disabled).toBe(false);
+    fireEvent.click(test); await screen.findAllByText(/Tunnex HTTP 503/); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
   });
   it("tests and creates SageMaker with an approved bridge, gateway key and raw alias", async () => {
     api.GET.mockResolvedValue({ data: { ...inventory, sagemaker_available: true, sagemaker_endpoints: [{ name: "AWS bridge", url: "https://aws-bridge.internal" }], definitions: [...definitions, { id: "sagemaker", name: "AWS SageMaker", credential_label: "Gateway API key", model_placeholder: "production-model" }] } });
@@ -569,17 +582,22 @@ describe("Azure AI Foundry OpenAI v1", () => {
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, models: ["my-gpt-deployment"], model_modes: { "my-gpt-deployment": "chat" }, api_key: "synthetic-azure-api-key", enabled: true, name: "Azure AI Foundry" } }));
     expect(screen.queryByLabelText("Azure API key")).toBeNull();
   });
-  it("invalidates an Azure endpoint change and refuses unapproved or legacy URLs", async () => {
+  it("invalidates an Azure endpoint change, submits unapproved endpoints and refuses malformed URLs", async () => {
     api.GET.mockResolvedValue({ data: foundryInventory }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[0] + "/v1" } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "old-azure-key" } });
     fireEvent.change(manualModelInput(), { target: { value: "deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); await passTest();
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[1] + "/v1" } });
     expect((screen.getByLabelText("Azure API key") as HTMLInputElement).value).toBe(""); expect(screen.queryByText(/Test succeeded/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
-    for (const url of ["https://other.services.ai.azure.com/openai/v1", "https://sample.services.ai.azure.com/models", "https://sample.openai.azure.com/openai/deployments/deployment?api-version=2024-10-21", "http://sample.openai.azure.com/openai/v1", "https://sample.openai.azure.com.evil.example/openai/v1"]) {
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://other.services.ai.azure.com/openai/v1" } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "new-azure-key" } });
+    api.POST.mockResolvedValueOnce({ error: { error: { code: "ai_provider_endpoint_denied" } }, response: response(403) });
+    advanceWizard(3); expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findAllByText(/Endpoint network policy denied/);
+    expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+    for (const url of ["https://sample.services.ai.azure.com/models", "https://sample.openai.azure.com/openai/deployments/deployment?api-version=2024-10-21", "http://sample.openai.azure.com/openai/v1", "https://sample.openai.azure.com.evil.example/openai/v1"]) {
       fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: url } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "new-azure-key" } });
       advanceWizard(3); expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(true); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
     }
-    expect(api.POST).toHaveBeenCalledTimes(1);
+    expect(api.POST).toHaveBeenCalledTimes(2);
   });
   it("reuses saved Foundry credentials with hidden endpoint/key and preserves the exact namespace", async () => {
     const id = "12345678-1234-1234-1234-123456789abc";
@@ -591,12 +609,29 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.change(manualModelInput(), { target: { value: "deployment-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); await passTest(); fireEvent.click(saveModel());
     expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: bases[0], models: [...saved.models, "deployment-b"], model_modes: { [saved.models[0]]: "chat", "deployment-b": "chat" }, expected_revision: 3, name: saved.name, enabled: true } })); expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ connection_id: expect.any(String) }) }));
   });
-  it("keeps Foundry test/save unavailable without installation approval", async () => {
-    api.GET.mockResolvedValue({ data: { ...foundryInventory, foundry_available: false, foundry_endpoints: [] } }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
-    expect(screen.getByText(/This endpoint may need private network access/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[0] + "/v1" } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
+  it.each([
+    { provider: "azure_foundry", name: "Azure AI Foundry", endpoint: "https://resource.services.ai.azure.com/anthropic", keyLabel: "Azure API key" },
+    { provider: "custom", name: "Custom", endpoint: "http://inference.internal:8080", keyLabel: "API key" },
+    { provider: "sagemaker", name: "AWS SageMaker", endpoint: "https://runtime.us-east-1.amazonaws.com", keyLabel: "Gateway API key" },
+  ])("lets $provider report missing network setup through Test Connect", async ({ provider, name, endpoint, keyLabel }) => {
+    const definition = { id: provider, name, credential_label: keyLabel, model_placeholder: "deployment" };
+    api.GET.mockResolvedValue({ data: { ...inventory, definitions: [...definitions, definition], test_available: false, public_endpoints_available: false, foundry_available: false, custom_available: false, sagemaker_available: false, foundry_endpoints: [], custom_endpoints: [], sagemaker_endpoints: [] } });
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(name);
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: endpoint } });
+    fireEvent.change(screen.getByLabelText(keyLabel), { target: { value: "synthetic-key" } });
     fireEvent.change(manualModelInput(), { target: { value: "deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
-    advanceWizard(3); expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(true); expect((saveModel() as HTMLButtonElement).disabled).toBe(true); expect(api.POST).not.toHaveBeenCalled();
+    advanceWizard(3);
+    const test = screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement;
+    expect(test.disabled).toBe(false); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+    api.POST.mockResolvedValueOnce({ error: { error: { code: "ai_provider_egress_unavailable", message: "RAW_PRIVATE_MARKER" } }, response: response(503) });
+    fireEvent.click(test);
+    await screen.findByRole("alert");
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider, endpoint_url: endpoint, model: "deployment", mode: "chat", api_key: "synthetic-key" } }));
+    expect(screen.getByRole("alert").textContent).toContain("Endpoint network setup required");
+    expect(screen.getByRole("alert").textContent).toContain("No request was sent to the provider");
+    expect(document.body.textContent).not.toContain("RAW_PRIVATE_MARKER");
+    expect(test.disabled).toBe(false); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+    expect(api.PUT).not.toHaveBeenCalled(); expect(api.POST).toHaveBeenCalledTimes(1);
   });
 });
 

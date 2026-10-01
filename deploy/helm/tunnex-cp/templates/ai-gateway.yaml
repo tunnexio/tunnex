@@ -1,6 +1,8 @@
 {{- if .Values.aiGateway.enabled }}
 {{- if ne (int .Values.api.replicas) 1 }}{{ fail "AI gateway requires api.replicas=1; admission and engine state are single-instance" }}{{ end }}
 {{- $secret := required "aiGateway.existingSecret is required; never generate engine/provider credentials" .Values.aiGateway.existingSecret }}
+{{- $image := required "aiGateway.engineImage must be the native ai-engine digest from the signed Tunnex release" .Values.aiGateway.engineImage }}
+{{- if not (regexMatch "^[^[:space:]]+@sha256:[a-f0-9]{64}$" $image) }}{{ fail "aiGateway.engineImage requires an immutable repository@sha256 digest" }}{{ end }}
 {{- $name := printf "%s-ai" (include "tunnex-cp.fullname" .) }}
 {{- $config := .Files.Get "files/bifrost-config.json" | fromJson }}
 {{- if .Values.aiGateway.providerManagementEnabled }}
@@ -73,7 +75,7 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: bifrost
-          image: maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208
+          image: {{ $image | quote }}
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -99,17 +101,42 @@ spec:
                   {{- end }}
             {{- end }}
             {{- if .Values.aiGateway.customProviders.enabled }}
+            - {name: TUNNEX_AI_CUSTOM_ENDPOINTS_FILE, value: /etc/tunnex/ai-custom/policy.json}
             - name: TUNNEX_AI_CUSTOM_PROXY_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.aiGateway.customProviders.existingSecret }}
                   key: {{ .Values.aiGateway.customProviders.secretKeys.proxyURL | quote }}
             {{- end }}
+            {{- if .Values.aiGateway.sagemaker.enabled }}
+            - {name: TUNNEX_AI_SAGEMAKER_CONFIG_FILE, value: /etc/tunnex/ai-sagemaker/config.json}
+            {{- $envs := dict }}
+            {{- $groups := concat (list (dict "models" .Values.aiGateway.sagemaker.models "clients" .Values.aiGateway.sagemaker.clients)) .Values.aiGateway.sagemaker.endpoints }}
+            {{- range $group := $groups }}
+            {{- range $model := $group.models }}
+            {{- range $field := list "access_key_id_env" "secret_access_key_env" "session_token_env" }}
+            {{- with index $model $field }}{{- $_ := set $envs . true }}{{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $client := $group.clients }}{{- $_ := set $envs $client.key_env true }}{{- end }}
+            {{- end }}
+            {{- range $env, $_ := $envs }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef: {name: {{ $.Values.aiGateway.sagemaker.existingSecret }}, key: {{ $env | quote }}}
+            {{- end }}
+            {{- end }}
           volumeMounts:
             - {name: config-state, mountPath: /app/data}
             - {name: log-state, mountPath: /app/data/logs}
             - {name: bootstrap, mountPath: /app/data/config.json, subPath: config.json, readOnly: true}
             - {name: tmp, mountPath: /tmp}
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - {name: ai-custom-policy, mountPath: /etc/tunnex/ai-custom, readOnly: true}
+            {{- end }}
+            {{- if .Values.aiGateway.sagemaker.enabled }}
+            - {name: sagemaker, mountPath: /etc/tunnex/ai-sagemaker, readOnly: true}
+            {{- end }}
           startupProbe:
             httpGet: {path: /health, port: http}
             periodSeconds: 5
@@ -123,6 +150,14 @@ spec:
           resources:
             {{- toYaml .Values.aiGateway.resources | nindent 12 }}
       volumes:
+        {{- if .Values.aiGateway.customProviders.enabled }}
+        - name: ai-custom-policy
+          configMap: {name: {{ include "tunnex-cp.fullname" . }}-ai-custom}
+        {{- end }}
+        {{- if .Values.aiGateway.sagemaker.enabled }}
+        - name: sagemaker
+          configMap: {name: {{ $name }}-sagemaker}
+        {{- end }}
         - name: config-state
           persistentVolumeClaim: {claimName: {{ $name }}-config}
         - name: log-state

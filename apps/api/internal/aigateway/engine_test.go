@@ -233,39 +233,18 @@ func TestEngineDisableVerifiesMemory(t *testing.T) {
 		})
 	}
 }
-func TestEnginePriceExactAndUnknown(t *testing.T) {
-	for _, kind := range []string{"known", "free", "missing", "wrong-model", "wrong-provider", "override", "negative"} {
-		t.Run(kind, func(t *testing.T) {
-			e, _ := newEngineFixture(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/models/details" || r.URL.Query().Get("provider") != "openrouter" || r.URL.Query().Get("query") != "openai/gpt-4o-mini" {
-					t.Error("price query scope wrong")
-				}
-				row := map[string]any{"name": "openai/gpt-4o-mini", "provider": "openrouter", "input_cost_per_token": 0.1, "output_cost_per_token": 0.2}
-				switch kind {
-				case "free":
-					row["input_cost_per_token"] = 0
-					row["output_cost_per_token"] = 0
-				case "missing":
-					delete(row, "output_cost_per_token")
-				case "wrong-model":
-					row["name"] = "other"
-				case "wrong-provider":
-					row["provider"] = "other"
-				case "override":
-					row["pricing_override_ids"] = []string{"scoped"}
-				case "negative":
-					row["input_cost_per_token"] = -1
-				}
-				writeEngineJSON(w, map[string]any{"models": []any{row}})
-			})
-			p, err := e.Price(context.Background(), "openrouter", "openai/gpt-4o-mini")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if p.Known != (kind == "known" || kind == "free") {
-				t.Fatalf("price %s known=%t", kind, p.Known)
-			}
-		})
+func TestEnginePriceUsesReleaseSnapshotWithoutNetwork(t *testing.T) {
+	e, _ := newEngineFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("static pricing must not request the engine or an upstream source")
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	})
+	price, err := e.Price(context.Background(), "openrouter", "openai/gpt-4o-mini")
+	if err != nil || !price.Known || price.InputCostPerToken == nil || *price.InputCostPerToken != 1.5e-7 || price.OutputCostPerToken == nil || *price.OutputCostPerToken != 6e-7 {
+		t.Fatal("release-baked exact price unavailable", price, err)
+	}
+	unknown, err := e.Price(context.Background(), "openrouter", "customer-only-alias")
+	if err != nil || unknown.Known || unknown.InputCostPerToken != nil || unknown.OutputCostPerToken != nil {
+		t.Fatal("unknown model defaulted to free", unknown, err)
 	}
 }
 func TestEngineUsageNeverDefaultsToGlobal(t *testing.T) {
@@ -322,7 +301,7 @@ func TestEngineRefusesRedirectOversizeAndLeakedErrors(t *testing.T) {
 			})
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
-			_, err := e.Price(ctx, "openrouter", "model")
+			_, err := e.request(ctx, http.MethodGet, "/api/version", nil, nil, &struct{}{})
 			if err == nil || strings.Contains(err.Error(), "private-secret-fixture") {
 				t.Fatal("unsafe success/error")
 			}

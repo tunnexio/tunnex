@@ -253,6 +253,8 @@ type apiServer struct {
 	mfaEnforceEnabled     bool
 	cookieSecure          bool
 	appBaseURL            string
+	aiEngineInstalled     bool
+	aiAllowPrivateHTTP    bool
 	nodeAgentImage        string
 	releaseStatus         *release.Status
 	releaseStatusProvider func() *release.Status

@@ -20,10 +20,11 @@ import (
 // Engine is the private, pinned Bifrost administration boundary. Its credentials
 // and returned EngineKey.Value must never be serialized to a customer response.
 type Engine struct {
-	base           *url.URL
-	user, password string
-	client         *http.Client
-	customProxy    *url.URL
+	base               *url.URL
+	user, password     string
+	client             *http.Client
+	customProxy        *url.URL
+	sageMakerEndpoints map[string]bool
 }
 type EngineKey struct {
 	ID    string
@@ -407,38 +408,7 @@ func (e *Engine) Price(ctx context.Context, provider, model string) (Price, erro
 	if !engineIdentifier.MatchString(provider) || !engineModel.MatchString(model) {
 		return Price{}, errEngineScope
 	}
-	var result struct {
-		Models []struct {
-			Name        string          `json:"name"`
-			Provider    string          `json:"provider"`
-			Input       *float64        `json:"input_cost_per_token"`
-			Output      *float64        `json:"output_cost_per_token"`
-			OverrideIDs []string        `json:"pricing_override_ids"`
-			Overridden  json.RawMessage `json:"overridden_pricing"`
-		} `json:"models"`
-	}
-	_, err := e.request(ctx, http.MethodGet, "/api/models/details", url.Values{"provider": {provider}, "query": {model}, "limit": {"100"}, "offset": {"0"}}, nil, &result)
-	if err != nil {
-		return Price{}, errEngine
-	}
-	var p Price
-	found := false
-	for _, row := range result.Models {
-		if row.Name != model || row.Provider != provider {
-			continue
-		}
-		if found {
-			return Price{}, errEngineScope
-		}
-		found = true
-		if len(row.OverrideIDs) > 0 || (len(row.Overridden) > 0 && string(row.Overridden) != "null") {
-			continue
-		}
-		p.InputCostPerToken = row.Input
-		p.OutputCostPerToken = row.Output
-		p.Known = row.Input != nil && row.Output != nil && validEngineCost(*row.Input) && validEngineCost(*row.Output)
-	}
-	return p, nil
+	return ReferencePrice(provider, model)
 }
 func validEngineCost(n float64) bool { return n >= 0 && !math.IsNaN(n) && !math.IsInf(n, 0) }
 

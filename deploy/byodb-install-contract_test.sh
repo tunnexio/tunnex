@@ -34,6 +34,12 @@ if (TUNNEX_DATABASE_URL='postgres://replacement@db/cp' run_input) 2>"$TMP/error"
 export POSTGRES_PASSWORD=fixture DATABASE_URL=postgres://fixture@postgres/tunnex
 export APP_BASE_URL=https://vpn.example.test TUNNEX_EDGE_LISTEN=http://:80
 export TUNNEX_NODE_ENDPOINT=vpn.example.test:51820
+export TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+export TUNNEX_AI_GATEWAY_ADMIN_USER=fixture-admin TUNNEX_AI_GATEWAY_ADMIN_PASSWORD=fixture-password
+export TUNNEX_AI_ENGINE_ENCRYPTION_KEY=fixture-encryption-key
+export TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=/tmp/byodb-ai-fixture-policy.json
+export TUNNEX_AI_CUSTOM_PROXY_USERNAME=fixture-proxy TUNNEX_AI_CUSTOM_PROXY_PASSWORD=fixture-proxy-password
+export TUNNEX_AI_CUSTOM_PROXY_URL=http://fixture-proxy:fixture-proxy-password@ai-egress:8190
 COMPOSE_PROFILES=bundled-db docker compose --project-name tunnex-byodb-contract -f "$ROOT/deploy/tunnex.yml" config --services >"$TMP/bundled"
 COMPOSE_PROFILES=external-db docker compose --project-name tunnex-byodb-contract -f "$ROOT/deploy/tunnex.yml" config --services >"$TMP/external"
 grep -qx postgres "$TMP/bundled"

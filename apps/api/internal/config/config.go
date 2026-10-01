@@ -56,10 +56,11 @@ type Config struct {
 	AIGatewayAdminPassword string
 	// Enable only after the engine provider database becomes configuration authority.
 	AIProviderManagementEnabled bool
-	AICustomEndpointsFile       string
-	AICustomProxyURL            string
-	AILiteLLMURL                string
-	AILiteLLMAdminToken         string
+	AIBootstrapInstalled        bool
+	// Explicit operator policy only; reachability and VPN enforcement are external prerequisites.
+	AIAllowPrivateHTTP    bool
+	AICustomEndpointsFile string
+	AICustomProxyURL      string
 	// AdminEmail receives the one-time first-run administrator credential when SMTP is configured.
 	// Empty falls back to bootstrap's local address for non-installer deployments.
 	AdminEmail                string
@@ -182,9 +183,9 @@ func Load() Config {
 		AIGatewayAdminPassword:      getenv("TUNNEX_AI_GATEWAY_ADMIN_PASSWORD", ""),
 		AIProviderManagementEnabled: getbool("TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED", false),
 		AICustomEndpointsFile:       getenv("TUNNEX_AI_CUSTOM_ENDPOINTS_FILE", ""),
+		AIBootstrapInstalled:        getenv("TUNNEX_AI_BOOTSTRAP_VERSION", "") != "",
+		AIAllowPrivateHTTP:          getbool("TUNNEX_AI_ALLOW_PRIVATE_HTTP", false),
 		AICustomProxyURL:            getenv("TUNNEX_AI_CUSTOM_PROXY_URL", ""),
-		AILiteLLMURL:                getenv("TUNNEX_AI_LITELLM_URL", ""),
-		AILiteLLMAdminToken:         getenv("TUNNEX_AI_LITELLM_ADMIN_TOKEN", ""),
 		AdminEmail:                  getenv("TUNNEX_ADMIN_EMAIL", ""),
 		BootstrapOrgName:            getenv("TUNNEX_BOOTSTRAP_ORG_NAME", ""),
 		BootstrapGatewayTokenHash:   getenv("TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256", ""),

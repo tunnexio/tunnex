@@ -11,8 +11,8 @@ services:
       ai_engine: {}
 
   bifrost:
-    # Official v2.0.0 multi-architecture OCI index, verified 2026-09-07.
-    image: maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208
+    # The exact signed release image includes native provider extensions and catalog.
+    image: ${TUNNEX_AI_ENGINE_IMAGE:?Set the signed release ai-engine digest}
     profiles: [ai]
     restart: unless-stopped
     environment:

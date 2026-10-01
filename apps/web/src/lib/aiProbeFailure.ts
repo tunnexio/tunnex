@@ -1,15 +1,23 @@
 type Notice = { title: string; description: string };
 const failed = "Connection test failed";
 
-export function aiProbeFailure(httpStatus?: number, failure?: unknown): Notice {
+export function aiProbeFailure(httpStatus?: number, failure?: unknown, apiCode?: string): Notice {
   // The API envelope and the upstream response are different HTTP exchanges.
   if (httpStatus && httpStatus >= 400) {
+    if (httpStatus === 503 && apiCode === "ai_provider_egress_unavailable") return {
+      title: `${failed} · Endpoint network setup required`,
+      description: "Tunnex has not enabled network access to this endpoint. Ask your installation administrator to configure provider egress, then retry. No request was sent to the provider.",
+    };
+    if (httpStatus === 403 && apiCode === "ai_provider_endpoint_denied") return {
+      title: `${failed} · Endpoint network policy denied`,
+      description: "The installation network policy does not permit this endpoint. Ask your installation administrator to approve its network access, then retry. No request was sent to the provider.",
+    };
     const description = httpStatus === 429 ? "Too many connection tests. Wait a minute and retry."
       : httpStatus === 401 ? "Your Tunnex session has expired. Sign in and retry."
       : httpStatus === 403 ? "Tunnex denied this test. Check your AI management permissions."
-      : httpStatus === 409 ? "Saved credentials changed or are still applying. Refresh and retry."
+      : httpStatus === 409 ? "Saved credentials changed, are disabled, or have not applied. Refresh, or enable and save the credentials, then retry."
       : httpStatus === 400 ? "Tunnex rejected the test configuration. Check the selected model, endpoint and credentials."
-      : "The Tunnex test service is unavailable. Check the gateway and private test bridge, then retry.";
+      : "The Tunnex test service is unavailable. Check the gateway and private AI backend, then retry.";
     return { title: `${failed} · Tunnex HTTP ${httpStatus}`, description };
   }
   const f = failure && typeof failure === "object" ? failure as Record<string, unknown> : {};

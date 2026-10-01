@@ -30,7 +30,14 @@ case "$url" in
   https://updates.example.test/release.json) cp "$MOCK_CATALOG" "$out" ;;
   https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/tunnex.yml)
     printf '%s\n' 'services:' '  api:' '    environment:' '      TUNNEX_ENV: production' '      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}' '# bundled-db' >"$out"
+    if [ "${MOCK_AI:-}" = 1 ]; then
+      printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?signed}' >>"$out"
+    fi
     ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/ai-bootstrap.sh)
+    cp "$MOCK_ROOT/deploy/ai-bootstrap.sh" "$out" ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/ai-gateway/config-managed.json)
+    cp "$MOCK_ROOT/deploy/ai-gateway/config-managed.json" "$out" ;;
   *) echo "unexpected curl URL: $url" >&2; exit 1 ;;
 esac
 SH
@@ -42,7 +49,7 @@ set -eu
 [ "$1" = -manifest ]
 [ "$3" = -public-key ]
 [ "$4" = test-public-key ]
-if [ "${5:-}" = -print-env ]; then
+case " $* " in *' -print-env '*)
   cat <<'ENV'
 TUNNEX_RELEASE_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 TUNNEX_RELEASE_VERSION=v9.9.9
@@ -53,7 +60,10 @@ TUNNEX_NGINX_IMAGE=nginx@sha256:ccc
 TUNNEX_NODE_AGENT_IMAGE=node@sha256:ddd
 TUNNEX_MIGRATE_IMAGE=migrate@sha256:eee
 ENV
-fi
+  if [ "${MOCK_AI:-}" = 1 ] && [ "${MOCK_AI_OLD_VERIFIER:-}" != 1 ]; then
+    printf '%s\n' 'TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  fi
+;; esac
 SH
 chmod 0755 "$TMP/bin/releaseverify"
 
@@ -70,6 +80,11 @@ cat >"$TMP/bin/docker" <<'SH'
 set -eu
 printf '%s\n' "$*" >>"$MOCK_DOCKER_LOG"
 case "$*" in
+  *'--entrypoint releaseverify'* )
+    MOCK_AI_OLD_VERIFIER=0 "$MOCK_RELEASEVERIFY" -manifest fixture -public-key test-public-key -print-env ;;
+  *'tar -czf - -C /snapshot config logs'*)
+    [ "${MOCK_AI_SNAPSHOT_FAIL:-}" != 1 ] || exit 42
+    printf fixture-ai-snapshot ;;
   *'api preflight --database-dump'*) [ "${MOCK_FAIL_STAGE:-}" != backup ] || exit 42; printf 'PGDMP-test-external-backup' ;;
   *'api preflight --database-verify-archive'*) [ "${MOCK_FAIL_STAGE:-}" != archive ] || exit 42; cat >/dev/null ;;
   *'api preflight'*) [ "${MOCK_FAIL_STAGE:-}" != preflight ] || exit 42 ;;
@@ -161,5 +176,176 @@ for outcome in success backup archive; do
   grep -Fq 'api preflight --database-dump' "$TMP/external-$outcome.log"
   ! grep -Fq 'exec -T postgres' "$TMP/external-$outcome.log"
 done
+
+# A legacy installed verifier can authenticate the extra signed image but does
+# not export it. The upgrade obtains that pin from the verified target API.
+mkdir "$TMP/ai-upgrade"
+cp "$ROOT/deploy/upgrade.sh" "$TMP/ai-upgrade/upgrade.sh"
+printf '%s\n' '# old compose' >"$TMP/ai-upgrade/tunnex.yml"
+cat >"$TMP/ai-upgrade/.env" <<'ENV'
+TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
+TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
+COMPOSE_PROJECT_NAME=ai-upgrade
+APP_BASE_URL=http://192.0.2.10
+ENV
+run_ai_upgrade() (
+  cd "${1:-$TMP/ai-upgrade}"
+  PATH="$TMP/bin:$PATH" MOCK_CATALOG="$TMP/catalog.json" MOCK_AI=1 MOCK_ROOT="$ROOT" \
+    MOCK_RELEASEVERIFY="$TMP/bin/releaseverify" MOCK_DOCKER_LOG="$TMP/ai-upgrade.log" \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" ./upgrade.sh --apply
+)
+MOCK_AI_OLD_VERIFIER=1 run_ai_upgrade >"$TMP/ai-upgrade-output"
+grep -Fq -- '--entrypoint releaseverify' "$TMP/ai-upgrade.log"
+grep -qx 'TUNNEX_AI_GATEWAY_URL=' "$TMP/ai-upgrade/.env"
+grep -Fq 'real HTTPS public URL' "$TMP/ai-upgrade-output"
+[ -f "$TMP/ai-upgrade/ai-engine.json" ]
+[ -f "$TMP/ai-upgrade/ai-egress-policy.json" ]
+python3 - "$TMP/ai-upgrade" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+
+installation = Path(sys.argv[1]).resolve()
+env = dict(line.split("=", 1) for line in (installation / ".env").read_text().splitlines() if "=" in line)
+assert env["TUNNEX_AI_CUSTOM_PROXY_URL"] == "http://{}:{}@ai-egress:8190".format(
+    env["TUNNEX_AI_CUSTOM_PROXY_USERNAME"], env["TUNNEX_AI_CUSTOM_PROXY_PASSWORD"])
+assert Path(env["TUNNEX_AI_CUSTOM_ENDPOINTS_FILE"]).resolve() == installation / "ai-egress-policy.json"
+policy = json.loads((installation / "ai-egress-policy.json").read_text())
+assert policy["public_https"] and policy["endpoints"] == [] and policy["denied_cidrs"] == []
+assert set(policy["protected_hosts"]) == {"api", "bifrost", "redis", "web", "nginx", "caddy", "ai-egress", "192.0.2.10", "postgres"}
+PYTHON
+for key in TUNNEX_AI_GATEWAY_ADMIN_USER TUNNEX_AI_GATEWAY_ADMIN_PASSWORD TUNNEX_AI_ENGINE_ENCRYPTION_KEY TUNNEX_AI_CUSTOM_PROXY_USERNAME TUNNEX_AI_CUSTOM_PROXY_PASSWORD TUNNEX_AI_CUSTOM_PROXY_URL; do
+  value=$(sed -n "s/^$key=//p" "$TMP/ai-upgrade/.env")
+  [ -n "$value" ]
+  ! grep -Fq "$value" "$TMP/ai-upgrade-output"
+done
+cp "$TMP/ai-upgrade/.env" "$TMP/ai-before.env"
+cp "$TMP/ai-upgrade/ai-engine.json" "$TMP/ai-before.json"
+cp "$TMP/ai-upgrade/ai-egress-policy.json" "$TMP/ai-before-policy.json"
+: >"$TMP/ai-upgrade.log"
+run_ai_upgrade >"$TMP/ai-upgrade-rerun-output"
+cmp -s "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
+cmp -s "$TMP/ai-before.json" "$TMP/ai-upgrade/ai-engine.json"
+cmp -s "$TMP/ai-before-policy.json" "$TMP/ai-upgrade/ai-egress-policy.json"
+grep -Fq 'stop bifrost' "$TMP/ai-upgrade.log"
+grep -Fq 'start bifrost' "$TMP/ai-upgrade.log"
+grep -Fq 'ai-upgrade_ai_engine_config:/snapshot/config:ro' "$TMP/ai-upgrade.log"
+find "$TMP/ai-upgrade/backups" -name '*.ai.tar.gz' -size +0c | grep -q .
+python3 - "$TMP/ai-upgrade/backups" "$TMP/ai-before-policy.json" <<'PYTHON'
+from pathlib import Path
+import stat
+import sys
+snapshots = list(Path(sys.argv[1]).glob("*.ai-egress-policy.json"))
+assert snapshots
+assert any(path.read_bytes() == Path(sys.argv[2]).read_bytes() for path in snapshots)
+assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in snapshots)
+PYTHON
+
+# Older automatic installs recorded three engine secrets and no egress setup.
+# Adding the proxy must retain those existing encrypted-state credentials.
+sed '/^TUNNEX_AI_CUSTOM_/d' "$TMP/ai-upgrade/.env" >"$TMP/ai-legacy.env"
+cp "$TMP/ai-legacy.env" "$TMP/ai-upgrade/.env"
+rm "$TMP/ai-upgrade/ai-egress-policy.json"
+run_ai_upgrade >"$TMP/ai-upgrade-legacy-output"
+for key in TUNNEX_AI_GATEWAY_ADMIN_USER TUNNEX_AI_GATEWAY_ADMIN_PASSWORD TUNNEX_AI_ENGINE_ENCRYPTION_KEY; do
+  grep "^$key=" "$TMP/ai-before.env" >"$TMP/ai-secret-before"
+  grep "^$key=" "$TMP/ai-upgrade/.env" >"$TMP/ai-secret-after"
+  cmp -s "$TMP/ai-secret-before" "$TMP/ai-secret-after"
+done
+[ -f "$TMP/ai-upgrade/ai-egress-policy.json" ]
+
+# An explicit operator policy path and exact rules survive upgrades intact.
+cat >"$TMP/operator-ai-policy.json" <<'JSON'
+{
+  "public_https": false,
+  "endpoints": [{"name":"Private model","url":"https://models.internal","allowed_cidrs":["10.20.0.0/16"]}],
+  "protected_hosts": ["api", "bifrost"],
+  "denied_cidrs": ["10.20.1.0/24"]
+}
+JSON
+cp "$TMP/operator-ai-policy.json" "$TMP/operator-ai-policy-before.json"
+sed "s|^TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=.*|TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=$TMP/operator-ai-policy.json|" \
+  "$TMP/ai-upgrade/.env" >"$TMP/ai-before.env"
+cp "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
+run_ai_upgrade >"$TMP/ai-upgrade-custom-policy-output"
+cmp -s "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
+cmp -s "$TMP/operator-ai-policy-before.json" "$TMP/operator-ai-policy.json"
+python3 - "$TMP/ai-upgrade/backups" "$TMP/operator-ai-policy-before.json" <<'PYTHON'
+from pathlib import Path
+import stat
+import sys
+matches = [path for path in Path(sys.argv[1]).glob("*.ai-egress-policy.json")
+           if path.read_bytes() == Path(sys.argv[2]).read_bytes()]
+assert matches
+assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in matches)
+PYTHON
+
+mkdir "$TMP/ai-byodb-upgrade"
+cp "$ROOT/deploy/upgrade.sh" "$TMP/ai-byodb-upgrade/upgrade.sh"
+printf '%s\n' '# old compose' >"$TMP/ai-byodb-upgrade/tunnex.yml"
+cat >"$TMP/ai-byodb-upgrade/.env" <<'ENV'
+TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
+TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
+COMPOSE_PROJECT_NAME=ai-byodb-upgrade
+APP_BASE_URL=https://PREVIEW.TUNNEX.TEST:8443
+TUNNEX_TLS_MODE=terminated
+TUNNEX_DATABASE_MODE=external
+COMPOSE_PROFILES=external-db
+TUNNEX_DATABASE_URL='postgres://fixture:byodb-secret@db.internal/cp?sslmode=verify-full'
+ENV
+run_ai_upgrade "$TMP/ai-byodb-upgrade" >"$TMP/ai-byodb-upgrade-output"
+python3 - "$TMP/ai-byodb-upgrade/ai-egress-policy.json" <<'PYTHON'
+import json
+import sys
+policy = json.load(open(sys.argv[1]))
+assert "postgres" not in policy["protected_hosts"]
+assert "preview.tunnex.test" in policy["protected_hosts"]
+assert "caddy" in policy["protected_hosts"]
+PYTHON
+! grep -Fq byodb-secret "$TMP/ai-byodb-upgrade-output"
+
+for fault in partial duplicate missing-policy operator-proxy; do
+  mkdir "$TMP/ai-upgrade-$fault"
+  cp "$ROOT/deploy/upgrade.sh" "$TMP/ai-upgrade-$fault/upgrade.sh"
+  cp "$TMP/ai-upgrade/tunnex.yml" "$TMP/ai-upgrade-$fault/tunnex.yml"
+  cp "$TMP/ai-before.env" "$TMP/ai-fault.env"
+  case "$fault" in
+    partial)
+      expected='AI egress credentials are incomplete'
+      sed '/^TUNNEX_AI_CUSTOM_PROXY_PASSWORD=/d' "$TMP/ai-before.env" >"$TMP/ai-fault.env" ;;
+    duplicate)
+      expected='AI egress configuration contains duplicate entries'
+      grep '^TUNNEX_AI_CUSTOM_PROXY_PASSWORD=' "$TMP/ai-before.env" >>"$TMP/ai-fault.env" ;;
+    missing-policy)
+      expected='configured AI egress policy is missing or unreadable'
+      sed "s|^TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=.*|TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=$TMP/no-such-policy.json|" \
+        "$TMP/ai-before.env" >"$TMP/ai-fault.env" ;;
+    operator-proxy)
+      expected='operator-managed AI egress proxy'
+      sed 's|^TUNNEX_AI_CUSTOM_PROXY_URL=.*|TUNNEX_AI_CUSTOM_PROXY_URL=http://operator:do-not-print@elsewhere:8190|' \
+        "$TMP/ai-before.env" >"$TMP/ai-fault.env" ;;
+  esac
+  cp "$TMP/ai-fault.env" "$TMP/ai-upgrade-$fault/.env"
+  : >"$TMP/ai-upgrade.log"
+  if run_ai_upgrade "$TMP/ai-upgrade-$fault" >"$TMP/ai-upgrade-$fault-output" 2>&1; then
+    echo "AI upgrade accepted $fault egress configuration" >&2; exit 1
+  fi
+  grep -Fq "$expected" "$TMP/ai-upgrade-$fault-output"
+  cmp -s "$TMP/ai-fault.env" "$TMP/ai-upgrade-$fault/.env"
+  ! grep -Fq 'up -d' "$TMP/ai-upgrade.log"
+  ! grep -Fq do-not-print "$TMP/ai-upgrade-$fault-output"
+  proxy_password=$(sed -n 's/^TUNNEX_AI_CUSTOM_PROXY_PASSWORD=//p' "$TMP/ai-before.env")
+  ! grep -Fq "$proxy_password" "$TMP/ai-upgrade-$fault-output"
+done
+
+# Snapshot failure restarts the original backend and stops before publishing
+# new settings or recreating any control-plane service.
+: >"$TMP/ai-upgrade.log"
+if MOCK_AI_SNAPSHOT_FAIL=1 run_ai_upgrade >"$TMP/ai-upgrade-failure" 2>&1; then
+  echo 'AI snapshot failure did not block upgrade' >&2; exit 1
+fi
+grep -Fq 'start bifrost' "$TMP/ai-upgrade.log"
+! grep -Fq 'up -d' "$TMP/ai-upgrade.log"
+cmp -s "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
 
 echo 'upgrade apply contract passed'

@@ -30,5 +30,13 @@
       "disable_auth_on_inference": false
     },
     "virtual_keys": []
+  },
+  "framework": {
+    "pricing": {
+      "pricing_url": "file:///app/catalog/bifrost-pricing.json",
+      "model_parameters_url": "file:///app/catalog/bifrost-model-parameters.json",
+      "live_models_sync_interval": 0,
+      "mcp_library_sync_interval": 0
+    }
   }
 }

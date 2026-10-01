@@ -1,14 +1,9 @@
 package aigateway
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net"
-	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -69,33 +64,31 @@ type probeWindow struct {
 	attempts int
 	active   bool
 }
-type providerBridge struct {
-	url, token string
-	client     *http.Client
-	mu         sync.Mutex
-	active     int
-	windows    map[uuid.UUID]probeWindow
+type providerOperations struct {
+	mu      sync.Mutex
+	active  int
+	windows map[uuid.UUID]probeWindow
 }
 
-// ConfigureLiteLLMBridge is installation-only. Neither its origin nor token is supplied by a request.
-func (s *Policies) ConfigureLiteLLMBridge(raw, token string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || len(token) < 16 || len(token) > 4096 || strings.ContainsAny(token, " \r\n\t") {
-		return errors.New("invalid AI bridge configuration")
+// ConfigureNativeProviderOperations enables bounded private Bifrost operations.
+// There is no second runtime, administrator token or caller-selected origin.
+func (s *Policies) ConfigureNativeProviderOperations() error {
+	if s == nil || s.engine == nil {
+		return errors.New("AI engine is not configured")
 	}
-	ip := net.ParseIP(u.Hostname())
-	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "litellm-bridge" || ip != nil && ip.IsLoopback())) {
-		return errors.New("invalid AI bridge configuration")
-	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	s.bridge = &providerBridge{url: strings.TrimRight(raw, "/") + "/test-connection", token: token, client: &http.Client{Transport: transport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, windows: map[uuid.UUID]probeWindow{}}
+	s.probes = &providerOperations{windows: map[uuid.UUID]probeWindow{}}
 	return nil
 }
-func (s *Policies) LiteLLMBridgeAvailable() bool {
-	return s != nil && s.providerManagement && s.bridge != nil
+func (s *Policies) NativeProviderOperationsAvailable() bool {
+	return s != nil && s.providerManagement && s.probes != nil
 }
-func (b *providerBridge) admit(org uuid.UUID, now time.Time) bool {
+
+type DraftProviderOperationsEngine interface {
+	ProbeDraftProvider(context.Context, ProviderProbeInput) (ProviderProbeResult, error)
+	DraftProviderCatalog(context.Context, ProviderCatalogInput) (ProviderModelPage, error)
+}
+
+func (b *providerOperations) admit(org uuid.UUID, now time.Time) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for id, w := range b.windows {
@@ -116,7 +109,7 @@ func (b *providerBridge) admit(org uuid.UUID, now time.Time) bool {
 	b.active++
 	return true
 }
-func (b *providerBridge) release(org uuid.UUID) {
+func (b *providerOperations) release(org uuid.UUID) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	w := b.windows[org]
@@ -125,7 +118,7 @@ func (b *providerBridge) release(org uuid.UUID) {
 	b.active--
 }
 func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in ProviderProbeInput) (ProviderProbeResult, error) {
-	if !s.LiteLLMBridgeAvailable() {
+	if !s.NativeProviderOperationsAvailable() {
 		return ProviderProbeResult{}, aiUnavailable()
 	}
 	if org == uuid.Nil || actor == uuid.Nil {
@@ -141,68 +134,50 @@ func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in P
 	if !ValidModelMode(in.Mode) {
 		return ProviderProbeResult{}, providerInvalid()
 	}
-	_, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Probe", Models: []string{in.Model}, ModelModes: map[string]ModelMode{in.Model: in.Mode}, Secret: &in.Secret, EndpointURL: in.EndpointURL}, true)
+	validated, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Probe", Models: []string{in.Model}, ModelModes: map[string]ModelMode{in.Model: in.Mode}, Secret: &in.Secret, EndpointURL: in.EndpointURL}, true)
 	if err != nil {
 		return ProviderProbeResult{}, providerInvalid()
 	}
 	if endpointProvider(in.Provider) {
-		if in.EndpointURL == nil || !s.endpointEligible(in.Provider, *in.EndpointURL) {
+		in.EndpointURL = validated.EndpointURL
+		if in.EndpointURL == nil {
 			return ProviderProbeResult{}, providerInvalid()
+		}
+		if err := s.probeEndpointAccess(in.Provider, *in.EndpointURL); err != nil {
+			return ProviderProbeResult{}, err
 		}
 		// A draft has no connection-owned namespace yet; only an upstream model is admissible.
 		if prefix, _, ok := strings.Cut(in.Model, "/"); ok && customProviderName(prefix) {
 			return ProviderProbeResult{}, providerInvalid()
 		}
 	}
-	b := s.bridge
+	b := s.probes
 	if !b.admit(org, time.Now()) {
 		return ProviderProbeResult{}, apierr.New(429, "ai_provider_probe_limited", "AI provider connection test limit reached")
 	}
 	defer b.release(org)
-	payload := struct {
-		Mode        ModelMode `json:"mode"`
-		Provider    string    `json:"provider"`
-		Model       string    `json:"model"`
-		Secret      string    `json:"api_key"`
-		EndpointURL *string   `json:"endpoint_url,omitempty"`
-	}{in.Mode, in.Provider, in.Model, in.Secret, in.EndpointURL}
-	body, err := json.Marshal(payload)
+	engine, ok := s.engine.(DraftProviderOperationsEngine)
+	if !ok {
+		return ProviderProbeResult{}, aiUnavailable()
+	}
+	result, err := engine.ProbeDraftProvider(ctx, in)
 	if err != nil {
 		return ProviderProbeResult{}, aiUnavailable()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.url, bytes.NewReader(body))
-	if err != nil {
-		return ProviderProbeResult{}, aiUnavailable()
-	}
-	req.Header.Set("Authorization", "Bearer "+b.token)
-	req.Header.Set("Content-Type", "application/json")
-	start := time.Now()
-	res, err := b.client.Do(req)
-	if err != nil {
-		if isProbeTimeout(err) {
-			return probeTimeout(start), nil
-		}
-		return ProviderProbeResult{}, aiUnavailable()
-	}
-	defer res.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(res.Body, 4097))
-	if isProbeTimeout(err) {
-		return probeTimeout(start), nil
-	}
-	if err != nil || len(data) > 4096 || res.StatusCode != 200 {
-		return ProviderProbeResult{}, aiUnavailable()
-	}
-	var result ProviderProbeResult
-	if json.Unmarshal(data, &result) != nil || (result.Status != "success" && result.Status != "error") {
-		return ProviderProbeResult{}, aiUnavailable()
-	}
-	if result.Status == "success" {
-		result.Failure = nil
-	} else {
-		result.Failure = safeProbeFailure(result.Failure)
-	}
-	result.DurationMS = time.Since(start).Milliseconds()
 	return result, nil
+}
+
+// A test may be requested before installation network access exists. Report the
+// setup verdict without invoking the engine or sending a provider credential.
+func (s *Policies) probeEndpointAccess(provider, endpoint string) error {
+	engine, native := s.engine.(*Engine)
+	if s.customPolicy == nil || native && engine.customProxy == nil {
+		return apierr.New(503, "ai_provider_egress_unavailable", "Provider endpoint network access is not configured")
+	}
+	if !s.endpointEligible(provider, endpoint) {
+		return apierr.New(403, "ai_provider_endpoint_denied", "Provider endpoint is not permitted by the installation network policy")
+	}
+	return nil
 }
 
 // SavedProviderProbeEngine exposes no secret-bearing result or key readback.
@@ -218,7 +193,7 @@ func (s *Policies) probeSavedProvider(ctx context.Context, org, actor uuid.UUID,
 	if !ok || s.pool == nil {
 		return ProviderProbeResult{}, aiUnavailable()
 	}
-	b := s.bridge
+	b := s.probes
 	if !b.admit(org, time.Now()) {
 		return ProviderProbeResult{}, apierr.New(429, "ai_provider_probe_limited", "AI provider connection test limit reached")
 	}
@@ -245,8 +220,13 @@ func (s *Policies) probeSavedProvider(ctx context.Context, org, actor uuid.UUID,
 	if p.Revision != *in.ExpectedRevision || p.AppliedRevision != p.Revision || p.Status != "applied" || !p.Enabled {
 		return ProviderProbeResult{}, providerConflict()
 	}
-	if endpointProvider(p.Provider) && !s.customConnectionEligible(p) {
-		return ProviderProbeResult{}, providerMissing()
+	if endpointProvider(p.Provider) {
+		if p.EndpointURL == nil {
+			return ProviderProbeResult{}, providerInvalid()
+		}
+		if err := s.probeEndpointAccess(p.Provider, *p.EndpointURL); err != nil {
+			return ProviderProbeResult{}, err
+		}
 	}
 	in.Mode = DefaultModelMode(in.Mode)
 	model := in.Model

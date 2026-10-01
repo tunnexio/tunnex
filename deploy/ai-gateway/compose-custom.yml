@@ -1,7 +1,9 @@
 # Apply after compose.yml and compose-managed.yml; all features stay opt-in.
-# Shared policy example: {"public_https":true,"endpoints":[],"protected_hosts":["api","bifrost","postgres","redis"],"denied_cidrs":[]}
+# Shared policy example: {"public_https":true,"endpoints":[],"protected_hosts":["api","bifrost","postgres","redis","web","nginx","ai-egress"],"denied_cidrs":[]}
 # Include installation-specific protected hosts/CIDRs. Private/internal endpoints
-# and SageMaker bridges still require explicit endpoint/network rules.
+# and SageMaker endpoints still require explicit endpoint/network rules.
+# Protected service names must resolve from ai-egress; it joins the control-plane
+# network for those DNS records while the engine remains on ai_engine only.
 services:
   api:
     environment:
@@ -11,7 +13,10 @@ services:
       - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?Set absolute provider egress policy file path}:/etc/tunnex/ai-custom-policy.json:ro
   bifrost:
     environment:
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
       TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?Set authenticated private proxy URL}
+    volumes:
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?Set absolute provider egress policy file path}:/etc/tunnex/ai-custom-policy.json:ro
   ai-egress:
     build:
       context: .
@@ -28,7 +33,7 @@ services:
       TUNNEX_AI_CUSTOM_PROXY_PASSWORD: ${TUNNEX_AI_CUSTOM_PROXY_PASSWORD:?Set private proxy password}
     volumes:
       - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?Set absolute provider egress policy file path}:/etc/tunnex/ai-custom-policy.json:ro
-    networks: [ai_engine]
+    networks: [default, ai_engine]
     healthcheck:
       disable: true # API-image HTTP health endpoint does not exist on CONNECT proxy.
     read_only: true

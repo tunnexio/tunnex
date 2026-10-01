@@ -55,6 +55,15 @@ services:
       # transport-insecure browser session cookie.
       TUNNEX_COOKIE_SECURE: ${TUNNEX_COOKIE_SECURE:-false}
       TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
+      # Backend installation is automatic; remote HTTP keeps integration off.
+      TUNNEX_AI_GATEWAY_URL: ${TUNNEX_AI_GATEWAY_URL:-}
+      TUNNEX_AI_GATEWAY_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?set by install.sh}
+      TUNNEX_AI_GATEWAY_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?set by install.sh}
+      TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: "true"
+      TUNNEX_AI_BOOTSTRAP_VERSION: ${TUNNEX_AI_BOOTSTRAP_VERSION:-}
+      TUNNEX_AI_ALLOW_PRIVATE_HTTP: ${TUNNEX_AI_ALLOW_PRIVATE_HTTP:-false}
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
+      TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?set by AI bootstrap}
       TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
       TUNNEX_IPV6_POOL_CIDR: ${TUNNEX_IPV6_POOL_CIDR:-}
       # Deployment composition gate only. OFF is inert even when an edition
@@ -90,6 +99,7 @@ services:
     volumes:
       - ${TUNNEX_DATABASE_TLS_SOURCE:-tunnex_database_tls}:/etc/tunnex/database-tls:ro
       - tunnex_secrets:/var/lib/tunnex/secrets # master key / JWT / session — auto-generated on first boot (S0.3)
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?set by AI bootstrap}:/etc/tunnex/ai-custom-policy.json:ro
       - ./release.json:/var/lib/tunnex/release.json:ro
       # The API can request one fixed-purpose host upgrade and read sanitized
       # progress. It never receives the Docker socket or a host command channel.
@@ -98,11 +108,77 @@ services:
     ports:
       - "8443:8443" # mTLS agent control channel (agents dial directly)
     depends_on:
+      ai-egress:
+        condition: service_healthy
+      bifrost:
+        condition: service_healthy
       postgres:
         condition: service_healthy
         required: false
       redis:
         condition: service_healthy
+    networks:
+      default: {}
+      ai_engine: {}
+
+  # The signed Tunnex engine includes the saved-credential test extension. No
+  # provider key, model, grant or inference request is created by installation.
+  bifrost:
+    image: ${TUNNEX_AI_ENGINE_IMAGE:?set by signed release verification}
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8080"
+      APP_DIR: /app/data
+      LOG_LEVEL: error
+      BIFROST_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?set by install.sh}
+      BIFROST_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?set by install.sh}
+      BIFROST_ENCRYPTION_KEY: ${TUNNEX_AI_ENGINE_ENCRYPTION_KEY:?set by install.sh}
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
+      TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?set by AI bootstrap}
+    volumes:
+      - ai_engine_config:/app/data
+      - ai_engine_logs:/app/data/logs
+      - ./ai-engine.json:/app/data/config.json:ro
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?set by AI bootstrap}:/etc/tunnex/ai-custom-policy.json:ro
+    networks: [ai_engine]
+    depends_on:
+      ai-egress:
+        condition: service_healthy
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Reuse the signed API image's Go CONNECT helper. Its only authority is the
+  # shared destination policy and proxy authentication; it has no CP secrets.
+  ai-egress:
+    image: ${TUNNEX_API_IMAGE:-ghcr.io/tunnexio/tunnex-api:${TUNNEX_VERSION:-latest}}
+    entrypoint: [/usr/local/bin/tunnex-ai-egress]
+    restart: unless-stopped
+    environment:
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
+      TUNNEX_AI_CUSTOM_PROXY_LISTEN: ":8190"
+      TUNNEX_AI_CUSTOM_PROXY_USERNAME: ${TUNNEX_AI_CUSTOM_PROXY_USERNAME:?set by AI bootstrap}
+      TUNNEX_AI_CUSTOM_PROXY_PASSWORD: ${TUNNEX_AI_CUSTOM_PROXY_PASSWORD:?set by AI bootstrap}
+    volumes:
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?set by AI bootstrap}:/etc/tunnex/ai-custom-policy.json:ro
+    networks: [default, ai_engine]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      # An unauthenticated local request must receive407. This checks listener
+      # readiness without publishing ports, exposing credentials or inference.
+      test: [CMD-SHELL, "wget -S -O /dev/null http://127.0.0.1:8190/ 2>&1 | grep -q '407 Proxy Authentication Required'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   web:
     image: ${TUNNEX_WEB_IMAGE:-ghcr.io/tunnexio/tunnex-web:${TUNNEX_VERSION:-latest}}
@@ -171,6 +247,8 @@ services:
       - api
 
 volumes:
+  ai_engine_config:
+  ai_engine_logs:
   tunnex_database_tls:
   postgres_data:
   redis_data:
@@ -180,3 +258,6 @@ volumes:
   caddy_config:
   tunnex_host_upgrade_requests:
   tunnex_host_upgrade_status:
+
+networks:
+  ai_engine: {}

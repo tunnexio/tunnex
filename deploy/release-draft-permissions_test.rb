@@ -13,7 +13,7 @@ class ReleaseDraftPermissionsTest < Minitest::Test
   SOURCE = 'a' * 40
 
   def test_draft_readers_have_write_permission
-    %w[release-version-guard node-native publish release-assets].each do |name|
+    %w[release-version-guard node-native ai-native publish release-assets].each do |name|
       assert_equal 'write', CI.fetch('jobs').fetch(name).fetch('permissions').fetch('contents'), name
     end
     assert_equal false, JOB.fetch('steps').find { |s| s.fetch('uses', '').match?(%r{\Aactions/checkout@[0-9a-f]{40}\z}) }
@@ -28,7 +28,7 @@ class ReleaseDraftPermissionsTest < Minitest::Test
      "needs.e2e.result == 'success'", "needs.e2e-enterprise.result == 'success'"].each do |guard|
       assert_includes condition, guard
     end
-    assert_equal %w[release-version-guard gates e2e e2e-enterprise node-native], JOB.fetch('needs')
+    assert_equal %w[release-version-guard gates e2e e2e-enterprise node-native ai-native], JOB.fetch('needs')
     refute JOB['continue-on-error']
     step = JOB.fetch('steps').first
     assert_equal 'Revalidate release source ledger immediately before image publication', step.fetch('name')

@@ -49,7 +49,7 @@ func TestProbeDiagnosticsAcrossPrivateBoundaries(t *testing.T) {
 					out, err = e.ProbeSavedProviderKey(context.Background(), spec, "openai", "openai/new", ModeChat)
 				} else {
 					s := &Policies{providerManagement: true}
-					if err := s.ConfigureLiteLLMBridge(srv.URL, "fixture-admin-token"); err != nil {
+					if err := configureNativeTestEngine(s, srv.URL); err != nil {
 						t.Fatal(err)
 					}
 					out, err = s.ProbeProvider(context.Background(), uuid.New(), uuid.New(), ProviderProbeInput{Provider: "openai", Model: "openai/new", Secret: "PRIVATE-KEY"})
@@ -104,10 +104,10 @@ func TestProbeOuterDeadlineDiagnostic(t *testing.T) {
 					result, err = e.ProbeSavedProviderKey(ctx, spec, "openai", "openai/new", ModeChat)
 				} else {
 					s := &Policies{providerManagement: true}
-					if err := s.ConfigureLiteLLMBridge(srv.URL, "fixture-admin-token"); err != nil {
+					if err := configureNativeTestEngine(s, srv.URL); err != nil {
 						t.Fatal(err)
 					}
-					s.bridge.client.Timeout = 100 * time.Millisecond
+					s.engine.(*Engine).client.Timeout = 100 * time.Millisecond
 					result, err = s.ProbeProvider(ctx, uuid.New(), uuid.New(), ProviderProbeInput{Provider: "openai", Model: "openai/new", Secret: "PRIVATE-KEY"})
 				}
 				if err != nil || calls.Load() != 1 || result.Status != "error" || result.Failure == nil || result.Failure.Kind != "timeout" || result.Failure.Source != "gateway" || result.Failure.HTTPStatus != nil {

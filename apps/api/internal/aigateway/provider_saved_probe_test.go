@@ -58,7 +58,7 @@ func TestAISavedProviderProbePostgres(t *testing.T) {
 		{"invalid-mode", f.org, func(i *ProviderProbeInput) { i.Mode = "other" }, 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := f.policies.ConfigureLiteLLMBridge("http://127.0.0.1:1", "fixture-probe-token"); err != nil {
+			if err := f.policies.ConfigureNativeProviderOperations(); err != nil {
 				t.Fatal(err)
 			}
 			input := in

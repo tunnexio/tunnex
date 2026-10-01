@@ -344,6 +344,7 @@ Write-TunnexSuccess "Docker Desktop, Compose v2, and Git Bash are ready."
 try {
     $installer = Resolve-CanonicalInstaller
     Write-TunnexStage 2 "Starting guided Tunnex onboarding"
+    Write-TunnexInfo "The signed installer includes the private AI backend. HTTPS is the default; TUNNEX_AI_ALLOW_PRIVATE_HTTP is an explicit policy requiring verified private/VPN-only access."
     $homeDirectory = if ($env:TUNNEX_TEST_WINDOWS -eq "1") { (Get-Location).Path } else { $env:USERPROFILE }
     Push-Location $homeDirectory
     try {
