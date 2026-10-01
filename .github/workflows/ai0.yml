@@ -83,15 +83,33 @@ jobs:
           test "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$container")" = "$COMPOSE_PROJECT_NAME"
           docker inspect -f '{{json .NetworkSettings.Networks}}' "$container" | python3 -c 'import json,os,sys; assert os.environ["COMPOSE_PROJECT_NAME"]+"_default" in json.load(sys.stdin)'
           echo "Verified COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME container=$container network=${COMPOSE_PROJECT_NAME}_default"
-          endpoint=$(docker compose -f "$RUNNER_TEMP/ai-postgres.yml" port postgres 5432)
-          echo "TUNNEX_TEST_DATABASE_URL=postgres://ai_test:ai_ci_fixture_only@$endpoint/ai_test?sslmode=disable" >> "$GITHUB_ENV"
+          echo "TUNNEX_TEST_DATABASE_URL=postgres://ai_test:ai_ci_fixture_only@postgres:5432/ai_test?sslmode=disable" >> "$GITHUB_ENV"
       - name: Native engine and enrolled HTTP boundary proof (zero provider spend)
-        working-directory: apps/api
         run: |
-          DATABASE_URL="$TUNNEX_TEST_DATABASE_URL" go run ./cmd/migrate up
-          go test -race -count=1 ./internal/aigateway ./internal/http
-          go test -race -tags enterprise -count=1 ./internal/aigateway ./internal/http
-          go vet ./internal/aigateway ./internal/http
+          set -euo pipefail
+          # The exact image binary uses Alpine's musl loader. Run it and its Go
+          # fixtures together in the pinned Alpine toolchain, rather than
+          # executing the extracted CGO binary directly on Ubuntu.
+          docker run --rm \
+            --network "${COMPOSE_PROJECT_NAME}_default" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
+            --mount "type=bind,source=$AI0_BIFROST_BINARY,target=/fixture/bifrost,readonly" \
+            --env AI0_BIFROST_BINARY=/fixture/bifrost \
+            --env AI0_BIFROST_BUILT_SHA256 \
+            --env TUNNEX_TEST_DATABASE_URL \
+            --env GOWORK=off \
+            --env GOFLAGS=-mod=readonly \
+            --env GOTOOLCHAIN=local \
+            golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c \
+            sh -ec '
+              apk add --no-cache build-base python3
+              test "$(sha256sum "$AI0_BIFROST_BINARY" | awk "{print \$1}")" = "$AI0_BIFROST_BUILT_SHA256"
+              cd /repo/apps/api
+              DATABASE_URL="$TUNNEX_TEST_DATABASE_URL" go run ./cmd/migrate up
+              go test -race -count=1 -p 1 ./internal/aigateway ./internal/http
+              go test -race -tags enterprise -count=1 -p 1 ./internal/aigateway ./internal/http
+              go vet ./internal/aigateway ./internal/http
+            '
       - name: Stop only this test database
         if: always()
         run: |
