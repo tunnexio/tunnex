@@ -42,3 +42,11 @@ CP, verify normal trust-chain validation, AI settings availability, Models UI,
 key/volume/gateway preservation, and certificate persistence. Record wire
 results under `walk-artifacts/` during the work. Publish a reviewable PR; merging
 and tagging a release remain separate user actions.
+
+## Review dispositions
+
+- Accepted: validate the complete direct-IPv4 authority, including port syntax,
+  before installing; reject empty or repeated colon suffixes consistently.
+- Accepted: add public-URL and edge-startup contracts to CI's installer step.
+- Accepted: installer reruns must check the preserved installed origin as well
+  as newly supplied input before replacing a public-IP-capable deployment.

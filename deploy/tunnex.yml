@@ -202,7 +202,44 @@ services:
     # silently change a customer's public TLS terminator.
     image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     restart: unless-stopped
-    command: ["caddy", "reverse-proxy", "--from", "${TUNNEX_EDGE_LISTEN:?set by install.sh}", "--to", "nginx:8080"]
+    environment:
+      TUNNEX_EDGE_LISTEN: ${TUNNEX_EDGE_LISTEN:?set by install.sh}
+      TUNNEX_EDGE_PUBLIC_IP: ${TUNNEX_EDGE_PUBLIC_IP:-}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        if [ -z "$$TUNNEX_EDGE_PUBLIC_IP" ]; then
+          exec caddy reverse-proxy --from "$$TUNNEX_EDGE_LISTEN" --to nginx:8080
+        fi
+        # Only the validated direct IPv4 origin may be inserted into Caddyfile.
+        # Public IP certificates need explicit ACME; Caddy otherwise uses its CA.
+        printf '%s\n' "$$TUNNEX_EDGE_PUBLIC_IP" | awk -F. '
+          NR != 1 || NF != 4 || /[^0-9.]/ || /(^|\.)0[0-9]/ { exit 1 }
+          { for (i = 1; i <= 4; i++) if ($$i == "" || $$i > 255) exit 1 }
+        ' || { echo 'Invalid direct HTTPS IPv4 address' >&2; exit 1; }
+        case "$$TUNNEX_EDGE_LISTEN" in
+          "https://$$TUNNEX_EDGE_PUBLIC_IP"|"https://$$TUNNEX_EDGE_PUBLIC_IP:443") ;;
+          *) echo 'Direct HTTPS IPv4 origin mismatch' >&2; exit 1 ;;
+        esac
+        # default_sni selects the public certificate for IP clients behind NAT.
+        # TLS-ALPN validation needs public TCP 443; HTTP can remain restricted.
+        printf '%s\n' \
+          '{' \
+          "  default_sni $$TUNNEX_EDGE_PUBLIC_IP" \
+          '}' \
+          "https://$$TUNNEX_EDGE_PUBLIC_IP {" \
+          '  tls {' \
+          '    issuer acme https://acme-v02.api.letsencrypt.org/directory {' \
+          '      profile shortlived' \
+          '      disable_http_challenge' \
+          '    }' \
+          '  }' \
+          '  reverse_proxy nginx:8080' \
+          '}' \
+          ':80 {' \
+          "  redir https://$$TUNNEX_EDGE_PUBLIC_IP{uri} 308" \
+          '}' > /tmp/tunnex-Caddyfile
+        exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile
     ports:
       - "80:80"
       - "443:443"

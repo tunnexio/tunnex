@@ -621,9 +621,27 @@ public_base_url_is_ip() {
 	_host="$(public_base_url_host "$1")"
 	case "$_host" in
 	\[*:*\]) return 0 ;;
-	*.*.*.*) case "$_host" in *[!0-9.]* | .* | *.) return 1 ;; esac; return 0 ;;
+	*[!0-9.]* | '') return 1 ;;
+	*) return 0 ;;
 	esac
-	return 1
+}
+# Certificate issuance needs an unambiguous, publicly routable IPv4 address.
+# Reserved, private, documentation and multicast ranges cannot use this mode.
+public_ipv4_ok() {
+	printf '%s\n' "$1" | awk -F. '
+		NF != 4 { exit 1 }
+		{
+			for (i = 1; i <= 4; i++) {
+				if ($i !~ /^[0-9]+$/ || length($i) > 3 || $i ~ /^0[0-9]/ || $i + 0 > 255) exit 1
+			}
+			a = $1 + 0; b = $2 + 0; c = $3 + 0
+			if (a == 0 || a == 10 || a == 127 || a >= 224 ||
+			    (a == 100 && b >= 64 && b <= 127) ||
+			    (a == 169 && b == 254) || (a == 172 && b >= 16 && b <= 31) ||
+			    (a == 192 && (b == 168 || (b == 0 && (c == 0 || c == 2)) || (b == 88 && c == 99))) ||
+			    (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
+			    (a == 203 && b == 0 && c == 113)) exit 1
+		}'
 }
 public_base_url_port() {
 	_authority=${1#*://}
@@ -644,7 +662,11 @@ public_base_url_tls_mode_ok() {
 	_port="$(public_base_url_port "$_url")"
 	case "$_mode" in
 	direct)
-		[ "$_scheme" = https ] && public_base_url_is_ip "$_url" && return 1
+		if [ "$_scheme" = https ] && public_base_url_is_ip "$_url"; then
+			_ip=$(public_base_url_host "$_url")
+			public_ipv4_ok "$_ip" || return 1
+			case "${_url#*://}" in "$_ip" | "$_ip:443") ;; *) return 1 ;; esac
+		fi
 		case "$_scheme:$_port" in https:|https:443|http:|http:80) return 0 ;; esac
 		;;
 	terminated) [ "$_scheme" = https ] && return 0 ;;
@@ -669,8 +691,12 @@ select_tls_mode() {
 	fi
 	tls_mode_ok "$TLS_MODE" || die "TUNNEX_TLS_MODE must be direct, terminated, or http."
 	public_base_url_tls_mode_ok "$TLS_MODE" "$BASE_URL" ||
-		die "${BASE_URL} is incompatible with TLS mode ${TLS_MODE}. Direct HTTPS needs a DNS hostname on port 443; use http://<public-IP> for plain HTTP or TUNNEX_TLS_MODE=terminated behind an external TLS endpoint."
+		die "${BASE_URL} is incompatible with TLS mode ${TLS_MODE}. Direct HTTPS needs a DNS hostname or public IPv4 address on port 443; use TUNNEX_TLS_MODE=terminated behind an external TLS endpoint."
 	case "$TLS_MODE" in direct) EDGE_LISTEN="$BASE_URL" ;; *) EDGE_LISTEN="http://:80" ;; esac
+	EDGE_PUBLIC_IP=
+	if [ "$TLS_MODE" = direct ] && [ "$SCHEME" = https ] && public_base_url_is_ip "$BASE_URL"; then
+		EDGE_PUBLIC_IP=$(public_base_url_host "$BASE_URL")
+	fi
 	[ "$SCHEME" = https ] && COOKIE_SECURE=true || COOKIE_SECURE=false
 }
 
@@ -975,7 +1001,13 @@ configure_first_organization_and_gateway() {
 }
 gateway_network_guidance() {
 	case "$TLS_MODE" in
-	direct) info 'Server firewall: allow inbound TCP 80 and 443 for HTTPS and certificate issuance.' ;;
+	direct)
+		if [ -n "$EDGE_PUBLIC_IP" ]; then
+			info 'Server firewall: allow public TCP 443 for HTTPS and certificate renewal; TCP 80 redirects to HTTPS.'
+		else
+			info 'Server firewall: allow inbound TCP 80 and 443 for HTTPS and certificate issuance.'
+		fi
+		;;
 	terminated) info 'Server firewall: allow TCP 80 only from your TLS proxy/load balancer; expose HTTPS on that proxy.' ;;
 	http) info 'Server firewall: allow inbound TCP 80 from intended users; HTTP is unencrypted.' ;;
 	esac
@@ -1089,6 +1121,25 @@ trap 'rm -rf "$STAGE_DIR" .env.new tunnex-upgrade-runner.service.next tunnex-upg
 # upgrade command is not usable when upgrade.sh is absent, so a partial download
 # must fail the install rather than leave a control plane that only looks ready.
 curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$STAGE_DIR/tunnex.yml" || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+# Reinstallation preserves .env rather than applying the newly supplied URL.
+# Protect the installed transport as well as the requested fresh-install mode.
+IP_TLS_REQUIRED=false
+[ -z "$EDGE_PUBLIC_IP" ] || IP_TLS_REQUIRED=true
+if [ -f .env ]; then
+	_saved_base=$(sed -n 's/^APP_BASE_URL=//p' .env | head -1)
+	_saved_mode=$(sed -n 's/^TUNNEX_TLS_MODE=//p' .env | head -1)
+	_saved_ip=$(sed -n 's/^TUNNEX_EDGE_PUBLIC_IP=//p' .env | head -1)
+	if [ -n "$_saved_ip" ]; then
+		IP_TLS_REQUIRED=true
+	elif [ "$_saved_mode" = direct ]; then
+		case "$_saved_base" in
+		https://*) if public_base_url_is_ip "$_saved_base"; then IP_TLS_REQUIRED=true; fi ;;
+		esac
+	fi
+fi
+if [ "$IP_TLS_REQUIRED" = true ] && ! grep -Fq 'TUNNEX_EDGE_PUBLIC_IP' "$STAGE_DIR/tunnex.yml"; then
+	die 'The selected signed release does not support public IPv4 HTTPS. Select a release with that capability.'
+fi
 curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade.sh" -o "$STAGE_DIR/upgrade.sh" || die "could not download deploy/upgrade.sh at ${SOURCE_REF}"
 sh -n "$STAGE_DIR/upgrade.sh" || die "downloaded deploy/upgrade.sh is not valid shell"
 
@@ -1276,6 +1327,7 @@ TUNNEX_LOG_LEVEL=info
 APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
 TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
+TUNNEX_EDGE_PUBLIC_IP=${EDGE_PUBLIC_IP}
 TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
 TUNNEX_AI_ALLOW_PRIVATE_HTTP=${AI_ALLOW_PRIVATE_HTTP}
 TUNNEX_NODE_ENDPOINT=${GATEWAY_ADDRESS:-$ADDR}:51820
