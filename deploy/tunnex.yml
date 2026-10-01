@@ -54,6 +54,8 @@ services:
       # Derived from APP_BASE_URL by the installer: HTTPS must not create a
       # transport-insecure browser session cookie.
       TUNNEX_COOKIE_SECURE: ${TUNNEX_COOKIE_SECURE:-false}
+      # Only this internal peer may assert the original HTTP/HTTPS scheme.
+      TUNNEX_TRUSTED_PROXIES: ${TUNNEX_TRUSTED_PROXIES:-nginx}
       TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
       # Backend installation is automatic; remote HTTP keeps integration off.
       TUNNEX_AI_GATEWAY_URL: ${TUNNEX_AI_GATEWAY_URL:-}
@@ -205,10 +207,85 @@ services:
     environment:
       TUNNEX_EDGE_LISTEN: ${TUNNEX_EDGE_LISTEN:?set by install.sh}
       TUNNEX_EDGE_PUBLIC_IP: ${TUNNEX_EDGE_PUBLIC_IP:-}
+      TUNNEX_TLS_MODE: ${TUNNEX_TLS_MODE:-}
+      TUNNEX_EDGE_TRUSTED_PROXIES: ${TUNNEX_EDGE_TRUSTED_PROXIES:-}
+      TUNNEX_HTTP_CONSOLE_ENABLED: ${TUNNEX_HTTP_CONSOLE_ENABLED:-false}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
+        case "$$TUNNEX_HTTP_CONSOLE_ENABLED" in
+          true|false) ;;
+          *) echo 'HTTP console setting must be true or false' >&2; exit 1 ;;
+        esac
+        # BEGIN EXPLICIT EDGE PROXY VALIDATION
+        edge_trusted_proxies_ok() {
+          printf '%s\n' "$$1" | LC_ALL=C awk '
+            function ipv4(ip, a,n,i) {
+              n=split(ip,a,"."); if(n!=4) return 0
+              for(i=1;i<=n;i++) if(a[i]!~/^[0-9]+$$/ || length(a[i])>3 || a[i]~/^0[0-9]/ || a[i]+0>255) return 0
+              return 1
+            }
+            function groups(ip, a,n,i) {
+              if(ip=="") return 0
+              n=split(ip,a,":")
+              for(i=1;i<=n;i++) if(a[i]!~/^[0-9a-fA-F]+$$/ || length(a[i])>4) return -1
+              return n
+            }
+            function ipv6(ip, a,n,l,r) {
+              if(ip!~/^[0-9a-fA-F:]+$$/) return 0
+              n=split(ip,a,"::")
+              if(n==1) return groups(ip)==8
+              if(n!=2) return 0
+              l=groups(a[1]); r=groups(a[2])
+              return l>=0 && r>=0 && l+r<8
+            }
+            NR!=1 || length($$0)>4096 || /[^0-9a-fA-F.:\/ ]/ || NF<1 || NF>64 { exit 1 }
+            {
+              for(j=1;j<=NF;j++) {
+                n=split($$j,part,"/"); if(n>2) exit 1
+                if(ipv4(part[1])) bits=32
+                else if(ipv6(part[1])) bits=128
+                else exit 1
+                if(n==2 && (part[2]!~/^[1-9][0-9]*$$/ || part[2]+0>bits)) exit 1
+              }
+            }'
+        }
+        # END EXPLICIT EDGE PROXY VALIDATION
+
+        case "$$TUNNEX_TLS_MODE" in
+          ''|direct|http) ;;
+          terminated)
+            [ "$$TUNNEX_EDGE_LISTEN" = http://:80 ] && [ -z "$$TUNNEX_EDGE_PUBLIC_IP" ] || {
+              echo 'Externally terminated TLS requires the internal HTTP edge' >&2; exit 1;
+            }
+            edge_trusted_proxies_ok "$$TUNNEX_EDGE_TRUSTED_PROXIES" || {
+              echo 'Set TUNNEX_EDGE_TRUSTED_PROXIES to explicit proxy IPs/CIDRs; all-address ranges and malformed values are refused' >&2; exit 1;
+            }
+            # Only verified immediate load-balancer peers may report the client scheme.
+            # Reject direct callers and missing/ambiguous schemes; allow LB health probes.
+            printf '%s\n' '{' '  servers {' \
+              "    trusted_proxies static $$TUNNEX_EDGE_TRUSTED_PROXIES" \
+              '    trusted_proxies_strict' '  }' '}' ':80 {' \
+              "  @untrusted not remote_ip $$TUNNEX_EDGE_TRUSTED_PROXIES" \
+              '  respond @untrusted "Trusted TLS proxy required" 403' \
+              '  @invalidScheme {' '    not path /healthz' \
+              '    not vars {http.request.header.X-Forwarded-Proto} http https' '  }' \
+              '  respond @invalidScheme "Proxy must report the client scheme" 400' \
+              '  reverse_proxy nginx:8080' '}' > /tmp/tunnex-Caddyfile
+            exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile ;;
+          *) echo 'Invalid TLS mode' >&2; exit 1 ;;
+        esac
         if [ -z "$$TUNNEX_EDGE_PUBLIC_IP" ]; then
+          case "$$TUNNEX_HTTP_CONSOLE_ENABLED:$$TUNNEX_EDGE_LISTEN" in
+            true:https://*)
+              authority=$${TUNNEX_EDGE_LISTEN#https://}
+              host=$${authority%%:*}
+              case "$$host" in ''|*[!A-Za-z0-9.-]*) echo 'Invalid HTTPS hostname' >&2; exit 1 ;; esac
+              case "$$authority" in "$$host"|"$$host:443") ;; *) echo 'Direct HTTPS requires port 443' >&2; exit 1 ;; esac
+              printf '%s\n' "https://$$host {" '  reverse_proxy nginx:8080' '}' \
+                ':80 {' '  reverse_proxy nginx:8080' '}' > /tmp/tunnex-Caddyfile
+              exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile ;;
+          esac
           exec caddy reverse-proxy --from "$$TUNNEX_EDGE_LISTEN" --to nginx:8080
         fi
         # Only the validated direct IPv4 origin may be inserted into Caddyfile.
@@ -235,10 +312,14 @@ services:
           '    }' \
           '  }' \
           '  reverse_proxy nginx:8080' \
-          '}' \
-          ':80 {' \
-          "  redir https://$$TUNNEX_EDGE_PUBLIC_IP{uri} 308" \
           '}' > /tmp/tunnex-Caddyfile
+        if [ "$$TUNNEX_HTTP_CONSOLE_ENABLED" = true ]; then
+          # Serving an HTTP console does not enable AI: the API's persisted
+          # administrator setting denies HTTP AI traffic until explicitly saved.
+          printf '%s\n' ':80 {' '  reverse_proxy nginx:8080' '}' >> /tmp/tunnex-Caddyfile
+        else
+          printf '%s\n' ':80 {' "  redir https://$$TUNNEX_EDGE_PUBLIC_IP{uri} 308" '}' >> /tmp/tunnex-Caddyfile
+        fi
         exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile
     ports:
       - "80:80"

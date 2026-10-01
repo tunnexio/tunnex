@@ -4022,6 +4022,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ai-transport-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read deployment-wide AI transport policy (verified server administrator) */
+        get: operations["getAITransportSettings"];
+        /**
+         * Set deployment-wide HTTP access for AI with a revision precondition
+         * @description Explicitly permits AI credential management and inference over HTTP, including public HTTP. Does not bypass authentication, organization permissions or provider TLS validation.
+         */
+        put: operations["updateAITransportSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/email-settings": {
         parameters: {
             query?: never;
@@ -6247,13 +6268,27 @@ export interface components {
             revision: number;
             /** @description The installation has prepared its bundled private AI backend. This does not certify runtime health. */
             engine_installed?: boolean;
-            /** @description Explicit operator policy allows HTTP for an endpoint restricted to a trusted private or VPN network. Never inferred from a request or client address. */
+            /**
+             * @deprecated
+             * @description Compatibility alias for http_allowed. Reflects the saved server-administrator policy allowing AI access over HTTP, including public HTTP. Use http_allowed in new clients.
+             */
             private_http_allowed?: boolean;
+            /** @description Deployment administrator has explicitly allowed HTTP for AI access, including public HTTP. */
+            http_allowed?: boolean;
             /**
              * @description Deployment prerequisite when AI is unavailable.
              * @enum {string}
              */
             unavailable_reason?: "https_required" | "engine_not_configured";
+        };
+        AITransportSettings: {
+            /** @description Permit AI access over HTTP. Defaults to false. HTTPS remains available regardless of this setting. */
+            allow_http: boolean;
+            /**
+             * Format: int64
+             * @description Current saved revision; required unchanged when saving.
+             */
+            revision: number;
         };
         AIInferenceRequest: {
             /** @description Exact provider/model identifier; aliases and caller fallback are not supported. */
@@ -16017,6 +16052,54 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAITransportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved HTTP policy; HTTPS access is always allowed. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITransportSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAITransportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AITransportSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved policy applied to subsequent requests on every replica. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITransportSettings"];
+                };
             };
             default: components["responses"]["Error"];
         };

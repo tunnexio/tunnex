@@ -4894,6 +4894,38 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/admin/ai-transport-settings:
+    get:
+      operationId: getAITransportSettings
+      summary: Read deployment-wide AI transport policy (verified server administrator)
+      tags: [admin]
+      responses:
+        "200":
+          description: Saved HTTP policy; HTTPS access is always allowed.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AITransportSettings" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateAITransportSettings
+      summary: Set deployment-wide HTTP access for AI with a revision precondition
+      description: Explicitly permits AI credential management and inference over HTTP, including public HTTP. Does not bypass authentication, organization permissions or provider TLS validation.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AITransportSettings" }
+      responses:
+        "200":
+          description: Saved policy applied to subsequent requests on every replica.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AITransportSettings" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/admin/email-settings:
     get:
       operationId: getServerEmailSettings
@@ -7349,8 +7381,16 @@ components:
         available: { type: boolean, description: Server has the qualified private engine configuration. }
         revision: { type: integer, format: int64 }
         engine_installed: { type: boolean, description: The installation has prepared its bundled private AI backend. This does not certify runtime health. }
-        private_http_allowed: { type: boolean, description: Explicit operator policy allows HTTP for an endpoint restricted to a trusted private or VPN network. Never inferred from a request or client address. }
+        private_http_allowed: { type: boolean, deprecated: true, description: "Compatibility alias for http_allowed. Reflects the saved server-administrator policy allowing AI access over HTTP, including public HTTP. Use http_allowed in new clients." }
+        http_allowed: { type: boolean, description: "Deployment administrator has explicitly allowed HTTP for AI access, including public HTTP." }
         unavailable_reason: { type: string, enum: [https_required, engine_not_configured], description: Deployment prerequisite when AI is unavailable. }
+    AITransportSettings:
+      type: object
+      additionalProperties: false
+      required: [allow_http, revision]
+      properties:
+        allow_http: { type: boolean, description: Permit AI access over HTTP. Defaults to false. HTTPS remains available regardless of this setting. }
+        revision: { type: integer, format: int64, minimum: 1, description: Current saved revision; required unchanged when saving. }
     AIInferenceRequest:
       type: object
       additionalProperties: false

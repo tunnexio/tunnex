@@ -36,6 +36,9 @@ type Workloads struct {
 }
 
 type WorkloadOptions struct {
+	// The HTTP router checks the persisted transport policy on every request.
+	// This permits constructing the backend before an administrator opts in.
+	TransportPolicyManaged bool
 	// This installation option is deliberately independent of caller IP,
 	// forwarding headers and tenant settings. The operator restricts the public
 	// endpoint to a trusted private network before enabling it.
@@ -54,7 +57,7 @@ func NewWorkloads(p *Policies, base string, options ...WorkloadOptions) (*Worklo
 		}
 	}
 	ip := net.ParseIP(u.Hostname())
-	allowPrivateHTTP := len(options) == 1 && options[0].AllowPrivateHTTP
+	allowPrivateHTTP := len(options) == 1 && (options[0].AllowPrivateHTTP || options[0].TransportPolicyManaged)
 	if u.Scheme != "https" && !(u.Scheme == "http" && (allowPrivateHTTP || u.Hostname() == "localhost" || ip != nil && ip.IsLoopback())) {
 		return nil, errors.New("workload public base URL requires HTTPS")
 	}

@@ -2,6 +2,21 @@ package aigateway
 
 import "testing"
 
+func TestWorkloadManagedTransportAllowsBackendConstruction(t *testing.T) {
+	// The HTTP request router owns the persisted default-deny policy. Constructing
+	// the private backend must not prevent an administrator from reaching settings.
+	for _, base := range []string{"http://51.20.98.153", "http://172.31.20.253", "https://vpn.example.com"} {
+		if _, err := NewWorkloads(&Policies{}, base, WorkloadOptions{TransportPolicyManaged: true}); err != nil {
+			t.Fatal(base, err)
+		}
+	}
+	for _, base := range []string{"ftp://vpn.example.com", "http://user:secret@51.20.98.153", "http://51.20.98.153/path", "http://51.20.98.153?x=1"} {
+		if _, err := NewWorkloads(&Policies{}, base, WorkloadOptions{TransportPolicyManaged: true}); err == nil {
+			t.Fatal("managed policy accepted invalid base", base)
+		}
+	}
+}
+
 func TestWorkloadPublicTransportRequiresOperatorOptIn(t *testing.T) {
 	for _, tc := range []struct {
 		name, base string

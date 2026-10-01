@@ -1,11 +1,12 @@
-{{- if .Values.aiGateway.enabled }}
+{{- if and .Values.ingress.enabled (gt (len .Values.ingress.tls) 0) (eq (len .Values.edge.trustedIngressCIDRs) 0) }}
+{{- fail "edge.trustedIngressCIDRs must list the ingress-controller peers before enabling or upgrading TLS ingress; client scheme is never inferred from appBaseURL" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "tunnex-cp.fullname" . }}-ai-edge
+  name: {{ include "tunnex-cp.fullname" . }}-edge
   labels:
     {{- include "tunnex-cp.labels" . | nindent 4 }}
 data:
   default.conf: |
-    {{- .Files.Get "files/edge-ai-nginx.conf" | nindent 4 }}
-{{- end }}
+    {{- tpl (.Files.Get "files/edge-ai-nginx.conf") . | nindent 4 }}

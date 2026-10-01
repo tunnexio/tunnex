@@ -35,6 +35,13 @@ pull digest-pinned images, and verify the running stack. A working existing runt
 the host package manager, macOS reuses Docker Desktop or prepares Homebrew + Colima, and Windows prepares
 Docker Desktop + Git Bash through Windows Package Manager before entering the same canonical flow.
 
+Releases declaring the bundled AI engine prepare it during this installation.
+Use HTTPS for AI Gateway by default. In releases with **Settings → AI Gateway
+transport**, a server administrator can explicitly allow HTTP, including public
+HTTP; credentials and requests are then unencrypted in transit. See
+[AI Gateway setup](AI-gateway-setup.md#optional-http-access) for the saved policy
+and provider setup steps.
+
 On Linux, that flow runs the control plane and its co-located WireGuard gateway. On macOS and Windows,
 it runs a portable control plane and keeps the Linux-only `node-agent` container disabled; the final
 screen tells you to enroll the gateway on a separate Linux host. This is a runtime boundary, not a missing

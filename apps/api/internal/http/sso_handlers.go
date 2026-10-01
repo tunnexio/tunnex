@@ -98,15 +98,16 @@ func (s apiServer) StartSsoLogin(ctx context.Context, req api.StartSsoLoginReque
 // human-readable guidance (never a raw JSON error envelope — the browser followed
 // the IdP redirect here, so a person is looking at this response).
 type ssoCallbackResponse struct {
-	sess      session.Session
-	setCookie bool
-	secure    bool
-	location  string
+	sess       session.Session
+	setCookie  bool
+	secure     bool
+	cookieName string
+	location   string
 }
 
 func (r ssoCallbackResponse) VisitSsoCallbackResponse(w http.ResponseWriter) error {
 	if r.setCookie {
-		session.SetCookie(w, r.sess, r.secure)
+		session.SetNamedCookie(w, r.sess, r.cookieName, r.secure)
 	}
 	w.Header().Set("Location", r.location)
 	w.WriteHeader(http.StatusFound)
@@ -129,7 +130,7 @@ func (s apiServer) SsoCallback(ctx context.Context, req api.SsoCallbackRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return ssoCallbackResponse{sess: sess, setCookie: true, secure: s.cookieSecure, location: s.appBaseURL + "/"}, nil
+	return ssoCallbackResponse{sess: sess, setCookie: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), location: s.appBaseURL + "/"}, nil
 }
 
 // ssoRejectCodes is the allowlist of SSO callback reject reasons the SPA renders

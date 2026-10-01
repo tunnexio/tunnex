@@ -128,7 +128,7 @@ jobs:
       - name: Installer fresh-host bootstrap contract
         run: |
           sh deploy/public-url-contract_test.sh
-          sh deploy/edge-tls-contract_test.sh
+          TUNNEX_TEST_CADDY_RUNTIME=1 sh deploy/edge-tls-contract_test.sh
           sh deploy/install-host-bootstrap_test.sh
           python3 deploy/install-first-organization_test.py
 
@@ -157,6 +157,7 @@ jobs:
         run: |
           ruby deploy/ai-gateway/verify-helm.rb
           ruby deploy/helm/tunnex-cp/tests/verify-ai-sagemaker.rb
+          bash deploy/trusted-proxy-chart-contract_test.sh
 
       - name: Kubernetes HA deployment gate contract
         run: sh deploy/k8s-ha-deployment-gate-contract_test.sh

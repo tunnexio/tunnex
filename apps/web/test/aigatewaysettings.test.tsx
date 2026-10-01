@@ -106,6 +106,19 @@ describe("AI gateway organization settings", () => {
     expect(api.PUT).toHaveBeenCalledTimes(1);
     expect(api.PUT.mock.calls[0][1].params.path.orgId).toBe("org-a");
   });
+  it("points the HTTPS prerequisite to the administrator transport setting", async () => {
+    api.GET.mockResolvedValue({ data: { ...result(false, false).data, engine_installed: true, unavailable_reason: "https_required", http_allowed: false } });
+    render(view()); await state(false);
+    expect(screen.getByText(/Settings → AI Gateway transport/)).toBeTruthy();
+    expect(screen.getByText(/Allow AI Gateway over HTTP/)).toBeTruthy();
+    expect(screen.queryByText(/endpoint restricted to your private or VPN network/)).toBeNull();
+  });
+  it("reports the saved HTTP exception without claiming private-only access", async () => {
+    api.GET.mockResolvedValue({ data: { ...result(false).data, http_allowed: true, private_http_allowed: false } });
+    render(view()); await state(false);
+    expect(screen.getByText("Configured · HTTP allowed")).toBeTruthy();
+    expect(screen.getByText(/HTTP does not encrypt credentials or requests/)).toBeTruthy();
+  });
   it("hides mutation controls when editing is forbidden", async () => {
     api.GET.mockResolvedValue(result(true));
     render(view("org-a", false));

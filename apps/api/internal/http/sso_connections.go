@@ -104,6 +104,9 @@ func (s apiServer) TestSsoConnection(ctx context.Context, req api.TestSsoConnect
 	if e != nil {
 		return nil, e
 	}
+	if e = requireSSOCallbackTransport(ctx, s.appBaseURL); e != nil {
+		return nil, e
+	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body required")
 	}
@@ -119,11 +122,14 @@ func (s apiServer) TestSsoConnection(ctx context.Context, req api.TestSsoConnect
 	if e != nil {
 		return nil, e
 	}
-	return connectionStartResponse{redirect: redirect, binding: binding, secure: s.cookieSecure}, nil
+	return connectionStartResponse{redirect: redirect, binding: binding, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 }
 func (s apiServer) StartSsoConnection(ctx context.Context, req api.StartSsoConnectionRequestObject) (api.StartSsoConnectionResponseObject, error) {
 	svc, e := s.connectionService()
 	if e != nil {
+		return nil, e
+	}
+	if e = requireSSOCallbackTransport(ctx, s.appBaseURL); e != nil {
 		return nil, e
 	}
 	binding, e := sso.RandomToken()
@@ -134,19 +140,20 @@ func (s apiServer) StartSsoConnection(ctx context.Context, req api.StartSsoConne
 	if e != nil {
 		return nil, e
 	}
-	return connectionStartResponse{redirect: redirect, binding: binding, secure: s.cookieSecure}, nil
+	return connectionStartResponse{redirect: redirect, binding: binding, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 }
 
 type connectionCallbackResponse struct {
-	location      string
-	sess          session.Session
-	login, secure bool
+	location                   string
+	sess                       session.Session
+	login, secure              bool
+	cookieName, flowCookieName string
 }
 
 func (r connectionCallbackResponse) VisitSsoConnectionCallbackResponse(w http.ResponseWriter) error {
-	setConnectionFlowCookie(w, "", r.secure, -1)
+	setNamedConnectionFlowCookie(w, r.flowCookieName, "", r.secure, -1)
 	if r.login {
-		session.SetCookie(w, r.sess, r.secure)
+		session.SetNamedCookie(w, r.sess, r.cookieName, r.secure)
 	}
 	w.Header().Set("Location", r.location)
 	w.WriteHeader(302)
@@ -166,10 +173,7 @@ func (s apiServer) SsoConnectionCallback(ctx context.Context, req api.SsoConnect
 	if req.Params.Code != nil {
 		code = *req.Params.Code
 	}
-	binding := ""
-	if req.Params.TnxOidcFlow != nil {
-		binding = *req.Params.TnxOidcFlow
-	}
+	binding := connectionFlowBinding(ctx, req.Params.TnxOidcFlow)
 	result, e := svc.CompleteConnection(ctx, code, req.Params.State, binding, actor)
 	if result.Test || result.Link {
 		status := "verified"
@@ -180,29 +184,41 @@ func (s apiServer) SsoConnectionCallback(ctx context.Context, req api.SsoConnect
 			status = connectionErrorCode(e)
 		}
 		query := url.Values{"section": {"authentication"}, "sso_test": {status}, "sso_org": {result.OrgID.String()}, "sso_connection": {result.ConnectionID.String()}}
-		return connectionCallbackResponse{location: s.appBaseURL + "/settings?" + query.Encode(), secure: s.cookieSecure}, nil
+		return connectionCallbackResponse{location: s.appBaseURL + "/settings?" + query.Encode(), secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 	}
 	if e != nil {
-		return connectionCallbackResponse{location: connectionLoginFailureURL(s.appBaseURL, result.ConnectionID, e), secure: s.cookieSecure}, nil
+		return connectionCallbackResponse{location: connectionLoginFailureURL(s.appBaseURL, result.ConnectionID, e), secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 	}
 	sess, e := s.sessions.Create(ctx, result.UserID, authctx.AuthSSO)
 	if e != nil {
 		return nil, e
 	}
-	return connectionCallbackResponse{location: s.appBaseURL + "/", sess: sess, login: true, secure: s.cookieSecure}, nil
+	return connectionCallbackResponse{location: s.appBaseURL + "/", sess: sess, login: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 }
 
 func setConnectionFlowCookie(w http.ResponseWriter, value string, secure bool, maxAge int) {
-	http.SetCookie(w, &http.Cookie{Name: "tnx_oidc_flow", Value: value, Path: "/api/v1/auth/sso-connections", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
+	setNamedConnectionFlowCookie(w, "", value, secure, maxAge)
+}
+
+func setNamedConnectionFlowCookie(w http.ResponseWriter, name, value string, secure bool, maxAge int) {
+	if name == "" {
+		name = "tnx_oidc_flow"
+	}
+	path := "/api/v1/auth/sso-connections"
+	if name == "__Host-tnx_oidc_flow" {
+		path = "/"
+	}
+	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: path, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
 }
 
 type connectionStartResponse struct {
-	redirect, binding string
-	secure            bool
+	redirect, binding          string
+	secure                     bool
+	cookieName, flowCookieName string
 }
 
 func (r connectionStartResponse) write(w http.ResponseWriter) error {
-	setConnectionFlowCookie(w, r.binding, r.secure, 600)
+	setNamedConnectionFlowCookie(w, r.flowCookieName, r.binding, r.secure, 600)
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(api.SsoRedirect{RedirectUrl: r.redirect})
 }
@@ -257,6 +273,9 @@ func (s apiServer) LinkSsoConnection(ctx context.Context, req api.LinkSsoConnect
 	if e != nil {
 		return nil, e
 	}
+	if e = requireSSOCallbackTransport(ctx, s.appBaseURL); e != nil {
+		return nil, e
+	}
 	binding, e := sso.RandomToken()
 	if e != nil {
 		return nil, e
@@ -265,7 +284,7 @@ func (s apiServer) LinkSsoConnection(ctx context.Context, req api.LinkSsoConnect
 	if e != nil {
 		return nil, e
 	}
-	return connectionStartResponse{redirect: redirect, binding: binding, secure: s.cookieSecure}, nil
+	return connectionStartResponse{redirect: redirect, binding: binding, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 }
 
 func connectionLoginFailureURL(base string, id uuid.UUID, err error) string {

@@ -49,11 +49,12 @@ function GatewaySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }
     }
   }
 
+  const httpAllowed = settings?.http_allowed ?? settings?.private_http_allowed ?? false;
   return <Card className="ai-setting-card">
     <div className="ai-setting-row"><div className="ai-setting-copy"><h3>Gateway access <HelpTooltip label="About gateway access">Disabling blocks new requests. Accepted requests may finish within 30 seconds. Provider keys stay on your gateway. Usage thresholds are soft limits; concurrent requests can exceed them.</HelpTooltip></h3><p>Allow your organization to send requests to configured models.</p></div>
     {settings && <div className="ai-setting-actions"><span role="status" className={`ai-setting-state ${settings.enabled ? "is-on" : ""}`}>{settings.enabled ? "Enabled" : "Disabled"}</span>{canEdit && <Button disabled={busy || (!settings.available && !settings.enabled)} onClick={() => void toggle()}>{busy ? "Saving…" : settings.enabled ? "Disable AI gateway" : "Enable AI gateway"}</Button>}</div>}</div>
     {!settings && !error && <p role="status">Loading AI gateway settings…</p>}
-    {settings && <div className="ai-setting-foot"><span>Gateway connection</span><span>{settings.available ? settings.private_http_allowed ? "Configured · private HTTP allowed" : "Configured" : settings.unavailable_reason === "https_required" ? settings.engine_installed ? "Installed · HTTPS required" : "HTTPS required" : "Not configured"}</span>{!settings.available && <p>{aiGatewayPrerequisite(settings)}</p>}{settings.available && settings.private_http_allowed && <p>Your installation administrator permits HTTP for private or VPN access. Keep this endpoint restricted to that network.</p>}</div>}
+    {settings && <div className="ai-setting-foot"><span>Gateway connection</span><span>{settings.available ? httpAllowed ? "Configured · HTTP allowed" : "Configured" : settings.unavailable_reason === "https_required" ? settings.engine_installed ? "Installed · HTTPS required" : "HTTPS required" : "Not configured"}</span>{!settings.available && <p>{aiGatewayPrerequisite(settings)}</p>}{settings.available && httpAllowed && <p>Your server administrator permits HTTP access. HTTP does not encrypt credentials or requests; use HTTPS whenever possible.</p>}</div>}
     {error && <p role="alert" className="text-danger">{error}</p>}
     {error && !settings && <Button onClick={() => setAttempt(value => value + 1)}>Retry AI gateway settings</Button>}
   </Card>;

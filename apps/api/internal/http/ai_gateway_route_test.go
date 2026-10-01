@@ -20,6 +20,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
+	"github.com/tunnexio/tunnex/apps/api/internal/aitransport"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
@@ -30,6 +31,11 @@ func aiSocketServer(t *testing.T, d Deps) *httptest.Server {
 	t.Helper()
 	if d.Orgs == nil {
 		d.Orgs = tenancy.NewService(nil)
+	}
+	// These socket fixtures exercise downstream authorization and streaming over
+	// local HTTP. Explicitly opt them in; transport default-deny has its own suite.
+	if d.AITransport == nil {
+		d.AITransport = &aiTransportStub{value: aitransport.Settings{AllowHTTP: true, Revision: 1}}
 	}
 	h, err := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), d)
 	if err != nil {

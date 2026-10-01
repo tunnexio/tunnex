@@ -23,6 +23,7 @@ import {
 } from "../components/ui";
 import { api } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
+import { useAuth } from "../lib/auth";
 import { AIAccessGate, AIGroupAccess, AIUseModel } from "../components/AIUserAccess";
 type S = components["schemas"];
 type Inventory = {
@@ -58,6 +59,8 @@ const gatewayTabs = [
 export default function AgentsAIGateway() {
   const [grant, setGrant] = useState<{ connection: string; model: string } | null>(null);
   const { org } = useOrg();
+  const { state } = useAuth();
+  const canManageTransport = state.status === "authed" && Boolean(state.user.cp_admin);
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [search] = useSearchParams();
@@ -81,7 +84,7 @@ export default function AgentsAIGateway() {
             {search.get("subject")==="workloads" && access.workloadsView ? <AIWorkloads key={orgId} orgId={orgId} canManage={access.workloadsManage} /> : <AIGroupAccess key={`${orgId}:${search.get("connection")}:${search.get("model")}`} orgId={orgId} canManage={access.manage} initialConnection={search.get("connection") ?? ""} initialModel={search.get("model") ?? ""} />}
           </>
           : page === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} />
-          : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage}
+          : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage} canManageTransport={canManageTransport}
             view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
             onViewChange={(view) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? "/ai-gateway/models/new" : "/ai-gateway/models")}
             onGrantAccess={(connection, model) => setGrant({ connection, model })} />

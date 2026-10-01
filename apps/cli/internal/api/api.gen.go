@@ -1682,7 +1682,11 @@ type AIGatewaySettings struct {
 	// EngineInstalled The installation has prepared its bundled private AI backend. This does not certify runtime health.
 	EngineInstalled *bool `json:"engine_installed,omitempty"`
 
-	// PrivateHttpAllowed Explicit operator policy allows HTTP for an endpoint restricted to a trusted private or VPN network. Never inferred from a request or client address.
+	// HttpAllowed Deployment administrator has explicitly allowed HTTP for AI access, including public HTTP.
+	HttpAllowed *bool `json:"http_allowed,omitempty"`
+
+	// PrivateHttpAllowed Compatibility alias for http_allowed. Reflects the saved server-administrator policy allowing AI access over HTTP, including public HTTP. Use http_allowed in new clients.
+	// Deprecated:
 	PrivateHttpAllowed *bool `json:"private_http_allowed,omitempty"`
 	Revision           int64 `json:"revision"`
 
@@ -1994,6 +1998,15 @@ type AITranscriptionRequest struct {
 
 // AITranscriptionRequestResponseFormat defines model for AITranscriptionRequest.ResponseFormat.
 type AITranscriptionRequestResponseFormat string
+
+// AITransportSettings defines model for AITransportSettings.
+type AITransportSettings struct {
+	// AllowHttp Permit AI access over HTTP. Defaults to false. HTTPS remains available regardless of this setting.
+	AllowHttp bool `json:"allow_http"`
+
+	// Revision Current saved revision; required unchanged when saving.
+	Revision int64 `json:"revision"`
+}
 
 // AIUsageAttribution defines model for AIUsageAttribution.
 type AIUsageAttribution struct {
@@ -6401,6 +6414,9 @@ type AiRerankJSONRequestBody = AIRerankRequest
 // AiVideoGenerationJSONRequestBody defines body for AiVideoGeneration for application/json ContentType.
 type AiVideoGenerationJSONRequestBody = AIVideoRequest
 
+// UpdateAITransportSettingsJSONRequestBody defines body for UpdateAITransportSettings for application/json ContentType.
+type UpdateAITransportSettingsJSONRequestBody = AITransportSettings
+
 // UpdateServerEmailSettingsJSONRequestBody defines body for UpdateServerEmailSettings for application/json ContentType.
 type UpdateServerEmailSettingsJSONRequestBody = ServerEmailSettingsInput
 
@@ -7076,6 +7092,14 @@ type ClientInterface interface {
 
 	// AiVideoContent request
 	AiVideoContent(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAITransportSettings request
+	GetAITransportSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAITransportSettingsWithBody request with any body
+	UpdateAITransportSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAITransportSettings(ctx context.Context, body UpdateAITransportSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetServerEmailSettings request
 	GetServerEmailSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8655,6 +8679,42 @@ func (c *Client) AiVideoStatus(ctx context.Context, jobId openapi_types.UUID, re
 
 func (c *Client) AiVideoContent(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAiVideoContentRequest(c.Server, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAITransportSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAITransportSettingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAITransportSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAITransportSettingsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAITransportSettings(ctx context.Context, body UpdateAITransportSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAITransportSettingsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15154,6 +15214,73 @@ func NewAiVideoContentRequest(server string, jobId openapi_types.UUID) (*http.Re
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetAITransportSettingsRequest generates requests for GetAITransportSettings
+func NewGetAITransportSettingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/ai-transport-settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAITransportSettingsRequest calls the generic UpdateAITransportSettings builder with application/json body
+func NewUpdateAITransportSettingsRequest(server string, body UpdateAITransportSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAITransportSettingsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateAITransportSettingsRequestWithBody generates requests for UpdateAITransportSettings with any type of body
+func NewUpdateAITransportSettingsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/ai-transport-settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -31302,6 +31429,14 @@ type ClientWithResponsesInterface interface {
 	// AiVideoContentWithResponse request
 	AiVideoContentWithResponse(ctx context.Context, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiVideoContentResponse, error)
 
+	// GetAITransportSettingsWithResponse request
+	GetAITransportSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAITransportSettingsResponse, error)
+
+	// UpdateAITransportSettingsWithBodyWithResponse request with any body
+	UpdateAITransportSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAITransportSettingsResponse, error)
+
+	UpdateAITransportSettingsWithResponse(ctx context.Context, body UpdateAITransportSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAITransportSettingsResponse, error)
+
 	// GetServerEmailSettingsWithResponse request
 	GetServerEmailSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerEmailSettingsResponse, error)
 
@@ -32918,6 +33053,52 @@ func (r AiVideoContentResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AiVideoContentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAITransportSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AITransportSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAITransportSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAITransportSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAITransportSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AITransportSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAITransportSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAITransportSettingsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -40897,6 +41078,32 @@ func (c *ClientWithResponses) AiVideoContentWithResponse(ctx context.Context, jo
 	return ParseAiVideoContentResponse(rsp)
 }
 
+// GetAITransportSettingsWithResponse request returning *GetAITransportSettingsResponse
+func (c *ClientWithResponses) GetAITransportSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAITransportSettingsResponse, error) {
+	rsp, err := c.GetAITransportSettings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAITransportSettingsResponse(rsp)
+}
+
+// UpdateAITransportSettingsWithBodyWithResponse request with arbitrary body returning *UpdateAITransportSettingsResponse
+func (c *ClientWithResponses) UpdateAITransportSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAITransportSettingsResponse, error) {
+	rsp, err := c.UpdateAITransportSettingsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAITransportSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAITransportSettingsWithResponse(ctx context.Context, body UpdateAITransportSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAITransportSettingsResponse, error) {
+	rsp, err := c.UpdateAITransportSettings(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAITransportSettingsResponse(rsp)
+}
+
 // GetServerEmailSettingsWithResponse request returning *GetServerEmailSettingsResponse
 func (c *ClientWithResponses) GetServerEmailSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerEmailSettingsResponse, error) {
 	rsp, err := c.GetServerEmailSettings(ctx, reqEditors...)
@@ -45641,6 +45848,72 @@ func ParseAiVideoContentResponse(rsp *http.Response) (*AiVideoContentResponse, e
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAITransportSettingsResponse parses an HTTP response from a GetAITransportSettingsWithResponse call
+func ParseGetAITransportSettingsResponse(rsp *http.Response) (*GetAITransportSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAITransportSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AITransportSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAITransportSettingsResponse parses an HTTP response from a UpdateAITransportSettingsWithResponse call
+func ParseUpdateAITransportSettingsResponse(rsp *http.Response) (*UpdateAITransportSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAITransportSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AITransportSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

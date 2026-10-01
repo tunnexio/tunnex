@@ -103,6 +103,9 @@ type Config struct {
 	// CookieSecure sets the Secure flag on the session cookie. MUST be true in
 	// production; a false value is logged loudly at boot.
 	CookieSecure bool
+	// TrustedProxies explicitly names the immediate proxies allowed to report
+	// client HTTP/HTTPS transport. Empty preserves legacy cookie configuration.
+	TrustedProxies []string
 	// SessionIdleTTL is the sliding inactivity timeout (S2.2).
 	SessionIdleTTL time.Duration
 	// SessionAbsoluteTTL is the hard maximum session lifetime (S2.2).
@@ -204,6 +207,7 @@ func Load() Config {
 		HostUpgradeStatusPath:       getenv("TUNNEX_HOST_UPGRADE_STATUS_PATH", ""),
 		RedisURL:                    firstNonEmpty(getenv("TUNNEX_REDIS_URL", ""), getenv("REDIS_URL", "redis://redis:6379/0")),
 		CookieSecure:                getbool("TUNNEX_COOKIE_SECURE", false),
+		TrustedProxies:              splitList(getenv("TUNNEX_TRUSTED_PROXIES", "")),
 		SessionIdleTTL:              getdur("TUNNEX_SESSION_IDLE_TTL", 24*time.Hour),
 		SessionAbsoluteTTL:          getdur("TUNNEX_SESSION_ABSOLUTE_TTL", 720*time.Hour),
 		CORSAllowedOrigins:          splitList(getenv("TUNNEX_CORS_ALLOWED_ORIGINS", "app://tunnex")),

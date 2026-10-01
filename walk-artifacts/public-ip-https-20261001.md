@@ -1,5 +1,8 @@
 # Public-IP HTTPS repair — 2026-10-01
 
+Subsequent HTTP opt-in work: [administrator transport review](ai-http-admin-20261001.md).
+The later review permits HTTP explicitly while preserving this HTTPS endpoint.
+
 ## Subject and scope
 
 Existing AWS control plane, application release v0.1.36, with the deployment

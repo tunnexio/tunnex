@@ -46,7 +46,7 @@ raise 'private CIDRs not excluded' unless egress[1]['to'][0]['ipBlock']['except'
 config = JSON.parse(select.call('ConfigMap', 'ai-contract-tunnex-cp-ai')['data']['config.json'])
 raise 'content logging or open inference' unless config.dig('client','disable_content_logging') && config.dig('client','enforce_auth_on_inference')
 raise 'bootstrap keys granted' unless config.dig('governance','virtual_keys') == []
-nginx = select.call('ConfigMap', 'ai-contract-tunnex-cp-ai-edge')['data']['default.conf']
+nginx = select.call('ConfigMap', 'ai-contract-tunnex-cp-edge')['data']['default.conf']
 raise 'SSE proxy missing' unless nginx.include?('location /ai/') && nginx.include?('proxy_buffering off;') && nginx.include?('proxy_read_timeout 35s;')
 raise 'Docker DNS used in Kubernetes' if nginx.include?('127.0.0.11')
 [['--set','aiGateway.enabled=true'], ['--set','aiGateway.enabled=true','--set','aiGateway.existingSecret=ai-fixture','--set','api.replicas=2']].each do |bad|

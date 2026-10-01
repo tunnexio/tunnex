@@ -1,6 +1,6 @@
 # Instance administrator control for AI over HTTP
 
-Status: implementation; explicit user clarification on 2026-10-01 supersedes
+Status: implemented in a labeled review build; explicit user clarification on 2026-10-01 supersedes
 S-public-ip-https's decision to offer only private HTTP exceptions. Retain the
 working HTTPS endpoint and IP certificate support.
 
@@ -30,3 +30,5 @@ cannot change policy; disabling restores HTTP restriction; policy persists over
 restart/upgrade. Browser evidence must show the setting location and usable AI
 controls. Container health alone is insufficient. Record exact deployment and
 wire evidence during the work.
+
+Evidence: [live HTTP/HTTPS walk](../walk-artifacts/ai-http-admin-20261001.md).

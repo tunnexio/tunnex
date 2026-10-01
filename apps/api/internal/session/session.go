@@ -158,8 +158,16 @@ func (s *Store) DeleteAllForUser(ctx context.Context, userID uuid.UUID) error {
 // SetCookie writes the session cookie. secure MUST be true in production; the
 // caller logs loudly when it is false.
 func SetCookie(w http.ResponseWriter, sess Session, secure bool) {
+	SetNamedCookie(w, sess, CookieName, secure)
+}
+
+// SetNamedCookie isolates sessions on explicitly configured HTTP/HTTPS origins.
+func SetNamedCookie(w http.ResponseWriter, sess Session, name string, secure bool) {
+	if name == "" {
+		name = CookieName
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     CookieName,
+		Name:     name,
 		Value:    sess.ID,
 		Path:     "/",
 		HttpOnly: true,
@@ -171,8 +179,16 @@ func SetCookie(w http.ResponseWriter, sess Session, secure bool) {
 
 // ClearCookie expires the session cookie.
 func ClearCookie(w http.ResponseWriter, secure bool) {
+	ClearNamedCookie(w, CookieName, secure)
+}
+
+// ClearNamedCookie expires only the selected transport session cookie.
+func ClearNamedCookie(w http.ResponseWriter, name string, secure bool) {
+	if name == "" {
+		name = CookieName
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     CookieName,
+		Name:     name,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,

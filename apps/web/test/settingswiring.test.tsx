@@ -88,6 +88,7 @@ vi.mock("../src/lib/api", async () => {
         if (path === "/api/v1/auth/me")
           return { data: { id: "u1", email: "a@b.c", email_verified: true, cp_admin: serverAdmin } };
         if (path === "/api/v1/meta") return { data: { edition } };
+        if (path === "/api/v1/admin/ai-transport-settings") return { data: { allow_http: false, revision: 1 } };
         if (path === "/api/v1/license") {
           if (deferNewOrgSecurityLoad) return new Promise((resolve) => { resolveDeferredLicence = () => resolve({ data: { features: ["agent_jit_access"] } }); });
           return { data: { features: ["agent_jit_access"] } };
@@ -777,7 +778,7 @@ describe("Settings — one section at a time", () => {
     withAuth(<Settings />);
     for (const tab of await screen.findAllByRole("tab")) {
       const name = tab.getAttribute("aria-label")!;
-      expect(name.length).toBeLessThan(20);
+      expect(name.length).toBeLessThanOrEqual(24);
       expect(tab.textContent!.startsWith(name)).toBe(true);
     }
   });
@@ -824,5 +825,29 @@ describe("Settings — server email permission", () => {
     serverAdmin = true;
     withAuth(<Settings />);
     expect(await screen.findByRole("tab", {name:/Email delivery/})).toBeTruthy();
+  });
+});
+
+
+describe("Settings — server AI transport permission", () => {
+  beforeEach(() => { vi.mocked(api.GET).mockClear(); });
+  it("hides transport controls and does not fetch them for an organization owner", async () => {
+    window.history.replaceState({}, "", "/settings?section=ai-transport");
+    withAuth(<Settings />);
+    await screen.findByRole("tab", { name: "Organization" });
+    expect(screen.queryByRole("tab", { name: "AI Gateway transport" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Allow AI Gateway over HTTP" })).toBeNull();
+    const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
+    expect(reads.some(([path]) => path === "/api/v1/admin/ai-transport-settings")).toBe(false);
+  });
+
+  it("opens the exact transport settings link for a server administrator", async () => {
+    serverAdmin = true;
+    window.history.replaceState({}, "", "/settings?section=ai-transport");
+    withAuth(<Settings />);
+    await screen.findByRole("switch", { name: "Allow AI Gateway over HTTP" });
+    expect(screen.getByRole("tabpanel").id).toBe("ai-transport");
+    expect(screen.getByRole("tab", { name: "AI Gateway transport" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Saved policy: HTTPS required")).toBeTruthy();
   });
 });
