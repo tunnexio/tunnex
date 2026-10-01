@@ -11,4 +11,4 @@ The v0.1.34 to v0.1.35 dashboard upgrade authenticates the release and creates a
 
 ## Validation
 
-Focused behavioral contracts and a real descriptor-verification probe under systemd `PrivateTmp=true` are required. The probe must not apply an upgrade or mutate application data. Evidence will be recorded before delivery.
+All three host-upgrade contract suites pass. A real probe executed the changed verifier block under systemd `PrivateTmp=true`: the signed v0.1.35 descriptor succeeded, its AI image pin was exported, a tampered descriptor was rejected, and the retained AI configuration passed validation. Application files and gateway runtime remained unchanged. See [live evidence](../walk-artifacts/upgrade-private-tmp-20261001.md).

@@ -359,11 +359,13 @@ if grep -Fq '${TUNNEX_AI_ENGINE_IMAGE:' "$TMPDIR/tunnex.yml"; then
     # never extract a runnable engine image from unverified JSON.
     _ai_verifier_image=$(release_value TUNNEX_API_IMAGE)
     docker pull "$_ai_verifier_image"
-    chmod 0644 "$MANIFEST"
-    RELEASE_ENV=$(docker run --rm --entrypoint releaseverify \
-      -v "$MANIFEST:/tmp/release.json:ro" "$_ai_verifier_image" \
-      -manifest /tmp/release.json -public-key "$PUBLIC_KEY" \
-      -expected-source-sha "$SOURCE_SHA" -print-env) || {
+    # The systemd runner has PrivateTmp=true, so its host temporary path is
+    # not visible to the Docker daemon. Stream into the verifier container's
+    # own temporary file instead of asking the daemon to bind that path.
+    RELEASE_ENV=$(docker run --rm -i --network none --entrypoint sh \
+      "$_ai_verifier_image" -c \
+      'cat > /tmp/tunnex-release.json && exec releaseverify -manifest /tmp/tunnex-release.json -public-key "$1" -expected-source-sha "$2" -print-env' \
+      sh "$PUBLIC_KEY" "$SOURCE_SHA" < "$MANIFEST") || {
       echo 'error: update blocked; target release verification failed' >&2
       exit 13
     }
