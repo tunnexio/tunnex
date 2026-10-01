@@ -1,18 +1,10 @@
 package aigateway
 
 import (
-	_ "embed"
-	"encoding/json"
 	"slices"
 	"strings"
 	"unicode/utf8"
 )
-
-// Source and MIT attribution accompany the embedded snapshot. This catalog is
-// only a model-name reference, never Azure deployment discovery or billing data.
-//
-//go:embed reference/litellm_azure_models.json
-var foundryReferenceJSON []byte
 
 type referenceModel struct {
 	ID       string `json:"id"`
@@ -20,18 +12,11 @@ type referenceModel struct {
 	Mode     string `json:"mode"`
 }
 
-type referenceSnapshot struct {
-	SourceCommit string           `json:"source_commit"`
-	SourceSHA256 string           `json:"source_sha256"`
-	SourcePath   string           `json:"source_path"`
-	Entries      []referenceModel `json:"entries"`
-}
-
 func foundryReferenceName(row referenceModel) (string, bool) {
 	return foundryReferenceModeName(row, ModeChat)
 }
 
-// FoundryReferenceModels returns static LiteLLM reference names without needing
+// FoundryReferenceModels returns release-baked reference names without needing
 // an endpoint, credentials or network access. The actual Azure deployment name
 // can differ; only an explicit connection test checks that resource and key.
 func FoundryReferenceModels(query string, limit, offset int) (ProviderModelPage, error) {
@@ -45,14 +30,13 @@ func FoundryReferenceModelsForMode(mode ModelMode, query string, limit, offset i
 	if utf8.RuneCountInString(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
 		return ProviderModelPage{}, providerInvalid()
 	}
-	var snapshot referenceSnapshot
-	if json.Unmarshal(foundryReferenceJSON, &snapshot) != nil || len(snapshot.Entries) == 0 {
+	if loadModelCatalog() != nil {
 		return ProviderModelPage{}, aiUnavailable()
 	}
 	names := []string{}
 	query = strings.ToLower(query)
-	for _, row := range snapshot.Entries {
-		if name, ok := foundryReferenceModeName(row, mode); ok && strings.Contains(strings.ToLower(name), query) {
+	for _, row := range bakedCatalog.Entries {
+		if name, ok := foundryReferenceModeName(referenceModel{row.ID, row.Provider, string(row.Mode)}, mode); ok && strings.Contains(strings.ToLower(name), query) {
 			names = append(names, name)
 		}
 	}
@@ -82,23 +66,19 @@ func foundryReferenceModeName(row referenceModel, mode ModelMode) (string, bool)
 	return name, true
 }
 
-//go:embed reference/litellm_provider_models.json
-var providerReferenceJSON []byte
-
-// ProviderReferenceModels supplies mode-specific names from the same pinned
-// LiteLLM source. These are suggestions, never evidence of key/model access.
+// ProviderReferenceModels supplies mode-specific names from the release-baked
+// snapshot. These are suggestions, never evidence of key/model access.
 func ProviderReferenceModels(provider string, mode ModelMode, query string, limit, offset int) (ProviderModelPage, error) {
 	if !ValidModelMode(mode) || !supportedProvider(provider) || endpointProvider(provider) || utf8.RuneCountInString(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
 		return ProviderModelPage{}, providerInvalid()
 	}
-	var snapshot referenceSnapshot
-	if json.Unmarshal(providerReferenceJSON, &snapshot) != nil {
+	if loadModelCatalog() != nil {
 		return ProviderModelPage{}, aiUnavailable()
 	}
 	names := []string{}
 	query = strings.ToLower(query)
-	for _, row := range snapshot.Entries {
-		if row.Provider == provider && row.Mode == string(mode) && strings.HasPrefix(row.ID, provider+"/") && len(row.ID) <= 255 && strings.Contains(strings.ToLower(row.ID), query) {
+	for _, row := range bakedCatalog.Entries {
+		if row.Provider == provider && row.Mode == mode && strings.HasPrefix(row.ID, provider+"/") && len(row.ID) <= 255 && strings.Contains(strings.ToLower(row.ID), query) {
 			names = append(names, row.ID)
 		}
 	}

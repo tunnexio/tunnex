@@ -9,6 +9,7 @@ root = Path(__file__).resolve().parents[2]
 env = dict(os.environ)
 env.update({
     "COMPOSE_PROJECT_NAME": "tunnexaicontract",
+    "TUNNEX_AI_ENGINE_IMAGE": "ghcr.io/tunnexio/tunnex-ai-engine@sha256:" + "a" * 64,
     "TUNNEX_AI_GATEWAY_ADMIN_USER": "fixture-admin",
     "TUNNEX_AI_GATEWAY_ADMIN_PASSWORD": "fixture-password-only",
     "TUNNEX_AI_OPENROUTER_API_KEY": "fixture-provider-only",
@@ -21,7 +22,7 @@ command = ["docker", "compose", "--env-file", "/dev/null", "-p", "tunnexaicontra
            "--profile", "ai", "config", "--format", "json"]
 config = json.loads(subprocess.check_output(command, cwd=root, env=env, text=True))
 engine = config["services"]["bifrost"]
-assert engine["image"] == "maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208"
+assert engine["image"] == env["TUNNEX_AI_ENGINE_IMAGE"]
 assert engine["profiles"] == ["ai"] and not engine.get("ports")
 assert set(engine["networks"]) == {"ai_engine"}
 assert {name for name, service in config["services"].items() if "ai_engine" in service.get("networks", {})} == {"api", "bifrost"}
@@ -78,7 +79,10 @@ custom_env.update({
 custom_command = managed_command[:-5] + ["-f", str(root / "deploy/ai-gateway/compose-custom.yml")] + managed_command[-5:]
 custom = json.loads(subprocess.check_output(custom_command, cwd=root, env=custom_env, text=True))
 proxy = custom["services"]["ai-egress"]
-assert not proxy.get("ports") and set(proxy["networks"]) == {"ai_engine"}
+assert not proxy.get("ports") and set(proxy["networks"]) == {"default", "ai_engine"}
+assert set(custom["services"]["bifrost"]["networks"]) == {"ai_engine"}
+for name in ("api", "postgres", "redis", "web", "nginx"):
+    assert "default" in custom["services"][name]["networks"]
 assert proxy["entrypoint"] == ["/usr/local/bin/tunnex-ai-egress"]
 assert proxy["healthcheck"]["disable"] and proxy["read_only"]
 assert set(proxy["environment"]) == {"TUNNEX_AI_CUSTOM_ENDPOINTS_FILE", "TUNNEX_AI_CUSTOM_PROXY_LISTEN", "TUNNEX_AI_CUSTOM_PROXY_USERNAME", "TUNNEX_AI_CUSTOM_PROXY_PASSWORD"}
@@ -87,6 +91,7 @@ assert proxy["volumes"][0]["target"] == "/etc/tunnex/ai-custom-policy.json"
 assert proxy["build"]["dockerfile"] == custom["services"]["api"]["build"]["dockerfile"]
 for name in ("api", "bifrost"):
     assert custom["services"][name]["environment"]["TUNNEX_AI_CUSTOM_PROXY_URL"] == custom_env["TUNNEX_AI_CUSTOM_PROXY_URL"]
-api_policy = next(v for v in custom["services"]["api"]["volumes"] if v["target"] == "/etc/tunnex/ai-custom-policy.json")
-assert api_policy["read_only"] and api_policy["source"] == proxy["volumes"][0]["source"]
-print("PASS: custom Compose is private/opt-in; isolated proxy env/mount; same API build; shared CP/native proxy URL; inherited API healthcheck disabled")
+    assert custom["services"][name]["environment"]["TUNNEX_AI_CUSTOM_ENDPOINTS_FILE"] == "/etc/tunnex/ai-custom-policy.json"
+    policy = next(v for v in custom["services"][name]["volumes"] if v["target"] == "/etc/tunnex/ai-custom-policy.json")
+    assert policy["read_only"] and policy["source"] == proxy["volumes"][0]["source"]
+print("PASS: custom Compose is private/opt-in; scoped proxy env; protected service DNS reachable; same API build; shared CP/native/proxy read-only policy; engine network preserved")

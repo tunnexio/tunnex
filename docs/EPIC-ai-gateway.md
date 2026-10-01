@@ -23,19 +23,23 @@ short-lived, scoped Tunnex credential or an appropriate workload identity.
 
 Use Bifrost as a separate, private service with a narrow Tunnex identity adapter.
 Reuse its provider integrations, streaming, virtual keys, model restrictions,
-usage accounting and available budget/rate-limit enforcement. Do not fork it,
-rebuild vendor SDK adapters, or reproduce its administration dashboard for MVP.
+usage accounting and available budget/rate-limit enforcement. Keep extensions narrow and pinned to immutable upstream source; Tunnex supplies
+its own administration surface.
 
 Upstream describes OSS governance support, while enterprise RBAC/SSO are separate.
 Its repository root license is Apache-2.0. This is a planning input, not proof
 that every required capability exists in every release or deployment topology.
 AI-0 must verify the selected release, APIs, plugins and license boundaries.
 
-**Fallback:** evaluate LiteLLM only if Bifrost fails a concrete required fit test.
-LiteLLM is an established alternative with core MIT licensing and separate
-enterprise terms. Spend at most one additional engineer-day comparing the failed
-capability and integration effort; do not turn this into an open-ended gateway
-benchmark or adopt two engines for MVP.
+**Current architecture (2026-09-30):** Bifrost is the single AI runtime. Native
+extensions provide saved-key tests, draft tests, authenticated catalog discovery
+and scoped SageMaker execution. The legacy LiteLLM Python bridge/proxy is retired.
+Static model metadata/pricing is licensed data fetched during CI and baked into
+release artifacts; it does not establish live provider availability or billing.
+The hosted bootstrap includes the secure private engine without provider keys;
+organization AI access and provider configuration remain explicit. See
+[setup](AI-gateway-setup.md) and [catalog provenance](../apps/api/internal/aigateway/reference/README.md).
+
 
 | Concern | Single owner / implementation boundary |
 | --- | --- |

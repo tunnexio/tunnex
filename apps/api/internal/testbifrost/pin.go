@@ -2,12 +2,33 @@
 // It is not imported by product code. Unknown platforms deliberately have no pin.
 package testbifrost
 
-import "runtime"
+import (
+	"encoding/hex"
+	"os"
+	"runtime"
+	"strings"
+)
 
 // BinarySHA256 pins the selected v2.0.0 release artifact on this test platform.
 // Linux binaries were extracted from the exact OCI index shipped by Compose/Helm.
-var BinarySHA256 = map[string]string{
-	"darwin/arm64": "31ac451d83706069e580dd1dedf099aa518d1bc47c3c481d20f97203f799275e",
-	"linux/amd64":  "e3a59884140ed5ddb29f373c6c76f42de8d453dc150b996f8f834893b2bfed41",
-	"linux/arm64":  "85f21483ed660d8c50de5f4313a995cd8ba364de058d2d645966bf13d5ba9222",
-}[runtime.GOOS+"/"+runtime.GOARCH]
+var BinarySHA256 = binarySHA256()
+
+func binarySHA256() string {
+	// CI builds the Tunnex extensions from the immutable upstream source and
+	// supplies the hash of that exact local output. This override is confined
+	// to optional fixture tests; release verification never reads it.
+	if value, set := os.LookupEnv("AI0_BIFROST_BUILT_SHA256"); set {
+		if len(value) != 64 || value != strings.ToLower(value) {
+			return ""
+		}
+		if _, err := hex.DecodeString(value); err != nil {
+			return ""
+		}
+		return value
+	}
+	return map[string]string{
+		"darwin/arm64": "31ac451d83706069e580dd1dedf099aa518d1bc47c3c481d20f97203f799275e",
+		"linux/amd64":  "e3a59884140ed5ddb29f373c6c76f42de8d453dc150b996f8f834893b2bfed41",
+		"linux/arm64":  "85f21483ed660d8c50de5f4313a995cd8ba364de058d2d645966bf13d5ba9222",
+	}[runtime.GOOS+"/"+runtime.GOARCH]
+}

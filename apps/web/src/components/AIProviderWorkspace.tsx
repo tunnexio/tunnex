@@ -8,6 +8,7 @@ import { EntityPicker } from "./EntityPicker";
 import { ProviderLogo } from "./ProviderLogo";
 import { parseFoundryEndpoint } from "../lib/aiFoundryEndpoint";
 import { aiProbeFailure } from "../lib/aiProbeFailure";
+import { aiGatewayPrerequisite } from "../lib/aiGatewayPrerequisite";
 import { AIGroupAccess } from "./AIUserAccess";
 import { AIModelConnectionDetails } from "./AIModelConnectionDetails";
 type S = components["schemas"];
@@ -25,7 +26,7 @@ const modelModes: { value: ModelMode; label: string }[] = [
   { value: "rerank", label: "Rerank, /rerank" },
 ];
 const modeLabel = (mode: ModelMode) => modelModes.find((item) => item.value === mode)?.label ?? mode;
-// Display-only: native routing remains fixed by apps/ai-bridge/worker.py ORIGINS.
+// Display-only: native routing uses the private Bifrost provider adapters.
 const nativeAPIBase: Record<string, string> = {
   openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com",
   gemini: "https://generativelanguage.googleapis.com", openrouter: "https://openrouter.ai/api/v1",
@@ -34,10 +35,13 @@ const nativeAPIBase: Record<string, string> = {
 };
 const uniqueLines = (v: string) => [...new Set(v.split("\n").map((s) => s.trim()).filter(Boolean))];
 function endpointBase(value: string): string {
+  if (value.length > 2048 || /[%\\\s?#@]/.test(value)) return "";
   try {
     const url = new URL(value.trim());
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return "";
-    return `${url.origin}${url.pathname.replace(/\/+$/, "").replace(/\/v1$/, "")}`;
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.hostname.endsWith(".")) return "";
+    const path = url.pathname.replace(/\/+$/, "").replace(/\/v1$/, "");
+    if (path.includes("//") || path.split("/").some((part) => part === "v1") || /\/(?:\.|\.\.)(?:\/|$)/.test(value)) return "";
+    return `${url.origin}${path}`;
   } catch { return ""; }
 }
 type WorkspaceView = "connections" | "models" | "add";
@@ -76,8 +80,20 @@ function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewCha
     try {
       const r = await api.GET("/api/v1/organizations/{orgId}/ai-gateway/providers", { params: { path: { orgId } } });
       if (!alive.current || n !== serial.current) return;
-      if (r.error || !r.data) throw Error();
+      if (r.error || !r.data) {
+        if (r.response.status === 503) {
+          const settings = await api.GET("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId } } });
+          if (!alive.current || n !== serial.current) return;
+          if (settings.data && !settings.data.available) {
+            setInventory(null);
+            setError(aiGatewayPrerequisite(settings.data));
+            return;
+          }
+        }
+        throw Error();
+      }
       setInventory(r.data);
+      setError("");
     } catch { if (alive.current && n === serial.current) setError("Could not load provider connections. Retry to refresh authoritative state."); }
     finally { if (alive.current && n === serial.current) setLoading(false); }
   }
@@ -89,11 +105,11 @@ function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewCha
     try {
       const r = await call();
       if (!alive.current) return false;
-      if (r.error) {
-        setError(r.response.status === 409 ? "This connection changed or is referenced by a team policy or user group grant. Refresh and update those grants before removing models, changing their mode or deleting the connection." : "The operation could not be completed. Check the connection state; an uncertain key update requires entering the API key again.");
-      } else { setNotice(success); ok = true; }
+      const failure = r.error ? r.response.status === 409 ? "This connection changed or is referenced by a team policy or user group grant. Refresh and update those grants before removing models, changing their mode or deleting the connection." : "The operation could not be completed. Check the connection state; an uncertain key update requires entering the API key again." : "";
+      if (!r.error) { setNotice(success); ok = true; }
       await reload();
-    } catch { if (alive.current) { setError("Could not reach the API. Refresh to check saved state. Enter the API key again if an update did not finish."); await reload(); } }
+      if (alive.current && failure) setError(failure);
+    } catch { if (alive.current) { await reload(); if (alive.current) setError("Could not reach the API. Refresh to check saved state. Enter the API key again if an update did not finish."); } }
     finally { if (alive.current) setBusy(false); }
     return ok;
   }
@@ -140,7 +156,7 @@ function ProviderWorkspace({ orgId, canManage = true, view: routeView, onViewCha
   </div></div>;
   return <section className="ai-provider-workspace" aria-label="Models and endpoints">
     <header className="ai-inventory-toolbar"><h2>{view === "connections" ? "Credentials" : "Models"}<span className="ai-inventory-count">{inventory ? view === "connections" ? inventory.items.length : modelRows.length : ""}</span><HelpTooltip label="About models and credentials">Connect a provider, then grant access. Credentials can be reused across models.</HelpTooltip></h2><div className="ai-inventory-actions"><Button size="sm" disabled={loading || busy} onClick={() => { setError(""); void reload(); }}>Refresh</Button>{routeView && view !== "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => changeView("add")}>Add Model</Button>}{view === "connections" && <Button disabled={loading || busy || !canManage || !inventory?.management_available || !definitions.length} onClick={() => setEditing("new")}>Add Credentials</Button>}</div></header>
-    {error && !editing && view !== "add" && !removing && <p role="alert" className="ai-provider-alert">{error}</p>}
+    {error && !editing && !removing && <p role="alert" className="ai-provider-alert">{error}</p>}
     {notice && <p role="status" className="ai-provider-notice">{notice}</p>}
     {connectionModel && <Modal title="Connect to model" size="wide" onDismiss={() => setConnectionModel(null)} showClose actions={<Button onClick={() => setConnectionModel(null)}>Close</Button>}><Field label="Model"><select value={connectionModel} onChange={event => setConnectionModel(event.target.value)}>{[...new Set([connectionModel, ...(inventory?.items ?? []).flatMap(c => c.models)])].map(model => <option key={model} value={model}>{modelDisplayName(model)}</option>)}</select></Field><AIModelConnectionDetails key={connectionModel} orgId={orgId} model={connectionModel} mode={inventory?.items.find(c => c.models.includes(connectionModel))?.model_modes?.[connectionModel] ?? "chat"} /></Modal>}
     {loading && !inventory ? <p role="status">Loading provider connections…</p> : !inventory ? <Button onClick={() => { setError(""); void reload(); }}>Retry provider connections</Button> : <>
@@ -281,10 +297,8 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
   const validationIssues: string[] = [];
   if (!provider || !connection && !definition) validationIssues.push("Select a provider from the dropdown.");
   if (usesEndpoint && (!selectedEndpoint || !foundryFormatValid)) {
-    if (modelOnly && !endpointAvailable) validationIssues.push("Configure secure provider egress before testing this endpoint.");
-    else if (!selectedEndpoint) validationIssues.push("Enter a valid Upstream API Base.");
+    if (!selectedEndpoint) validationIssues.push("Enter a valid Upstream API Base.");
     else if (!foundryFormatValid) validationIssues.push("Use an Azure HTTPS URL ending /openai/v1 or /anthropic/v1/messages.");
-    else validationIssues.push("Configure network access for this endpoint, or use an available public HTTPS endpoint.");
   }
   if (modelOnly && provider === "azure_foundry" && !connection && foundryInput) {
     if (foundryInput.deployment && chosen[0] !== foundryInput.deployment) validationIssues.push(`The pasted URL targets deployment ${foundryInput.deployment}. Select it as the first model, or enter the resource base URL for your selected models.`);
@@ -311,11 +325,9 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
   useEffect(() => { if (!testedAt) return; const timer = window.setTimeout(() => { setTestStatus("idle"); setTestedAt(0); }, Math.max(0, testedAt + 300000 - Date.now())); return () => window.clearTimeout(timer); }, [testedAt]);
   const probeMode = chosen.length ? modelMode(chosen[0]) : mode;
   const needsTest = modelOnly;
-  const testBlockers = [...validationIssues,
-    ...(usesEndpoint && !endpointReady ? ["This endpoint needs network access configured before testing and activation."] : []),
-    ...(!testAvailable ? ["Test Connect requires installation setup of the private LiteLLM bridge."] : []),
-    ...(chosen.some(model => !supportedModes.includes(modelMode(model))) ? ["This installation does not support the selected model mode."] : []),
-    ...(connection && !secret && (!connection.enabled || connection.status !== "applied" || connection.revision !== connection.applied_revision) ? ["Enable these credentials and wait for them to finish applying before testing."] : [])];
+  // Capabilities and installation policy may have changed since inventory was
+  // loaded. A valid test request lets the API return the current setup verdict.
+  const testBlockers = validationIssues;
   const testHelpId = `${formId}-test-help`;
   const canSave = valid && (!needsTest || supportedModes.includes(probeMode)) && (!needsTest || testStatus === "success" && Date.now() - testedAt < 300000);
   async function testConnection() {
@@ -333,7 +345,7 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
           const r = await api.POST("/api/v1/organizations/{orgId}/ai-gateway/providers/test-connection", { params: { path: { orgId } }, body: { provider, model, mode: modelMode(selected), ...(connection && !secret ? { connection_id: connection.id, expected_revision: connection.revision } : { api_key: secret, ...(usesEndpoint ? { endpoint_url: selectedEndpoint } : {}) }) } });
           if (!active.current || generation !== testGeneration.current) return;
           const success = !r.error && r.response?.status === 200 && r.data?.status === "success";
-          const notice = aiProbeFailure(r.response?.status, r.data?.failure);
+          const notice = aiProbeFailure(r.response?.status, r.data?.failure, r.error?.error?.code);
           setModelResults(current => ({ ...current, [selected]: success ? "Passed" : notice.title + ". " + notice.description }));
           if (success && !testedAt) setTestedAt(Date.now());
           if (!success) { allPassed = false; setTestFailure(notice); if (r.response?.status === 429) break; }
@@ -350,13 +362,13 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
     } finally { if (active.current && generation === testGeneration.current) setTesting(false); }
   }
 
-  const nextAllowed = step === 0 ? Boolean((testAvailable || connection && !modelOnly) && provider && (definition || initialConnection)) : step === 1 ? (!usesEndpoint || !!selectedEndpoint && foundryFormatValid) && (connection && !secret || secretValid) && name.trim().length <= 80 : valid;
+  const nextAllowed = step === 0 ? Boolean(provider && (definition || initialConnection)) : step === 1 ? (!usesEndpoint || !!selectedEndpoint && foundryFormatValid) && (connection && !secret || secretValid) && name.trim().length <= 80 : valid;
   const dismiss = () => onCancel({ step, provider, endpoint, existingID, name, secret, models, enabled, mode, selectedModes, manualModel, query });
   const actions = <><Button variant="ghost" type="button" disabled={busy} onClick={dismiss}>Cancel</Button>{wizard && step > 0 && <Button type="button" disabled={busy || testing} onClick={() => setStep(step - 1)}>Back</Button>}{wizard && step < 3 ? <Button type="button" disabled={busy || !nextAllowed} onClick={() => setStep(step + 1)}>Next</Button> : <>{needsTest && <Button type="button" disabled={busy || testing || testBlockers.length > 0} aria-describedby={testBlockers.length ? testHelpId : undefined} onClick={() => void testConnection()}>{testing ? "Testing connection…" : "Test Connect"}</Button>}<Button form={formId} type="submit" disabled={busy || !canSave}>{modelOnly ? "Add Model" : connection ? "Save credentials" : "Create credentials"}</Button></>}</>;
   const editor = (
     <div className="ai-provider-workspace"><form id={formId} className="ai-provider-editor" aria-label={modelOnly ? "Add model" : connection ? "Edit credentials" : "Add credentials"} onSubmit={(event) => { event.preventDefault(); if (!canSave || busy || !provider || wizard && step !== 3) return; const body = { provider, ...(usesEndpoint ? { endpoint_url: selectedEndpoint } : {}), name: modelOnly && connection ? connection.name : savedName, models: finalModels, model_modes: Object.fromEntries(finalModels.map((model) => [model, modelMode(model)])), enabled: modelOnly && connection ? connection.enabled : enabled, ...(secret ? { api_key: secret } : {}) }; setSecret(""); void onSave(connection ? { ...body, expected_revision: connection.revision } : { ...body, api_key: secret }, connection); }}>
 
-    {modelOnly && !testAvailable && <p role="alert">Connection testing is not configured. Ask your administrator to enable the testing service before adding credentials.</p>}
+    {modelOnly && !testAvailable && <p role="status">The testing service may need installation setup. Test Connect will report its current availability.</p>}
     {wizard && <ol className="ai-wizard-steps" aria-label="Credential setup progress">{steps.map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined}><span>{index < step ? "✓" : index + 1}</span>{label}</li>)}</ol>}
     <div className="ai-wizard-section" hidden={wizard && step !== 0}>
 
@@ -370,10 +382,10 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
     {!(modelOnly && connection) && <>
     {usesEndpoint && (connection ? <><Field label="Upstream API Base"><Input readOnly value={connection.endpoint_url ?? ""} /></Field><p>The endpoint cannot be changed for this connection.</p></> : <div className="ai-provider-endpoint-entry">
       <Field label="Upstream API Base"><Input type="url" value={endpoint} maxLength={2048} onChange={(e) => { setEndpoint(e.target.value); setSecret(""); }} placeholder={provider === "azure_foundry" ? "https://resource.services.ai.azure.com/openai/v1" : "https://inference.example.com/v1"} autoComplete="off" spellCheck={false} /></Field>
-      <p>{provider === "azure_foundry" ? "Paste your Azure endpoint: /anthropic/v1/messages for Claude, or /openai/v1 for OpenAI-compatible deployments. Azure portal deployment URLs are also accepted." : provider === "sagemaker" ? "Enter your private LiteLLM bridge URL. AWS region, endpoint and IAM settings stay on that bridge; use its scoped gateway key." : "Enter an OpenAI-compatible API base URL. A trailing /v1 is optional."}</p>
+      <p>{provider === "azure_foundry" ? "Paste your Azure endpoint: /anthropic/v1/messages for Claude, or /openai/v1 for OpenAI-compatible deployments. Azure portal deployment URLs are also accepted." : provider === "sagemaker" ? "Enter the SageMaker binding URL supplied by your installation administrator and its scoped client key. AWS region, endpoint and IAM credentials stay on the private AI backend." : "Enter an OpenAI-compatible API base URL. A trailing /v1 is optional."}</p>
       {foundryInput?.legacy && <p role="status">Imported Azure deployment URL. The api-version query is replaced by v1 implicit versioning; the deployment name is sent as the model.</p>}
       {publicEndpointProvider && <HelpTooltip>Public HTTPS endpoints are checked automatically. Private/internal endpoints need configured network access.</HelpTooltip>}
-      {modelOnly && !endpointAvailable ? <p role="status">This endpoint may need private network access. Ask your administrator to configure connectivity before testing this model.</p> : endpoint.trim() && !enteredBase ? <p role="alert">{provider === "azure_foundry" ? "Enter an Azure resource URL or recognized deployment request URL. Only api-version is accepted on legacy deployment URLs; embedded credentials, fragments and other protocols are not supported." : "Enter an HTTP or HTTPS base URL without embedded credentials, query parameters or a fragment."}</p> : endpoint.trim() && !foundryFormatValid ? <p role="alert">Use an Azure HTTPS URL ending /openai/v1 or /anthropic/v1/messages.</p> : modelOnly && endpoint.trim() && !endpointApproved ? <p role="alert">This endpoint needs configured network access for this provider. Use a public HTTPS endpoint when available, or ask your installation administrator to configure private access.</p> : modelOnly && endpointApproved ? <p>Test request: <code>{selectedEndpoint.replace(/\/+$/, "")}/v1{anthropicEndpoint ? "/messages" : modeLabel(probeMode).split(", ")[1]}</code></p> : null}
+      {endpoint.trim() && !enteredBase ? <p role="alert">{provider === "azure_foundry" ? "Enter an Azure resource URL or recognized deployment request URL. Only api-version is accepted on legacy deployment URLs; embedded credentials, fragments and other protocols are not supported." : "Enter an HTTP or HTTPS base URL without embedded credentials, query parameters or a fragment."}</p> : endpoint.trim() && !foundryFormatValid ? <p role="alert">Use an Azure HTTPS URL ending /openai/v1 or /anthropic/v1/messages.</p> : modelOnly && endpoint.trim() && !endpointReady ? <p role="status">This endpoint may need installation network setup. Test Connect will report its current availability.</p> : modelOnly && endpointApproved ? <p>Test request: <code>{selectedEndpoint.replace(/\/+$/, "")}/v1{anthropicEndpoint ? "/messages" : modeLabel(probeMode).split(", ")[1]}</code></p> : null}
     </div>)}
     {!usesEndpoint && <><Field label="Upstream API Base"><Input readOnly disabled={!provider} value={provider ? nativeAPIBase[provider] ?? "" : ""} placeholder={provider ? "Standard provider endpoint" : "Select a provider to configure its API endpoint"} /></Field>{provider ? <div className="ai-provider-endpoint-help"><p>{providerLabel} uses this standard API endpoint. For a different OpenAI-compatible API URL, use Custom provider.</p>{!connection && definitions.some((d) => d.id === "custom") && <Button type="button" onClick={() => switchProvider("custom")}>Use custom endpoint</Button>}</div> : <p>Select a provider to configure its API endpoint.</p>}</>}
 
@@ -385,12 +397,12 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
     {!(modelOnly && connection) && <div className="ai-provider-access-toggle"><label className="ai-provider-enabled"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Enable this connection for authorized team policies</label><HelpTooltip label="About connection access">Organization AI access remains a separate default-off setting.</HelpTooltip></div>}
     </div>
     <div className="ai-wizard-section" hidden={!modelOnly || step !== 2}>
-    {usesEndpoint && !endpointReady && <p role="status">These credentials are saved. This endpoint needs network access configured before its models can be tested and activated.</p>}
+    {usesEndpoint && !endpointReady && <p role="status">This endpoint may need installation network setup. You can check it with Test Connect. Activation requires a successful test.</p>}
     <div className="ai-model-choice-heading"><strong>Models <span>{chosen.length}/32 selected</span></strong><HelpTooltip label="Selecting models">Select multiple models from the catalog. Your selections stay when searching or changing pages. Remove a selected chip to deselect it.</HelpTooltip></div>
     <div className="ai-provider-selected-models" aria-label="Selected models">{chosen.map((model) => <span key={model}><code title={model}>{modelDisplayName(model)}</code><button type="button" aria-label={`Remove model ${model}`} onClick={() => setModels(chosen.filter((m) => m !== model).join("\n"))}>×</button></span>)}</div>
     <Field label="Catalog mode" help={<HelpTooltip>Filter suggestions and set the default for newly added models. Each selected model has its own mode below. One credential can serve chat, images, embeddings and other supported operations.</HelpTooltip>}><select value={mode} onChange={(e) => changeMode(e.target.value as ModelMode)}>{modelModes.map((item) => <option key={item.value} value={item.value} disabled={!supportedModes.includes(item.value)}>{item.label.split(", ")[0]}{!supportedModes.includes(item.value) ? ", unavailable" : ""}</option>)}</select></Field>
     <div className="ai-provider-catalog ai-provider-model-dropdown" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setCatalogFocused(false); }} onKeyDown={(e) => { if (e.key === "Escape" && catalogOpen) { e.stopPropagation(); setCatalogOpen(false); setCatalogDismissed(true); } }}><div className="ai-provider-catalog-search"><Field label="Search model catalog"><Input value={query} maxLength={100} onFocus={() => { setCatalogFocused(true); setCatalogDismissed(false); if (catalog) setCatalogOpen(true); }} onChange={(e) => { setQuery(e.target.value); setCatalogDismissed(false); searchSerial.current++; setSearching(false); setCatalog(null); setCatalogError(""); }} placeholder="Search model name" /></Field></div>{searching && <p role="status">Searching models…</p>}{draftCatalog && !canSearch && <p>{usesEndpoint && !endpointReady ? "Enter a supported endpoint to search models. Public HTTPS endpoints are checked automatically when public egress is available; private endpoints need configured network access." : "Enter the provider API key to search models. No model selection is required."}</p>}{catalogError && <p role="alert">{catalogError}</p>}{catalogFocused && catalogOpen && catalog && <div className="ai-provider-model-options" onMouseDown={event => event.preventDefault()} role="region" aria-label="Model suggestions"><p>{draftCatalog ? "Provider catalog" : "Unverified catalog suggestions"}<HelpTooltip>Catalog entries do not confirm access or current availability. Each selected model must pass a connection test before saving. Select the operation you intend to use; unsupported model and operation combinations will fail validation.</HelpTooltip></p><p>{catalog.total} matching models · showing {catalog.items.length ? 1 : 0}–{catalog.items.length}</p><div className="ai-provider-catalog-items" onScroll={event => { const list = event.currentTarget; if (list.scrollHeight - list.scrollTop - list.clientHeight < 48 && !searching && catalog.offset + catalog.limit < catalog.total && catalog.offset + catalog.limit <= 10000) void search(catalog.offset + catalog.limit); }}>{catalog.items.map((m) => <label key={m.id} className={chosen.includes(m.id) ? "ai-model-option-selected" : undefined}><input type="checkbox" checked={chosen.includes(m.id)} disabled={!chosen.includes(m.id) && chosen.length >= 32} onChange={(e) => e.target.checked ? addModel(m.id) : setModels(chosen.filter((id) => id !== m.id).join("\n"))} /><span title={m.id}>{m.name}<small className="sr-only">{m.id}</small></span></label>)}</div><div className="ai-provider-form-actions"><Button type="button" onClick={() => { setCatalogOpen(false); setCatalogDismissed(true); }} aria-label="Done selecting models">Done ({chosen.length} selected)</Button></div></div>}</div>
-    <details className="ai-manual-disclosure"><summary>Model not listed? Add manually</summary><div className="ai-provider-manual-model"><Field label="Exact model name"><Input value={manualModel} maxLength={255} disabled={!provider} onChange={(e) => setManualModel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (validModel(manualModel.trim()) && !chosen.includes(manualModel.trim()) && finalModels.length < 32) { addModel(manualModel.trim()); setManualModel(""); } } }} placeholder={definition?.model_placeholder ?? "Select a provider first"} /></Field><Button type="button" disabled={!provider || !validModel(manualModel.trim()) || chosen.includes(manualModel.trim()) || finalModels.length >= 32} onClick={() => { addModel(manualModel.trim()); setManualModel(""); }}>Add exact model</Button></div></details><p className="ai-provider-model-help">{finalModels.length}/32 models. {provider === "sagemaker" ? "Use exact model aliases configured on the bridge; no wildcards." : "Exact API names only; no aliases or wildcards."}</p>
+    <details className="ai-manual-disclosure"><summary>Model not listed? Add manually</summary><div className="ai-provider-manual-model"><Field label="Exact model name"><Input value={manualModel} maxLength={255} disabled={!provider} onChange={(e) => setManualModel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (validModel(manualModel.trim()) && !chosen.includes(manualModel.trim()) && finalModels.length < 32) { addModel(manualModel.trim()); setManualModel(""); } } }} placeholder={definition?.model_placeholder ?? "Select a provider first"} /></Field><Button type="button" disabled={!provider || !validModel(manualModel.trim()) || chosen.includes(manualModel.trim()) || finalModels.length >= 32} onClick={() => { addModel(manualModel.trim()); setManualModel(""); }}>Add exact model</Button></div></details><p className="ai-provider-model-help">{finalModels.length}/32 models. {provider === "sagemaker" ? "Use exact model aliases configured for this SageMaker binding; no wildcards." : "Exact API names only; no aliases or wildcards."}</p>
 
     <div className="ai-provider-mappings"><span>Model mappings</span><div className="ai-provider-table-scroll"><table><caption className="sr-only">Model mapping preview</caption><thead><tr><th>Gateway model name</th><th>Upstream model name</th><th>Mode</th></tr></thead><tbody>{chosen.map((model) => {
       const prefix = connection ? `custom-${connection.id}/` : "";

@@ -1,7 +1,0 @@
-*
-!Dockerfile
-!requirements.txt
-!entrypoint.py
-!config.yaml
-!LICENSE.litellm
-!LICENSE.litellm-proxy-extras

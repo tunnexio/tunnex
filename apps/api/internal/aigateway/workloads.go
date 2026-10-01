@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,13 +35,27 @@ type Workloads struct {
 	lastMaintenance time.Time
 }
 
-func NewWorkloads(p *Policies, base string) (*Workloads, error) {
+type WorkloadOptions struct {
+	// This installation option is deliberately independent of caller IP,
+	// forwarding headers and tenant settings. The operator restricts the public
+	// endpoint to a trusted private network before enabling it.
+	AllowPrivateHTTP bool
+}
+
+func NewWorkloads(p *Policies, base string, options ...WorkloadOptions) (*Workloads, error) {
 	u, err := url.Parse(base)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 		return nil, errors.New("invalid workload public base URL")
 	}
+	if port := u.Port(); port != "" {
+		value, err := strconv.Atoi(port)
+		if err != nil || value < 1 || value > 65535 {
+			return nil, errors.New("invalid workload public base URL")
+		}
+	}
 	ip := net.ParseIP(u.Hostname())
-	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || ip != nil && ip.IsLoopback())) {
+	allowPrivateHTTP := len(options) == 1 && options[0].AllowPrivateHTTP
+	if u.Scheme != "https" && !(u.Scheme == "http" && (allowPrivateHTTP || u.Hostname() == "localhost" || ip != nil && ip.IsLoopback())) {
 		return nil, errors.New("workload public base URL requires HTTPS")
 	}
 	return &Workloads{policies: p, base: strings.TrimSuffix(base, "/"), recoverySince: time.Now()}, nil

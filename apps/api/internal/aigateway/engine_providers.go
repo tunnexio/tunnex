@@ -209,10 +209,10 @@ func (e *Engine) EnsureProvider(ctx context.Context, provider, baseURL string) e
 	}
 	if strings.HasPrefix(provider, "custom-") && !e.customConfigExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy) {
 		legacyOps := map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true}
-		if !e.customConfigOperationsExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy, legacyOps) {
+		if !e.customConfigOperationsExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy, legacyOps) && !e.legacySageMakerConfigExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy) {
 			return errEngineScope
 		}
-		// Only upgrade a verified old Tunnex chat configuration. Roundtrip existing
+		// Only upgrade a verified old Tunnex configuration. Roundtrip existing
 		// settings; the private API retains keys independently of this PUT payload.
 		update := map[string]json.RawMessage{}
 		for _, field := range []string{"network_config", "concurrency_and_buffer_size", "proxy_config", "send_back_raw_request", "send_back_raw_response", "store_raw_request_response", "openai_config"} {

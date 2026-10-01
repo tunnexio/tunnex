@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "schema_version": 1,
+    "repository": "https://github.com/BerriAI/litellm",
+    "commit": "eeb7732fc11fd47762ca84cc3fb7cc74235d7097",
+    "source_date": "2026-09-06T01:12:56Z",
+    "source_path": "model_prices_and_context_window.json",
+    "source_sha256": "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202",
+    "license_path": "LICENSE",
+    "license": "MIT",
+    "license_sha256": "b170d6bf8e8835dd357e011681db028f4d51e2fb0ea892058f56e01fb39b8273",
+    "source_entries": 3818,
+    "reference_entries": 969
+  },
+  "reference_entries": 969,
+  "native_pricing_entries": 949,
+  "native_parameter_entries": 954,
+  "artifacts": {
+    "model-catalog.json": "559ea3c917f636d60beb8fb5f9027df1078012a5abf019c43799c6e79ba78c4f",
+    "bifrost-pricing.json": "00529d5cbecd60f408f53ade4d0f6a18e15562b02b093db3da48cff7f0220e28",
+    "bifrost-model-parameters.json": "6b6ec551f48073711e57f1c609639014030391674478e74121c2037f93687d5f",
+    "LiteLLM-LICENSE": "b170d6bf8e8835dd357e011681db028f4d51e2fb0ea892058f56e01fb39b8273"
+  }
+}

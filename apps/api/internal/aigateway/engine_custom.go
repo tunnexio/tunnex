@@ -42,11 +42,11 @@ func (e *Engine) providerConfigPayload(provider, base string) (map[string]any, b
 	}
 	p["network_config"] = map[string]any{"base_url": base, "max_retries": 0, "allow_private_network": true, "insecure_skip_verify": false}
 	p["proxy_config"] = map[string]any{"type": "http", "url": "env.TUNNEX_AI_CUSTOM_PROXY_URL"}
-	p["custom_provider_config"] = map[string]any{"base_provider_type": customBaseProvider(base), "is_key_less": false, "allowed_requests": customOperations(base)}
+	p["custom_provider_config"] = map[string]any{"base_provider_type": e.customBaseProvider(base), "is_key_less": false, "allowed_requests": e.customOperations(base)}
 	return p, true
 }
 func (e *Engine) customConfigExact(base, actual string, private, insecure bool, headers map[string]string, custom, proxy json.RawMessage) bool {
-	return e.customConfigOperationsExact(base, actual, private, insecure, headers, custom, proxy, customOperations(base))
+	return e.customConfigOperationsExact(base, actual, private, insecure, headers, custom, proxy, e.customOperations(base))
 }
 func (e *Engine) customConfigOperationsExact(base, actual string, private, insecure bool, headers map[string]string, custom, proxy json.RawMessage, allowed map[string]bool) bool {
 	if e.customProxy == nil || actual != base || !private || insecure || len(headers) != 0 {
@@ -58,7 +58,7 @@ func (e *Engine) customConfigOperationsExact(base, actual string, private, insec
 		Allowed map[string]bool   `json:"allowed_requests"`
 		Paths   map[string]string `json:"request_path_overrides"`
 	}
-	if json.Unmarshal(custom, &c) != nil || c.Base != customBaseProvider(base) || c.Keyless || len(c.Paths) != 0 {
+	if json.Unmarshal(custom, &c) != nil || c.Base != e.customBaseProvider(base) || c.Keyless || len(c.Paths) != 0 {
 		return false
 	}
 	for k := range allowed {
@@ -123,4 +123,50 @@ func customOperations(base string) map[string]bool {
 		return map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true}
 	}
 	return qualifiedCustomOperations()
+}
+
+// ConfigureSageMakerEndpoints binds provider type only from installation policy.
+// A customer endpoint URL cannot select IAM credentials or an unregistered alias.
+func (e *Engine) ConfigureSageMakerEndpoints(endpoints []string) error {
+	next := map[string]bool{}
+	for _, raw := range endpoints {
+		normalized, err := aiegress.NormalizeEndpoint(raw)
+		if err != nil || normalized != raw {
+			return errEngineScope
+		}
+		next[raw] = true
+	}
+	e.sageMakerEndpoints = next
+	return nil
+}
+func (e *Engine) customBaseProvider(base string) string {
+	if e.sageMakerEndpoints[base] {
+		return "tnx-sagemaker"
+	}
+	return customBaseProvider(base)
+}
+
+func (e *Engine) customOperations(base string) map[string]bool {
+	if e.sageMakerEndpoints[base] {
+		return map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true}
+	}
+	return customOperations(base)
+}
+
+// The only permitted provider-type migration is a known, installation-bound
+// SageMaker endpoint previously using Tunnex's OpenAI bridge configuration.
+func (e *Engine) legacySageMakerConfigExact(base, actual string, private, insecure bool, headers map[string]string, custom, proxy json.RawMessage) bool {
+	if !e.sageMakerEndpoints[base] {
+		return false
+	}
+	var c map[string]json.RawMessage
+	if json.Unmarshal(custom, &c) != nil || string(c["base_provider_type"]) != `"openai"` {
+		return false
+	}
+	c["base_provider_type"] = json.RawMessage(`"tnx-sagemaker"`)
+	candidate, err := json.Marshal(c)
+	if err != nil {
+		return false
+	}
+	return e.customConfigOperationsExact(base, actual, private, insecure, headers, candidate, proxy, qualifiedCustomOperations()) || e.customConfigOperationsExact(base, actual, private, insecure, headers, candidate, proxy, map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true})
 }

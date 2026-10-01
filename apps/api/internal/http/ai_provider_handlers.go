@@ -53,7 +53,7 @@ func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersReq
 		customEndpoints = append(customEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
 	}
 	sageMakerAvailable := s.aiPolicies.SageMakerAvailable()
-	testAvailable := s.aiPolicies.LiteLLMBridgeAvailable()
+	testAvailable := s.aiPolicies.NativeProviderOperationsAvailable()
 	sageMakerEndpoints := []api.AICustomEndpoint{}
 	for _, endpoint := range s.aiPolicies.ApprovedSageMakerEndpoints() {
 		sageMakerEndpoints = append(sageMakerEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})

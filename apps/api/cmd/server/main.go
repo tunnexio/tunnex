@@ -494,15 +494,25 @@ func main() {
 				os.Exit(1)
 			}
 			aiPolicies.ConfigureCustomProviders(customPolicy)
+			sageMakerEndpoints := []string{}
+			for _, endpoint := range customPolicy.Endpoints {
+				if endpoint.Provider == "sagemaker" {
+					sageMakerEndpoints = append(sageMakerEndpoints, endpoint.URL)
+				}
+			}
+			if engine.ConfigureSageMakerEndpoints(sageMakerEndpoints) != nil {
+				logger.Error("ai_sagemaker_invalid_configuration")
+				os.Exit(1)
+			}
 		}
-		if cfg.AILiteLLMURL != "" || cfg.AILiteLLMAdminToken != "" {
-			if !cfg.AIProviderManagementEnabled || aiPolicies.ConfigureLiteLLMBridge(cfg.AILiteLLMURL, cfg.AILiteLLMAdminToken) != nil {
-				logger.Error("ai_litellm_invalid_configuration")
+		if cfg.AIProviderManagementEnabled {
+			if aiPolicies.ConfigureNativeProviderOperations() != nil {
+				logger.Error("ai_provider_operations_invalid_configuration")
 				os.Exit(1)
 			}
 		}
 		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
-		aiWorkloads, engineErr = aigateway.NewWorkloads(aiPolicies, cfg.AppBaseURL)
+		aiWorkloads, engineErr = aigateway.NewWorkloads(aiPolicies, cfg.AppBaseURL, aigateway.WorkloadOptions{AllowPrivateHTTP: cfg.AIAllowPrivateHTTP})
 		if engineErr != nil {
 			logger.Error("ai_workload_invalid_configuration")
 			os.Exit(1)
@@ -529,19 +539,21 @@ func main() {
 	ipsecStore.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
-		IPsecStatus:      ipsecStore,
-		IPsecRuntime:     ipsecStore,
-		IPsecEligibility: ipsecStore,
-		IPsecConnections: ipsecStore,
-		IPsecProviders:   ipsecStore,
-		IPsecSealer:      sealer,
-		IPsecSettings:    ipsec.NewSettingsStore(pool),
-		System:           systemQueries,
-		AICredentials:    aiCredentials,
-		AIWorkloads:      aiWorkloads,
-		AIPolicies:       aiPolicies,
-		AIAdapter:        aiAdapter,
-		AgentRuntimePool: pool,
+		IPsecStatus:        ipsecStore,
+		IPsecRuntime:       ipsecStore,
+		IPsecEligibility:   ipsecStore,
+		IPsecConnections:   ipsecStore,
+		IPsecProviders:     ipsecStore,
+		IPsecSealer:        sealer,
+		IPsecSettings:      ipsec.NewSettingsStore(pool),
+		System:             systemQueries,
+		AICredentials:      aiCredentials,
+		AIWorkloads:        aiWorkloads,
+		AIPolicies:         aiPolicies,
+		AIEngineInstalled:  cfg.AIBootstrapInstalled,
+		AIAllowPrivateHTTP: cfg.AIAllowPrivateHTTP,
+		AIAdapter:          aiAdapter,
+		AgentRuntimePool:   pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
 		}),

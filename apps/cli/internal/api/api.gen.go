@@ -44,6 +44,12 @@ const (
 	Float  AIEmbeddingRequestEncodingFormat = "float"
 )
 
+// Defines values for AIGatewaySettingsUnavailableReason.
+const (
+	EngineNotConfigured AIGatewaySettingsUnavailableReason = "engine_not_configured"
+	HttpsRequired       AIGatewaySettingsUnavailableReason = "https_required"
+)
+
 // Defines values for AIImageRequestN.
 const (
 	AIImageRequestNN1 AIImageRequestN = 1
@@ -1670,10 +1676,22 @@ type AIGatewayOptIn struct {
 // AIGatewaySettings defines model for AIGatewaySettings.
 type AIGatewaySettings struct {
 	// Available Server has the qualified private engine configuration.
-	Available bool  `json:"available"`
-	Enabled   bool  `json:"enabled"`
-	Revision  int64 `json:"revision"`
+	Available bool `json:"available"`
+	Enabled   bool `json:"enabled"`
+
+	// EngineInstalled The installation has prepared its bundled private AI backend. This does not certify runtime health.
+	EngineInstalled *bool `json:"engine_installed,omitempty"`
+
+	// PrivateHttpAllowed Explicit operator policy allows HTTP for an endpoint restricted to a trusted private or VPN network. Never inferred from a request or client address.
+	PrivateHttpAllowed *bool `json:"private_http_allowed,omitempty"`
+	Revision           int64 `json:"revision"`
+
+	// UnavailableReason Deployment prerequisite when AI is unavailable.
+	UnavailableReason *AIGatewaySettingsUnavailableReason `json:"unavailable_reason,omitempty"`
 }
+
+// AIGatewaySettingsUnavailableReason Deployment prerequisite when AI is unavailable.
+type AIGatewaySettingsUnavailableReason string
 
 // AIImageRequest defines model for AIImageRequest.
 type AIImageRequest struct {
@@ -6219,7 +6237,7 @@ type AiUserVideoGenerationParams struct {
 type ListAIProviderModelsParams struct {
 	Mode *AIModelMode `form:"mode,omitempty" json:"mode,omitempty"`
 
-	// ConnectionId Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint.
+	// ConnectionId Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint.
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
 	Query        *string             `form:"query,omitempty" json:"query,omitempty"`

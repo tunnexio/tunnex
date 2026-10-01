@@ -52,6 +52,7 @@ BACKUP_DUMP=
 BACKUP_MANIFEST=
 CURRENT_STAGE=
 TERMINAL_STATUS=false
+AI_SNAPSHOT_STOPPED=false
 usage() { echo "usage: upgrade.sh [--manifest FILE] [--public-key KEY] [--apply] [--airgap DIR] [--expected-source-sha SHA] [--expected-sequence N]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -94,6 +95,9 @@ write_status() {
 finish_upgrade() {
   _status=$?
   trap - EXIT INT TERM
+  if [ "$AI_SNAPSHOT_STOPPED" = true ]; then
+    compose start bifrost >/dev/null 2>&1 || true
+  fi
   rm -rf "$TMPDIR"
   if [ "$_status" -ne 0 ] && [ "$APPLY" = true ] && [ "$TERMINAL_STATUS" = false ]; then
     case "$CURRENT_STAGE" in
@@ -221,6 +225,12 @@ mkdir -p "$BACKUP_DIR"
 chmod 0700 "$BACKUP_DIR"
 BACKUP_STAMP=$(date -u '+%Y%m%dT%H%M%SZ')
 BACKUP_BASE="tunnex-${BACKUP_STAMP}-${REQUEST_ID}"
+_backup_base=$BACKUP_BASE
+_backup_suffix=0
+while [ -e "$BACKUP_DIR/${BACKUP_BASE}.dump" ] || [ -e "$BACKUP_DIR/${BACKUP_BASE}.ai.tar.gz" ]; do
+  _backup_suffix=$((_backup_suffix + 1))
+  BACKUP_BASE="${_backup_base}-${_backup_suffix}"
+done
 BACKUP_DUMP="$BACKUP_DIR/${BACKUP_BASE}.dump"
 BACKUP_MANIFEST="$BACKUP_DIR/${BACKUP_BASE}.manifest.json"
 write_status backing_up
@@ -274,6 +284,7 @@ write_status preflight
 compose exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight
 set_dotenv() {
   _key=$1 _value=$2 _tmp="$ENV_FILE.next"
+  umask 077
   # Values originate in a verified descriptor. Reject newlines anyway: dotenv is
   # operator input on every subsequent run and must never become shell syntax.
   case "$_value" in *'\n'*|*'\r'*) echo "error: invalid verified release value" >&2; exit 13;; esac
@@ -338,6 +349,76 @@ if [ "$(dotenv_value TUNNEX_DATABASE_MODE)" = external ]; then
     echo 'error: upgrade blocked; target release does not support the existing external database' >&2; exit 13;
   }
 fi
+AI_BUNDLED=false
+if grep -Fq '${TUNNEX_AI_ENGINE_IMAGE:' "$TMPDIR/tunnex.yml"; then
+  AI_BUNDLED=true
+  AI_IMAGE_PIN=$(printf '%s\n' "$RELEASE_ENV" | sed -n 's/^TUNNEX_AI_ENGINE_IMAGE=//p' | head -1)
+  if [ -z "$AI_IMAGE_PIN" ]; then
+    # Older installed verifiers authenticate the descriptor's extra images but
+    # do not export their pins. Run the already-verified target API by digest;
+    # never extract a runnable engine image from unverified JSON.
+    _ai_verifier_image=$(release_value TUNNEX_API_IMAGE)
+    docker pull "$_ai_verifier_image"
+    chmod 0644 "$MANIFEST"
+    RELEASE_ENV=$(docker run --rm --entrypoint releaseverify \
+      -v "$MANIFEST:/tmp/release.json:ro" "$_ai_verifier_image" \
+      -manifest /tmp/release.json -public-key "$PUBLIC_KEY" \
+      -expected-source-sha "$SOURCE_SHA" -print-env) || {
+      echo 'error: update blocked; target release verification failed' >&2
+      exit 13
+    }
+    [ "$(release_value TUNNEX_API_IMAGE)" = "$_ai_verifier_image" ] || {
+      echo 'error: update blocked; target verifier image did not match the verified release' >&2
+      exit 13
+    }
+    AI_IMAGE_PIN=$(release_value TUNNEX_AI_ENGINE_IMAGE)
+  fi
+  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/ai-bootstrap.sh" -o "$TMPDIR/ai-bootstrap.sh" || {
+    echo 'error: could not fetch the signed-source AI bootstrap helper' >&2; exit 13;
+  }
+  sh -n "$TMPDIR/ai-bootstrap.sh"
+  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/ai-gateway/config-managed.json" -o "$TMPDIR/ai-engine.json" || {
+    echo 'error: could not fetch the signed-source managed AI configuration' >&2; exit 13;
+  }
+  AI_ENV_FILE=$ENV_FILE
+  AI_COMPOSE_PROJECT=${PROJECT:-tunnex}
+  ai_fail() { echo "error: update blocked; $*" >&2; exit 13; }
+  ai_docker() { docker "$@"; }
+  . "$TMPDIR/ai-bootstrap.sh"
+  ai_validate_existing
+  if [ -f "$DIR/ai-engine.json" ] && grep -Eq '"providers"[[:space:]]*:' "$DIR/ai-engine.json"; then
+    ai_fail 'Existing file-managed AI configuration requires a reviewed migration; it was preserved.'
+  fi
+  if [ "$(dotenv_value TUNNEX_AI_BOOTSTRAP_VERSION)" = 1 ]; then
+    # SQLite config/log volumes need a consistent snapshot, together with the
+    # matching durable key. Preserve the old engine image for immediate restart.
+    _ai_backup_image=$(dotenv_value TUNNEX_AI_ENGINE_IMAGE)
+    [ -n "$_ai_backup_image" ] || ai_fail 'Existing AI storage has no recorded engine image.'
+    for _ai_volume in ai_engine_config ai_engine_logs; do
+      docker volume inspect "${AI_COMPOSE_PROJECT}_${_ai_volume}" >/dev/null || ai_fail 'Recorded AI storage is missing; restore it before upgrading.'
+    done
+    compose stop bifrost
+    AI_SNAPSHOT_STOPPED=true
+    _ai_snapshot="$BACKUP_DIR/${BACKUP_BASE}.ai.tar.gz"
+    _ai_policy_backup="$BACKUP_DIR/${BACKUP_BASE}.ai-egress-policy.json"
+    if ! docker run --rm --network none --user 0 --entrypoint sh \
+      -v "${AI_COMPOSE_PROJECT}_ai_engine_config:/snapshot/config:ro" \
+      -v "${AI_COMPOSE_PROJECT}_ai_engine_logs:/snapshot/logs:ro" \
+      "$_ai_backup_image" -c 'tar -czf - -C /snapshot config logs' >"$_ai_snapshot" ||
+      [ ! -s "$_ai_snapshot" ] ||
+      ! cp "$ENV_FILE" "$BACKUP_DIR/${BACKUP_BASE}.ai.env" ||
+      ! cp "$DIR/ai-engine.json" "$BACKUP_DIR/${BACKUP_BASE}.ai-engine.json" ||
+      { [ -f "$_ai_policy_file" ] && ! cp "$_ai_policy_file" "$_ai_policy_backup"; }; then
+      compose start bifrost
+      AI_SNAPSHOT_STOPPED=false
+      ai_fail 'AI storage snapshot failed; the original engine was restarted.'
+    fi
+    chmod 0600 "$_ai_snapshot" "$BACKUP_DIR/${BACKUP_BASE}.ai.env" "$BACKUP_DIR/${BACKUP_BASE}.ai-engine.json"
+    [ ! -f "$_ai_policy_backup" ] || chmod 0600 "$_ai_policy_backup"
+    compose start bifrost
+    AI_SNAPSHOT_STOPPED=false
+  fi
+fi
 if [ "${TUNNEX_UPGRADE_PRIVILEGED:-}" = 1 ]; then
   curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/upgrade.sh" -o "$TMPDIR/upgrade.sh" || {
     echo "error: could not fetch the verified host upgrade helper" >&2; exit 13;
@@ -382,6 +463,18 @@ mv "$TMPDIR/release.json" "$DIR/release.json"
 # able to verify this read-only bind mount at every boot.
 chmod 0644 "$DIR/release.json"
 ensure_edge_config
+if [ "$AI_BUNDLED" = true ]; then
+  mv "$TMPDIR/ai-bootstrap.sh" "$DIR/ai-bootstrap.sh"
+  [ -f "$DIR/ai-engine.json" ] || mv "$TMPDIR/ai-engine.json" "$DIR/ai-engine.json"
+  chmod 0644 "$DIR/ai-engine.json" "$DIR/ai-bootstrap.sh"
+  ai_set_env() { set_dotenv "$@"; }
+  ai_prepare_config
+  if [ -z "$(ai_env_value TUNNEX_AI_GATEWAY_URL)" ]; then
+    echo 'Private AI backend installed; AI configuration and access remain off until a real HTTPS public URL is configured.'
+  elif [ "$(ai_env_value TUNNEX_AI_ALLOW_PRIVATE_HTTP)" = true ]; then
+    echo 'Private HTTP AI is enabled by operator policy; keep the real control-plane endpoint private/VPN-only and network restrictions verified.'
+  fi
+fi
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
 compose pull
 write_status restarting

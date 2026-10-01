@@ -114,6 +114,12 @@ func Verify(s SignedManifest, publicKey ed25519.PublicKey) error {
 			return fmt.Errorf("release manifest image %q is missing a valid amd64/arm64 digest", name)
 		}
 	}
+	// Older signed releases predate the bundled AI engine. If present, the
+	// additional image must bind both supported architectures just like the
+	// mandatory control-plane images.
+	if image, ok := s.Manifest.Images["ai-engine"]; ok && (!validDigest(image.AMD64Digest) || !validDigest(image.ARM64Digest)) {
+		return errors.New("release manifest image \"ai-engine\" is missing a valid amd64/arm64 digest")
+	}
 	if err := VerifyManagedAgentRuntime(s.Manifest.ManagedAgentRuntime, s.Manifest.Version, s.Manifest.SourceSHA); err != nil {
 		return err
 	}
@@ -160,7 +166,11 @@ func verifyRuntimeAsset(kind string, asset RuntimeAsset, wantName, sourceSHA str
 }
 
 func validDigest(v string) bool {
-	return strings.HasPrefix(v, "sha256:") && len(v) == len("sha256:")+64
+	if !strings.HasPrefix(v, "sha256:") || len(v) != len("sha256:")+64 || strings.ToLower(v) != v {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(v, "sha256:"))
+	return err == nil
 }
 
 func Load(path, encodedPublicKey string) (SignedManifest, error) {

@@ -1,27 +1,10 @@
 package aigateway
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 )
-
-func TestFoundryReferenceSnapshotProvenance(t *testing.T) {
-	var snapshot referenceSnapshot
-	if err := json.Unmarshal(foundryReferenceJSON, &snapshot); err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.SourceCommit != "eeb7732fc11fd47762ca84cc3fb7cc74235d7097" || snapshot.SourceSHA256 != "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202" || snapshot.SourcePath != "model_prices_and_context_window.json" || len(snapshot.Entries) != 351 {
-		t.Fatal("snapshot provenance changed without qualification")
-	}
-	sum := sha256.Sum256(foundryReferenceJSON)
-	if hex.EncodeToString(sum[:]) != "522e2790c78a318bf165b90965afc516d4c91d44a5b3c1f478bd6afe0bfbafdf" {
-		t.Fatal("derived source changed: review source pin and metadata")
-	}
-}
 
 func TestFoundryReferenceSearchAndPagination(t *testing.T) {
 	page, err := FoundryReferenceModels("GPT-5", 100, 0)
@@ -159,14 +142,7 @@ func TestProviderReferenceModeCatalog(t *testing.T) {
 	if _, err := ProviderReferenceModels("custom", ModeEmbedding, "", 100, 0); err == nil {
 		t.Fatal("custom incorrectly used public catalog")
 	}
-	var snapshot referenceSnapshot
-	if json.Unmarshal(providerReferenceJSON, &snapshot) != nil || len(snapshot.Entries) != 668 || snapshot.SourceSHA256 != "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202" {
-		t.Fatal("provider provenance")
-	}
-	sum := sha256.Sum256(providerReferenceJSON)
-	if hex.EncodeToString(sum[:]) != "feb5ba6b8c8148539450cfb5edbbef21ff0e404c51bd8896b27e587230c8b55d" {
-		t.Fatal("provider snapshot drift")
-	}
+
 }
 func TestFoundryReferenceSelectedMode(t *testing.T) {
 	for _, mode := range []ModelMode{ModeEmbedding, ModeImageGeneration, ModeAudioSpeech, ModeAudioTranscription} {

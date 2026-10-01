@@ -1,0 +1,32 @@
+{{- if .Values.aiGateway.sagemaker.enabled }}
+{{- $cfg := .Values.aiGateway.sagemaker }}
+{{- if not (and .Values.aiGateway.enabled .Values.aiGateway.providerManagementEnabled .Values.aiGateway.customProviders.enabled) }}{{ fail "sagemaker requires the native AI gateway, provider management and endpoint egress policy" }}{{ end }}
+{{- $secret := required "sagemaker.existingSecret is required" $cfg.existingSecret }}
+{{- if and (not $cfg.endpoints) (not (and $cfg.endpointURL $cfg.models $cfg.clients)) }}{{ fail "sagemaker requires an explicit endpoint and scoped model/client bindings" }}{{ end }}
+{{- $groups := concat (list (dict "url" $cfg.endpointURL "models" $cfg.models "clients" $cfg.clients)) $cfg.endpoints }}
+{{- $envs := dict }}
+{{- range $group := $groups }}
+{{- if or $group.models $group.clients }}
+{{- if not (and $group.url $group.models $group.clients) }}{{ fail "SageMaker endpoint groups require url, models and clients" }}{{ end }}
+{{- if not (regexMatch "^https://[^[:space:]@?#]+$" $group.url) }}{{ fail "SageMaker endpoint URL must be explicit HTTPS without userinfo/query/fragment" }}{{ end }}
+{{- range $model := $group.models }}
+{{- range $field := list "access_key_id_env" "secret_access_key_env" "session_token_env" }}
+{{- with index $model $field }}{{- $_ := set $envs . true }}{{- end }}
+{{- end }}
+{{- end }}
+{{- range $client := $group.clients }}{{- $_ := set $envs $client.key_env true }}{{- end }}
+{{- end }}
+{{- end }}
+{{- range $env, $_ := $envs }}
+{{- if or (not (regexMatch "^[A-Z][A-Z0-9_]{0,127}$" $env)) (hasPrefix "TUNNEX_" $env) }}{{ fail "SageMaker secret references must be uppercase non-TUNNEX environment names" }}{{ end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tunnex-cp.fullname" . }}-ai-sagemaker
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- dict "endpoint_url" $cfg.endpointURL "models" $cfg.models "clients" $cfg.clients "endpoints" $cfg.endpoints | toJson | nindent 4 }}
+{{- end }}

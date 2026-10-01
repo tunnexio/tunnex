@@ -106,6 +106,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Reproduce the pinned release model catalog and pricing
+        run: |
+          node --test scripts/ai-model-catalog.test.mjs
+          node scripts/ai-model-catalog.mjs --fetch --check
+      - name: Hosted automatic AI backend contract
+        run: python3 deploy/hosted-ai-compose_contract_test.py
+
       - name: Digest-pinned AI VPN overlay contract
         run: python3 -B -m unittest discover -s deploy/ai-vpn -p 'test_*.py' -v
 
@@ -127,6 +137,9 @@ jobs:
       - name: Signed update catalog contract
         run: sh deploy/signed-main-release-contract_test.sh
 
+      - name: Public installer release promotion contract
+        run: ruby deploy/verify-installer-site_test.rb
+
       - name: Draft release source-ref lifecycle regression
         run: bash deploy/release-source-ref-contract_test.sh
 
@@ -137,6 +150,11 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.18.4
+
+      - name: Native AI Helm isolation and scoped SageMaker contracts
+        run: |
+          ruby deploy/ai-gateway/verify-helm.rb
+          ruby deploy/helm/tunnex-cp/tests/verify-ai-sagemaker.rb
 
       - name: Kubernetes HA deployment gate contract
         run: sh deploy/k8s-ha-deployment-gate-contract_test.sh
@@ -156,6 +174,8 @@ jobs:
         run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
       - name: Native image publication contracts
         run: ruby deploy/native-image-publication_test.rb
+      - name: Draft release publication permissions contract
+        run: ruby deploy/release-draft-permissions_test.rb
       - name: CI aggregation and wiring contracts
         run: node --test deploy/ci-gates_test.mjs deploy/test-api-edition_test.mjs deploy/pull-ci-services_test.mjs
 
@@ -591,7 +611,8 @@ jobs:
               "${GITHUB_REPOSITORY}-nginx" \
               "${GITHUB_REPOSITORY}-node-agent" \
               "${GITHUB_REPOSITORY}-migrate" \
-              "${GITHUB_REPOSITORY}-operator"; do
+              "${GITHUB_REPOSITORY}-operator" \
+              "${GITHUB_REPOSITORY}-ai-engine"; do
               if registry_ref_exists "$repo" "$IMAGE_TAG"; then
                 echo "::error::GHCR already contains ${repo}:${IMAGE_TAG} but its release/source ledger is absent; the immutable ref is burned and must not be overwritten"
                 exit 1
@@ -865,6 +886,111 @@ jobs:
             type=gha,scope=operator
           cache-to: type=gha,mode=max,scope=operator-pr-${{ matrix.arch }},timeout=2m,ignore-error=true
 
+  # Compile the pinned CGO engine and run zero-spend native extension tests on
+  # each real CPU; no QEMU build or unpaid-test requirement is deferred to install.
+  ai-native:
+    name: Native AI engine ${{ matrix.arch }}
+    needs: [release-version-guard, gates, e2e, e2e-enterprise]
+    if: >-
+      !cancelled() &&
+      needs.gates.result == 'success' &&
+      needs.e2e.result == 'success' &&
+      needs.e2e-enterprise.result == 'success' &&
+      (github.event_name == 'pull_request' ||
+       (vars.TUNNEX_RELEASE_PUBLISH_ENABLED == 'true' &&
+        github.event_name == 'push' &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+        needs.release-version-guard.result == 'success'))
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04, machine: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, machine: aarch64 }
+    steps:
+      - name: Revalidate release source ledger immediately before image publication
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/v*) RELEASE_TAG="$GITHUB_REF_NAME" ;;
+            refs/heads/main) RELEASE_TAG="tunnex-build-${GITHUB_SHA}" ;;
+            *) exit 1 ;;
+          esac
+          CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+          if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing image publication"
+            exit 1
+          fi
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
+          ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::release source ledger changed before image publication"
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify native architecture
+        env:
+          EXPECTED_MACHINE: ${{ matrix.machine }}
+        run: test "$(uname -m)" = "$EXPECTED_MACHINE"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ghcr.io/${{ github.repository }}-ai-engine
+          # A version tag must not roll the main-tracking `latest` tag backward.
+          # `latest` is emitted only by the explicit default-branch raw rule.
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-,enable={{is_default_branch}}
+            type=ref,event=tag
+      - name: Build native ai-engine
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: apps/ai-engine/Dockerfile
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }}-ai-engine,push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
+          build-args: VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          cache-from: type=gha,scope=ai-engine-native-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ai-engine-native-${{ matrix.arch }},timeout=2m,ignore-error=true
+      - name: Save exact image digest
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          mkdir -p "$RUNNER_TEMP/ai-digests"
+          touch "$RUNNER_TEMP/ai-digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'push'
+        with:
+          name: ai-digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/ai-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     name: publish ${{ matrix.image.name }} — amd64 + arm64 (timeout 20m)
     if: >-
@@ -872,11 +998,12 @@ jobs:
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.node-native.result == 'success' &&
+      needs.ai-native.result == 'success' &&
       needs.release-version-guard.result == 'success' &&
       needs.gates.result == 'success' &&
       needs.e2e.result == 'success' &&
       needs.e2e-enterprise.result == 'success'
-    needs: [release-version-guard, gates, e2e, e2e-enterprise, node-native]
+    needs: [release-version-guard, gates, e2e, e2e-enterprise, node-native, ai-native]
     runs-on: ubuntu-latest
     timeout-minutes: 20 # node-agent is assembled from native builds; other image budgets unchanged
     permissions:
@@ -896,6 +1023,7 @@ jobs:
           - { name: node-agent, dockerfile: deploy/docker/node.Dockerfile, context: . }
           - { name: migrate, dockerfile: deploy/docker/migrate.Dockerfile, context: . }
           - { name: operator, dockerfile: apps/operator/Dockerfile, context: apps/operator }
+          - { name: ai-engine, dockerfile: apps/ai-engine/Dockerfile, context: . }
     steps:
       - name: Revalidate release source ledger immediately before image publication
         env:
@@ -923,7 +1051,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - if: matrix.image.name != 'node-agent'
+      - if: matrix.image.name != 'node-agent' && matrix.image.name != 'ai-engine'
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3 # arm64 emulation for the multi-arch build
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -943,7 +1071,7 @@ jobs:
             type=sha,format=short,prefix=sha-,enable={{is_default_branch}}
             type=ref,event=tag
       - name: Build + push ${{ matrix.image.name }} for both architectures
-        if: matrix.image.name != 'node-agent'
+        if: matrix.image.name != 'node-agent' && matrix.image.name != 'ai-engine'
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -972,11 +1100,24 @@ jobs:
           IMAGE: ghcr.io/${{ github.repository }}-node-agent
           TAGS: ${{ steps.meta.outputs.tags }}
         run: bash deploy/publish-node-index.sh "$RUNNER_TEMP/node-digests"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.image.name == 'ai-engine'
+        with:
+          pattern: ai-digest-*
+          path: ${{ runner.temp }}/ai-digests
+          merge-multiple: true
+      - name: Publish native AI engine index
+        if: matrix.image.name == 'ai-engine'
+        id: ai-index
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}-ai-engine
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: bash deploy/publish-node-index.sh "$RUNNER_TEMP/ai-digests"
       - name: Attest ${{ matrix.image.name }} image provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ghcr.io/${{ github.repository }}-${{ matrix.image.name }}
-          subject-digest: ${{ steps.node-index.outputs.digest || steps.build.outputs.digest }}
+          subject-digest: ${{ steps.node-index.outputs.digest || steps.ai-index.outputs.digest || steps.build.outputs.digest }}
           push-to-registry: true
 
   # Keep the separately hosted installer site aligned with this repository's
@@ -1014,7 +1155,7 @@ jobs:
           # publishes only the version (`v0.1.2`) because is_default_branch is false on a tag ref.
           # Checking a fixed list would have
           # red-flagged every release build for a tag that was never pushed.
-          IMAGES="api web nginx node-agent migrate operator"
+          IMAGES="api web nginx node-agent migrate operator ai-engine"
           case "$GITHUB_REF" in
             refs/tags/*) TAGS="${GITHUB_REF#refs/tags/}" ;;
             *)           TAGS="latest sha-${GITHUB_SHA::7}" ;;
@@ -1292,6 +1433,7 @@ jobs:
           node_amd64=$(digest "${image_prefix}-node-agent" amd64); node_arm64=$(digest "${image_prefix}-node-agent" arm64)
           migrate_amd64=$(digest "${image_prefix}-migrate" amd64); migrate_arm64=$(digest "${image_prefix}-migrate" arm64)
           operator_amd64=$(digest "${image_prefix}-operator" amd64); operator_arm64=$(digest "${image_prefix}-operator" arm64)
+          ai_amd64=$(digest "${image_prefix}-ai-engine" amd64); ai_arm64=$(digest "${image_prefix}-ai-engine" arm64)
           jq -n \
             --argjson sequence "$RUN_NUMBER" --arg version "$RELEASE_VERSION" --arg source_sha "$SOURCE_SHA" \
             --arg published_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -1300,9 +1442,10 @@ jobs:
             --arg nginx_amd64 "$nginx_amd64" --arg nginx_arm64 "$nginx_arm64" --arg node_amd64 "$node_amd64" --arg node_arm64 "$node_arm64" \
             --arg migrate_amd64 "$migrate_amd64" --arg migrate_arm64 "$migrate_arm64" \
             --arg operator_amd64 "$operator_amd64" --arg operator_arm64 "$operator_arm64" \
+            --arg ai_amd64 "$ai_amd64" --arg ai_arm64 "$ai_arm64" \
             --arg runtime_amd64_sha "$runtime_amd64_sha" --arg runtime_arm64_sha "$runtime_arm64_sha" \
             --arg runtime_unit_sha "$runtime_unit_sha" \
-            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
+            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64},"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256
@@ -1401,6 +1544,11 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" \
             "$amd64" "$arm64" "$unit" runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS --clobber
+      # Dispatch starts a separate reviewed sync and deploy. A tagged release
+      # becomes latest only after both public launchers serve this source.
+      - name: Verify deployed platform installers before tagged release promotion
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: sh deploy/verify-installer-site.sh "$GITHUB_SHA"
       - name: Publish only the completed source-ledger release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

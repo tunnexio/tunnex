@@ -81,7 +81,12 @@ services:
       TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256: ${TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256:-}
 # bundled-db
 YAML
+	if [ "${TUNNEX_TEST_AI:-}" = 1 ]; then
+		printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?set by signed release verification}' >>"$out"
+	fi
 	;;
+*/deploy/ai-bootstrap.sh) cp "$TUNNEX_TEST_SOURCE_ROOT/deploy/ai-bootstrap.sh" "$out" ;;
+*/deploy/ai-gateway/config-managed.json) cp "$TUNNEX_TEST_SOURCE_ROOT/deploy/ai-gateway/config-managed.json" "$out" ;;
 */deploy/upgrade.sh)
 	printf '#!/bin/sh\nexit 0\n' >"$out"
 	;;
@@ -116,6 +121,12 @@ TUNNEX_RELEASE_SEQUENCE=99
 TUNNEX_RELEASE_VERSION=v9.9.9
 TUNNEX_RELEASE_SOURCE_SHA=0123456789abcdef0123456789abcdef01234567
 ENV
+	if [ "${TUNNEX_TEST_AI:-}" = 1 ] && [ "${TUNNEX_TEST_AI_PIN_MISSING:-}" != 1 ]; then
+		printf '%s\n' 'TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	fi
+	;;
+volume)
+	if [ "${TUNNEX_TEST_AI_EXISTING_VOLUME:-}" = 1 ]; then printf '%s\n' retained-ai-engine-config; fi
 	;;
 compose)
 	case "${2:-}" in
@@ -712,5 +723,236 @@ PATH="$ROOT_BIN:$SYSTEM_BIN" sh "$TMP/root-socket-test.sh" ||
 	fail 'root-only Docker socket was not handled for the current install'
 [ ! -e "$TMP/root-socket-tried-to-start-docker" ] ||
 	fail 'usable root-only Docker socket was mistaken for a stopped daemon'
+
+# Execute the actual installer against a release declaring the bundled engine.
+# The fixture's verifier emits the signed pin; no key or inference is provided.
+run_ai_install() {
+	PATH="$TEST_PATH" TUNNEX_TEST_BIN="$BIN" TUNNEX_TEST_APT_LOG="$APT_LOG" \
+	TUNNEX_TEST_AI=1 TUNNEX_TEST_SOURCE_ROOT="$ROOT" TUNNEX_OS_RELEASE_FILE="$TMP/os-release" \
+	TUNNEX_VERSION=v9.9.9 TUNNEX_SOURCE_REF="$SOURCE_SHA" \
+	TUNNEX_PUBLIC_BASE_URL="$2" TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test \
+	TUNNEX_SMTP=skip TUNNEX_DIR="$1" sh "$INSTALLER" --yes
+}
+(TUNNEX_COMPOSE_PROJECT=custom-ai-project run_ai_install "$TMP/ai-https" https://preview.tunnex.test) >"$TMP/ai-https-output"
+grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-https/.env" || fail 'HTTPS bootstrap did not integrate its private backend'
+grep -qx 'TUNNEX_AI_BOOTSTRAP_VERSION=1' "$TMP/ai-https/.env" || fail 'AI bootstrap provenance was not recorded'
+grep -qx 'TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$TMP/ai-https/.env" || fail 'AI image did not use the verified pin'
+[ -f "$TMP/ai-https/ai-engine.json" ] && [ -f "$TMP/ai-https/ai-bootstrap.sh" ] || fail 'AI configuration was not installed'
+"$PYTHON3" -c 'import os, stat, sys; assert stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o600' "$TMP/ai-https/.env" || fail 'AI credentials were not owner-only'
+! grep -Eq '"providers"[[:space:]]*:' "$TMP/ai-https/ai-engine.json" || fail 'bootstrap seeded provider credentials'
+for key in TUNNEX_AI_GATEWAY_ADMIN_USER TUNNEX_AI_GATEWAY_ADMIN_PASSWORD TUNNEX_AI_ENGINE_ENCRYPTION_KEY TUNNEX_AI_CUSTOM_PROXY_USERNAME TUNNEX_AI_CUSTOM_PROXY_PASSWORD; do
+	[ "$(grep -c "^$key=" "$TMP/ai-https/.env")" -eq 1 ] || fail 'AI credentials were duplicated'
+	value=$(sed -n "s/^$key=//p" "$TMP/ai-https/.env")
+	[ -n "$value" ] || fail 'AI credential generation was empty'
+	! grep -Fq "$value" "$TMP/ai-https-output" || fail 'AI bootstrap printed a private credential'
+done
+"$PYTHON3" - "$TMP/ai-https" <<'PYTHON'
+import json
+from pathlib import Path
+import stat
+import sys
+
+installation = Path(sys.argv[1]).resolve()
+env = dict(line.split("=", 1) for line in (installation / ".env").read_text().splitlines() if "=" in line)
+assert env["TUNNEX_AI_CUSTOM_PROXY_URL"] == "http://{}:{}@ai-egress:8190".format(
+    env["TUNNEX_AI_CUSTOM_PROXY_USERNAME"], env["TUNNEX_AI_CUSTOM_PROXY_PASSWORD"])
+policy_path = Path(env["TUNNEX_AI_CUSTOM_ENDPOINTS_FILE"]).resolve()
+assert policy_path == installation / "ai-egress-policy.json"
+assert stat.S_IMODE(policy_path.stat().st_mode) == 0o644
+policy = json.loads(policy_path.read_text())
+assert policy == {"public_https": True, "endpoints": [], "denied_cidrs": [],
+                  "protected_hosts": ["api", "bifrost", "redis", "web", "nginx", "caddy", "ai-egress", "preview.tunnex.test", "postgres"]}
+PYTHON
+cp "$TMP/ai-https/.env" "$TMP/ai-before.env"
+printf '\n' >>"$TMP/ai-https/ai-engine.json"
+cp "$TMP/ai-https/ai-engine.json" "$TMP/ai-before.json"
+# An operator's valid endpoint rules and formatting remain authoritative.
+cat >"$TMP/ai-https/ai-egress-policy.json" <<'JSON'
+{
+  "public_https": false,
+  "endpoints": [{"name":"Private model","url":"https://models.internal","allowed_cidrs":["10.20.0.0/16"]}],
+  "protected_hosts": ["api", "bifrost"],
+  "denied_cidrs": ["10.20.1.0/24"]
+}
+JSON
+cp "$TMP/ai-https/ai-egress-policy.json" "$TMP/ai-before-policy.json"
+run_ai_install "$TMP/ai-https" https://preview.tunnex.test >"$TMP/ai-rerun-output"
+cmp -s "$TMP/ai-before.env" "$TMP/ai-https/.env" || fail 'rerun rotated durable AI credentials'
+cmp -s "$TMP/ai-before.json" "$TMP/ai-https/ai-engine.json" || fail 'rerun overwrote managed engine configuration'
+cmp -s "$TMP/ai-before-policy.json" "$TMP/ai-https/ai-egress-policy.json" || fail 'rerun overwrote the operator egress policy'
+grep -qx 'COMPOSE_PROJECT_NAME=custom-ai-project' "$TMP/ai-https/.env" || fail 'rerun changed the installation project and encrypted storage'
+if (TUNNEX_COMPOSE_PROJECT=other-project run_ai_install "$TMP/ai-https" https://preview.tunnex.test) >"$TMP/ai-project-output" 2>&1; then
+	fail 'rerun allowed selecting unrelated project storage'
+fi
+
+# A pre-AI installation needs the new installer/helper before it can apply
+# the new mandatory Compose settings. Reinstalling preserves its database
+# credential and project while provisioning the absent private AI backend.
+grep '^POSTGRES_PASSWORD=' "$TMP/control-plane/.env" >"$TMP/pre-ai-postgres-before"
+! grep -q '^TUNNEX_AI_ENGINE_ENCRYPTION_KEY=' "$TMP/control-plane/.env" || fail 'pre-AI migration fixture already had an engine key'
+sed -e 's|^TUNNEX_VERSION=.*|TUNNEX_VERSION=v0.1.34|' \
+  -e 's|^TUNNEX_SOURCE_REF=.*|TUNNEX_SOURCE_REF=0e882f0af7c232d870645a80675f0b5bf7a39032|' \
+  -e 's|^\(TUNNEX_[A-Z_]*_IMAGE\)=.*|\1=old@sha256:bbbb|' \
+  "$TMP/control-plane/.env" >"$TMP/pre-ai-migration.env"
+cp "$TMP/pre-ai-migration.env" "$TMP/control-plane/.env"
+(TUNNEX_COMPOSE_PROJECT=control-plane run_ai_install "$TMP/control-plane" https://preview.tunnex.test) >"$TMP/pre-ai-migration-output"
+grep '^POSTGRES_PASSWORD=' "$TMP/control-plane/.env" >"$TMP/pre-ai-postgres-after"
+cmp -s "$TMP/pre-ai-postgres-before" "$TMP/pre-ai-postgres-after" || fail 'pre-AI migration rotated the existing database password'
+grep -qx 'COMPOSE_PROJECT_NAME=control-plane' "$TMP/control-plane/.env" || fail 'pre-AI migration changed durable storage project'
+grep -q '^TUNNEX_AI_ENGINE_ENCRYPTION_KEY=.' "$TMP/control-plane/.env" || fail 'pre-AI migration omitted the durable engine key'
+grep -q '^TUNNEX_AI_CUSTOM_PROXY_PASSWORD=.' "$TMP/control-plane/.env" || fail 'pre-AI migration omitted the private proxy credential'
+[ -f "$TMP/control-plane/ai-egress-policy.json" ] || fail 'pre-AI migration omitted the outbound policy'
+grep -Fq 'Preserving existing .env configuration' "$TMP/pre-ai-migration-output" || fail 'pre-AI migration did not reuse installed settings'
+grep -qx 'TUNNEX_VERSION=v9.9.9' "$TMP/control-plane/.env" || fail 'pre-AI migration retained stale version metadata'
+grep -qx "TUNNEX_SOURCE_REF=$SOURCE_SHA" "$TMP/control-plane/.env" || fail 'pre-AI migration retained stale source metadata'
+for image in API WEB NGINX NODE_AGENT MIGRATE; do
+  grep -q "^TUNNEX_${image}_IMAGE=ghcr.io/tunnexio/tunnex-.*@sha256:test$" \
+    "$TMP/control-plane/.env" || fail 'pre-AI migration did not update a verified image pin'
+done
+grep -qx 'TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  "$TMP/control-plane/.env" || fail 'pre-AI migration omitted the signed engine pin'
+cmp -s "$ROOT/deploy/ai-bootstrap.sh" "$TMP/control-plane/ai-bootstrap.sh" || fail 'pre-AI migration did not install the new signed-source helper'
+cmp -s "$ROOT/deploy/ai-gateway/config-managed.json" "$TMP/control-plane/ai-engine.json" || fail 'pre-AI migration changed the managed bootstrap config'
+"$PYTHON3" -c 'import json,sys; c=json.load(open(sys.argv[1])); assert "providers" not in c; assert c["governance"]["virtual_keys"] == []' \
+  "$TMP/control-plane/ai-engine.json" || fail 'pre-AI migration seeded provider state or model grants'
+
+# An installation with the original three AI secrets can add proxy setup
+# without replacing its matching encryption key or retained engine volumes.
+mkdir "$TMP/ai-legacy"
+sed '/^TUNNEX_AI_CUSTOM_/d' \
+  "$TMP/ai-before.env" >"$TMP/ai-legacy/.env"
+cp "$TMP/ai-before.json" "$TMP/ai-legacy/ai-engine.json"
+(TUNNEX_COMPOSE_PROJECT=custom-ai-project TUNNEX_TEST_AI_EXISTING_VOLUME=1 \
+  run_ai_install "$TMP/ai-legacy" https://preview.tunnex.test) >"$TMP/ai-legacy-output"
+for key in TUNNEX_AI_GATEWAY_ADMIN_USER TUNNEX_AI_GATEWAY_ADMIN_PASSWORD TUNNEX_AI_ENGINE_ENCRYPTION_KEY; do
+	grep "^$key=" "$TMP/ai-before.env" >"$TMP/ai-secret-before"
+	grep "^$key=" "$TMP/ai-legacy/.env" >"$TMP/ai-secret-after"
+	cmp -s "$TMP/ai-secret-before" "$TMP/ai-secret-after" || fail 'proxy bootstrap rotated an existing engine secret'
+done
+[ -f "$TMP/ai-legacy/ai-egress-policy.json" ] || fail 'legacy AI installation omitted automatic egress policy'
+
+(TUNNEX_DATABASE_MODE=external TUNNEX_DATABASE_URL_FILE="$TMP/db-url" \
+  run_ai_install "$TMP/ai-byodb" https://preview.tunnex.test) >"$TMP/ai-byodb-output"
+"$PYTHON3" -c 'import json,sys; p=json.load(open(sys.argv[1])); assert "postgres" not in p["protected_hosts"]; assert "caddy" in p["protected_hosts"]' \
+  "$TMP/ai-byodb/ai-egress-policy.json" || fail 'external DB policy protected an absent bundled database'
+! grep -Fq byodb-file-secret "$TMP/ai-byodb-output" || fail 'AI bootstrap printed the external database credential'
+
+# IPv6 origin brackets and ports must not enter DNS protected-host lookups.
+(TUNNEX_TLS_MODE=terminated run_ai_install "$TMP/ai-ipv6" 'https://[2001:db8::12]:8443') >"$TMP/ai-ipv6-output"
+"$PYTHON3" -c 'import json,sys; p=json.load(open(sys.argv[1])); assert "2001:db8::12" in p["protected_hosts"]; assert not any("[" in host for host in p["protected_hosts"])' \
+  "$TMP/ai-ipv6/ai-egress-policy.json" || fail 'IPv6 policy retained URL brackets or port'
+(TUNNEX_HOST_KERNEL=MINGW64_NT run_ai_install "$TMP/ai-windows" https://preview.tunnex.test) >"$TMP/ai-windows-output"
+grep -qx 'TUNNEX_PORTABLE_CONTROL_PLANE=true' "$TMP/ai-windows/.env" || fail 'Windows AI bootstrap lost its portable mode'
+[ -f "$TMP/ai-windows/ai-egress-policy.json" ] || fail 'Windows canonical installer omitted the AI egress policy'
+
+# Native Windows Compose reads bind sources directly from dotenv. Simulate
+# cygpath without changing hosts to prove native-path persistence and POSIX
+# file checks on the next run; relative paths must still be refused.
+cat >"$BIN/cygpath" <<'EOF'
+#!/bin/sh
+[ "$2" = -- ] || exit 1
+case "$1" in
+  -m) case "$3" in /*) printf 'C:%s\n' "$3" ;; *) exit 1 ;; esac ;;
+  -u) case "$3" in C:/*) printf '%s\n' "${3#C:}" ;; *) exit 1 ;; esac ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$BIN/cygpath"
+(TUNNEX_HOST_KERNEL=MINGW64_NT run_ai_install "$TMP/ai-windows-native" https://preview.tunnex.test) >"$TMP/ai-windows-native-output"
+"$PYTHON3" - "$TMP/ai-windows-native" <<'PYTHON'
+from pathlib import Path
+import sys
+installation = Path(sys.argv[1]).resolve()
+env = dict(line.split("=", 1) for line in (installation / ".env").read_text().splitlines() if "=" in line)
+policy_path = env["TUNNEX_AI_CUSTOM_ENDPOINTS_FILE"]
+assert policy_path.startswith("C:/")
+assert Path(policy_path[2:]).resolve() == installation / "ai-egress-policy.json"
+PYTHON
+[ -f "$TMP/ai-windows-native/ai-egress-policy.json" ] || fail 'Windows shell did not create the POSIX policy source'
+cp "$TMP/ai-windows-native/.env" "$TMP/ai-windows-native-before.env"
+cp "$TMP/ai-windows-native/ai-egress-policy.json" "$TMP/ai-windows-native-before.json"
+(TUNNEX_HOST_KERNEL=MINGW64_NT run_ai_install "$TMP/ai-windows-native" https://preview.tunnex.test) >"$TMP/ai-windows-native-rerun-output"
+cmp -s "$TMP/ai-windows-native-before.env" "$TMP/ai-windows-native/.env" || fail 'Windows native-path rerun changed durable settings'
+cmp -s "$TMP/ai-windows-native-before.json" "$TMP/ai-windows-native/ai-egress-policy.json" || fail 'Windows native-path rerun changed policy rules'
+sed 's|^TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=.*|TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=relative-policy.json|' \
+  "$TMP/ai-windows-native/.env" >"$TMP/ai-windows-relative.env"
+cp "$TMP/ai-windows-relative.env" "$TMP/ai-windows-native/.env"
+if (TUNNEX_HOST_KERNEL=MINGW64_NT run_ai_install "$TMP/ai-windows-native" https://preview.tunnex.test) >"$TMP/ai-windows-relative-output" 2>&1; then
+  fail 'Windows path conversion accepted a relative policy source'
+fi
+cmp -s "$TMP/ai-windows-relative.env" "$TMP/ai-windows-native/.env" || fail 'Windows path refusal changed protected settings'
+grep -Fq 'policy path must be absolute' "$TMP/ai-windows-relative-output" || fail 'Windows relative path failed outside the policy guard'
+rm "$BIN/cygpath"
+
+run_ai_install "$TMP/ai-http" http://192.0.2.10 >"$TMP/ai-http-output"
+grep -qx 'TUNNEX_AI_GATEWAY_URL=' "$TMP/ai-http/.env" || fail 'remote HTTP exposed AI integration'
+[ -f "$TMP/ai-http/ai-engine.json" ] || fail 'HTTP evaluation omitted its backend'
+grep -Fq 'HTTP evaluation keeps AI access off' "$TMP/ai-http-output" || fail 'HTTP bootstrap did not explain the HTTPS prerequisite'
+grep -qx 'TUNNEX_AI_ALLOW_PRIVATE_HTTP=false' "$TMP/ai-http/.env" || fail 'private HTTP AI was not disabled by default'
+(TUNNEX_AI_ALLOW_PRIVATE_HTTP=true run_ai_install "$TMP/ai-http-private" http://192.0.2.10) >"$TMP/ai-private-http-output"
+grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-http-private/.env" || fail 'explicit private HTTP policy did not enable integration'
+grep -qx 'TUNNEX_AI_ALLOW_PRIVATE_HTTP=true' "$TMP/ai-http-private/.env" || fail 'explicit private HTTP policy was not persisted'
+grep -Fq 'private/VPN-only' "$TMP/ai-private-http-output" || fail 'private HTTP operator responsibility was not explained'
+cp "$TMP/ai-http-private/.env" "$TMP/ai-private-before.env"
+run_ai_install "$TMP/ai-http-private" http://192.0.2.10 >"$TMP/ai-private-rerun-output"
+cmp -s "$TMP/ai-private-before.env" "$TMP/ai-http-private/.env" || fail 'rerun changed the explicit private HTTP policy or durable keys'
+if (TUNNEX_AI_ALLOW_PRIVATE_HTTP=automatic run_ai_install "$TMP/ai-http-invalid" http://192.0.2.10) >"$TMP/ai-invalid-output" 2>&1; then
+	fail 'invalid private HTTP policy was accepted'
+fi
+
+if (TUNNEX_TEST_AI_PIN_MISSING=1 run_ai_install "$TMP/ai-unverified" https://preview.tunnex.test) >"$TMP/ai-pin-output" 2>&1; then
+	fail 'engine without a signed image pin was accepted'
+fi
+[ ! -f "$TMP/ai-unverified/tunnex.yml" ] || fail 'missing AI pin published a deployment'
+if (TUNNEX_TEST_AI_EXISTING_VOLUME=1 run_ai_install "$TMP/ai-lost-key" https://preview.tunnex.test) >"$TMP/ai-lost-output" 2>&1; then
+	fail 'retained encrypted storage received a replacement key'
+fi
+[ ! -f "$TMP/ai-lost-key/.env" ] || fail 'missing durable key was silently regenerated'
+
+# Every proxy refusal happens before publishing a deployment or mutating
+# protected settings, and prints no proxy password or authenticated URL.
+for fault in partial duplicate missing-policy operator-proxy; do
+	mkdir "$TMP/ai-$fault"
+	cp "$TMP/ai-before.env" "$TMP/ai-$fault/.env"
+	cp "$TMP/ai-before.json" "$TMP/ai-$fault/ai-engine.json"
+	printf '%s\n' '# original deployment' >"$TMP/ai-$fault/tunnex.yml"
+	case "$fault" in
+	partial)
+		expected='AI egress credentials are incomplete'
+		sed '/^TUNNEX_AI_CUSTOM_PROXY_PASSWORD=/d' "$TMP/ai-$fault/.env" >"$TMP/ai-fault.env" ;;
+	duplicate)
+		expected='AI egress configuration contains duplicate entries'
+		cp "$TMP/ai-$fault/.env" "$TMP/ai-fault.env"
+		grep '^TUNNEX_AI_CUSTOM_PROXY_USERNAME=' "$TMP/ai-$fault/.env" >>"$TMP/ai-fault.env" ;;
+	missing-policy)
+		expected='configured AI egress policy is missing or unreadable'
+		sed "s|^TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=.*|TUNNEX_AI_CUSTOM_ENDPOINTS_FILE=$TMP/no-such-policy.json|" \
+		  "$TMP/ai-$fault/.env" >"$TMP/ai-fault.env" ;;
+	operator-proxy)
+		expected='operator-managed AI egress proxy'
+		sed 's|^TUNNEX_AI_CUSTOM_PROXY_URL=.*|TUNNEX_AI_CUSTOM_PROXY_URL=http://operator:do-not-print@elsewhere:8190|' \
+		  "$TMP/ai-$fault/.env" >"$TMP/ai-fault.env" ;;
+	esac
+	cp "$TMP/ai-fault.env" "$TMP/ai-$fault/.env"
+	if (TUNNEX_COMPOSE_PROJECT=custom-ai-project run_ai_install "$TMP/ai-$fault" https://preview.tunnex.test) >"$TMP/ai-$fault-output" 2>&1; then
+		fail "AI egress accepted $fault configuration"
+	fi
+	grep -Fq "$expected" "$TMP/ai-$fault-output" || fail 'egress refusal did not exercise its expected guard'
+	cmp -s "$TMP/ai-fault.env" "$TMP/ai-$fault/.env" || fail 'egress refusal changed protected configuration'
+	grep -qx '# original deployment' "$TMP/ai-$fault/tunnex.yml" || fail 'egress refusal published a new deployment'
+	! grep -Fq do-not-print "$TMP/ai-$fault-output" || fail 'egress refusal printed an operator secret'
+	proxy_password=$(sed -n 's/^TUNNEX_AI_CUSTOM_PROXY_PASSWORD=//p' "$TMP/ai-before.env")
+	! grep -Fq "$proxy_password" "$TMP/ai-$fault-output" || fail 'egress refusal printed a proxy secret'
+done
+
+# Missing one credential refuses before publishing or changing installed files.
+sed '/^TUNNEX_AI_ENGINE_ENCRYPTION_KEY=/d' "$TMP/ai-https/.env" >"$TMP/ai-partial.env"
+cp "$TMP/ai-partial.env" "$TMP/ai-https/.env"
+cp "$TMP/ai-https/tunnex.yml" "$TMP/ai-before.yml"
+if run_ai_install "$TMP/ai-https" https://preview.tunnex.test >"$TMP/ai-partial-output" 2>&1; then
+	fail 'partial AI credentials were regenerated'
+fi
+cmp -s "$TMP/ai-partial.env" "$TMP/ai-https/.env" || fail 'partial credential refusal changed existing secrets'
+cmp -s "$TMP/ai-before.yml" "$TMP/ai-https/tunnex.yml" || fail 'partial credential refusal changed the deployment'
 
 printf 'install host bootstrap contract: PASS\n'

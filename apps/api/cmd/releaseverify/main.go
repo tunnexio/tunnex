@@ -44,7 +44,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "release manifest rejected: unsupported platform")
 		os.Exit(1)
 	}
-	for _, name := range []string{"api", "web", "nginx", "node-agent", "migrate"} {
+	images := []string{"api", "web", "nginx", "node-agent", "migrate"}
+	if _, ok := s.Manifest.Images["ai-engine"]; ok {
+		images = append(images, "ai-engine")
+	}
+	for _, name := range images {
 		image := s.Manifest.Images[name]
 		digest := image.AMD64Digest
 		if *platform == "arm64" {

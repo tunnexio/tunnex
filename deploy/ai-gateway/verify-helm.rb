@@ -5,7 +5,8 @@ require 'yaml'
 require 'json'
 root = File.expand_path('../..', __dir__)
 chart = File.join(root, 'deploy/helm/tunnex-cp')
-args = ['--set', 'database.urlSecret=db-fixture', '--set', 'redis.urlSecret=redis-fixture', '--set', 'masterKey.existingSecret=master-fixture', '--set', 'appBaseURL=https://fixture.invalid']
+engine_image = "ghcr.io/tunnexio/tunnex-ai-engine@sha256:" + "a" * 64
+args = ['--set', "aiGateway.engineImage=#{engine_image}", '--set', 'database.urlSecret=db-fixture', '--set', 'redis.urlSecret=redis-fixture', '--set', 'masterKey.existingSecret=master-fixture', '--set', 'appBaseURL=https://fixture.invalid']
 render = lambda do |extra=[]|
   output, err, status = Open3.capture3('helm', 'template', 'ai-contract', chart, *args, *extra)
   raise err unless status.success?
@@ -20,7 +21,7 @@ raise 'engine publicly exposed' unless service.dig('spec', 'type') == 'ClusterIP
 engine = select.call('Deployment', 'ai-contract-tunnex-cp-ai')
 raise 'engine not single instance' unless engine.dig('spec', 'replicas') == 1 && engine.dig('spec', 'strategy', 'type') == 'Recreate'
 container = engine.dig('spec', 'template', 'spec', 'containers')[0]
-raise 'pin changed' unless container['image'] == 'maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208'
+raise 'pin changed' unless container['image'] == engine_image
 %w[BIFROST_ADMIN_USER BIFROST_ADMIN_PASSWORD OPENROUTER_API_KEY BIFROST_ENCRYPTION_KEY].each do |name|
   env = container['env'].find { |e| e['name'] == name }
   raise 'secret inlined or missing' unless env.dig('valueFrom', 'secretKeyRef', 'name') == 'ai-fixture' && !env.key?('value')
@@ -82,6 +83,14 @@ Tempfile.create(['ai-custom', '.json']) do |file|
   [containers[0],engine.dig('spec','template','spec','containers')[0]].each do |c|
     ref=c['env'].find { |e| e['name']=='TUNNEX_AI_CUSTOM_PROXY_URL' }
     raise 'proxy URL not shared secret ref' unless ref.dig('valueFrom','secretKeyRef')=={'name'=>'proxy-fixture','key'=>'proxy-url'}
+    policy_env=c['env'].find { |e| e['name']=='TUNNEX_AI_CUSTOM_ENDPOINTS_FILE' }
+    raise 'native endpoint policy file missing' unless policy_env=={'name'=>'TUNNEX_AI_CUSTOM_ENDPOINTS_FILE','value'=>'/etc/tunnex/ai-custom/policy.json'}
+    policy_mount=c['volumeMounts'].find { |m| m['name']=='ai-custom-policy' }
+    raise 'native endpoint policy not mounted read-only' unless policy_mount=={'name'=>'ai-custom-policy','mountPath'=>'/etc/tunnex/ai-custom','readOnly'=>true}
+  end
+  [api,engine].each do |deployment|
+    policy_volume=deployment.dig('spec','template','spec','volumes').find { |v| v['name']=='ai-custom-policy' }
+    raise 'CP and native engine policy differ' unless policy_volume=={'name'=>'ai-custom-policy','configMap'=>{'name'=>'ai-contract-tunnex-cp-ai-custom'}}
   end
   cfg=custom.find { |d| d['kind']=='ConfigMap' && d.dig('metadata','name')=='ai-contract-tunnex-cp-ai-custom' }
   policy=JSON.parse(cfg['data']['policy.json'])

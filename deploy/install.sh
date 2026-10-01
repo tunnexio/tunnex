@@ -773,6 +773,25 @@ fi
 ADDR="$(public_base_url_host "$BASE_URL")"
 select_tls_mode
 
+# HTTPS remains the AI default. This policy is an explicit operator decision;
+# an address alone does not prove that public access is blocked.
+AI_ALLOW_PRIVATE_HTTP=${TUNNEX_AI_ALLOW_PRIVATE_HTTP:-}
+if [ -z "$AI_ALLOW_PRIVATE_HTTP" ] && [ -f "$DIR/.env" ]; then
+	AI_ALLOW_PRIVATE_HTTP=$(sed -n 's/^TUNNEX_AI_ALLOW_PRIVATE_HTTP=//p' "$DIR/.env" | head -1)
+fi
+if [ -z "$AI_ALLOW_PRIVATE_HTTP" ] && [ "$TLS_MODE" = http ] && have_tty && [ "$AUTO_CONFIRM" != true ]; then
+	warn 'AI over HTTP requires a private/VPN-only control-plane endpoint and verified network restrictions. Setup does not detect or enforce these protections.'
+	case "$(ask 'I verified private/VPN-only reachability and accept responsibility for HTTP AI access. Enable it? [y/N]: ')" in
+	[yY]|[yY][eE][sS]) AI_ALLOW_PRIVATE_HTTP=true ;;
+	*) AI_ALLOW_PRIVATE_HTTP=false ;;
+	esac
+fi
+AI_ALLOW_PRIVATE_HTTP=${AI_ALLOW_PRIVATE_HTTP:-false}
+case "$AI_ALLOW_PRIVATE_HTTP" in true|false) ;; *) die 'TUNNEX_AI_ALLOW_PRIVATE_HTTP must be true or false.' ;; esac
+if [ "$AI_ALLOW_PRIVATE_HTTP" = true ]; then
+	warn 'Private HTTP AI policy selected. You must keep the real control-plane endpoint private/VPN-only; provider credentials and workload tokens must never cross public HTTP.'
+fi
+
 ADMIN_EMAIL="${TUNNEX_ADMIN_EMAIL:-admin@${ADDR}}"
 if have_tty && [ -z "${TUNNEX_ADMIN_EMAIL:-}" ]; then
 	ADMIN_EMAIL="$(ask "Administrator email [${ADMIN_EMAIL}]: ")"
@@ -1008,6 +1027,7 @@ plan_item 'Server database' "$DB_MODE PostgreSQL (credentials hidden)"
 plan_item 'Version' "${DISPLAY_VERSION}"
 plan_item 'Public URL' "${BASE_URL}"
 plan_item 'TLS mode' "${TLS_MODE}"
+plan_item 'Private HTTP AI' "${AI_ALLOW_PRIVATE_HTTP} (operator policy; no network detection)"
 plan_item 'Administrator' "${ADMIN_EMAIL}"
 case "$SMTP_MODE" in
 configure) plan_item 'Email' "${SMTP_HOST}:${SMTP_PORT} as ${SMTP_FROM}" ;;
@@ -1025,6 +1045,14 @@ case "$DIR" in
 esac
 INSTALL_PROJECT_SOURCE=${INSTALL_PLAN_DIR%/}
 INSTALL_COMPOSE_PROJECT=${TUNNEX_COMPOSE_PROJECT:-${INSTALL_PROJECT_SOURCE##*/}}
+if [ -f "$DIR/.env" ]; then
+	_saved_project=$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$DIR/.env" | head -1)
+	if [ -n "$_saved_project" ]; then
+		[ -z "${TUNNEX_COMPOSE_PROJECT:-}" ] || [ "$TUNNEX_COMPOSE_PROJECT" = "$_saved_project" ] ||
+			die 'The installation Compose project cannot change on reinstall; it selects existing encrypted storage.'
+		INSTALL_COMPOSE_PROJECT=$_saved_project
+	fi
+fi
 INSTALL_COMPOSE_PROJECT=$(printf '%s' "$INSTALL_COMPOSE_PROJECT" | tr '[:upper:]' '[:lower:]')
 case "$INSTALL_COMPOSE_PROJECT" in
 [a-z0-9]*) ;;
@@ -1117,6 +1145,27 @@ if [ "$DB_MODE" = external ]; then
 		die 'The selected signed release does not support BYODB. Select a BYODB-capable release before installing.'
 fi
 
+# Old releases do not declare the bundled engine. Fetch its complete setup only
+# when the selected signed source supports it; main-before-tag stays compatible.
+AI_BUNDLED=false
+if grep -Fq 'TUNNEX_AI_ENGINE_IMAGE:' "$STAGE_DIR/tunnex.yml" || grep -Fq '${TUNNEX_AI_ENGINE_IMAGE:' "$STAGE_DIR/tunnex.yml"; then
+	AI_BUNDLED=true
+	AI_IMAGE_PIN=$(printf '%s\n' "$RELEASE_ENV" | sed -n 's/^TUNNEX_AI_ENGINE_IMAGE=//p' | head -1)
+	[ -n "$AI_IMAGE_PIN" ] || die 'The selected release declares an AI backend but its signed image pin is missing.'
+	curl -fsSL "${RAW}/${SOURCE_REF}/deploy/ai-bootstrap.sh" -o "$STAGE_DIR/ai-bootstrap.sh" || die 'Could not download the signed-source AI bootstrap helper.'
+	sh -n "$STAGE_DIR/ai-bootstrap.sh" || die 'Downloaded AI bootstrap helper is not valid shell.'
+	curl -fsSL "${RAW}/${SOURCE_REF}/deploy/ai-gateway/config-managed.json" -o "$STAGE_DIR/ai-engine.json" || die 'Could not download the signed-source managed AI configuration.'
+	AI_ENV_FILE="$PWD/.env"
+	AI_COMPOSE_PROJECT=$INSTALL_COMPOSE_PROJECT
+	ai_fail() { die "$*"; }
+	ai_docker() { docker_cli "$@"; }
+	. "$STAGE_DIR/ai-bootstrap.sh"
+	ai_validate_existing
+	if [ -f ai-engine.json ] && grep -Eq '"providers"[[:space:]]*:' ai-engine.json; then
+		die 'Existing file-managed AI configuration requires a reviewed migration; it was preserved.'
+	fi
+fi
+
 mv "$STAGE_DIR/tunnex.yml" tunnex.yml
 mv "$STAGE_DIR/upgrade.sh" upgrade.sh
 chmod 0755 upgrade.sh
@@ -1124,6 +1173,12 @@ mv "$STAGE_DIR/release.json" release.json
 # Signed release metadata is mounted into the unprivileged API container. It is not
 # secret, so keep it world-readable while the bind mount itself stays read-only.
 chmod 0644 release.json
+if [ "$AI_BUNDLED" = true ]; then
+	mv "$STAGE_DIR/ai-bootstrap.sh" ai-bootstrap.sh
+	# Existing managed configuration and encrypted volumes remain authoritative.
+	[ -f ai-engine.json ] || mv "$STAGE_DIR/ai-engine.json" ai-engine.json
+	chmod 0644 ai-engine.json ai-bootstrap.sh
+fi
 RELEASE_MANIFEST_PATH="/var/lib/tunnex/release.json"
 TUNNEX_RELEASE_PUBLIC_KEY="${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_KEY}"
 
@@ -1222,6 +1277,7 @@ APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
 TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
 TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
+TUNNEX_AI_ALLOW_PRIVATE_HTTP=${AI_ALLOW_PRIVATE_HTTP}
 TUNNEX_NODE_ENDPOINT=${GATEWAY_ADDRESS:-$ADDR}:51820
 TUNNEX_PORTABLE_CONTROL_PLANE=${CP_ONLY}
 TUNNEX_GATEWAY_PLACEMENT=${GATEWAY_PLACEMENT}
@@ -1257,8 +1313,10 @@ EOF
 fi
 set_dotenv() {
 	_key=$1 _value=$2 _tmp=.env.next
+	umask 077
 	case "$_value" in *'
-'*|*''*) die "invalid release environment value" ;; esac
+'*|*'
+'*) die "invalid release environment value" ;; esac
 	awk -F= -v key="$_key" -v value="$_value" '
 		$1 == key { print key "=" value; seen=1; next }
 		{ print }
@@ -1274,8 +1332,21 @@ for RELEASE_KEY in TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_N
 	[ -n "$RELEASE_VALUE" ] || die "signed release verifier omitted ${RELEASE_KEY}"
 	set_dotenv "$RELEASE_KEY" "$RELEASE_VALUE"
 done
+set_dotenv TUNNEX_VERSION "$VERSION"
+set_dotenv TUNNEX_SOURCE_REF "$SOURCE_REF"
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
 set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$CP_ONLY"
+if [ "$AI_BUNDLED" = true ]; then
+	ai_set_env() { set_dotenv "$@"; }
+	set_dotenv TUNNEX_AI_ALLOW_PRIVATE_HTTP "$AI_ALLOW_PRIVATE_HTTP"
+	ai_prepare_config
+	if [ -z "$(ai_env_value TUNNEX_AI_GATEWAY_URL)" ]; then
+		warn 'The private AI backend is installed. AI configuration and access require a real HTTPS public URL; HTTP evaluation keeps AI access off.'
+	else
+		[ "$AI_ALLOW_PRIVATE_HTTP" != true ] || warn 'HTTP AI access is allowed by explicit operator policy. Keep this control-plane endpoint private/VPN-only and its network restrictions verified.'
+		info 'The private AI backend is included. Organization access, provider keys and model grants remain explicit setup steps.'
+	fi
+fi
 case "$DB_MODE" in
 bundled) set_dotenv COMPOSE_PROFILES bundled-db ;;
 external) set_dotenv COMPOSE_PROFILES external-db ;;

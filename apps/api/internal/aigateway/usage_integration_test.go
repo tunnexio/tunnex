@@ -142,7 +142,7 @@ func TestAIUsageNativeLedgerAndCostAdmission(t *testing.T) {
 	f := newAICredentialFixture(t, ctx, pool)
 	team := uuid.New()
 	f.exec(`INSERT INTO agent_groups(id,org_id,name) VALUES($1,$2,'native-usage-team')`, team, f.org)
-	f.exec(`INSERT INTO ai_gateway_team_policies(org_id,team_id,models,key_ids,revision) VALUES($1,$2,'{openrouter/costed}','{fixture-provider}',1)`, f.org, team)
+	f.exec(`INSERT INTO ai_gateway_team_policies(org_id,team_id,models,key_ids,revision) VALUES($1,$2,'{openrouter/openai/gpt-4o-mini}','{fixture-provider}',1)`, f.org, team)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet {
@@ -150,12 +150,12 @@ func TestAIUsageNativeLedgerAndCostAdmission(t *testing.T) {
 			return
 		}
 		io.Copy(io.Discard, r.Body)
-		io.WriteString(w, `{"id":"native-cost-fixture","object":"chat.completion","model":"costed","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}`)
+		io.WriteString(w, `{"id":"native-cost-fixture","object":"chat.completion","model":"openai/gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}`)
 	}))
 	defer provider.Close()
 	dir := t.TempDir()
 	pricing := filepath.Join(dir, "pricing.json")
-	if err = os.WriteFile(pricing, []byte(`{"costed":{"provider":"openrouter","mode":"chat","input_cost_per_token":1,"output_cost_per_token":1}}`), 0600); err != nil {
+	if err = os.WriteFile(pricing, []byte(`{"openrouter/openai/gpt-4o-mini":{"provider":"openrouter","mode":"chat","input_cost_per_token":1,"output_cost_per_token":1}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	params := filepath.Join(dir, "parameters.json")
@@ -168,7 +168,7 @@ func TestAIUsageNativeLedgerAndCostAdmission(t *testing.T) {
 		"logs_store":   map[string]any{"enabled": true, "type": "sqlite", "config": map[string]any{"path": filepath.Join(dir, "logs.db")}, "retention_days": 7},
 		"framework":    map[string]any{"pricing": map[string]any{"pricing_url": "file://" + pricing, "model_parameters_url": "file://" + params, "live_models_sync_interval": 0, "mcp_library_sync_interval": 0}},
 		"governance":   map[string]any{"auth_config": map[string]any{"is_enabled": true, "admin_username": "fixture-admin", "admin_password": "fixture-password", "disable_auth_on_inference": false}},
-		"providers":    map[string]any{"openrouter": map[string]any{"network_config": map[string]any{"base_url": provider.URL, "allow_private_network": true, "max_retries": 0}, "keys": []any{map[string]any{"id": "fixture-provider", "name": "fixture-provider", "value": "fixture-only", "models": []string{"costed"}, "weight": 1}}}},
+		"providers":    map[string]any{"openrouter": map[string]any{"network_config": map[string]any{"base_url": provider.URL, "allow_private_network": true, "max_retries": 0}, "keys": []any{map[string]any{"id": "fixture-provider", "name": "fixture-provider", "value": "fixture-only", "models": []string{"openai/gpt-4o-mini"}, "weight": 1}}}},
 	}
 	raw, err = json.Marshal(config)
 	if err != nil {
@@ -183,7 +183,7 @@ func TestAIUsageNativeLedgerAndCostAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, err := engine.EnsureKey(ctx, "native-usage-agent", "openrouter", []string{"costed"}, []string{"fixture-provider"})
+	key, err := engine.EnsureKey(ctx, "native-usage-agent", "openrouter", []string{"openai/gpt-4o-mini"}, []string{"fixture-provider"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,12 +196,12 @@ func TestAIUsageNativeLedgerAndCostAdmission(t *testing.T) {
 			return err
 		}
 		defer tx.Rollback(context.Background())
-		return service.enforceCost(ctx, tx, f.org, team, "openrouter/costed", &limit)
+		return service.enforceCost(ctx, tx, f.org, team, "openrouter/openai/gpt-4o-mini", &limit)
 	}
 	if err := check(); err != nil {
 		t.Fatalf("native priced empty observation refused: %v", err)
 	}
-	request, _ := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", strings.NewReader(`{"model":"openrouter/costed","messages":[{"role":"user","content":"OK"}],"max_tokens":8}`))
+	request, _ := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", strings.NewReader(`{"model":"openrouter/openai/gpt-4o-mini","messages":[{"role":"user","content":"OK"}],"max_tokens":8}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Bf-Vk", key.Value)
 	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
