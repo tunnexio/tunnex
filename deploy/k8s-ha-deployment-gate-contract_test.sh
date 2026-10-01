@@ -28,6 +28,14 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
       DATABASE_URL=postgres://db.example.test/tunnex \
       TUNNEX_NODE_ENDPOINT=gateway.example.test \
       TUNNEX_EDGE_LISTEN=https://tunnex.example.test \
+      TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+      TUNNEX_AI_GATEWAY_ADMIN_USER=fixture-admin \
+      TUNNEX_AI_GATEWAY_ADMIN_PASSWORD=fixture-password \
+      TUNNEX_AI_ENGINE_ENCRYPTION_KEY=fixture-encryption-key \
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE="$TMP/ai-fixture-policy.json" \
+      TUNNEX_AI_CUSTOM_PROXY_USERNAME=fixture-proxy \
+      TUNNEX_AI_CUSTOM_PROXY_PASSWORD=fixture-proxy-password \
+      TUNNEX_AI_CUSTOM_PROXY_URL=http://fixture-proxy:fixture-proxy-password@ai-egress:8190 \
       TUNNEX_K8S_HA_ENABLED="$1" \
       docker compose -f "$COMPOSE" config
   }
