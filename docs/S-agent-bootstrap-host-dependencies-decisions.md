@@ -20,8 +20,13 @@ credentials and working installations must retain their current behavior.
   preexisting managed runtime ownership before package or installation changes.
   Install only missing required packages with the distribution package manager.
   Reuse working resolver compatibility; do not replace it merely because the
-  package named openresolv is absent. Unsupported hosts and failed prerequisites
-  stop clearly before bootstrap-token redemption.
+  package named openresolv is absent. If resolvconf is missing, an existing
+  resolvectl with an active systemd-resolved service and successful status check
+  may receive a new compatibility symlink in the local system-binary directory.
+  Never replace the system resolver file, service or existing implementation.
+  Otherwise require package availability and use apt-get with --no-remove for
+  openresolv; an unavailable or conflicting package stops setup. Unsupported
+  hosts and failed prerequisites stop clearly before bootstrap-token redemption.
 - Locked: keep the existing signed `release.json` schema and canonical signed
   bytes unchanged. Existing readers reject unknown fields, and re-marshaling an
   expanded manifest would also break their signature check. Adding an optional
