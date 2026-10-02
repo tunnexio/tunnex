@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
-// PeerKey resolves a kernel WireGuard allowed-ips readback. Only a single host
-// peer qualifies. Site routes, ambiguous ownership and IPv6 are refused.
+// PeerKey resolves a kernel WireGuard allowed-ips readback. An individual peer
+// owns exactly one IPv4 /32 and optionally one IPv6 /128. Routed/site prefixes,
+// multiple addresses of either family and ambiguous source ownership are refused.
+// The automatic listener is IPv4-only, so IPv6 sources remain unsupported.
 func PeerKey(readback, source string) (string, error) {
 	ip, err := netip.ParseAddr(source)
 	if err != nil || !ip.Is4() {
@@ -27,17 +29,42 @@ func PeerKey(readback, source string) (string, error) {
 		if len(fields) < 2 {
 			continue
 		}
-		for _, raw := range strings.Split(strings.Join(fields[1:], ""), ",") {
-			prefix, err := netip.ParsePrefix(raw)
-			if err != nil || !prefix.Contains(ip) {
-				continue
+		matches, individual := false, true
+		ipv4, ipv6 := 0, 0
+		// wg's machine-readable output separates allowed IPs by whitespace;
+		// configured/fixture forms may use commas. Reject empty comma groups
+		// instead of quietly dropping a malformed or extra route.
+		for _, group := range strings.Split(strings.Join(fields[1:], " "), ",") {
+			if strings.TrimSpace(group) == "" {
+				individual = false
 			}
-			decoded, err := base64.StdEncoding.DecodeString(fields[0])
-			if err != nil || len(decoded) != 32 || prefix.Bits() != 32 || len(fields) != 2 || strings.Contains(fields[1], ",") || key != "" {
-				return "", errors.New("not an individual peer")
+			for _, raw := range strings.Fields(group) {
+				prefix, err := netip.ParsePrefix(raw)
+				if err != nil {
+					individual = false
+					continue
+				}
+				if prefix.Contains(ip) {
+					matches = true
+				}
+				switch {
+				case prefix.Addr().Is4() && prefix.Bits() == 32:
+					ipv4++
+				case prefix.Addr().Is6() && !prefix.Addr().Is4In6() && prefix.Bits() == 128:
+					ipv6++
+				default:
+					individual = false
+				}
 			}
-			key = fields[0]
 		}
+		if !matches {
+			continue
+		}
+		decoded, err := base64.StdEncoding.DecodeString(fields[0])
+		if err != nil || len(decoded) != 32 || !individual || ipv4 != 1 || ipv6 > 1 || key != "" {
+			return "", errors.New("not an individual peer")
+		}
+		key = fields[0]
 	}
 	if key == "" {
 		return "", errors.New("unknown peer")
@@ -50,6 +77,16 @@ type KernelPeers func(context.Context) (string, error)
 // Handler must ONLY be served by an interface-bound VPN listener. The caller's
 // Forwarded, Authorization, Cookie and custom identity headers are never used.
 func Handler(host string, control *url.URL, transport http.RoundTripper, peers KernelPeers, web http.Handler) http.Handler {
+	return handler(host, control, transport, peers, web, "/agent/ai")
+}
+
+// HTTPHandler is inference-only. Its distinct upstream route lets the control
+// plane enforce the current HTTP policy without trusting a caller-supplied scheme.
+func HTTPHandler(host string, control *url.URL, transport http.RoundTripper, peers KernelPeers) http.Handler {
+	return handler(host, control, transport, peers, http.NotFoundHandler(), "/agent/ai-http")
+}
+
+func handler(host string, control *url.URL, transport http.RoundTripper, peers KernelPeers, web http.Handler, routePrefix string) http.Handler {
 	slots := make(chan struct{}, 16)
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
@@ -111,9 +148,9 @@ func Handler(host string, control *url.URL, transport http.RoundTripper, peers K
 		}
 		clone := r.Clone(context.WithValue(ctx, peerContextKey{}, peerEvidence{source, key}))
 		if isAlias {
-			clone.URL.Path = "/agent/ai/v1/chat/completions"
+			clone.URL.Path = routePrefix + "/v1/chat/completions"
 		} else {
-			clone.URL.Path = "/agent/ai/organizations/" + parts[0] + "/v1/chat/completions"
+			clone.URL.Path = routePrefix + "/organizations/" + parts[0] + "/v1/chat/completions"
 		}
 		clone.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		proxy.ServeHTTP(w, clone)

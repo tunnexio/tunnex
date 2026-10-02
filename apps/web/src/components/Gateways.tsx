@@ -75,7 +75,7 @@ export function remoteEnrollCommand(o: RemoteEnrollOpts): string {
     `-e TUNNEX_JOIN_TOKEN=${o.token}${nameEnv}${endpointEnv} ` +
     `-e TUNNEX_API_URL=${q(o.apiURL)} -e TUNNEX_AGENT_URL=${q(o.agentURL)} ` +
     `-e TUNNEX_AGENT_SERVERNAME=${q(o.serverName)} -e TUNNEX_WG_BACKEND=wgctrl ` +
-    `-e TUNNEX_FLOWLOG_GROUP=${flowLogGroup} ${o.image}`
+    `-e TUNNEX_AI_VPN_AUTO=true -e TUNNEX_FLOWLOG_GROUP=${flowLogGroup} ${o.image}`
   );
 }
 

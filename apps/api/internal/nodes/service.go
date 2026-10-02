@@ -2071,6 +2071,8 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
+	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion   int    `json:"ipsec_config_version"`
@@ -2166,11 +2168,19 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecRecoveryVersion != 1 {
 		applied.IPsecRecoveryVersion = 0
 	}
+	// Only canonical private IPv4 addresses can be advertised. Pool ownership is
+	// checked again when the AI endpoint is discovered or used. Old reports clear it.
+	if ip, err := netip.ParseAddr(applied.AIVPNHTTPAddress); !applied.AIVPNHTTPReady || err != nil || !ip.Is4() || !ip.IsPrivate() || ip.String() != applied.AIVPNHTTPAddress {
+		applied.AIVPNHTTPReady = false
+		applied.AIVPNHTTPAddress = ""
+	}
 	// Gateway capabilities the agent probes + re-reports every reconcile (S3.7 +
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
 	caps, err := json.Marshal(map[string]any{
+		"ai_vpn_http_ready":           applied.AIVPNHTTPReady,
+		"ai_vpn_http_address":         applied.AIVPNHTTPAddress,
 		"ipsec_config_version":        applied.IPsecConfigVersion,
 		"ipsec_recovery_version":      applied.IPsecRecoveryVersion,
 		"egress_nat":                  egressNAT,
@@ -2265,6 +2275,8 @@ func (s *Service) trackDesync(ctx context.Context, node sqlc.Node, appliedHash s
 // control plane gates on a gateway's abilities (e.g. full-tunnel egress) or surfaces
 // its applied-policy status (S7.2 staleness).
 type NodeCapabilities struct {
+	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
 	// Freshness is the server-written policy_reported_at on the same node row.
 	IPsecConfigVersion   int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion int    `json:"ipsec_recovery_version"`

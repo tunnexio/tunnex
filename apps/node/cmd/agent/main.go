@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/aivpn"
 	"github.com/tunnexio/tunnex/apps/node/internal/control"
 	"github.com/tunnexio/tunnex/apps/node/internal/dnsforward"
 	"github.com/tunnexio/tunnex/apps/node/internal/egress"
@@ -324,7 +325,6 @@ func main() {
 	// S9.1 4d: the OVPN server's refuse-loudly health kind, written by the OnOVPN handler each tick and
 	// read by the report loop — same shared-sink pattern (the report loop predates the OVPN manager).
 	var ovpnHealth atomic.Pointer[string]
-	go reportKeyLoop(ctx, client, wgPub, endpointSource, endpointKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, &keyReported, reportEvery, logger)
 
 	backendOptions := reconcile.BackendOptions{}
 	if kubernetesMode {
@@ -346,6 +346,17 @@ func main() {
 		}
 	}()
 	r := reconcile.New(backend, wgPriv, wgPub, logger)
+	aiVPN := configureAIVPNRuntime(os.Getenv("TUNNEX_AI_VPN_AUTO"), wgBackend, wgIface, client, r.Healthy, func() {
+		select {
+		case endpointKick <- struct{}{}:
+		default:
+		}
+	}, logger)
+	if aiVPN != nil {
+		go aiVPN.Run(ctx)
+		defer aiVPN.Close()
+	}
+	go reportKeyLoop(ctx, client, wgPub, endpointSource, endpointKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger)
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
 	r.SetForwardBlockedFn(egressMgr.ForwardBlocked)        // WF-4: Docker FORWARD DROP swallowing the forward → same signal
@@ -438,6 +449,13 @@ func main() {
 			// Only the ownership-projected configuration may select the fixed
 			// local WireGuard listener. Signaling never supplies this address.
 			relayRuntime.SetPort(projected.ListenPort)
+		}
+		if aiVPN != nil {
+			if err != nil {
+				aiVPN.SetDesired("")
+			} else {
+				aiVPN.SetDesired(projected.InterfaceAddress)
+			}
 		}
 		return projected, err
 	})
@@ -592,6 +610,8 @@ func main() {
 	logger.Info("agent_stopped")
 }
 
+// Optional AI listener failures are reported through their own capability. They
+// must never withdraw an otherwise healthy VPN gateway from network service.
 func agentReady(reconcilerHealthy, endpointReported, kubernetesMode, k8sNetPrepReady, k8sSnapshotReady bool) bool {
 	return reconcilerHealthy && endpointReported && (!kubernetesMode || (k8sNetPrepReady && k8sSnapshotReady))
 }
@@ -856,7 +876,7 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 // with backoff until it succeeds (then sets reported and returns). The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, endpointKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, endpointKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
 	const maxBackoff = 30 * time.Second
 	report := func() bool {
 		endpoint := endpointSource()
@@ -887,6 +907,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 			FlowLogLastObservedAt:     flow.LastObservedAt,
 			FlowLogLastDeliveredAt:    flow.LastDeliveredAt,
 		}
+		ps.AIVPNHTTPReady, ps.AIVPNHTTPAddress = aiVPN.Status()
 		if applyErr != nil {
 			ps.Error = applyErr.Error()
 			if len(ps.Error) > 300 { // bound so a verbose nft error can't overflow the report body (finding #4)
@@ -1541,7 +1562,7 @@ func enrollWithToken(ctx context.Context, logger *slog.Logger, apiURL, certDir, 
 		logger.Error("agent_csr_failed", slog.String("error", gerr.Error()))
 		return nil, nil, nil, false
 	}
-	res, eerr := control.Enroll(ctx, apiURL, joinToken, csr, nodeName, version(), protocolVersion)
+	res, eerr := control.EnrollWithRetry(ctx, apiURL, joinToken, csr, nodeName, version(), protocolVersion)
 	if eerr != nil {
 		logger.Error("agent_enroll_failed",
 			slog.String("error", eerr.Error()),

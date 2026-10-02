@@ -39,6 +39,7 @@ type AgentChannel struct {
 	ipsecSealer                *crypto.Sealer
 	vpnAIAdapter               *aigateway.Adapter
 	vpnAIPolicies              *aigateway.Policies
+	vpnHTTPTransport           aiTransportRepository
 	connectivity               *connectivity.Store
 	svc                        *nodes.Service
 	ca                         *agentca.CA
@@ -143,6 +144,8 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Get("/agent/desired-state", a.desiredState)
 	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
 	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
+	r.Post("/agent/ai-http/organizations/{orgId}/v1/chat/completions", a.vpnAIHTTPChat)
+	r.Post("/agent/ai-http/v1/chat/completions", a.vpnAIHTTPChat)
 	r.Get("/agent/watch", a.watch)
 	r.Post("/agent/renew", a.renew)
 	r.Post("/agent/report", a.report)
@@ -234,10 +237,12 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		EgressIPv6 bool   `json:"egress_ipv6"` // S15: gateway can source-NAT IPv6 full-tunnel egress
 		// S7.2 staleness: the policy IN FORCE on the gateway (version + canonical hash
 		// of the last successfully applied Compiled) + the last apply error, if any.
-		PolicyVersion int    `json:"policy_version"`
-		PolicyHash    string `json:"policy_hash"`
-		PolicyError   string `json:"policy_error"`
-		PolicyFailing string `json:"policy_failing_since"`
+		AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
+		AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
+		PolicyVersion    int    `json:"policy_version"`
+		PolicyHash       string `json:"policy_hash"`
+		PolicyError      string `json:"policy_error"`
+		PolicyFailing    string `json:"policy_failing_since"`
 		// S8.1 D1: the compiled-artifact version the agent REFUSED as unsupported (0 = none).
 		PolicyRefusedVersion int `json:"policy_refused_version"`
 		// S8.2 H5: a site-link peer has a stale/absent handshake (site-to-site link down).
@@ -268,7 +273,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch

@@ -57,13 +57,15 @@ services:
       # Only this internal peer may assert the original HTTP/HTTPS scheme.
       TUNNEX_TRUSTED_PROXIES: ${TUNNEX_TRUSTED_PROXIES:-nginx}
       TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
-      # Backend installation is automatic; remote HTTP keeps integration off.
+      # Backend installation is automatic; the saved policy gates HTTP access.
       TUNNEX_AI_GATEWAY_URL: ${TUNNEX_AI_GATEWAY_URL:-}
       TUNNEX_AI_GATEWAY_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?set by install.sh}
       TUNNEX_AI_GATEWAY_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?set by install.sh}
       TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: "true"
       TUNNEX_AI_BOOTSTRAP_VERSION: ${TUNNEX_AI_BOOTSTRAP_VERSION:-}
       TUNNEX_AI_ALLOW_PRIVATE_HTTP: ${TUNNEX_AI_ALLOW_PRIVATE_HTTP:-false}
+      # VPN identity is provided by enrolled gateways; HTTP policy and model grants remain separate.
+      TUNNEX_AI_VPN_AUTO: ${TUNNEX_AI_VPN_AUTO:-true}
       TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
       TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?set by AI bootstrap}
       TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
@@ -345,6 +347,8 @@ services:
       TUNNEX_NODE_STATE_DIR: /var/lib/tunnex-node
       TUNNEX_WG_BACKEND: ${TUNNEX_WG_BACKEND:-wgctrl}
       TUNNEX_WG_INTERFACE: ${TUNNEX_WG_INTERFACE:-wg0}
+      # The AI listener binds only the WireGuard address/interface; no host port.
+      TUNNEX_AI_VPN_AUTO: ${TUNNEX_AI_VPN_AUTO:-true}
       # Access-event collection is on by default. Set a different NFLOG group if
       # 100 conflicts inside this gateway container's network namespace, or set
       # exactly 0 to disable observation.
@@ -355,6 +359,7 @@ services:
       - tunnex_node_state:/var/lib/tunnex-node
     cap_add:
       - NET_ADMIN
+      - NET_RAW # SO_BINDTODEVICE proves VPN ingress for AI requests
     sysctls:
       - net.ipv4.ip_forward=1 # container /proc/sys is read-only; the agent verifies this (S3.7)
     devices:
@@ -362,7 +367,8 @@ services:
     ports:
       - "51820:51820/udp"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   ai_engine_config:

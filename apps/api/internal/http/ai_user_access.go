@@ -80,9 +80,21 @@ func (s apiServer) ListMyAIModels(ctx context.Context, req api.ListMyAIModelsReq
 	if err != nil {
 		return nil, err
 	}
+	baseURL, reason := s.userVPNEndpoint(ctx, req.OrgId, p.UserID)
 	out := api.ListMyAIModels200JSONResponse{}
 	for _, v := range values {
-		out = append(out, api.AIUserModel{Model: v.Model, Mode: api.AIModelMode(v.Mode)})
+		item := api.AIUserModel{Model: v.Model, Mode: api.AIModelMode(v.Mode)}
+		itemReason := reason
+		if v.Mode != aigateway.ModeChat {
+			itemReason = "operation_unsupported"
+		} else if baseURL != "" {
+			item.VpnBaseUrl = &baseURL
+		}
+		if itemReason != "" {
+			value := api.AIUserModelVpnUnavailableReason(itemReason)
+			item.VpnUnavailableReason = &value
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -171,4 +183,34 @@ func (s apiServer) AiUserVideoContent(context.Context, api.AiUserVideoContentReq
 
 func (s apiServer) AiUserAnthropicMessage(context.Context, api.AiUserAnthropicMessageRequestObject) (api.AiUserAnthropicMessageResponseObject, error) {
 	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) userVPNEndpoint(ctx context.Context, org, user uuid.UUID) (string, string) {
+	// Prefer the configured private TLS relay; HTTP policy never gates HTTPS.
+	if endpoint, err := s.aiPolicies.ManualVPNBaseURL(ctx, org, user); err != nil {
+		return "", "transport_unavailable"
+	} else if endpoint != "" {
+		return endpoint, ""
+	}
+	if !s.aiPolicies.AutomaticVPNEnabled() {
+		return "", "deployment_disabled"
+	}
+	if s.aiTransport == nil {
+		return "", "transport_unavailable"
+	}
+	settings, err := s.aiTransport.Get(ctx)
+	if err != nil {
+		return "", "transport_unavailable"
+	}
+	if !settings.AllowHTTP {
+		return "", "http_disabled"
+	}
+	endpoint, err := s.aiPolicies.AutomaticVPNBaseURL(ctx, org, user)
+	if err != nil {
+		return "", "transport_unavailable"
+	}
+	if endpoint == "" {
+		return "", "gateway_not_ready"
+	}
+	return endpoint, ""
 }

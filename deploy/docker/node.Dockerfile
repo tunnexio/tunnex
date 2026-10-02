@@ -11,6 +11,8 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -ldflags="-s -w -X main.buildVersion=${VERSION}" \
     -o /out/tunnex-node ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/tunnex-ai-vpn-relay ./cmd/ai-vpn-relay
 
 # One verified multi-platform index for the C builder AND its runtime ABI.
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS ipsec-build
@@ -36,8 +38,11 @@ RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptable
 COPY --from=ipsec-build /stage/opt/tunnex-ipsec /opt/tunnex-ipsec
 COPY --from=ipsec-build /stage/usr/share/tunnex-ipsec /usr/share/tunnex-ipsec
 COPY --from=build /out/tunnex-node /usr/local/bin/tunnex-node
+COPY --from=build /out/tunnex-ai-vpn-relay /usr/local/bin/tunnex-ai-vpn-relay
 COPY deploy/ipsec/verify_runtime.sh /usr/share/tunnex-ipsec/verify_runtime.sh
-RUN apk info -v > /usr/share/tunnex-ipsec/source/runtime-apk-manifest.txt \
+RUN test -x /usr/local/bin/tunnex-node \
+    && test -x /usr/local/bin/tunnex-ai-vpn-relay \
+    && apk info -v > /usr/share/tunnex-ipsec/source/runtime-apk-manifest.txt \
     && sh /usr/share/tunnex-ipsec/verify_runtime.sh
 EXPOSE 9091
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \

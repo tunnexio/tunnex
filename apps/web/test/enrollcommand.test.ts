@@ -50,6 +50,7 @@ describe("remoteEnrollCommand — the one true zero-touch docker run", () => {
       "--cap-add NET_ADMIN",
       "--device /dev/net/tun",
       "-e TUNNEX_WG_BACKEND=wgctrl",
+      "-e TUNNEX_AI_VPN_AUTO=true",
       "-e TUNNEX_JOIN_TOKEN=TKN",
       // The CP urls are shell-quoted too (re-review #3 — they now come from operator config, not the browser).
       '-e TUNNEX_API_URL="https://cp.example.com"',

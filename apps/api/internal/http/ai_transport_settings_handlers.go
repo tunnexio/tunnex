@@ -87,20 +87,27 @@ func aiTransportMiddleware(settings aiTransportRepository) func(http.Handler) ht
 				next.ServeHTTP(w, r)
 				return
 			}
-			if settings == nil {
-				apierr.Write(w, r, aiTransportError(nil))
-				return
-			}
-			v, err := settings.Get(r.Context())
-			if err != nil {
-				apierr.Write(w, r, aiTransportError(err))
-				return
-			}
-			if !v.AllowHTTP {
-				apierr.Write(w, r, apierr.New(403, "ai_https_required", "AI access over HTTP is disabled. Use HTTPS or ask a server administrator to enable HTTP in AI Gateway transport settings."))
+			if err := requireAIHTTP(r.Context(), settings); err != nil {
+				apierr.Write(w, r, err)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// The relay-to-CP leg is mTLS, but the dedicated relay route represents HTTP
+// inside WireGuard. It must consult the same current saved policy as public HTTP.
+func requireAIHTTP(ctx context.Context, settings aiTransportRepository) error {
+	if settings == nil {
+		return aiTransportError(nil)
+	}
+	v, err := settings.Get(ctx)
+	if err != nil {
+		return aiTransportError(err)
+	}
+	if !v.AllowHTTP {
+		return apierr.New(403, "ai_https_required", "AI access over HTTP is disabled. Use HTTPS or ask a server administrator to enable HTTP in AI Gateway transport settings.")
+	}
+	return nil
 }

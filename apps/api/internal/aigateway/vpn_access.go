@@ -30,6 +30,10 @@ func (s *Policies) resolveVPNModel(ctx context.Context, org, node uuid.UUID, sou
 	if s == nil || s.vpnIngress == nil || s.vpnIngress.Node != node {
 		return Grant{}, policyDenied()
 	}
+	return s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+}
+
+func (s *Policies) resolveVPNPeerModel(ctx context.Context, org, node uuid.UUID, source, key, model string, singleOrg bool) (Grant, error) {
 	ip, err := netip.ParseAddr(source)
 	raw, keyErr := base64.StdEncoding.DecodeString(key)
 	if err != nil || !ip.Is4() || ip.IsUnspecified() || keyErr != nil || len(raw) != 32 || node == uuid.Nil {
@@ -106,4 +110,32 @@ func (s *Policies) VPNDeviceIngress(ctx context.Context, org, device, user uuid.
 	}
 	v := *s.vpnIngress
 	return &v
+}
+
+// ManualVPNBaseURL preserves SDK discovery for an explicitly provisioned TLS
+// relay. The hostname is installation configuration, never a browser origin or
+// request header; only an owned live human device on that gateway qualifies.
+func (s *Policies) ManualVPNBaseURL(ctx context.Context, org, user uuid.UUID) (string, error) {
+	if s == nil || s.vpnIngress == nil || s.pool == nil {
+		return "", nil
+	}
+	var ok bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM devices d
+ JOIN nodes n ON n.org_id=d.org_id AND n.id=d.node_id
+ JOIN organizations o ON o.id=d.org_id
+ JOIN memberships m ON m.org_id=d.org_id AND m.user_id=d.user_id
+ JOIN users u ON u.id=d.user_id
+ WHERE d.org_id=$1 AND d.user_id=$2 AND d.node_id=$3
+ AND d.transport='wireguard' AND d.kind='human' AND d.status='active'
+ AND d.deleted_at IS NULL AND NOT d.health_blocked
+ AND n.status='active' AND n.revoked_at IS NULL AND o.deleted_at IS NULL AND o.ai_gateway_enabled
+ AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL
+ AND u.email_verified_at IS NOT NULL AND NOT (u.must_change_password AND u.password_hash IS NOT NULL))`, org, user, s.vpnIngress.Node).Scan(&ok)
+	if err != nil {
+		return "", aiUnavailable()
+	}
+	if !ok {
+		return "", nil
+	}
+	return "https://" + s.vpnIngress.Host + "/api/v1/organizations/" + org.String() + "/ai-gateway/inference/v1", nil
 }

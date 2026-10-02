@@ -242,7 +242,22 @@ awk '
 ' "${TMP}/deployment.yaml" >"${TMP}/main-container.yaml"
 reject "${TMP}/main-container.yaml" '^[[:space:]]+privileged: true$' 'privileged main gateway container'
 require "${TMP}/main-container.yaml" 'drop: \["ALL"\]' 'gateway complete default capability drop'
-require "${TMP}/main-container.yaml" 'add: \["NET_ADMIN", "NET_BIND_SERVICE"\]' 'gateway exact host capability set'
+require "${TMP}/main-container.yaml" 'add: \["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"\]' 'gateway exact host capability set with VPN inference'
+require "${TMP}/main-container.yaml" 'name: TUNNEX_AI_VPN_AUTO' 'automatic VPN inference runtime flag'
+# The AI listener is deliberately absent from Kubernetes port publication.
+reject "${TMP}/enroll.yaml" 'containerPort: 8083|hostPort: 8083|port: 8083|targetPort: 8083' 'public/service AI listener port'
+helm template gw-ai-disabled "${CHART}" "${ENROLL[@]}" --set aiVPN.enabled=false >"${TMP}/ai-disabled.yaml"
+extract_source "${TMP}/ai-disabled.yaml" deployment.yaml "${TMP}/ai-disabled-deployment.yaml"
+require "${TMP}/ai-disabled-deployment.yaml" 'add: \["NET_ADMIN", "NET_BIND_SERVICE"\]' 'original capability set when VPN inference disabled'
+reject "${TMP}/ai-disabled-deployment.yaml" 'add: .*NET_RAW' 'extra capability when VPN inference disabled'
+# Match each flag to its own value; unrelated true/false settings are not evidence.
+python3 - "${TMP}/main-container.yaml" "${TMP}/ai-disabled-deployment.yaml" <<'PY_AI'
+import pathlib, re, sys
+for path, expected in zip(sys.argv[1:], ('true', 'false')):
+    text = pathlib.Path(path).read_text()
+    values = re.findall(r'name: TUNNEX_AI_VPN_AUTO\s+value: "(true|false)"', text)
+    assert values == [expected], (path, values, expected)
+PY_AI
 require "${TMP}/main-container.yaml" 'runAsNonRoot: false' 'gateway explicit root execution contract'
 require "${TMP}/main-container.yaml" 'type: RuntimeDefault' 'gateway default seccomp profile'
 require "${TMP}/main-container.yaml" 'name: TUNNEX_HOST_POSTURE_NODE_NAME' 'runtime exact node authority input'
@@ -352,6 +367,8 @@ reject "${TMP}/legacy-existing.yaml" '^kind: Secret$' 'chart-minted Secret for t
 require "${TMP}/legacy-existing.yaml" 'name: tunnex-legacy-join' 'legacy existingJoinTokenSecret compatibility'
 
 # Invalid lifecycle combinations fail closed at schema/render time.
+expect_fail invalid-ai-vpn-flag 'aiVPN.*enabled|expected.*boolean|type.*boolean' \
+  "${ENROLL[@]}" --set-string aiVPN.enabled=invalid
 expect_fail old-nested-shape 'got object, want string|expected string|type.*string' \
   "${ENROLL[@]}" --set 'joinToken.secretRef=tunnex-join'
 expect_fail nodeport-without-endpoint 'endpoint.*required|length must be >= 1|/endpoint.*minLength' \

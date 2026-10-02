@@ -386,6 +386,7 @@ grep -Fxq 'pull api@sha256:aaa' "$TMP/ai-upgrade.log"
 MOCK_AI_OLD_VERIFIER=1 run_ai_upgrade >"$TMP/ai-upgrade-output"
 grep -Fq -- '--entrypoint sh' "$TMP/ai-upgrade.log"
 grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-upgrade/.env"
+grep -qx 'TUNNEX_AI_VPN_AUTO=true' "$TMP/ai-upgrade/.env"
 grep -Fq 'saved HTTP policy is retained in Settings > AI Gateway transport' "$TMP/ai-upgrade-output"
 [ -f "$TMP/ai-upgrade/ai-engine.json" ]
 [ -f "$TMP/ai-upgrade/ai-egress-policy.json" ]
@@ -408,6 +409,9 @@ for key in TUNNEX_AI_GATEWAY_ADMIN_USER TUNNEX_AI_GATEWAY_ADMIN_PASSWORD TUNNEX_
   [ -n "$value" ]
   ! grep -Fq "$value" "$TMP/ai-upgrade-output"
 done
+# An operator's explicit opt-out survives reinstall/upgrade verbatim.
+sed 's/^TUNNEX_AI_VPN_AUTO=true$/TUNNEX_AI_VPN_AUTO=false/' "$TMP/ai-upgrade/.env" >"$TMP/ai-opt-out.env"
+cp "$TMP/ai-opt-out.env" "$TMP/ai-upgrade/.env"
 cp "$TMP/ai-upgrade/.env" "$TMP/ai-before.env"
 cp "$TMP/ai-upgrade/ai-engine.json" "$TMP/ai-before.json"
 cp "$TMP/ai-upgrade/ai-egress-policy.json" "$TMP/ai-before-policy.json"

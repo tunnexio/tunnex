@@ -53,9 +53,16 @@ func Enroll(ctx context.Context, apiURL, joinToken string, csrPEM []byte, nodeNa
 		"join_token": joinToken, "csr": string(csrPEM), "node_name": nodeName,
 		"agent_version": agentVersion, "protocol_version": protocolVersion,
 	})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/v1/agent/enroll", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/v1/agent/enroll", bytes.NewReader(body))
+	if err != nil {
+		return EnrollResult{}, err
+	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	// An enrollment is a one-time credential exchange. Redirects may follow
+	// token consumption; never forward the token or classify a later redirect
+	// dial failure as a safe initial-connection retry.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
 	if err != nil {
 		return EnrollResult{}, err
 	}
@@ -218,6 +225,10 @@ type PolicyStatus struct {
 	// They are omitted until the first observation/report respectively.
 	FlowLogLastObservedAt  time.Time
 	FlowLogLastDeliveredAt time.Time
+	// AIVPNHTTPReady is true only while the embedded listener is bound to the
+	// authoritative WireGuard address. Address is an IPv4 literal, without port.
+	AIVPNHTTPReady   bool
+	AIVPNHTTPAddress string
 }
 
 // ReportInfo reports the node's locally-generated WireGuard public key, its public
@@ -237,6 +248,8 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"ovpn_health":             ps.OVPNHealth,
 		"dns_resolve_rpc_version": ps.DNSResolveRPCVersion,
 		"flow_log_state":          ps.FlowLogState.Bounded(),
+		"ai_vpn_http_ready":       ps.AIVPNHTTPReady,
+		"ai_vpn_http_address":     ps.AIVPNHTTPAddress,
 	}
 	if !ps.FlowLogLastObservedAt.IsZero() {
 		payload["flow_log_last_observed_at"] = ps.FlowLogLastObservedAt.UTC().Format(time.RFC3339Nano)
