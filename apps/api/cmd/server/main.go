@@ -487,6 +487,7 @@ func main() {
 			logger.Error("invalid VPN AI ingress configuration")
 			os.Exit(1)
 		}
+		aiPolicies.ConfigureAutomaticVPNIngress(cfg.AIVPNAuto)
 		aiPolicies.EnableProviderManagement(cfg.AIProviderManagementEnabled)
 		if cfg.AICustomEndpointsFile != "" || cfg.AICustomProxyURL != "" {
 			customPolicy, customErr := aiegress.LoadPolicy(cfg.AICustomEndpointsFile)
@@ -629,6 +630,7 @@ func main() {
 	agentCh.SetIPsecRuntime(ipsecStore, sealer)
 	agentCh.SetConnectivityStore(connectivityStore)
 	agentCh.SetVPNInference(aiAdapter, aiPolicies)
+	agentCh.SetVPNHTTPTransport(aitransport.New(pool))
 	// S20.3a P2: ownership deliveries are a durable, private mTLS mailbox.
 	// Attaching the store starts no scheduler and does not issue work; old agents
 	// omit the capability header and retain their existing desired-state path.

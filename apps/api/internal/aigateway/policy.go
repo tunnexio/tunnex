@@ -37,6 +37,7 @@ type Assignment struct {
 }
 type Policies struct {
 	vpnIngress         *VPNIngress
+	autoVPN            bool
 	pool               *pgxpool.Pool
 	sealer             *crypto.Sealer
 	engine             PolicyEngine

@@ -1,5 +1,50 @@
 # VPN identity AI ingress (WireGuard)
 
+## Automatic installed gateway
+
+Hosted installation and upgrade enable `TUNNEX_AI_VPN_AUTO=true` on the API and
+node agent. The remote Docker enrollment command and gateway Helm chart enable
+it too; an explicit installed opt-out is preserved. In the CP Helm chart, the
+setting applies when `aiGateway.enabled` is true. No extra relay service, host
+port, provider key or user token is needed.
+
+The node agent starts an inference-only listener on its actual private WireGuard
+address, port 8083, bound to the WireGuard interface. The gateway reports listener
+readiness separately from ordinary VPN readiness. An AI bind or setup failure
+does not stop a working VPN gateway. The same mechanism works with the CP on the
+gateway machine or on a separate machine; the gateway uses its existing enrolled
+mTLS connection to the CP.
+
+The server administrator's saved **Settings → AI Gateway transport → Allow HTTP**
+setting must permit this HTTP listener. The client-to-gateway traffic is inside
+WireGuard encryption; the gateway-to-CP connection uses mTLS. Installation does
+not change that saved setting, enable organization AI, or grant model access.
+Every request checks the current device, user, membership and model grant.
+
+For an approved chat model, **Connection & code** obtains the private endpoint
+from the API for the signed-in user's active WireGuard device. Every language
+uses that endpoint. REST examples send no key; the OpenAI SDK uses its required
+`unused` placeholder. There is no public-origin or token fallback. VPN examples
+currently support chat completions and human WireGuard devices; this does not
+add OpenVPN, IPsec or workload identity support.
+
+If no example is available, check the following:
+
+- The organization has AI enabled and the user's group has a current model grant.
+- The user's active WireGuard device belongs to the gateway they connect through.
+- Both API and gateway have automatic VPN AI enabled, and saved HTTP access is on.
+- The gateway's current report includes `ai_vpn_http_ready=true` with its actual
+  organization pool gateway address. Reports older than 90 seconds are refused.
+- The gateway has `NET_RAW` for interface binding. Its logs report
+  `ai_vpn_control_channel_unavailable`, `ai_vpn_bind_unavailable` or listener withdrawal;
+  check the exact interface/address and whether port 8083 is occupied.
+
+Do not publish port 8083 or add a public forwarding rule. Test the copied example
+while connected and verify refusal outside the tunnel. Existing browser sessions,
+provider configuration and public API authentication retain their normal checks.
+
+## Existing explicitly configured HTTPS relay
+
 This opt-in deployment keeps the existing HTTPS hostname. The OpenAI SDK can
 send any dummy API key; authentication comes from an individual WireGuard peer,
 the enrolled gateway's mTLS certificate, and CP's current device/user/model grant.
@@ -46,8 +91,8 @@ provider credentials, volumes and HTTPS material. Existing clients may retain DN
 until their next successful poll/disconnect; verify withdrawal before stopping
 VPN DNS. Failed/stale DNS must not be reported as successful rollback.
 
-This is not a published installer integration. Pin the custom images and retain
-the deployment overlay across upgrades. Never disable public authentication or
+The separate HTTPS relay remains operator-provisioned. Pin its images and retain
+its deployment overlay across upgrades. Never disable public authentication or
 trust X-Forwarded-For to make a VPN demonstration pass.
 
 ## Building binary overlays

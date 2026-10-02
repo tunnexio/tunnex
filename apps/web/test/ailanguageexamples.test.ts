@@ -1,20 +1,16 @@
 import { expect, it } from "vitest";
 import { aiLanguageExamples } from "../src/lib/aiLanguageExamples";
-it("offers languages and preserves exact routing and model in every JSON example", () => {
-  const examples = aiLanguageExamples("https://gateway.test/org/inference/v1", "custom-id/model", "embedding");
+const base = "http://100.96.0.1:8083/api/v1/organizations/org/ai-gateway/inference/v1";
+it("preserves the published VPN endpoint and exact model in every language without client credentials", () => {
+  const examples = aiLanguageExamples(base, "custom-id/model", "chat");
   expect(examples.map(e => e.label)).toEqual(["cURL", "Python", "JavaScript", "TypeScript", "Go", "Java", "C#", "PHP", "Ruby", "HTTP / REST"]);
   for (const e of examples) {
-    expect(e.source).toContain("/org/inference/v1/embeddings");
+    expect(e.source).toContain("/api/v1/organizations/org/ai-gateway/inference/v1/chat/completions");
+    expect(e.source).toContain("100.96.0.1:8083");
     expect(e.source).toContain("custom-id/model");
-    expect(e.source).toContain("TUNNEX");
+    expect(e.source).not.toMatch(/Authorization|TUNNEX_API_KEY|YOUR_TUNNEX_CREDENTIAL|api_key/);
   }
 });
-it("saves binary speech and includes video idempotency in every language", () => {
-  for (const e of aiLanguageExamples("https://gateway.test/v1", "model", "audio_speech").filter(e => e.language !== "http")) expect(e.source).toContain("speech.mp3");
-  for (const e of aiLanguageExamples("https://gateway.test/v1", "model", "video_generation")) expect(e.source).toContain("Idempotency-Key");
-});
-it("keeps transcription a multipart file upload", () => {
-  const examples = aiLanguageExamples("https://gateway.test/v1", "model", "audio_transcription");
-  expect(examples).toHaveLength(1);
-  expect(examples[0].source).toContain("file=@audio.wav");
+it.each(["embedding", "audio_speech", "audio_transcription", "video_generation", "completion", "image_generation", "rerank", "unknown"])("has no public fallback for unsupported VPN operation %s", mode => {
+  expect(aiLanguageExamples(base, "model", mode)).toEqual([]);
 });

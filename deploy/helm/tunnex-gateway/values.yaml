@@ -26,6 +26,12 @@ image:
   # Because this hook is privileged, an override must be immutable image@sha256.
   preflight: ""
 
+# VPN inference binds only the actual WireGuard address and interface. No AI
+# Service/host port is published. Access still requires current device identity,
+# model grants, organization enablement and the saved control-plane HTTP policy.
+aiVPN:
+  enabled: true
+
 # ─── CONTROL-PLANE CONNECTION ────────────────────────────────────────────────────
 # Where the agent enrolls + fetches desired state. Both endpoints must use TLS.
 # Point at the tunnex-cp release's externally trusted HTTPS API and agent-mTLS

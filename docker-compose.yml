@@ -66,6 +66,7 @@ services:
       # the API warns loudly at boot if left at it. Set APP_BASE_URL in .env.
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
       TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
+      TUNNEX_AI_VPN_AUTO: ${TUNNEX_AI_VPN_AUTO:-true}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       # ⛔ NO DEFAULT. Empty SMTP configuration disables email explicitly; deployments must configure a
@@ -114,6 +115,7 @@ services:
       # Real WireGuard data plane (S3.2). "mem" for an in-memory dev backend.
       TUNNEX_WG_BACKEND: ${TUNNEX_WG_BACKEND:-wgctrl}
       TUNNEX_WG_INTERFACE: ${TUNNEX_WG_INTERFACE:-wg0}
+      TUNNEX_AI_VPN_AUTO: ${TUNNEX_AI_VPN_AUTO:-true}
       # Access-event collection is on by default. Pick another NFLOG group when
       # 100 conflicts inside this gateway container's network namespace, or set
       # exactly 0 to disable observation.
@@ -129,6 +131,7 @@ services:
     # false + diagnosable if neither is available — no silent success.
     cap_add:
       - NET_ADMIN
+      - NET_RAW
     # ip_forward MUST be declared here: a Docker container's /proc/sys is READ-ONLY, so the
     # agent can't write it from inside — the sysctl sets it at boot and the agent verifies
     # it (egress_linux.go ensureIPForward). S3.7: the agent OWNS the real thing — the
@@ -142,7 +145,8 @@ services:
       # WireGuard data-plane UDP port, published for later stories.
       - "${HOST_WG_PORT:-51820}:51820/udp"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   web:
     build:

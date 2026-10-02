@@ -82,6 +82,8 @@ spec:
             - name: TUNNEX_K8S_HA_ENABLED
               value: {{ .Values.kubernetesHA.enabled | quote }}
             {{- if .Values.aiGateway.enabled }}
+            - name: TUNNEX_AI_VPN_AUTO
+              value: {{ .Values.aiGateway.vpnAuto | quote }}
             - name: TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED
               value: {{ .Values.aiGateway.providerManagementEnabled | quote }}
             - name: TUNNEX_AI_GATEWAY_URL

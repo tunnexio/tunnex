@@ -136,6 +136,12 @@ ai_validate_existing() {
     3) ;;
     *) ai_fail 'AI credentials are incomplete. Restore the matching protected configuration; no replacement key was generated.' ;;
   esac
+  _ai_vpn_count=$(grep -c '^TUNNEX_AI_VPN_AUTO=' "$AI_ENV_FILE" 2>/dev/null || true)
+  [ "${_ai_vpn_count:-0}" -le 1 ] || ai_fail 'VPN AI configuration contains duplicate entries.'
+  case "$(ai_env_value TUNNEX_AI_VPN_AUTO)" in
+    ''|true|false) ;;
+    *) ai_fail 'TUNNEX_AI_VPN_AUTO must be true or false.' ;;
+  esac
   _ai_existing_url=$(ai_env_value TUNNEX_AI_GATEWAY_URL)
   case "$(ai_env_value TUNNEX_AI_ALLOW_PRIVATE_HTTP)" in
     ''|true|false) ;;
@@ -199,6 +205,12 @@ ai_prepare_config() {
   ai_set_env TUNNEX_AI_ENGINE_IMAGE "$AI_IMAGE_PIN"
   ai_set_env TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED true
   ai_set_env TUNNEX_AI_BOOTSTRAP_VERSION 1
+  # Install/upgrade the VPN-only listener together with the node image. This
+  # does not change the saved server HTTP policy or grant organization access.
+  _ai_vpn_auto=$(ai_env_value TUNNEX_AI_VPN_AUTO)
+  [ -n "$_ai_vpn_auto" ] || _ai_vpn_auto=${TUNNEX_AI_VPN_AUTO:-true}
+  case "$_ai_vpn_auto" in true|false) ;; *) ai_fail 'TUNNEX_AI_VPN_AUTO must be true or false.' ;; esac
+  ai_set_env TUNNEX_AI_VPN_AUTO "$_ai_vpn_auto"
   _ai_private_http=$(ai_env_value TUNNEX_AI_ALLOW_PRIVATE_HTTP)
   [ -n "$_ai_private_http" ] || _ai_private_http=false
   ai_set_env TUNNEX_AI_ALLOW_PRIVATE_HTTP "$_ai_private_http"

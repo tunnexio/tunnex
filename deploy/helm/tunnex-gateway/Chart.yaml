@@ -6,8 +6,9 @@ description: >-
   and answering the cluster's DNS zone. A credentialless init admits the Pod
   only after the separate cluster-singleton host-posture manager proves this
   exact live Pod UID on the selected node; the ordinary hostNetwork gateway
-  retains only NET_ADMIN, NET_BIND_SERVICE, /dev/net/tun, and read-only
-  Service/EndpointSlice access.
+  retains NET_ADMIN, NET_BIND_SERVICE, /dev/net/tun, and read-only
+  Service/EndpointSlice access. VPN-only AI inference additionally requires
+  NET_RAW to bind its listener to the WireGuard interface.
   Retained identity state and explicit enroll/reuse modes make install, upgrade,
   rollback, and uninstall lifecycle-safe across Kubernetes providers.
 type: application

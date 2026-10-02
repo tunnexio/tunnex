@@ -6984,6 +6984,13 @@ components:
       properties:
         model: { type: string }
         mode: { $ref: '#/components/schemas/AIModelMode' }
+        vpn_base_url:
+          type: string
+          description: Private chat endpoint for an owned active WireGuard device. Automatic HTTP uses /ai/v1 for a user with one live organization membership and an organization-scoped URL otherwise. Configured TLS ingress remains supported. Does not assert current client connectivity.
+        vpn_unavailable_reason:
+          type: string
+          enum: [deployment_disabled, http_disabled, transport_unavailable, gateway_not_ready, operation_unsupported]
+          description: Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
     AIUserModelGrantInput:
       type: object
       additionalProperties: false

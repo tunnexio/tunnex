@@ -174,7 +174,7 @@ export function AIUseModel({ orgId }: { orgId: string }) {
     {error && <p role="alert">{error}</p>}
     {models === null ? !error && <Loading label="Loading your models…" /> : !models.length ? <Card>No models are available yet. Ask your administrator to grant model access to your user group.</Card> : <>
       <div className="ai-chat-toolbar"><Field label="Model"><Select value={model} onChange={e => setModel(e.target.value)}>{models.map(m => <option key={m.model} value={m.model}>{modelDisplayName(m.model)} · {m.mode}</option>)}</Select></Field><Button onClick={() => setDetailsOpen(true)}>Connection & code</Button></div>
-      {selected?.mode === "chat" ? <AIChatPlayground key={`${orgId}:${model}`} orgId={orgId} model={model} /> : <Card><h3>Use this model in your application</h3><p>This model supports {selected?.mode.replace(/_/g, " ")}. Open Connection & code for its endpoint and a ready-to-use example. The conversation playground supports chat models.</p><Button onClick={() => setDetailsOpen(true)}>View connection example</Button></Card>}
+      {selected?.mode === "chat" ? <AIChatPlayground key={`${orgId}:${model}`} orgId={orgId} model={model} /> : <Card><h3>Use this model in your application</h3><p>This model supports {selected?.mode.replace(/_/g, " ")}. VPN connection examples currently support chat models only. The conversation playground supports chat models.</p><Button onClick={() => setDetailsOpen(true)}>Connection availability</Button></Card>}
       {detailsOpen && <Modal title="Connection & code" size="wide" showClose onDismiss={() => setDetailsOpen(false)}><AIModelConnectionDetails key={`${orgId}:${model}`} orgId={orgId} model={model} mode={selected?.mode} /></Modal>}
     </>}
   </section>;

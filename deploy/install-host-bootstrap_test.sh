@@ -818,6 +818,7 @@ grep -qx 'TUNNEX_EDGE_PUBLIC_IP=' "$TMP/ai-stale-ip/.env" || fail 'DNS TLS retai
 (TUNNEX_COMPOSE_PROJECT=custom-ai-project run_ai_install "$TMP/ai-https" https://preview.tunnex.test) >"$TMP/ai-https-output"
 grep -qx 'TUNNEX_AI_GATEWAY_URL=http://bifrost:8080' "$TMP/ai-https/.env" || fail 'HTTPS bootstrap did not integrate its private backend'
 grep -qx 'TUNNEX_AI_BOOTSTRAP_VERSION=1' "$TMP/ai-https/.env" || fail 'AI bootstrap provenance was not recorded'
+grep -qx 'TUNNEX_AI_VPN_AUTO=true' "$TMP/ai-https/.env" || fail 'VPN AI was not enabled by fresh bootstrap'
 grep -qx 'TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$TMP/ai-https/.env" || fail 'AI image did not use the verified pin'
 [ -f "$TMP/ai-https/ai-engine.json" ] && [ -f "$TMP/ai-https/ai-bootstrap.sh" ] || fail 'AI configuration was not installed'
 "$PYTHON3" -c 'import os, stat, sys; assert stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o600' "$TMP/ai-https/.env" || fail 'AI credentials were not owner-only'
@@ -845,6 +846,9 @@ policy = json.loads(policy_path.read_text())
 assert policy == {"public_https": True, "endpoints": [], "denied_cidrs": [],
                   "protected_hosts": ["api", "bifrost", "redis", "web", "nginx", "caddy", "ai-egress", "preview.tunnex.test", "postgres"]}
 PYTHON
+# An operator's explicit opt-out survives reinstall/upgrade verbatim.
+sed 's/^TUNNEX_AI_VPN_AUTO=true$/TUNNEX_AI_VPN_AUTO=false/' "$TMP/ai-https/.env" >"$TMP/ai-opt-out.env"
+cp "$TMP/ai-opt-out.env" "$TMP/ai-https/.env"
 cp "$TMP/ai-https/.env" "$TMP/ai-before.env"
 printf '\n' >>"$TMP/ai-https/ai-engine.json"
 cp "$TMP/ai-https/ai-engine.json" "$TMP/ai-before.json"

@@ -4,7 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }));
-vi.mock("../src/lib/api", () => ({ api }));
+vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user" } } }) }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ orgs: [{ id: "org", name: "Demo" }], loading: false, failed: false }) }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("../src/components/Toasts", () => ({ toast }));
@@ -34,7 +35,7 @@ const saveModel = () => { advanceWizard(3); return within(screen.getByRole("dial
 const show = (orgId = "org-a") => createElement(AIProviderWorkspace, { orgId });
 beforeEach(() => {
   vi.resetAllMocks();
-  api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/models") ? { items: [{ id: c.models[0], name: "GPT-4o mini" }], total: 1, limit: 50, offset: 0 } : inventory, response: response() }));
+  api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: [{ id: c.models[0], name: "GPT-4o mini" }], total: 1, limit: 50, offset: 0 } : inventory, response: response() }));
   api.POST.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/test-connection") ? { status: "success", duration_ms: 20 } : path.endsWith("/model-catalog") ? { items: [{ id: c.models[0], name: "GPT-4o mini" }], total: 1, limit: 50, offset: 0 } : { ...c, models: [] }, response: response() })); api.PUT.mockResolvedValue({ data: c, response: response() }); api.DELETE.mockResolvedValue({ response: response(204) });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });

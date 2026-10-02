@@ -14,6 +14,8 @@ render = lambda do |extra=[]|
 end
 base = render.call
 raise 'AI resources appeared by default' if base.any? { |d| d.dig('metadata', 'name').to_s.include?('-ai') || d.dig('metadata', 'name') == 'bifrost' }
+base_api_env = base.find { |d| d['kind'] == 'Deployment' && d.dig('metadata', 'name') == 'api' }.dig('spec', 'template', 'spec', 'containers')[0]['env']
+raise 'VPN inference enabled without AI deployment' if base_api_env.any? { |e| e['name'] == 'TUNNEX_AI_VPN_AUTO' }
 enabled = render.call(['--set', 'aiGateway.enabled=true', '--set', 'aiGateway.existingSecret=ai-fixture'])
 select = lambda { |kind, name| enabled.find { |d| d['kind'] == kind && d.dig('metadata', 'name') == name } || raise("missing #{kind}/#{name}") }
 service = select.call('Service', 'bifrost')
@@ -28,6 +30,15 @@ raise 'pin changed' unless container['image'] == engine_image
 end
 api_env = select.call('Deployment', 'api').dig('spec', 'template', 'spec', 'containers')[0]['env']
 raise 'provider credential reached API' if api_env.any? { |e| e['name'] == 'OPENROUTER_API_KEY' }
+raise 'VPN inference deployment flag missing' unless api_env.select { |e| e['name'] == 'TUNNEX_AI_VPN_AUTO' } == [{'name'=>'TUNNEX_AI_VPN_AUTO', 'value'=>'true'}]
+vpn_disabled = render.call(['--set', 'aiGateway.enabled=true', '--set', 'aiGateway.existingSecret=ai-fixture', '--set', 'aiGateway.vpnAuto=false'])
+vpn_disabled_env = vpn_disabled.find { |d| d['kind'] == 'Deployment' && d.dig('metadata', 'name') == 'api' }.dig('spec', 'template', 'spec', 'containers')[0]['env']
+raise 'explicit VPN disable lost' unless vpn_disabled_env.select { |e| e['name'] == 'TUNNEX_AI_VPN_AUTO' } == [{'name'=>'TUNNEX_AI_VPN_AUTO', 'value'=>'false'}]
+_, _, invalid_vpn = Open3.capture3('helm', 'template', 'ai-contract', chart, *args, '--set-string', 'aiGateway.vpnAuto=invalid')
+raise 'non-boolean VPN flag accepted' if invalid_vpn.success?
+[base, enabled, vpn_disabled].each do |documents|
+  raise 'AI listener published as Kubernetes Service' if documents.any? { |d| d['kind'] == 'Service' && d.fetch('spec').fetch('ports').any? { |p| p['port'] == 8083 || p['targetPort'] == 8083 } }
+end
 raise 'wrong private origin' unless api_env.find { |e| e['name'] == 'TUNNEX_AI_GATEWAY_URL' }['value'] == 'http://bifrost:8080'
 %w[config logs].each do |kind|
   pvc = select.call('PersistentVolumeClaim', "ai-contract-tunnex-cp-ai-#{kind}")

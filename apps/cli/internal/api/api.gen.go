@@ -256,6 +256,15 @@ const (
 	ObservedEstimate AIUsageReportSemantics = "observed_estimate"
 )
 
+// Defines values for AIUserModelVpnUnavailableReason.
+const (
+	DeploymentDisabled   AIUserModelVpnUnavailableReason = "deployment_disabled"
+	GatewayNotReady      AIUserModelVpnUnavailableReason = "gateway_not_ready"
+	HttpDisabled         AIUserModelVpnUnavailableReason = "http_disabled"
+	OperationUnsupported AIUserModelVpnUnavailableReason = "operation_unsupported"
+	TransportUnavailable AIUserModelVpnUnavailableReason = "transport_unavailable"
+)
+
 // Defines values for AIUserModelGrantStatus.
 const (
 	AIUserModelGrantStatusApplied AIUserModelGrantStatus = "applied"
@@ -2076,7 +2085,16 @@ type AIUserGroup struct {
 type AIUserModel struct {
 	Mode  AIModelMode `json:"mode"`
 	Model string      `json:"model"`
+
+	// VpnBaseUrl Private chat endpoint for an owned active WireGuard device. Automatic HTTP uses /ai/v1 for a user with one live organization membership and an organization-scoped URL otherwise. Configured TLS ingress remains supported. Does not assert current client connectivity.
+	VpnBaseUrl *string `json:"vpn_base_url,omitempty"`
+
+	// VpnUnavailableReason Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
+	VpnUnavailableReason *AIUserModelVpnUnavailableReason `json:"vpn_unavailable_reason,omitempty"`
 }
+
+// AIUserModelVpnUnavailableReason Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
+type AIUserModelVpnUnavailableReason string
 
 // AIUserModelGrant defines model for AIUserModelGrant.
 type AIUserModelGrant struct {

@@ -9,6 +9,9 @@
       ],
       "additionalProperties": false,
       "properties": {
+        "vpnAuto": {
+          "type": "boolean"
+        },
         "providerManagementEnabled": {
           "type": "boolean"
         },

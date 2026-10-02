@@ -173,6 +173,9 @@ migrations:
 # One control-plane release per namespace; the private Service name bifrost is reserved.
 aiGateway:
   enabled: false
+  # Publish ready private endpoints from enrolled gateways. Does not enable
+  # organization access, grant models, or change the saved HTTP transport policy.
+  vpnAuto: true
   # Explicit transition to database-owned providers; preserve volumes and encryption key.
   providerManagementEnabled: false
   # Exact image/platform digest from the matching signed Tunnex release.

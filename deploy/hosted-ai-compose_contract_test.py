@@ -23,6 +23,7 @@ env.update({
     "TUNNEX_AI_CUSTOM_PROXY_PASSWORD": "fixture-proxy-password",
     "TUNNEX_AI_CUSTOM_PROXY_URL": "http://fixture-proxy:fixture-proxy-password@ai-egress:8190",
     "COMPOSE_PROFILES": "bundled-db",
+    "TUNNEX_AI_VPN_AUTO": "true",
 })
 config = json.loads(subprocess.check_output([
     "docker", "compose", "--env-file", "/dev/null", "--project-name", "hosted-ai-contract",
@@ -36,6 +37,12 @@ assert {name for name, service in services.items() if "ai_engine" in service["ne
 assert set(services["api"]["networks"]) == {"default", "ai_engine"}
 assert services["api"]["environment"]["TUNNEX_AI_GATEWAY_URL"] == ""
 assert services["api"]["environment"]["TUNNEX_AI_ALLOW_PRIVATE_HTTP"] == "false"
+assert services["api"]["environment"]["TUNNEX_AI_VPN_AUTO"] == "true"
+node = services["node-agent"]
+assert node["environment"]["TUNNEX_AI_VPN_AUTO"] == "true"
+assert node["depends_on"]["api"]["condition"] == "service_healthy"
+assert "NET_RAW" in node["cap_add"]
+assert all(port["target"] != 8083 for service in services.values() for port in service.get("ports", []))
 assert services["api"]["depends_on"]["bifrost"]["condition"] == "service_healthy"
 assert services["api"]["depends_on"]["ai-egress"]["condition"] == "service_healthy"
 assert engine["depends_on"]["ai-egress"]["condition"] == "service_healthy"
