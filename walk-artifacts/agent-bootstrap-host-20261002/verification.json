@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-02",
+  "scope": "Actual clean Ubuntu 24.04 amd64 EC2; explicit review publisher fixture, not production release acceptance",
+  "host_started_without_package_userdata": true,
+  "before": {
+    "tools": {
+      "wg": false,
+      "wg-quick": false,
+      "jq": true,
+      "curl": true,
+      "ip": true,
+      "resolvconf": true,
+      "resolvectl": true,
+      "releaseverify": false
+    },
+    "managed_runtime_exists": false,
+    "runtime_credential_exists": false
+  },
+  "generated_command_exit_code": 0,
+  "after": {
+    "service": "active",
+    "runtime_state": {
+      "applied_revision": 1,
+      "wireguard_revision": 1,
+      "client_version": "tunnex-agent-runtime"
+    },
+    "wireguard_tools_installed": true,
+    "credential_mode": "0o600",
+    "service_after_restart": "active",
+    "wireguard_identity_preserved_after_restart": true
+  },
+  "control_plane_observation": {
+    "agent_status": "active",
+    "runtime": {
+      "health": "ready",
+      "connectivity": "connected",
+      "stale": false,
+      "desired_revision": 1,
+      "applied_revision": 1,
+      "last_error_code": null
+    }
+  },
+  "original_test_agent_remains_ready": true,
+  "privilege_regression": {
+    "passwordless_sudo_command_succeeded": true,
+    "sudo_validation_command_failed": true,
+    "corrected_generated_preflight_succeeded": true,
+    "first_attempt_redeemed_token": false
+  },
+  "publisher": {
+    "scope": "isolated review publisher fixture; NOT a production signed release",
+    "original_runtime_signature_and_hashes_verified": true,
+    "fixture_signature_and_verifier_hashes_verified": true,
+    "source": "44618e4ef0436688f16dd45bfcd55d24de66b27b",
+    "version": "v0.1.37",
+    "verifier_build": "uncommitted feature-worktree implementation built with Go 1.26.8; fixture binds original runtime source for enrollment compatibility",
+    "ephemeral_private_key": "generated in memory only and discarded; no production key/trust changes"
+  },
+  "source_hashes": {
+    "agentview.ts": "739ee84098233f68fb5d17738bb0644862e41556e21b24bae718c657a92d820e"
+  },
+  "not_proved": [
+    "Published production signed release contains these assets",
+    "Clean arm64 or Debian host wire walk",
+    "Positive managed-agent model inference or grant withdrawal"
+  ],
+  "cleanup": {
+    "temporary_agent_revoked_and_removed": true,
+    "temporary_vm_termination_requested": true,
+    "public_fixture_assets_removed": true,
+    "control_plane_services_healthy_after_cleanup": true,
+    "original_agent_retained": true,
+    "temporary_vm_terminated": true
+  }
+}
