@@ -1,6 +1,6 @@
 # Managed-agent bootstrap without manual host preparation
 
-Status: accepted implementation plan, 2026-10-02. Follow-up to
+Status: implemented and independently reviewed, 2026-10-02. Follow-up to
 [S-ai-vpn-bootstrap-decisions.md](S-ai-vpn-bootstrap-decisions.md).
 
 ## Requirement and observed gap
@@ -82,3 +82,11 @@ credentials and working installations must retain their current behavior.
 - A clean supported VM wire walk remains required before fresh-host acceptance.
   Until the next signed release exists, a clearly identified review publisher
   fixture can prove mechanics but does not satisfy real release publication.
+
+## Review implementation evidence
+
+The [clean-host walk](S-agent-bootstrap-host-dependencies-boxwalk.md) verifies
+automatic preparation and enrollment on Ubuntu amd64, including the corrected
+passwordless-sudo preflight and restart identity preservation. Its publisher is
+an explicit isolated fixture; the first containing signed release remains the
+trigger for normal UI enrollment and publication acceptance.

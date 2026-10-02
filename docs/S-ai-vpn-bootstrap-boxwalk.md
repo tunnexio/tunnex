@@ -29,7 +29,7 @@ is not part of that unchanged-inventory assertion.
 | Force ordinary network interface | A request to the same private endpoint, explicitly bound to the laptop's non-VPN interface, timed out with curl status `000` and zero completed TCP connections. | This was an interface-bound refusal test; the desktop VPN was not physically disconnected. |
 | Public identity forgery | Public AI request returned HTTP 401 `unauthenticated`. Post-alias anonymous admin and forged public AI/model/provider checks also returned 401. | Public paths did not accept supplied VPN identity headers. |
 | Gateway restart | The recorded restart recovered. All nine project services ran; all eight configured health checks were healthy. | The edge service has no health check. This is recovery evidence, not a claim of zero downtime. |
-| Isolated real WireGuard ingress | Kernel WireGuard test passed with IPv4 and IPv6 peers and a 288 KiB response. Ordinary and spoofed-source underlay ingress were denied; interface loss withdrew the listener. | An isolated network-namespace proof, not a live dual-stack cloud deployment. |
+| Isolated real WireGuard ingress | Kernel WireGuard test accepted a dual-stack peer over IPv4 and returned a 288 KiB response. Ordinary and spoofed-source underlay ingress were denied; interface loss withdrew the listener. | The listener and requests were IPv4; this is an isolated network-namespace proof, not IPv6 ingress or a live dual-stack cloud deployment. |
 | Fresh managed AI Agent | Signed runtime bootstrap enrolled the new agent device; its system service was active and applied/WireGuard revisions converged to 1. | AI Agents is the nonhuman managed-runtime feature, separate from the human VPN inference listener. |
 | Agent restart and model denial | Runtime restarted successfully with its WireGuard identity preserved. AI credential issuance without an agent model grant returned HTTP 403. | Enrollment did not create model access. Successful agent model inference was not exercised. |
 
@@ -37,9 +37,9 @@ The human inference and non-VPN-interface observations were captured by the
 parent walk. The committed evidence retains their sanitized results, not the
 user's script, completion body, host addresses or authentication material.
 
-## Managed-agent bootstrap prerequisites
+## Initial managed-agent bootstrap prerequisites
 
-The test VM used WireGuard tools, curl, jq and CA certificates, plus its existing
+The initial test VM used WireGuard tools, curl, jq and CA certificates, plus its existing
 `resolvconf` compatibility link to `resolvectl`. The requested `openresolv` package
 was unavailable on Ubuntu 24.04, so that cloud-init package step failed. Enrollment
 and runtime operation subsequently succeeded with the available resolver
@@ -75,9 +75,10 @@ application or language framework.
   Trigger: acceptance of each layout before declaring universal bootstrap
   support. Same-host success is not evidence that co-location caused the original
   defect or that every other layout has passed.
-- **Fresh-host agent dependencies need a supported delivery path.** Trigger:
-  managed-agent bootstrap acceptance on a clean supported host, without an
-  operator-built verifier or manually staged dependencies.
+- **Automatic host preparation has a follow-up clean VM proof.** See the
+  [separate walk](S-agent-bootstrap-host-dependencies-boxwalk.md). It used a review
+  publisher fixture; normal UI enrollment from the first containing signed release
+  remains the production acceptance trigger.
 - **Physical VPN disconnect and live policy-revocation negatives remain distinct.**
   The interface-bound and isolated ingress tests substitute for those exact live
   cases. Trigger: final VPN AI release acceptance, including saved HTTP-policy

@@ -103,7 +103,8 @@
     }
   ],
   "isolated_wireguard_ingress": {
-    "ipv4_and_ipv6_peers_passed": true,
+    "dual_stack_peer_accepted_over_ipv4": true,
+    "ipv6_ingress_tested": false,
     "response_kib": 288,
     "ordinary_and_spoofed_underlay_denied": true,
     "interface_loss_withdrew_listener": true,
@@ -148,7 +149,7 @@
   },
   "unproved": [
     "private CP HTTPS and corrected path MTU",
-    "zero-prerequisite managed-agent host install",
+    "normal UI-managed agent install from a containing signed release",
     "live separate CP/gateway and Kubernetes layouts",
     "physical desktop VPN disconnect case",
     "live revoked identity/grant and HTTP-policy refusal cases",
@@ -168,5 +169,6 @@
     "enrollment_and_runtime_succeeded_with_available_resolver": true,
     "release_verifier_locally_built_from_signed_source": true,
     "zero_prerequisite_install_proved": false
-  }
+  },
+  "clean_host_followup": "../agent-bootstrap-host-20261002/verification.json"
 }
