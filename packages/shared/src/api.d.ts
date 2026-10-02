@@ -9000,6 +9000,12 @@ export interface components {
             /** @description Deployment-pinned Ed25519 public verification key encoded as raw base64url; public verifier material only */
             verifier_public_key: string;
             runtime: components["schemas"]["AgentBootstrapRuntimeRelease"];
+            verifier?: components["schemas"]["AgentBootstrapVerifier"];
+        };
+        /** @description Optional executable hashes from a separately signed descriptor verified against the installed release. Absent only for legacy releases without that descriptor; never an unsigned download fallback. */
+        AgentBootstrapVerifier: {
+            linux_amd64: components["schemas"]["AgentBootstrapRuntimeAsset"];
+            linux_arm64: components["schemas"]["AgentBootstrapRuntimeAsset"];
         };
         AgentBootstrapRuntimeRelease: {
             /** @enum {string} */

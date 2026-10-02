@@ -36,16 +36,26 @@ func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAg
 	if s.releaseBootstrap == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent enrollment is temporarily unavailable")
 	}
+	metadata := *s.releaseBootstrap
+	fetchVerifier := s.releaseBootstrapVerifier
+	if fetchVerifier == nil {
+		fetchVerifier = release.FetchBootstrapVerifier
+	}
+	verifier, err := fetchVerifier(ctx, metadata)
+	if err != nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent release verifier could not be validated; retry enrollment")
+	}
+	metadata.Verifier = verifier
 	p, _ := authctx.PrincipalFrom(ctx)
 	tok, err := s.devices.IssueAgentBootstrapToken(ctx, p.UserID, req.OrgId, req.Body.GatewayId, req.Body.Name)
 	if err != nil {
 		return nil, err
 	}
-	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(*s.releaseBootstrap)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(metadata)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
 func toAPIBootstrapRelease(r release.BootstrapRelease) api.AgentBootstrapRelease {
-	return api.AgentBootstrapRelease{
+	result := api.AgentBootstrapRelease{
 		Tag: r.Tag, SourceSha: r.SourceSHA, ManifestUrl: r.ManifestURL, VerifierKeyId: r.VerifierKeyID, VerifierPublicKey: r.VerifierPublicKey,
 		Runtime: api.AgentBootstrapRuntimeRelease{
 			Binary: api.TunnexAgentRuntime, Version: r.Runtime.Version,
@@ -54,6 +64,10 @@ func toAPIBootstrapRelease(r release.BootstrapRelease) api.AgentBootstrapRelease
 			Unit:       toAPIBootstrapAsset(r.Runtime.Unit),
 		},
 	}
+	if r.Verifier != nil {
+		result.Verifier = &api.AgentBootstrapVerifier{LinuxAmd64: toAPIBootstrapAsset(r.Verifier.LinuxAMD64), LinuxArm64: toAPIBootstrapAsset(r.Verifier.LinuxARM64)}
+	}
+	return result
 }
 
 func toAPIBootstrapAsset(a release.RuntimeAsset) api.AgentBootstrapRuntimeAsset {

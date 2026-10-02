@@ -136,6 +136,9 @@ jobs:
         shell: pwsh
         run: ./deploy/install-windows-bootstrap_test.ps1
 
+      - name: Managed-agent verifier publication contract
+        run: ruby deploy/agent-bootstrap-release-contract_test.rb
+
       - name: Signed update catalog contract
         run: sh deploy/signed-main-release-contract_test.sh
 
@@ -342,6 +345,18 @@ jobs:
           test -x ../../runtime-artifacts/tunnex-agent-runtime-linux-amd64
           test -s ../../runtime-artifacts/tunnex-agent-runtime-linux-arm64
           ../../cli-artifacts/tnx-linux-amd64 help 2>&1 | grep -F 'tunnex login'
+      - name: Build Linux managed-agent release verifiers
+        working-directory: apps/api
+        env:
+          GOFLAGS: -mod=readonly
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -ldflags="-s -w" \
+              -o "../../runtime-artifacts/releaseverify-linux-$arch" ./cmd/releaseverify
+          done
+          test -s ../../runtime-artifacts/releaseverify-linux-amd64
+          test -s ../../runtime-artifacts/releaseverify-linux-arm64
       - name: Upload Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -360,6 +375,8 @@ jobs:
             runtime-artifacts/tunnex-agent-runtime-linux-amd64
             runtime-artifacts/tunnex-agent-runtime-linux-arm64
             runtime-artifacts/tunnex-agent-runtime.service
+            runtime-artifacts/releaseverify-linux-amd64
+            runtime-artifacts/releaseverify-linux-arm64
           if-no-files-found: error
 
   # Full stack + Playwright. BLOCKING as of EPIC 11 / S11-1 (was opportunistic).
@@ -1452,6 +1469,20 @@ jobs:
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256
+          verifier_amd64_sha=$(sha256sum runtime-artifacts/releaseverify-linux-amd64 | awk '{print $1}')
+          verifier_arm64_sha=$(sha256sum runtime-artifacts/releaseverify-linux-arm64 | awk '{print $1}')
+          jq -n --arg version "$RELEASE_VERSION" --arg source_sha "$SOURCE_SHA" \
+            --arg amd64 "$verifier_amd64_sha" --arg arm64 "$verifier_arm64_sha" \
+            '{schema_version:1,purpose:"tunnex-agent-bootstrap-verifier",version:$version,source_sha:$source_sha,linux_amd64:{name:"releaseverify-linux-amd64",sha256:$amd64,source_sha:$source_sha},linux_arm64:{name:"releaseverify-linux-arm64",sha256:$arm64,source_sha:$source_sha}}' > verifier-unsigned.json
+          (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -bootstrap-verifier \
+            -manifest ../../verifier-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" \
+            -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../agent-bootstrap-verifier.json \
+            -public-key-output ../../release-verification-public-key.txt)
+          rm verifier-unsigned.json
+          (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releaseverify \
+            -manifest ../../release.json -public-key "$(cat ../../release-verification-public-key.txt)" \
+            -expected-source-sha "$SOURCE_SHA" -expected-key-id "$TUNNEX_RELEASE_KEY_ID" \
+            -bootstrap-verifier ../../agent-bootstrap-verifier.json -bootstrap-verifier-assets ../../runtime-artifacts)
       - name: Attach platform installers + checksums to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1489,6 +1520,9 @@ jobs:
             deploy/install.sh
             deploy/install.ps1
             release.json
+            agent-bootstrap-verifier.json
+            runtime-artifacts/releaseverify-linux-amd64
+            runtime-artifacts/releaseverify-linux-arm64
       - name: Attach Linux CLI binaries + checksum to tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -1547,6 +1581,32 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" \
             "$amd64" "$arm64" "$unit" runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS --clobber
+      - name: Attach and verify managed-agent bootstrap verifier assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TUNNEX_RELEASE_KEY_ID: ${{ secrets.TUNNEX_RELEASE_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then RELEASE_TAG="$GITHUB_REF_NAME"; else RELEASE_TAG="tunnex-build-${GITHUB_SHA}"; fi
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)" = "$GITHUB_SHA"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
+          ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
+          test "$ACTUAL" = "$EXPECTED"
+          gh release upload "$RELEASE_TAG" agent-bootstrap-verifier.json \
+            runtime-artifacts/releaseverify-linux-amd64 runtime-artifacts/releaseverify-linux-arm64 --clobber
+          mkdir -p verifier-publication-check
+          gh release download "$RELEASE_TAG" --dir verifier-publication-check \
+            --pattern release.json --pattern agent-bootstrap-verifier.json \
+            --pattern releaseverify-linux-amd64 --pattern releaseverify-linux-arm64
+          # Verify the downloaded bytes before the draft may become public.
+          (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releaseverify \
+            -manifest ../../verifier-publication-check/release.json \
+            -public-key "$(cat ../../release-verification-public-key.txt)" \
+            -expected-source-sha "$GITHUB_SHA" -expected-key-id "$TUNNEX_RELEASE_KEY_ID" \
+            -bootstrap-verifier ../../verifier-publication-check/agent-bootstrap-verifier.json \
+            -bootstrap-verifier-assets ../../verifier-publication-check)
       # Dispatch starts a separate reviewed sync and deploy. A tagged release
       # becomes latest only after both public launchers serve this source.
       - name: Verify deployed platform installers before tagged release promotion

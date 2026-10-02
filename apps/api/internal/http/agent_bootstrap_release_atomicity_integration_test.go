@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -79,6 +80,15 @@ func TestAgentBootstrapReleaseFailureIsAtomicAndOrdered(t *testing.T) {
 	}
 	if _, err := enterpriseUnavailable.IssueAgentBootstrapToken(ownerCtx, req); !hasCode(err, 503, "bootstrap_unavailable") {
 		t.Fatalf("invalid authoritative descriptor: want generic 503, got %v", err)
+	}
+	// A detached descriptor failure also occurs before any token storage mutation.
+	unavailableVerifier := enterpriseUnavailable
+	unavailableVerifier.releaseBootstrap = &release.BootstrapRelease{}
+	unavailableVerifier.releaseBootstrapVerifier = func(context.Context, release.BootstrapRelease) (*release.BootstrapVerifierAssets, error) {
+		return nil, errors.New("signature failed")
+	}
+	if _, err := unavailableVerifier.IssueAgentBootstrapToken(ownerCtx, req); !hasCode(err, 503, "bootstrap_unavailable") {
+		t.Fatalf("detached verifier failure: %v", err)
 	}
 	afterCount, afterHashes := countAndHashes()
 	if afterCount != beforeCount || afterHashes != beforeHashes {

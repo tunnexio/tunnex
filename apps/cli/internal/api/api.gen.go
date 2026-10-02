@@ -2650,6 +2650,9 @@ type AgentBootstrapRelease struct {
 	// Tag Immutable v* or tunnex-build-* release tag.
 	Tag string `json:"tag"`
 
+	// Verifier Optional executable hashes from a separately signed descriptor verified against the installed release. Absent only for legacy releases without that descriptor; never an unsigned download fallback.
+	Verifier *AgentBootstrapVerifier `json:"verifier,omitempty"`
+
 	// VerifierKeyId Public verifier key identifier.
 	VerifierKeyId string `json:"verifier_key_id"`
 
@@ -2707,6 +2710,12 @@ type AgentBootstrapTokenResponse struct {
 
 	// Release Server-verified immutable runtime release metadata. Contains no secret or signing private key.
 	Release AgentBootstrapRelease `json:"release"`
+}
+
+// AgentBootstrapVerifier Optional executable hashes from a separately signed descriptor verified against the installed release. Absent only for legacy releases without that descriptor; never an unsigned download fallback.
+type AgentBootstrapVerifier struct {
+	LinuxAmd64 AgentBootstrapRuntimeAsset `json:"linux_amd64"`
+	LinuxArm64 AgentBootstrapRuntimeAsset `json:"linux_arm64"`
 }
 
 // AgentCredentialCandidate defines model for AgentCredentialCandidate.

@@ -2,9 +2,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -18,6 +22,8 @@ func main() {
 	expectedKeyID := flag.String("expected-key-id", "", "require this signed verifier key ID")
 	printEnv := flag.Bool("print-env", false, "print safe image-pin environment assignments after verification")
 	platform := flag.String("platform", runtime.GOARCH, "target image architecture: amd64 or arm64")
+	bootstrapDescriptor := flag.String("bootstrap-verifier", "", "also verify this detached managed-agent verifier descriptor")
+	bootstrapAssets := flag.String("bootstrap-verifier-assets", "", "verify downloaded verifier executable bytes from this directory")
 	flag.Parse()
 	if *manifest == "" || *key == "" {
 		fmt.Fprintln(os.Stderr, "usage: releaseverify -manifest FILE -public-key KEY")
@@ -35,6 +41,16 @@ func main() {
 	if *expectedKeyID != "" && *expectedKeyID != s.KeyID {
 		fmt.Fprintln(os.Stderr, "release manifest rejected: verifier key ID does not match")
 		os.Exit(1)
+	}
+	if *bootstrapAssets != "" && *bootstrapDescriptor == "" {
+		fmt.Fprintln(os.Stderr, "verifier assets require a signed descriptor")
+		os.Exit(2)
+	}
+	if *bootstrapDescriptor != "" {
+		if err := verifyBootstrapAssets(s, *key, *bootstrapDescriptor, *bootstrapAssets); err != nil {
+			fmt.Fprintln(os.Stderr, "bootstrap verifier rejected:", err)
+			os.Exit(1)
+		}
 	}
 	if !*printEnv {
 		fmt.Printf("verified version=%s source_sha=%s sequence=%d\n", s.Manifest.Version, s.Manifest.SourceSHA, s.Manifest.Sequence)
@@ -64,4 +80,41 @@ func main() {
 	fmt.Printf("TUNNEX_RELEASE_SEQUENCE=%d\n", s.Manifest.Sequence)
 	fmt.Printf("TUNNEX_RELEASE_VERSION=%s\n", s.Manifest.Version)
 	fmt.Printf("TUNNEX_RELEASE_SOURCE_SHA=%s\n", s.Manifest.SourceSHA)
+}
+
+func verifyBootstrapAssets(s release.SignedManifest, key, descriptorPath, assetDir string) error {
+	expected, err := release.BootstrapReleaseFromSigned(s, "", key)
+	if err != nil {
+		return err
+	}
+	b, err := os.ReadFile(descriptorPath)
+	if err != nil {
+		return err
+	}
+	assets, err := release.ParseBootstrapVerifier(b, expected)
+	if err != nil {
+		return err
+	}
+	if assetDir == "" {
+		return nil
+	}
+	for _, asset := range []release.RuntimeAsset{assets.LinuxAMD64, assets.LinuxARM64} {
+		file, err := os.Open(filepath.Join(assetDir, asset.Name))
+		if err != nil {
+			return err
+		}
+		h := sha256.New()
+		_, err = io.Copy(h, file)
+		closeErr := file.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if hex.EncodeToString(h.Sum(nil)) != asset.SHA256 {
+			return fmt.Errorf("checksum mismatch for %s", asset.Name)
+		}
+	}
+	return nil
 }

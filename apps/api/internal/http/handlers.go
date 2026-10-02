@@ -250,18 +250,19 @@ type apiServer struct {
 	// mfaEnforceEnabled gates org-level MFA ENFORCE (S7.5.5) — enterprise only. Enrollment is
 	// OPEN (s.mfa, all editions); only the enforce toggle + admin-reset + the enrollment gate
 	// are enterprise. In the open build this is false → enforcement releases (D2 downgrade).
-	mfaEnforceEnabled     bool
-	cookieSecure          bool
-	appBaseURL            string
-	aiEngineInstalled     bool
-	aiAllowPrivateHTTP    bool
-	aiTransport           aiTransportRepository
-	nodeAgentImage        string
-	releaseStatus         *release.Status
-	releaseStatusProvider func() *release.Status
-	releaseBootstrap      *release.BootstrapRelease
-	hostUpgrade           *hostupgrade.Service
-	gatewayControlURL     string
+	mfaEnforceEnabled        bool
+	cookieSecure             bool
+	appBaseURL               string
+	aiEngineInstalled        bool
+	aiAllowPrivateHTTP       bool
+	aiTransport              aiTransportRepository
+	nodeAgentImage           string
+	releaseStatus            *release.Status
+	releaseStatusProvider    func() *release.Status
+	releaseBootstrap         *release.BootstrapRelease
+	releaseBootstrapVerifier func(context.Context, release.BootstrapRelease) (*release.BootstrapVerifierAssets, error)
+	hostUpgrade              *hostupgrade.Service
+	gatewayControlURL        string
 }
 
 type fqdnSettingNotifier interface {
