@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-02",
+  "kind": "sanitized sandbox observations; not a raw wire transcript",
+  "scope": {
+    "layout": "same-host control plane and gateway",
+    "deployment": "review overlays on signed v0.1.37",
+    "release_publication_verified": false
+  },
+  "provenance": {
+    "paper_head": "c3bb8015cea6f30fdd2cf5770b528c9342ee2b46",
+    "paper_head_is_not_complete_candidate_identity": true,
+    "initial_review_source_sha256": "2dd4d278322b41ef1d6775005b720814b6d3d34e239d3f6ca90d9aeb62eb34e2",
+    "initial_binaries": [
+      {
+        "path": "bin/tunnex-api",
+        "sha256": "c49e0f21d66527d739ab9fc804cbca376c67f7b3833e9ebf5f37fd765a9b1442"
+      },
+      {
+        "path": "bin/tunnex-node",
+        "sha256": "45a367b08bc3194d09656521ffc1556ccb5b3a6dea2f6d53f943710b752d1167"
+      },
+      {
+        "path": "bin/tunnex-ai-vpn-relay",
+        "sha256": "c31181125963efcdacd1f8c5a91d48ca53a6c8b504dd22bcdccb3bb46302c5d0"
+      }
+    ],
+    "alias_review_source_sha256": "af85dc15376dcd607070aa77a0f52cdc95a583f8b595f3144830b49ebcc8713f",
+    "alias_api_sha256": "32a3226513962ac33dc0c023907aefe362ba1d01f28bc32168d9035a8c4fea73",
+    "agent_verifier_source_commit": "44618e4ef0436688f16dd45bfcd55d24de66b27b",
+    "agent_verifier_sha256": "9e089e64d22e1df10e6c2c058a09b6d8f5ce2f6932668f8ee07b32756f371a7a",
+    "agent_verifier_go_version": "1.26.8"
+  },
+  "alias_deployment": {
+    "status": "applied_and_verified",
+    "api_health": "healthy",
+    "project_containers": 9,
+    "other_container_ids_and_images_unchanged": true,
+    "all_service_mounts_unchanged": true,
+    "managed_files_and_original_review_artifacts_unchanged": true,
+    "effective_compose_diff_only_api_image": true,
+    "canonical_response_hashes_match_both_baselines": {
+      "transport": true,
+      "settings": true,
+      "providers": true
+    },
+    "inventory_unchanged": true,
+    "existing_session_status": 200,
+    "public_forgery_statuses": {
+      "anonymous_admin_policy": 401,
+      "forged_public_ai_model_list": 401,
+      "forged_public_my_models": 401,
+      "forged_public_providers": 401
+    },
+    "playground_document_status": 200
+  },
+  "human_inference": {
+    "observation_source": "parent wire walk and inspected response shape",
+    "short_private_endpoint_http_status": 200,
+    "chat_completion_present": true,
+    "post_alias_user_script_exit_code": 0,
+    "post_alias_assistant_response_present": true
+  },
+  "non_vpn_interface": {
+    "observation_source": "parent wire walk",
+    "request_bound_to_non_vpn_interface": true,
+    "result": "timeout",
+    "curl_http_status": "000",
+    "completed_tcp_connections": 0,
+    "physical_vpn_disconnect_tested": false
+  },
+  "public_forgery": {
+    "observation_source": "parent wire walk and inspected response error",
+    "http_status": 401,
+    "error_code": "unauthenticated"
+  },
+  "gateway_restart": {
+    "recovered": true,
+    "running_services": 9,
+    "healthy_configured_checks": 8,
+    "services_without_health_check": 1
+  },
+  "isolated_node_checks": [
+    {
+      "check": "race",
+      "exit_code": 0
+    },
+    {
+      "check": "wireguard-ingress",
+      "exit_code": 0
+    },
+    {
+      "check": "gateway-readiness",
+      "exit_code": 0
+    },
+    {
+      "check": "binary-architectures",
+      "exit_code": 0
+    },
+    {
+      "check": "full-agent-linux",
+      "exit_code": 0
+    }
+  ],
+  "isolated_wireguard_ingress": {
+    "ipv4_and_ipv6_peers_passed": true,
+    "response_kib": 288,
+    "ordinary_and_spoofed_underlay_denied": true,
+    "interface_loss_withdrew_listener": true,
+    "live_cloud_dual_stack_claim": false
+  },
+  "managed_agent": {
+    "service": "active",
+    "runtime_state": {
+      "applied_revision": 1,
+      "wireguard_revision": 1,
+      "client_version": "tunnex-agent-runtime"
+    },
+    "ai_credential_without_grant_status": 403,
+    "service_after_restart": "active",
+    "wireguard_identity_preserved_after_restart": true
+  },
+  "managed_agent_release_assets": {
+    "version": "v0.1.37",
+    "source_sha": "44618e4ef0436688f16dd45bfcd55d24de66b27b",
+    "manifest_http_status": 200,
+    "signature_verified": true,
+    "assets": [
+      {
+        "name": "tunnex-agent-runtime-linux-amd64",
+        "http_status": 200,
+        "sha256": "74ec8c7f798d1b0402868af85156fc96d9c10ac5a4eede0f757e6a73e04a5eb6",
+        "matches_signed_manifest": true
+      },
+      {
+        "name": "tunnex-agent-runtime-linux-arm64",
+        "http_status": 200,
+        "sha256": "1870898f106f36cb136a5585b2e1058bdaa3b216d397d28a30d1dcf9dff35096",
+        "matches_signed_manifest": true
+      },
+      {
+        "name": "tunnex-agent-runtime.service",
+        "http_status": 200,
+        "sha256": "29dd5518d31f60a2ddca9b116113a32054335fbddf2996da8131a29cfae093a6",
+        "matches_signed_manifest": true
+      }
+    ]
+  },
+  "unproved": [
+    "private CP HTTPS and corrected path MTU",
+    "zero-prerequisite managed-agent host install",
+    "live separate CP/gateway and Kubernetes layouts",
+    "physical desktop VPN disconnect case",
+    "live revoked identity/grant and HTTP-policy refusal cases",
+    "positive managed-agent model inference",
+    "fresh install and upgrade of a signed release containing this candidate"
+  ],
+  "managed_agent_host_preparation": {
+    "required_tools_available": [
+      "WireGuard tools",
+      "curl",
+      "jq",
+      "CA certificates"
+    ],
+    "resolver_compatibility": "existing resolvconf link to resolvectl",
+    "requested_openresolv_package_available": false,
+    "cloud_init_package_step_succeeded": false,
+    "enrollment_and_runtime_succeeded_with_available_resolver": true,
+    "release_verifier_locally_built_from_signed_source": true,
+    "zero_prerequisite_install_proved": false
+  }
+}
