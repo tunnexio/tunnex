@@ -10770,6 +10770,16 @@ components:
         verifier_key_id: { type: string, minLength: 1, maxLength: 128, description: Public verifier key identifier. }
         verifier_public_key: { type: string, minLength: 43, maxLength: 64, description: Deployment-pinned Ed25519 public verification key encoded as raw base64url; public verifier material only, not a signing key or credential. }
         runtime: { $ref: "#/components/schemas/AgentBootstrapRuntimeRelease" }
+        verifier: { $ref: "#/components/schemas/AgentBootstrapVerifier" }
+
+    AgentBootstrapVerifier:
+      type: object
+      description: Optional executable hashes from a separately signed descriptor verified against the installed release. Absent only for legacy releases without that descriptor; never an unsigned download fallback.
+      required: [linux_amd64, linux_arm64]
+      additionalProperties: false
+      properties:
+        linux_amd64: { $ref: "#/components/schemas/AgentBootstrapRuntimeAsset" }
+        linux_arm64: { $ref: "#/components/schemas/AgentBootstrapRuntimeAsset" }
 
     AgentBootstrapRuntimeRelease:
       type: object

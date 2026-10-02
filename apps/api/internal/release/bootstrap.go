@@ -19,6 +19,7 @@ type BootstrapRelease struct {
 	VerifierKeyID     string
 	VerifierPublicKey string
 	Runtime           ManagedAgentRuntime
+	Verifier          *BootstrapVerifierAssets
 }
 
 // ImmutableReleaseTag is the publication convention used by deploy/install.sh

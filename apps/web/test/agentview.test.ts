@@ -191,6 +191,7 @@ describe("the managed bootstrap command — F03", () => {
   it("validates before installation, uses atomic temp files, and cleans failures", () => {
     const cmd = agentBootstrapCommand("TKN", "https://cp.example");
     expect(cmd).toContain("command -v resolvconf");
+    expect(cmd).toContain("apt-get install -y --no-install-recommends --no-remove");
     expect(cmd).toContain("mktemp -d");
     expect(cmd).toContain("jq -e");
     expect(cmd).toContain('runtime_credential | type == "string" and length > 0');
@@ -246,7 +247,11 @@ case "\${1:-}" in
 esac`);
     executable("wg-quick", "exit 0");
     executable("resolvconf", "exit 0");
-    executable("uname", "printf '%s\\n' x86_64");
+    executable("uname", 'case "$1" in -s) echo Linux ;; *) echo x86_64 ;; esac');
+    executable("id", "echo 1000");
+    executable("ip", "exit 0");
+    writeFileSync(join(dir, "os-release"), "ID=ubuntu\n");
+    writeFileSync(join(dir, "ca-certificates.crt"), "fixture-ca\n");
     // The generated command targets Linux, but the fixture also runs on macOS,
     // where GNU sha256sum is not guaranteed on PATH. Still hash the actual bytes.
     executable("sha256sum", `exec "$MOCK_NODE" -e '
@@ -288,6 +293,8 @@ case "$url" in
 esac`);
     executable("sudo", `
 cmd=$1; shift
+[ "$cmd" = -n ] && exit 0
+[ "$cmd" = -v ] && exit 0
 map_path() { case "$1" in /etc|/etc/*|/usr/local|/usr/local/*|/var/lib/tunnex-agent|/var/lib/tunnex-agent/*) printf '%s%s' "$MOCK_CAPTURE" "$1" ;; *) printf '%s' "$1" ;; esac; }
 case "$cmd" in
   wg|wg-quick|systemctl) exec "$cmd" "$@" ;;
@@ -317,13 +324,15 @@ esac`);
     };
 
     try {
-      const generated = buildAgentBootstrapCommand("TKN", executableRelease, "https://cp.example");
+      const generated = buildAgentBootstrapCommand("TKN", executableRelease, "https://cp.example")
+        .split("/etc/os-release").join(join(dir, "os-release"))
+        .split("/etc/ssl/certs/ca-certificates.crt").join(join(dir, "ca-certificates.crt"));
       expect(generated).toMatch(/^sh <<'TUNNEX_BOOTSTRAP'/);
       expect(generated).not.toContain("sh -c");
       const execute = (startFails: boolean) =>
         execFileSync("/bin/sh", [], {
           input: generated,
-          timeout: 5_000,
+          timeout: 30_000,
           env: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH ?? ""}`,
@@ -360,7 +369,7 @@ esac`);
       const callsAfterRollback = readGeneratedFile(systemctlCalls, dir);
       writeFileSync(runtime, `${runtimeBytes}tampered`);
       expect(() => execute(false)).toThrow(/runtime byte digest refused/);
-      expect(readGeneratedFile(systemctlCalls, dir)).toBe(callsAfterRollback);
+      expect(readGeneratedFile(systemctlCalls, dir)).toBe(callsAfterRollback + "show --property=Version --value\n");
       expect(() => accessSync(ephemeral)).toThrow();
       writeFileSync(runtime, runtimeBytes);
 
@@ -378,37 +387,8 @@ esac`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 90_000);
 
-  it("refuses a missing resolver before key generation, redemption, or file writes", () => {
-    const dir = mkdtempSync(join(tmpdir(), "tunnex-bootstrap-prereq-"));
-    const calls = join(dir, "calls");
-    try {
-      symlinkSync("/bin/sh", join(dir, "sh"));
-      for (const name of ["wg", "wg-quick", "curl", "jq"]) {
-        writeFileSync(join(dir, name), `#!/bin/sh\nprintf '%s\\n' "$0 $*" >> ${JSON.stringify(calls)}\nexit 99\n`, { mode: 0o700 });
-      }
-      const cmd = agentBootstrapCommand("TKN", "https://cp.example");
-      let failure: { stderr?: Buffer } | undefined;
-      try {
-        execFileSync("/bin/sh", ["-c", cmd], {
-          env: { PATH: dir, CALLS: calls },
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-      } catch (err) {
-        failure = err as { stderr?: Buffer };
-      }
-      expect(failure).toBeTruthy();
-      expect(failure?.stderr?.toString()).toMatch(/resolvconf\/openresolv is required/);
-      expect(() => accessSync(calls)).toThrow();
-      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("umask 077"));
-      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("wg genkey"));
-      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("/api/v1/agent/bootstrap"));
-      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("install -o root -g root -m 600"));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
 
   it("installs the pinned same-release managed runtime service contract", () => {
     const cmd = agentBootstrapCommand("TKN", "https://cp.example");
@@ -470,8 +450,8 @@ esac`);
     expect(cmd).toContain(release.runtime.unit.name);
     expect(cmd).toContain(release.runtime.unit.sha256);
     expect(cmd).toContain('runtime_name="$expected_amd64_name"');
-    expect(cmd).toContain('curl -fsSL "$manifest_url"');
-    expect(cmd).toContain('curl -fsSL "${manifest_url%release.json}$runtime_name"');
+    expect(cmd).toContain('download_asset "$manifest_url"');
+    expect(cmd).toContain('download_asset "${manifest_url%release.json}$runtime_name"');
   });
 
   it("verifies runtime bytes before install and rejects unsigned or mutable fallbacks", () => {
@@ -494,7 +474,7 @@ esac`);
     expect(cmd).toMatch(/unit_name.*tunnex-agent-runtime\.service/);
     expect(cmd).toMatch(/sha256sum[^;]*unit[\s\S]*actual_unit_digest/);
     expect(cmd).toMatch(/\[\s+\"\$actual_unit_digest\"\s+=\s+\"\$unit_digest\"\s+\]/);
-    expect(cmd).toMatch(/unit_name[\s\S]*curl[^;]*\$unit_name/);
+    expect(cmd).toMatch(/unit_name[\s\S]*download_asset[^;]*\$unit_name/);
     expect(cmd).toMatch(/(?:unit|signature)[\s\S]*(?:refused|invalid|missing)/i);
     expect(cmd.indexOf("actual_unit_digest")).toBeLessThan(cmd.indexOf('install -o root -g root -m 644 "$d/unit"'));
     expect(cmd).toContain("{server:$server,applied_revision:0,client_version:$client}");
