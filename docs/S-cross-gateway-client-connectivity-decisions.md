@@ -97,3 +97,9 @@ The temporary AI and human-to-agent profiles were revoked and removed. Their nam
 Local evidence files are ignored under `.gateway-update-proof/`: `agent-human-live-20261003.json`, `agent-agent-live-20261003.json`, `human-agent-live-20261003.json`, `human-agent-gateway-captures-20261003.json`, and `ai-multi-gateway-live-20261003.json`. They are not included in the published source.
 
 These are functional qualification results. AWS gateway restart, failover, scale/load, native-client gateway selection, and video playback/frame inspection were not covered by this live test run.
+
+## CI schema compatibility repair
+
+The first PR run exposed a historical-schema dependency: IPsec range validation read the complete generated organization row, which now requires migration 0166's column, while the IPsec migration tests intentionally use schemas 0160–0162. Range validation now reads only `pool_cidr`, retaining the organization and soft-delete filters. Dedicated historical IPsec tests remain pinned; tests invoking current application writers migrate their disposable fixture to the current schema before using complete organization projections.
+
+The original provider-create failure was reproduced locally before the fix. Verification then passed the full IPsec suite, affected IPsec HTTP tests, and an explicit old/current schema pool-read regression on a fresh labelled, tmpfs-only PostgreSQL fixture: 97 top-level tests passed, with no failures or skips. The full API suite also passed with database environment variables unset. The AI qualification failure came from those same IPsec HTTP tests; its native model suite had passed. A separate visual job failed while downloading pnpm with a connection reset and requires a fresh CI run rather than a change to application behavior.

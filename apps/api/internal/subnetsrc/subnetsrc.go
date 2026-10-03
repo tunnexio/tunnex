@@ -28,11 +28,7 @@ func (s Source) SiteSubnetCIDRs(ctx context.Context, orgID uuid.UUID) ([]string,
 }
 
 func (s Source) PoolCIDR(ctx context.Context, orgID uuid.UUID) (string, error) {
-	o, err := s.Q.GetOrganizationByID(ctx, orgID)
-	if err != nil {
-		return "", err
-	}
-	return o.PoolCidr, nil
+	return s.Q.GetOrganizationPoolCIDR(ctx, orgID)
 }
 
 func (s Source) VIPRangeCIDRs(ctx context.Context, orgID uuid.UUID) ([]string, error) {

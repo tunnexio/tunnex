@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
@@ -21,6 +22,11 @@ import (
 
 func TestProviderExistingWritersRespectReservations(t *testing.T) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
+	// Current application writers return complete organization rows. Exercise
+	// them on the current schema; dedicated IPsec migration tests stay pinned.
+	if err := db.Up(p.Config().ConnString()); err != nil {
+		t.Fatal(err)
+	}
 	// Close enough to the existing device pool to exercise a legal growth request.
 	req.Config.RemotePrefixes = []string{"10.199.1.0/24"}
 	store := ipsec.NewConnectionStore(p)
@@ -81,6 +87,9 @@ func TestProviderCreateRechecksWinningRangeAndAuthorityChanges(t *testing.T) {
 	for _, scenario := range []string{"site approval", "pool growth", "local deletion", "optout", "revocation"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, p, org, actor, sealer, req := providerFixture(t)
+			if err := db.Up(p.Config().ConnString()); err != nil {
+				t.Fatal(err)
+			}
 			req.Config.RemotePrefixes = []string{"10.199.1.0/24"}
 			cfg := p.Config().Copy()
 			name := "provider_wait_" + uuid.NewString()
@@ -159,6 +168,9 @@ func TestProviderWinningCreateBlocksOpposingWriters(t *testing.T) {
 	for _, scenario := range []string{"site approval", "pool growth", "cluster registration", "local removal"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, p, org, actor, sealer, req := providerFixture(t)
+			if err := db.Up(p.Config().ConnString()); err != nil {
+				t.Fatal(err)
+			}
 			req.Config.RemotePrefixes = []string{"10.199.1.0/24"}
 			sub, err := sites.NewService(p).AddSubnet(ctx, org, req.SiteID, netip.MustParsePrefix("10.199.1.0/24"))
 			if err != nil {
@@ -259,6 +271,9 @@ func TestProviderWinningCreateBlocksOpposingWriters(t *testing.T) {
 
 func TestProviderGuardsPreserveWireGuardNoopsAndCleanup(t *testing.T) {
 	ctx, p, org, actor, _, req := providerFixture(t)
+	if err := db.Up(p.Config().ConnString()); err != nil {
+		t.Fatal(err)
+	}
 	siteService := sites.NewService(p)
 	var local uuid.UUID
 	if err := p.QueryRow(ctx, `SELECT id FROM site_subnets WHERE site_id=$1 AND cidr=$2::cidr`, req.SiteID, req.Config.LocalPrefixes[0]).Scan(&local); err != nil {

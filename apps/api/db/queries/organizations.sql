@@ -7,6 +7,12 @@ RETURNING *;
 SELECT * FROM organizations
 WHERE id = $1 AND deleted_at IS NULL;
 
+-- name: GetOrganizationPoolCIDR :one
+-- Range validation also runs against historical IPsec schemas. Read only the
+-- pool, so unrelated additive organization settings are not prerequisites.
+SELECT pool_cidr FROM organizations
+WHERE id = $1 AND deleted_at IS NULL;
+
 -- name: GetOrganizationBySlug :one
 SELECT * FROM organizations
 WHERE slug = $1 AND deleted_at IS NULL;
