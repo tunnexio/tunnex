@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +12,41 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func TestNewAtVersionPreservesParentSchema(t *testing.T) {
+	ctx, parent := New(t)
+	var parentName string
+	var before int
+	if err := parent.QueryRow(ctx, `SELECT current_database(), version FROM schema_migrations`).Scan(&parentName, &before); err != nil {
+		t.Fatal(err)
+	}
+	if before <= 160 {
+		t.Fatalf("parent fixture must be newer than historical schema: %d", before)
+	}
+	parentURL, err := databaseURL(os.Getenv("TUNNEX_TEST_DATABASE_URL"), parentName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("historical child", func(t *testing.T) {
+		t.Setenv("TUNNEX_TEST_DATABASE_URL", parentURL)
+		childCtx, child := NewAtVersion(t, 160)
+		var childName string
+		var version int
+		if err := child.QueryRow(childCtx, `SELECT current_database(), version FROM schema_migrations`).Scan(&childName, &version); err != nil {
+			t.Fatal(err)
+		}
+		if childName == parentName || version != 160 {
+			t.Fatalf("historical child has wrong database or schema: same database=%v, version=%d", childName == parentName, version)
+		}
+	})
+	var after int
+	if err := parent.QueryRow(ctx, `SELECT version FROM schema_migrations`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("child migration changed parent schema: before=%d after=%d", before, after)
+	}
+}
 
 func TestNewRequiresExplicitEndpoint(t *testing.T) {
 	t.Setenv("TUNNEX_TEST_DATABASE_URL", "")

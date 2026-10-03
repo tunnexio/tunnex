@@ -32,6 +32,18 @@ var ownedNamePattern = regexp.MustCompile(`^tnx_test_[0-9a-f]{32}$`)
 // failures are reported to the test, never hidden by row deletion or audit bypass.
 func New(t testing.TB) (context.Context, *pgxpool.Pool) {
 	t.Helper()
+	return newWithMigration(t, db.Up)
+}
+
+// NewAtVersion owns a fresh database migrated to a historical schema. Migrations
+// use the owned database URL, never the original admin DSN retained by pgx.
+func NewAtVersion(t testing.TB, version uint) (context.Context, *pgxpool.Pool) {
+	t.Helper()
+	return newWithMigration(t, func(dsn string) error { return db.MigrateTo(dsn, version) })
+}
+
+func newWithMigration(t testing.TB, migrate func(string) error) (context.Context, *pgxpool.Pool) {
+	t.Helper()
 	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("set TUNNEX_TEST_DATABASE_URL to run disposable PostgreSQL integration tests")
@@ -76,7 +88,7 @@ func New(t testing.TB) (context.Context, *pgxpool.Pool) {
 		t.Fatalf("create disposable PostgreSQL database %s: %v", name, err)
 	}
 	created = true
-	if err := db.Up(migrationURL); err != nil {
+	if err := migrate(migrationURL); err != nil {
 		t.Fatalf("migrate disposable PostgreSQL database %s: %v", name, err)
 	}
 	childConfig := adminConfig.Copy()
