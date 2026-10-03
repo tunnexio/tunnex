@@ -796,6 +796,9 @@ type Querier interface {
 	// current FQDN opt-in when the additive column exists. JSONB extraction is
 	// deliberately fail-closed: an absent or null later column means disabled.
 	GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error)
+	// Range validation also runs against historical IPsec schemas. Read only the
+	// pool, so unrelated additive organization settings are not prerequisites.
+	GetOrganizationPoolCIDR(ctx context.Context, id uuid.UUID) (string, error)
 	// Expired invitations can be resent, but accepted/revoked ones cannot.
 	GetPendingInvitationForResend(ctx context.Context, arg GetPendingInvitationForResendParams) (Invitation, error)
 	GetPlatformSecret(ctx context.Context, name string) (PlatformSecret, error)

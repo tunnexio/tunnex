@@ -305,6 +305,20 @@ func (q *Queries) GetOrganizationPolicySnapshotSettings(ctx context.Context, id 
 	return i, err
 }
 
+const getOrganizationPoolCIDR = `-- name: GetOrganizationPoolCIDR :one
+SELECT pool_cidr FROM organizations
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+// Range validation also runs against historical IPsec schemas. Read only the
+// pool, so unrelated additive organization settings are not prerequisites.
+func (q *Queries) GetOrganizationPoolCIDR(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getOrganizationPoolCIDR, id)
+	var pool_cidr string
+	err := row.Scan(&pool_cidr)
+	return pool_cidr, err
+}
+
 const listAlertingEnabledOrganizations = `-- name: ListAlertingEnabledOrganizations :many
 SELECT id FROM organizations
 WHERE alerting_enabled = true AND deleted_at IS NULL
