@@ -1,12 +1,13 @@
 package subnetsrc
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/tunnexio/tunnex/apps/api/db"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
@@ -18,10 +19,20 @@ func TestPoolCIDRHistoricalAndCurrentSchema(t *testing.T) {
 			name = "ipsec_160"
 		}
 		t.Run(name, func(t *testing.T) {
-			ctx, pool := testpostgres.New(t)
+			newPool := testpostgres.New
 			if historical {
-				if err := db.MigrateTo(pool.Config().ConnString(), 160); err != nil {
+				newPool = func(t testing.TB) (context.Context, *pgxpool.Pool) {
+					return testpostgres.NewAtVersion(t, 160)
+				}
+			}
+			ctx, pool := newPool(t)
+			if historical {
+				var version int
+				if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations`).Scan(&version); err != nil {
 					t.Fatal(err)
+				}
+				if version != 160 {
+					t.Fatalf("historical fixture version=%d, want 160", version)
 				}
 			}
 			org := uuid.New()
