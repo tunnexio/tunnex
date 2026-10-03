@@ -1,0 +1,1 @@
+ALTER TABLE organizations DROP COLUMN cross_gateway_clients_enabled;

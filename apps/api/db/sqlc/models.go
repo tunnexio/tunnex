@@ -1854,6 +1854,7 @@ type Organization struct {
 	FqdnResourcesEnabled        bool               `json:"fqdn_resources_enabled"`
 	AiGatewayEnabled            bool               `json:"ai_gateway_enabled"`
 	AiGatewayRevision           int64              `json:"ai_gateway_revision"`
+	CrossGatewayClientsEnabled  bool               `json:"cross_gateway_clients_enabled"`
 }
 
 type OvpnClientCert struct {

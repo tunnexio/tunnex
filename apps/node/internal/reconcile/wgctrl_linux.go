@@ -944,8 +944,8 @@ func (b *wgctrlBackend) reconcileReturnRules(ctx context.Context, desiredRoutes 
 // ApplyRoutes reconciles the S8.2 site-to-site kernel routes on the tunnel iface. It installs each
 // desired remote-subnet route (proto static + our metric; idempotent replace heals a flushed route) and
 // PRUNES only OUR routes (proto static + siteRouteMetric) no longer desired — the full-sweep contract.
-// Enumerates BOTH families (review #4: v6 inputs are refused today, but the prune must not silently miss
-// a family if S8.4 admits v6 subnets).
+// Enumerates both families. Client host routes may include IPv6 even when
+// approved site subnets and their source hint are IPv4.
 func (b *wgctrlBackend) ApplyRoutes(ctx context.Context, cidrs []string, srcHint string) error {
 	metric := strconv.Itoa(siteRouteMetric)
 	desired := make(map[netip.Prefix]bool, len(cidrs))
@@ -956,7 +956,10 @@ func (b *wgctrlBackend) ApplyRoutes(ctx context.Context, cidrs []string, srcHint
 		}
 		desired[p] = true
 		args := []string{"route", "replace", p.String(), "dev", b.iface, "proto", "static", "metric", metric}
-		if srcHint != "" {
+		if p.Addr().Is6() {
+			args = append([]string{"-6"}, args...)
+		}
+		if source, err := netip.ParseAddr(srcHint); err == nil && source.Is4() == p.Addr().Is4() {
 			args = append(args, "src", srcHint) // D2 src-hint (reconcile-derived) — re-applied every tick, survives clobber
 		}
 		if _, err := b.runFn(ctx, "ip", args...); err != nil {
@@ -979,7 +982,11 @@ func (b *wgctrlBackend) ApplyRoutes(ctx context.Context, cidrs []string, srcHint
 		// that happens to share it is indistinguishable here, so the deletion must be LEGIBLE (the
 		// metric-collision residual limitation made visible, not silent).
 		slog.Info("site_route_pruned", "dst", p.String(), "iface", b.iface, "metric", siteRouteMetric)
-		if _, err := b.runCommand(ctx, "ip", "route", "del", p.String(), "dev", b.iface, "proto", "static", "metric", metric); err != nil {
+		args := []string{"route", "del", p.String(), "dev", b.iface, "proto", "static", "metric", metric}
+		if p.Addr().Is6() {
+			args = append([]string{"-6"}, args...)
+		}
+		if _, err := b.runCommand(ctx, "ip", args...); err != nil {
 			return err
 		}
 	}

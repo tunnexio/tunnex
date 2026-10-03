@@ -444,6 +444,7 @@ WHERE d.node_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND d.public_key ~ '^[A-Za-z0-9+/]{43}=$'
   AND u.status = 'active' AND u.deleted_at IS NULL
+  AND mem.access_revoked_at IS NULL
 ORDER BY d.created_at;
 
 -- name: GetDeviceAttributionForOrg :one
@@ -503,6 +504,7 @@ WHERE d.node_id = $1 AND d.transport = 'openvpn' AND d.status = 'active'
   AND NOT d.health_blocked
   AND d.assigned_ip IS NOT NULL AND d.deleted_at IS NULL
   AND u.status = 'active' AND u.deleted_at IS NULL
+  AND mem.access_revoked_at IS NULL
 ORDER BY d.id;
 
 -- name: SetDeviceProvisioning :exec

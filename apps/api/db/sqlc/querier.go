@@ -597,6 +597,8 @@ type Querier interface {
 	// read+update can't interleave with a concurrent verify.
 	GetConfirmedTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
 	GetConnectivitySession(ctx context.Context, arg GetConnectivitySessionParams) (ConnectivitySession, error)
+	// Serialize the old/new audit transition with concurrent setting changes.
+	GetCrossGatewaySettingForUpdate(ctx context.Context, id uuid.UUID) (bool, error)
 	GetCurrentAgentOwnerCandidate(ctx context.Context, arg GetCurrentAgentOwnerCandidateParams) (uuid.UUID, error)
 	GetDevice(ctx context.Context, arg GetDeviceParams) (Device, error)
 	// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
@@ -1086,6 +1088,14 @@ type Querier interface {
 	// Returns the address each device HELD, so the caller can ask the allocation oracle whether it is still free.
 	ListCascadeRevokedDevicesForNode(ctx context.Context, nodeID uuid.UUID) ([]ListCascadeRevokedDevicesForNodeRow, error)
 	ListCliCredentialsForUser(ctx context.Context, userID uuid.UUID) ([]CliCredential, error)
+	// Same owner/membership/posture boundary as active peers and policy subjects.
+	// Intentionally includes human and agent devices, with either client transport.
+	ListCrossGatewayClients(ctx context.Context, orgID uuid.UUID) ([]ListCrossGatewayClientsRow, error)
+	// Organization-scoped network carriers, including gateways with no site.
+	// Agent devices are subjects; enrolled agent nodes are not gateway carriers.
+	ListCrossGatewayGateways(ctx context.Context, orgID uuid.UUID) ([]ListCrossGatewayGatewaysRow, error)
+	// Read the already allocated organization pool; never allocate during topology reads.
+	ListCrossGatewayIPv6Pool(ctx context.Context, orgID uuid.UUID) ([]string, error)
 	// The org's reporting devices with their latest facts — the blast-radius input
 	// (D4): on enabling a check, count how many devices' LAST report would fail it
 	// (best-effort, post-commit; the config write itself never blocks anything).
@@ -1780,6 +1790,7 @@ type Querier interface {
 	// is simply not stored (the latest full-set CRL wins).
 	SetOVPNCRL(ctx context.Context, arg SetOVPNCRLParams) error
 	SetOktaDirectoryEnabled(ctx context.Context, arg SetOktaDirectoryEnabledParams) (IdpSyncConfig, error)
+	SetOrgCrossGatewayClientsEnabled(ctx context.Context, arg SetOrgCrossGatewayClientsEnabledParams) (Organization, error)
 	// S7.3: flip the org device-approval gate. Enterprise-gated at the HTTP layer; the open
 	// build can never set it 'on', so enrollment there stays immediately-active.
 	SetOrgDeviceApproval(ctx context.Context, arg SetOrgDeviceApprovalParams) (Organization, error)

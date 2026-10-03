@@ -3134,6 +3134,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/cross-gateway-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set optional cross-gateway connectivity for human clients and agents
+         * @description Organization-admin opt-in, disabled by default. Provides client routes through a reachable gateway while preserving the existing Zero Trust mode and rules. Applies to human and enrolled agent devices. Disabling withdraws this feature's routes and remote permission placement on reconciliation.
+         */
+        put: operations["setCrossGatewayClientsEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ovpn-settings": {
         parameters: {
             query?: never;
@@ -6387,6 +6409,8 @@ export interface components {
             slug: string;
             /** @description The org's flat WireGuard address pool (IPv4 CIDR). */
             pool_cidr: string;
+            /** @description Optional cross-gateway connectivity for human and agent clients. Existing Zero Trust rules still apply. */
+            cross_gateway_clients_enabled?: boolean;
             /** @description S9.1 D-S9.5-OPTIN: whether this org has opted into OpenVPN. Default false. When false the OpenVPN device type is not offered and the export endpoint refuses (opt_in_required). */
             ovpn_enabled?: boolean;
             /**
@@ -9064,6 +9088,9 @@ export interface components {
                 mtu?: number;
                 persistent_keepalive?: number;
             };
+        };
+        CrossGatewaySetting: {
+            enabled: boolean;
         };
         OVPNSetting: {
             /** @description S9.1 D-S9.5-OPTIN: whether the org has opted into OpenVPN. */
@@ -14446,6 +14473,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateDeviceResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setCrossGatewayClientsEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrossGatewaySetting"];
+            };
+        };
+        responses: {
+            /** @description Updated cross-gateway opt-in. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrossGatewaySetting"];
                 };
             };
             default: components["responses"]["Error"];

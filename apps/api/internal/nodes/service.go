@@ -29,6 +29,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/gatewaymesh"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
@@ -714,15 +715,12 @@ func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 			}
 		}
 	}
-	// S8.6 REDUCE #1: load the site topology ONCE up front (site nodes only) and derive the active hub from
-	// it BEFORE the policy compile, so the policy transit grant and the data-plane site-link graph cite the
-	// SAME hub (one derivation per compile pass, fed to both). A non-site node loads no topology and passes
-	// activeHub=Nil — no site→site transit grant lands on a non-gateway node either way. The load moved up
-	// from the S8.2 block below; its DesiredState-ATOMIC failure semantics are preserved byte-for-byte.
+	// Load topology once before compiling so policy and transport share the active hub.
+	// Cross-gateway opt-in also needs this graph for gateways without an assigned site.
 	var topo siteTopology
 	var haveTopo bool
 	var activeHub uuid.UUID
-	if node.SiteID.Valid {
+	if node.SiteID.Valid || (orgErr == nil && org.CrossGatewayClientsEnabled) {
 		load := s.siteTopoLoad
 		if load == nil { // directly-constructed Service (tests) → the real loader
 			load = s.loadSiteTopology
@@ -833,6 +831,9 @@ func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		ds.Peers = append(ds.Peers, peers...)
 		handoffPeers, _ := k8sHandoffGraph(topo, node)
 		ds.Peers = append(ds.Peers, handoffPeers...)
+		for _, peer := range topo.clientGraph.Peers(node.ID) {
+			ds.Peers = append(ds.Peers, Peer{PublicKey: peer.PublicKey, Endpoint: peer.Endpoint, AllowedIPs: peer.Prefixes, SiteLink: true, PersistentKeepalive: siteLinkKeepaliveSecs})
+		}
 		ds.Peers, err = composeDesiredPeers(ds.Peers)
 		if err != nil {
 			return DesiredState{}, err
@@ -1006,8 +1007,9 @@ func endpointHost(endpoint string) string {
 // PURE siteLinkGraphFrom / finalizeArtifact. Loading once lets the batch pushed-hash path finalize N
 // nodes off a single pair of org queries instead of N (and the served path uses the same shape).
 type siteTopology struct {
-	gws     []sqlc.ListSiteGatewaysForOrgRow
-	subnets map[uuid.UUID][]string // site_id -> approved subnet CIDRs
+	clientGraph *gatewaymesh.Graph
+	gws         []sqlc.ListSiteGatewaysForOrgRow
+	subnets     map[uuid.UUID][]string // site_id -> approved subnet CIDRs
 	// dnsForwards (S8.4) is the org's cross-site DNS forwarding table — the union of every site's
 	// dns_forwarding entries, compiled onto EVERY gateway so any gateway can answer for any site's zone.
 	dnsForwards []policyspec.DNSForward
@@ -1067,6 +1069,18 @@ func resolveK8sConnectorRead(poolBound bool, legacy, poolActive pgtype.UUID, gen
 // loadSiteTopology runs the two org-wide site queries once. Full-sweep by construction: an unbound/
 // deleted site drops out of ListSiteGatewaysForOrg / ListSiteSubnetsForOrg, so its peers + routes vanish.
 func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTopology, error) {
+	settings, err := s.q.GetOrganizationPolicySnapshotSettings(ctx, orgID)
+	if err != nil && err != pgx.ErrNoRows {
+		return siteTopology{}, err
+	}
+	clientGraph, err := gatewaymesh.Load(ctx, s.q, orgID, settings.CrossGatewayClientsEnabled)
+	if err != nil {
+		return siteTopology{}, err
+	}
+	if clientGraph != nil && clientGraph.Unavailable != "" {
+		slog.Warn("cross_gateway_connectivity_unavailable", "org_id", orgID.String(), "reason", clientGraph.Unavailable)
+	}
+
 	gws, err := s.q.ListSiteGatewaysForOrg(ctx, orgID)
 	if err != nil {
 		return siteTopology{}, err
@@ -1214,7 +1228,7 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 		sort.Strings(c.vips)
 		connectors[id] = c
 	}
-	return siteTopology{gws: gws, subnets: sub, dnsForwards: fwds, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
+	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, dnsForwards: fwds, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
 }
 
 // deriveActive is THE shared hub-order derivation (S8.6 REDUCE) — the ONE function every consumer reads
@@ -1224,20 +1238,7 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 // demoted the active order IS the configured order (fail-back is that convergence). Members named in
 // `demoted` but absent from `configured` are ignored (a stale demotion the next configured-write clears).
 func deriveActive(configured, demoted []uuid.UUID) []uuid.UUID {
-	dead := make(map[uuid.UUID]bool, len(demoted))
-	for _, id := range demoted {
-		dead[id] = true
-	}
-	live := make([]uuid.UUID, 0, len(configured))
-	back := make([]uuid.UUID, 0, len(demoted))
-	for _, id := range configured {
-		if dead[id] {
-			back = append(back, id)
-		} else {
-			live = append(live, id)
-		}
-	}
-	return append(live, back...)
+	return gatewaymesh.ActiveOrder(configured, demoted)
 }
 
 // activeHubMembers is the compiler's ordered hub set — the PERSISTED active order (org_hub_set, maintained
@@ -1876,13 +1877,38 @@ func k8sHandoffGraph(topo siteTopology, node sqlc.Node) ([]Peer, []policyspec.Ro
 	return peers, routes
 }
 
-// finalizeArtifact is THE SINGLE SOURCE OF TRUTH for a site gateway's served/hashed compiled artifact
-// (the #1 fix). It attaches the node's site-to-site kernel routes to the route-less compiled artifact
-// and derives the content version — and BOTH the served desired-state AND the pushed-hash desync
-// baseline call it, so the two paths can never disagree about the artifact's contents. A non-site node
-// or a node with no remote routes is returned unchanged. A nil route-less artifact WITH routes (open
-// build, or an off-mode node that would carry routes) is synthesized as a mesh artifact carrying them.
+// finalizeArtifact attaches site and opted-in cross-gateway routes and derives the
+// content version for both served desired state and the pushed-hash health baseline.
+// When policy is off, transport is carried by a synthesized mesh artifact.
 func (s *Service) finalizeArtifact(topo siteTopology, node sqlc.Node, pol *policyspec.Compiled) *policyspec.Compiled {
+	pol = s.finalizeSiteArtifact(topo, node, pol)
+	peers := topo.clientGraph.Peers(node.ID)
+	if len(peers) == 0 {
+		return pol
+	}
+	if pol == nil {
+		pol = &policyspec.Compiled{NodeID: node.ID.String(), Mode: "off", Mesh: true}
+	}
+	seen := map[string]bool{}
+	for _, route := range pol.Routes {
+		seen[route.DstCIDR] = true
+	}
+	for _, peer := range peers {
+		for _, prefix := range peer.Prefixes {
+			if !seen[prefix] {
+				pol.Routes = append(pol.Routes, policyspec.Route{DstCIDR: prefix})
+				seen[prefix] = true
+			}
+		}
+	}
+	sort.Slice(pol.Routes, func(i, j int) bool { return pol.Routes[i].DstCIDR < pol.Routes[j].DstCIDR })
+	pol.PoolCIDR = topo.poolCIDR
+	pol.CrossGatewayClients = true
+	pol.Version = policyspec.RequiredVersion(*pol)
+	return pol
+}
+
+func (s *Service) finalizeSiteArtifact(topo siteTopology, node sqlc.Node, pol *policyspec.Compiled) *policyspec.Compiled {
 	if !node.SiteID.Valid {
 		return pol
 	}
@@ -2225,28 +2251,17 @@ func (s *Service) trackDesync(ctx context.Context, node sqlc.Node, appliedHash s
 	if s.policy == nil {
 		return // open build — desync tracking is enterprise-only; silent, no write
 	}
-	// The pushed hash is finalized the SAME way the served artifact is (route-attach + version), so a
-	// route-carrying enforcing gateway compares clean instead of a false silent_desync (the #1 fix). Only
-	// a SITE gateway needs the topology (finalizeArtifact no-ops for non-site nodes) — skip the queries
-	// otherwise. The topology loads BEFORE the compile so the derived active hub threads in (S8.6 REDUCE
-	// #1 — the pushed baseline cites the same hub the served artifact does).
-	var topo siteTopology
-	var activeHub uuid.UUID
-	if node.SiteID.Valid {
-		t, terr := s.loadSiteTopology(ctx, node.OrgID)
-		if terr != nil {
-			return // topology unavailable → can't-determine; never stamp/clear on a partial baseline
-		}
-		topo = t
-		if h := electSiteHub(topo, time.Now()); h != nil {
-			activeHub = h.ID
-		}
+	// Health and reports must finalize the same topology as desired state, including
+	// cross-gateway routes for nodes without a site. A failed load cannot stamp/clear.
+	batch := s.LoadSiteTopoBatch(ctx, node.OrgID, []sqlc.Node{node})
+	if !batch.ok {
+		return
 	}
-	arts, err := s.policy.CompiledArtifactsForNodes(ctx, node.OrgID, []uuid.UUID{node.ID}, activeHub)
+	arts, err := s.policy.CompiledArtifactsForNodes(ctx, node.OrgID, []uuid.UUID{node.ID}, batch.hubID)
 	if err != nil {
 		return // pushed artifact unavailable (compile fault) → can't-determine; never stamp/clear
 	}
-	pushed := s.pushedHash(topo, node, arts[node.ID])
+	pushed := s.pushedHash(batch.topo, node, arts[node.ID])
 	if pushed == "" || pushed == appliedHash {
 		// non-enforcing (off/mesh) OR reconverged — convergence is a STATE predicate, so a
 		// revert-to-clear (target moved back to the applied hash) legitimately clears.
@@ -2423,7 +2438,7 @@ type SiteTopoBatch struct {
 }
 
 // LoadSiteTopoBatch loads the site topology once for a node list + elects the hub once (electSiteHub — the
-// same picker the site-link graph uses). A zero batch (ok=true, no hub) when no node is a site gateway.
+// same picker the site-link graph uses). Site-less gateways also load it when cross-gateway is enabled.
 // Pass the result to PolicyHealthForNodes + NodeDisplayExtrasForNodes so neither reloads it.
 func (s *Service) LoadSiteTopoBatch(ctx context.Context, orgID uuid.UUID, nodes []sqlc.Node) SiteTopoBatch {
 	b := SiteTopoBatch{ok: true}
@@ -2434,7 +2449,16 @@ func (s *Service) LoadSiteTopoBatch(ctx context.Context, orgID uuid.UUID, nodes 
 			break
 		}
 	}
-	if anySite {
+	needTopology := anySite
+	if !needTopology && len(nodes) > 0 && s.q != nil {
+		settings, err := s.q.GetOrganizationPolicySnapshotSettings(ctx, orgID)
+		if err != nil && err != pgx.ErrNoRows {
+			b.ok = false
+			return b
+		}
+		needTopology = settings.CrossGatewayClientsEnabled
+	}
+	if needTopology {
 		now := time.Now()
 		if t, err := s.loadSiteTopology(ctx, orgID); err == nil {
 			b.topo = t
@@ -2597,7 +2621,7 @@ func (s *Service) PolicyHealthForNodes(ctx context.Context, orgID uuid.UUID, nod
 	out := make(map[uuid.UUID]PolicyHealth, len(nodes))
 	enterprise := s.policy != nil
 	// Site topology — loaded ONCE for the batch, in BOTH editions (site-link routing + its health are
-	// CORE, D11). Only when some node is a site gateway. Drives site_hub_down (B2: no carrier) AND
+	// CORE, D11). Site gateways and cross-gateway opt-in need it. Drives site_hub_down (B2: no carrier) AND
 	// finalizes the pushed hash (enterprise) the SAME way the served artifact is (#1: no false desync).
 	// The batch is loaded here when unset (existing callers) or shared from ListNodes (review #3) — same
 	// topo + hub, so the health output is byte-identical either way.

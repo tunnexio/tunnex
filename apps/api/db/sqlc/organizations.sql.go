@@ -152,7 +152,7 @@ func (q *Queries) CountOrganizationsEver(ctx context.Context) (int64, error) {
 const createOrganization = `-- name: CreateOrganization :one
 INSERT INTO organizations (name, slug)
 VALUES ($1, $2)
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type CreateOrganizationParams struct {
@@ -184,6 +184,7 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -206,7 +207,7 @@ func (q *Queries) GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context
 }
 
 const getOrganizationByID = `-- name: GetOrganizationByID :one
-SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision FROM organizations
+SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled FROM organizations
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -234,12 +235,13 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organi
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
 
 const getOrganizationBySlug = `-- name: GetOrganizationBySlug :one
-SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision FROM organizations
+SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled FROM organizations
 WHERE slug = $1 AND deleted_at IS NULL
 `
 
@@ -267,6 +269,7 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organ
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -277,14 +280,18 @@ SELECT o.zero_trust_mode,
            WHEN to_jsonb(o) ? 'fqdn_resources_enabled'
            THEN COALESCE((to_jsonb(o) ->> 'fqdn_resources_enabled')::boolean, false)
            ELSE false
-       END AS fqdn_resources_enabled
+       END AS fqdn_resources_enabled,
+       CASE WHEN to_jsonb(o) ? 'cross_gateway_clients_enabled'
+            THEN COALESCE((to_jsonb(o) ->> 'cross_gateway_clients_enabled')::boolean, false)
+            ELSE false END AS cross_gateway_clients_enabled
 FROM organizations o
 WHERE o.id = $1 AND o.deleted_at IS NULL
 `
 
 type GetOrganizationPolicySnapshotSettingsRow struct {
-	ZeroTrustMode        string `json:"zero_trust_mode"`
-	FqdnResourcesEnabled bool   `json:"fqdn_resources_enabled"`
+	ZeroTrustMode              string `json:"zero_trust_mode"`
+	FqdnResourcesEnabled       bool   `json:"fqdn_resources_enabled"`
+	CrossGatewayClientsEnabled bool   `json:"cross_gateway_clients_enabled"`
 }
 
 // Policy snapshot construction is used by F09 membership removal. Keep its
@@ -294,7 +301,7 @@ type GetOrganizationPolicySnapshotSettingsRow struct {
 func (q *Queries) GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error) {
 	row := q.db.QueryRow(ctx, getOrganizationPolicySnapshotSettings, id)
 	var i GetOrganizationPolicySnapshotSettingsRow
-	err := row.Scan(&i.ZeroTrustMode, &i.FqdnResourcesEnabled)
+	err := row.Scan(&i.ZeroTrustMode, &i.FqdnResourcesEnabled, &i.CrossGatewayClientsEnabled)
 	return i, err
 }
 
@@ -350,7 +357,7 @@ func (q *Queries) ListOVPNEnabledOrgs(ctx context.Context) ([]uuid.UUID, error) 
 }
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision FROM organizations
+SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled FROM organizations
 WHERE deleted_at IS NULL
 ORDER BY created_at
 `
@@ -387,6 +394,7 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error)
 			&i.FqdnResourcesEnabled,
 			&i.AiGatewayEnabled,
 			&i.AiGatewayRevision,
+			&i.CrossGatewayClientsEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -399,7 +407,7 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error)
 }
 
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
-SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted_at, o.max_devices_per_user, o.pool_cidr, o.zero_trust_mode, o.device_approval, o.flow_seq, o.ovpn_enabled, o.max_agent_identities, o.managed_agent_runtime_enabled, o.agent_policy_templates_enabled, o.agent_jit_access_enabled, o.alerting_enabled, o.fqdn_resources_enabled, o.ai_gateway_enabled, o.ai_gateway_revision FROM organizations o
+SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted_at, o.max_devices_per_user, o.pool_cidr, o.zero_trust_mode, o.device_approval, o.flow_seq, o.ovpn_enabled, o.max_agent_identities, o.managed_agent_runtime_enabled, o.agent_policy_templates_enabled, o.agent_jit_access_enabled, o.alerting_enabled, o.fqdn_resources_enabled, o.ai_gateway_enabled, o.ai_gateway_revision, o.cross_gateway_clients_enabled FROM organizations o
 JOIN memberships m ON m.org_id = o.id
 WHERE m.user_id = $1 AND o.deleted_at IS NULL
 ORDER BY o.created_at
@@ -435,6 +443,7 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 			&i.FqdnResourcesEnabled,
 			&i.AiGatewayEnabled,
 			&i.AiGatewayRevision,
+			&i.CrossGatewayClientsEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -449,7 +458,7 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 const setOrgOVPNEnabled = `-- name: SetOrgOVPNEnabled :one
 UPDATE organizations SET ovpn_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type SetOrgOVPNEnabledParams struct {
@@ -484,6 +493,7 @@ func (q *Queries) SetOrgOVPNEnabled(ctx context.Context, arg SetOrgOVPNEnabledPa
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -492,7 +502,7 @@ const setOrganizationAgentJITAccessEnabled = `-- name: SetOrganizationAgentJITAc
 UPDATE organizations
 SET agent_jit_access_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type SetOrganizationAgentJITAccessEnabledParams struct {
@@ -526,6 +536,7 @@ func (q *Queries) SetOrganizationAgentJITAccessEnabled(ctx context.Context, arg 
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -555,7 +566,7 @@ const setOrganizationAgentRuntimeEnabled = `-- name: SetOrganizationAgentRuntime
 UPDATE organizations
 SET managed_agent_runtime_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type SetOrganizationAgentRuntimeEnabledParams struct {
@@ -590,6 +601,7 @@ func (q *Queries) SetOrganizationAgentRuntimeEnabled(ctx context.Context, arg Se
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -598,7 +610,7 @@ const setOrganizationAlertingEnabled = `-- name: SetOrganizationAlertingEnabled 
 UPDATE organizations
 SET alerting_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type SetOrganizationAlertingEnabledParams struct {
@@ -632,6 +644,7 @@ func (q *Queries) SetOrganizationAlertingEnabled(ctx context.Context, arg SetOrg
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -654,7 +667,7 @@ const updateOrgPoolCidr = `-- name: UpdateOrgPoolCidr :one
 UPDATE organizations
 SET pool_cidr = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type UpdateOrgPoolCidrParams struct {
@@ -688,6 +701,7 @@ func (q *Queries) UpdateOrgPoolCidr(ctx context.Context, arg UpdateOrgPoolCidrPa
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -696,7 +710,7 @@ const updateOrganizationAgentQuota = `-- name: UpdateOrganizationAgentQuota :one
 UPDATE organizations
 SET max_agent_identities = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type UpdateOrganizationAgentQuotaParams struct {
@@ -730,6 +744,7 @@ func (q *Queries) UpdateOrganizationAgentQuota(ctx context.Context, arg UpdateOr
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -738,7 +753,7 @@ const updateOrganizationName = `-- name: UpdateOrganizationName :one
 UPDATE organizations
 SET name = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type UpdateOrganizationNameParams struct {
@@ -771,6 +786,7 @@ func (q *Queries) UpdateOrganizationName(ctx context.Context, arg UpdateOrganiza
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }
@@ -780,7 +796,7 @@ INSERT INTO organizations (id, name, slug)
 VALUES ($1, $2, $3)
 ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name, slug = EXCLUDED.slug, deleted_at = NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type UpsertOrganizationParams struct {
@@ -815,6 +831,7 @@ func (q *Queries) UpsertOrganization(ctx context.Context, arg UpsertOrganization
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }

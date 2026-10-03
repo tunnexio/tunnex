@@ -328,6 +328,30 @@ func (s *Service) SetOVPNEnabled(ctx context.Context, id uuid.UUID, enabled bool
 	return org, err
 }
 
+// SetCrossGatewayClientsEnabled persists the opt-in and actor-attributed audit
+// together. HTTP wakes the organization only after this transaction commits.
+func (s *Service) SetCrossGatewayClientsEnabled(ctx context.Context, id uuid.UUID, enabled bool) (sqlc.Organization, error) {
+	var org sqlc.Organization
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		before, err := q.GetCrossGatewaySettingForUpdate(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return orgNotFound()
+		}
+		if err != nil {
+			return err
+		}
+		org, err = q.SetOrgCrossGatewayClientsEnabled(ctx, sqlc.SetOrgCrossGatewayClientsEnabledParams{ID: id, CrossGatewayClientsEnabled: enabled})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return orgNotFound()
+		}
+		if err != nil {
+			return err
+		}
+		return writeAudit(ctx, q, id, actorFromCtx(ctx), "org.cross_gateway_clients_updated", "organization", id.String(), map[string]any{"from": before, "to": enabled})
+	})
+	return org, err
+}
+
 // UpdateOrganization updates the mutable settings (name only — slug is
 // immutable) and records an org.updated audit event atomically.
 func (s *Service) UpdateOrganization(ctx context.Context, id uuid.UUID, name string) (sqlc.Organization, error) {

@@ -209,7 +209,10 @@ type AffectedDevice struct {
 // hostname tuples. A v8 gateway cannot safely distinguish those tuples from an
 // ordinary CIDR grant, so it must refuse the v9 artifact loudly rather than
 // silently broadening restart recovery.
-const ProtocolVersion = 9
+//
+// v10: optional cross-gateway client transport needs the gateway's updated host-route
+// reconciliation, including IPv6. Older agents must refuse its enforcement artifact.
+const ProtocolVersion = 10
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -239,6 +242,9 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	if c.CrossGatewayClients {
+		return 10
+	}
 	for _, entry := range c.Allow {
 		if entry.FQDNManaged {
 			return 9
@@ -382,8 +388,7 @@ type Compiled struct {
 	// enforcing-no-grant still drops AT the chain, with counter evidence). Reachability PLUMBING, so OUT
 	// of CanonicalHash — but an old agent ignoring it leaves device paths dead-while-green on Docker
 	// hosts, so presence triggers RequiredVersion=6 (refuse-not-silent, the Routes precedent). Rides only
-	// with the site-gateway artifact (finalizeArtifact, the ONE source); non-site gateways keep Docker-
-	// dark device↔device — REGISTERED PD-3 residual, trigger = first non-site device↔device walk.
+	// with site routes or opted-in cross-gateway transport (finalizeArtifact).
 	PoolCIDR string `json:"pool_cidr,omitempty"`
 	// VIPMappings (v7, S10.3) is this gateway's exposed-Service table: each synthetic VIP -> the Service
 	// identity (namespace + name) the agent DNATs it to (VIP -> ClusterIP, resolved in-cluster) and rewrites
@@ -401,6 +406,8 @@ type Compiled struct {
 	// this identity binds that match to the selected resolver generation and makes
 	// withdrawal/rebinding visible in the canonical hash.
 	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
+	// CrossGatewayClients requires family-aware host routing supported from v10.
+	CrossGatewayClients bool `json:"cross_gateway_clients,omitempty"`
 }
 
 // FQDNGeneration is the active, selected-context answer set for one FQDN

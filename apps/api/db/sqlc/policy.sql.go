@@ -536,6 +536,7 @@ LEFT JOIN agent_runtime_state ars ON ars.device_id = d.id AND d.kind = 'agent'
 WHERE d.org_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND u.status = 'active' AND u.deleted_at IS NULL
+  AND mem.access_revoked_at IS NULL
   AND d.assigned_ip IS NOT NULL AND d.assigned_ip <> ''
 ORDER BY d.assigned_ip
 `
@@ -1075,7 +1076,7 @@ const setOrgZeroTrustMode = `-- name: SetOrgZeroTrustMode :one
 UPDATE organizations
 SET zero_trust_mode = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
 `
 
 type SetOrgZeroTrustModeParams struct {
@@ -1108,6 +1109,7 @@ func (q *Queries) SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustMo
 		&i.FqdnResourcesEnabled,
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
+		&i.CrossGatewayClientsEnabled,
 	)
 	return i, err
 }

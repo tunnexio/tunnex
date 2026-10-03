@@ -93,6 +93,36 @@ func TestApplyRoutesSrcHint(t *testing.T) {
 	}
 }
 
+func TestCrossGatewayIPv6RoutesUseMatchingFamilyAndWithdraw(t *testing.T) {
+	var calls [][]string
+	rec := func(_ context.Context, _ string, args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) >= 3 && args[0] == "-6" && args[1] == "route" && args[2] == "show" {
+			return "fd99::9 dev wg0 proto static metric 8021", nil
+		}
+		return "", nil
+	}
+	b := &wgctrlBackend{iface: "wg0", runFn: rec}
+	if err := b.ApplyRoutes(context.Background(), []string{"10.99.0.3/32", "fd99::3/128"}, "172.31.0.2"); err != nil {
+		t.Fatal(err)
+	}
+	v4, v6, removed := false, false, false
+	for _, args := range calls {
+		if len(args) > 2 && args[0] == "route" && args[1] == "replace" {
+			v4 = hasPair(args, "src", "172.31.0.2")
+		}
+		if len(args) > 3 && args[0] == "-6" && args[1] == "route" && args[2] == "replace" {
+			v6 = !hasArg(args, "src") && args[3] == "fd99::3/128"
+		}
+		if len(args) > 3 && args[0] == "-6" && args[1] == "route" && args[2] == "del" && args[3] == "fd99::9/128" {
+			removed = true
+		}
+	}
+	if !v4 || !v6 || !removed {
+		t.Fatalf("route family/source/withdrawal mismatch: %+v", calls)
+	}
+}
+
 func TestApplyRoutesReconcilesDevicePoolReturnRuleAheadOfCNI(t *testing.T) {
 	ctx := context.Background()
 	var calls [][]string

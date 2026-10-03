@@ -229,13 +229,15 @@ type apiServer struct {
 	// opt-in transaction commits. It is deliberately separate from the resource
 	// service: HTTP owns the post-commit side effect while storage owns the
 	// audited organization setting mutation.
-	fqdnSettingNotify    fqdnSettingNotifier
-	agentTemplates       agentTemplatePort        // nil in the open build (F09)
-	agentAccess          agentAccessPort          // licence-gated (F10)
-	accessLog            accessLogPort            // nil in the open build (Zero Trust visibility, S7.5.1)
-	accessEventRetention accessEventRetentionPort // nil in the open build (S7.5.1 retention control)
-	auditLogRetention    auditLogRetentionPort    // open in every edition
-	idpSync              idpSyncPort              // nil in the open build (IdP-group sync, S7.5.2)
+	crossGatewaySettings       crossGatewaySettingsRepository
+	crossGatewaySettingsNotify fqdnSettingNotifier
+	fqdnSettingNotify          fqdnSettingNotifier
+	agentTemplates             agentTemplatePort        // nil in the open build (F09)
+	agentAccess                agentAccessPort          // licence-gated (F10)
+	accessLog                  accessLogPort            // nil in the open build (Zero Trust visibility, S7.5.1)
+	accessEventRetention       accessEventRetentionPort // nil in the open build (S7.5.1 retention control)
+	auditLogRetention          auditLogRetentionPort    // open in every edition
+	idpSync                    idpSyncPort              // nil in the open build (IdP-group sync, S7.5.2)
 	// ⛔ smtpConfigured — whether this deployment can send mail AT ALL. Served by /meta so the screens that
 	// send mail can say so BEFORE the operator acts. Invitations are the only way anyone joins, so a
 	// deployment without it is unusable while every screen reports success.
@@ -476,6 +478,7 @@ func toAPIOrg(o sqlc.Organization) api.Organization {
 		Slug:                        o.Slug,
 		PoolCidr:                    o.PoolCidr,
 		MaxAgentIdentities:          o.MaxAgentIdentities,
+		CrossGatewayClientsEnabled:  &o.CrossGatewayClientsEnabled,
 		OvpnEnabled:                 &ovpn, // D-S9.5-OPTIN: the UI hides the OpenVPN device type unless this is true
 		ManagedAgentRuntimeEnabled:  o.ManagedAgentRuntimeEnabled,
 		AgentPolicyTemplatesEnabled: o.AgentPolicyTemplatesEnabled,
