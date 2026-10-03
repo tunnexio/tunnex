@@ -22,6 +22,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
+	"github.com/tunnexio/tunnex/apps/api/internal/gatewaymesh"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -1064,6 +1065,10 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		return Snapshot{}, err
 	}
 	snap := Snapshot{Mode: settings.ZeroTrustMode, FQDNResourcesEnabled: settings.FqdnResourcesEnabled}
+	snap.CrossGatewayGraph, err = gatewaymesh.Load(ctx, q, orgID, settings.CrossGatewayClientsEnabled)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	scopeRules := make(map[uuid.UUID]Rule)
 	for _, r := range rules {
 		rule := Rule{

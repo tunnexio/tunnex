@@ -1185,7 +1185,8 @@ func TestDeviceResourceInSiteFarPlacement(t *testing.T) {
 }
 
 // TestNodeSetSeedCensus — the F1 fold's one-truth check (census-style grep-proof): nodeSet is written at
-// EXACTLY four seed sites — devices, SiteNodes, selected Kubernetes connectors, and the threaded ActiveHub
+// EXACTLY five seed sites — devices, SiteNodes, selected Kubernetes connectors, the threaded ActiveHub,
+// and the organization-scoped cross-gateway graph
 // — and nowhere else. No lazy
 // admit path exists: every grant-placement target is in nodeSet by construction, so a cross-org node
 // reaching the compiled output is STRUCTURALLY impossible (construction-over-convention, 3rd instance —
@@ -1197,8 +1198,8 @@ func TestNodeSetSeedCensus(t *testing.T) {
 		t.Fatalf("read compiler.go: %v", err)
 	}
 	writes := regexp.MustCompile(`nodeSet\[[^\]]+\] = true`).FindAll(src, -1)
-	if len(writes) != 4 {
-		t.Fatalf("nodeSet must have EXACTLY 4 seed writes (devices, SiteNodes, K8s connectors, ActiveHub) — got %d: %s",
+	if len(writes) != 5 {
+		t.Fatalf("nodeSet must have EXACTLY 5 seed writes (devices, SiteNodes, K8s connectors, ActiveHub, cross-gateway graph) — got %d: %s",
 			len(writes), writes)
 	}
 }

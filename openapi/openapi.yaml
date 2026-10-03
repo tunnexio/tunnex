@@ -3649,6 +3649,31 @@ paths:
               schema: { $ref: "#/components/schemas/CreateDeviceResponse" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/cross-gateway-settings:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setCrossGatewayClientsEnabled
+      summary: Set optional cross-gateway connectivity for human clients and agents
+      description: Organization-admin opt-in, disabled by default. Provides client routes through a reachable gateway while preserving the existing Zero Trust mode and rules. Applies to human and enrolled agent devices. Disabling withdraws this feature's routes and remote permission placement on reconciliation.
+      tags: [organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CrossGatewaySetting" }
+      responses:
+        "200":
+          description: Updated cross-gateway opt-in.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrossGatewaySetting" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/ovpn-settings:
     parameters:
       - name: orgId
@@ -7509,6 +7534,9 @@ components:
         pool_cidr:
           type: string
           description: The org's flat WireGuard address pool (IPv4 CIDR).
+        cross_gateway_clients_enabled:
+          type: boolean
+          description: Optional cross-gateway connectivity for human and agent clients. Existing Zero Trust rules still apply.
         ovpn_enabled:
           type: boolean
           description: "S9.1 D-S9.5-OPTIN: whether this org has opted into OpenVPN. Default false. When false the OpenVPN device type is not offered and the export endpoint refuses (opt_in_required)."
@@ -10866,6 +10894,12 @@ components:
             dns: { type: array, items: { type: string } }
             mtu: { type: integer }
             persistent_keepalive: { type: integer }
+
+    CrossGatewaySetting:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
 
     OVPNSetting:
       type: object

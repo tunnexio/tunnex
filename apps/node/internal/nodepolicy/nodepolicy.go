@@ -36,8 +36,9 @@ const (
 // v8 (S21): FQDN generations are expanded by the control plane into ordinary
 // /32 and /128 allows. v9 adds FQDNManaged ownership provenance: a v8-or-older
 // agent must refuse it rather than enforce FQDN tuples without selective
-// conntrack withdrawal capability.
-const MaxSupportedVersion = 9
+// conntrack withdrawal capability. v10 adds cross-gateway client routing with
+// matching IPv4/IPv6 route families; older gateways must refuse this content.
+const MaxSupportedVersion = 10
 
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
@@ -110,8 +111,9 @@ type Compiled struct {
 	VIPMappings []VIPMapping `json:"vip_mappings,omitempty"`
 	// K8sDNSZones (v7, S10.3) — DNS-listen table: bind :53 on each ListenVIP and serve that cluster's zone
 	// (direct-answer from the VIP map, NXDOMAIN in-zone-but-unexposed). Mirror of policyspec.Compiled.K8sDNSZones.
-	K8sDNSZones     []K8sDNSZone     `json:"k8s_dns_zones,omitempty"`
-	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
+	K8sDNSZones         []K8sDNSZone     `json:"k8s_dns_zones,omitempty"`
+	FQDNGenerations     []FQDNGeneration `json:"fqdn_generations,omitempty"`
+	CrossGatewayClients bool             `json:"cross_gateway_clients,omitempty"`
 }
 
 // FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the

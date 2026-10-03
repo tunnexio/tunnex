@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdn"
+	"github.com/tunnexio/tunnex/apps/api/internal/gatewaymesh"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -227,6 +228,8 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
+	// CrossGatewayGraph supplies transport ownership, never a blanket grant.
+	CrossGatewayGraph *gatewaymesh.Graph
 	// IPsecNetworks is populated only by a future qualified runtime service.
 	IPsecNetworks      []IPsecNetwork
 	Mode               string
@@ -274,11 +277,21 @@ type AgentGroupMembership struct {
 func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	mesh := s.Mode == ModeOff
 	subjects := subjectAttribution(s.Devices)
+	for _, subject := range append([]policyspec.SubjectAttribution(nil), subjects...) {
+		if alias := s.CrossGatewayGraph.IPv6Source(subject.SrcIP); alias != "" {
+			subject.SrcIP = alias
+			subjects = append(subjects, subject)
+		}
+	}
+	sort.Slice(subjects, func(i, j int) bool { return subjects[i].SrcIP < subjects[j].SrcIP })
 
 	// Nodes in play = nodes that have at least one active device, every site-bound gateway node, and every
 	// selected Kubernetes connector. A connector gets an artifact even with no local devices: it owns the
 	// service VIP's last hop and must enforce the same grant as the client-facing edge.
 	nodeSet := map[uuid.UUID]bool{}
+	for _, id := range s.CrossGatewayGraph.NodeIDs() {
+		nodeSet[id] = true
+	}
 	for _, d := range s.Devices {
 		if d.AssignedIP == "" {
 			continue
@@ -491,10 +504,41 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			a.fqdnResolverCarriage[k] = true
 		}
 	}
-	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) { addWithProvenance(nodeID, e, false) }
-	addResolverCarriage := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
-		addWithProvenance(nodeID, e, true)
+	addAcrossClientPath := func(nodeID uuid.UUID, e policyspec.AllowEntry, resolverCarriage bool) {
+		// Keep address-scoped destinations exact. Only select the source identity's
+		// IPv6 address when the administrator/DNS answer explicitly targets IPv6.
+		if dst, err := netip.ParsePrefix(e.DstCIDR); err == nil && dst.Addr().Is6() {
+			if source := s.CrossGatewayGraph.IPv6Source(e.SrcIP); source != "" {
+				e.SrcIP = source
+			}
+		}
+		targets := append([]uuid.UUID{nodeID}, s.CrossGatewayGraph.EnforcementNodes(e.SrcIP, e.DstCIDR)...)
+		for _, target := range targets {
+			addWithProvenance(target, e, resolverCarriage)
+			// Far gateways must retain the same generation for selective withdrawal
+			// and restart recovery when a DNS answer names a remote client.
+			if ruleID, err := uuid.Parse(e.RuleID); err == nil {
+				if resourceID, ok := fqdnReferenceForRule[ruleID]; ok {
+					if generation, _, _, active := activeFQDNGeneration(fqdnResourceByID[resourceID]); active {
+						acc[target].generations[generation.ResourceID] = generation
+					}
+				}
+			}
+		}
 	}
+	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) { addAcrossClientPath(nodeID, e, false) }
+	// Group destinations authorize device identities; both addresses belong to
+	// that same identity. Address/FQDN resources do not use this expansion.
+	addIdentity := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
+		add(nodeID, e)
+		for _, tuple := range s.CrossGatewayGraph.IPv6Tuples(e.SrcIP, e.DstCIDR) {
+			v6 := e
+			v6.SrcIP = tuple.Source
+			v6.DstCIDR = tuple.Destination
+			add(nodeID, v6)
+		}
+	}
+	addResolverCarriage := func(nodeID uuid.UUID, e policyspec.AllowEntry) { addAcrossClientPath(nodeID, e, true) }
 	addGeneration := func(nodeID uuid.UUID, g policyspec.FQDNGeneration) {
 		acc[nodeID].generations[g.ResourceID] = g
 	}
@@ -631,7 +675,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 					if dstIP == d.AssignedIP {
 						continue // a device reaching itself is meaningless
 					}
-					add(d.NodeID, policyspec.AllowEntry{
+					addIdentity(d.NodeID, policyspec.AllowEntry{
 						SrcIP:       d.AssignedIP,
 						DstCIDR:     dstIP + "/32",
 						Protocol:    policyspec.ProtoAny, // device-to-device is L3

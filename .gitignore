@@ -86,3 +86,6 @@ walk-artifacts/sso-improvement/local-runtime/
 
 # Local Go build output; fixtures run from source via make seed-fixtures.
 /apps/api/seed-fixtures
+
+# Disposable gateway qualification binaries and captured kernel evidence.
+/.gateway-update-proof/

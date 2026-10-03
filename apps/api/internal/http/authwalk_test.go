@@ -20,6 +20,7 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
+	"setcrossgatewayclientsenabled": `{"enabled":true}`,
 	"updateaitransportsettings":     `{"allow_http":false,"revision":1}`,
 	"updateserveremailsettings":     `{"enabled":false,"host":"","port":587,"from":"","username":"","revision":0,"password_action":"keep"}`,
 	"testserveremailsettings":       `{"enabled":true,"host":"smtp.example.test","port":587,"from":"test@example.test","username":"","revision":0,"password_action":"keep"}`,

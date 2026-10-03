@@ -3678,6 +3678,11 @@ type CreatePolicyRuleRequestDstKind string
 // CreatePolicyRuleRequestSrcKind defines model for CreatePolicyRuleRequest.SrcKind.
 type CreatePolicyRuleRequestSrcKind string
 
+// CrossGatewaySetting defines model for CrossGatewaySetting.
+type CrossGatewaySetting struct {
+	Enabled bool `json:"enabled"`
+}
+
 // DNSForward defines model for DNSForward.
 type DNSForward struct {
 	// Domain The forwarded zone (e.g. corp.local).
@@ -5371,9 +5376,12 @@ type Organization struct {
 	AgentJitAccessEnabled bool `json:"agent_jit_access_enabled"`
 
 	// AgentPolicyTemplatesEnabled F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly.
-	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
-	CreatedAt                   time.Time          `json:"created_at"`
-	Id                          openapi_types.UUID `json:"id"`
+	AgentPolicyTemplatesEnabled bool      `json:"agent_policy_templates_enabled"`
+	CreatedAt                   time.Time `json:"created_at"`
+
+	// CrossGatewayClientsEnabled Optional cross-gateway connectivity for human and agent clients. Existing Zero Trust rules still apply.
+	CrossGatewayClientsEnabled *bool              `json:"cross_gateway_clients_enabled,omitempty"`
+	Id                         openapi_types.UUID `json:"id"`
 
 	// ManagedAgentRuntimeEnabled F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly.
 	ManagedAgentRuntimeEnabled bool `json:"managed_agent_runtime_enabled"`
@@ -6705,6 +6713,9 @@ type RunAuditLogPruneJSONRequestBody = RunAuditLogPruneRequest
 // ConfigureConnectivityProfileJSONRequestBody defines body for ConfigureConnectivityProfile for application/json ContentType.
 type ConfigureConnectivityProfileJSONRequestBody = ConnectivityProfileRequest
 
+// SetCrossGatewayClientsEnabledJSONRequestBody defines body for SetCrossGatewayClientsEnabled for application/json ContentType.
+type SetCrossGatewayClientsEnabledJSONRequestBody = CrossGatewaySetting
+
 // SetDeviceApprovalJSONRequestBody defines body for SetDeviceApproval for application/json ContentType.
 type SetDeviceApprovalJSONRequestBody = DeviceApproval
 
@@ -7821,6 +7832,11 @@ type ClientInterface interface {
 	ConfigureConnectivityProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ConfigureConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetCrossGatewayClientsEnabledWithBody request with any body
+	SetCrossGatewayClientsEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetCrossGatewayClientsEnabled(ctx context.Context, orgId openapi_types.UUID, body SetCrossGatewayClientsEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// OrgDeletionPreflight request
 	OrgDeletionPreflight(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11862,6 +11878,30 @@ func (c *Client) ConfigureConnectivityProfileWithBody(ctx context.Context, orgId
 
 func (c *Client) ConfigureConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewConfigureConnectivityProfileRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetCrossGatewayClientsEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetCrossGatewayClientsEnabledRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetCrossGatewayClientsEnabled(ctx context.Context, orgId openapi_types.UUID, body SetCrossGatewayClientsEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetCrossGatewayClientsEnabledRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -23542,6 +23582,53 @@ func NewConfigureConnectivityProfileRequestWithBody(server string, orgId openapi
 	return req, nil
 }
 
+// NewSetCrossGatewayClientsEnabledRequest calls the generic SetCrossGatewayClientsEnabled builder with application/json body
+func NewSetCrossGatewayClientsEnabledRequest(server string, orgId openapi_types.UUID, body SetCrossGatewayClientsEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetCrossGatewayClientsEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetCrossGatewayClientsEnabledRequestWithBody generates requests for SetCrossGatewayClientsEnabled with any type of body
+func NewSetCrossGatewayClientsEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/cross-gateway-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewOrgDeletionPreflightRequest generates requests for OrgDeletionPreflight
 func NewOrgDeletionPreflightRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -32158,6 +32245,11 @@ type ClientWithResponsesInterface interface {
 
 	ConfigureConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error)
 
+	// SetCrossGatewayClientsEnabledWithBodyWithResponse request with any body
+	SetCrossGatewayClientsEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetCrossGatewayClientsEnabledResponse, error)
+
+	SetCrossGatewayClientsEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetCrossGatewayClientsEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetCrossGatewayClientsEnabledResponse, error)
+
 	// OrgDeletionPreflightWithResponse request
 	OrgDeletionPreflightWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*OrgDeletionPreflightResponse, error)
 
@@ -37118,6 +37210,29 @@ func (r ConfigureConnectivityProfileResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ConfigureConnectivityProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetCrossGatewayClientsEnabledResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CrossGatewaySetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetCrossGatewayClientsEnabledResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetCrossGatewayClientsEnabledResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -43383,6 +43498,23 @@ func (c *ClientWithResponses) ConfigureConnectivityProfileWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseConfigureConnectivityProfileResponse(rsp)
+}
+
+// SetCrossGatewayClientsEnabledWithBodyWithResponse request with arbitrary body returning *SetCrossGatewayClientsEnabledResponse
+func (c *ClientWithResponses) SetCrossGatewayClientsEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetCrossGatewayClientsEnabledResponse, error) {
+	rsp, err := c.SetCrossGatewayClientsEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetCrossGatewayClientsEnabledResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetCrossGatewayClientsEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetCrossGatewayClientsEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetCrossGatewayClientsEnabledResponse, error) {
+	rsp, err := c.SetCrossGatewayClientsEnabled(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetCrossGatewayClientsEnabledResponse(rsp)
 }
 
 // OrgDeletionPreflightWithResponse request returning *OrgDeletionPreflightResponse
@@ -51605,6 +51737,39 @@ func ParseConfigureConnectivityProfileResponse(rsp *http.Response) (*ConfigureCo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ConnectivityProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetCrossGatewayClientsEnabledResponse parses an HTTP response from a SetCrossGatewayClientsEnabledWithResponse call
+func ParseSetCrossGatewayClientsEnabledResponse(rsp *http.Response) (*SetCrossGatewayClientsEnabledResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetCrossGatewayClientsEnabledResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CrossGatewaySetting
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

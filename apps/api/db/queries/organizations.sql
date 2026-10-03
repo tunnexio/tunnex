@@ -79,7 +79,10 @@ SELECT o.zero_trust_mode,
            WHEN to_jsonb(o) ? 'fqdn_resources_enabled'
            THEN COALESCE((to_jsonb(o) ->> 'fqdn_resources_enabled')::boolean, false)
            ELSE false
-       END AS fqdn_resources_enabled
+       END AS fqdn_resources_enabled,
+       CASE WHEN to_jsonb(o) ? 'cross_gateway_clients_enabled'
+            THEN COALESCE((to_jsonb(o) ->> 'cross_gateway_clients_enabled')::boolean, false)
+            ELSE false END AS cross_gateway_clients_enabled
 FROM organizations o
 WHERE o.id = $1 AND o.deleted_at IS NULL;
 

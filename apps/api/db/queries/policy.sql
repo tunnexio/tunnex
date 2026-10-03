@@ -312,6 +312,7 @@ LEFT JOIN agent_runtime_state ars ON ars.device_id = d.id AND d.kind = 'agent'
 WHERE d.org_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND u.status = 'active' AND u.deleted_at IS NULL
+  AND mem.access_revoked_at IS NULL
   AND d.assigned_ip IS NOT NULL AND d.assigned_ip <> ''
 ORDER BY d.assigned_ip;
 

@@ -1,3 +1,4 @@
+import { CrossGatewaySettings } from "../components/CrossGatewaySettings";
 import { AITransportSettings } from "../components/AITransportSettings";
 import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
 import { SsoSelfLink } from "../components/SsoSelfLink";
@@ -413,6 +414,7 @@ export default function Settings() {
             tabpanel>
             <div className="flex flex-col gap-3.5">
               {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
+              <CrossGatewaySettings key={org.id} org={org} canEdit={can(myRole, "org:update") && emailVerified} onSaved={setOrg} />
               <OrgOVPNToggle
                 org={org}
                 canEdit={emailVerified}

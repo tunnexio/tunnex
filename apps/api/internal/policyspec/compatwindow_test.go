@@ -113,3 +113,14 @@ func TestFQDNManagedCrossesTheV9CompatibilityBoundary(t *testing.T) {
 		t.Fatalf("FQDN-managed artifact stamps v%d; a v%d agent would accept tuples without selective withdrawal", got, preFQDNManagedMax)
 	}
 }
+
+func TestCrossGatewayContentRequiresUpdatedGateway(t *testing.T) {
+	legacy := Compiled{PoolCIDR: "172.31.0.0/16"}
+	if got := RequiredVersion(legacy); got != 6 {
+		t.Fatalf("disabled content changed version: %d", got)
+	}
+	legacy.CrossGatewayClients = true
+	if got := RequiredVersion(legacy); got != 10 {
+		t.Fatalf("cross-gateway requires v10, got %d", got)
+	}
+}
