@@ -62,6 +62,12 @@ expected to be rewritten before merge.
 
 ## Active implementation
 
+**2026-10-03 — App Access planning:** [Epic and story/slice matrix](docs/EPIC-app-access.md)
+defines the standalone App Access workspace, admin setup and grants, browser-only
+member access, gateway connector/proxy, session lifecycle, and acceptance tests.
+Local login and configured SSO are in the first release; additional per-app MFA
+is a later story. Planning is complete; implementation has not started.
+
 **2026-09-25 — Recovery compatibility increment:** user directed continuation on the proposed contract. Implemented optional digest-bound recovery manifest metadata and journal v2 transition validation with legacy canonical compatibility. CP issuance/capability remain unchanged; recovery material stays refused until controller integration. Next: serialized refusal-before-switch, observed active-selection reporting and native switch/crash evidence. Deferred full CI remains unresolved.
 
 **2026-09-25 — S2S-3 recovery integration:** versioned CP capability/delivery, journal v2, controlled alternate routing and independent active-path telemetry implemented locally. Focused API/DB/node race suites and web checks pass. Source-matched final native ARM64 recovery packet proof passed, including pending-switch and completed-selection controller restarts, no failback, retained cleanup and WireGuard/OpenVPN coexistence; native AMD64 recovery proof remains. Approved maintenance PSK rotation implemented and native ARM64-qualified; schema162, API and compact write-only UI verified. Local CP upgraded with backup and preserved inventory. Both reported CI failures have local regression fixes; final combined API/DB races passed twice, with earlier unreproduced failures documented. S2S-3 remains open for native AMD64 recovery/rotation and fresh full CI; publication and CI dispatch approved; no CI polling. [Completion evidence](docs/S-S2S-3-completion.md).
