@@ -58,6 +58,23 @@ is `/opt/tunnex-app-access-live-updates/grant-hostname179-89866f564ae968e0/verif
 Web, gateway, proxy, TLS and DNS stayed unchanged during this API/operator upgrade.
 This documentation and CI follow-up is outside the frozen runtime source above.
 
+## Subsequent CI repair: schema 180
+
+The full CI schema convention check found three App Access tables without the
+shared `set_updated_at` trigger. Migration 180 adds those triggers to applications,
+grants and serving publications; it changes no existing rows and leaves the
+already-deployed migrations unchanged. Its down migration removes only those
+three triggers. The existing typed Go enum names are also retained through
+handwritten compatibility aliases, without changing their wire values.
+
+Isolated qualification passed all 60 App Access tests without skips, the original
+schema convention check, a 179 → 180 → 179 → 180 preservation/behavior test, SQLC
+consistency and server/migrator compilation. The blank parent database and owned
+fixture identities were preserved. The qualification report SHA256 is
+`77528f96c35ec5955f128a0e8d90337736a7c7333769a953c2a5f74eb3185466`.
+These follow-up checks do not change the historical schema-179 runtime attestation
+above; later deployment and final-commit CI evidence are recorded separately.
+
 ## Qualification limits
 
 Live retention found **zero eligible aged rows** and executed no purge; aged-data

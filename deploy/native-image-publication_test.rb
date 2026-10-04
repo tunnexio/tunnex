@@ -95,7 +95,9 @@ class NativeImagePublicationTest < Minitest::Test
     assert_includes publish.fetch('needs'), 'ai-native'
     assert_includes publish.fetch('steps').last.fetch('with').fetch('subject-digest'), 'steps.ai-index.outputs.digest'
     anonymous = CI.fetch('jobs').fetch('publish-pullable').fetch('steps').find { |s| s['run'] }.fetch('run')
-    assert_match(/IMAGES="[^"]* ai-engine"/, anonymous)
+    images = anonymous[/^IMAGES="([^"]+)"$/, 1]
+    refute_nil images, 'anonymous-pull check must declare its image list'
+    assert_includes images.split, 'ai-engine'
     manifest = CI.fetch('jobs').fetch('release-assets').fetch('steps').find { |s| s['name'] == 'Build and sign the immutable release manifest' }.fetch('run')
     assert_includes manifest, '"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64}'
     dockerfile = File.read(File.join(ROOT, 'apps/ai-engine/Dockerfile'))
