@@ -21,6 +21,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -83,7 +84,9 @@ func TestBrowserPoolActualMTLSFormsAssetsSSEWebSocket(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	var originRequests atomic.Int64
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		originRequests.Add(1)
 		if r.Host != "origin.example" || r.Header.Get("Cookie") != "ordinary=value" || r.Header.Get("X-App-ID") != "" {
 			t.Errorf("origin metadata: %s %v", r.Host, r.Header)
 		}
@@ -144,6 +147,7 @@ func TestBrowserPoolActualMTLSFormsAssetsSSEWebSocket(t *testing.T) {
 			t.Fatal(line, e)
 		}
 		events = append(events, response)
+		defer response.Body.Close()
 	}
 	for _, tc := range []struct{ method, path, body, want string }{{"POST", "/form", "field=value", "field=value"}, {"GET", "/asset", "", "asset"}} {
 		response, e := transport.RoundTrip(request(tc.method, tc.path, tc.body))
@@ -155,9 +159,6 @@ func TestBrowserPoolActualMTLSFormsAssetsSSEWebSocket(t *testing.T) {
 		if string(body) != tc.want {
 			t.Fatal(string(body))
 		}
-	}
-	for _, response := range events {
-		response.Body.Close()
 	}
 	r := request("GET", "/ws", "")
 	r.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
@@ -185,13 +186,45 @@ func TestBrowserPoolActualMTLSFormsAssetsSSEWebSocket(t *testing.T) {
 			t.Fatal(got, e)
 		}
 	}
-	stream.Close()
+	defer stream.Close()
+	before := originRequests.Load()
+	if before != 5 { // Two SSE streams, a form, an asset and a WebSocket.
+		t.Fatalf("unexpected origin requests before withdrawal: %d", before)
+	}
 	pool.Sync(ctx, nil)
-	short, stop := context.WithTimeout(ctx, 100*time.Millisecond)
+	// Cancellation and peer EOF are asynchronous: Dial may hand out an idle
+	// channel before it observes closure. Assert actual access is withdrawn,
+	// including streams that were already active, rather than handle acquisition.
+	short, stop := context.WithTimeout(ctx, time.Second)
 	defer stop()
-	if c, e := broker.Dial(short, b); e == nil {
-		c.Close()
-		t.Fatal("withdrawn channel survived")
+	response, e = transport.RoundTrip(request("GET", "/after-withdrawal", "").WithContext(short))
+	if e == nil {
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadGateway {
+			t.Fatalf("withdrawn channel forwarded request: HTTP %d", response.StatusCode)
+		}
+	}
+	for _, response := range events {
+		closed := make(chan struct{})
+		go func() { io.Copy(io.Discard, response.Body); close(closed) }()
+		select {
+		case <-closed:
+		case <-time.After(time.Second):
+			t.Fatal("SSE stream survived withdrawal")
+		}
+	}
+	closed := make(chan error, 1)
+	go func() { var one [1]byte; _, e := stream.Read(one[:]); closed <- e }()
+	select {
+	case e := <-closed:
+		if e == nil {
+			t.Fatal("WebSocket survived withdrawal")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("WebSocket did not close on withdrawal")
+	}
+	if got := originRequests.Load(); got != before {
+		t.Fatalf("post-withdrawal origin access: got %d requests, want %d", got, before)
 	}
 }
 
