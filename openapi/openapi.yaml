@@ -18,6 +18,840 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/app-access/company-apps:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listCompanyApps
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Discover explicitly visible published apps in this organization; origin and route details remain private
+      parameters:
+        - { name: search, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessCompanyApps' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/access-management:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAppAccessManagement
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read catalog visibility and assigned App admin with both manage and grant permissions
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessManagement' } } }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateAppAccessManagement
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Assign the App admin and opt into Company apps using the current application version
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessManagementInput' } } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessManagement' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/managed-apps:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listManagedAppAccessApps
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: List safe display metadata and pending counts for apps the current user may administer grants for
+      parameters:
+        - { name: app_id, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessManagedApps' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/access-requests:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAppAccessRequests
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read own request history or the current app administration queue; pending requests survive reassignment and hiding
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [mine, managed], x-enum-varnames: [CompanyScopeMine, CompanyScopeManaged], default: mine } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, approved, rejected], x-enum-varnames: [CompanyFilterPending, CompanyFilterApproved, CompanyFilterRejected] } }
+        - { name: app_id, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessRequests' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/access-requests:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: createAppAccessRequest
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Request access to a currently visible published app; duplicate pending submissions return the existing request
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessRequestInput' } } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessRequest' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/access-requests/{requestId}/decision:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: decideAppAccessRequest
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Atomically approve or reject a pending request; terminal replay never creates or re-enables a grant
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessDecisionInput' } } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessAccessRequest' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listManagedAppAccessGrants
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: List grants for this exact app under current assigned or global grant authority
+      parameters:
+        - name: search
+          in: query
+          description: Trimmed literal case-insensitive substring of subject label, current same-organization user name/email or group name, or application display name; applied before pagination.
+          schema: { type: string, maxLength: 200 }
+        - name: view
+          in: query
+          description: 'Omitted preserves all statuses. Current defaults to active and disabled; explicit scheduled or subject_unavailable remains selectable. History defaults to revoked and expired. A status from the other view is rejected. Filters apply before pagination.'
+          schema:
+            type: string
+            enum: [current, history]
+            x-enum-varnames: [ManagedGrantViewCurrent, ManagedGrantViewHistory]
+        - name: status
+          in: query
+          description: Current grant status at the response evaluation time, applied before pagination. Precedence is revoked, subject_unavailable, disabled, scheduled, expired, active.
+          schema:
+            type: string
+            enum: [scheduled, active, expired, disabled, revoked, subject_unavailable]
+            x-enum-varnames: [ManagedGrantFilterScheduled, ManagedGrantFilterActive, ManagedGrantFilterExpired, ManagedGrantFilterDisabled, ManagedGrantFilterRevoked, ManagedGrantFilterSubjectUnavailable]
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantList' } } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createManagedAppAccessGrant
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Create a grant for this exact app; body app_id must equal the path appId
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantInput' } } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrant' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateManagedAppAccessGrant
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Update a grant only when its stored app matches this exact path and current actor authority
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantUpdateInput' } } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrant' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeManagedAppAccessGrant
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Revoke a grant for this exact app; no organization-wide grant administration is implied
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantRevokeInput' } } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrant' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/grant-subjects:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAppAccessGrantSubjects
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read minimum same-organization active user or group choices for an app the actor administers
+      parameters:
+        - { name: kind, in: query, required: true, schema: { $ref: '#/components/schemas/AppAccessSubjectKind' } }
+        - { name: search, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: Current organization-scoped result; no application access is implied by administration or request history.
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantSubjects' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/app-access/gateways/{gatewayId}/status:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: gatewayId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAppAccessGatewayStatus
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read observed App Access connector capability; supported does not mean published or ready
+      responses:
+        "200":
+          description: Current scoped capability and server-observed freshness
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGatewayRuntime' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/checks:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: requestAppAccessCheck
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Queue a bounded exact-draft origin check; never publishes or grants browser access
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessCheckInput' } } }
+      responses:
+        "202":
+          description: Origin-only check accepted for the current assigned gateway
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessCheck' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/checks/{checkId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: checkId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAppAccessCheck
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read bounded origin-only check evidence; history remains readable after feature loss
+      responses:
+        "200":
+          description: Exact correlated check with server timestamps and safe codes
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessCheck' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/grants:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAppAccessGrants
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: List explicit application grants under grant administration permission
+      parameters:
+        - { name: app_id, in: query, schema: { type: string, format: uuid } }
+        - { name: subject_kind, in: query, schema: { $ref: '#/components/schemas/AppAccessSubjectKind' } }
+        - { name: subject_id, in: query, schema: { type: string, format: uuid }, description: 'Requires subject_kind; subjects and applications are scoped to this organization.' }
+        - name: search
+          in: query
+          description: Trimmed literal case-insensitive substring of subject label, current same-organization user name/email or group name, or application display name; applied before pagination.
+          schema: { type: string, maxLength: 200 }
+        - name: view
+          in: query
+          description: 'Omitted preserves all statuses. Current defaults to active and disabled; explicit scheduled or subject_unavailable remains selectable. History defaults to revoked and expired. A status from the other view is rejected. Filters apply before pagination.'
+          schema:
+            type: string
+            enum: [current, history]
+            x-enum-varnames: [GrantViewCurrent, GrantViewHistory]
+        - name: status
+          in: query
+          description: Current grant status at the response evaluation time, applied before pagination. Precedence is revoked, subject_unavailable, disabled, scheduled, expired, active.
+          schema:
+            type: string
+            enum: [scheduled, active, expired, disabled, revoked, subject_unavailable]
+            x-enum-varnames: [GrantFilterScheduled, GrantFilterActive, GrantFilterExpired, GrantFilterDisabled, GrantFilterRevoked, GrantFilterSubjectUnavailable]
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: List explicit application grants under grant administration permission
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantList' } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAppAccessGrant
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Create an explicit user or group grant; application stays unpublished
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantInput' } } }
+      responses:
+        "201":
+          description: Create an explicit user or group grant; application stays unpublished
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrant' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/grants/{grantId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateAppAccessGrant
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Update enabled state and validity with optimistic version; application and subject are immutable
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantUpdateInput' } } }
+      responses:
+        "200":
+          description: Update enabled state and validity with optimistic version; application and subject are immutable
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrant' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/grants/{grantId}/revoke-impact:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAppAccessGrantRevokeImpact
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Count current eligible grant matches and surviving allows; no live session impact claim
+      responses:
+        "200":
+          description: Current grant authorization impact, independent of application publication
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantImpact' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/grants/{grantId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: grantId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAppAccessGrant
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Revoke this grant idempotently; confirms authority change without claiming live session termination
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrantRevokeInput' } } }
+      responses:
+        "200":
+          description: Revoke this grant idempotently; confirms authority change without claiming live session termination
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessGrant' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/effective-access:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: previewAppAccessEffectiveAccess
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Preview current grant matching; drafts cannot authorize browser application access
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessEffectiveAccessInput' } } }
+      responses:
+        "200":
+          description: Preview current grant matching; drafts cannot authorize browser application access
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessEffectiveAccess' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/mfa-policy:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      operationId: updateAppAccessMFAPolicy
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Update the live per-application MFA policy
+      description: Requires a verified human with app_access:manage. Applies immediately to launch, redemption, requests and stream leases without republishing. Accepts only current server-verified MFA within 15 minutes, including trusted SSO MFA. Existing grants and published routing are retained.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/AppAccessMFAPolicyInput'}}}
+      responses:
+        "200":
+          description: Current application and live MFA policy.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: '#/components/schemas/AppAccessApplication'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAppAccessPublication
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Current serving publication is independent from latest draft and retained pending operations.
+      responses:
+        "200":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationState"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: createAppAccessPublicationOperation
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Human manage permission and current entitlement are required. Stage the exact reviewed draft without changing active authority; readiness activates atomically.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationInput"}}}
+      responses:
+        "201":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationOperation"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations/{operationId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: operationId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAppAccessPublicationOperation
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      responses:
+        "200":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationOperation"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations/by-key/{idempotencyKey}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: idempotencyKey, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAppAccessPublicationOperationByKey
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Recover a retained operation after an unknown create outcome; never recreate with another key as an automatic retry.
+      responses:
+        "200":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationOperation"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations/{operationId}/cancel:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: operationId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: cancelAppAccessPublicationOperation
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Cancel only this versioned pending operation; safe withdrawal survives entitlement loss.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationCancelInput"}}}
+      responses:
+        "200":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationOperation"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication/disable:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: disableAppAccessPublication
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Withdraw active and pending authority with application and pointer version guards. A monotonic five-second wait starts after the disable commit before exact tuple withdrawal confirmation is persisted; readback recovers interrupted waits.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationDisableInput"}}}
+      responses:
+        "200":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessPublicationState"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/rollback-draft:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: rollbackAppAccessDraft
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Copy a previously activated immutable revision into a new reviewed draft. Active publication remains until a new fresh check and publication operation succeed.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessRollbackInput"}}}
+      responses:
+        "200":
+          description: App Access publication authority readback.
+          headers:
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: "#/components/schemas/AppAccessApplication"}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/app-access/my-apps:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listMyAppAccessApps
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: List current-user published application availability without private origin metadata
+      parameters:
+        - { name: search, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: List current-user published application availability without private origin metadata
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AppAccessMyApps" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/my-apps/{appId}/launch:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: launchMyAppAccessApp
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Create a parent-bound single-use launch code for an exact published app host
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AppAccessLaunchInput" } } }
+      responses:
+        "200":
+          description: Create a parent-bound single-use launch code for an exact published app host
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AppAccessLaunchResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/my-sessions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listMyAppAccessSessions
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: List only the current user app sessions without bearer tokens
+      description: Verified human live organization membership is required. Own-session inspection survives use-role, grant, feature and entitlement loss; no admin session inventory is exposed.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: List only the current user app sessions without bearer tokens
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AppAccessMySessions" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/my-sessions/{sessionId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: revokeMyAppAccessSession
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Revoke only the current user app session
+      description: Verified human live organization membership and browser CSRF are required. Own-session removal survives use-role, grant, feature and entitlement loss. A durable scoped tombstone and mutation audit commit before best-effort Redis cleanup; 204 confirms revocation, and remaining streams lose authority within their four-second lease. Repeated scoped revocation is idempotent.
+      responses:
+        "204":
+          description: Revoke only the current user app session
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/sessions:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listAppAccessApplicationSessions
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Named app_access:session_manage permission. Current installation session metadata only, no opaque tokens or parent references. Available after feature and entitlement loss.
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, maximum: 10000, default: 0}}
+      responses:
+        "200":
+          description: Scoped session metadata
+          content: {application/json: {schema: {$ref: '#/components/schemas/AppAccessApplicationSessions'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/sessions/{sessionId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    delete:
+      operationId: revokeAppAccessApplicationSession
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Verified human browser session and named session_manage permission plus CSRF. Durable session tombstone and mutation audit commit before Redis cleanup. Confirmed revocation denies renewed or fresh authority; outstanding leases remain bounded to four seconds. Repeated scoped revocation is idempotent.
+      responses:
+        "204": {description: Durable revocation confirmed; best-effort cache cleanup may remain}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/app-access/events:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listAppAccessEvents
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Named app_access:event_view permission is required before any feature decision. Reads survive feature and entitlement loss. Events contain bounded classifications and identifiers only; best-effort telemetry may be incomplete.
+      parameters:
+        - {name: app_id, in: query, schema: {type: string, format: uuid}}
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+        - {name: session_id, in: query, schema: {type: string, format: uuid}}
+        - {name: before_time, in: query, schema: {type: string, format: date-time}}
+        - {name: before_id, in: query, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200":
+          description: Tenant-scoped event history, newest first
+          content: {application/json: {schema: {$ref: '#/components/schemas/AppAccessEvents'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/publication/impact:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: appId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAppAccessPublicationImpact
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Named manage permission. Bounded current grant/session counts for review only; mutation rechecks its own current versions. No traffic or future impact authority is inferred.
+      responses:
+        "200":
+          description: Bounded current impact
+          content: {application/json: {schema: {$ref: '#/components/schemas/AppAccessPublicationImpact'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/app-access/settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAppAccessSettings
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read App Access availability and organization opt-in
+      responses:
+        "200":
+          description: Read App Access availability and organization opt-in
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessSettings' } } }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateAppAccessSettings
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Update App Access opt-in; enabling does not publish applications
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessSettingsInput' } } }
+      responses:
+        "200":
+          description: Update App Access opt-in; enabling does not publish applications
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessSettings' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAppAccessApplications
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: List application drafts without claiming connector readiness
+      parameters:
+        - name: publication_state
+          in: query
+          schema:
+            type: string
+            enum: [unpublished, published, disabled]
+            x-enum-varnames: [AppAccessFilterUnpublished, AppAccessFilterPublished, AppAccessFilterDisabled]
+        - { name: search, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+      responses:
+        "200":
+          description: List application drafts without claiming connector readiness
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessApplicationList' } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAppAccessApplication
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Create an application draft; no route or access is published
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessDraftInput' } } }
+      responses:
+        "201":
+          description: Create an application draft; no route or access is published
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessApplication' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAppAccessApplication
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read an application draft
+      responses:
+        "200":
+          description: Read an application draft
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessApplication' } } }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateAppAccessApplication
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Replace draft configuration using optimistic version
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessUpdateDraftInput' } } }
+      responses:
+        "200":
+          description: Replace draft configuration using optimistic version
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessApplication' } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: archiveAppAccessApplication
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      description: Archive only after exact disabled authority has a persisted monotonic withdrawal confirmation. Retain history and hostname tombstones.
+      parameters:
+        - {name: expected_version, in: query, required: true, schema: {type: integer, format: int64, minimum: 1}}
+      responses:
+        "204":
+          description: Application archived; history and hostname claims retained.
+          headers: {Cache-Control: {schema: {type: string}, description: no-store}}
+        default: {$ref: "#/components/responses/Error"}
+
+  /api/v1/organizations/{orgId}/app-access/applications/{appId}/revisions/{revision}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: appId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: revision, in: path, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+    get:
+      operationId: getAppAccessRevision
+      tags: [app-access]
+      security: [{cookieAuth: []}]
+      summary: Read an immutable draft configuration revision
+      responses:
+        "200":
+          description: Read an immutable draft configuration revision
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AppAccessRevision' } } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/ai-gateway/workloads:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1082,6 +1916,22 @@ paths:
         "204": { description: MFA removed. }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/auth/mfa/step-up:
+    post:
+      operationId: mfaStepUp
+      tags: [auth]
+      security: [{cookieAuth: []}]
+      summary: Verify account MFA for the current authenticated session
+      description: Requires the current verified human session and CSRF protection. Verifies an existing account TOTP or recovery code and stamps trusted session assurance. Returns mfa_setup_required when no factor is enrolled, mfa_session_invalid for stale or revoked parent authority, invalid_code for a failed verification, and mfa_rate_limited when throttled.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/MFAStepUpInput'}}}
+      responses:
+        "200":
+          description: MFA verified for the current session.
+          content: {application/json: {schema: {$ref: '#/components/schemas/MFAStepUpResult'}}}
+        default: {$ref: '#/components/responses/Error'}
+
   /api/v1/auth/mfa/verify:
     post:
       operationId: mfaVerify
@@ -1294,7 +2144,11 @@ paths:
     post:
       operationId: logout
       summary: Revoke the current session
-      description: Idempotent — clears the cookie and revokes the session if present.
+      description: >-
+        Commits durable revocation of a confirmed current parent login before clearing its cookie.
+        An absent cookie or an already recorded revocation returns 204 idempotently.
+        Database failures or an unconfirmed missing/expired/unreadable parent return 503 and retain the cookie;
+        Redis cleanup alone is not successful authoritative revocation.
       tags: [auth]
       security: []
       responses:
@@ -1324,6 +2178,7 @@ paths:
             two-or-more both reject (sso_not_configured / sso_org_ambiguous) rather than
             guessing, and the caller then supplies the slug explicitly.
           schema: { type: string }
+        - {name: next, in: query, required: false, schema: {type: string, maxLength: 32768}, description: 'Validated console-relative return persisted in single-use server OIDC state; external destinations are refused.'}
       responses:
         "200":
           description: The IdP redirect URL for the client to navigate to.
@@ -1501,6 +2356,8 @@ paths:
       operationId: startSsoConnection
       tags: [sso]
       security: []
+      parameters:
+        - {name: next, in: query, required: false, schema: {type: string, maxLength: 32768}, description: 'Validated console-relative return persisted in browser-bound single-use OIDC state.'}
       responses:
         "200":
           description: Successful operation.
@@ -3297,6 +4154,8 @@ paths:
         - { name: action, in: query, required: false, schema: { type: string } }
         - { name: from, in: query, required: false, schema: { type: string, format: date-time }, description: created_at >= this. }
         - { name: to, in: query, required: false, schema: { type: string, format: date-time }, description: created_at <= this. }
+        - {name: target_type, in: query, schema: {type: string, minLength: 1, maxLength: 100}, description: Exact audit target type filter; ordinary defaults are unchanged.}
+        - {name: target_id, in: query, schema: {type: string, format: uuid}, description: Exact UUID target filter. Application changes use app_access plus the application UUID; grant and session target IDs differ.}
         # Keyset cursor: pass the last entry's created_at + id to fetch the next page.
         - { name: cursor_ts, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: cursor_id, in: query, required: false, schema: { type: string, format: uuid } }
@@ -4951,6 +5810,38 @@ paths:
               schema: { $ref: "#/components/schemas/AITransportSettings" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/admin/app-access/domains:
+    get:
+      operationId: getAppAccessDomains
+      summary: Read deployment-wide App Access addresses (server administrator)
+      description: Requires a verified human browser session with CP administrator authority. Existing environment configuration is returned until an override is saved.
+      tags: [admin]
+      responses:
+        "200":
+          description: Effective address configuration. Configuration readiness does not certify DNS, TLS or public reachability.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppAccessDomains" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateAppAccessDomains
+      summary: Save deployment-wide portal and app addresses
+      description: Requires a verified CP administrator browser session and CSRF protection. New app hostnames use the saved base. Published hostnames and tenant grants remain unchanged. DNS and HTTPS certificates must cover the configured addresses; publication checks still enforce connectivity. Existing SSO providers may need their callback registration updated when the portal URL changes.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppAccessDomainsInput" }
+      responses:
+        "200":
+          description: Saved settings, effective on subsequent requests without an API restart.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppAccessDomains" }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/admin/email-settings:
     get:
       operationId: getServerEmailSettings
@@ -6845,6 +7736,473 @@ components:
       required: true
 
   schemas:
+    AppAccessPerson:
+      type: object
+      additionalProperties: false
+      required: [id, name, email, available]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        email: {type: string}
+        available: {type: boolean}
+    AppAccessAccessManagement:
+      type: object
+      additionalProperties: false
+      required: [app_id, version, catalog_visible, app_admin_user_id, app_admin]
+      properties:
+        app_id: {type: string, format: uuid}
+        version: {type: integer, format: int64}
+        catalog_visible: {type: boolean}
+        app_admin_user_id: {type: string, format: uuid, nullable: true}
+        app_admin:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AppAccessPerson'}]
+    AppAccessAccessManagementInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version, catalog_visible, app_admin_user_id]
+      properties:
+        expected_version: {type: integer, format: int64, minimum: 1}
+        catalog_visible: {type: boolean}
+        app_admin_user_id: {type: string, format: uuid, nullable: true}
+    AppAccessAccessRequestInput:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: {type: string, maxLength: 1000}
+    AppAccessAccessDecisionInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version, decision, expires_at]
+      properties:
+        expected_version: {type: integer, format: int64, minimum: 1}
+        decision: {type: string, enum: [approved, rejected], x-enum-varnames: [CompanyDecisionApproved, CompanyDecisionRejected]}
+        reason: {type: string, maxLength: 1000}
+        expires_at: {type: string, format: date-time, nullable: true}
+    AppAccessAccessRequest:
+      type: object
+      additionalProperties: false
+      required: [id, app_id, app_name, requester, app_admin, status, reason, decision_reason, version, created_at, decided_at, decided_by, grant_id]
+      properties:
+        id: {type: string, format: uuid}
+        app_id: {type: string, format: uuid}
+        app_name: {type: string}
+        requester: {$ref: '#/components/schemas/AppAccessPerson'}
+        app_admin:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AppAccessPerson'}]
+        status: {type: string, enum: [pending, approved, rejected], x-enum-varnames: [CompanyRequestPending, CompanyRequestApproved, CompanyRequestRejected]}
+        reason: {type: string}
+        decision_reason: {type: string}
+        version: {type: integer, format: int64}
+        created_at: {type: string, format: date-time}
+        decided_at: {type: string, format: date-time, nullable: true}
+        decided_by: {type: string, format: uuid, nullable: true}
+        grant_id: {type: string, format: uuid, nullable: true}
+    AppAccessAccessRequests:
+      type: object
+      additionalProperties: false
+      required: [items, pending_count, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AppAccessAccessRequest'}}
+        pending_count: {type: integer, format: int64}
+        limit: {type: integer}
+        offset: {type: integer}
+    AppAccessCompanyApp:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, icon, icon_data_url, app_admin, access_granted, require_mfa, mfa_required, mfa_setup_required, mfa_freshness_seconds, latest_request]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        icon: {type: string}
+        icon_data_url: {type: string}
+        app_admin:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AppAccessPerson'}]
+        access_granted: {type: boolean, description: 'Current matching explicit access and serving authority; request status and assigned administration never imply access. Normal MFA is still required at launch.'}
+        launch_url: {type: string, description: 'Omitted without current effective grant access; origin and public hostname are never disclosed separately.'}
+        require_mfa: {type: boolean}
+        mfa_required: {type: boolean}
+        mfa_setup_required: {type: boolean}
+        mfa_freshness_seconds: {type: integer, enum: [900], x-enum-varnames: [CompanyMFAFreshness900]}
+        latest_request:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/AppAccessAccessRequest'}]
+    AppAccessCompanyApps:
+      type: object
+      additionalProperties: false
+      required: [items, availability, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AppAccessCompanyApp'}}
+        availability: {type: string, enum: [available, feature_disabled, feature_unavailable, domain_unavailable, parent_unavailable], x-enum-varnames: [CompanyAppsAvailable, CompanyAppsFeatureDisabled, CompanyAppsFeatureUnavailable, CompanyAppsDomainUnavailable, CompanyAppsParentUnavailable]}
+        limit: {type: integer}
+        offset: {type: integer}
+    AppAccessManagedApp:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, icon, icon_data_url, pending_count]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        icon: {type: string}
+        icon_data_url: {type: string}
+        pending_count: {type: integer, format: int64}
+    AppAccessManagedApps:
+      type: object
+      additionalProperties: false
+      required: [items, can_view_applications, can_manage_grants, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AppAccessManagedApp'}}
+        can_view_applications:
+          type: boolean
+          description: Current organization app_access:view permission; navigation hint only, independent of app assignment.
+        can_manage_grants:
+          type: boolean
+          description: Current organization app_access:grant permission; navigation hint only, independent of app assignment.
+        limit: {type: integer}
+        offset: {type: integer}
+    AppAccessGrantSubject:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        email: {type: string}
+        kind: {$ref: '#/components/schemas/AppAccessSubjectKind'}
+    AppAccessGrantSubjects:
+      type: object
+      additionalProperties: false
+      required: [items, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AppAccessGrantSubject'}}
+        limit: {type: integer}
+        offset: {type: integer}
+    AppAccessSubjectKind:
+      type: string
+      enum: [user, group]
+    AppAccessGrantInput:
+      type: object
+      additionalProperties: false
+      required: [app_id, subject_kind, subject_id, enabled, starts_at, expires_at]
+      properties:
+        app_id: { type: string, format: uuid }
+        subject_kind: { $ref: '#/components/schemas/AppAccessSubjectKind' }
+        subject_id: { type: string, format: uuid }
+        enabled: { type: boolean }
+        starts_at: { type: string, format: date-time, nullable: true, description: 'Inclusive start; null means no lower bound.' }
+        expires_at: { type: string, format: date-time, nullable: true, description: 'Exclusive expiry; null means no upper bound.' }
+    AppAccessGrantUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [enabled, starts_at, expires_at, expected_version]
+      properties:
+        enabled: { type: boolean }
+        starts_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        expected_version: { type: integer, format: int64, minimum: 1 }
+    AppAccessGrantRevokeInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: { type: integer, format: int64, minimum: 1 }
+    AppAccessGrant:
+      type: object
+      required: [id, org_id, app_id, app_label, subject_kind, subject_id, subject_label, enabled, starts_at, expires_at, version, revoked_at, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        app_label: { type: string, description: 'Same-organization application display name; never authority.' }
+        subject_kind: { $ref: '#/components/schemas/AppAccessSubjectKind' }
+        subject_id: { type: string, format: uuid }
+        subject_label: { type: string, description: 'Organization-scoped display label; never authority.' }
+        enabled: { type: boolean }
+        starts_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        version: { type: integer, format: int64, minimum: 1 }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [scheduled, active, expired, disabled, revoked, subject_unavailable], description: 'Current grant status; active does not imply app publication or content access.' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AppAccessGrantImpact:
+      type: object
+      required: [matching_user_count, users_losing_grant_match_count, evaluated_at, grant_version, session_impact_available]
+      properties:
+        matching_user_count: { type: integer, format: int64, minimum: 0, description: 'Current eligible users matching this explicit grant; application publication and feature availability are separate.' }
+        users_losing_grant_match_count: { type: integer, format: int64, minimum: 0, description: 'Matching users without another surviving current allow; not a count of open sessions or app connections.' }
+        evaluated_at: { type: string, format: date-time }
+        grant_version: { type: integer, format: int64, minimum: 1 }
+        session_impact_available: { type: boolean, enum: [false], description: 'AA-2 does not expose or fabricate live session impact.' }
+    AppAccessGrantList:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AppAccessGrant' } }
+        limit: { type: integer }
+        offset: { type: integer }
+    AppAccessEffectiveAccessInput:
+      type: object
+      additionalProperties: false
+      required: [user_id]
+      properties:
+        user_id: { type: string, format: uuid, description: 'Organization-scoped subject; never overrides the authenticated administrator.' }
+    AppAccessEffectiveAccess:
+      type: object
+      required: [evaluated_at, grant_match, matching_grant_ids, access_allowed, deny_reason, next_expiry_at]
+      properties:
+        evaluated_at: { type: string, format: date-time }
+        grant_match: { type: boolean, description: 'At least one currently valid explicit user/group allow matches this subject.' }
+        matching_grant_ids: { type: array, items: { type: string, format: uuid } }
+        access_allowed: { type: boolean, description: 'Configured eligibility with current active serving authority only. Preview never creates a session, proves a parent login or authorizes traffic; launch still requires a valid current login.' }
+        deny_reason: { type: string, enum: ["", app_unpublished, connector_unavailable, no_active_grant, feature_unavailable, feature_disabled, user_inactive, membership_unavailable, email_not_verified, password_change_required, no_use_permission, mfa_required] }
+        next_expiry_at: { type: string, format: date-time, nullable: true, description: 'Next expiry among currently matching grants; other grants may remain. Not an end-of-access promise.' }
+    AppAccessMFAPolicyInput:
+      type: object
+      additionalProperties: false
+      required: [require_mfa, expected_version]
+      properties:
+        require_mfa: {type: boolean}
+        expected_version: {type: integer, format: int64, minimum: 1}
+    MFAStepUpInput:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 128}
+    MFAStepUpResult:
+      type: object
+      additionalProperties: false
+      required: [verified_at]
+      properties:
+        verified_at: {type: string, format: date-time}
+    AppAccessSettings:
+      type: object
+      required: [enabled, version, entitlement_available, base_domain, domain_ready]
+      properties:
+        enabled: { type: boolean }
+        version: { type: integer, format: int64, minimum: 1 }
+        entitlement_available: { type: boolean }
+        base_domain: { type: string }
+        domain_ready: { type: boolean, description: 'Operator domain configuration is valid; does not prove DNS, certificates, connector or traffic readiness.' }
+    AppAccessSettingsInput:
+      type: object
+      additionalProperties: false
+      required: [enabled, expected_version]
+      properties:
+        enabled: { type: boolean }
+        expected_version: { type: integer, format: int64, minimum: 1 }
+    AppAccessGatewayRuntime:
+      type: object
+      additionalProperties: false
+      required: [org_id, gateway_id, capability_version, reported_at, status]
+      properties:
+        org_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        capability_version: { type: integer, minimum: 0, maximum: 65535 }
+        reported_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [unknown, unsupported, unavailable, supported], description: 'Fresh exact capability only; never a browser access or publication readiness claim.' }
+    AppAccessCheckInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: { type: integer, format: int64, minimum: 1 }
+    AppAccessCheck:
+      type: object
+      additionalProperties: false
+      required: [id, org_id, app_id, gateway_id, generation, revision, digest, purpose, status, created_at, deadline, completed_at, dns_status, connect_status, tls_status, error_code]
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        generation: { type: string, format: uuid }
+        revision: { type: integer, format: int64, minimum: 1 }
+        digest: { type: string, pattern: '^[a-f0-9]{64}$' }
+        purpose: { type: string, enum: [origin_check] }
+        status: { type: string, enum: [queued, running, succeeded, failed, expired, withdrawn], description: 'Origin connectivity only; no end-user authorization or publication readiness.' }
+        created_at: { type: string, format: date-time }
+        deadline: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+        dns_status: { type: string, enum: [pending, passed, failed] }
+        connect_status: { type: string, enum: [pending, passed, failed] }
+        tls_status: { type: string, enum: [pending, passed, failed, skipped] }
+        error_code: { type: string, x-enum-varnames: [AppAccessCheckErrorCodeNone, AppAccessCheckErrorCodeDnsFailed, AppAccessCheckErrorCodeTargetRefused, AppAccessCheckErrorCodeConnectFailed, AppAccessCheckErrorCodeTlsFailed, AppAccessCheckErrorCodeHttpFailed, AppAccessCheckErrorCodeDeadlineExceeded, AppAccessCheckErrorCodeAssignmentChanged, AppAccessCheckErrorCodeFeatureWithdrawn, AppAccessCheckErrorCodeConnectorFailed], enum: ["", dns_failed, target_refused, connect_failed, tls_failed, http_failed, deadline_exceeded, assignment_changed, feature_withdrawn, connector_failed], description: 'Allowlisted redacted code; no URL, body, cookie, credential or raw network error.' }
+    AppAccessAssignment:
+      description: 'Separate mTLS /agent/app-access/desired-state wire; origin_check only. Gateway identity is derived from the current authenticated certificate serial.'
+      type: object
+      additionalProperties: false
+      required: [generation, org_id, gateway_id, app_id, revision, digest, purpose, origin_url, allowed_destination_cidrs, origin_ca_pem, origin_ca_digest]
+      properties:
+        generation: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        revision: { type: integer, format: int64, minimum: 1 }
+        digest: { type: string, pattern: '^[a-f0-9]{64}$' }
+        purpose: { type: string, enum: [origin_check] }
+        origin_url: { type: string, maxLength: 2048 }
+        allowed_destination_cidrs: { type: array, maxItems: 32, items: { type: string, maxLength: 64 } }
+        origin_ca_pem: { type: string, maxLength: 32768 }
+        origin_ca_digest: { type: string, pattern: '^([a-f0-9]{64})?$' }
+    AppAccessGatewayDesired:
+      description: 'GET /agent/app-access/desired-state on the existing mTLS listener only. Empty withdrawn state is authoritative removal; app failures do not alter VPN desired state.'
+      type: object
+      additionalProperties: false
+      required: [protocol_version, purpose, withdrawn, reason, assignments, checks]
+      properties:
+        protocol_version: { type: integer, enum: [1] }
+        purpose: { type: string, enum: [origin_check] }
+        withdrawn: { type: boolean }
+        reason: { type: string, maxLength: 64 }
+        assignments: { type: array, maxItems: 64, items: { $ref: '#/components/schemas/AppAccessAssignment' } }
+        checks: { type: array, maxItems: 8, items: { $ref: '#/components/schemas/AppAccessCheck' } }
+    AppAccessGatewayResult:
+      description: 'POST /agent/app-access/checks/{requestId}/result on the mTLS listener; identity comes from certificate, correlation must match path and pending immutable check.'
+      type: object
+      additionalProperties: false
+      required: [request_id, generation, app_id, revision, digest, purpose, dns_status, connect_status, tls_status, error_code]
+      properties:
+        request_id: { type: string, format: uuid }
+        generation: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        revision: { type: integer, format: int64, minimum: 1 }
+        digest: { type: string, pattern: '^[a-f0-9]{64}$' }
+        purpose: { type: string, enum: [origin_check] }
+        dns_status: { type: string, enum: [pending, passed, failed] }
+        connect_status: { type: string, enum: [pending, passed, failed] }
+        tls_status: { type: string, enum: [pending, passed, failed, skipped] }
+        error_code: { type: string, enum: ["", dns_failed, target_refused, connect_failed, tls_failed, http_failed, deadline_exceeded, assignment_changed, feature_withdrawn, connector_failed] }
+    AppAccessGatewayApplied:
+      description: 'POST /agent/app-access/report on the mTLS listener; configured is an exact origin-check assignment acknowledgement, never browser traffic readiness.'
+      type: object
+      additionalProperties: false
+      required: [generation, app_id, revision, digest, purpose, status, error_code]
+      properties:
+        generation: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        revision: { type: integer, format: int64, minimum: 1 }
+        digest: { type: string, pattern: '^[a-f0-9]{64}$' }
+        purpose: { type: string, enum: [origin_check] }
+        status: { type: string, enum: [configured, failed, withdrawn] }
+        error_code: { type: string, enum: ["", dns_failed, target_refused, connect_failed, tls_failed, http_failed, deadline_exceeded, assignment_changed, feature_withdrawn, connector_failed] }
+    AppAccessGatewayCapabilityInput:
+      description: 'POST /agent/app-access/capability on the mTLS listener; missing/0 or future versions do not authorize version 1 assignments.'
+      type: object
+      additionalProperties: false
+      required: [protocol_version]
+      properties:
+        protocol_version: { type: integer, minimum: 0, maximum: 65535 }
+    AppAccessDraftInput:
+      type: object
+      additionalProperties: false
+      required: [name, description, icon, origin_url, gateway_id, public_hostname, idle_timeout_seconds, absolute_timeout_seconds]
+      properties:
+        allowed_destination_cidrs:
+          type: array
+          maxItems: 32
+          items: { type: string, minLength: 1, maxLength: 64 }
+          description: 'Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it.'
+        origin_ca_pem:
+          type: string
+          maxLength: 32768
+          description: 'Public CA certificate PEM only: at most eight CA certificates and 32 KiB; private keys refused. Omitted on PATCH preserves current trust; empty clears custom trust.'
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        icon: { type: string, enum: [app, globe, dashboard, terminal] }
+        icon_data_url:
+          type: string
+          maxLength: 87407
+          description: 'Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted.'
+        origin_url: { type: string, minLength: 1, maxLength: 2048, description: 'Exact root HTTP/HTTPS origin; browser input never supplies a dial target.' }
+        gateway_id: { type: string, format: uuid }
+        public_hostname: { type: string, minLength: 1, maxLength: 253 }
+        idle_timeout_seconds: { type: integer, minimum: 60, maximum: 1800, default: 1800 }
+        absolute_timeout_seconds: { type: integer, minimum: 300, maximum: 28800, default: 28800 }
+    AppAccessUpdateDraftInput:
+      type: object
+      additionalProperties: false
+      required: [name, description, icon, origin_url, gateway_id, public_hostname, idle_timeout_seconds, absolute_timeout_seconds, expected_version]
+      properties:
+        allowed_destination_cidrs:
+          type: array
+          maxItems: 32
+          items: { type: string, minLength: 1, maxLength: 64 }
+          description: 'Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it.'
+        origin_ca_pem:
+          type: string
+          maxLength: 32768
+          description: 'Public CA certificate PEM only: at most eight CA certificates and 32 KiB; private keys refused. Omitted on PATCH preserves current trust; empty clears custom trust.'
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        icon: { type: string, enum: [app, globe, dashboard, terminal] }
+        icon_data_url:
+          type: string
+          maxLength: 87407
+          description: 'Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted.'
+        origin_url: { type: string, minLength: 1, maxLength: 2048, description: 'Exact root HTTP/HTTPS origin; browser input never supplies a dial target.' }
+        gateway_id: { type: string, format: uuid }
+        public_hostname: { type: string, minLength: 1, maxLength: 253 }
+        idle_timeout_seconds: { type: integer, minimum: 60, maximum: 1800, default: 1800 }
+        absolute_timeout_seconds: { type: integer, minimum: 300, maximum: 28800, default: 28800 }
+        expected_version: { type: integer, format: int64, minimum: 1 }
+    AppAccessRevision:
+      type: object
+      required: [revision, digest, created_at, name, description, icon, origin_url, gateway_id, public_hostname, idle_timeout_seconds, absolute_timeout_seconds, allowed_destination_cidrs, origin_ca_digest]
+      properties:
+        allowed_destination_cidrs:
+          type: array
+          maxItems: 32
+          items: { type: string, minLength: 1, maxLength: 64 }
+          description: 'Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it.'
+        origin_ca_digest: { type: string, pattern: '^([a-f0-9]{64})?$', description: 'SHA-256 of canonical public CA bundle; empty means system roots.' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        icon: { type: string, enum: [app, globe, dashboard, terminal] }
+        icon_data_url:
+          type: string
+          maxLength: 87407
+          description: 'Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted.'
+        origin_url: { type: string, minLength: 1, maxLength: 2048, description: 'Exact root HTTP/HTTPS origin; browser input never supplies a dial target.' }
+        gateway_id: { type: string, format: uuid }
+        public_hostname: { type: string, minLength: 1, maxLength: 253 }
+        idle_timeout_seconds: { type: integer, minimum: 60, maximum: 1800, default: 1800 }
+        absolute_timeout_seconds: { type: integer, minimum: 300, maximum: 28800, default: 28800 }
+        revision: { type: integer, format: int64, minimum: 1 }
+        digest: { type: string, minLength: 64, maxLength: 64, pattern: '^[a-f0-9]{64}$' }
+        created_at: { type: string, format: date-time }
+    AppAccessApplication:
+      type: object
+      required: [id, org_id, version, draft_revision, state, draft, created_at, updated_at, connector_status, publication_state, require_mfa, mfa_freshness_seconds]
+      properties:
+        require_mfa: {type: boolean, description: 'Current live policy, independent of draft and published revisions.'}
+        mfa_freshness_seconds: {type: integer, enum: [900]}
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        version: { type: integer, format: int64, minimum: 1 }
+        draft_revision: { type: integer, format: int64, minimum: 1 }
+        state: { type: string, enum: [draft, archived] }
+        publication_state:
+          type: string
+          enum: [unpublished, published, disabled, archived]
+          x-enum-varnames: [AppAccessUnpublished, AppAccessPublished, AppAccessDisabled, AppAccessArchived]
+        active_revision: {type: integer, format: int64, minimum: 1, description: 'Exact active serving revision; absent when unpublished or disabled.'}
+        draft: { $ref: '#/components/schemas/AppAccessRevision' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        connector_status: { type: string, enum: [unknown, unsupported, supported, unavailable], description: 'Observed capability and freshness only; none of these values means published or ready.' }
+    AppAccessApplicationList:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AppAccessApplication' } }
+        limit: { type: integer }
+        offset: { type: integer }
     AIWorkloadModel:
       type: object
       required: [connection_id, model, mode]
@@ -11666,6 +13024,26 @@ components:
           x-enum-varnames: [NotNeeded, RestoreFromBackup, Available, InProgress, Failed]
         approval_mode: { type: string, enum: [host_command_only, host_updater] }
 
+    AppAccessDomains:
+      type: object
+      additionalProperties: false
+      required: [portal_url, app_base_domain, version, source, configuration_ready]
+      properties:
+        portal_url: { type: string, maxLength: 2048 }
+        app_base_domain: { type: string, maxLength: 253 }
+        version: { type: integer, format: int64, minimum: 0 }
+        source: { type: string, enum: [environment, database] }
+        configuration_ready:
+          type: boolean
+          description: Address syntax and isolation configuration is valid. Does not imply that DNS, TLS certificates, proxy listeners or app publication are ready.
+    AppAccessDomainsInput:
+      type: object
+      additionalProperties: false
+      required: [portal_url, app_base_domain, expected_version]
+      properties:
+        portal_url: { type: string, maxLength: 2048 }
+        app_base_domain: { type: string, maxLength: 253 }
+        expected_version: { type: integer, format: int64, minimum: 0 }
     ServerEmailSettings:
       type: object
       required: [enabled, host, port, from, username, password_configured, source, revision]
@@ -11776,6 +13154,458 @@ components:
               description: Field-level problems (e.g. validation failures).
               items:
                 $ref: "#/components/schemas/ErrorDetail"
+
+    AppAccessPublicationInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version, revision, digest, check_id, idempotency_key]
+      properties:
+        expected_version: {type: integer, format: int64, minimum: 1}
+        revision: {type: integer, format: int64, minimum: 1}
+        digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        check_id: {type: string, format: uuid}
+        idempotency_key: {type: string, format: uuid}
+    AppAccessPublicationCancelInput:
+      type: object
+      additionalProperties: false
+      required: [expected_operation_version]
+      properties:
+        expected_operation_version: {type: integer, format: int64, minimum: 1}
+    AppAccessPublicationDisableInput:
+      type: object
+      additionalProperties: false
+      required: [expected_application_version, expected_authority_version]
+      properties:
+        expected_application_version: {type: integer, format: int64, minimum: 1}
+        expected_authority_version: {type: integer, format: int64, minimum: 0, description: 'Zero only when no serving pointer exists, including first pending-only publication.'}
+    AppAccessRollbackInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version, revision]
+      properties:
+        expected_version: {type: integer, format: int64, minimum: 1}
+        revision: {type: integer, format: int64, minimum: 1}
+    AppAccessPublicationStage:
+      type: string
+      enum: [pending, passed, failed]
+      x-enum-varnames: [AppAccessStagePending, AppAccessStagePassed, AppAccessStageFailed]
+    AppAccessPublicationTLSStage:
+      type: string
+      enum: [pending, passed, failed, skipped]
+      x-enum-varnames: [AppAccessTLSStagePending, AppAccessTLSStagePassed, AppAccessTLSStageFailed, AppAccessTLSStageSkipped]
+    AppAccessActivePublication:
+      type: object
+      additionalProperties: false
+      required: [revision, digest, hostname, gateway_id, generation, authority_version, state, withdrawal_confirmed]
+      properties:
+        revision: {type: integer, format: int64}
+        digest: {type: string}
+        hostname: {type: string}
+        gateway_id: {type: string, format: uuid}
+        generation: {type: string, format: uuid}
+        authority_version: {type: integer, format: int64}
+        state:
+          type: string
+          enum: [active, disabled]
+          x-enum-varnames: [AppAccessPublicationActive, AppAccessPublicationDisabled]
+        withdrawal_confirmed: {type: boolean, description: 'Persisted exact tuple confirmation after a monotonic five-second wait begun after disable commit. Never inferred from disabled_at wall-clock age.'}
+        withdrawal_confirmed_at: {type: string, format: date-time}
+    AppAccessPublicationOperation:
+      type: object
+      additionalProperties: false
+      required: [id, version, app_id, status, revision, digest, hostname, gateway_id, generation, authority_version, reviewed_application_version, expected_application_version, expected_active_authority_version, origin_check_id, readiness_request_id, created_at, deadline, public_dns_status, public_tls_status, connector_dns_status, connector_connect_status, connector_tls_status, error_code]
+      properties:
+        id: {type: string, format: uuid}
+        version: {type: integer, format: int64}
+        app_id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [queued, checking, activated, failed, cancelled, expired]
+          x-enum-varnames: [AppAccessPublicationQueued, AppAccessPublicationChecking, AppAccessPublicationActivated, AppAccessPublicationFailed, AppAccessPublicationCancelled, AppAccessPublicationExpired]
+        revision: {type: integer, format: int64}
+        digest: {type: string}
+        hostname: {type: string}
+        gateway_id: {type: string, format: uuid}
+        generation: {type: string, format: uuid}
+        authority_version: {type: integer, format: int64}
+        reviewed_application_version: {type: integer, format: int64, minimum: 1, description: 'Immutable original caller reviewed application version; distinct from poststage expected version.'}
+        expected_application_version: {type: integer, format: int64}
+        expected_active_authority_version: {type: integer, format: int64}
+        origin_check_id: {type: string, format: uuid}
+        readiness_request_id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        deadline: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        public_dns_status: {$ref: '#/components/schemas/AppAccessPublicationStage'}
+        public_tls_status: {$ref: '#/components/schemas/AppAccessPublicationStage'}
+        connector_dns_status: {$ref: '#/components/schemas/AppAccessPublicationStage'}
+        connector_connect_status: {$ref: '#/components/schemas/AppAccessPublicationStage'}
+        connector_tls_status: {$ref: '#/components/schemas/AppAccessPublicationTLSStage'}
+        error_code: {type: string, maxLength: 64, description: 'Bounded safe diagnostic enum; never raw DNS/TLS/origin errors or response content.'}
+    AppAccessPublicationState:
+      type: object
+      additionalProperties: false
+      required: [browser_capability, application_version, rollback_revisions]
+      properties:
+        application_version: {type: integer, format: int64, minimum: 1}
+        active_label: {type: string, description: 'Immutable published revision name, independent of the current draft.'}
+        rollback_revisions:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/AppAccessRollbackRevision'}
+        active: {$ref: '#/components/schemas/AppAccessActivePublication'}
+        pending_operation: {$ref: '#/components/schemas/AppAccessPublicationOperation'}
+        last_operation: {$ref: '#/components/schemas/AppAccessPublicationOperation'}
+        browser_capability:
+          type: string
+          enum: [unknown, unsupported, unavailable, supported]
+          x-enum-varnames: [AppAccessBrowserUnknown, AppAccessBrowserUnsupported, AppAccessBrowserUnavailable, AppAccessBrowserSupported]
+    AppAccessRollbackRevision:
+      type: object
+      additionalProperties: false
+      required: [revision, digest, name, hostname, gateway_id, activated_at]
+      properties:
+        revision: {type: integer, format: int64, minimum: 1}
+        digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        name: {type: string}
+        hostname: {type: string}
+        gateway_id: {type: string, format: uuid}
+        activated_at: {type: string, format: date-time}
+    AppAccessMyApp:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, icon, launch_url, require_mfa, mfa_required, mfa_setup_required, mfa_freshness_seconds]
+      properties:
+        require_mfa: {type: boolean}
+        mfa_required: {type: boolean, description: 'Current parent login needs fresh MFA before launch; the application remains visible.'}
+        mfa_setup_required: {type: boolean, description: 'No fresh MFA assurance and no confirmed local factor; guide account setup.'}
+        mfa_freshness_seconds: {type: integer, enum: [900]}
+        id: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        icon: {type: string, description: 'Latest saved application branding; does not change the published route or access policy.'}
+        icon_data_url:
+          type: string
+          maxLength: 87407
+          description: 'Latest saved application icon as a canonical PNG data URL, or empty for the default icon. Visible after save without republishing. Published routing and access eligibility remain unchanged.'
+        launch_url: {type: string, description: 'Server-derived exact published HTTPS host and fixed /__tunnex_app/start path; creates a browser-held nonce before console launch.'}
+    AppAccessMyApps:
+      type: object
+      additionalProperties: false
+      required: [items, limit, offset, availability]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AppAccessMyApp'}}
+        limit: {type: integer}
+        offset: {type: integer}
+        availability:
+          type: string
+          enum: [available, feature_disabled, feature_unavailable, domain_unavailable, parent_unavailable]
+          x-enum-varnames: [AppAccessAvailable, AppAccessFeatureDisabled, AppAccessFeatureUnavailable, AppAccessDomainUnavailable, AppAccessParentUnavailable]
+    AppAccessLaunchInput:
+      type: object
+      additionalProperties: false
+      required: [nonce_hash, relative_target]
+      properties:
+        nonce_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        relative_target: {type: string, minLength: 1, maxLength: 8192}
+    AppAccessLaunchResult:
+      type: object
+      additionalProperties: false
+      required: [redirect_url]
+      properties:
+        redirect_url: {type: string, description: 'Exact server-published HTTPS host, fixed redemption path and opaque 60-second single-use code. Never log or persist this transient URL.'}
+    AppAccessApplicationSession:
+      type: object
+      additionalProperties: false
+      required: [id, app_id, user_id, installation_generation, app_label, created_at, expires_at]
+      properties:
+        id: {type: string, format: uuid}
+        app_id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        installation_generation: {type: string, format: uuid}
+        app_label: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    AppAccessApplicationSessions:
+      type: object
+      additionalProperties: false
+      required: [items, limit, offset]
+      properties:
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/AppAccessApplicationSession'}}
+        limit: {type: integer}
+        offset: {type: integer}
+    AppAccessEvent:
+      type: object
+      additionalProperties: false
+      required: [id, app_id, installation_generation, created_at, kind, outcome, reason]
+      properties:
+        id: {type: string, format: uuid}
+        app_id: {type: string, format: uuid}
+        installation_generation: {type: string, format: uuid}
+        revision: {type: integer, format: int64, minimum: 1}
+        serving_generation: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        user_id: {type: string, format: uuid}
+        gateway_id: {type: string, format: uuid}
+        proxy_id: {type: string, format: uuid}
+        session_id: {type: string, format: uuid}
+        stream_id: {type: string, format: uuid}
+        kind: {type: string, enum: [launch_created, session_created, session_revoked, request_allowed, request_denied, stream_renewed, stream_denied, stream_terminated, publication_changed, recovery, gap], x-enum-varnames: [AppAccessEventKindLaunchCreated, AppAccessEventKindSessionCreated, AppAccessEventKindSessionRevoked, AppAccessEventKindRequestAllowed, AppAccessEventKindRequestDenied, AppAccessEventKindStreamRenewed, AppAccessEventKindStreamDenied, AppAccessEventKindStreamTerminated, AppAccessEventKindPublicationChanged, AppAccessEventKindRecovery, AppAccessEventKindGap]}
+        outcome: {type: string, enum: [allowed, denied, completed, revoked, failed], x-enum-varnames: [AppAccessEventOutcomeAllowed, AppAccessEventOutcomeDenied, AppAccessEventOutcomeCompleted, AppAccessEventOutcomeRevoked, AppAccessEventOutcomeFailed]}
+        reason: {type: string, enum: [none, session_invalid, parent_unavailable, user_inactive, membership_unavailable, no_use_permission, no_active_grant, feature_disabled, feature_unavailable, publication_unavailable, installation_changed, session_revoked, lease_expired, connection_closed, self, admin, recovery, infrastructure_unavailable, dropped_events], x-enum-varnames: [AppAccessEventReasonNone, AppAccessEventReasonSessionInvalid, AppAccessEventReasonParentUnavailable, AppAccessEventReasonUserInactive, AppAccessEventReasonMembershipUnavailable, AppAccessEventReasonNoUsePermission, AppAccessEventReasonNoActiveGrant, AppAccessEventReasonFeatureDisabled, AppAccessEventReasonFeatureUnavailable, AppAccessEventReasonPublicationUnavailable, AppAccessEventReasonInstallationChanged, AppAccessEventReasonSessionRevoked, AppAccessEventReasonLeaseExpired, AppAccessEventReasonConnectionClosed, AppAccessEventReasonSelf, AppAccessEventReasonAdmin, AppAccessEventReasonRecovery, AppAccessEventReasonInfrastructureUnavailable, AppAccessEventReasonDroppedEvents]}
+    AppAccessEventCursor:
+      type: object
+      additionalProperties: false
+      required: [before_time, before_id]
+      properties:
+        before_time: {type: string, format: date-time}
+        before_id: {type: string, format: uuid}
+    AppAccessEventTelemetry:
+      type: object
+      additionalProperties: false
+      required: [available, emitted, dropped, storage_failures]
+      properties:
+        available: {type: boolean, description: Tenant-only process counters; false when no bounded counter entry is available. Numbers must not be interpreted when false.}
+        emitted: {type: integer, format: int64, minimum: 0}
+        dropped: {type: integer, format: int64, minimum: 0}
+        storage_failures: {type: integer, format: int64, minimum: 0}
+    AppAccessEvents:
+      type: object
+      additionalProperties: false
+      required: [items, telemetry]
+      properties:
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/AppAccessEvent'}}
+        next_cursor: {$ref: '#/components/schemas/AppAccessEventCursor'}
+        telemetry: {$ref: '#/components/schemas/AppAccessEventTelemetry'}
+    AppAccessPublicationImpact:
+      type: object
+      additionalProperties: false
+      required: [evaluated_at, application_version, authority_version, matching_user_count, matching_user_count_is_lower_bound, live_app_session_count, live_app_session_count_is_lower_bound, session_impact_available]
+      properties:
+        evaluated_at: {type: string, format: date-time}
+        application_version: {type: integer, format: int64}
+        authority_version: {type: integer, format: int64, minimum: 0}
+        matching_user_count: {type: integer, format: int64, minimum: 0}
+        matching_user_count_is_lower_bound: {type: boolean}
+        live_app_session_count: {type: integer, format: int64, minimum: 0, description: Unexpired current-installation nonrevoked stored app-session records; does not assert current eligibility or active traffic.}
+        live_app_session_count_is_lower_bound: {type: boolean}
+        session_impact_available: {type: boolean}
+    AppAccessMySession:
+      type: object
+      additionalProperties: false
+      required: [id, app_id, app_label, created_at, expires_at, current_parent]
+      properties:
+        id: {type: string, format: uuid}
+        app_id: {type: string, format: uuid}
+        app_label: {type: string}
+        current_parent: {type: boolean, description: Server-derived equality to the current verified parent login hash.}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    AppAccessMySessions:
+      type: object
+      additionalProperties: false
+      required: [items, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AppAccessMySession'}}
+        limit: {type: integer}
+        offset: {type: integer}
+    AppProxyStreamTerminatedInput:
+      type: object
+      additionalProperties: false
+      required: [binding, stream_id, reason]
+      properties:
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+        stream_id: {type: string, format: uuid}
+        reason: {type: string, enum: [connection_closed, lease_expired], x-enum-varnames: [AppProxyConnectionClosed, AppProxyLeaseExpired]}
+    AppProxyError:
+      $ref: '#/components/schemas/Error'
+    AppProxyPendingLaunchInput:
+      type: object
+      additionalProperties: false
+      required: [binding, nonce_hash, relative_target]
+      properties:
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+        nonce_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        relative_target: {type: string, minLength: 1, maxLength: 8192}
+    AppProxyPendingLaunchResult:
+      type: object
+      additionalProperties: false
+      required: [expires_at]
+      properties:
+        expires_at: {type: string, format: date-time, description: 'At most ten minutes; exact immutable binding and target must be atomically consumed by the verified console launch.'}
+    AppProxyRedeemInput:
+      type: object
+      additionalProperties: false
+      required: [code, nonce, hostname]
+      properties:
+        code: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        nonce: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        hostname: {type: string, minLength: 1, maxLength: 253}
+    AppProxyRedeemResult:
+      type: object
+      additionalProperties: false
+      required: [app_session_token, relative_target, expires_at]
+      properties:
+        app_session_token: {type: string, description: 'Opaque app token returned only over the dedicated TLS proxy authority port; set a reserved host-only secure HttpOnly cookie and never expose as browser JSON.'}
+        relative_target: {type: string, minLength: 1, maxLength: 8192}
+        expires_at: {type: string, format: date-time}
+    AppProxyRouteBinding:
+      type: object
+      description: Immutable serving authority, never a draft or caller-selected dial target. Private TLS authority listener only. AppProxy credentials authenticate POST /internal/app-access/route-lookup, /authorize, /leases/renew, /channel-authorize, /pending-launch and /redeem; none is mounted on the public browser router.
+      additionalProperties: false
+      required: [org_id, app_id, gateway_id, generation, revision, authority_version, digest, hostname, purpose]
+      properties:
+        org_id: {type: string, format: uuid}
+        app_id: {type: string, format: uuid}
+        gateway_id: {type: string, format: uuid}
+        generation: {type: string, format: uuid}
+        revision: {type: integer, format: int64, minimum: 1}
+        authority_version: {type: integer, format: int64, minimum: 1}
+        digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        hostname: {type: string, minLength: 1, maxLength: 253}
+        purpose: {type: string, enum: [browser_proxy]}
+    AppProxyRouteLookupInput:
+      type: object
+      additionalProperties: false
+      required: [hostname]
+      properties:
+        hostname: {type: string, minLength: 1, maxLength: 253}
+    AppProxyRoute:
+      type: object
+      additionalProperties: false
+      required: [binding, origin_url, allowed_destination_cidrs, origin_ca_pem, origin_ca_digest]
+      properties:
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+        origin_url: {type: string, maxLength: 2048}
+        allowed_destination_cidrs:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 49}
+        origin_ca_pem: {type: string, maxLength: 32768}
+        origin_ca_digest: {type: string, pattern: '^([a-f0-9]{64})?$'}
+    AppProxyRequestMetadata:
+      type: object
+      additionalProperties: false
+      required: [method, relative_path, origin, referer]
+      properties:
+        method: {type: string, minLength: 1, maxLength: 32}
+        relative_path: {type: string, minLength: 1, maxLength: 8192}
+        origin: {type: string, maxLength: 2048}
+        referer: {type: string, maxLength: 8192}
+        fetch_mode: {type: string, maxLength: 32}
+        fetch_dest: {type: string, maxLength: 32}
+        fetch_user: {type: string, maxLength: 8}
+    AppProxyAuthorizeInput:
+      type: object
+      additionalProperties: false
+      required: [binding, app_session_token, request]
+      properties:
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+        app_session_token: {type: string, maxLength: 256}
+        request: {$ref: '#/components/schemas/AppProxyRequestMetadata'}
+    AppProxyLeaseInput:
+      type: object
+      additionalProperties: false
+      required: [stream_id, binding]
+      properties:
+        stream_id: {type: string, format: uuid}
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+    AppProxyChannelInput:
+      type: object
+      additionalProperties: false
+      required: [binding, certificate_serial]
+      properties:
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+        certificate_serial: {type: string, minLength: 1, maxLength: 128, pattern: '^[a-f0-9]+$'}
+    AppProxyBrowserDesired:
+      type: object
+      description: Private authenticated agent port /agent/app-access/browser-desired-state. Separate browser purpose; immutable active and pending diagnostic assignments, never origin-check capability.
+      additionalProperties: false
+      required: [protocol_version, purpose, withdrawn, assignments]
+      properties:
+        protocol_version: {type: integer, enum: [1]}
+        purpose: {type: string, enum: [browser_proxy]}
+        withdrawn: {type: boolean}
+        reason: {type: string}
+        assignments:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/AppProxyBrowserAssignment'}
+    AppProxyBrowserAssignment:
+      allOf:
+        - {$ref: '#/components/schemas/AppProxyRoute'}
+        - type: object
+          required: [stage]
+          properties:
+            stage: {type: string, enum: [active, pending], x-enum-varnames: [AppProxyStageActive, AppProxyStagePending]}
+            operation_id: {type: string, format: uuid}
+            readiness_request_id: {type: string, format: uuid}
+            deadline: {type: string, format: date-time}
+    AppProxyReadinessClaimInput:
+      type: object
+      additionalProperties: false
+      required: [instance_token]
+      properties:
+        instance_token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$', description: 'Random 32-byte canonical base64url secret per proxy process; only its SHA256 hash is retained.'}
+    AppProxyReadinessWork:
+      type: object
+      additionalProperties: false
+      required: [operation_id, version, route, readiness_request_id, deadline, challenge_token]
+      properties:
+        operation_id: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 1}
+        route: {$ref: '#/components/schemas/AppProxyRoute'}
+        readiness_request_id: {type: string, format: uuid}
+        deadline: {type: string, format: date-time}
+        challenge_token: {type: string, pattern: '^[a-f0-9]{64}$'}
+    AppProxyReadinessClaimResult:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, maxItems: 8, items: {$ref: '#/components/schemas/AppProxyReadinessWork'}}
+    AppProxyReadinessReportInput:
+      type: object
+      additionalProperties: false
+      required: [operation_id, expected_operation_version, binding, readiness_request_id, instance_token, challenge_token, certificate_serial, public_dns_status, public_tls_status, dns_status, connect_status, tls_status, error_code]
+      properties:
+        operation_id: {type: string, format: uuid}
+        expected_operation_version: {type: integer, format: int64, minimum: 1}
+        binding: {$ref: '#/components/schemas/AppProxyRouteBinding'}
+        readiness_request_id: {type: string, format: uuid}
+        instance_token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        challenge_token: {type: string, pattern: '^[a-f0-9]{64}$'}
+        certificate_serial: {type: string, pattern: '^[a-f0-9]{1,128}$'}
+        public_dns_status: {type: string, enum: [pending, passed, failed], x-enum-varnames: [AppProxyPublicDNSPending, AppProxyPublicDNSPassed, AppProxyPublicDNSFailed]}
+        public_tls_status: {type: string, enum: [pending, passed, failed], x-enum-varnames: [AppProxyPublicTLSPending, AppProxyPublicTLSPassed, AppProxyPublicTLSFailed]}
+        dns_status: {type: string, enum: [pending, passed, failed], x-enum-varnames: [AppProxyDNSPending, AppProxyDNSPassed, AppProxyDNSFailed]}
+        connect_status: {type: string, enum: [pending, passed, failed], x-enum-varnames: [AppProxyConnectPending, AppProxyConnectPassed, AppProxyConnectFailed]}
+        tls_status: {type: string, enum: [pending, passed, failed, skipped], x-enum-varnames: [AppProxyTLSPending, AppProxyTLSPassed, AppProxyTLSFailed, AppProxyTLSSkipped]}
+        error_code: {type: string, maxLength: 64, description: 'Allowlisted safe code; empty only when every required public and connector stage passed.'}
+    AppProxyReadinessReportResult:
+      type: object
+      additionalProperties: false
+      required: [operation_id, version, status]
+      properties:
+        operation_id: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 1}
+        status: {type: string, enum: [queued, checking, activated, failed, cancelled, expired], x-enum-varnames: [AppProxyOperationQueued, AppProxyOperationChecking, AppProxyOperationActivated, AppProxyOperationFailed, AppProxyOperationCancelled, AppProxyOperationExpired]}
+    AppProxyAuthorityDecision:
+      type: object
+      description: Positive authorization requires a persisted server-issued stream identity; current AA4 authorize and renew ports always return generic 403.
+      additionalProperties: false
+      required: [stream_id, expires_at]
+      properties:
+        stream_id: {type: string, format: uuid}
+        expires_at: {type: string, format: date-time}
+    AppProxyAuthorityLease:
+      type: object
+      description: Server authority expires at most four seconds after decision start. Unpublished routes always deny; no session or publication exists in AA4.
+      additionalProperties: false
+      required: [expires_at]
+      properties:
+        expires_at: {type: string, format: date-time}
+        stream_id: {type: string, format: uuid}
 
     ErrorDetail:
       type: object

@@ -36,6 +36,36 @@ func main() {
 		usage()
 	}
 	cfg := config.Load()
+	if os.Args[1] == "app-proxy-certificate" {
+		if err := appProxyCertificate(context.Background(), cfg, os.Args[2:], os.Stdout); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
+	if os.Args[1] == "app-preflight" {
+		if err := appPreflight(context.Background(), cfg, os.Args[2:], os.Stdout); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
+	if os.Args[1] == "app-restore-begin" {
+		if err := appRestoreBegin(cfg, os.Args[2:], os.Stdout); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
+	if os.Args[1] == "app-proxy-issue" || os.Args[1] == "app-proxy-revoke" {
+		if err := appProxyCredential(context.Background(), cfg, os.Args[1], os.Args[2:], os.Stdout); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
+	if os.Args[1] == "app-recovery" {
+		if err := appRecovery(context.Background(), cfg, os.Args[2:], os.Stdout); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
 	sec, err := secrets.LoadOrInitExt(cfg.SecretsDir, secrets.ExternalSecrets{
 		Master:  secrets.ExternalSource{File: cfg.MasterKeyFile, Value: cfg.MasterKey},
 		Session: secrets.ExternalSource{File: cfg.SessionSecretFile, Value: cfg.SessionSecret},
@@ -74,6 +104,9 @@ func main() {
 			}
 			os.Exit(1)
 		}
+		if err := validateBackupSchemaVersion(m.SchemaVersion); err != nil {
+			fatal("REFUSING TO RESTORE\n\n%v", err)
+		}
 		if expectedDump, err := verifyDumpArg(os.Args[2:]); err != nil {
 			fatal("%v", err)
 		} else if expectedDump != "" {
@@ -89,8 +122,8 @@ func main() {
 	}
 }
 
-// schemaVersion reads the applied migration version, so a restore into an older binary is caught rather than
-// discovered through confusing failures. Best-effort: a manifest is still useful without it.
+// schemaVersion records the applied migration version. Verification refuses an
+// unknown version, so a failed read cannot authorize a restore.
 func schemaVersion(cfg config.Config) int64 {
 	ctx := context.Background()
 	pool, err := dbconn.NewPool(ctx, cfg.DatabaseURL)
@@ -99,7 +132,8 @@ func schemaVersion(cfg config.Config) int64 {
 	}
 	defer pool.Close()
 	var v int64
-	if err := pool.QueryRow(ctx, "SELECT version FROM schema_migrations LIMIT 1").Scan(&v); err != nil {
+	var dirty bool
+	if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations LIMIT 1").Scan(&v, &dirty); err != nil || dirty {
 		return 0
 	}
 	return v
@@ -126,7 +160,13 @@ func usage() {
 	fmt.Fprint(os.Stderr, `tunnex backupctl — backup manifest tooling
 
   backupctl manifest [note]  > backup.manifest.json
-  backupctl verify           < backup.manifest.json
+  backupctl verify [--dump-sha256 SHA256] < backup.manifest.json
+  backupctl app-preflight
+  backupctl app-restore-begin --barrier ABSOLUTE_PATH
+  backupctl app-recovery --barrier ABSOLUTE_PATH --barrier-id UUID --operator NAME
+  backupctl app-proxy-issue --name NAME --output ABSOLUTE_PRIVATE_FILE
+  backupctl app-proxy-certificate --output-dir ABSOLUTE_NEW_PRIVATE_DIRECTORY
+  backupctl app-proxy-revoke --id UUID --expected-version VERSION
 
 The manifest records a KEYED FINGERPRINT of the master key — never the key. Run verify BEFORE
 pg_restore: a restore under the wrong key produces a control plane that cannot read its own agent CA.

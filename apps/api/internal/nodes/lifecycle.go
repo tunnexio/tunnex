@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
@@ -25,6 +26,11 @@ import (
 var ErrNodeNotRevoked = apierr.New(http.StatusConflict, "node_not_revoked",
 	"only a revoked gateway can be deleted. Revoke it first, which will itself require moving any devices "+
 		"homed to it.")
+
+// Immutable App Access revisions retain their original connector assignment.
+// Reassigning a draft does not erase that history or permit deleting its gateway.
+var ErrNodeAppAccessHistoryRetained = apierr.New(http.StatusConflict, "node_app_access_history_retained",
+	"this gateway is retained by App Access revision history and cannot be deleted while referenced")
 
 // DeleteRevokedNode permanently removes a revoked gateway and the enrolment token that produced it.
 func (s *Service) DeleteRevokedNode(ctx context.Context, actor, orgID, nodeID uuid.UUID) error {
@@ -54,6 +60,10 @@ func (s *Service) DeleteRevokedNode(ctx context.Context, actor, orgID, nodeID uu
 		}
 		n, e := q.DeleteRevokedNode(ctx, sqlc.DeleteRevokedNodeParams{ID: nodeID, OrgID: orgID})
 		if e != nil {
+			var constraint *pgconn.PgError
+			if errors.As(e, &constraint) && constraint.Code == "23503" && constraint.ConstraintName == "app_access_revisions_org_id_gateway_id_fkey" {
+				return ErrNodeAppAccessHistoryRetained
+			}
 			return ipsecguard.ResourceConflict(e)
 		}
 		if n == 0 {

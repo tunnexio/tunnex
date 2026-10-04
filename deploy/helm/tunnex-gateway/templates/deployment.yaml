@@ -159,6 +159,10 @@ spec:
               value: {{ required "controlPlane.apiURL is required (the CP the gateway fetches desired state from)" .Values.controlPlane.apiURL | quote }}
             - name: TUNNEX_AGENT_URL
               value: {{ required "controlPlane.agentURL is required (the CP agent-mTLS endpoint the gateway enrolls against)" .Values.controlPlane.agentURL | quote }}
+            {{- if .Values.appAccess.enabled }}
+            - name: TUNNEX_APP_PROXY_URL
+              value: {{ required "appAccess.proxyURL is required; use direct enrollment-CA TLS SAN tunnex-app-proxy" .Values.appAccess.proxyURL | quote }}
+            {{- end }}
             - name: TUNNEX_AGENT_SERVERNAME
               value: {{ .Values.controlPlane.serverName | quote }}
             # Closed product-mode bit: only this Kubernetes gateway chart opts

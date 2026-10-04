@@ -2,13 +2,27 @@
 package config
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/metrics"
 )
+
+// App authority requires an externally retained restore fence. Legacy control
+// planes that have not configured App Access retain their empty-marker default.
+func (c Config) ValidateAppAccessRestoreMarker() error {
+	if c.AppAccessRestoreMarker == "" && c.AppAccessBaseDomain == "" && c.AppProxyAuthorityAddr == "" {
+		return nil
+	}
+	if !filepath.IsAbs(c.AppAccessRestoreMarker) {
+		return errors.New("App Access requires an absolute restore-marker path")
+	}
+	return nil
+}
 
 // Config holds the process configuration resolved at startup.
 type Config struct {
@@ -44,6 +58,14 @@ type Config struct {
 	AutoMigrate bool
 	// AppBaseURL is the public base URL used to build email links (S2.1).
 	AppBaseURL string
+	// AppAccessBaseDomain is the initial app domain until server-wide settings are saved.
+	// It can be the portal hostname or an independent site. Empty leaves initial
+	// App Access readiness false without disrupting existing services.
+	AppAccessBaseDomain string
+	// AppAccessRestoreMarker fences startup during an operator-controlled restore.
+	AppAccessRestoreMarker string
+	// AppProxyAuthorityAddr enables the dedicated direct TLS authority listener; empty disables it.
+	AppProxyAuthorityAddr string
 	// GatewayControlURL is the optional deployment-wide raw mTLS endpoint used in new gateway commands.
 	// Empty keeps the backward-compatible derivation from AppBaseURL:8443.
 	GatewayControlURL string
@@ -177,6 +199,9 @@ func Load() Config {
 		ExternalDatabase:            getenv("TUNNEX_DATABASE_URL", "") != "",
 		ExternalRedis:               getenv("TUNNEX_REDIS_URL", "") != "",
 		AutoMigrate:                 getbool("TUNNEX_AUTO_MIGRATE", true),
+		AppAccessBaseDomain:         getenv("TUNNEX_APP_ACCESS_BASE_DOMAIN", ""),
+		AppAccessRestoreMarker:      getenv("TUNNEX_APP_ACCESS_RESTORE_MARKER", ""),
+		AppProxyAuthorityAddr:       getenv("TUNNEX_APP_PROXY_AUTHORITY_ADDR", ""),
 		AppBaseURL:                  getenv("APP_BASE_URL", "http://localhost"),
 		GatewayControlURL:           getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
 		AIGatewayURL:                getenv("TUNNEX_AI_GATEWAY_URL", ""),

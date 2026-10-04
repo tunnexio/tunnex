@@ -12,6 +12,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const advanceUserAppAuthEpochForMFA = `-- name: AdvanceUserAppAuthEpochForMFA :execrows
+UPDATE users SET app_auth_epoch = app_auth_epoch + 1 WHERE id = $1 AND deleted_at IS NULL
+`
+
+// lint:cross-org — user-scoped factor reset revokes prior app authority.
+func (q *Queries) AdvanceUserAppAuthEpochForMFA(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, advanceUserAppAuthEpochForMFA, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const confirmTOTP = `-- name: ConfirmTOTP :execrows
 UPDATE user_totp
 SET confirmed = true, confirmed_at = now(), last_used_timestep = $2
@@ -163,8 +176,54 @@ func (q *Queries) GetConfirmedTOTPForUpdate(ctx context.Context, userID uuid.UUI
 	return i, err
 }
 
+const getLiveMfaChallenge = `-- name: GetLiveMfaChallenge :one
+SELECT id, user_id, token_hash, attempts, expires_at, created_at, verified_app_auth_epoch FROM mfa_challenges WHERE token_hash = $1 AND expires_at > now()
+`
+
+// lint:cross-org — user-scoped pre-session lookup; authority is rechecked under lock.
+func (q *Queries) GetLiveMfaChallenge(ctx context.Context, tokenHash []byte) (MfaChallenge, error) {
+	row := q.db.QueryRow(ctx, getLiveMfaChallenge, tokenHash)
+	var i MfaChallenge
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.Attempts,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.VerifiedAppAuthEpoch,
+	)
+	return i, err
+}
+
+const getMFAUserForUpdate = `-- name: GetMFAUserForUpdate :one
+SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+`
+
+// lint:cross-org — user-scoped credential authority lock.
+func (q *Queries) GetMFAUserForUpdate(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getMFAUserForUpdate, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.PasswordHash,
+		&i.EmailVerifiedAt,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.CanCreateOrgs,
+		&i.MustChangePassword,
+		&i.CpAdmin,
+		&i.AppAuthEpoch,
+	)
+	return i, err
+}
+
 const getMfaChallengeForUpdate = `-- name: GetMfaChallengeForUpdate :one
-SELECT id, user_id, token_hash, attempts, expires_at, created_at FROM mfa_challenges WHERE token_hash = $1 AND expires_at > now() FOR UPDATE
+SELECT id, user_id, token_hash, attempts, expires_at, created_at, verified_app_auth_epoch FROM mfa_challenges WHERE token_hash = $1 AND expires_at > now() FOR UPDATE
 `
 
 // lint:cross-org — user-scoped login challenge; the token itself is the credential.
@@ -179,6 +238,7 @@ func (q *Queries) GetMfaChallengeForUpdate(ctx context.Context, tokenHash []byte
 		&i.Attempts,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.VerifiedAppAuthEpoch,
 	)
 	return i, err
 }
@@ -202,6 +262,25 @@ SELECT user_id, secret_enc, confirmed, last_used_timestep, created_at, confirmed
 // lint:cross-org — user-scoped credential.
 func (q *Queries) GetTOTP(ctx context.Context, userID uuid.UUID) (UserTotp, error) {
 	row := q.db.QueryRow(ctx, getTOTP, userID)
+	var i UserTotp
+	err := row.Scan(
+		&i.UserID,
+		&i.SecretEnc,
+		&i.Confirmed,
+		&i.LastUsedTimestep,
+		&i.CreatedAt,
+		&i.ConfirmedAt,
+	)
+	return i, err
+}
+
+const getTOTPForUpdate = `-- name: GetTOTPForUpdate :one
+SELECT user_id, secret_enc, confirmed, last_used_timestep, created_at, confirmed_at FROM user_totp WHERE user_id = $1 FOR UPDATE
+`
+
+// lint:cross-org — user-scoped credential enrollment lock.
+func (q *Queries) GetTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error) {
+	row := q.db.QueryRow(ctx, getTOTPForUpdate, userID)
 	var i UserTotp
 	err := row.Scan(
 		&i.UserID,

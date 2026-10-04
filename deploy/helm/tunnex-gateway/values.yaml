@@ -188,3 +188,10 @@ rolloutRevision: ""
 # and then retains three consecutive health ticks before promotion, keeping
 # automatic connector failover within the 30-second recovery budget.
 reportInterval: "5s"
+
+# Browser connector uses the retained rotating enrollment identity and CA.
+# Raw TLS listener must present enrollment-CA SAN tunnex-app-proxy; no ingress
+# termination or public app certificate reuse. Existing WG endpoints unchanged.
+appAccess:
+  enabled: false
+  proxyURL: ""

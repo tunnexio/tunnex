@@ -3,7 +3,6 @@ package mfa
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -12,19 +11,12 @@ import (
 
 	apierr "github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
-	}
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	_, pool := testpostgres.New(t)
 	return pool
 }
 

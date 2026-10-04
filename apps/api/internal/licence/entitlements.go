@@ -13,6 +13,8 @@ package licence
 type Feature string
 
 const (
+	// FeatAppAccess unlocks browser app access; organizations still opt in.
+	FeatAppAccess Feature = "app_access"
 	// FeatAgentJITAccess — expiring, owner-approved access grants for managed agents.
 	FeatAgentJITAccess Feature = "agent_jit_access"
 	// FeatMultiGateway — more than one gateway. ⚠ The COUNT is a band property, not a boolean; this only
@@ -97,10 +99,10 @@ var tierFeatures = map[Tier]map[Feature]bool{
 	// otherwise buy PERMANENT free SSO for anyone who takes one: the trial-band law, exactly. What stops
 	// at lapse is everything that ONBOARDS SOMEBODY NEW — JIT provisioning and domain-capture auto-join —
 	// so the free-forever surface is capped at the humans who already existed during the trial.
-	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
-	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
-	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
-	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true, FeatAgentJITAccess: true},
+	TierTrial:   {FeatAppAccess: true, FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
+	TierStarter: {FeatAppAccess: true, FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
+	TierGrowth:  {FeatAppAccess: true, FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
+	TierScale:   {FeatAppAccess: true, FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true, FeatAgentJITAccess: true},
 }
 
 // GatewayCeilingFor is the number of gateways a tier may ENROL. nil means unlimited.

@@ -1078,6 +1078,46 @@ configure_first_organization_and_gateway
 CP_ONLY=false
 [ "$GATEWAY_PLACEMENT" != separate ] || CP_ONLY=true
 
+# BEGIN APP ACCESS REINSTALL GUARD
+# Inspect labels/mounts only; never read or emit container environment secrets.
+refuse_existing_app_access() {
+  _aa_project=$1 _aa_directory=$2
+  if [ -n "$_aa_project" ]; then
+    _aa_filter="label=com.docker.compose.project=$_aa_project"
+  else
+    # Compose top-level name and first-file directory can override basename.
+    # With no explicit project, scope inspection to the actual Compose checkout.
+    _aa_filter="label=com.docker.compose.project.working_dir=$_aa_directory"
+  fi
+  _aa_ids=$(docker_cli ps -a --filter "$_aa_filter" --format '{{.ID}}' 2>/dev/null) || {
+    echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
+  }
+  for _aa_id in $_aa_ids; do
+    _aa_info=$(docker_cli inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/tunnex/app-restore"}}marker{{end}}{{end}}' "$_aa_id" 2>/dev/null) || {
+      echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
+    }
+    case "$_aa_info" in
+      *'|'*'|'*'|'*) ;;
+      *) echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1 ;;
+    esac
+    _aa_saved_ifs=$IFS
+    IFS='|' read -r _aa_found_project _aa_found_directory _aa_service _aa_marker <<EOF
+$_aa_info
+EOF
+    IFS=$_aa_saved_ifs
+    [ "$_aa_found_directory" = "$_aa_directory" ] || continue
+    [ -z "$_aa_project" ] || [ "$_aa_found_project" = "$_aa_project" ] || continue
+    [ -n "$_aa_found_project" ] && [ "$_aa_found_project" != '<no value>' ] || {
+      echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
+    }
+    if [ "$_aa_service" = app-proxy ] || { [ "$_aa_service" = api ] && [ -n "$_aa_marker" ]; }; then
+      echo 'error: existing App Access composition requires a separately reviewed opt-in install/upgrade workflow; ordinary install/upgrade is refused before replacement. Preserve the proxy, signed image pins, and external restore barrier.' >&2
+      return 1
+    fi
+  done
+}
+# END APP ACCESS REINSTALL GUARD
+
 # ── 4. review once, then prepare the host and versioned compose ──────────────────────────────────
 stage 4 "Reviewing the installation plan"
 plan_start
@@ -1139,6 +1179,10 @@ stage 5 "Installing and verifying Tunnex"
 info 'Preparing Docker Engine and Compose v2'
 ensure_docker_ready
 success 'Docker Engine and Compose v2 are ready.'
+if [ -f "$DIR/.env" ] || [ -f "$DIR/tunnex.yml" ]; then
+  _aa_install_directory=$(CDPATH= cd -- "$DIR" && pwd -P) || die 'Existing installation directory cannot be inspected.'
+  refuse_existing_app_access "$INSTALL_COMPOSE_PROJECT" "$_aa_install_directory" || exit 13
+fi
 
 mkdir -p "$DIR"
 cd "$DIR"

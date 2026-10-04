@@ -2,10 +2,11 @@
 # Build context is the repo root (see docker-compose.yml).
 
 FROM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS build
-WORKDIR /src
+WORKDIR /src/apps/api
 
 # Download deps first for layer caching. go.sum is created on first build.
 COPY apps/api/go.mod apps/api/go.sum* ./
+COPY packages/apptransport/ /src/packages/apptransport/
 ENV GOFLAGS=-mod=readonly
 RUN go mod download
 
@@ -35,8 +36,9 @@ RUN apk add --no-cache ca-certificates wget postgresql16-client postgresql17-cli
 # Pre-own the secrets mountpoint as uid 10001 so the named volume inherits uid-10001 on first
 # init and the non-root process can write 0600 files.
 RUN mkdir -p /var/lib/tunnex/secrets \
+    && mkdir -p /var/lib/tunnex/app-restore \
     && chown -R 10001:10001 /var/lib/tunnex \
-    && chmod 700 /var/lib/tunnex/secrets
+    && chmod 700 /var/lib/tunnex/secrets /var/lib/tunnex/app-restore
 USER tunnex
 COPY --from=build /out/tunnex-ai-egress /usr/local/bin/tunnex-ai-egress
 COPY --from=build /out/tunnex-api /usr/local/bin/tunnex-api

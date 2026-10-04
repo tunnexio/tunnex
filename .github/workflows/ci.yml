@@ -156,6 +156,14 @@ jobs:
         with:
           version: v3.18.4
 
+      - name: App Access packaging, restore and upgrade contracts
+        timeout-minutes: 5
+        run: |
+          contract_venv="$RUNNER_TEMP/app-access-contracts"
+          python3 -m venv "$contract_venv"
+          "$contract_venv/bin/python" -m pip install --disable-pip-version-check 'PyYAML==6.0.2'
+          "$contract_venv/bin/python" -B -m unittest discover -s deploy/app-access/tests -p 'test_*.py' -v
+
       - name: Native AI Helm isolation and scoped SageMaker contracts
         run: |
           ruby deploy/ai-gateway/verify-helm.rb
@@ -238,13 +246,137 @@ jobs:
           make migrate
           make test-edition TEST_EDITION=${{ matrix.edition }} API_TEST_SHARD=${{ matrix.shard }}
 
+  app-access-integration:
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [open, enterprise]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # GitHub owns a separate network/services per job. No host ports/shared volume.
+    container:
+      image: golang:1.26.8-bookworm
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aa0
+          POSTGRES_DB: aa0
+          # Disposable, unpublished CI fixture credential; never a real account.
+          POSTGRES_PASSWORD: ci-app-access-only
+        options: >-
+          --health-cmd "pg_isready -U aa0 -d aa0"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APP_ACCESS_LOCAL_INTEGRATION: '1'
+      AA0_DB_PASSWORD: ci-app-access-only
+      PGPASSWORD: ci-app-access-only
+      TUNNEX_TEST_DATABASE_URL: postgres://aa0:ci-app-access-only@postgres:5432/aa0?sslmode=disable
+      TEST_EDITION: ${{ matrix.edition }}
+      GOFLAGS: -mod=readonly
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Install inspection clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends postgresql-client python3
+      - name: Assert owned blank parent and record expected test inventory
+        id: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app-access-ci
+          test "$(psql -h postgres -U aa0 -d aa0 -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'")" = 0
+          cat > app-access-ci/parent.sql <<'SQL'
+          SELECT 'database', current_database();
+          SELECT 'namespace', nspname, pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' ORDER BY nspname;
+          SELECT 'relation', n.nspname, c.relname, c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY n.nspname,c.relname;
+          SELECT 'function', n.nspname, p.oid::regprocedure::text, pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY n.nspname,p.oid::regprocedure::text;
+          SELECT 'type', n.nspname, t.typname FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY n.nspname,t.typname;
+          SELECT 'database-set', datname FROM pg_database WHERE NOT datistemplate ORDER BY datname;
+          SQL
+          psql -h postgres -U aa0 -d aa0 -At -v ON_ERROR_STOP=1 -f app-access-ci/parent.sql > app-access-ci/parent-before.txt
+          python3 - <<'PY'
+          import hashlib, json, pathlib, re
+          root = pathlib.Path('apps/api/internal/appaccess')
+          names = sorted({n for p in root.glob('*_test.go') for n in re.findall(r'^func (Test\w+)\(t \*testing\.T\)', p.read_text(), re.M)})
+          required = {'TestRegistryLocalDatabase', 'TestGrantsLocalDatabase', 'TestCompanyRequestsAtomicHistoryLocalDatabase', 'TestApplicationMFALiveAuthorityLocalDatabaseRedis', 'TestGrantRetentionBoundariesAndIndependentHistoryLocalDatabase', 'TestHostnameReuseOldAuthorityLocalDatabaseRedis'}
+          if not required <= set(names): raise SystemExit('Feature regression source missing from reconciled checkout')
+          out = pathlib.Path('app-access-ci')
+          (out/'expected-tests.json').write_text(json.dumps(names))
+          files = sorted([*root.glob('*.go'), *pathlib.Path('apps/api/db/migrations').glob('*.sql')])
+          (out/'source-inputs.json').write_text(json.dumps({str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, sort_keys=True))
+          PY
+          git rev-parse HEAD > app-access-ci/source-commit.txt
+          go version > app-access-ci/go-version.txt
+          echo ready=true >> "$GITHUB_OUTPUT"
+      - name: Run feature DB and Redis regressions in owned random child databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$TEST_EDITION" = enterprise ]; then args=(-tags enterprise); fi
+          cd apps/api
+          result=0
+          go test -json -count=1 -p=1 -timeout=25m "${args[@]}" ./internal/appaccess > ../../app-access-ci/appaccess.jsonl 2> ../../app-access-ci/appaccess.stderr || result=$?
+          go test -json -count=1 -p=1 -timeout=10m "${args[@]}" -run '^(TestAppParentLogoutLocalIntegration|TestAppParentPasswordReplacementLocalIntegration|TestNativeSSOConfigRestoreLocalDatabase)$' ./internal/http > ../../app-access-ci/http-authority.jsonl 2> ../../app-access-ci/http-authority.stderr || result=$?
+          go test -json -count=1 -p=1 -timeout=5m "${args[@]}" -run '^TestNewAtVersionPreservesParentSchema$' ./internal/testpostgres > ../../app-access-ci/testpostgres.jsonl 2> ../../app-access-ci/testpostgres.stderr || result=$?
+          exit "$result"
+      - name: Require actual test execution and unchanged blank parent
+        if: always() && steps.fixture.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This checks failure paths too. Never migrate or reset this parent.
+          psql -h postgres -U aa0 -d aa0 -At -v ON_ERROR_STOP=1 -f app-access-ci/parent.sql > app-access-ci/parent-after.txt
+          cmp app-access-ci/parent-before.txt app-access-ci/parent-after.txt
+          python3 - <<'PY'
+          import json, pathlib
+          root = pathlib.Path('app-access-ci')
+          expected = json.loads((root/'expected-tests.json').read_text())
+          summary = {}
+          for log, names in [('appaccess', expected), ('http-authority', ['TestAppParentLogoutLocalIntegration', 'TestAppParentPasswordReplacementLocalIntegration', 'TestNativeSSOConfigRestoreLocalDatabase']), ('testpostgres', ['TestNewAtVersionPreservesParentSchema'])]:
+              rows = [json.loads(line) for line in (root/(log+'.jsonl')).read_text().splitlines()]
+              bad = [r for r in rows if r.get('Action') in ('skip', 'fail')]
+              passed = {r['Test'] for r in rows if r.get('Action') == 'pass' and 'Test' in r}
+              package_pass = any(r.get('Action') == 'pass' and 'Test' not in r for r in rows)
+              missing = sorted(set(names) - passed)
+              if bad or missing or not package_pass:
+                  raise SystemExit(json.dumps({'suite':log,'bad_events':bad,'missing':missing,'package_pass':package_pass}))
+              summary[log] = {'expected_top_level_tests':len(names),'passed_top_level_tests':len(set(names)&passed),'functional_skips':0}
+          summary['parent_unchanged'] = True
+          (root/'result.json').write_text(json.dumps(summary, indent=2)+'\n')
+          print(json.dumps(summary))
+          PY
+      - name: Retain same-run source and qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app-access-integration-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app-access-ci/
+          if-no-files-found: error
+
   tooling:
     needs: scope
     if: needs.scope.outputs.go == 'true'
     strategy:
       fail-fast: false
       matrix:
-        target: [test-node, test-operator, test-cli]
+        target: [test-node, test-apptransport, test-app-proxy, test-operator, test-cli]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -293,7 +425,7 @@ jobs:
   # Preserve the existing required check and downstream outputs. Never convert a
   # failed/cancelled/missing lane into success, or accept an unexplained skip.
   gates:
-    needs: [scope, contracts, codegen, api, tooling, web]
+    needs: [scope, contracts, codegen, api, app-access-integration, tooling, web]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -632,7 +764,8 @@ jobs:
               "${GITHUB_REPOSITORY}-node-agent" \
               "${GITHUB_REPOSITORY}-migrate" \
               "${GITHUB_REPOSITORY}-operator" \
-              "${GITHUB_REPOSITORY}-ai-engine"; do
+              "${GITHUB_REPOSITORY}-ai-engine" \
+              "${GITHUB_REPOSITORY}-app-proxy"; do
               if registry_ref_exists "$repo" "$IMAGE_TAG"; then
                 echo "::error::GHCR already contains ${repo}:${IMAGE_TAG} but its release/source ledger is absent; the immutable ref is burned and must not be overwritten"
                 exit 1
@@ -1044,6 +1177,7 @@ jobs:
           - { name: migrate, dockerfile: deploy/docker/migrate.Dockerfile, context: . }
           - { name: operator, dockerfile: apps/operator/Dockerfile, context: apps/operator }
           - { name: ai-engine, dockerfile: apps/ai-engine/Dockerfile, context: . }
+          - { name: app-proxy, dockerfile: deploy/docker/app-proxy.Dockerfile, context: . }
     steps:
       - name: Revalidate release source ledger immediately before image publication
         env:
@@ -1175,7 +1309,7 @@ jobs:
           # publishes only the version (`v0.1.2`) because is_default_branch is false on a tag ref.
           # Checking a fixed list would have
           # red-flagged every release build for a tag that was never pushed.
-          IMAGES="api web nginx node-agent migrate operator ai-engine"
+          IMAGES="api web nginx node-agent migrate operator ai-engine app-proxy"
           case "$GITHUB_REF" in
             refs/tags/*) TAGS="${GITHUB_REF#refs/tags/}" ;;
             *)           TAGS="latest sha-${GITHUB_SHA::7}" ;;
@@ -1454,6 +1588,7 @@ jobs:
           migrate_amd64=$(digest "${image_prefix}-migrate" amd64); migrate_arm64=$(digest "${image_prefix}-migrate" arm64)
           operator_amd64=$(digest "${image_prefix}-operator" amd64); operator_arm64=$(digest "${image_prefix}-operator" arm64)
           ai_amd64=$(digest "${image_prefix}-ai-engine" amd64); ai_arm64=$(digest "${image_prefix}-ai-engine" arm64)
+          app_proxy_amd64=$(digest "${image_prefix}-app-proxy" amd64); app_proxy_arm64=$(digest "${image_prefix}-app-proxy" arm64)
           jq -n \
             --argjson sequence "$RUN_NUMBER" --arg version "$RELEASE_VERSION" --arg source_sha "$SOURCE_SHA" \
             --arg published_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -1463,9 +1598,10 @@ jobs:
             --arg migrate_amd64 "$migrate_amd64" --arg migrate_arm64 "$migrate_arm64" \
             --arg operator_amd64 "$operator_amd64" --arg operator_arm64 "$operator_arm64" \
             --arg ai_amd64 "$ai_amd64" --arg ai_arm64 "$ai_arm64" \
+            --arg app_proxy_amd64 "$app_proxy_amd64" --arg app_proxy_arm64 "$app_proxy_arm64" \
             --arg runtime_amd64_sha "$runtime_amd64_sha" --arg runtime_arm64_sha "$runtime_arm64_sha" \
             --arg runtime_unit_sha "$runtime_unit_sha" \
-            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64},"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
+            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64},"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64},"app-proxy":{linux_amd64_digest:$app_proxy_amd64,linux_arm64_digest:$app_proxy_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256

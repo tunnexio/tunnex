@@ -17,7 +17,9 @@ import (
 // <5s spec (S7.2). policy.Service returns sqlc rows, matching policyPort directly.
 func NewPolicyPort(pool *pgxpool.Pool, hub *nodepush.Hub) policyPort {
 	svc := policy.NewService(pool)
-	svc.SetNotifier(hub)
+	if hub != nil {
+		svc.SetNotifier(hub)
+	}
 	return svc
 }
 
@@ -32,7 +34,9 @@ func NewPolicyPortWithFQDN(pool *pgxpool.Pool, hub *nodepush.Hub, licences *lice
 	).WithK8sClusterScopesEntitlement(
 		func() bool { return licence.Has(licences.Evaluate(time.Now()).Tier, licence.FeatK8sClusterScopes) },
 	)
-	svc.SetNotifier(hub)
+	if hub != nil {
+		svc.SetNotifier(hub)
+	}
 	return svc
 }
 
@@ -43,6 +47,8 @@ func NewPolicyPortWithFQDN(pool *pgxpool.Pool, hub *nodepush.Hub, licences *lice
 // pushes affected orgs, so N replicas means N concurrent delete-and-push cycles over the same rows.
 func StartPolicyGrantSweeper(ctx context.Context, pool *pgxpool.Pool, hub *nodepush.Hub, mayTick func() bool) {
 	svc := policy.NewService(pool)
-	svc.SetNotifier(hub)
+	if hub != nil {
+		svc.SetNotifier(hub)
+	}
 	go svc.StartGrantExpirySweeper(ctx, mayTick)
 }

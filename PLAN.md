@@ -62,11 +62,33 @@ expected to be rewritten before merge.
 
 ## Active implementation
 
-**2026-10-03 — App Access planning:** [Epic and story/slice matrix](docs/EPIC-app-access.md)
-defines the standalone App Access workspace, admin setup and grants, browser-only
-member access, gateway connector/proxy, session lifecycle, and acceptance tests.
-Local login and configured SSO are in the first release; additional per-app MFA
-is a later story. Planning is complete; implementation has not started.
+**2026-10-04 — App Access:** [Epic and story/slice matrix](docs/EPIC-app-access.md).
+All **11/11 stories** are accepted within their recorded scopes: the original nine
+stories (AA-0 through AA-8) locally; Story 10 (AA-9, per-app MFA, 2/2 original
+slices) and Story 11 (AA-10, opt-in Company apps, assigned App admin and access
+requests) on the isolated App Access test CP. Story 10 reuses verified account
+MFA or trusted fresh SSO proof; Story 11 preserves scoped grants, request history,
+admin fallback and role-aware navigation.
+
+The same test CP is now on clean schema179. Accepted follow-ups add server-filtered
+Current/History grants, 90-day revoked-grant retention, 365-day grant-change audit
+retention, and hostname reuse after confirmed withdrawal and archival. Existing
+users, MFA factors, grants, logos and settings were preserved. See the
+[follow-up acceptance and evidence](docs/AA-10-followups179-acceptance.md).
+
+These records do not claim a live external customer IdP test, automatic gateway
+failover, lossless per-request auditing or a production release. Git publication
+and latest-commit required CI remain separate gates. Original local qualification
+remains in [AA-8 evidence](docs/AA-8-development-evidence.md) and the
+[private-origin live-test handoff](docs/AA-8-live-test-handoff.md).
+[AA-0 evidence](docs/AA-0-development-evidence.md),
+[AA-1 evidence](docs/AA-1-development-evidence.md),
+[AA-2 evidence](docs/AA-2-development-evidence.md),
+[AA-3 evidence](docs/AA-3-development-evidence.md),
+[AA-4 evidence](docs/AA-4-development-evidence.md),
+[AA-5 evidence](docs/AA-5-development-evidence.md),
+[AA-6 progress](docs/AA-6-development-evidence.md),
+[AA-7 progress](docs/AA-7-development-evidence.md).
 
 **2026-09-25 — Recovery compatibility increment:** user directed continuation on the proposed contract. Implemented optional digest-bound recovery manifest metadata and journal v2 transition validation with legacy canonical compatibility. CP issuance/capability remain unchanged; recovery material stays refused until controller integration. Next: serialized refusal-before-switch, observed active-selection reporting and native switch/crash evidence. Deferred full CI remains unresolved.
 
@@ -2785,3 +2807,5 @@ Critical files (S0.1/S0.2):
 - OpenAPI-first contract with codegen. CLI before Electron; cert procurement starts when EPIC 5 begins.
 - Logging in EPIC 0; metrics in EPIC 11.
 - **Open-core:** multi-tenant schema in core, org-creation limit in open build; enterprise boundary established at **S1.1**; SSO/policies/operator gated.
+
+App Access local UI quality pass is complete: shared workspace tabs, inventory/forms, grants/events and member/session layouts are rendered and qualified. [Current UI evidence](docs/AA-8-ui-quality-evidence.md) binds the final web artifacts and preserves prior qualification snapshots.

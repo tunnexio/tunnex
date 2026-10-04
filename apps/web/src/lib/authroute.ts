@@ -16,18 +16,22 @@ export const APP_HOME_PATH = "/dashboard";
 export function resolveMfaGateRoute(
   gated: boolean,
   pathname: string,
+  next?: string | null,
 ): string | null {
   // Confine a gated user to the enrollment ceremony until they set up 2FA.
   if (gated && pathname !== ENROLL_MFA_PATH) return ENROLL_MFA_PATH;
   // Release a NON-gated user off the ceremony (WF-3): once the gate clears, back to the app.
-  if (!gated && pathname === ENROLL_MFA_PATH) return APP_HOME_PATH;
+  if (!gated && pathname === ENROLL_MFA_PATH) {
+    const destination = loginDestination(next ?? null);
+    return /^\/enroll-mfa\/?(?:[?#]|$)/.test(destination) ? APP_HOME_PATH : destination;
+  }
   return null;
 }
 
 // Both login completion and the authenticated-route guard must preserve the
 // same local destination; router transitions can render the guard first.
 export function loginDestination(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || /[\\\u0000-\u0020\u007f]/.test(next)) return APP_HOME_PATH;
+  if (!next || next.length > 32768 || !next.startsWith("/") || next.startsWith("//") || /[\\\u0000-\u0020\u007f]/.test(next)) return APP_HOME_PATH;
   if (/^\/login\/?(?:[?#]|$)/.test(next)) return APP_HOME_PATH;
   return next;
 }

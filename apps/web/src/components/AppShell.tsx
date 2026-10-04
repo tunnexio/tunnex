@@ -65,6 +65,7 @@ export const NAV_GROUPS: Array<{
   {
     group: "ACCESS",
     items: [
+      { to: "/app-access", label: "App Access", icon: "boxes" },
       { to: "/access", label: "Access Policies", icon: "shield" },
       { to: "/devices", label: "Devices", icon: "laptop" },
       { to: "/users", label: "Users & Groups", icon: "users" },
@@ -522,7 +523,7 @@ export function AppShell() {
     // ⛔ THE DESKTOP ARM IS GONE (S14.20 step 4) — this shell is dashboard chrome and the client
     // never mounts it. Signing out of the CLIENT is `auth.logout()` on its own Settings pane, which
     // is where the credential and the keychain actually live.
-    await logout();
+    if (!(await logout())) return;
     navigate("/login", { replace: true });
   }
 

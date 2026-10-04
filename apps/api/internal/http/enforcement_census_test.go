@@ -47,6 +47,7 @@ type enforcement struct {
 }
 
 var ENFORCEMENT = map[string]enforcement{
+	"app_access": {symbol: "requireAppAccessEntitlement", why: "App Access handlers refuse additive enablement and draft mutations; authorized reads and disable survive lapse"},
 	"multi_gateway": {
 		symbol: "GatewayCeilingFor",
 		why:    "nodes.checkGatewayCeiling refuses an enrolment past the band, at creation only",

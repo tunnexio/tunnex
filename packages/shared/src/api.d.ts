@@ -4,6 +4,780 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/app-access/company-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Discover explicitly visible published apps in this organization; origin and route details remain private */
+        get: operations["listCompanyApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/access-management": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** Read catalog visibility and assigned App admin with both manage and grant permissions */
+        get: operations["getAppAccessManagement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Assign the App admin and opt into Company apps using the current application version */
+        patch: operations["updateAppAccessManagement"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/managed-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List safe display metadata and pending counts for apps the current user may administer grants for */
+        get: operations["listManagedAppAccessApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read own request history or the current app administration queue; pending requests survive reassignment and hiding */
+        get: operations["listAppAccessRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request access to a currently visible published app; duplicate pending submissions return the existing request */
+        post: operations["createAppAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/access-requests/{requestId}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomically approve or reject a pending request; terminal replay never creates or re-enables a grant */
+        post: operations["decideAppAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** List grants for this exact app under current assigned or global grant authority */
+        get: operations["listManagedAppAccessGrants"];
+        put?: never;
+        /** Create a grant for this exact app; body app_id must equal the path appId */
+        post: operations["createManagedAppAccessGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a grant only when its stored app matches this exact path and current actor authority */
+        patch: operations["updateManagedAppAccessGrant"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a grant for this exact app; no organization-wide grant administration is implied */
+        post: operations["revokeManagedAppAccessGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/grant-subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** Read minimum same-organization active user or group choices for an app the actor administers */
+        get: operations["listAppAccessGrantSubjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/gateways/{gatewayId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        /** Read observed App Access connector capability; supported does not mean published or ready */
+        get: operations["getAppAccessGatewayStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a bounded exact-draft origin check; never publishes or grants browser access */
+        post: operations["requestAppAccessCheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/checks/{checkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                checkId: string;
+            };
+            cookie?: never;
+        };
+        /** Read bounded origin-only check evidence; history remains readable after feature loss */
+        get: operations["getAppAccessCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List explicit application grants under grant administration permission */
+        get: operations["listAppAccessGrants"];
+        put?: never;
+        /** Create an explicit user or group grant; application stays unpublished */
+        post: operations["createAppAccessGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update enabled state and validity with optimistic version; application and subject are immutable */
+        patch: operations["updateAppAccessGrant"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/grants/{grantId}/revoke-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        /** Count current eligible grant matches and surviving allows; no live session impact claim */
+        get: operations["getAppAccessGrantRevokeImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/grants/{grantId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke this grant idempotently; confirms authority change without claiming live session termination */
+        post: operations["revokeAppAccessGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/effective-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview current grant matching; drafts cannot authorize browser application access */
+        post: operations["previewAppAccessEffectiveAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/mfa-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update the live per-application MFA policy
+         * @description Requires a verified human with app_access:manage. Applies immediately to launch, redemption, requests and stream leases without republishing. Accepts only current server-verified MFA within 15 minutes, including trusted SSO MFA. Existing grants and published routing are retained.
+         */
+        patch: operations["updateAppAccessMFAPolicy"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Current serving publication is independent from latest draft and retained pending operations. */
+        get: operations["getAppAccessPublication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Human manage permission and current entitlement are required. Stage the exact reviewed draft without changing active authority; readiness activates atomically. */
+        post: operations["createAppAccessPublicationOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations/{operationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getAppAccessPublicationOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations/by-key/{idempotencyKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                idempotencyKey: string;
+            };
+            cookie?: never;
+        };
+        /** @description Recover a retained operation after an unknown create outcome; never recreate with another key as an automatic retry. */
+        get: operations["getAppAccessPublicationOperationByKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication-operations/{operationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Cancel only this versioned pending operation; safe withdrawal survives entitlement loss. */
+        post: operations["cancelAppAccessPublicationOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Withdraw active and pending authority with application and pointer version guards. A monotonic five-second wait starts after the disable commit before exact tuple withdrawal confirmation is persisted; readback recovers interrupted waits. */
+        post: operations["disableAppAccessPublication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/rollback-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Copy a previously activated immutable revision into a new reviewed draft. Active publication remains until a new fresh check and publication operation succeed. */
+        post: operations["rollbackAppAccessDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/my-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List current-user published application availability without private origin metadata */
+        get: operations["listMyAppAccessApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/my-apps/{appId}/launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a parent-bound single-use launch code for an exact published app host */
+        post: operations["launchMyAppAccessApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/my-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List only the current user app sessions without bearer tokens
+         * @description Verified human live organization membership is required. Own-session inspection survives use-role, grant, feature and entitlement loss; no admin session inventory is exposed.
+         */
+        get: operations["listMyAppAccessSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/my-sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke only the current user app session
+         * @description Verified human live organization membership and browser CSRF are required. Own-session removal survives use-role, grant, feature and entitlement loss. A durable scoped tombstone and mutation audit commit before best-effort Redis cleanup; 204 confirms revocation, and remaining streams lose authority within their four-second lease. Repeated scoped revocation is idempotent.
+         */
+        delete: operations["revokeMyAppAccessSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Named app_access:session_manage permission. Current installation session metadata only, no opaque tokens or parent references. Available after feature and entitlement loss. */
+        get: operations["listAppAccessApplicationSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Verified human browser session and named session_manage permission plus CSRF. Durable session tombstone and mutation audit commit before Redis cleanup. Confirmed revocation denies renewed or fresh authority; outstanding leases remain bounded to four seconds. Repeated scoped revocation is idempotent. */
+        delete: operations["revokeAppAccessApplicationSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Named app_access:event_view permission is required before any feature decision. Reads survive feature and entitlement loss. Events contain bounded classifications and identifiers only; best-effort telemetry may be incomplete. */
+        get: operations["listAppAccessEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/publication/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Named manage permission. Bounded current grant/session counts for review only; mutation rechecks its own current versions. No traffic or future impact authority is inferred. */
+        get: operations["getAppAccessPublicationImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read App Access availability and organization opt-in */
+        get: operations["getAppAccessSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update App Access opt-in; enabling does not publish applications */
+        patch: operations["updateAppAccessSettings"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List application drafts without claiming connector readiness */
+        get: operations["listAppAccessApplications"];
+        put?: never;
+        /** Create an application draft; no route or access is published */
+        post: operations["createAppAccessApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an application draft */
+        get: operations["getAppAccessApplication"];
+        put?: never;
+        post?: never;
+        /** @description Archive only after exact disabled authority has a persisted monotonic withdrawal confirmation. Retain history and hostname tombstones. */
+        delete: operations["archiveAppAccessApplication"];
+        options?: never;
+        head?: never;
+        /** Replace draft configuration using optimistic version */
+        patch: operations["updateAppAccessApplication"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/app-access/applications/{appId}/revisions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                revision: number;
+            };
+            cookie?: never;
+        };
+        /** Read an immutable draft configuration revision */
+        get: operations["getAppAccessRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/workloads": {
         parameters: {
             query?: never;
@@ -1198,6 +1972,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/mfa/step-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify account MFA for the current authenticated session
+         * @description Requires the current verified human session and CSRF protection. Verifies an existing account TOTP or recovery code and stamps trusted session assurance. Returns mfa_setup_required when no factor is enrolled, mfa_session_invalid for stale or revoked parent authority, invalid_code for a failed verification, and mfa_rate_limited when throttled.
+         */
+        post: operations["mfaStepUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/mfa/verify": {
         parameters: {
             query?: never;
@@ -1403,7 +2197,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke the current session
-         * @description Idempotent — clears the cookie and revokes the session if present.
+         * @description Commits durable revocation of a confirmed current parent login before clearing its cookie. An absent cookie or an already recorded revocation returns 204 idempotently. Database failures or an unconfirmed missing/expired/unreadable parent return 503 and retain the cookie; Redis cleanup alone is not successful authoritative revocation.
          */
         post: operations["logout"];
         delete?: never;
@@ -4065,6 +4859,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/app-access/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read deployment-wide App Access addresses (server administrator)
+         * @description Requires a verified human browser session with CP administrator authority. Existing environment configuration is returned until an override is saved.
+         */
+        get: operations["getAppAccessDomains"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Save deployment-wide portal and app addresses
+         * @description Requires a verified CP administrator browser session and CSRF protection. New app hostnames use the saved base. Published hostnames and tenant grants remain unchanged. DNS and HTTPS certificates must cover the configured addresses; publication checks still enforce connectivity. Existing SSO providers may need their callback registration updated when the portal URL changes.
+         */
+        patch: operations["updateAppAccessDomains"];
+        trace?: never;
+    };
     "/api/v1/admin/email-settings": {
         parameters: {
             query?: never;
@@ -5708,6 +6526,508 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AppAccessPerson: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            email: string;
+            available: boolean;
+        };
+        AppAccessAccessManagement: {
+            /** Format: uuid */
+            app_id: string;
+            /** Format: int64 */
+            version: number;
+            catalog_visible: boolean;
+            /** Format: uuid */
+            app_admin_user_id: string | null;
+            app_admin: components["schemas"]["AppAccessPerson"] | null;
+        };
+        AppAccessAccessManagementInput: {
+            /** Format: int64 */
+            expected_version: number;
+            catalog_visible: boolean;
+            /** Format: uuid */
+            app_admin_user_id: string | null;
+        };
+        AppAccessAccessRequestInput: {
+            reason?: string;
+        };
+        AppAccessAccessDecisionInput: {
+            /** Format: int64 */
+            expected_version: number;
+            /** @enum {string} */
+            decision: "approved" | "rejected";
+            reason?: string;
+            /** Format: date-time */
+            expires_at: string | null;
+        };
+        AppAccessAccessRequest: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            app_name: string;
+            requester: components["schemas"]["AppAccessPerson"];
+            app_admin: components["schemas"]["AppAccessPerson"] | null;
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            reason: string;
+            decision_reason: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+            /** Format: uuid */
+            decided_by: string | null;
+            /** Format: uuid */
+            grant_id: string | null;
+        };
+        AppAccessAccessRequests: {
+            items: components["schemas"]["AppAccessAccessRequest"][];
+            /** Format: int64 */
+            pending_count: number;
+            limit: number;
+            offset: number;
+        };
+        AppAccessCompanyApp: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            icon: string;
+            icon_data_url: string;
+            app_admin: components["schemas"]["AppAccessPerson"] | null;
+            /** @description Current matching explicit access and serving authority; request status and assigned administration never imply access. Normal MFA is still required at launch. */
+            access_granted: boolean;
+            /** @description Omitted without current effective grant access; origin and public hostname are never disclosed separately. */
+            launch_url?: string;
+            require_mfa: boolean;
+            mfa_required: boolean;
+            mfa_setup_required: boolean;
+            /** @enum {integer} */
+            mfa_freshness_seconds: 900;
+            latest_request: components["schemas"]["AppAccessAccessRequest"] | null;
+        };
+        AppAccessCompanyApps: {
+            items: components["schemas"]["AppAccessCompanyApp"][];
+            /** @enum {string} */
+            availability: "available" | "feature_disabled" | "feature_unavailable" | "domain_unavailable" | "parent_unavailable";
+            limit: number;
+            offset: number;
+        };
+        AppAccessManagedApp: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            icon: string;
+            icon_data_url: string;
+            /** Format: int64 */
+            pending_count: number;
+        };
+        AppAccessManagedApps: {
+            items: components["schemas"]["AppAccessManagedApp"][];
+            /** @description Current organization app_access:view permission; navigation hint only, independent of app assignment. */
+            can_view_applications: boolean;
+            /** @description Current organization app_access:grant permission; navigation hint only, independent of app assignment. */
+            can_manage_grants: boolean;
+            limit: number;
+            offset: number;
+        };
+        AppAccessGrantSubject: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            email?: string;
+            kind: components["schemas"]["AppAccessSubjectKind"];
+        };
+        AppAccessGrantSubjects: {
+            items: components["schemas"]["AppAccessGrantSubject"][];
+            limit: number;
+            offset: number;
+        };
+        /** @enum {string} */
+        AppAccessSubjectKind: "user" | "group";
+        AppAccessGrantInput: {
+            /** Format: uuid */
+            app_id: string;
+            subject_kind: components["schemas"]["AppAccessSubjectKind"];
+            /** Format: uuid */
+            subject_id: string;
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description Inclusive start; null means no lower bound.
+             */
+            starts_at: string | null;
+            /**
+             * Format: date-time
+             * @description Exclusive expiry; null means no upper bound.
+             */
+            expires_at: string | null;
+        };
+        AppAccessGrantUpdateInput: {
+            enabled: boolean;
+            /** Format: date-time */
+            starts_at: string | null;
+            /** Format: date-time */
+            expires_at: string | null;
+            /** Format: int64 */
+            expected_version: number;
+        };
+        AppAccessGrantRevokeInput: {
+            /** Format: int64 */
+            expected_version: number;
+        };
+        AppAccessGrant: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** @description Same-organization application display name; never authority. */
+            app_label: string;
+            subject_kind: components["schemas"]["AppAccessSubjectKind"];
+            /** Format: uuid */
+            subject_id: string;
+            /** @description Organization-scoped display label; never authority. */
+            subject_label: string;
+            enabled: boolean;
+            /** Format: date-time */
+            starts_at: string | null;
+            /** Format: date-time */
+            expires_at: string | null;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            revoked_at: string | null;
+            /**
+             * @description Current grant status; active does not imply app publication or content access.
+             * @enum {string}
+             */
+            status: "scheduled" | "active" | "expired" | "disabled" | "revoked" | "subject_unavailable";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AppAccessGrantImpact: {
+            /**
+             * Format: int64
+             * @description Current eligible users matching this explicit grant; application publication and feature availability are separate.
+             */
+            matching_user_count: number;
+            /**
+             * Format: int64
+             * @description Matching users without another surviving current allow; not a count of open sessions or app connections.
+             */
+            users_losing_grant_match_count: number;
+            /** Format: date-time */
+            evaluated_at: string;
+            /** Format: int64 */
+            grant_version: number;
+            /**
+             * @description AA-2 does not expose or fabricate live session impact.
+             * @enum {boolean}
+             */
+            session_impact_available: false;
+        };
+        AppAccessGrantList: {
+            items: components["schemas"]["AppAccessGrant"][];
+            limit: number;
+            offset: number;
+        };
+        AppAccessEffectiveAccessInput: {
+            /**
+             * Format: uuid
+             * @description Organization-scoped subject; never overrides the authenticated administrator.
+             */
+            user_id: string;
+        };
+        AppAccessEffectiveAccess: {
+            /** Format: date-time */
+            evaluated_at: string;
+            /** @description At least one currently valid explicit user/group allow matches this subject. */
+            grant_match: boolean;
+            matching_grant_ids: string[];
+            /** @description Configured eligibility with current active serving authority only. Preview never creates a session, proves a parent login or authorizes traffic; launch still requires a valid current login. */
+            access_allowed: boolean;
+            /** @enum {string} */
+            deny_reason: "" | "app_unpublished" | "connector_unavailable" | "no_active_grant" | "feature_unavailable" | "feature_disabled" | "user_inactive" | "membership_unavailable" | "email_not_verified" | "password_change_required" | "no_use_permission" | "mfa_required";
+            /**
+             * Format: date-time
+             * @description Next expiry among currently matching grants; other grants may remain. Not an end-of-access promise.
+             */
+            next_expiry_at: string | null;
+        };
+        AppAccessMFAPolicyInput: {
+            require_mfa: boolean;
+            /** Format: int64 */
+            expected_version: number;
+        };
+        MFAStepUpInput: {
+            code: string;
+        };
+        MFAStepUpResult: {
+            /** Format: date-time */
+            verified_at: string;
+        };
+        AppAccessSettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            entitlement_available: boolean;
+            base_domain: string;
+            /** @description Operator domain configuration is valid; does not prove DNS, certificates, connector or traffic readiness. */
+            domain_ready: boolean;
+        };
+        AppAccessSettingsInput: {
+            enabled: boolean;
+            /** Format: int64 */
+            expected_version: number;
+        };
+        AppAccessGatewayRuntime: {
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            capability_version: number;
+            /** Format: date-time */
+            reported_at: string | null;
+            /**
+             * @description Fresh exact capability only; never a browser access or publication readiness claim.
+             * @enum {string}
+             */
+            status: "unknown" | "unsupported" | "unavailable" | "supported";
+        };
+        AppAccessCheckInput: {
+            /** Format: int64 */
+            expected_version: number;
+        };
+        AppAccessCheck: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: uuid */
+            generation: string;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            /** @enum {string} */
+            purpose: "origin_check";
+            /**
+             * @description Origin connectivity only; no end-user authorization or publication readiness.
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "expired" | "withdrawn";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            deadline: string;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** @enum {string} */
+            dns_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            connect_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            tls_status: "pending" | "passed" | "failed" | "skipped";
+            /**
+             * @description Allowlisted redacted code; no URL, body, cookie, credential or raw network error.
+             * @enum {string}
+             */
+            error_code: "" | "dns_failed" | "target_refused" | "connect_failed" | "tls_failed" | "http_failed" | "deadline_exceeded" | "assignment_changed" | "feature_withdrawn" | "connector_failed";
+        };
+        /** @description Separate mTLS /agent/app-access/desired-state wire; origin_check only. Gateway identity is derived from the current authenticated certificate serial. */
+        AppAccessAssignment: {
+            /** Format: uuid */
+            generation: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            /** @enum {string} */
+            purpose: "origin_check";
+            origin_url: string;
+            allowed_destination_cidrs: string[];
+            origin_ca_pem: string;
+            origin_ca_digest: string;
+        };
+        /** @description GET /agent/app-access/desired-state on the existing mTLS listener only. Empty withdrawn state is authoritative removal; app failures do not alter VPN desired state. */
+        AppAccessGatewayDesired: {
+            /** @enum {integer} */
+            protocol_version: 1;
+            /** @enum {string} */
+            purpose: "origin_check";
+            withdrawn: boolean;
+            reason: string;
+            assignments: components["schemas"]["AppAccessAssignment"][];
+            checks: components["schemas"]["AppAccessCheck"][];
+        };
+        /** @description POST /agent/app-access/checks/{requestId}/result on the mTLS listener; identity comes from certificate, correlation must match path and pending immutable check. */
+        AppAccessGatewayResult: {
+            /** Format: uuid */
+            request_id: string;
+            /** Format: uuid */
+            generation: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            /** @enum {string} */
+            purpose: "origin_check";
+            /** @enum {string} */
+            dns_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            connect_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            tls_status: "pending" | "passed" | "failed" | "skipped";
+            /** @enum {string} */
+            error_code: "" | "dns_failed" | "target_refused" | "connect_failed" | "tls_failed" | "http_failed" | "deadline_exceeded" | "assignment_changed" | "feature_withdrawn" | "connector_failed";
+        };
+        /** @description POST /agent/app-access/report on the mTLS listener; configured is an exact origin-check assignment acknowledgement, never browser traffic readiness. */
+        AppAccessGatewayApplied: {
+            /** Format: uuid */
+            generation: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            /** @enum {string} */
+            purpose: "origin_check";
+            /** @enum {string} */
+            status: "configured" | "failed" | "withdrawn";
+            /** @enum {string} */
+            error_code: "" | "dns_failed" | "target_refused" | "connect_failed" | "tls_failed" | "http_failed" | "deadline_exceeded" | "assignment_changed" | "feature_withdrawn" | "connector_failed";
+        };
+        /** @description POST /agent/app-access/capability on the mTLS listener; missing/0 or future versions do not authorize version 1 assignments. */
+        AppAccessGatewayCapabilityInput: {
+            protocol_version: number;
+        };
+        AppAccessDraftInput: {
+            /** @description Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it. */
+            allowed_destination_cidrs?: string[];
+            /** @description Public CA certificate PEM only: at most eight CA certificates and 32 KiB; private keys refused. Omitted on PATCH preserves current trust; empty clears custom trust. */
+            origin_ca_pem?: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            icon: "app" | "globe" | "dashboard" | "terminal";
+            /** @description Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted. */
+            icon_data_url?: string;
+            /** @description Exact root HTTP/HTTPS origin; browser input never supplies a dial target. */
+            origin_url: string;
+            /** Format: uuid */
+            gateway_id: string;
+            public_hostname: string;
+            /** @default 1800 */
+            idle_timeout_seconds: number;
+            /** @default 28800 */
+            absolute_timeout_seconds: number;
+        };
+        AppAccessUpdateDraftInput: {
+            /** @description Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it. */
+            allowed_destination_cidrs?: string[];
+            /** @description Public CA certificate PEM only: at most eight CA certificates and 32 KiB; private keys refused. Omitted on PATCH preserves current trust; empty clears custom trust. */
+            origin_ca_pem?: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            icon: "app" | "globe" | "dashboard" | "terminal";
+            /** @description Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted. */
+            icon_data_url?: string;
+            /** @description Exact root HTTP/HTTPS origin; browser input never supplies a dial target. */
+            origin_url: string;
+            /** Format: uuid */
+            gateway_id: string;
+            public_hostname: string;
+            /** @default 1800 */
+            idle_timeout_seconds: number;
+            /** @default 28800 */
+            absolute_timeout_seconds: number;
+            /** Format: int64 */
+            expected_version: number;
+        };
+        AppAccessRevision: {
+            /** @description Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it. */
+            allowed_destination_cidrs: string[];
+            /** @description SHA-256 of canonical public CA bundle; empty means system roots. */
+            origin_ca_digest: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            icon: "app" | "globe" | "dashboard" | "terminal";
+            /** @description Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted. */
+            icon_data_url?: string;
+            /** @description Exact root HTTP/HTTPS origin; browser input never supplies a dial target. */
+            origin_url: string;
+            /** Format: uuid */
+            gateway_id: string;
+            public_hostname: string;
+            /** @default 1800 */
+            idle_timeout_seconds: number;
+            /** @default 28800 */
+            absolute_timeout_seconds: number;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AppAccessApplication: {
+            /** @description Current live policy, independent of draft and published revisions. */
+            require_mfa: boolean;
+            /** @enum {integer} */
+            mfa_freshness_seconds: 900;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: int64 */
+            draft_revision: number;
+            /** @enum {string} */
+            state: "draft" | "archived";
+            /** @enum {string} */
+            publication_state: "unpublished" | "published" | "disabled" | "archived";
+            /**
+             * Format: int64
+             * @description Exact active serving revision; absent when unpublished or disabled.
+             */
+            active_revision?: number;
+            draft: components["schemas"]["AppAccessRevision"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * @description Observed capability and freshness only; none of these values means published or ready.
+             * @enum {string}
+             */
+            connector_status: "unknown" | "unsupported" | "supported" | "unavailable";
+        };
+        AppAccessApplicationList: {
+            items: components["schemas"]["AppAccessApplication"][];
+            limit: number;
+            offset: number;
+        };
         AIWorkloadModel: {
             /** Format: uuid */
             connection_id: string;
@@ -9632,6 +10952,22 @@ export interface components {
             /** @enum {string} */
             approval_mode?: "host_command_only" | "host_updater";
         };
+        AppAccessDomains: {
+            portal_url: string;
+            app_base_domain: string;
+            /** Format: int64 */
+            version: number;
+            /** @enum {string} */
+            source: "environment" | "database";
+            /** @description Address syntax and isolation configuration is valid. Does not imply that DNS, TLS certificates, proxy listeners or app publication are ready. */
+            configuration_ready: boolean;
+        };
+        AppAccessDomainsInput: {
+            portal_url: string;
+            app_base_domain: string;
+            /** Format: int64 */
+            expected_version: number;
+        };
         ServerEmailSettings: {
             enabled: boolean;
             host: string;
@@ -9713,6 +11049,437 @@ export interface components {
                 details?: components["schemas"]["ErrorDetail"][];
             };
         };
+        AppAccessPublicationInput: {
+            /** Format: int64 */
+            expected_version: number;
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            /** Format: uuid */
+            check_id: string;
+            /** Format: uuid */
+            idempotency_key: string;
+        };
+        AppAccessPublicationCancelInput: {
+            /** Format: int64 */
+            expected_operation_version: number;
+        };
+        AppAccessPublicationDisableInput: {
+            /** Format: int64 */
+            expected_application_version: number;
+            /**
+             * Format: int64
+             * @description Zero only when no serving pointer exists, including first pending-only publication.
+             */
+            expected_authority_version: number;
+        };
+        AppAccessRollbackInput: {
+            /** Format: int64 */
+            expected_version: number;
+            /** Format: int64 */
+            revision: number;
+        };
+        /** @enum {string} */
+        AppAccessPublicationStage: "pending" | "passed" | "failed";
+        /** @enum {string} */
+        AppAccessPublicationTLSStage: "pending" | "passed" | "failed" | "skipped";
+        AppAccessActivePublication: {
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            hostname: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: uuid */
+            generation: string;
+            /** Format: int64 */
+            authority_version: number;
+            /** @enum {string} */
+            state: "active" | "disabled";
+            /** @description Persisted exact tuple confirmation after a monotonic five-second wait begun after disable commit. Never inferred from disabled_at wall-clock age. */
+            withdrawal_confirmed: boolean;
+            /** Format: date-time */
+            withdrawal_confirmed_at?: string;
+        };
+        AppAccessPublicationOperation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: uuid */
+            app_id: string;
+            /** @enum {string} */
+            status: "queued" | "checking" | "activated" | "failed" | "cancelled" | "expired";
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            hostname: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: uuid */
+            generation: string;
+            /** Format: int64 */
+            authority_version: number;
+            /**
+             * Format: int64
+             * @description Immutable original caller reviewed application version; distinct from poststage expected version.
+             */
+            reviewed_application_version: number;
+            /** Format: int64 */
+            expected_application_version: number;
+            /** Format: int64 */
+            expected_active_authority_version: number;
+            /** Format: uuid */
+            origin_check_id: string;
+            /** Format: uuid */
+            readiness_request_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            deadline: string;
+            /** Format: date-time */
+            completed_at?: string;
+            public_dns_status: components["schemas"]["AppAccessPublicationStage"];
+            public_tls_status: components["schemas"]["AppAccessPublicationStage"];
+            connector_dns_status: components["schemas"]["AppAccessPublicationStage"];
+            connector_connect_status: components["schemas"]["AppAccessPublicationStage"];
+            connector_tls_status: components["schemas"]["AppAccessPublicationTLSStage"];
+            /** @description Bounded safe diagnostic enum; never raw DNS/TLS/origin errors or response content. */
+            error_code: string;
+        };
+        AppAccessPublicationState: {
+            /** Format: int64 */
+            application_version: number;
+            /** @description Immutable published revision name, independent of the current draft. */
+            active_label?: string;
+            rollback_revisions: components["schemas"]["AppAccessRollbackRevision"][];
+            active?: components["schemas"]["AppAccessActivePublication"];
+            pending_operation?: components["schemas"]["AppAccessPublicationOperation"];
+            last_operation?: components["schemas"]["AppAccessPublicationOperation"];
+            /** @enum {string} */
+            browser_capability: "unknown" | "unsupported" | "unavailable" | "supported";
+        };
+        AppAccessRollbackRevision: {
+            /** Format: int64 */
+            revision: number;
+            digest: string;
+            name: string;
+            hostname: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: date-time */
+            activated_at: string;
+        };
+        AppAccessMyApp: {
+            require_mfa: boolean;
+            /** @description Current parent login needs fresh MFA before launch; the application remains visible. */
+            mfa_required: boolean;
+            /** @description No fresh MFA assurance and no confirmed local factor; guide account setup. */
+            mfa_setup_required: boolean;
+            /** @enum {integer} */
+            mfa_freshness_seconds: 900;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @description Latest saved application branding; does not change the published route or access policy. */
+            icon: string;
+            /** @description Latest saved application icon as a canonical PNG data URL, or empty for the default icon. Visible after save without republishing. Published routing and access eligibility remain unchanged. */
+            icon_data_url?: string;
+            /** @description Server-derived exact published HTTPS host and fixed /__tunnex_app/start path; creates a browser-held nonce before console launch. */
+            launch_url: string;
+        };
+        AppAccessMyApps: {
+            items: components["schemas"]["AppAccessMyApp"][];
+            limit: number;
+            offset: number;
+            /** @enum {string} */
+            availability: "available" | "feature_disabled" | "feature_unavailable" | "domain_unavailable" | "parent_unavailable";
+        };
+        AppAccessLaunchInput: {
+            nonce_hash: string;
+            relative_target: string;
+        };
+        AppAccessLaunchResult: {
+            /** @description Exact server-published HTTPS host, fixed redemption path and opaque 60-second single-use code. Never log or persist this transient URL. */
+            redirect_url: string;
+        };
+        AppAccessApplicationSession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** Format: uuid */
+            installation_generation: string;
+            app_label: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AppAccessApplicationSessions: {
+            items: components["schemas"]["AppAccessApplicationSession"][];
+            limit: number;
+            offset: number;
+        };
+        AppAccessEvent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            installation_generation: string;
+            /** Format: int64 */
+            revision?: number;
+            /** Format: uuid */
+            serving_generation?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            user_id?: string;
+            /** Format: uuid */
+            gateway_id?: string;
+            /** Format: uuid */
+            proxy_id?: string;
+            /** Format: uuid */
+            session_id?: string;
+            /** Format: uuid */
+            stream_id?: string;
+            /** @enum {string} */
+            kind: "launch_created" | "session_created" | "session_revoked" | "request_allowed" | "request_denied" | "stream_renewed" | "stream_denied" | "stream_terminated" | "publication_changed" | "recovery" | "gap";
+            /** @enum {string} */
+            outcome: "allowed" | "denied" | "completed" | "revoked" | "failed";
+            /** @enum {string} */
+            reason: "none" | "session_invalid" | "parent_unavailable" | "user_inactive" | "membership_unavailable" | "no_use_permission" | "no_active_grant" | "feature_disabled" | "feature_unavailable" | "publication_unavailable" | "installation_changed" | "session_revoked" | "lease_expired" | "connection_closed" | "self" | "admin" | "recovery" | "infrastructure_unavailable" | "dropped_events";
+        };
+        AppAccessEventCursor: {
+            /** Format: date-time */
+            before_time: string;
+            /** Format: uuid */
+            before_id: string;
+        };
+        AppAccessEventTelemetry: {
+            /** @description Tenant-only process counters; false when no bounded counter entry is available. Numbers must not be interpreted when false. */
+            available: boolean;
+            /** Format: int64 */
+            emitted: number;
+            /** Format: int64 */
+            dropped: number;
+            /** Format: int64 */
+            storage_failures: number;
+        };
+        AppAccessEvents: {
+            items: components["schemas"]["AppAccessEvent"][];
+            next_cursor?: components["schemas"]["AppAccessEventCursor"];
+            telemetry: components["schemas"]["AppAccessEventTelemetry"];
+        };
+        AppAccessPublicationImpact: {
+            /** Format: date-time */
+            evaluated_at: string;
+            /** Format: int64 */
+            application_version: number;
+            /** Format: int64 */
+            authority_version: number;
+            /** Format: int64 */
+            matching_user_count: number;
+            matching_user_count_is_lower_bound: boolean;
+            /**
+             * Format: int64
+             * @description Unexpired current-installation nonrevoked stored app-session records; does not assert current eligibility or active traffic.
+             */
+            live_app_session_count: number;
+            live_app_session_count_is_lower_bound: boolean;
+            session_impact_available: boolean;
+        };
+        AppAccessMySession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            app_id: string;
+            app_label: string;
+            /** @description Server-derived equality to the current verified parent login hash. */
+            current_parent: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AppAccessMySessions: {
+            items: components["schemas"]["AppAccessMySession"][];
+            limit: number;
+            offset: number;
+        };
+        AppProxyStreamTerminatedInput: {
+            binding: components["schemas"]["AppProxyRouteBinding"];
+            /** Format: uuid */
+            stream_id: string;
+            /** @enum {string} */
+            reason: "connection_closed" | "lease_expired";
+        };
+        AppProxyError: components["schemas"]["Error"];
+        AppProxyPendingLaunchInput: {
+            binding: components["schemas"]["AppProxyRouteBinding"];
+            nonce_hash: string;
+            relative_target: string;
+        };
+        AppProxyPendingLaunchResult: {
+            /**
+             * Format: date-time
+             * @description At most ten minutes; exact immutable binding and target must be atomically consumed by the verified console launch.
+             */
+            expires_at: string;
+        };
+        AppProxyRedeemInput: {
+            code: string;
+            nonce: string;
+            hostname: string;
+        };
+        AppProxyRedeemResult: {
+            /** @description Opaque app token returned only over the dedicated TLS proxy authority port; set a reserved host-only secure HttpOnly cookie and never expose as browser JSON. */
+            app_session_token: string;
+            relative_target: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Immutable serving authority, never a draft or caller-selected dial target. Private TLS authority listener only. AppProxy credentials authenticate POST /internal/app-access/route-lookup, /authorize, /leases/renew, /channel-authorize, /pending-launch and /redeem; none is mounted on the public browser router. */
+        AppProxyRouteBinding: {
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: uuid */
+            generation: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            authority_version: number;
+            digest: string;
+            hostname: string;
+            /** @enum {string} */
+            purpose: "browser_proxy";
+        };
+        AppProxyRouteLookupInput: {
+            hostname: string;
+        };
+        AppProxyRoute: {
+            binding: components["schemas"]["AppProxyRouteBinding"];
+            origin_url: string;
+            allowed_destination_cidrs: string[];
+            origin_ca_pem: string;
+            origin_ca_digest: string;
+        };
+        AppProxyRequestMetadata: {
+            method: string;
+            relative_path: string;
+            origin: string;
+            referer: string;
+            fetch_mode?: string;
+            fetch_dest?: string;
+            fetch_user?: string;
+        };
+        AppProxyAuthorizeInput: {
+            binding: components["schemas"]["AppProxyRouteBinding"];
+            app_session_token: string;
+            request: components["schemas"]["AppProxyRequestMetadata"];
+        };
+        AppProxyLeaseInput: {
+            /** Format: uuid */
+            stream_id: string;
+            binding: components["schemas"]["AppProxyRouteBinding"];
+        };
+        AppProxyChannelInput: {
+            binding: components["schemas"]["AppProxyRouteBinding"];
+            certificate_serial: string;
+        };
+        /** @description Private authenticated agent port /agent/app-access/browser-desired-state. Separate browser purpose; immutable active and pending diagnostic assignments, never origin-check capability. */
+        AppProxyBrowserDesired: {
+            /** @enum {integer} */
+            protocol_version: 1;
+            /** @enum {string} */
+            purpose: "browser_proxy";
+            withdrawn: boolean;
+            reason?: string;
+            assignments: components["schemas"]["AppProxyBrowserAssignment"][];
+        };
+        AppProxyBrowserAssignment: components["schemas"]["AppProxyRoute"] & {
+            /** @enum {string} */
+            stage: "active" | "pending";
+            /** Format: uuid */
+            operation_id?: string;
+            /** Format: uuid */
+            readiness_request_id?: string;
+            /** Format: date-time */
+            deadline?: string;
+        };
+        AppProxyReadinessClaimInput: {
+            /** @description Random 32-byte canonical base64url secret per proxy process; only its SHA256 hash is retained. */
+            instance_token: string;
+        };
+        AppProxyReadinessWork: {
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: int64 */
+            version: number;
+            route: components["schemas"]["AppProxyRoute"];
+            /** Format: uuid */
+            readiness_request_id: string;
+            /** Format: date-time */
+            deadline: string;
+            challenge_token: string;
+        };
+        AppProxyReadinessClaimResult: {
+            items: components["schemas"]["AppProxyReadinessWork"][];
+        };
+        AppProxyReadinessReportInput: {
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: int64 */
+            expected_operation_version: number;
+            binding: components["schemas"]["AppProxyRouteBinding"];
+            /** Format: uuid */
+            readiness_request_id: string;
+            instance_token: string;
+            challenge_token: string;
+            certificate_serial: string;
+            /** @enum {string} */
+            public_dns_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            public_tls_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            dns_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            connect_status: "pending" | "passed" | "failed";
+            /** @enum {string} */
+            tls_status: "pending" | "passed" | "failed" | "skipped";
+            /** @description Allowlisted safe code; empty only when every required public and connector stage passed. */
+            error_code: string;
+        };
+        AppProxyReadinessReportResult: {
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: int64 */
+            version: number;
+            /** @enum {string} */
+            status: "queued" | "checking" | "activated" | "failed" | "cancelled" | "expired";
+        };
+        /** @description Positive authorization requires a persisted server-issued stream identity; current AA4 authorize and renew ports always return generic 403. */
+        AppProxyAuthorityDecision: {
+            /** Format: uuid */
+            stream_id: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Server authority expires at most four seconds after decision start. Unpublished routes always deny; no session or publication exists in AA4. */
+        AppProxyAuthorityLease: {
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            stream_id?: string;
+        };
         ErrorDetail: {
             /** @description Dotted path to the offending field, when applicable. */
             field?: string;
@@ -9752,6 +11519,1303 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listCompanyApps: {
+        parameters: {
+            query?: {
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessCompanyApps"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessManagement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessAccessManagement"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAppAccessManagement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessAccessManagementInput"];
+            };
+        };
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessAccessManagement"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listManagedAppAccessApps: {
+        parameters: {
+            query?: {
+                app_id?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessManagedApps"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAppAccessRequests: {
+        parameters: {
+            query?: {
+                scope?: "mine" | "managed";
+                status?: "pending" | "approved" | "rejected";
+                app_id?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessAccessRequests"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAppAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessAccessRequestInput"];
+            };
+        };
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    decideAppAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessAccessDecisionInput"];
+            };
+        };
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listManagedAppAccessGrants: {
+        parameters: {
+            query?: {
+                /** @description Trimmed literal case-insensitive substring of subject label, current same-organization user name/email or group name, or application display name; applied before pagination. */
+                search?: string;
+                /** @description Omitted preserves all statuses. Current defaults to active and disabled; explicit scheduled or subject_unavailable remains selectable. History defaults to revoked and expired. A status from the other view is rejected. Filters apply before pagination. */
+                view?: "current" | "history";
+                /** @description Current grant status at the response evaluation time, applied before pagination. Precedence is revoked, subject_unavailable, disabled, scheduled, expired, active. */
+                status?: "scheduled" | "active" | "expired" | "disabled" | "revoked" | "subject_unavailable";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrantList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createManagedAppAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateManagedAppAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessGrantUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeManagedAppAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessGrantRevokeInput"];
+            };
+        };
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAppAccessGrantSubjects: {
+        parameters: {
+            query: {
+                kind: components["schemas"]["AppAccessSubjectKind"];
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current organization-scoped result; no application access is implied by administration or request history. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrantSubjects"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessGatewayStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped capability and server-observed freshness */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGatewayRuntime"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    requestAppAccessCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessCheckInput"];
+            };
+        };
+        responses: {
+            /** @description Origin-only check accepted for the current assigned gateway */
+            202: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessCheck"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                checkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact correlated check with server timestamps and safe codes */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessCheck"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAppAccessGrants: {
+        parameters: {
+            query?: {
+                app_id?: string;
+                subject_kind?: components["schemas"]["AppAccessSubjectKind"];
+                /** @description Requires subject_kind; subjects and applications are scoped to this organization. */
+                subject_id?: string;
+                /** @description Trimmed literal case-insensitive substring of subject label, current same-organization user name/email or group name, or application display name; applied before pagination. */
+                search?: string;
+                /** @description Omitted preserves all statuses. Current defaults to active and disabled; explicit scheduled or subject_unavailable remains selectable. History defaults to revoked and expired. A status from the other view is rejected. Filters apply before pagination. */
+                view?: "current" | "history";
+                /** @description Current grant status at the response evaluation time, applied before pagination. Precedence is revoked, subject_unavailable, disabled, scheduled, expired, active. */
+                status?: "scheduled" | "active" | "expired" | "disabled" | "revoked" | "subject_unavailable";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List explicit application grants under grant administration permission */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrantList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAppAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Create an explicit user or group grant; application stays unpublished */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAppAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessGrantUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description Update enabled state and validity with optimistic version; application and subject are immutable */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessGrantRevokeImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current grant authorization impact, independent of application publication */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrantImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAppAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessGrantRevokeInput"];
+            };
+        };
+        responses: {
+            /** @description Revoke this grant idempotently; confirms authority change without claiming live session termination */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    previewAppAccessEffectiveAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessEffectiveAccessInput"];
+            };
+        };
+        responses: {
+            /** @description Preview current grant matching; drafts cannot authorize browser application access */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessEffectiveAccess"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAppAccessMFAPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessMFAPolicyInput"];
+            };
+        };
+        responses: {
+            /** @description Current application and live MFA policy. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplication"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App Access publication authority readback. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationState"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAppAccessPublicationOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessPublicationInput"];
+            };
+        };
+        responses: {
+            /** @description App Access publication authority readback. */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationOperation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessPublicationOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App Access publication authority readback. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationOperation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessPublicationOperationByKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                idempotencyKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description App Access publication authority readback. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationOperation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelAppAccessPublicationOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessPublicationCancelInput"];
+            };
+        };
+        responses: {
+            /** @description App Access publication authority readback. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationOperation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    disableAppAccessPublication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessPublicationDisableInput"];
+            };
+        };
+        responses: {
+            /** @description App Access publication authority readback. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationState"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rollbackAppAccessDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessRollbackInput"];
+            };
+        };
+        responses: {
+            /** @description App Access publication authority readback. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplication"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMyAppAccessApps: {
+        parameters: {
+            query?: {
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List current-user published application availability without private origin metadata */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessMyApps"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    launchMyAppAccessApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessLaunchInput"];
+            };
+        };
+        responses: {
+            /** @description Create a parent-bound single-use launch code for an exact published app host */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessLaunchResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMyAppAccessSessions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List only the current user app sessions without bearer tokens */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessMySessions"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeMyAppAccessSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoke only the current user app session */
+            204: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAppAccessApplicationSessions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scoped session metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplicationSessions"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAppAccessApplicationSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable revocation confirmed; best-effort cache cleanup may remain */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAppAccessEvents: {
+        parameters: {
+            query?: {
+                app_id?: string;
+                user_id?: string;
+                session_id?: string;
+                before_time?: string;
+                before_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant-scoped event history, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessEvents"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessPublicationImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded current impact */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessPublicationImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read App Access availability and organization opt-in */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAppAccessSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Update App Access opt-in; enabling does not publish applications */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAppAccessApplications: {
+        parameters: {
+            query?: {
+                publication_state?: "unpublished" | "published" | "disabled";
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List application drafts without claiming connector readiness */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplicationList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAppAccessApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessDraftInput"];
+            };
+        };
+        responses: {
+            /** @description Create an application draft; no route or access is published */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplication"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read an application draft */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplication"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    archiveAppAccessApplication: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Application archived; history and hostname claims retained. */
+            204: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAppAccessApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessUpdateDraftInput"];
+            };
+        };
+        responses: {
+            /** @description Replace draft configuration using optimistic version */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessApplication"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                appId: string;
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read an immutable draft configuration revision */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessRevision"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAIWorkloads: {
         parameters: {
             query?: never;
@@ -11558,6 +14622,31 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    mfaStepUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MFAStepUpInput"];
+            };
+        };
+        responses: {
+            /** @description MFA verified for the current session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MFAStepUpResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     mfaVerify: {
         parameters: {
             query?: never;
@@ -11854,6 +14943,8 @@ export interface operations {
             query?: {
                 /** @description Organization slug whose SSO config to use. OMIT IT and the server resolves the SOLE organization with this provider enabled — the login page must not ask a human to type their tenant. Resolution FAILS CLOSED: zero configured orgs and two-or-more both reject (sso_not_configured / sso_org_ambiguous) rather than guessing, and the caller then supplies the slug explicitly. */
                 org?: string;
+                /** @description Validated console-relative return persisted in single-use server OIDC state; external destinations are refused. */
+                next?: string;
             };
             header?: never;
             path: {
@@ -12109,7 +15200,10 @@ export interface operations {
     };
     startSsoConnection: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Validated console-relative return persisted in browser-bound single-use OIDC state. */
+                next?: string;
+            };
             header?: never;
             path: {
                 connectionId: string;
@@ -14049,6 +17143,10 @@ export interface operations {
                 from?: string;
                 /** @description created_at <= this. */
                 to?: string;
+                /** @description Exact audit target type filter; ordinary defaults are unchanged. */
+                target_type?: string;
+                /** @description Exact UUID target filter. Application changes use app_access plus the application UUID; grant and session target IDs differ. */
+                target_id?: string;
                 cursor_ts?: string;
                 cursor_id?: string;
                 limit?: number;
@@ -16167,6 +19265,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AITransportSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAppAccessDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective address configuration. Configuration readiness does not certify DNS, TLS or public reachability. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessDomains"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAppAccessDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppAccessDomainsInput"];
+            };
+        };
+        responses: {
+            /** @description Saved settings, effective on subsequent requests without an API restart. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppAccessDomains"];
                 };
             };
             default: components["responses"]["Error"];

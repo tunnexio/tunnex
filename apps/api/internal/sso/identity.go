@@ -8,6 +8,8 @@
 // provider's token maps into one internal shape.
 package sso
 
+import "time"
+
 // Identity is the normalized result of a verified SSO login — the single shape
 // downstream code consumes regardless of provider.
 type Identity struct {
@@ -16,6 +18,8 @@ type Identity struct {
 	Email         string
 	EmailVerified bool
 	Name          string
+	// MFAVerifiedAt comes only from signed, verified ID-token authentication claims.
+	MFAVerifiedAt time.Time
 }
 
 // LinkAction is the decision for reconciling an SSO Identity with local accounts.

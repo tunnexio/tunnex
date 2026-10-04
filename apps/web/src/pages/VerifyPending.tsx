@@ -20,7 +20,7 @@ export default function VerifyPending() {
   const email = state.status === "authed" ? state.user.email : "";
 
   async function onLogout() {
-    await logout();
+    if (!(await logout())) return;
     navigate("/login", { replace: true });
   }
 

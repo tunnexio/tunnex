@@ -1,8 +1,9 @@
 # Tunnex migrate tool — applies embedded migrations. Build context is the repo root.
 
 FROM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS build
-WORKDIR /src
+WORKDIR /src/apps/api
 COPY apps/api/go.mod apps/api/go.sum* ./
+COPY packages/apptransport/ /src/packages/apptransport/
 ENV GOFLAGS=-mod=readonly
 RUN go mod download
 COPY apps/api/ ./

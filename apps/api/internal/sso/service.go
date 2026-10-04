@@ -2,7 +2,9 @@ package sso
 
 import (
 	"context"
+
 	"errors"
+	"github.com/tunnexio/tunnex/apps/api/internal/publicurl"
 	"log/slog"
 	"time"
 
@@ -73,12 +75,23 @@ func NewService(pool *pgxpool.Pool, configs *ConfigService, flows *FlowStore, fa
 // Configs exposes the config service (for the admin set-config endpoint).
 func (s *Service) Configs() *ConfigService { return s.configs }
 
-func (s *Service) redirectURL(provider string) string {
-	return s.baseURL + "/api/v1/auth/sso/" + provider + "/callback"
+func (s *Service) redirectURL(provider string, contexts ...context.Context) string {
+	ctx := context.Background()
+	if len(contexts) > 0 {
+		ctx = contexts[0]
+	}
+	return publicurl.From(ctx, s.baseURL) + "/api/v1/auth/sso/" + provider + "/callback"
 }
 
 // StartLogin builds the IdP redirect URL for org/provider and stores flow state.
 func (s *Service) StartLogin(ctx context.Context, orgID uuid.UUID, provider string) (string, error) {
+	return s.StartLoginWithReturn(ctx, orgID, provider, "")
+}
+func (s *Service) StartLoginWithReturn(ctx context.Context, orgID uuid.UUID, provider, next string) (string, error) {
+	next, e := SafeInternalReturn(next)
+	if e != nil {
+		return "", e
+	}
 	cfg, err := s.configs.Get(ctx, orgID, provider)
 	if err != nil {
 		return "", err
@@ -86,7 +99,7 @@ func (s *Service) StartLogin(ctx context.Context, orgID uuid.UUID, provider stri
 	if !cfg.Enabled {
 		return "", apierr.NotFound("sso_not_configured", "SSO is not enabled for this provider")
 	}
-	prov, err := s.factory(ctx, cfg, s.redirectURL(provider))
+	prov, err := s.factory(ctx, cfg, s.redirectURL(provider, ctx))
 	if err != nil {
 		return "", err
 	}
@@ -102,7 +115,7 @@ func (s *Service) StartLogin(ctx context.Context, orgID uuid.UUID, provider stri
 	if err != nil {
 		return "", err
 	}
-	if err := s.flows.Save(ctx, state, flowState{Nonce: nonce, Verifier: verifier, OrgID: orgID, Provider: provider}); err != nil {
+	if err := s.flows.Save(ctx, state, flowState{Next: next, Nonce: nonce, Verifier: verifier, OrgID: orgID, Provider: provider, PortalURL: publicurl.From(ctx, s.baseURL)}); err != nil {
 		return "", err
 	}
 	return prov.AuthCodeURL(state, nonce, challenge), nil
@@ -112,30 +125,47 @@ func (s *Service) StartLogin(ctx context.Context, orgID uuid.UUID, provider stri
 // linking policy, provisions/links the user, ensures org membership, and returns
 // the resolved user id for the caller to mint a session.
 func (s *Service) HandleCallback(ctx context.Context, provider, code, state string) (uuid.UUID, error) {
+	out, e := s.HandleCallbackWithAuthority(ctx, provider, code, state)
+	return out.UserID, e
+}
+func (s *Service) HandleCallbackWithAuthority(ctx context.Context, provider, code, state string) (out LoginResult, err error) {
 	fs, err := s.flows.Take(ctx, state)
 	if err != nil {
-		return uuid.Nil, apierr.BadRequest("invalid_state", "the SSO login could not be verified; please try again")
+		return out, apierr.BadRequest("invalid_state", "the SSO login could not be verified; please try again")
 	}
+	out.Next, _ = SafeInternalReturn(fs.Next)
 	if fs.Provider != provider {
-		return uuid.Nil, apierr.BadRequest("invalid_state", "provider mismatch")
+		return out, apierr.BadRequest("invalid_state", "provider mismatch")
+	}
+	out.PortalURL = fs.PortalURL
+	if fs.PortalURL != "" {
+		ctx = publicurl.With(ctx, fs.PortalURL)
 	}
 	cfg, err := s.configs.Get(ctx, fs.OrgID, provider)
 	if err != nil {
-		return uuid.Nil, err
+		return out, err
 	}
-	prov, err := s.factory(ctx, cfg, s.redirectURL(provider))
+	prov, err := s.factory(ctx, cfg, s.redirectURL(provider, ctx))
 	if err != nil {
-		return uuid.Nil, err
+		return out, err
 	}
 	identity, err := prov.Exchange(ctx, code, fs.Verifier, fs.Nonce)
 	if err != nil {
-		return uuid.Nil, apierr.New(401, "sso_verification_failed", "could not verify the SSO login")
+		return out, apierr.New(401, "sso_verification_failed", "could not verify the SSO login")
 	}
-	return s.resolveUser(ctx, identity, fs.OrgID)
+	resolved, e := s.resolveUserWithAuthority(ctx, identity, fs.OrgID)
+	resolved.Next = out.Next
+	resolved.PortalURL = out.PortalURL
+	return resolved, e
 }
 
 // resolveUser applies DecideLink and provisions/links the user + org membership.
 func (s *Service) resolveUser(ctx context.Context, id Identity, orgID uuid.UUID) (uuid.UUID, error) {
+	out, e := s.resolveUserWithAuthority(ctx, id, orgID)
+	return out.UserID, e
+}
+func (s *Service) resolveUserWithAuthority(ctx context.Context, id Identity, orgID uuid.UUID) (LoginResult, error) {
+	var epoch int64
 	var userID uuid.UUID
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		local, err := q.GetUserByEmail(ctx, id.Email)
@@ -167,8 +197,10 @@ func (s *Service) resolveUser(ctx context.Context, id Identity, orgID uuid.UUID)
 				return e
 			}
 			userID = created.ID
+			epoch = created.AppAuthEpoch
 		case LinkAttach:
 			userID = local.ID
+			epoch = local.AppAuthEpoch
 		}
 
 		// JIT membership into the org the user logged in through.
@@ -179,9 +211,9 @@ func (s *Service) resolveUser(ctx context.Context, id Identity, orgID uuid.UUID)
 		return nil
 	})
 	if err != nil {
-		return uuid.Nil, err
+		return LoginResult{}, err
 	}
-	return userID, nil
+	return LoginResult{UserID: userID, AppAuthEpoch: epoch, MFAVerifiedAt: id.MFAVerifiedAt}, nil
 }
 
 // ensureMembership adds a member-role membership if absent, auditing the JIT join

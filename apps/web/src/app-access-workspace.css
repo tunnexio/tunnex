@@ -1,0 +1,70 @@
+/* App Access uses the same neutral cards, typography and tab rhythm as Users and Settings. */
+.app-access-workspace { min-width:0; width:100%; max-width:1440px; margin-inline:auto; overflow-wrap:anywhere; }
+.app-access-workspace > .workspace-tabs { margin-bottom:24px; }
+.app-access-panel-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; min-width:0; }
+.app-access-panel-header h2,.app-access-panel-header h3 { color:var(--tnx-text-heading); font-size:17px; font-weight:600; letter-spacing:-.02em; }
+.app-access-panel-header p { margin-top:4px; color:var(--tnx-text-secondary); font-size:13px; line-height:1.6; }
+.app-access-toolbar { display:flex; align-items:flex-end; flex-wrap:wrap; gap:12px; min-width:0; }
+.app-access-toolbar > * { min-width:0; }
+.app-access-toolbar .app-access-search { flex:1 1 260px; }
+.app-access-toolbar .app-access-filter { flex:0 1 220px; }
+.app-access-primary-link { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:8px 14px; border-radius:6px; background:var(--tnx-text-heading); color:var(--tnx-surface); font-size:13px; font-weight:500; }
+.app-access-primary-link:hover { opacity:.9; }
+.app-access-workspace a:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
+.app-access-workspace button:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
+.app-access-availability { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 20px; border:1px solid var(--tnx-border); border-radius:8px; background:var(--tnx-surface); }
+.app-access-availability > div { flex:1 1 320px; min-width:0; }
+.app-access-notice { color:var(--tnx-text-secondary); font-size:13px; line-height:1.65; }
+.app-access-notice strong { display:block; color:var(--tnx-text-heading); font-size:13px; font-weight:500; margin-bottom:3px; }
+.app-access-inventory-table { margin-top:20px; }
+.app-access-inventory-table table { width:100%; }
+.app-access-inventory-table td { padding-block:18px; }
+.app-access-inventory-table td,.app-access-inventory-table th { overflow-wrap:anywhere; white-space:normal; }
+.app-access-inventory-table .tnx-badge { white-space:normal; }
+.app-access-application-name { display:flex; align-items:center; gap:12px; min-width:0; }
+.app-access-application-name > div { min-width:0; }
+.app-access-application-name a { color:var(--tnx-text-heading); font-size:13px; font-weight:500; }
+.app-access-application-name a:hover { text-decoration:underline; text-underline-offset:3px; }
+.app-access-application-name p { margin-top:4px; color:var(--tnx-text-secondary); font-size:12px; }
+.app-access-icon { flex:none; display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border:1px solid var(--tnx-border); border-radius:8px; background:var(--tnx-surface-inset); color:var(--tnx-text-secondary); }
+.app-access-pagination { display:flex; align-items:center; justify-content:flex-end; gap:12px; flex-wrap:wrap; padding-top:16px; font-size:12px; color:var(--tnx-text-secondary); }
+.app-access-editor { min-width:0; max-width:1120px; }
+.app-access-editor-title { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.app-access-editor-title h2 { font-size:18px; font-weight:600; color:var(--tnx-text-heading); }
+.app-access-editor-title p { font-size:13px; color:var(--tnx-text-secondary); margin-top:4px; }
+.app-access-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.app-access-steps button { height:auto; min-height:40px; padding:10px 8px; white-space:normal; text-align:center; font-size:12px; }
+.app-access-steps button[aria-current=step] { border-color:var(--tnx-focus); background:var(--tnx-surface-inset); color:var(--tnx-text-heading); }
+.app-access-form-section { display:grid; grid-template-columns:minmax(190px,.65fr) minmax(0,1.6fr); gap:28px; }
+.app-access-form-section + .app-access-form-section { margin-top:20px; }
+.app-access-section-description h3 { color:var(--tnx-text-heading); font-size:15px; font-weight:500; }
+.app-access-section-description p { color:var(--tnx-text-secondary); font-size:12px; line-height:1.65; margin-top:6px; }
+.app-access-form-fields { min-width:0; }
+.app-access-form-fields label { font-size:12px; color:var(--tnx-text-secondary); }
+.app-access-form-fields p { font-size:12px; line-height:1.65; }
+.app-access-form-actions { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding-top:4px; font-size:13px; }
+.app-access-form-actions a { color:var(--tnx-text-secondary); }
+.app-access-form-actions a:hover { color:var(--tnx-text-heading); }
+.app-access-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; min-width:0; }
+.app-access-summary dt { color:var(--tnx-text-secondary); font-size:12px; margin-bottom:4px; }
+.app-access-summary dd { color:var(--tnx-text-heading); font-size:13px; overflow-wrap:anywhere; }
+.app-access-data-list { min-width:0; }
+.app-access-data-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:18px 0; border-bottom:1px solid var(--tnx-border); min-width:0; }
+.app-access-data-row:last-child { border-bottom:0; }
+.app-access-data-row > div { min-width:0; }
+@media(max-width:760px) {
+ .app-access-workspace > .workspace-tabs { margin-bottom:20px; }
+ .app-access-form-section { grid-template-columns:minmax(0,1fr); gap:18px; }
+ .app-access-availability { padding:16px; align-items:flex-start; }
+ .app-access-panel-header { gap:12px; }
+ .app-access-application-name { align-items:flex-start; gap:9px; }
+ .app-access-icon { width:32px; height:32px; }
+ .app-access-inventory-table td { padding-block:14px; }
+ .app-access-toolbar .app-access-filter { flex:1 1 180px; }
+ .app-access-pagination { justify-content:space-between; gap:8px; }
+}
+@media(max-width:480px) {
+ .app-access-steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .app-access-summary { grid-template-columns:minmax(0,1fr); }
+ .app-access-inventory-table .app-access-icon { display:none; }
+}

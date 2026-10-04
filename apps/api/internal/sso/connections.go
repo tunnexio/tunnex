@@ -2,10 +2,12 @@ package sso
 
 import (
 	"context"
+
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/tunnexio/tunnex/apps/api/internal/publicurl"
 	"strings"
 	"time"
 
@@ -21,6 +23,8 @@ type ConnectionInput struct {
 	Secret                           *string
 }
 type connectionFlow struct {
+	Next                       string
+	PortalURL                  string `json:",omitempty"`
 	BrowserHash                [32]byte
 	ConnectionID, OrgID, Actor uuid.UUID
 	Revision                   int64
@@ -28,13 +32,21 @@ type connectionFlow struct {
 	Link                       bool
 }
 type ConnectionResult struct {
+	AppAuthEpoch                int64
+	MFAVerifiedAt               time.Time
+	Next                        string
+	PortalURL                   string
 	UserID, OrgID, ConnectionID uuid.UUID
 	Test                        bool
 	Link                        bool
 }
 
-func (s *Service) ConnectionCallbackURL() string {
-	return s.baseURL + "/api/v1/auth/sso-connections/callback"
+func (s *Service) ConnectionCallbackURL(contexts ...context.Context) string {
+	ctx := context.Background()
+	if len(contexts) > 0 {
+		ctx = contexts[0]
+	}
+	return publicurl.From(ctx, s.baseURL) + "/api/v1/auth/sso-connections/callback"
 }
 func (s *Service) ListConnections(ctx context.Context, org uuid.UUID) ([]sqlc.SsoConnection, error) {
 	return s.q.ListSSOConnections(ctx, org)
@@ -115,9 +127,19 @@ func (s *Service) connectionProvider(ctx context.Context, c sqlc.SsoConnection) 
 	if err != nil {
 		return nil, err
 	}
-	return NewCustomProvider(ctx, c.IssuerUrl, c.ClientID, string(secret), s.ConnectionCallbackURL())
+	return NewCustomProvider(ctx, c.IssuerUrl, c.ClientID, string(secret), s.ConnectionCallbackURL(ctx))
 }
 func (s *Service) StartConnection(ctx context.Context, org, id, actor uuid.UUID, test, link bool, browserBinding string) (string, error) {
+	return s.StartConnectionWithReturn(ctx, org, id, actor, test, link, browserBinding, "")
+}
+func (s *Service) StartConnectionWithReturn(ctx context.Context, org, id, actor uuid.UUID, test, link bool, browserBinding, next string) (string, error) {
+	next, e := SafeInternalReturn(next)
+	if e != nil {
+		return "", e
+	}
+	if test || link {
+		next = ""
+	}
 	if len(browserBinding) < 32 {
 		return "", apierr.BadRequest("invalid_state", "browser binding required")
 	}
@@ -156,7 +178,7 @@ func (s *Service) StartConnection(ctx context.Context, org, id, actor uuid.UUID,
 	if test {
 		mode = "test"
 	}
-	raw, err := json.Marshal(connectionFlow{ConnectionID: id, OrgID: c.OrgID, Actor: actor, Revision: c.Revision, Nonce: nonce, Verifier: verifier, Mode: mode, Link: link, BrowserHash: sha256.Sum256([]byte(browserBinding))})
+	raw, err := json.Marshal(connectionFlow{Next: next, ConnectionID: id, OrgID: c.OrgID, Actor: actor, Revision: c.Revision, Nonce: nonce, Verifier: verifier, Mode: mode, Link: link, BrowserHash: sha256.Sum256([]byte(browserBinding)), PortalURL: publicurl.From(ctx, s.baseURL)})
 	if err != nil {
 		return "", err
 	}
@@ -184,6 +206,8 @@ func (s *Service) CompleteConnection(ctx context.Context, code, state, browserBi
 	if e != nil || string(consumed) != string(raw) {
 		return result, apierr.BadRequest("invalid_state", "the SSO request expired or was already used")
 	}
+	result.Next, _ = SafeInternalReturn(flow.Next)
+	result.PortalURL = flow.PortalURL
 	result.ConnectionID = flow.ConnectionID
 	result.Link = flow.Mode == "link"
 	result.OrgID = flow.OrgID
@@ -194,6 +218,9 @@ func (s *Service) CompleteConnection(ctx context.Context, code, state, browserBi
 	c, e := s.q.GetSSOConnection(ctx, flow.ConnectionID)
 	if e != nil || !connectionFlowCurrent(flow, c, actor) {
 		return result, apierr.New(409, "sso_test_stale", "connection changed or the initiating administrator session is no longer active")
+	}
+	if flow.PortalURL != "" {
+		ctx = publicurl.With(ctx, flow.PortalURL)
 	}
 	p, e := s.connectionProvider(ctx, c)
 	if e != nil {
@@ -292,6 +319,12 @@ func (s *Service) CompleteConnection(ctx context.Context, code, state, browserBi
 				}
 			}
 		}
+		account, e := q.GetUserByID(ctx, uid)
+		if e != nil {
+			return e
+		}
+		result.AppAuthEpoch = account.AppAuthEpoch
+		result.MFAVerifiedAt = identity.MFAVerifiedAt
 		result.UserID = uid
 		return nil
 	})

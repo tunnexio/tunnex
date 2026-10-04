@@ -413,6 +413,94 @@
           }
         }
       }
+    },
+    "appAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "baseDomain",
+        "restore",
+        "proxy"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "baseDomain": {
+          "type": "string"
+        },
+        "restore": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "existingClaim"
+          ],
+          "properties": {
+            "existingClaim": {
+              "type": "string"
+            }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "image",
+            "replicas",
+            "credentialSecret",
+            "publicTLSSecret",
+            "gatewayTLSSecret",
+            "agentCASecret",
+            "publicServiceType",
+            "gatewayServiceType",
+            "resources"
+          ],
+          "properties": {
+            "image": {
+              "type": "string",
+              "pattern": "^$|^[^\\s@]+@sha256:[a-f0-9]{64}$"
+            },
+            "replicas": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            },
+            "credentialSecret": {
+              "type": "string"
+            },
+            "publicTLSSecret": {
+              "type": "string"
+            },
+            "gatewayTLSSecret": {
+              "type": "string"
+            },
+            "agentCASecret": {
+              "type": "string"
+            },
+            "publicServiceType": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "LoadBalancer",
+                "NodePort"
+              ]
+            },
+            "gatewayServiceType": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "LoadBalancer",
+                "NodePort"
+              ]
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [

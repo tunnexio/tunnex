@@ -673,6 +673,289 @@ type AlertSubscription struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+type AppAccessApplication struct {
+	ID             uuid.UUID   `json:"id"`
+	OrgID          uuid.UUID   `json:"org_id"`
+	Version        int64       `json:"version"`
+	DraftRevision  int64       `json:"draft_revision"`
+	State          string      `json:"state"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	RequireMfa     bool        `json:"require_mfa"`
+	CatalogVisible bool        `json:"catalog_visible"`
+	AppAdminUserID pgtype.UUID `json:"app_admin_user_id"`
+}
+
+type AppAccessBrowserGatewayRuntime struct {
+	OrgID              uuid.UUID `json:"org_id"`
+	GatewayID          uuid.UUID `json:"gateway_id"`
+	CapabilityVersion  int32     `json:"capability_version"`
+	ReportedCertSerial string    `json:"reported_cert_serial"`
+	ReportedAt         time.Time `json:"reported_at"`
+}
+
+type AppAccessConnectorAssignment struct {
+	Generation       uuid.UUID          `json:"generation"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	AppID            uuid.UUID          `json:"app_id"`
+	GatewayID        uuid.UUID          `json:"gateway_id"`
+	Revision         int64              `json:"revision"`
+	Digest           string             `json:"digest"`
+	Purpose          string             `json:"purpose"`
+	WithdrawnAt      pgtype.Timestamptz `json:"withdrawn_at"`
+	AppliedStatus    string             `json:"applied_status"`
+	AppliedErrorCode string             `json:"applied_error_code"`
+	AppliedAt        pgtype.Timestamptz `json:"applied_at"`
+	CreatedAt        time.Time          `json:"created_at"`
+}
+
+type AppAccessDomainSetting struct {
+	Singleton     bool      `json:"singleton"`
+	Version       int64     `json:"version"`
+	PortalUrl     string    `json:"portal_url"`
+	AppBaseDomain string    `json:"app_base_domain"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type AppAccessEvent struct {
+	ID                     uuid.UUID   `json:"id"`
+	OrgID                  uuid.UUID   `json:"org_id"`
+	AppID                  uuid.UUID   `json:"app_id"`
+	InstallationGeneration uuid.UUID   `json:"installation_generation"`
+	Revision               *int64      `json:"revision"`
+	ServingGeneration      pgtype.UUID `json:"serving_generation"`
+	UserID                 pgtype.UUID `json:"user_id"`
+	GatewayID              pgtype.UUID `json:"gateway_id"`
+	ProxyID                pgtype.UUID `json:"proxy_id"`
+	SessionID              pgtype.UUID `json:"session_id"`
+	StreamID               pgtype.UUID `json:"stream_id"`
+	CorrelationID          pgtype.UUID `json:"correlation_id"`
+	EventKind              string      `json:"event_kind"`
+	Outcome                string      `json:"outcome"`
+	Reason                 string      `json:"reason"`
+	DroppedCount           int64       `json:"dropped_count"`
+	CreatedAt              time.Time   `json:"created_at"`
+}
+
+type AppAccessGatewayRuntime struct {
+	OrgID              uuid.UUID `json:"org_id"`
+	GatewayID          uuid.UUID `json:"gateway_id"`
+	CapabilityVersion  int32     `json:"capability_version"`
+	ReportedCertSerial string    `json:"reported_cert_serial"`
+	ReportedAt         time.Time `json:"reported_at"`
+}
+
+type AppAccessGrant struct {
+	ID           uuid.UUID          `json:"id"`
+	OrgID        uuid.UUID          `json:"org_id"`
+	AppID        uuid.UUID          `json:"app_id"`
+	SubjectKind  string             `json:"subject_kind"`
+	SubjectID    uuid.UUID          `json:"subject_id"`
+	SubjectLabel string             `json:"subject_label"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	GroupID      pgtype.UUID        `json:"group_id"`
+	Enabled      bool               `json:"enabled"`
+	StartsAt     pgtype.Timestamptz `json:"starts_at"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	Version      int64              `json:"version"`
+	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedAt    time.Time          `json:"updated_at"`
+}
+
+type AppAccessHostname struct {
+	Hostname   string             `json:"hostname"`
+	OrgID      uuid.UUID          `json:"org_id"`
+	AppID      uuid.UUID          `json:"app_id"`
+	ReleasedAt pgtype.Timestamptz `json:"released_at"`
+}
+
+type AppAccessInstallationAuthority struct {
+	Singleton           bool               `json:"singleton"`
+	Generation          uuid.UUID          `json:"generation"`
+	Version             int64              `json:"version"`
+	ChangedAt           time.Time          `json:"changed_at"`
+	RecoveryCompletedAt pgtype.Timestamptz `json:"recovery_completed_at"`
+}
+
+type AppAccessOriginCheck struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	AppID               uuid.UUID          `json:"app_id"`
+	GatewayID           uuid.UUID          `json:"gateway_id"`
+	Revision            int64              `json:"revision"`
+	Digest              string             `json:"digest"`
+	Generation          uuid.UUID          `json:"generation"`
+	Purpose             string             `json:"purpose"`
+	Status              string             `json:"status"`
+	DnsStatus           string             `json:"dns_status"`
+	ConnectStatus       string             `json:"connect_status"`
+	TlsStatus           string             `json:"tls_status"`
+	ErrorCode           string             `json:"error_code"`
+	CreatedAt           time.Time          `json:"created_at"`
+	Deadline            time.Time          `json:"deadline"`
+	CompletedAt         pgtype.Timestamptz `json:"completed_at"`
+	CompletedCertSerial string             `json:"completed_cert_serial"`
+}
+
+type AppAccessParentLogoutTombstone struct {
+	ParentHash      []byte    `json:"parent_hash"`
+	UserID          uuid.UUID `json:"user_id"`
+	ParentExpiresAt time.Time `json:"parent_expires_at"`
+	RevokedAt       time.Time `json:"revoked_at"`
+}
+
+type AppAccessProxyCredential struct {
+	ID        uuid.UUID          `json:"id"`
+	Name      string             `json:"name"`
+	TokenHash []byte             `json:"token_hash"`
+	Version   int64              `json:"version"`
+	CreatedAt time.Time          `json:"created_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type AppAccessPublicationOperation struct {
+	ID                             uuid.UUID          `json:"id"`
+	OrgID                          uuid.UUID          `json:"org_id"`
+	AppID                          uuid.UUID          `json:"app_id"`
+	ActorUserID                    uuid.UUID          `json:"actor_user_id"`
+	IdempotencyKey                 uuid.UUID          `json:"idempotency_key"`
+	ReviewedAppVersion             int64              `json:"reviewed_app_version"`
+	ExpectedAppVersion             int64              `json:"expected_app_version"`
+	Revision                       int64              `json:"revision"`
+	Digest                         string             `json:"digest"`
+	OriginCheckID                  uuid.UUID          `json:"origin_check_id"`
+	OriginCheckPurpose             string             `json:"origin_check_purpose"`
+	GatewayID                      uuid.UUID          `json:"gateway_id"`
+	Hostname                       string             `json:"hostname"`
+	Generation                     uuid.UUID          `json:"generation"`
+	Purpose                        string             `json:"purpose"`
+	ExpectedActiveAuthorityVersion int64              `json:"expected_active_authority_version"`
+	AuthorityVersion               int64              `json:"authority_version"`
+	GatewayCertSerial              string             `json:"gateway_cert_serial"`
+	ReadinessRequestID             uuid.UUID          `json:"readiness_request_id"`
+	ProxyInstanceTokenHash         []byte             `json:"proxy_instance_token_hash"`
+	Deadline                       time.Time          `json:"deadline"`
+	Version                        int64              `json:"version"`
+	Status                         string             `json:"status"`
+	ProxyCredentialID              pgtype.UUID        `json:"proxy_credential_id"`
+	ProxyCredentialVersion         *int64             `json:"proxy_credential_version"`
+	ClaimedAt                      pgtype.Timestamptz `json:"claimed_at"`
+	OriginProofCompletedAt         pgtype.Timestamptz `json:"origin_proof_completed_at"`
+	PublicProofCompletedAt         pgtype.Timestamptz `json:"public_proof_completed_at"`
+	CompletedAt                    pgtype.Timestamptz `json:"completed_at"`
+	PublicDnsStatus                string             `json:"public_dns_status"`
+	PublicTlsStatus                string             `json:"public_tls_status"`
+	ConnectorDnsStatus             string             `json:"connector_dns_status"`
+	ConnectorConnectStatus         string             `json:"connector_connect_status"`
+	ConnectorTlsStatus             string             `json:"connector_tls_status"`
+	ErrorCode                      string             `json:"error_code"`
+	CreatedAt                      time.Time          `json:"created_at"`
+}
+
+type AppAccessRequest struct {
+	ID                        uuid.UUID          `json:"id"`
+	OrgID                     uuid.UUID          `json:"org_id"`
+	AppID                     uuid.UUID          `json:"app_id"`
+	AppName                   string             `json:"app_name"`
+	RequesterUserID           uuid.UUID          `json:"requester_user_id"`
+	RequesterMembershipUserID pgtype.UUID        `json:"requester_membership_user_id"`
+	RequesterName             string             `json:"requester_name"`
+	RequesterEmail            string             `json:"requester_email"`
+	Status                    string             `json:"status"`
+	Reason                    string             `json:"reason"`
+	DecisionReason            string             `json:"decision_reason"`
+	Version                   int64              `json:"version"`
+	GrantID                   pgtype.UUID        `json:"grant_id"`
+	DecidedBy                 pgtype.UUID        `json:"decided_by"`
+	CreatedAt                 time.Time          `json:"created_at"`
+	DecidedAt                 pgtype.Timestamptz `json:"decided_at"`
+	ApprovedGrantID           pgtype.UUID        `json:"approved_grant_id"`
+}
+
+type AppAccessRetentionBatchAuthorization struct {
+	BackendPid    int32     `json:"backend_pid"`
+	TransactionID int64     `json:"transaction_id"`
+	RunID         uuid.UUID `json:"run_id"`
+	GrantsDeleted int32     `json:"grants_deleted"`
+	AuditsDeleted int32     `json:"audits_deleted"`
+}
+
+type AppAccessRetentionRun struct {
+	ID             uuid.UUID          `json:"id"`
+	OrgID          uuid.UUID          `json:"org_id"`
+	Status         string             `json:"status"`
+	StartedAt      time.Time          `json:"started_at"`
+	GrantCutoffAt  time.Time          `json:"grant_cutoff_at"`
+	AuditCutoffAt  time.Time          `json:"audit_cutoff_at"`
+	LeaseExpiresAt pgtype.Timestamptz `json:"lease_expires_at"`
+	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
+	GrantsDeleted  int64              `json:"grants_deleted"`
+	AuditsDeleted  int64              `json:"audits_deleted"`
+	Batches        int32              `json:"batches"`
+	MorePending    bool               `json:"more_pending"`
+	ErrorCode      *string            `json:"error_code"`
+}
+
+type AppAccessRevision struct {
+	OrgID                   uuid.UUID `json:"org_id"`
+	AppID                   uuid.UUID `json:"app_id"`
+	Revision                int64     `json:"revision"`
+	Name                    string    `json:"name"`
+	Description             string    `json:"description"`
+	Icon                    string    `json:"icon"`
+	OriginUrl               string    `json:"origin_url"`
+	GatewayID               uuid.UUID `json:"gateway_id"`
+	PublicHostname          string    `json:"public_hostname"`
+	IdleTimeoutSeconds      int32     `json:"idle_timeout_seconds"`
+	AbsoluteTimeoutSeconds  int32     `json:"absolute_timeout_seconds"`
+	Digest                  string    `json:"digest"`
+	CreatedAt               time.Time `json:"created_at"`
+	AllowedDestinationCidrs []string  `json:"allowed_destination_cidrs"`
+	OriginCaPem             string    `json:"origin_ca_pem"`
+	OriginCaDigest          string    `json:"origin_ca_digest"`
+	IconDataUrl             string    `json:"icon_data_url"`
+}
+
+type AppAccessServingPublication struct {
+	OrgID                               uuid.UUID          `json:"org_id"`
+	AppID                               uuid.UUID          `json:"app_id"`
+	GatewayID                           uuid.UUID          `json:"gateway_id"`
+	Revision                            int64              `json:"revision"`
+	Digest                              string             `json:"digest"`
+	Hostname                            string             `json:"hostname"`
+	Generation                          uuid.UUID          `json:"generation"`
+	Purpose                             string             `json:"purpose"`
+	AuthorityVersion                    int64              `json:"authority_version"`
+	State                               string             `json:"state"`
+	UpdatedAt                           time.Time          `json:"updated_at"`
+	WithdrawalConfirmedAt               pgtype.Timestamptz `json:"withdrawal_confirmed_at"`
+	WithdrawalConfirmedAuthorityVersion *int64             `json:"withdrawal_confirmed_authority_version"`
+	WithdrawalConfirmedGeneration       pgtype.UUID        `json:"withdrawal_confirmed_generation"`
+}
+
+type AppAccessSessionRevocation struct {
+	ID                     uuid.UUID   `json:"id"`
+	OrgID                  uuid.UUID   `json:"org_id"`
+	AppID                  uuid.UUID   `json:"app_id"`
+	UserID                 uuid.UUID   `json:"user_id"`
+	LiveUserID             pgtype.UUID `json:"live_user_id"`
+	SessionID              uuid.UUID   `json:"session_id"`
+	InstallationGeneration uuid.UUID   `json:"installation_generation"`
+	AbsoluteExpiresAt      time.Time   `json:"absolute_expires_at"`
+	RevokedAt              time.Time   `json:"revoked_at"`
+	ActorUserID            pgtype.UUID `json:"actor_user_id"`
+	ActorSystem            *string     `json:"actor_system"`
+	ActorUserSnapshot      pgtype.UUID `json:"actor_user_snapshot"`
+	Reason                 string      `json:"reason"`
+}
+
+type AppAccessSetting struct {
+	OrgID   uuid.UUID `json:"org_id"`
+	Enabled bool      `json:"enabled"`
+	Version int64     `json:"version"`
+}
+
 type AuditLog struct {
 	ID          uuid.UUID   `json:"id"`
 	OrgID       pgtype.UUID `json:"org_id"`
@@ -1691,12 +1974,13 @@ type MembershipAccessSource struct {
 }
 
 type MfaChallenge struct {
-	ID        uuid.UUID `json:"id"`
-	UserID    uuid.UUID `json:"user_id"`
-	TokenHash []byte    `json:"token_hash"`
-	Attempts  int32     `json:"attempts"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                   uuid.UUID `json:"id"`
+	UserID               uuid.UUID `json:"user_id"`
+	TokenHash            []byte    `json:"token_hash"`
+	Attempts             int32     `json:"attempts"`
+	ExpiresAt            time.Time `json:"expires_at"`
+	CreatedAt            time.Time `json:"created_at"`
+	VerifiedAppAuthEpoch *int64    `json:"verified_app_auth_epoch"`
 }
 
 type Node struct {
@@ -2133,6 +2417,7 @@ type User struct {
 	CanCreateOrgs      bool               `json:"can_create_orgs"`
 	MustChangePassword bool               `json:"must_change_password"`
 	CpAdmin            bool               `json:"cp_admin"`
+	AppAuthEpoch       int64              `json:"app_auth_epoch"`
 }
 
 type UserGroup struct {

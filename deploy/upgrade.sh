@@ -39,6 +39,46 @@ COMPOSE_SHA256=${TUNNEX_COMPOSE_SHA256:-}
 [ -n "$COMPOSE_SHA256" ] || COMPOSE_SHA256=$(dotenv_value TUNNEX_COMPOSE_SHA256)
 PROJECT=${TUNNEX_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-}}
 [ -n "$PROJECT" ] || PROJECT=$(dotenv_value COMPOSE_PROJECT_NAME)
+# BEGIN APP ACCESS REINSTALL GUARD
+# Inspect labels/mounts only; never read or emit container environment secrets.
+refuse_existing_app_access() {
+  _aa_project=$1 _aa_directory=$2
+  if [ -n "$_aa_project" ]; then
+    _aa_filter="label=com.docker.compose.project=$_aa_project"
+  else
+    # Compose top-level name and first-file directory can override basename.
+    # With no explicit project, scope inspection to the actual Compose checkout.
+    _aa_filter="label=com.docker.compose.project.working_dir=$_aa_directory"
+  fi
+  _aa_ids=$(docker ps -a --filter "$_aa_filter" --format '{{.ID}}' 2>/dev/null) || {
+    echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
+  }
+  for _aa_id in $_aa_ids; do
+    _aa_info=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/tunnex/app-restore"}}marker{{end}}{{end}}' "$_aa_id" 2>/dev/null) || {
+      echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
+    }
+    case "$_aa_info" in
+      *'|'*'|'*'|'*) ;;
+      *) echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1 ;;
+    esac
+    _aa_saved_ifs=$IFS
+    IFS='|' read -r _aa_found_project _aa_found_directory _aa_service _aa_marker <<EOF
+$_aa_info
+EOF
+    IFS=$_aa_saved_ifs
+    [ "$_aa_found_directory" = "$_aa_directory" ] || continue
+    [ -z "$_aa_project" ] || [ "$_aa_found_project" = "$_aa_project" ] || continue
+    [ -n "$_aa_found_project" ] && [ "$_aa_found_project" != '<no value>' ] || {
+      echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
+    }
+    if [ "$_aa_service" = app-proxy ] || { [ "$_aa_service" = api ] && [ -n "$_aa_marker" ]; }; then
+      echo 'error: existing App Access composition requires a separately reviewed opt-in install/upgrade workflow; ordinary install/upgrade is refused before replacement. Preserve the proxy, signed image pins, and external restore barrier.' >&2
+      return 1
+    fi
+  done
+}
+# END APP ACCESS REINSTALL GUARD
+
 VERIFY=${TUNNEX_RELEASEVERIFY:-}
 APPLY=false
 AIRGAP=
@@ -70,6 +110,10 @@ case "$EXPECTED_SOURCE_SHA" in ''|*[!0-9a-f]*) [ -z "$EXPECTED_SOURCE_SHA" ] || 
 case "$EXPECTED_SEQUENCE" in ''|*[!0-9]*) [ -z "$EXPECTED_SEQUENCE" ] || usage ;; esac
 [ -n "$PUBLIC_KEY" ] || { echo "error: trusted release public key is not configured in the deployment environment" >&2; exit 1; }
 [ -f "$COMPOSE" ] && [ -f "$ENV_FILE" ] || { echo "error: deployment files not found" >&2; exit 1; }
+# Match Compose's first-file project directory, including an explicit file
+# outside the installation directory. Do not guess a top-level project name.
+_aa_upgrade_directory=$(CDPATH= cd -- "$(dirname -- "$COMPOSE")" && pwd -P) || exit 13
+refuse_existing_app_access "$PROJECT" "$_aa_upgrade_directory" || exit 13
 TARGET_SOURCE_SHA=$EXPECTED_SOURCE_SHA
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM

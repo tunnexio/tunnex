@@ -13,10 +13,12 @@ import (
 // flowState is the per-login server-side state, keyed by the opaque `state`
 // value and returned via the callback. Held in Redis with a short TTL.
 type flowState struct {
-	Nonce    string    `json:"nonce"`
-	Verifier string    `json:"verifier"` // PKCE code_verifier
-	OrgID    uuid.UUID `json:"org_id"`
-	Provider string    `json:"provider"`
+	Next      string    `json:"next,omitempty"`
+	Nonce     string    `json:"nonce"`
+	Verifier  string    `json:"verifier"` // PKCE code_verifier
+	OrgID     uuid.UUID `json:"org_id"`
+	Provider  string    `json:"provider"`
+	PortalURL string    `json:"portal_url,omitempty"`
 }
 
 // ErrFlowNotFound indicates an unknown/expired/replayed state.

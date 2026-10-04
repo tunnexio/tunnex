@@ -130,84 +130,15 @@ func (s *Service) withTx(ctx context.Context, fn func(*sqlc.Queries) error) erro
 // prior unconfirmed attempt), and returns the otpauth URI (QR) + the base32 manual key ONCE. The
 // account label on the URI is the user's email (resolved here so the handler needn't thread it).
 func (s *Service) StartEnrollment(ctx context.Context, userID uuid.UUID) (uri, manualKey string, err error) {
-	// Refuse over a CONFIRMED factor (finding #3): UpsertUnconfirmedTOTP would silently set
-	// confirmed=false and replace the secret, destroying a working second factor without the
-	// deliberate disable step. Re-enrollment = disenroll first (the UI's "turn off 2FA"). An
-	// UNCONFIRMED row is NOT confirmed, so starting over mid-ceremony still works (restartable).
-	if existing, e := s.q.GetTOTP(ctx, userID); e == nil && existing.Confirmed {
-		return "", "", apierr.Conflict("already_enrolled", "Two-factor authentication is already on. Turn it off first to set it up again.")
-	} else if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return "", "", e
-	}
-	user, err := s.q.GetUserByID(ctx, userID)
-	if err != nil {
-		return "", "", err
-	}
-	account := user.Email
-	secret, err := GenerateSecret()
-	if err != nil {
-		return "", "", err
-	}
-	sealed, err := s.sealer.Seal([]byte(secret))
-	if err != nil {
-		return "", "", err
-	}
-	if err := s.q.UpsertUnconfirmedTOTP(ctx, sqlc.UpsertUnconfirmedTOTPParams{
-		UserID: userID, SecretEnc: []byte(sealed),
-	}); err != nil {
-		return "", "", err
-	}
-	return OtpauthURI(secret, account), secret, nil
+	return s.startEnrollment(ctx, userID, 0)
 }
 
 // ConfirmEnrollment (OPEN) arms MFA: a VALID code flips confirmed=true (verify-before-arm),
 // stamps the replay clock, issues + stores single-use recovery codes (hashed), and audits
 // mfa.enrolled. Returns the plaintext recovery codes ONCE.
 func (s *Service) ConfirmEnrollment(ctx context.Context, userID uuid.UUID, code string) ([]string, error) {
-	row, err := s.q.GetTOTP(ctx, userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, apierr.BadRequest("no_pending_enrollment", "start an enrollment first")
-	}
-	if err != nil {
-		return nil, err
-	}
-	if row.Confirmed {
-		return nil, apierr.Conflict("already_enrolled", "MFA is already enrolled; disenroll to re-enroll")
-	}
-	secret, err := s.sealer.Open(string(row.SecretEnc))
-	if err != nil {
-		return nil, err
-	}
-	ts, ok := Validate(string(secret), code, s.now().Unix(), -1)
-	if !ok {
-		return nil, apierr.BadRequest("invalid_code", "that code is not valid")
-	}
-
-	codes, err := GenerateRecoveryCodes()
-	if err != nil {
-		return nil, err
-	}
-	if err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		n, e := q.ConfirmTOTP(ctx, sqlc.ConfirmTOTPParams{UserID: userID, LastUsedTimestep: &ts})
-		if e != nil {
-			return e
-		}
-		if n == 0 {
-			return apierr.Conflict("already_enrolled", "MFA is already enrolled")
-		}
-		if e := q.DeleteRecoveryCodesForUser(ctx, userID); e != nil { // clear any stale set
-			return e
-		}
-		for _, c := range codes {
-			if e := q.InsertRecoveryCode(ctx, sqlc.InsertRecoveryCodeParams{UserID: userID, CodeHash: HashCode(c)}); e != nil {
-				return e
-			}
-		}
-		return s.audit(ctx, q, userID, userID, "mfa.enrolled", nil)
-	}); err != nil {
-		return nil, err
-	}
-	return codes, nil
+	codes, _, err := s.confirmEnrollment(ctx, userID, 0, code)
+	return codes, err
 }
 
 // HasConfirmedTOTP reports whether the user has an armed TOTP (self-enrolled users are always
@@ -226,14 +157,28 @@ func (s *Service) HasConfirmedTOTP(ctx context.Context, userID uuid.UUID) (bool,
 // CreateChallenge mints the login second-step token (NOT a session — D6): a short-lived,
 // hashed, attempt-capped challenge. Returns the RAW token + its TTL in seconds.
 func (s *Service) CreateChallenge(ctx context.Context, userID uuid.UUID) (string, int, error) {
+	user, err := s.q.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", 0, err
+	}
+	return s.CreateChallengeWithAuthority(ctx, userID, user.AppAuthEpoch)
+}
+
+// CreateChallengeWithAuthority retains the password verification snapshot;
+// a reset between password verification and challenge creation cannot promote it.
+func (s *Service) CreateChallengeWithAuthority(ctx context.Context, userID uuid.UUID, verifiedEpoch int64) (string, int, error) {
 	raw, hash, err := newToken()
 	if err != nil {
 		return "", 0, err
 	}
-	if err := s.q.CreateMfaChallenge(ctx, sqlc.CreateMfaChallengeParams{
-		UserID: userID, TokenHash: hash, ExpiresAt: s.now().Add(challengeTTL),
-	}); err != nil {
+	rows, err := s.q.CreateMfaChallengeWithAuthority(ctx, sqlc.CreateMfaChallengeWithAuthorityParams{
+		UserID: userID, TokenHash: hash, ExpiresAt: s.now().Add(challengeTTL), VerifiedEpoch: verifiedEpoch,
+	})
+	if err != nil {
 		return "", 0, err
+	}
+	if rows != 1 {
+		return "", 0, apierr.New(401, "mfa_challenge_invalid", "sign in again")
 	}
 	return raw, int(challengeTTL.Seconds()), nil
 }
@@ -253,14 +198,27 @@ const (
 )
 
 func (s *Service) VerifyChallenge(ctx context.Context, rawToken, code string) (sqlc.User, bool, error) {
+	// This lookup only finds the user. Authority is checked again under locks.
+	candidate, e := s.q.GetLiveMfaChallenge(ctx, hashToken(rawToken))
+	if errors.Is(e, pgx.ErrNoRows) {
+		return sqlc.User{}, false, apierr.New(401, "mfa_challenge_invalid", "sign in again")
+	}
+	if e != nil {
+		return sqlc.User{}, false, e
+	}
+
 	var userID uuid.UUID
 	var viaRecovery bool
+	var verifiedEpoch int64
 	var outcome verifyOutcome
 	// The tx COMMITS regardless of the code being right or wrong — the attempt-count increment
 	// and the burn-on-exhaustion MUST persist. A wrong code is signalled by an outcome value,
 	// NOT by returning an error (which would roll back the increment — the terminal cap would
 	// then never fire). Only a genuine infra error rolls back.
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, e := q.GetMFAUserForUpdate(ctx, candidate.UserID); e != nil {
+			return e
+		}
 		ch, e := q.GetMfaChallengeForUpdate(ctx, hashToken(rawToken))
 		if errors.Is(e, pgx.ErrNoRows) {
 			outcome = outChallengeGone
@@ -269,7 +227,23 @@ func (s *Service) VerifyChallenge(ctx context.Context, rawToken, code string) (s
 		if e != nil {
 			return e
 		}
+		if ch.UserID != candidate.UserID {
+			return apierr.New(401, "mfa_challenge_invalid", "sign in again")
+		}
 		userID = ch.UserID
+		user, e := q.GetUserByID(ctx, ch.UserID)
+		if errors.Is(e, pgx.ErrNoRows) {
+			outcome = outChallengeGone
+			return q.DeleteMfaChallenge(ctx, ch.ID)
+		}
+		if e != nil {
+			return e
+		}
+		if ch.VerifiedAppAuthEpoch == nil || *ch.VerifiedAppAuthEpoch <= 0 || user.AppAuthEpoch != *ch.VerifiedAppAuthEpoch || user.Status != "active" {
+			outcome = outChallengeGone
+			return q.DeleteMfaChallenge(ctx, ch.ID)
+		}
+		verifiedEpoch = *ch.VerifiedAppAuthEpoch
 
 		// TOTP first (replay-guarded), then recovery.
 		if totp, e := q.GetConfirmedTOTPForUpdate(ctx, ch.UserID); e == nil {
@@ -331,6 +305,9 @@ func (s *Service) VerifyChallenge(ctx context.Context, rawToken, code string) (s
 	if err != nil {
 		return sqlc.User{}, false, err
 	}
+	if user.AppAuthEpoch != verifiedEpoch || user.Status != "active" {
+		return sqlc.User{}, false, apierr.New(401, "mfa_challenge_invalid", "sign in again")
+	}
 	return user, viaRecovery, nil
 }
 
@@ -349,6 +326,15 @@ func (s *Service) Disenroll(ctx context.Context, actor, target uuid.UUID, action
 // change to "what a full revocation clears" can't drift between the two paths. A challenge is claimed
 // state; revocation releases it, so a mid-login target gets a clean re-login, not attempts-to-exhaustion.
 func revokeAllMfa(ctx context.Context, q *sqlc.Queries, userID uuid.UUID) error {
+	// Lock the user first, consistently with enrollment/step-up. Advancing the
+	// epoch invalidates every existing parent, including signed SSO MFA proof.
+	if _, e := q.GetMFAUserForUpdate(ctx, userID); e != nil {
+		return e
+	}
+	if _, e := q.AdvanceUserAppAuthEpochForMFA(ctx, userID); e != nil {
+		return e
+	}
+
 	if _, e := q.DeleteTOTP(ctx, userID); e != nil {
 		return e
 	}

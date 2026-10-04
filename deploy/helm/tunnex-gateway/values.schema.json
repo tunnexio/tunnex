@@ -7,134 +7,283 @@
     "aiVPN": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": {
+          "type": "boolean"
+        }
       }
     },
     "flowLog": {
       "type": "object",
       "properties": {
-        "group": { "type": "integer", "minimum": 0, "maximum": 65535 }
+        "group": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        }
       },
-      "required": ["group"]
+      "required": [
+        "group"
+      ]
     },
     "image": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["registry", "agent", "tag", "digest", "pullPolicy", "pullSecrets", "preflight"],
+      "required": [
+        "registry",
+        "agent",
+        "tag",
+        "digest",
+        "pullPolicy",
+        "pullSecrets",
+        "preflight"
+      ],
       "properties": {
-        "registry": { "type": "string", "minLength": 1 },
-        "agent": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string" },
-        "digest": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" },
-        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "registry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
         "pullSecrets": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name"],
-            "properties": { "name": { "type": "string", "minLength": 1 } }
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         },
-        "preflight": { "type": "string", "pattern": "^$|^[^\\s@]+@sha256:[a-f0-9]{64}$" }
+        "preflight": {
+          "type": "string",
+          "pattern": "^$|^[^\\s@]+@sha256:[a-f0-9]{64}$"
+        }
       }
     },
     "controlPlane": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["apiURL", "agentURL", "serverName"],
+      "required": [
+        "apiURL",
+        "agentURL",
+        "serverName"
+      ],
       "properties": {
-        "apiURL": { "type": "string", "pattern": "^https://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(?::[0-9]{1,5})?(?:/[^\\s]*)?$" },
-        "agentURL": { "type": "string", "pattern": "^https://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(?::[0-9]{1,5})?(?:/[^\\s]*)?$" },
-        "serverName": { "type": "string", "minLength": 1 }
+        "apiURL": {
+          "type": "string",
+          "pattern": "^https://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(?::[0-9]{1,5})?(?:/[^\\s]*)?$"
+        },
+        "agentURL": {
+          "type": "string",
+          "pattern": "^https://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\])(?::[0-9]{1,5})?(?:/[^\\s]*)?$"
+        },
+        "serverName": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "enrollment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "existingSecret", "secretOptional"],
+      "required": [
+        "mode",
+        "existingSecret",
+        "secretOptional"
+      ],
       "properties": {
-        "mode": { "type": "string", "enum": ["enroll", "reuse"] },
-        "existingSecret": { "type": "string" },
-        "secretOptional": { "type": "boolean" }
+        "mode": {
+          "type": "string",
+          "enum": [
+            "enroll",
+            "reuse"
+          ]
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "secretOptional": {
+          "type": "boolean"
+        }
       }
     },
     "lifecycle": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["installProof"],
+      "required": [
+        "installProof"
+      ],
       "properties": {
-        "installProof": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" }
+        "installProof": {
+          "type": "string",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$"
+        }
       }
     },
-    "existingJoinTokenSecret": { "type": "string" },
-    "joinTokenKey": { "type": "string", "minLength": 1 },
-    "joinToken": { "type": "string" },
+    "existingJoinTokenSecret": {
+      "type": "string"
+    },
+    "joinTokenKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "joinToken": {
+      "type": "string"
+    },
     "endpoint": {
       "type": "string",
       "pattern": "^$|^([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:]+\\]):[0-9]{1,5}$"
     },
-    "nodeName": { "type": "string" },
+    "nodeName": {
+      "type": "string"
+    },
     "wireguard": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["port"],
+      "required": [
+        "port"
+      ],
       "properties": {
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
       }
     },
     "service": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "loadBalancerIP", "nodePort", "annotations"],
+      "required": [
+        "type",
+        "loadBalancerIP",
+        "nodePort",
+        "annotations"
+      ],
       "allOf": [
         {
           "if": {
-            "properties": { "type": { "const": "NodePort" } },
-            "required": ["type"]
+            "properties": {
+              "type": {
+                "const": "NodePort"
+              }
+            },
+            "required": [
+              "type"
+            ]
           },
           "then": {
             "properties": {
-              "nodePort": { "minimum": 30000, "maximum": 32767 }
+              "nodePort": {
+                "minimum": 30000,
+                "maximum": 32767
+              }
             }
           }
         }
       ],
       "properties": {
-        "type": { "type": "string", "enum": ["LoadBalancer", "NodePort"] },
-        "loadBalancerIP": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": [
+            "LoadBalancer",
+            "NodePort"
+          ]
+        },
+        "loadBalancerIP": {
+          "type": "string"
+        },
         "nodePort": {
           "type": "integer",
           "anyOf": [
-            { "const": 0 },
-            { "minimum": 30000, "maximum": 32767 }
+            {
+              "const": 0
+            },
+            {
+              "minimum": 30000,
+              "maximum": 32767
+            }
           ]
         },
         "annotations": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },
     "persistence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "size", "storageClass", "existingClaim", "retain", "provenance"],
+      "required": [
+        "enabled",
+        "size",
+        "storageClass",
+        "existingClaim",
+        "retain",
+        "provenance"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "size": { "type": "string", "minLength": 1 },
-        "storageClass": { "type": "string" },
-        "existingClaim": { "type": "string" },
-        "retain": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "size": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storageClass": {
+          "type": "string"
+        },
+        "existingClaim": {
+          "type": "string"
+        },
+        "retain": {
+          "type": "boolean"
+        },
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["organizationID", "lifecycleClaim"],
+          "required": [
+            "organizationID",
+            "lifecycleClaim"
+          ],
           "properties": {
-            "organizationID": { "type": "string", "pattern": "^$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
-            "lifecycleClaim": { "type": "string", "pattern": "^$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
+            "organizationID": {
+              "type": "string",
+              "pattern": "^$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "lifecycleClaim": {
+              "type": "string",
+              "pattern": "^$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
           }
         }
       }
@@ -142,9 +291,14 @@
     "preflight": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "dnsProbe"],
+      "required": [
+        "enabled",
+        "dnsProbe"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
         "dnsProbe": {
           "type": "string",
           "minLength": 1,
@@ -153,37 +307,85 @@
         }
       }
     },
-    "acknowledgePrivileged": { "type": "boolean", "const": true },
+    "acknowledgePrivileged": {
+      "type": "boolean",
+      "const": true
+    },
     "nodeSelector": {
       "type": "object",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "tolerations": {
       "type": "array",
-      "items": { "type": "object" }
+      "items": {
+        "type": "object"
+      }
     },
-    "affinity": { "type": "object" },
-    "resources": { "type": "object" },
+    "affinity": {
+      "type": "object"
+    },
+    "resources": {
+      "type": "object"
+    },
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["create", "name"],
+      "required": [
+        "create",
+        "name"
+      ],
       "properties": {
-        "create": { "type": "boolean" },
-        "name": { "type": "string" }
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
       }
     },
     "rbac": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["create"],
+      "required": [
+        "create"
+      ],
       "properties": {
-        "create": { "type": "boolean" }
+        "create": {
+          "type": "boolean"
+        }
       }
     },
-    "logLevel": { "type": "string", "minLength": 1 },
-    "rolloutRevision": { "type": "string", "maxLength": 256 },
-    "reportInterval": { "type": "string", "pattern": "^[0-9]+(ms|s|m|h)$" }
+    "logLevel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rolloutRevision": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "reportInterval": {
+      "type": "string",
+      "pattern": "^[0-9]+(ms|s|m|h)$"
+    },
+    "appAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "proxyURL"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "proxyURL": {
+          "type": "string",
+          "pattern": "^$|^https://[^/\\s?#]+/?$"
+        }
+      }
+    }
   },
   "required": [
     "image",
@@ -207,38 +409,80 @@
       "if": {
         "properties": {
           "enrollment": {
-            "properties": { "mode": { "const": "enroll" } },
-            "required": ["mode"]
+            "properties": {
+              "mode": {
+                "const": "enroll"
+              }
+            },
+            "required": [
+              "mode"
+            ]
           }
         }
       },
       "then": {
         "properties": {
-          "nodeName": { "minLength": 1 },
+          "nodeName": {
+            "minLength": 1
+          },
           "persistence": {
-            "properties": { "existingClaim": { "maxLength": 0 } }
+            "properties": {
+              "existingClaim": {
+                "maxLength": 0
+              }
+            }
           }
         },
         "oneOf": [
           {
             "properties": {
-              "enrollment": { "properties": { "existingSecret": { "minLength": 1 } } },
-              "existingJoinTokenSecret": { "maxLength": 0 },
-              "joinToken": { "maxLength": 0 }
+              "enrollment": {
+                "properties": {
+                  "existingSecret": {
+                    "minLength": 1
+                  }
+                }
+              },
+              "existingJoinTokenSecret": {
+                "maxLength": 0
+              },
+              "joinToken": {
+                "maxLength": 0
+              }
             }
           },
           {
             "properties": {
-              "enrollment": { "properties": { "existingSecret": { "maxLength": 0 } } },
-              "existingJoinTokenSecret": { "minLength": 1 },
-              "joinToken": { "maxLength": 0 }
+              "enrollment": {
+                "properties": {
+                  "existingSecret": {
+                    "maxLength": 0
+                  }
+                }
+              },
+              "existingJoinTokenSecret": {
+                "minLength": 1
+              },
+              "joinToken": {
+                "maxLength": 0
+              }
             }
           },
           {
             "properties": {
-              "enrollment": { "properties": { "existingSecret": { "maxLength": 0 } } },
-              "existingJoinTokenSecret": { "maxLength": 0 },
-              "joinToken": { "minLength": 1 }
+              "enrollment": {
+                "properties": {
+                  "existingSecret": {
+                    "maxLength": 0
+                  }
+                }
+              },
+              "existingJoinTokenSecret": {
+                "maxLength": 0
+              },
+              "joinToken": {
+                "minLength": 1
+              }
             }
           }
         ]
@@ -248,29 +492,55 @@
       "if": {
         "properties": {
           "enrollment": {
-            "properties": { "mode": { "const": "reuse" } },
-            "required": ["mode"]
+            "properties": {
+              "mode": {
+                "const": "reuse"
+              }
+            },
+            "required": [
+              "mode"
+            ]
           }
         }
       },
       "then": {
         "properties": {
           "enrollment": {
-            "properties": { "existingSecret": { "maxLength": 0 } }
+            "properties": {
+              "existingSecret": {
+                "maxLength": 0
+              }
+            }
           },
-          "existingJoinTokenSecret": { "maxLength": 0 },
-          "joinToken": { "maxLength": 0 },
+          "existingJoinTokenSecret": {
+            "maxLength": 0
+          },
+          "joinToken": {
+            "maxLength": 0
+          },
           "lifecycle": {
-            "properties": { "installProof": { "maxLength": 0 } }
+            "properties": {
+              "installProof": {
+                "maxLength": 0
+              }
+            }
           },
           "persistence": {
             "properties": {
-              "enabled": { "const": true },
-              "existingClaim": { "minLength": 1 },
+              "enabled": {
+                "const": true
+              },
+              "existingClaim": {
+                "minLength": 1
+              },
               "provenance": {
                 "properties": {
-                  "organizationID": { "maxLength": 0 },
-                  "lifecycleClaim": { "maxLength": 0 }
+                  "organizationID": {
+                    "maxLength": 0
+                  },
+                  "lifecycleClaim": {
+                    "maxLength": 0
+                  }
                 }
               }
             }
@@ -284,8 +554,14 @@
           "persistence": {
             "properties": {
               "provenance": {
-                "properties": { "organizationID": { "minLength": 1 } },
-                "required": ["organizationID"]
+                "properties": {
+                  "organizationID": {
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "organizationID"
+                ]
               }
             }
           }
@@ -296,7 +572,11 @@
           "persistence": {
             "properties": {
               "provenance": {
-                "properties": { "lifecycleClaim": { "minLength": 1 } }
+                "properties": {
+                  "lifecycleClaim": {
+                    "minLength": 1
+                  }
+                }
               }
             }
           }
@@ -307,7 +587,11 @@
           "persistence": {
             "properties": {
               "provenance": {
-                "properties": { "lifecycleClaim": { "maxLength": 0 } }
+                "properties": {
+                  "lifecycleClaim": {
+                    "maxLength": 0
+                  }
+                }
               }
             }
           }
@@ -318,13 +602,23 @@
       "if": {
         "properties": {
           "service": {
-            "properties": { "type": { "const": "NodePort" } },
-            "required": ["type"]
+            "properties": {
+              "type": {
+                "const": "NodePort"
+              }
+            },
+            "required": [
+              "type"
+            ]
           }
         }
       },
       "then": {
-        "properties": { "endpoint": { "minLength": 1 } }
+        "properties": {
+          "endpoint": {
+            "minLength": 1
+          }
+        }
       }
     }
   ]

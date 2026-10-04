@@ -224,6 +224,7 @@ type apiServer struct {
 	workflowProvenance *workflowprovenance.Service
 	sso                ssoPort    // nil in the open build
 	policy             policyPort // nil in the open build (Zero Trust, S7.1)
+	appAccess          appAccessPort
 	fqdnResources      *fqdnresources.Service
 	// fqdnSettingNotify wakes active nodes only after an FQDN enforcement
 	// opt-in transaction commits. It is deliberately separate from the resource
@@ -255,6 +256,7 @@ type apiServer struct {
 	mfaEnforceEnabled        bool
 	cookieSecure             bool
 	appBaseURL               string
+	appDomains               appDomainsRepository
 	aiEngineInstalled        bool
 	aiAllowPrivateHTTP       bool
 	aiTransport              aiTransportRepository

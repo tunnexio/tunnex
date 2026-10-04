@@ -1,10 +1,17 @@
 # App Access epic and story plan
 
-Status: **planning complete; implementation not started**.
+Status: **11/11 stories accepted within their recorded scopes**. The original nine stories (AA-0 through AA-8) remain locally accepted; per-app MFA is **Story 10 (AA-9), accepted and deployed to the isolated test CP on 2026-10-04, with 2/2 original slices accepted**. **Story 11 (AA-10 Company catalog, App admin and access requests) is accepted and deployed to the same isolated test CP**, including owned-fixture browser acceptance and preservation-verified cleanup. See the separate AA-9 and AA-10 acceptance records below.
+AA-6a/AA-6b accepted slices: **2/2**. Actual publish/day-two administration, all15 five-protocol withdrawal cases, capacity, certificate expiry and isolated restore/install/upgrade/rollback pass. Fresh rendered local and SSO login reach the published origin, assets and form; exact own-session revoke and member admin denial pass. Temporary SSO configuration is restored exactly with one scoped audit, and the proxy is back on its original console/artifact/trust baseline. Local signing uses the documented ephemeral test key/image adapter; protected production signing and registry distribution remain separately requested release gates. Chrome desktop/390px is the rendered browser qualification scope, not a universal-browser claim. See [AA-8 evidence](AA-8-development-evidence.md).
+Development contract: [AA-0 authority](AA-0-authority-contract.md).
+Local evidence and ownership: [AA-0 evidence](AA-0-development-evidence.md).
 Prepared 2026-10-03 against main `bcf602770c54446b35a2f83bfa639e9f2a9a10c8`.
-Story namespace: **AA**. Nine first-release stories (AA-0 through AA-8), plus
-one later MFA story (AA-9). This document is a development plan, not evidence that
-the feature exists or permission to deploy customer infrastructure.
+Story namespace: **AA**. The original first release contains nine stories (AA-0 through AA-8).
+The additional MFA story (AA-9), originally deferred, is now accepted as the tenth story.
+The subsequently requested Company catalog, assigned App admin and access-request workflow is
+**AA-10, the eleventh story**, and is **accepted on the isolated test CP**. The two
+accepted MFA slices retain their original numbering and acceptance.
+The original release boundary is preserved; the scoped acceptance records below do not
+authorize deployment to other customer infrastructure.
 
 ## Customer outcome and agreed scope
 
@@ -22,9 +29,10 @@ Access Policies or Resources.
 Both **local email/password login and configured SSO** are first-release
 requirements. A contractor can be invited as a local user when no SSO is configured.
 Existing login verification, password-change, membership and configured MFA gates
-still apply. There is no new per-app MFA enrollment or mandatory per-app challenge
-in v1. SSO does not by itself prove MFA: existing identity-provider behavior is
-preserved without advertising new assurance. Fresh per-app MFA is AA-9, later.
+still apply. The original v1 scope did not introduce per-app MFA. The subsequently
+accepted AA-9 adds an optional app requirement using the user's existing factor or
+verified SSO assurance, without a separate factor enrollment for every app. SSO login
+alone does not prove MFA; see the accepted assurance contract below.
 
 AI gateway, AI agents, MCP and the colleague's in-development AI sandbox are outside
 this epic. Existing audit and access-event surfaces are reused with new event
@@ -38,7 +46,7 @@ producers; they are not proposed as new standalone products.
 | Transport | A dedicated public app proxy receives browser traffic. The selected gateway makes an authenticated outbound data connection to that proxy and reaches the private origin. AA-0 proves/selects the transport implementation before product code depends on it. |
 | Authentication | Reuse Tunnex local/SSO login. Application-scoped browser sessions are new. A backend app's own login remains unless that app has a separately supported SSO integration. |
 | Authorization | Dedicated app grants over existing organization users/groups. Default deny, allow-only active grants, no implicit Everyone or admin-content access. Network Zero Trust mode does not turn app authorization off. |
-| Commercial gate | Proposed enterprise entitlement plus organization opt-in, default off, consistent with existing group-policy gating. AA-0 records the actual entitlement choice; do not promise a new free/paid SKU or silently unlock groups. |
+| Commercial gate | Dedicated runtime `app_access` entitlement plus organization opt-in, default off. AA-0 records the tier mapping; existing groups are Community capabilities on this baseline. Do not promise a new SKU or alter group availability. |
 | Domains | One controlled app base domain per installation; exact app hostnames unique across tenants. Prefer a separate registrable domain from the control plane to isolate untrusted app content. Sibling-domain support requires explicit cookie/CSRF proof in AA-0, not an assumption. |
 | Certificates | Use existing supported edge certificate lifecycle where qualified. Proposed first path: explicit approved app hostnames and per-host certificates, or operator-provided certificates. No unrestricted on-demand issuance for arbitrary Host headers. |
 | Session limits | Proposed default: 8-hour maximum and 30-minute idle expiry, always capped by the parent login's remaining lifetime and current authorization. AA-0 validates these as configuration defaults. |
@@ -56,7 +64,7 @@ edge reachability, origin network path and origin-side firewall restrictions.
 | --- | --- | --- |
 | [AppShell](../apps/web/src/components/AppShell.tsx), [App routes](../apps/web/src/App.tsx) | Responsive navigation, authenticated org workspace and safe local login returns | Standalone App Access routes, admin/member views and safe cross-origin app return |
 | [Session auth](../apps/api/internal/http/session.go), [Redis sessions](../apps/api/internal/session/session.go) | Active-user checks, membership lookup, local/SSO identity, idle/absolute expiry and logout | App-scoped cookies, launch-code handoff, parent-session binding and active-stream revocation |
-| [RBAC](../apps/api/internal/rbac/rbac.go), [policy service](../apps/api/internal/policy/service.go) | Users, memberships, groups, named permissions, audit conventions | New app permissions/grants. Group management is enterprise-gated; reuse data without silently bypassing entitlement |
+| [RBAC](../apps/api/internal/rbac/rbac.go), [policy service](../apps/api/internal/policy/service.go) | Users, memberships, groups, named permissions, audit conventions | New app permissions/grants. Preserve existing group availability and enforce a separate App Access entitlement |
 | [Policy compiler](../apps/api/internal/policy/compiler.go) | Identity relationships and established tenant-scoping patterns | Existing rules compile to VPN addresses; they do not authorize browser app sessions |
 | [Gateway channel](../apps/api/internal/http/agentchannel.go), [node client](../apps/node/internal/control/client.go) | Gateway enrollment, certificate identity, capability/config/status conventions | Outbound browser data transport and app-origin connector; the existing control channel is not that transport |
 | [nodepush](../apps/api/internal/nodepush/hub.go) | Fast notification as an optimization | Process-local notifications are not durable authority or sufficient revocation proof |
@@ -98,7 +106,7 @@ landing. Hiding navigation never replaces backend authorization.
    published hostname resolution and certificate readiness, with timestamps and exact blockers.
 3. **Assign access:** existing users/groups and a validity window for each grant.
    Session limits are app-wide application settings, not properties of overlapping grants.
-   No per-app MFA switch in the first-release UI.
+   The original first-release UI had no per-app MFA switch; the accepted AA-9 extension adds an optional app requirement.
 4. **Review and publish:** show URL, audience, expiry and the exact configuration revision.
    Server validates the reviewed revision. Successful save is not successful publication.
 5. **Operate:** staged edits preserve the active revision until the new revision is validated/applied.
@@ -165,7 +173,8 @@ time; do not reserve today's next migration while AI work is proceeding independ
 | Launch transactions in Redis | Hashed opaque single-use code, app/host/org/user/parent-session binding, browser nonce, short TTL, atomic redemption | AA-5 |
 | App sessions in Redis | Opaque token hash, app audience, user/org, parent-login reference, absolute/idle limits and revocation indexes | AA-5 |
 | Audit and access records | Existing audit storage for changes; typed browser decision/session producer with app and correlation fields, indexes and retention contract | AA-7 |
-| Authentication assurance | Verified factor/issuer assurance and factor time only if introduced for step-up | AA-9, later |
+| Authentication assurance | Server-verified factor/issuer assurance and timestamp on the existing parent session; fixed 15-minute app freshness | AA-9, accepted |
+| Company discovery and scoped administration | Per-app default-hidden catalog visibility, one active same-organization App admin assignment, retained request/decision history and versioned decisions using existing grants; safe member/owner projections | AA-10 (Story 11), accepted on the isolated test CP |
 
 | API family | Proposed operations | Security boundary |
 | --- | --- | --- |
@@ -185,7 +194,12 @@ Do not add desktop-client code to this repository.
 ## Story summary
 
 Complexity is relative, not a delivery-date commitment. AA-0 must re-estimate transport and
-compatibility work before a calendar schedule is promised. All stories start **Not started**.
+compatibility work before a calendar schedule is promised. AA-0 is **Locally complete**;
+AA-1 is **Locally complete** ([acceptance evidence](AA-1-development-evidence.md));
+AA-2 is **Locally complete** ([acceptance evidence](AA-2-development-evidence.md));
+AA-3 is **Locally complete** ([acceptance evidence](AA-3-development-evidence.md));
+AA-4 is **Locally complete** ([acceptance evidence](AA-4-development-evidence.md));
+AA-5 through AA-8 are **Locally accepted**, as recorded in the first-release evidence above; protected production signing and registry distribution remain separate release gates. AA-9 is **Accepted and deployed to the isolated test CP**, with both original slices accepted; its evidence and live SSO limitation are recorded below. AA-10 is **Accepted and deployed to the isolated test CP**; backend and web gates, actual admin/member/App admin browser flows, responsive review and owned-fixture cleanup with preservation proof are complete.
 
 | Story | Customer or engineering outcome | Size | Depends on |
 | --- | --- | --- | --- |
@@ -198,7 +212,8 @@ compatibility work before a calendar schedule is promised. All stories start **N
 | AA-6 Publish and admin experience | Guided setup, reliable readiness, staged publish and recovery UX | M | AA-1–5 |
 | AA-7 Withdrawal and operations | Bounded revoke/expiry, logs, health, packaging and upgrades | L | AA-3–6 |
 | AA-8 Integrated qualification | Real admin/contractor acceptance, compatibility, failure and release proof | L | AA-0–7 |
-| AA-9 Per-app MFA step-up | Optional sensitive-app reauthentication with verified assurance | M/L | Later; AA-8 |
+| AA-9 Per-app MFA step-up — accepted | Optional sensitive-app reauthentication with verified assurance; both original slices accepted on the isolated test CP | M/L | AA-8 |
+| AA-10 Company catalog, App admin and access requests — accepted (Story 11) | Opt-in same-organization discovery, one scoped App admin, grant lifecycle, retained in-app request history, role-aware navigation and qualified day-two controls | M/L | AA-2, AA-5, AA-9 |
 
 ## Detailed story and slice table
 
@@ -226,8 +241,9 @@ Each slice includes implementation-level tests; AA-8 does not defer earlier secu
 | **AA-7c Packaging and upgrades** | Configuration validation, feature/capability compatibility and rollback checks. | Domain/TLS prerequisite instructions and incompatible-runtime explanations. | Signed app-proxy artifact, Compose/Helm/installer wiring, limits, edge listener, cert renewal, monitoring, backup/restore and disable/uninstall runbook. | Fresh install, disabled-by-default upgrade, restart persistence, origin bypass restriction and restore/rollback proof; existing VPN/AI services unchanged. |
 | **AA-8a Security and compatibility qualification** | Full relevant API suites with real isolated PostgreSQL/Redis in both editions; generation/contract/migration checks. | Real rendered admin/member flows; all new screens in census; responsive/accessibility contract below; focused E2E plus full web gates. | Native qualified connector/proxy topology, supported browser matrix and public/private-origin fixtures. | Negative tests first; local and SSO login, allowed/denied app, known compatibility limits, tenant isolation and all revocation paths evidenced. Depends AA-0–7. |
 | **AA-8b Release acceptance and handoff** | Document final capability/limits and operational ownership. | Founder/customer walkthrough of create→grant→publish→open→revoke→disable, including recovery states. | Load/slow-consumer bounds, cert expiry/renewal, origin/connector/CP outages, upgrade and rollback on supported topology. | Evidence tied to source/artifact; no HA/universal-app claim without proof. Release/deployment only when separately requested; no automatic CI watcher. |
-| **AA-9a Authentication assurance — later** | Add verified MFA assurance/factor time and supported IdP claims; distinguish unknown assurance from verified MFA. Reuse user's existing factors. | Optional sensitive-app requirement with accurate explanation; no per-app factor enrollment. | Session policy/version propagation only. | SSO without verified assurance cannot satisfy MFA; login-method and factor-age tests. Outside v1. |
-| **AA-9b Step-up journey — later** | Freshness policy, bound reauthentication challenge and session elevation; missing/unsupported factor behavior. | Explain why reauthentication is required, complete supported step-up, return to app safely; local and SSO cases. | Invalidate or renew affected app leases under the new policy. | No auth loop, no unauthorized fallback, replay/expiry tests; no repeated challenge while valid assurance satisfies policy. Depends AA-9a. |
+| **AA-9a Authentication assurance — accepted** | Verified server-side MFA timestamp/source on the existing parent session; local TOTP/recovery and verified signed ID-token MFA assurance with original auth_time; fixed 15-minute freshness. Unknown, stale or future proof cannot satisfy the app requirement. | Optional app MFA control with confirmation, independent of the organization mandate; reuse account factors. | Schema 176 and API/web deployed to the isolated test CP; gateway/proxy unchanged. | Session/MFA and signed OIDC/callback suites passed; live account MFA reused for app access. External customer SSO was not live-tested. Originally outside the nine-story v1 scope; accepted 2026-10-04. |
+| **AA-9b Step-up journey — accepted** | Authenticated, CSRF-protected same-parent step-up with rate limits, factor replay protection and atomic assurance promotion that preserves session lifetimes; runtime policy and freshness enforcement. | Setup through the existing account factor flow, recovery-code acknowledgement and safe return to the app; reuse fresh assurance without another challenge. | Existing unverified app sessions fail closed when the requirement is enabled; authority leases honor proof freshness. | Live admin OFF/ON, blocked existing session, setup-to-app, same-parent reuse, rejected wrong login code and successful MFA-login-to-app passed; isolated replay/expiry/logout/TTL tests passed. Depends AA-9a; accepted 2026-10-04. |
+| **AA-10 Company catalog and access requests — accepted** | Default-hidden visibility; versioned single-owner assignment; safe projections; durable request history; atomic approval through existing grants; scoped grant lifecycle, administrator fallback and server-side grant filters. | My access/Company apps/My requests, scoped Manage access/Requests, role-aware navigation, Access grant table with scoped history links, and the organization App Access switch under Settings → Features; existing Open/MFA reused. | Schema 177 and final API/web deployed to the isolated test CP. Gateway/proxy and unrelated services preserved; no new cloud topology. | Real admin/member/App admin flows, grant/MFA separation, reassignment and fallback, retained history, 1440px/390px review and exact owned-fixture cleanup passed. All 24 protected durable data projections match the cleanup baseline. |
 
 ## Security and compatibility acceptance contract
 
@@ -261,7 +277,8 @@ and screen census, and verify these outcomes in rendered browser journeys.
 3. AA-4 follows the connector proof. AA-5 combines authorization with actual browser
    delivery. Admin draft/access UI can progress alongside those contracts.
 4. AA-6 integrates publication/readback; AA-7 must finish before any beta claim.
-5. AA-8 proves the complete customer journey; AA-9 remains later.
+5. AA-8 proves the original first-release customer journey; AA-9 followed as the separately accepted tenth story.
+6. AA-10 is the separately requested eleventh story, accepted after backend gates, reviewed isolated test-CP deployment, owned admin/member/App admin browser acceptance and preservation-verified cleanup.
 
 Recommended lanes after AA-0: control-plane/data model, connector/proxy, and web UX.
 One integration owner maintains OpenAPI, state transitions and the compatibility matrix.
@@ -293,4 +310,186 @@ an existing same-named branch. If local changes prevent a safe switch, use an is
 Read this epic and the linked source seams before implementation. The first bounded work item
 is **AA-0**, not all stories at once. Record any changed baseline/assumption and qualify the
 transport contract before implementing dependent product slices. Existing SSO/local login is
-v1; per-app MFA is AA-9 later. The current planning chat does not implement the feature.
+v1; per-app MFA was deferred to AA-9 in this original planning handoff. Its subsequent implementation and scoped acceptance are recorded below.
+
+## Subsequent local UI quality pass — 2026-10-04
+
+[UI quality evidence](AA-8-ui-quality-evidence.md) records the rendered workspace comparison, responsive and keyboard checks, lifecycle proof and final web gates. Current Payroll is active revision17/authority10; final web suite has1881passed plus2expected failures across152files. The preceding source/bundle hashes and authority9 readbacks are historical snapshots before this UI pass. No remote action is implied.
+
+## AA-9 test-CP acceptance — 2026-10-04
+
+Both original slices, **AA-9a Authentication assurance** and **AA-9b Step-up journey**,
+are accepted. At this acceptance checkpoint, the epic had **10/10 stories accepted within their recorded scopes**. Story 11 (AA-10) was accepted subsequently; the current total is **11/11**, with its separate evidence below:
+the original nine-story local release qualification is unchanged, and AA-9 was additionally
+deployed and verified on the isolated App Access test CP at `https://internal.tunnex.app`.
+This is test-CP acceptance, not a protected production release or approval to deploy elsewhere.
+
+The authoritative acceptance record is
+`/home/ubuntu/app-access-staging/per-app-mfa-20261004/per-app-mfa-acceptance.json`
+(SHA256 `bb40b100cd977015c173abd5ef89cbee9d27fd1d8cf21ddaff7b600fd4c03a3b`).
+Deployment verification is recorded in
+`/opt/tunnex-app-access-live-updates/mfa176-ca0103a90d9cb7ca/runtime-order-attestation-1791107793528359643.json`:
+schema 176, exact candidate binaries/assets, existing data and MFA factors preserved,
+with gateway/proxy and unrelated services unchanged.
+
+Live browser acceptance covered admin enable/disable confirmations, independence from
+the organization MFA mandate, denial of an existing unverified app session after enable,
+account-factor enrollment with recovery-code acknowledgement followed by app launch,
+fresh same-parent reuse, rejected incorrect login MFA, and successful account MFA login
+reused for app access. Session/MFA, App Access/HTTP/database and signed OIDC/callback
+suites passed; web gates recorded 1975 passing tests and two existing expected failures,
+plus passing typecheck and production build.
+
+**SSO qualification limit:** signed OIDC fixtures were tested; an external customer SSO
+provider was not live-tested. Only verified signed ID-token MFA assurance (`amr=mfa`)
+with the original valid `auth_time` satisfies the fixed 15-minute freshness policy.
+Ordinary SSO without that proof continues to work, and a protected app requires step-up.
+
+This documentation-only status update follows the candidate source manifest
+`e1be40854ca115798d4e1228d6bce43807c94edca63ee4e29b3d59f0459630c8`.
+It does not change the tested or deployed binaries/assets; no rebuild is required for
+this update. The pre-edit document is retained with the stage evidence.
+
+
+## AA-10 / Story 11 — Company catalog, App admin and access requests
+
+Status: **ACCEPTED AND DEPLOYED TO THE ISOLATED TEST CP** (2026-10-04). This is the
+eleventh story, separate from accepted Story 10 per-app MFA (AA-9a/AA-9b, **2/2**).
+Acceptance includes the actual browser workflow, final day-two controls and owned-fixture
+cleanup with an independent preservation comparison.
+
+### Required behavior
+
+- Existing and new applications start **hidden from unauthorized members** in the
+  Company apps catalog. A control-plane app administrator explicitly opts individual
+  generic applications into same-organization discovery. Published, opted-in apps
+  expose only safe display metadata, App admin identity/availability and the member's
+  own request state; private origin, gateway and administrative configuration remain
+  protected. Existing authorized My access entries remain available independently.
+- The control-plane administrator appoints **one active same-organization App admin**
+  before initially enabling catalog visibility. Here, control-plane administrator
+  means the existing application management and grant authority
+  (`app_access:manage` plus `app_access:grant`); the feature does not introduce a
+  new installation-wide `cp_admin` requirement or give that flag to an App admin.
+- An assigned App admin can manage user/group grant lifecycle and approve/reject
+  requests **only for the currently assigned app**. Assignment grants no app content
+  access, global directory/network administration, origin/gateway configuration,
+  publication or MFA-policy powers. Safe app-scoped APIs and subject selection must
+  work for an otherwise ordinary member without expanding global roles.
+- If the assigned owner later becomes unavailable, inactive or unassigned, an already
+  visible app can remain discoverable and accept new requests. Current and pending
+  requests are retained. The control-plane administrator can review them or reassign
+  the app; members see the unavailable-owner/fallback status.
+- Members see **My access**, **Company apps** and their request history. An unauthorized
+  member can request access and see pending, approved or rejected state. App admin
+  identity appears on company-app cards and request status. Pending requests, queue
+  badges and statuses are durable **in-app** notifications; this story sends no
+  external email, Slack or other message.
+- Approval and its grant effect are one versioned, atomic operation through the
+  existing grant model. Reuse existing valid access where appropriate; reject stale
+  reviewer decisions and do not recreate revoked grants through decision replay.
+  Hiding or reassigning an app retains request history and existing grants.
+  Historical approval alone never authorizes Open; a member whose access has since
+  expired or been revoked can request again when the app remains discoverable.
+- Authorized members retain **Open** and the already accepted MFA flow. A valid grant
+  with stale/missing MFA proof shows Open plus the MFA requirement and proceeds to the
+  existing challenge/setup journey. Request approval and App admin assignment never
+  create MFA assurance or bypass account/app MFA policies. Existing app publication,
+  grants, sessions and factors remain protected.
+- Use the existing Tunnex navigation, tables, controls and confirmation/error patterns.
+  Scoped App admin screens must not load full application configuration or global
+  directory APIs merely to display grants or requests.
+
+### Final acceptance evidence
+
+Story 11 is accepted on the isolated test CP at `https://internal.tunnex.app`.
+The authoritative record is
+`/home/ubuntu/app-access-staging/company-apps-20261004/final-acceptance-20261004.json`,
+SHA256 `f1812a8bce559919ee9308192cf450ca2aa8999823c07d8db508efa84029bd72`
+(`ACCEPTED_ON_ISOLATED_TEST_CP`).
+
+- **Backend:** original **82**, navigation **6** and grant-filter **14** top-level
+  tests passed with zero skips in separate, overlapping qualification runs. These
+  are not a summed unique-test total. The 377-operation authentication walk,
+  generated CLI compilation, schema/query guards and isolated-parent preservation
+  passed. Evidence: `backend-qualification.json`, `navigation-fix/qualification.json`
+  and `grant-filters/qualification.json` under the stage above.
+- **Web:** typecheck and production build passed; **159 files, 2022 passed and two
+  existing expected failures (2024 cases)**. Grant tests were **20/20**. Evidence:
+  `grants-table-ui-qualification.log` in the same stage.
+- **Deployment:** `catalog-access177-04eff2abd6437a0a`, clean schema **177**.
+  Source-manifest SHA256 `f27a76e2e1e4d5a3fa397fa70b552cb778d7f0650677a74271d01879039bbc57`;
+  candidate manifest `04eff2abd6437a0a77fd6ff2da4b0c60b9a46ec3cfe1b0d168e12854abed802a`;
+  installed web index `4c8e21888412af5b1f3ba1569fcf099e203dead9a167278529545c38ced2b66b`.
+  Verification: `/opt/tunnex-app-access-live-updates/catalog-access177-04eff2abd6437a0a/verification.json`,
+  SHA256 `5939e64207a97bcffbd25d435d816f535c1169c601eee7ab54dfb8dd8ec2cc04`.
+- **Browser:** default-hidden discovery, opt-in/assignment, request/approval/rejection,
+  retained history, reassignment and administrator fallback passed. Assigned App
+  admins stayed scoped and received no implicit content access. Explicit grants
+  opened the private Wiki; revocation removed Open while retaining history, and
+  existing MFA enforcement remained effective. Real administrator/member/App admin
+  navigation and **1440px/390px** views passed with no page-level horizontal overflow
+  and independent screenshot review.
+- **Day-two controls:** the Access grant table, combined server filters before
+  pagination, owned-grant disable/edit restoration, revoke confirmation, exact grant
+  Audit history and scoped Observe links passed. App Access OFF/ON each persisted
+  across reload under **Settings → Features**; Applications retains only **Manage
+  feature**, with no duplicate switch. Member access to Features was denied.
+- **Owned cleanup:** fixture `a81cb8f5b8` was disabled, withdrawal confirmed and its
+  app archived; no pending publication or unrevoked grant remained. Three owned
+  users were deactivated and all **three request-history records** retained.
+  Independently compared **24 protected durable data projections** matched exactly,
+  including existing apps/publications/grants/users/MFA/domains. Comparison:
+  `/home/ubuntu/app-access-staging/company-apps-20261004/cleanup-preservation/after-20261004T124358812404Z.json`,
+  SHA256 `e4c6e31b46bd0b701f699c778278d92a8e94c1d2a50bb4f6b151d2e0aa261986`.
+- **Test resources and final health:** the two isolated test containers, two anonymous
+  volumes and exclusive network were removed by exact ownership checks; backups and
+  logs remain. Owned browser sessions/tabs and the local temporary credential file
+  were cleaned up. All seven live services retained expected image IDs and passed
+  health/readiness checks. Evidence in the stage: `isolated-test-cleanup.json`
+  (SHA256 `27b5147b432fd90ae376312287ebfac460e9cffb495171d18c4f14740c7f5cbe`) and
+  `final-health.json` (SHA256 `121dfb31e32a1841d7ca39f647155cb2961d2e2d228cca4b6c5f121e03ef75aa`).
+
+This documentation-only record follows the frozen runtime artifact. Runtime
+access-event delivery retains its existing bounded/best-effort limits; no lossless
+runtime-auditing claim is made. All **11/11 stories** are accepted within their
+recorded scopes. Local synchronization, Git commit/push and broader release or
+deployment remain separate actions.
+
+## AA-10 stable navigation correction — 2026-10-04
+
+Accepted on the same isolated test CP. Shared capability-aware navigation keeps
+Applications / Access / Requests / My Applications stable for global app admins;
+Requests stays active across the round trip and refresh. Ordinary members retain
+My access / Company apps / My requests; assigned App admins retain scoped Manage access.
+No authorization or catalog visibility changes were made.
+
+Web-only deployment: `catalog-navshell177-7c31e99eaaa1903c`.
+API/operator remain `catalog-access177-04eff2abd6437a0a`; API container/binaries,
+schema177, all20 durable projections and the six non-web services were preserved.
+Typecheck, eight affected suites (209 passed, two existing expected failures) and
+production build passed. Actual administrator four-route/refresh and member
+three-route browser checks passed; assigned-role coverage is regression-test based.
+Owned browser sessions were logged out and viewport override reset.
+
+Evidence: `/home/ubuntu/app-access-staging/company-apps-stable-nav-20261004/acceptance.json`, SHA256 `863e32912cf10e0fc1b5c40805bad721139babaf589e533a529dc06a5fc3b7fb`.
+This documentation follow-up is outside the frozen runtime artifact.
+
+## AA-10 grant views, retention and hostname reuse — 2026-10-04
+
+Accepted on the same isolated test CP, now clean schema179. Current grants default
+to active/disabled; scheduled and unavailable subjects remain explicit Current
+filters, while revoked/expired grants are under History. Global and assigned-App-admin
+views retain server-side filtering, pagination and their existing authority.
+
+Schema178 retains revoked grant rows for 90 days from revocation and grant-change
+audit records for 365 days; expired-only grants are not purged by this policy.
+Approval history retains the original grant identity after row removal. Schema179
+allows a new app UUID to reserve a hostname only after confirmed withdrawal and
+archival of its prior owner, preserving historical revisions and authority.
+
+See [the acceptance record](AA-10-followups179-acceptance.md) for exact source/build
+hashes, isolated tests, live checks, the preserved failed comparator and its
+independent audit-append proof, cleanup, and qualification limits. These are
+follow-ups to Story 11, not new story numbers; prior schema176/177 acceptance
+records above remain unchanged.

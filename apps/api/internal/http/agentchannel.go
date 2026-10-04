@@ -35,6 +35,10 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
+	appAccessDispatch          *appAccessDispatchState
+	appAccessBroker            *appAccessBroker
+	appAccess                  appAccessGatewayPort
+	appAccessEntitled          func() bool
 	ipsecRuntime               agentIPsecRepository
 	ipsecSealer                *crypto.Sealer
 	vpnAIAdapter               *aigateway.Adapter
@@ -142,6 +146,13 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/ipsec/connections/{connectionId}/acknowledgements", a.ipsecAcknowledgement)
 	r.Post("/agent/ipsec/connections/{connectionId}/permit-lease", a.ipsecPermitLease)
 	r.Get("/agent/desired-state", a.desiredState)
+	r.Get("/agent/app-access/desired-state", a.appAccessDesired)
+	r.Get("/agent/app-access/browser-desired-state", a.appAccessBrowserDesired)
+	r.Post("/agent/app-access/browser-capability", a.appAccessBrowserCapability)
+	r.MethodFunc("CONNECT", "/agent/app-access/channel", a.appAccessChannel)
+	r.Post("/agent/app-access/capability", a.appAccessCapability)
+	r.Post("/agent/app-access/report", a.appAccessReport)
+	r.Post("/agent/app-access/checks/{requestId}/result", a.appAccessResult)
 	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
 	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
 	r.Post("/agent/ai-http/organizations/{orgId}/v1/chat/completions", a.vpnAIHTTPChat)

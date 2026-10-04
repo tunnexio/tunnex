@@ -1,0 +1,66 @@
+# Explicit operator override only; base docker-compose.yml remains unchanged.
+# Pair with --profile app-access after signed-release/credential/TLS preflight.
+services:
+  api:
+    environment:
+      TUNNEX_APP_ACCESS_BASE_DOMAIN: ${TUNNEX_APP_ACCESS_BASE_DOMAIN:?Set the reviewed app domain}
+      TUNNEX_APP_PROXY_AUTHORITY_ADDR: ":8445"
+      TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
+    volumes:
+      - app_restore:/var/lib/tunnex/app-restore:ro
+  node-agent:
+    environment:
+      # Uses the existing rotating enrollment identity, CA and exact purpose SAN.
+      TUNNEX_APP_PROXY_URL: https://app-proxy:8444
+  app-proxy:
+    image: ${TUNNEX_APP_PROXY_IMAGE:?Select the signed app-proxy image digest}
+    profiles: [app-access]
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      TUNNEX_APP_PROXY_PUBLIC_ADDR: ":8443"
+      TUNNEX_APP_PROXY_GATEWAY_ADDR: ":8444"
+      TUNNEX_APP_PROXY_ADMIN_ADDR: "127.0.0.1:9093"
+      TUNNEX_APP_PROXY_BASE_DOMAIN: ${TUNNEX_APP_ACCESS_BASE_DOMAIN:?Set the reviewed app domain}
+      TUNNEX_APP_PROXY_CONSOLE_BASE_URL: ${APP_BASE_URL:?Set the HTTPS console URL}
+      # Optional exact-host portal dispatch on the same public TLS listener.
+      # Destination is operator-fixed; it never comes from browser/admin input.
+      TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL: ${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL:-}
+      TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_SERVER_NAME: ${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_SERVER_NAME:-}
+      TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_CA_FILE: ${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_CA_FILE:-}
+      TUNNEX_APP_PROXY_AUTHORITY_URL: https://api:8445
+      TUNNEX_APP_PROXY_AUTHORITY_SERVER_NAME: tunnex-app-authority
+      TUNNEX_APP_PROXY_AUTHORITY_CA_FILE: /etc/tunnex/app-proxy/agent-ca.pem
+      TUNNEX_APP_PROXY_AGENT_CA_FILE: /etc/tunnex/app-proxy/agent-ca.pem
+      TUNNEX_APP_PROXY_TLS_CERT_FILE: /etc/tunnex/app-proxy/public-cert.pem
+      TUNNEX_APP_PROXY_TLS_KEY_FILE: /etc/tunnex/app-proxy/public-key.pem
+      TUNNEX_APP_PROXY_GATEWAY_TLS_CERT_FILE: /etc/tunnex/app-proxy/gateway-cert.pem
+      TUNNEX_APP_PROXY_GATEWAY_TLS_KEY_FILE: /etc/tunnex/app-proxy/gateway-key.pem
+      TUNNEX_APP_PROXY_CREDENTIAL_FILE: /etc/tunnex/app-proxy/proxy-credential
+      TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
+    volumes:
+      # Files must be readable by image uid10001; credential remains mode0600/0400.
+      - ${TUNNEX_APP_PROXY_SECRETS_DIR:?Set the privately provisioned TLS/credential directory}:/etc/tunnex/app-proxy:ro
+      - app_restore:/var/lib/tunnex/app-restore:ro
+    ports:
+      # Only public browser TLS is published. Gateway8444 and authority8445 stay raw
+      # direct TLS on the private Compose network; no browser edge routing.
+      - "${TUNNEX_APP_PROXY_BIND_IP:-127.0.0.1}:${TUNNEX_APP_PROXY_PUBLIC_PORT:-443}:8443"
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:9093/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    depends_on:
+      api: {condition: service_healthy}
+
+# Separate from pg_data and redis_data; retained independently during recovery.
+volumes:
+  app_restore:

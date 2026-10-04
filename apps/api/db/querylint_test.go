@@ -24,10 +24,11 @@ import (
 
 // globalTables are legitimately NOT org-scoped (see migrations/README).
 var globalTables = map[string]bool{
-	"organizations":    true, // the tenant root; scoped by id/slug
-	"users":            true, // global — email-first login, org resolved after
-	"auth_tokens":      true, // global — user-scoped auth tokens, predate org context
-	"platform_secrets": true, // global — platform-wide sealed material (agent CA)
+	"organizations":              true, // the tenant root; scoped by id/slug
+	"users":                      true, // global — email-first login, org resolved after
+	"auth_tokens":                true, // global — user-scoped auth tokens, predate org context
+	"platform_secrets":           true, // global — platform-wide sealed material (agent CA)
+	"app_access_domain_settings": true, // global — singleton deployment addresses; writes require a CP-admin browser session
 	// ⭐ THE LINT ASKED THE RIGHT QUESTION AND THIS IS THE ANSWER, NOT A SILENCING.
 	//
 	// The licence is DEPLOYMENT-WIDE, and that is measured rather than preferred: `CountOrganizations` —

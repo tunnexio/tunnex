@@ -17,6 +17,7 @@ const auditLogRetentionMorePending = `-- name: AuditLogRetentionMorePending :one
 SELECT EXISTS (
     SELECT 1 FROM audit_logs audit
     WHERE audit.org_id=$1
+      AND NOT COALESCE((audit.target_type='app_access' AND audit.action IN ('app_access.grant_created','app_access.grant_updated','app_access.grant_revoked','app_access.grant_subject_removed','app_access.grant_retention_context')),false)
       AND audit.created_at < $2
       AND NOT EXISTS (
           SELECT 1 FROM k8s_connector_handoff_operations operation
@@ -614,22 +615,26 @@ SELECT id, org_id, actor_user_id, action, target_type, target_id, metadata, crea
 WHERE org_id = $1
   AND ($2::uuid IS NULL OR actor_user_id = $2)
   AND ($3::text IS NULL OR action = $3)
-  AND ($4::timestamptz IS NULL OR created_at >= $4)
-  AND ($5::timestamptz IS NULL OR created_at <= $5)
-  AND ($6::timestamptz IS NULL OR (created_at, id) < ($6, $7::uuid))
+  AND ($4::text IS NULL OR target_type = $4)
+  AND ($5::text IS NULL OR target_id = $5)
+  AND ($6::timestamptz IS NULL OR created_at >= $6)
+  AND ($7::timestamptz IS NULL OR created_at <= $7)
+  AND ($8::timestamptz IS NULL OR (created_at, id) < ($8, $9::uuid))
 ORDER BY created_at DESC, id DESC
-LIMIT $8
+LIMIT $10
 `
 
 type ListAuditLogsByOrgParams struct {
-	OrgID    pgtype.UUID        `json:"org_id"`
-	Actor    pgtype.UUID        `json:"actor"`
-	Action   *string            `json:"action"`
-	FromTs   pgtype.Timestamptz `json:"from_ts"`
-	ToTs     pgtype.Timestamptz `json:"to_ts"`
-	CursorTs pgtype.Timestamptz `json:"cursor_ts"`
-	CursorID pgtype.UUID        `json:"cursor_id"`
-	Lim      int32              `json:"lim"`
+	OrgID      pgtype.UUID        `json:"org_id"`
+	Actor      pgtype.UUID        `json:"actor"`
+	Action     *string            `json:"action"`
+	TargetType *string            `json:"target_type"`
+	TargetID   *string            `json:"target_id"`
+	FromTs     pgtype.Timestamptz `json:"from_ts"`
+	ToTs       pgtype.Timestamptz `json:"to_ts"`
+	CursorTs   pgtype.Timestamptz `json:"cursor_ts"`
+	CursorID   pgtype.UUID        `json:"cursor_id"`
+	Lim        int32              `json:"lim"`
 }
 
 // Org-scoped audit feed with optional filters (actor / action / date range) and
@@ -642,6 +647,8 @@ func (q *Queries) ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrg
 		arg.OrgID,
 		arg.Actor,
 		arg.Action,
+		arg.TargetType,
+		arg.TargetID,
 		arg.FromTs,
 		arg.ToTs,
 		arg.CursorTs,
@@ -700,6 +707,7 @@ WHERE NOT EXISTS (
               SELECT 1
               FROM audit_logs audit
               WHERE audit.org_id=setting.org_id
+      AND NOT COALESCE((audit.target_type='app_access' AND audit.action IN ('app_access.grant_created','app_access.grant_updated','app_access.grant_revoked','app_access.grant_subject_removed','app_access.grant_retention_context')),false)
                 AND audit.created_at
                     < statement_timestamp()
                         - setting.retention_days * interval '24 hours'

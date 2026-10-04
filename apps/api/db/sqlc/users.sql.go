@@ -56,7 +56,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createBootstrapAdmin = `-- name: CreateBootstrapAdmin :one
 INSERT INTO users (email, name, password_hash, email_verified_at, cp_admin, must_change_password)
 VALUES ($1, $2, $3, now(), true, true)
-RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin
+RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type CreateBootstrapAdminParams struct {
@@ -81,6 +81,7 @@ func (q *Queries) CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapA
 		&i.CanCreateOrgs,
 		&i.MustChangePassword,
 		&i.CpAdmin,
+		&i.AppAuthEpoch,
 	)
 	return i, err
 }
@@ -88,7 +89,7 @@ func (q *Queries) CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapA
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, name, password_hash)
 VALUES ($1, $2, $3)
-RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin
+RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type CreateUserParams struct {
@@ -113,12 +114,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CanCreateOrgs,
 		&i.MustChangePassword,
 		&i.CpAdmin,
+		&i.AppAuthEpoch,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin FROM users
+SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch FROM users
 WHERE email = $1 AND deleted_at IS NULL
 `
 
@@ -138,12 +140,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CanCreateOrgs,
 		&i.MustChangePassword,
 		&i.CpAdmin,
+		&i.AppAuthEpoch,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin FROM users
+SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch FROM users
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -163,6 +166,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CanCreateOrgs,
 		&i.MustChangePassword,
 		&i.CpAdmin,
+		&i.AppAuthEpoch,
 	)
 	return i, err
 }
@@ -255,7 +259,7 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email, name = EXCLUDED.name,
         cp_admin = EXCLUDED.cp_admin
-RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin
+RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type UpsertUserParams struct {
@@ -296,6 +300,7 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (User, e
 		&i.CanCreateOrgs,
 		&i.MustChangePassword,
 		&i.CpAdmin,
+		&i.AppAuthEpoch,
 	)
 	return i, err
 }

@@ -114,6 +114,10 @@ func Verify(s SignedManifest, publicKey ed25519.PublicKey) error {
 			return fmt.Errorf("release manifest image %q is missing a valid amd64/arm64 digest", name)
 		}
 	}
+	// App Access is opt-in; older signed descriptors remain valid without it.
+	if image, ok := s.Manifest.Images["app-proxy"]; ok && (!validDigest(image.AMD64Digest) || !validDigest(image.ARM64Digest)) {
+		return errors.New("release manifest app-proxy requires valid amd64/arm64 digests")
+	}
 	// Older signed releases predate the bundled AI engine. If present, the
 	// additional image must bind both supported architectures just like the
 	// mandatory control-plane images.

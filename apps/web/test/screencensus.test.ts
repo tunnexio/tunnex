@@ -66,6 +66,12 @@ const EXEMPT: Record<string, string> = {
 
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
+  "AppAccessCompanyApplications.tsx": "appaccesscatalog.test.tsx — display-only discovery, owner fallback, authoritative grant/MFA separation and failed catalog reads",
+  "AppAccessRequests.tsx": "appaccesscatalog.test.tsx — retained self history, atomic versioned decisions and failed request reads",
+  "AppAccessManagedApplications.tsx": "appaccesscatalog.test.tsx — scoped owner projection/grants, ownership loss and failed reads without admin topology",
+  "AppAccess.tsx": "appaccesswiring.test.tsx + appaccessmfa.test.tsx — role-aware landing, member topology refusal, draft API binding, stale-save preservation, immediate MFA policy confirmation and read-failure separation",
+  "AppAccessAccess.tsx": "appaccessgrants.test.tsx: permissions, stale input, grant impact and effective access",
+  "AppAccessMyApplications.tsx": "appaccessmyapps.test.tsx + appaccessmfa.test.tsx: own catalog/session binding, fresh MFA reuse, enrollment acknowledgment, verification-gated nonce retry, invalid handoff and authoritative sign-out failure",
   "Connect.tsx": "test/setuphandoff.test.tsx — native client handoff, authoritative address and failed metadata",
   "ChangePassword.tsx": "test/setuphandoff.test.tsx — safe return destination and failed password save",
   "AcceptInvite.tsx": "test/setuphandoff.test.tsx — client handoff without session minting and expired invitation refusal",
@@ -103,8 +109,10 @@ const COVERED: Record<string, string> = {
     "test/userswiring.test.tsx — the sole owner cannot be demoted (lockout), both directions + failed roster surfaced, never 'no members yet'",
   "AuditLog.tsx":
     "test/auditlogwiring.test.tsx — paging uses the APPLIED filter set, never a mid-edit one + failed load surfaced, never an empty history",
+  "AppAccessEvents.tsx":
+    "test/appaccessevents.test.tsx — independent app-event endpoint, exact tenant/filter keyset paging, invalid filter refusal, unavailable telemetry and read failure remain honest",
   "Settings.tsx":
-    "test/settingswiring.test.tsx — the control reflects the ORG's opt-in state, not a default (misconfigure, stays in settings) + edition gating both directions (destination: license) + failed org load surfaced, no defaults offered",
+    "test/settingswiring.test.tsx — the control reflects the ORG's opt-in state, not a default (misconfigure, stays in settings) + edition gating both directions (destination: license) + failed org load surfaced, no defaults offered + CP-admin-only App Access domains deep link, including no-org access",
 };
 
 // PENDING — accounted for, NOT yet covered. This list is the BACKLOG STATED OUT LOUD, and it exists because a
@@ -191,7 +199,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(19);
+    expect(Object.keys(COVERED).length).toBe(26);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -211,7 +219,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 31 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(31);
+  it("the ledger is a snapshot of today — 38 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(38);
   });
 });

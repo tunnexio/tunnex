@@ -1,0 +1,8 @@
+# Input is the AppProxy-only projection emitted by scripts/app-proxy-contract-gen.
+# UUID wire strings intentionally need no third-party runtime UUID type.
+package: authoritywire
+output: ../../packages/apptransport/authoritywire/types.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true

@@ -19,6 +19,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/publicurl"
 	"github.com/tunnexio/tunnex/apps/api/internal/sso"
 )
 
@@ -114,7 +115,11 @@ func (s *Service) Start(ctx context.Context, in StartInput) (StartResult, error)
 	if err != nil {
 		return StartResult{}, err
 	}
-	flow, err := json.Marshal(flowState{ConnectionID: row.ID, OrgID: in.OrgID, ActorID: in.ActorID, Resource: in.Resource, Verifier: verifier, TokenEndpoint: metadata.TokenEndpoint})
+	callbackURL := s.callbackURL
+	if base := publicurl.From(ctx, ""); base != "" {
+		callbackURL = strings.TrimSuffix(base, "/") + "/api/v1/mcp/oauth/callback"
+	}
+	flow, err := json.Marshal(flowState{ConnectionID: row.ID, OrgID: in.OrgID, ActorID: in.ActorID, Resource: in.Resource, Verifier: verifier, TokenEndpoint: metadata.TokenEndpoint, CallbackURL: callbackURL})
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -128,7 +133,7 @@ func (s *Service) Start(ctx context.Context, in StartInput) (StartResult, error)
 	q := auth.Query()
 	q.Set("response_type", "code")
 	q.Set("client_id", strings.TrimSpace(in.ClientID))
-	q.Set("redirect_uri", s.callbackURL)
+	q.Set("redirect_uri", callbackURL)
 	q.Set("state", state)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
@@ -165,7 +170,13 @@ func (s *Service) Complete(ctx context.Context, state, code string) error {
 		}
 		secret = string(plain)
 	}
-	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {s.callbackURL}, "client_id": {row.ClientID}, "code_verifier": {flow.Verifier}, "resource": {flow.Resource}}
+	// Bind the exchange to the address used at consent time, even if the
+	// administrator changed the canonical portal URL during the round trip.
+	callbackURL := flow.CallbackURL
+	if callbackURL == "" {
+		callbackURL = s.callbackURL // Flows created before runtime domain settings.
+	}
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {callbackURL}, "client_id": {row.ClientID}, "code_verifier": {flow.Verifier}, "resource": {flow.Resource}}
 	if secret != "" {
 		form.Set("client_secret", secret)
 	}
@@ -327,6 +338,7 @@ func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint
 type flowState struct {
 	ConnectionID, OrgID, ActorID      uuid.UUID
 	Resource, Verifier, TokenEndpoint string
+	CallbackURL                       string `json:",omitempty"`
 }
 
 func flowKey(state string) string { return "mcpoauth:" + state }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -132,6 +133,8 @@ func (p *oidcProvider) Exchange(ctx context.Context, code, verifier, expectedNon
 		return Identity{}, err
 	}
 	id.Provider = p.name
+	// Never obtain MFA assurance from UserInfo, an auth-method label or token issue time.
+	id.MFAVerifiedAt = verifiedIDTokenMFATime(idt, time.Now())
 	return id, nil
 }
 

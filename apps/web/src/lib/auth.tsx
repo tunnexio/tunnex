@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, type AuthUser } from "./api";
+import { toast } from "sonner";
 
 type AuthState =
   | { status: "loading" }
@@ -16,7 +17,7 @@ type AuthContextValue = {
   state: AuthState;
   // login records an already-authenticated user (the Login page calls the API).
   setUser: (user: AuthUser) => void;
-  logout: () => Promise<void>;
+  logout: () => Promise<boolean>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,8 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setUser = (user: AuthUser) => setState({ status: "authed", user });
 
   const logout = async () => {
-    await api.POST("/api/v1/auth/logout", {}).catch(() => {});
+    try {
+      const { error, response } = await api.POST("/api/v1/auth/logout", {});
+      if (error || response.status !== 204) {
+        toast.error("Could not confirm sign-out. Please retry.");
+        return false;
+      }
+    } catch {
+      toast.error("Could not confirm sign-out. Please retry.");
+      return false;
+    }
     setState({ status: "anon" });
+    return true;
   };
 
   return (

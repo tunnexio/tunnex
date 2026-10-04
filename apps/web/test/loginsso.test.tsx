@@ -65,9 +65,9 @@ function metaThen(...starts: unknown[]) {
   });
 }
 
-function renderLogin() {
+function renderLogin(path = "/login") {
   return render(
-    <MemoryRouter initialEntries={["/login"]}>
+    <MemoryRouter initialEntries={[path]}>
       <Login />
     </MemoryRouter>,
   );
@@ -103,6 +103,23 @@ describe("SSO sign-in without an organization field", () => {
     expect(startCall?.[1]).toEqual({
       params: { path: { provider: "google" }, query: undefined },
     });
+  });
+
+  it("carries the internal app launch through provider sign-in", async () => {
+    captureNavigation();
+    metaThen({ data: { redirect_url: "https://accounts.google.com/o/oauth2/v2/auth?x=app" } });
+    const next = "/app-access/launch?orgId=office&appId=payroll&nonce_hash=browser";
+    renderLogin(`/login?next=${encodeURIComponent(next)}`);
+    fireEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/api/v1/auth/sso/{provider}/start", { params: { path: { provider: "google" }, query: { next } } }));
+  });
+
+  it("does not forward an external login return to provider start", async () => {
+    captureNavigation();
+    metaThen({ data: { redirect_url: "https://accounts.google.com/o/oauth2/v2/auth?x=app" } });
+    renderLogin("/login?next=https%3A%2F%2Fevil.example");
+    fireEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/api/v1/auth/sso/{provider}/start", { params: { path: { provider: "google" }, query: { next: "/dashboard" } } }));
   });
 
   // A failure that is NOT the person's to fix must not sprout a field that implies they typed

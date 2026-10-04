@@ -1,0 +1,103 @@
+{{- if .Values.appAccess.enabled }}
+{{- include "tunnex-cp.appAccessGuard" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-proxy
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app-proxy
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: app-proxy}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: app-proxy}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, fsGroupChangePolicy: OnRootMismatch}
+      initContainers:
+        # Secret projections with fsGroup gain group permission; copy the service
+        # credential to an owner-only file before the strict runtime reads it.
+        - name: private-credential
+          image: {{ .Values.appAccess.proxy.image | quote }}
+          command: [/bin/sh, -ec]
+          args: ["umask 077; cp /source/proxy-credential /private/proxy-credential; chmod 0400 /private/proxy-credential"]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: credential-source, mountPath: /source, readOnly: true}
+            - {name: credential-private, mountPath: /private}
+      containers:
+        - name: app-proxy
+          image: {{ .Values.appAccess.proxy.image | quote }}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          ports:
+            - {name: public-tls, containerPort: 8443}
+            - {name: gateway-tls, containerPort: 8444}
+            - {name: operator, containerPort: 9093}
+          env:
+            - {name: TUNNEX_APP_PROXY_PUBLIC_ADDR, value: ":8443"}
+            - {name: TUNNEX_APP_PROXY_GATEWAY_ADDR, value: ":8444"}
+            - {name: TUNNEX_APP_PROXY_ADMIN_ADDR, value: ":9093"}
+            - {name: TUNNEX_APP_PROXY_BASE_DOMAIN, value: {{ .Values.appAccess.baseDomain | quote }}}
+            - {name: TUNNEX_APP_PROXY_CONSOLE_BASE_URL, value: {{ .Values.appBaseURL | quote }}}
+            - {name: TUNNEX_APP_PROXY_AUTHORITY_URL, value: "https://app-authority:8445"}
+            - {name: TUNNEX_APP_PROXY_AUTHORITY_SERVER_NAME, value: tunnex-app-authority}
+            - {name: TUNNEX_APP_PROXY_AUTHORITY_CA_FILE, value: /tls/agent/ca.crt}
+            - {name: TUNNEX_APP_PROXY_AGENT_CA_FILE, value: /tls/agent/ca.crt}
+            - {name: TUNNEX_APP_PROXY_TLS_CERT_FILE, value: /tls/public/tls.crt}
+            - {name: TUNNEX_APP_PROXY_TLS_KEY_FILE, value: /tls/public/tls.key}
+            - {name: TUNNEX_APP_PROXY_GATEWAY_TLS_CERT_FILE, value: /tls/gateway/tls.crt}
+            - {name: TUNNEX_APP_PROXY_GATEWAY_TLS_KEY_FILE, value: /tls/gateway/tls.key}
+            - {name: TUNNEX_APP_PROXY_CREDENTIAL_FILE, value: /private/proxy-credential}
+            - {name: TUNNEX_APP_ACCESS_RESTORE_MARKER, value: /var/lib/tunnex/app-restore/app-access.pending.json}
+          readinessProbe: {httpGet: {path: /readyz, port: operator}, periodSeconds: 5, timeoutSeconds: 2}
+          livenessProbe: {httpGet: {path: /livez, port: operator}, periodSeconds: 10, timeoutSeconds: 2}
+          resources:
+            {{- toYaml .Values.appAccess.proxy.resources | nindent 12 }}
+          volumeMounts:
+            - {name: credential-private, mountPath: /private, readOnly: true}
+            - {name: public-tls, mountPath: /tls/public, readOnly: true}
+            - {name: gateway-tls, mountPath: /tls/gateway, readOnly: true}
+            - {name: agent-ca, mountPath: /tls/agent, readOnly: true}
+            - {name: app-restore, mountPath: /var/lib/tunnex/app-restore, subPath: app-restore, readOnly: true}
+      volumes:
+        - {name: credential-private, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - name: credential-source
+          secret: {secretName: {{ .Values.appAccess.proxy.credentialSecret | quote }}, defaultMode: 0444}
+        - name: public-tls
+          secret: {secretName: {{ .Values.appAccess.proxy.publicTLSSecret | quote }}, defaultMode: 0440}
+        - name: gateway-tls
+          secret: {secretName: {{ .Values.appAccess.proxy.gatewayTLSSecret | quote }}, defaultMode: 0440}
+        - name: agent-ca
+          secret: {secretName: {{ .Values.appAccess.proxy.agentCASecret | quote }}, defaultMode: 0440}
+        - name: app-restore
+          persistentVolumeClaim: {claimName: {{ .Values.appAccess.restore.existingClaim | quote }}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: app-proxy}
+spec:
+  type: {{ .Values.appAccess.proxy.publicServiceType }}
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: app-proxy}
+  ports: [{name: public-tls, port: 443, targetPort: public-tls}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: app-proxy-gateway}
+spec:
+  type: {{ .Values.appAccess.proxy.gatewayServiceType }}
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: app-proxy}
+  ports: [{name: gateway-tls, port: 8444, targetPort: gateway-tls}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: app-authority}
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
+  ports: [{name: authority-tls, port: 8445, targetPort: app-authority}]
+{{- end }}

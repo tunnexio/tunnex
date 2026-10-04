@@ -150,9 +150,11 @@ migrate-create: ## Scaffold a migration pair: make migrate-create name=add_widge
 	touch $$dir/$${next}_$(name).up.sql $$dir/$${next}_$(name).down.sql; \
 	echo "created $$dir/$${next}_$(name).{up,down}.sql"
 
+SQLC_IMAGE ?= sqlc/sqlc:1.31.1
+
 .PHONY: sqlc
 sqlc: ## Regenerate typed query code from db/queries
-	docker run --rm -v "$(PWD)/apps/api":/src -w /src sqlc/sqlc generate
+	docker run --rm -v "$(PWD)/apps/api":/src -w /src $(SQLC_IMAGE) generate
 
 # --- Code generation (OpenAPI-first: the spec is the single source of truth) ---
 # Pin the exact Go patch so local and container builds produce identical codegen.
@@ -215,7 +217,7 @@ generate-rbac: ## Emit the RBAC grant table (rbac.Policy) as JSON for the web cl
 	  go run ./cmd/rbac-policy-gen /repo/apps/web/src/lib/rbac-policy.json
 
 .PHONY: generate-go
-generate-go: ## Generate the Go server (api) + Go client (cli) from the spec
+generate-go: generate-app-proxy ## Generate the Go server and clients from the spec
 	@mkdir -p apps/api/internal/api apps/cli/internal/api
 	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=mod $(GO_IMAGE) \
 	  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
@@ -223,6 +225,13 @@ generate-go: ## Generate the Go server (api) + Go client (cli) from the spec
 	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=mod $(GO_IMAGE) \
 	  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
 	  -config oapi-codegen.yaml ../../openapi/openapi.yaml
+
+.PHONY: generate-app-proxy
+generate-app-proxy: ## Generate isolated proxy models without public API runtime dependencies
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) \
+	  sh -ec 'go run ../../scripts/app-proxy-contract-gen/main.go -output /tmp/app-proxy.openapi.json; \
+	    cd /repo/apps/app-proxy; \
+	    go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -config oapi-codegen.yaml /tmp/app-proxy.openapi.json'
 
 .PHONY: generate-ts
 generate-ts: ## Generate the TypeScript API types from the spec
@@ -232,7 +241,7 @@ generate-ts: ## Generate the TypeScript API types from the spec
 .PHONY: generate-check
 generate-check: generate ## Fail if generated code is out of date (CI drift guard)
 	@git diff --exit-code -- \
-	  apps/api/internal/api apps/cli/internal/api apps/api/db/sqlc packages/shared/src/api.d.ts apps/web/src/lib/rbac-policy.json \
+	  apps/api/internal/api apps/cli/internal/api packages/apptransport/authoritywire apps/api/db/sqlc packages/shared/src/api.d.ts apps/web/src/lib/rbac-policy.json \
 	  packages/shared/generated \
 	  || { echo ""; echo "ERROR: generated code is stale. Run 'make generate' and commit the result."; exit 1; }
 	@echo "generated code is up to date."
@@ -254,9 +263,9 @@ cli-dist: ## Cross-compile the tunnex CLI for release + SHA256SUMS (S5.1)
 .PHONY: build-editions
 build-editions: ## Compile both open and enterprise builds (catches edition rot)
 	@echo ">> open build"
-	docker run --rm -v "$(PWD)/apps/api":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build ./...
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build ./...
 	@echo ">> enterprise build (-tags enterprise)"
-	docker run --rm -v "$(PWD)/apps/api":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build -tags enterprise ./...
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build -tags enterprise ./...
 
 .PHONY: test-editions
 # -p 1: api packages run SERIALLY. The integration suites share ONE live DB and several commit
@@ -294,8 +303,20 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# --cap-add=NET_ADMIN: the L11 nft-render-check (TestRenderedRulesetIsValidNft) runs `nft -c` which opens
 	# netlink to init its cache — needs NET_ADMIN even in check-only mode. Without the cap that one test SKIPS
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
-	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)/apps/node":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
 	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables iptables && go test -count=1 ./..."
+
+.PHONY: test-apptransport
+test-apptransport: ## Test shared App Access transport and origin policy
+	docker run --rm -v "$(PWD)":/repo -w /repo/packages/apptransport $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) go test -count=1 ./...
+
+.PHONY: test-app-proxy
+test-app-proxy: ## Test isolated App Access browser proxy
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) go test ../../scripts/app-proxy-contract-gen/main.go ../../scripts/app-proxy-contract-gen/main_test.go
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/app-proxy $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) go test -count=1 ./...
 
 .PHONY: test-operator
 test-operator: ## Build the GitOps operator + run the no-DB-import census (S10.2). Edition-agnostic (one build; the operator is open deployment tooling, no enterprise tag).
@@ -343,7 +364,7 @@ seed: ## Seed the demo org/user (idempotent, non-destructive)
 	@# `seed-open` could not re-seed a review database once anything had accumulated in it (71 orgs,
 	@# left by pointing a Go test run at that stack). The chain's own comment says a one-command
 	@# switch has to carry the whole chain; it was not carrying this.
-	docker run --rm --network $(NET) -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly \
+	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_SEED_FORCE="$(TUNNEX_SEED_FORCE)" \
 	  -e DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  $(GO_IMAGE) go run ./cmd/seed
@@ -351,7 +372,7 @@ seed: ## Seed the demo org/user (idempotent, non-destructive)
 .PHONY: seed-enterprise
 seed-enterprise: ## Seed the ENTERPRISE fixtures (SSO config + strandable device) ON TOP of `seed` (S7.4c)
 	@echo '>> enterprise seed (requires the stack up so the master key exists; run after: make seed)'
-	docker run --rm --network $(NET) -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly \
+	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -v $(SECRETS_VOL):/var/lib/tunnex/secrets -e TUNNEX_SECRETS_DIR=/var/lib/tunnex/secrets \
 	  -e DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  $(GO_IMAGE) go run ./cmd/seed-enterprise
@@ -372,7 +393,7 @@ dev-sso-config: ## Point the LOCAL stack at a REAL IdP (dev only — see cmd/dev
 	@#   TUNNEX_SSO_CLIENT_ID=... TUNNEX_SSO_CLIENT_SECRET=... TUNNEX_SSO_TENANT_ID=... \
 	@#   make dev-sso-config
 	@test -n "$$TUNNEX_SSO_CLIENT_SECRET" || { echo "TUNNEX_SSO_CLIENT_SECRET is not set in your environment"; exit 1; }
-	docker run --rm --network $(NET) -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly \
+	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -v $(SECRETS_VOL):/var/lib/tunnex/secrets -e TUNNEX_SECRETS_DIR=/var/lib/tunnex/secrets \
 	  -e DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  -e APP_BASE_URL="$(shell sed -n 's/^APP_BASE_URL=//p' .env)" \
@@ -386,7 +407,7 @@ seed-fixtures: ## Seed the DEMO FIXTURES (populated network for UI review) ON TO
 	@# ⛔ TUNNEX_SEED_FORCE IS PASSED THROUGH. The seeder refuses on any non-demo org and its own hint names
 	@# this variable as the override — but the Makefile did not forward it, so the DOCUMENTED escape hatch did
 	@# not work through the documented entry point. TUNNEX_API_URL rides along for the posture-block report.
-	docker run --rm --network $(NET) -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly \
+	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -e DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  -e TUNNEX_SEED_FORCE="$(TUNNEX_SEED_FORCE)" -e TUNNEX_API_URL="$(TUNNEX_API_URL)" \
 	  -e TUNNEX_SEED_STRICT="$(TUNNEX_SEED_STRICT)" \
@@ -441,7 +462,7 @@ e2e: ## One command: bring the stack up healthy, run API integration + Playwrigh
 	@# it reliable, because a concurrently-committed org now consumes the ONLY Community slot and
 	@# TestOrgLifecycle's first create is refused. The ceiling exposed the race, it did not cause it —
 	@# lifecycle_test.go's own comment has described this exact class since S8.5.
-	docker run --rm --network $(NET) -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly \
+	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  $(GO_IMAGE) go test -p 1 ./...
 	@echo ">> Playwright browser e2e (SPA -> API correlation chain)"
@@ -465,3 +486,5 @@ web: ## Run the web dev server locally
 tidy: ## Tidy Go modules
 	cd apps/api && go mod tidy
 	cd apps/node && go mod tidy
+	cd packages/apptransport && go mod tidy
+	cd apps/app-proxy && go mod tidy

@@ -24,6 +24,7 @@ func main() {
 	platform := flag.String("platform", runtime.GOARCH, "target image architecture: amd64 or arm64")
 	bootstrapDescriptor := flag.String("bootstrap-verifier", "", "also verify this detached managed-agent verifier descriptor")
 	bootstrapAssets := flag.String("bootstrap-verifier-assets", "", "verify downloaded verifier executable bytes from this directory")
+	requireAppProxy := flag.Bool("require-app-proxy", false, "require the optional signed App Access proxy image for opt-in install/upgrade")
 	flag.Parse()
 	if *manifest == "" || *key == "" {
 		fmt.Fprintln(os.Stderr, "usage: releaseverify -manifest FILE -public-key KEY")
@@ -33,6 +34,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "release manifest rejected:", err)
 		os.Exit(1)
+	}
+	if *requireAppProxy {
+		if _, ok := s.Manifest.Images["app-proxy"]; !ok {
+			fmt.Fprintln(os.Stderr, "release manifest rejected: App Access proxy image is absent")
+			os.Exit(1)
+		}
 	}
 	if *expectedSource != "" && !strings.EqualFold(*expectedSource, s.Manifest.SourceSHA) {
 		fmt.Fprintln(os.Stderr, "release manifest rejected: source SHA does not match this installation")
@@ -63,6 +70,9 @@ func main() {
 	images := []string{"api", "web", "nginx", "node-agent", "migrate"}
 	if _, ok := s.Manifest.Images["ai-engine"]; ok {
 		images = append(images, "ai-engine")
+	}
+	if _, ok := s.Manifest.Images["app-proxy"]; ok {
+		images = append(images, "app-proxy")
 	}
 	for _, name := range images {
 		image := s.Manifest.Images[name]

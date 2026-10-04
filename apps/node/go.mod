@@ -6,6 +6,7 @@ module github.com/tunnexio/tunnex/apps/node
 go 1.26.8
 
 require (
+	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
 	github.com/florianl/go-conntrack v0.7.0
 	github.com/florianl/go-nflog/v2 v2.3.0
 	github.com/google/uuid v1.6.0
@@ -30,3 +31,5 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )
+
+replace github.com/tunnexio/tunnex/packages/apptransport => ../../packages/apptransport

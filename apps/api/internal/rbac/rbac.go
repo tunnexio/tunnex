@@ -9,18 +9,25 @@ import "sort"
 type Permission string
 
 const (
-	PermAIWorkloadView      Permission = "ai_workload:view"
-	PermAIWorkloadManage    Permission = "ai_workload:manage"
-	PermAIModelAccessView   Permission = "ai_model_access:view"
-	PermAIModelAccessManage Permission = "ai_model_access:manage"
-	PermAIModelUse          Permission = "ai_model:use"
-	PermOrgView             Permission = "org:view"
-	PermOrgUpdate           Permission = "org:update"
-	PermOrgDelete           Permission = "org:delete"
-	PermMemberList          Permission = "member:list"
-	PermMemberInvite        Permission = "member:invite"
-	PermConnectivityUse     Permission = "connectivity:use"
-	PermConnectivityManage  Permission = "connectivity:manage"
+	// App Access administration never grants implicit application content access.
+	PermAppAccessView          Permission = "app_access:view"
+	PermAppAccessManage        Permission = "app_access:manage"
+	PermAppAccessGrant         Permission = "app_access:grant"
+	PermAppAccessUse           Permission = "app_access:use"
+	PermAppAccessSessionManage Permission = "app_access:session_manage"
+	PermAppAccessEventView     Permission = "app_access:event_view"
+	PermAIWorkloadView         Permission = "ai_workload:view"
+	PermAIWorkloadManage       Permission = "ai_workload:manage"
+	PermAIModelAccessView      Permission = "ai_model_access:view"
+	PermAIModelAccessManage    Permission = "ai_model_access:manage"
+	PermAIModelUse             Permission = "ai_model:use"
+	PermOrgView                Permission = "org:view"
+	PermOrgUpdate              Permission = "org:update"
+	PermOrgDelete              Permission = "org:delete"
+	PermMemberList             Permission = "member:list"
+	PermMemberInvite           Permission = "member:invite"
+	PermConnectivityUse        Permission = "connectivity:use"
+	PermConnectivityManage     Permission = "connectivity:manage"
 	// PermMemberManage is the base capability to change roles / remove members.
 	// Relational limits (who may touch whom) are applied by CanManageMembership.
 	PermMemberManage Permission = "member:manage"
@@ -222,12 +229,15 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
 	RoleMember: {
+		PermAppAccessUse:    true,
 		PermConnectivityUse: true,
 		PermAIModelUse:      true,
 		PermOrgView:         true,
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
+		PermAppAccessUse: true, PermAppAccessSessionManage: true, PermAppAccessEventView: true,
 		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermConnectivityManage:          true,
@@ -276,6 +286,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
+		PermAppAccessUse: true, PermAppAccessSessionManage: true, PermAppAccessEventView: true,
 		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermConnectivityManage:          true,
@@ -391,7 +403,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

@@ -38,6 +38,17 @@ describe("first connection handoff",()=>{
     await screen.findByText("Current password is incorrect");
     expect(mock.setUser).not.toHaveBeenCalled();
   });
+  it("reports a committed password change when the replacement session cannot be created",async()=>{
+    mock.post.mockResolvedValue({error:{error:{code:"password_changed_login_required",message:"Password changed. Sign in again with your new password."}}});
+    render(<MemoryRouter initialEntries={["/change-password?next=%2Fapp-access%2Flaunch"]}><ChangePassword/></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("New password"),{target:{value:"sample-password"}});
+    fireEvent.change(screen.getByLabelText("Confirm new password"),{target:{value:"sample-password"}});
+    fireEvent.click(screen.getByRole("button",{name:"Set password"}));
+    await screen.findByText("Password changed. Sign in again with your new password.");
+    expect(screen.getByRole("button",{name:"Sign in with your new password"})).toBeTruthy();
+    expect(screen.queryByRole("button",{name:"Set password"})).toBeNull();
+    expect(mock.setUser).not.toHaveBeenCalled();
+  });
   it("keeps an expired invitation out of client onboarding",async()=>{
     mock.post.mockResolvedValue({error:{error:{message:"Invitation expired"}}});
     render(<MemoryRouter initialEntries={["/accept-invite?token=expired"]}><AcceptInvite/></MemoryRouter>);
