@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tunnexio/tunnex/packages/apptransport/authoritywire"
 	"github.com/tunnexio/tunnex/packages/apptransport"
+	"github.com/tunnexio/tunnex/packages/apptransport/authoritywire"
 )
 
 // This fixture injects publication and single-use redemption authority. It
@@ -122,6 +122,49 @@ func TestReservedPathsAndMalformedTargetsNeverIssueCookie(t *testing.T) {
 		}
 	}
 }
+
+func TestLaunchAndRedeemRejectAuthorityLikeTargets(t *testing.T) {
+	for _, target := range []string{
+		"//evil.example/path", `/\evil.example/path`, "///evil.example/path",
+		"/%2fevil.example/path", "/%2Fevil.example/path", "/%5cevil.example/path",
+		"/%5Cevil.example/path", "/%2f%5cevil.example/path", "/%09/evil.example/path",
+	} {
+		t.Run(target, func(t *testing.T) {
+			for _, redeem := range []bool{false, true} {
+				a := newLaunchAuthority()
+				h := launchHandler(t, a)
+				path := StartPath + "?" + url.Values{"target": {target}}.Encode()
+				cookie := ""
+				if redeem {
+					nonce := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("n", 32)))
+					hash := sha256.Sum256([]byte(nonce))
+					a.hash = hex.EncodeToString(hash[:])
+					a.result.RelativeTarget = target
+					path = RedeemPath + "?code=" + a.code
+					cookie = apptransport.AppNonceCookie + "=" + nonce
+				}
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, appRequest(http.MethodGet, path, cookie))
+				if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" || len(w.Header().Values("Set-Cookie")) != 0 {
+					t.Fatalf("redeem=%v: unsafe target issued redirect or cookie: status=%d", redeem, w.Code)
+				}
+				if !redeem && a.pendingInput.NonceHash != "" {
+					t.Fatal("unsafe target created a pending launch")
+				}
+			}
+		})
+	}
+}
+
+func TestNavigationTargetPreservesSafePathsAndQueries(t *testing.T) {
+	for _, target := range []string{"/", "/forms?tab=details", "/reports%20today?next=%2Fforms", "/reports?search=%3Cscript%3E"} {
+		got, err := navigationTarget(target)
+		if err != nil || got != target {
+			t.Fatalf("navigationTarget(%q) = %q, %v", target, got, err)
+		}
+	}
+}
+
 func TestRedeemFailureReplayAndSafeReturn(t *testing.T) {
 	for _, kind := range []string{"wrong_nonce", "missing_nonce", "duplicate_nonce", "wrong_host", "external_return", "expired", "invalid_token"} {
 		a := newLaunchAuthority()

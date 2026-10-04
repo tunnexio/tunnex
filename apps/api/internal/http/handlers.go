@@ -113,10 +113,10 @@ func authorize(ctx context.Context, orgID uuid.UUID, perm rbac.Permission) (cont
 // first org while still holding the password that had been printed to the logs. "No path around it — not
 // by API, not by skipping the screen" was the ruling, and one route around it is all it takes.
 //
-// ⚠ ChangePassword is the deliberate exception and calls requireVerifiedUserAllowingPasswordChange —
+// ⚠ ChangePassword is the deliberate exception and calls requireVerifiedPrincipal —
 // without it the wall would be a lockout with no recovery.
 func requireVerifiedUser(ctx context.Context) (*authctx.Principal, error) {
-	p, err := requireVerifiedUserAllowingPasswordChange(ctx)
+	p, err := requireVerifiedPrincipal(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,12 @@ func requireCPAdmin(ctx context.Context) (*authctx.Principal, error) {
 	return p, nil
 }
 
-func requireVerifiedUserAllowingPasswordChange(ctx context.Context) (*authctx.Principal, error) {
+// requireVerifiedPrincipal reads authenticated identity and verified-email state.
+// It never returns a password. The principal's SessionID is a server-generated
+// random token. Account restrictions remain the responsibility of the caller:
+// requireVerifiedUser enforces the bootstrap rotation gate, while ChangePassword
+// must remain reachable so the user can satisfy that gate.
+func requireVerifiedPrincipal(ctx context.Context) (*authctx.Principal, error) {
 	p, ok := authctx.PrincipalFrom(ctx)
 	if !ok {
 		return nil, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required")

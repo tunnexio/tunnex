@@ -128,10 +128,13 @@ func (t *Transport) RoundTrip(request *http.Request) (*http.Response, error) {
 		return nil, last
 	}
 	outbound := request.Clone(request.Context())
-	target := *request.URL
-	target.Scheme = u.Scheme
-	target.Host = u.Host
-	outbound.URL = &target
+	// Only the registered origin grants destination authority. Copy the browser's
+	// path/query explicitly, never its URL authority, userinfo or opaque form.
+	outbound.URL = &url.URL{
+		Scheme: u.Scheme, Host: u.Host,
+		Path: request.URL.Path, RawPath: request.URL.RawPath,
+		RawQuery: request.URL.RawQuery, ForceQuery: request.URL.ForceQuery,
+	}
 	outbound.Host = u.Host
 	outbound.RequestURI = ""
 	response, err := tr.RoundTrip(outbound)

@@ -185,3 +185,33 @@ func funcBody(src, prefix string) string {
 	}
 	return rest
 }
+
+// The identity-only gate returns the authenticated principal, never credentials.
+// The account restriction is applied by requireVerifiedUser, while the recovery
+// route must remain reachable by the same verified principal.
+func TestRequireVerifiedPrincipalKeepsAccountGate(t *testing.T) {
+	if p, err := requireVerifiedPrincipal(context.Background()); p != nil || !hasCode(err, 401, "unauthenticated") {
+		t.Fatalf("unauthenticated identity: principal=%v error=%v", p, err)
+	}
+	principal := &authctx.Principal{UserID: uuid.New(), SessionID: "server-generated-session-fixture", MustChangePassword: true}
+	ctx := authctx.WithPrincipal(context.Background(), principal)
+	if p, err := requireVerifiedPrincipal(ctx); p != nil || !hasCode(err, 403, "email_not_verified") {
+		t.Fatalf("unverified identity: principal=%v error=%v", p, err)
+	}
+	principal.EmailVerified = true
+	if p, err := requireVerifiedPrincipal(ctx); err != nil || p != principal || p.SessionID != principal.SessionID {
+		t.Fatalf("verified identity changed: principal=%v error=%v", p, err)
+	}
+	if p, err := requireVerifiedUser(ctx); p != nil || !hasCode(err, 403, "password_change_required") {
+		t.Fatalf("account gate bypassed: principal=%v error=%v", p, err)
+	}
+	// A nil body is rejected before any service use, after the identity gate.
+	// Receiving password_change_required instead would lock out account recovery.
+	if _, err := (apiServer{}).ChangePassword(ctx, api.ChangePasswordRequestObject{}); !hasCode(err, 400, "invalid_request") {
+		t.Fatalf("account recovery gate: %v", err)
+	}
+	principal.MustChangePassword = false
+	if p, err := requireVerifiedUser(ctx); err != nil || p != principal {
+		t.Fatalf("ordinary verified identity: principal=%v error=%v", p, err)
+	}
+}

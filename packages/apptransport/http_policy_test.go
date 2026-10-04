@@ -77,7 +77,7 @@ func TestHostAndRelativeRefusal(t *testing.T) {
 			t.Fatal(h)
 		}
 	}
-	for _, raw := range []string{"//evil.test/path", "/%2f/evil", "/%5cpath", "/%00path", "https://evil.test/path"} {
+	for _, raw := range []string{"//evil.test/path", `/\evil.test/path`, "///evil.test/path", "/%2f/evil", "/%2Fevil.test/path", "/%5cpath", "/%5Cevil.test/path", "/%2f%5cevil.test/path", "/%09/evil.test/path", "/%00path", "https://evil.test/path"} {
 		u, _ := url.Parse(raw)
 		if _, e := RelativeTarget(u); e == nil {
 			t.Fatal(raw)

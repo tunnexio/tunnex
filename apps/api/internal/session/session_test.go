@@ -113,3 +113,27 @@ func TestCookieFlagsContract(t *testing.T) {
 		t.Errorf("cookie Path = %q, want /", c.Path)
 	}
 }
+
+func TestClearNamedCookieContainsNoSessionAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		secure bool
+	}{
+		{"__Host-tunnex_session", true},
+		{"tunnex_session_http", false},
+		{CookieName, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ClearNamedCookie(recorder, tc.name, tc.secure)
+			cookies := recorder.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("cookie count=%d", len(cookies))
+			}
+			c := cookies[0]
+			if c.Name != tc.name || c.Value != "" || c.MaxAge != -1 || c.Secure != tc.secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.Domain != "" {
+				t.Fatalf("session deletion cookie attributes: %+v", c)
+			}
+		})
+	}
+}
