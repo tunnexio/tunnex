@@ -321,7 +321,10 @@ jobs:
           files = sorted([*root.glob('*.go'), *pathlib.Path('apps/api/db/migrations').glob('*.sql')])
           (out/'source-inputs.json').write_text(json.dumps({str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, sort_keys=True))
           PY
-          git rev-parse HEAD > app-access-ci/source-commit.txt
+          # Checkout and job shells may use different HOME directories in containers.
+          # Trust only this runner-owned checkout for the source identity read.
+          git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD > app-access-ci/source-commit.txt
+          test "$(cat app-access-ci/source-commit.txt)" = "$GITHUB_SHA"
           go version > app-access-ci/go-version.txt
           echo ready=true >> "$GITHUB_OUTPUT"
       - name: Run feature DB and Redis regressions in owned random child databases

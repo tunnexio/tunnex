@@ -49,7 +49,7 @@ function pendingWindow() {
 const launchPath = `/app-access/launch?orgId=${orgId}&appId=${appId}&nonce_hash=${"a".repeat(64)}&target=%2Freports`;
 const redeemURL = `https://payroll.apps.example.net/__tunnex_app/redeem?code=${"a".repeat(43)}`;
 const catalogIntentKey = "tunnex.appAccess.catalogLaunch";
-const automaticLaunchPath = launchPath.replace("%2Freports", "%2F");
+const automaticLaunchPath = `/app-access/launch?${new URLSearchParams({ orgId, appId, nonce_hash: "a".repeat(64), target: "/" })}`;
 const payroll = { id: appId, name: "Payroll", description: "Your payslips", icon: "app", launch_url: "https://payroll.apps.example.net/__tunnex_app/start" };
 function seedCatalogIntent(overrides: Record<string, unknown> = {}) {
   window.sessionStorage.setItem(catalogIntentKey, JSON.stringify({ version: 1, orgId, appId, userId: "user-1", origin: "https://payroll.apps.example.net", target: "/", createdAt: Date.now(), ...overrides }));
