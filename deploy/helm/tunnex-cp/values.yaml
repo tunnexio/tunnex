@@ -225,3 +225,25 @@ aiGateway:
       memory: 256Mi
     limits:
       memory: 1Gi
+
+# Explicit App Access composition. Neither entitlement nor org opt-in enables
+# deployment automatically. No public route is created by this chart.
+appAccess:
+  enabled: false
+  baseDomain: ""
+  # Existing shared restore-fence PVC; never generated or placed in DB backups.
+  restore:
+    existingClaim: ""
+  proxy:
+    # Exact signed release image@sha256; empty while disabled.
+    image: ""
+    replicas: 1
+    credentialSecret: "" # key proxy-credential, issued by backupctl app-proxy-issue
+    publicTLSSecret: ""   # keys tls.crt/tls.key; browser-trusted registered app hosts
+    gatewayTLSSecret: ""  # keys tls.crt/tls.key; enrollment CA SAN tunnex-app-proxy
+    agentCASecret: ""     # key ca.crt; enrollment CA public certificate only
+    publicServiceType: ClusterIP
+    gatewayServiceType: ClusterIP
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: "1", memory: 512Mi}

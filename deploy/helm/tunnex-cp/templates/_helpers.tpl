@@ -31,3 +31,13 @@ img renders a full image ref. Usage: include "tunnex-cp.img" (dict "root" $ "rep
 {{- define "tunnex-cp.edgeProxyService" -}}
 {{- printf "%s-edge-proxies" (include "tunnex-cp.fullname" . | trunc 50 | trimSuffix "-") -}}
 {{- end -}}
+
+{{- define "tunnex-cp.appAccessGuard" -}}
+{{- if .Values.appAccess.enabled -}}
+{{- if ne (int .Values.api.replicas) 1 -}}{{- fail "App Access currently requires api.replicas=1; shared restore/stream HA is unqualified" -}}{{- end -}}
+{{- if not (regexMatch "^[^\\s@]+@sha256:[a-f0-9]{64}$" .Values.appAccess.proxy.image) -}}{{- fail "appAccess.proxy.image must be a signed immutable image@sha256" -}}{{- end -}}
+{{- range $name,$value := dict "baseDomain" .Values.appAccess.baseDomain "restore.existingClaim" .Values.appAccess.restore.existingClaim "proxy.credentialSecret" .Values.appAccess.proxy.credentialSecret "proxy.publicTLSSecret" .Values.appAccess.proxy.publicTLSSecret "proxy.gatewayTLSSecret" .Values.appAccess.proxy.gatewayTLSSecret "proxy.agentCASecret" .Values.appAccess.proxy.agentCASecret -}}
+{{- if not $value -}}{{- fail (printf "appAccess.%s is required; this chart never generates trust or credentials" $name) -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

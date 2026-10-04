@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 // disabled that lane. Missing output, cancelled jobs and unknown states fail.
 export function validateGates(needs) {
   const errors = [];
-  const required = ['scope', 'contracts', 'codegen', 'api', 'tooling', 'web'];
+  const required = ['scope', 'contracts', 'codegen', 'api', 'app-access-integration', 'tooling', 'web'];
   for (const name of required) {
     if (!needs?.[name]) errors.push(`missing lane: ${name}`);
   }
@@ -17,7 +17,7 @@ export function validateGates(needs) {
     errors.push('inconsistent docs-only classification');
   }
   for (const name of required) {
-    const flag = { api: 'go', tooling: 'go', codegen: 'codegen' }[name];
+    const flag = { api: 'go', 'app-access-integration': 'go', tooling: 'go', codegen: 'codegen' }[name];
     const expected = flag && outputs[flag] === 'false' ? 'skipped' : 'success';
     if (needs?.[name]?.result !== expected) {
       errors.push(`${name}: expected ${expected}, got ${needs?.[name]?.result ?? 'missing'}`);

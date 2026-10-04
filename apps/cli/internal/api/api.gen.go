@@ -665,6 +665,286 @@ const (
 	AlertTestResultFailureCodeTimeout       AlertTestResultFailureCode = "timeout"
 )
 
+// Defines values for AppAccessAccessDecisionInputDecision.
+const (
+	CompanyDecisionApproved AppAccessAccessDecisionInputDecision = "approved"
+	CompanyDecisionRejected AppAccessAccessDecisionInputDecision = "rejected"
+)
+
+// Defines values for AppAccessAccessRequestStatus.
+const (
+	CompanyRequestApproved AppAccessAccessRequestStatus = "approved"
+	CompanyRequestPending  AppAccessAccessRequestStatus = "pending"
+	CompanyRequestRejected AppAccessAccessRequestStatus = "rejected"
+)
+
+// Defines values for AppAccessActivePublicationState.
+const (
+	AppAccessPublicationActive   AppAccessActivePublicationState = "active"
+	AppAccessPublicationDisabled AppAccessActivePublicationState = "disabled"
+)
+
+// Defines values for AppAccessApplicationConnectorStatus.
+const (
+	AppAccessApplicationConnectorStatusSupported   AppAccessApplicationConnectorStatus = "supported"
+	AppAccessApplicationConnectorStatusUnavailable AppAccessApplicationConnectorStatus = "unavailable"
+	AppAccessApplicationConnectorStatusUnknown     AppAccessApplicationConnectorStatus = "unknown"
+	AppAccessApplicationConnectorStatusUnsupported AppAccessApplicationConnectorStatus = "unsupported"
+)
+
+// Defines values for AppAccessApplicationMfaFreshnessSeconds.
+const (
+	AppAccessApplicationMfaFreshnessSecondsN900 AppAccessApplicationMfaFreshnessSeconds = 900
+)
+
+// Defines values for AppAccessApplicationPublicationState.
+const (
+	AppAccessArchived    AppAccessApplicationPublicationState = "archived"
+	AppAccessDisabled    AppAccessApplicationPublicationState = "disabled"
+	AppAccessPublished   AppAccessApplicationPublicationState = "published"
+	AppAccessUnpublished AppAccessApplicationPublicationState = "unpublished"
+)
+
+// Defines values for AppAccessApplicationState.
+const (
+	AppAccessApplicationStateArchived AppAccessApplicationState = "archived"
+	AppAccessApplicationStateDraft    AppAccessApplicationState = "draft"
+)
+
+// Defines values for AppAccessCheckConnectStatus.
+const (
+	AppAccessCheckConnectStatusFailed  AppAccessCheckConnectStatus = "failed"
+	AppAccessCheckConnectStatusPassed  AppAccessCheckConnectStatus = "passed"
+	AppAccessCheckConnectStatusPending AppAccessCheckConnectStatus = "pending"
+)
+
+// Defines values for AppAccessCheckDnsStatus.
+const (
+	AppAccessCheckDnsStatusFailed  AppAccessCheckDnsStatus = "failed"
+	AppAccessCheckDnsStatusPassed  AppAccessCheckDnsStatus = "passed"
+	AppAccessCheckDnsStatusPending AppAccessCheckDnsStatus = "pending"
+)
+
+// Defines values for AppAccessCheckErrorCode.
+const (
+	AppAccessCheckErrorCodeAssignmentChanged AppAccessCheckErrorCode = "assignment_changed"
+	AppAccessCheckErrorCodeConnectFailed     AppAccessCheckErrorCode = "connect_failed"
+	AppAccessCheckErrorCodeConnectorFailed   AppAccessCheckErrorCode = "connector_failed"
+	AppAccessCheckErrorCodeDeadlineExceeded  AppAccessCheckErrorCode = "deadline_exceeded"
+	AppAccessCheckErrorCodeDnsFailed         AppAccessCheckErrorCode = "dns_failed"
+	AppAccessCheckErrorCodeFeatureWithdrawn  AppAccessCheckErrorCode = "feature_withdrawn"
+	AppAccessCheckErrorCodeHttpFailed        AppAccessCheckErrorCode = "http_failed"
+	AppAccessCheckErrorCodeNone              AppAccessCheckErrorCode = ""
+	AppAccessCheckErrorCodeTargetRefused     AppAccessCheckErrorCode = "target_refused"
+	AppAccessCheckErrorCodeTlsFailed         AppAccessCheckErrorCode = "tls_failed"
+)
+
+// Defines values for AppAccessCheckPurpose.
+const (
+	OriginCheck AppAccessCheckPurpose = "origin_check"
+)
+
+// Defines values for AppAccessCheckStatus.
+const (
+	AppAccessCheckStatusExpired   AppAccessCheckStatus = "expired"
+	AppAccessCheckStatusFailed    AppAccessCheckStatus = "failed"
+	AppAccessCheckStatusQueued    AppAccessCheckStatus = "queued"
+	AppAccessCheckStatusRunning   AppAccessCheckStatus = "running"
+	AppAccessCheckStatusSucceeded AppAccessCheckStatus = "succeeded"
+	AppAccessCheckStatusWithdrawn AppAccessCheckStatus = "withdrawn"
+)
+
+// Defines values for AppAccessCheckTlsStatus.
+const (
+	AppAccessCheckTlsStatusFailed  AppAccessCheckTlsStatus = "failed"
+	AppAccessCheckTlsStatusPassed  AppAccessCheckTlsStatus = "passed"
+	AppAccessCheckTlsStatusPending AppAccessCheckTlsStatus = "pending"
+	AppAccessCheckTlsStatusSkipped AppAccessCheckTlsStatus = "skipped"
+)
+
+// Defines values for AppAccessCompanyAppMfaFreshnessSeconds.
+const (
+	CompanyMFAFreshness900 AppAccessCompanyAppMfaFreshnessSeconds = 900
+)
+
+// Defines values for AppAccessCompanyAppsAvailability.
+const (
+	CompanyAppsAvailable          AppAccessCompanyAppsAvailability = "available"
+	CompanyAppsDomainUnavailable  AppAccessCompanyAppsAvailability = "domain_unavailable"
+	CompanyAppsFeatureDisabled    AppAccessCompanyAppsAvailability = "feature_disabled"
+	CompanyAppsFeatureUnavailable AppAccessCompanyAppsAvailability = "feature_unavailable"
+	CompanyAppsParentUnavailable  AppAccessCompanyAppsAvailability = "parent_unavailable"
+)
+
+// Defines values for AppAccessDomainsSource.
+const (
+	Database    AppAccessDomainsSource = "database"
+	Environment AppAccessDomainsSource = "environment"
+)
+
+// Defines values for AppAccessDraftInputIcon.
+const (
+	AppAccessDraftInputIconApp       AppAccessDraftInputIcon = "app"
+	AppAccessDraftInputIconDashboard AppAccessDraftInputIcon = "dashboard"
+	AppAccessDraftInputIconGlobe     AppAccessDraftInputIcon = "globe"
+	AppAccessDraftInputIconTerminal  AppAccessDraftInputIcon = "terminal"
+)
+
+// Defines values for AppAccessEffectiveAccessDenyReason.
+const (
+	AppAccessEffectiveAccessDenyReasonAppUnpublished         AppAccessEffectiveAccessDenyReason = "app_unpublished"
+	AppAccessEffectiveAccessDenyReasonConnectorUnavailable   AppAccessEffectiveAccessDenyReason = "connector_unavailable"
+	AppAccessEffectiveAccessDenyReasonEmailNotVerified       AppAccessEffectiveAccessDenyReason = "email_not_verified"
+	AppAccessEffectiveAccessDenyReasonEmpty                  AppAccessEffectiveAccessDenyReason = ""
+	AppAccessEffectiveAccessDenyReasonFeatureDisabled        AppAccessEffectiveAccessDenyReason = "feature_disabled"
+	AppAccessEffectiveAccessDenyReasonFeatureUnavailable     AppAccessEffectiveAccessDenyReason = "feature_unavailable"
+	AppAccessEffectiveAccessDenyReasonMembershipUnavailable  AppAccessEffectiveAccessDenyReason = "membership_unavailable"
+	AppAccessEffectiveAccessDenyReasonMfaRequired            AppAccessEffectiveAccessDenyReason = "mfa_required"
+	AppAccessEffectiveAccessDenyReasonNoActiveGrant          AppAccessEffectiveAccessDenyReason = "no_active_grant"
+	AppAccessEffectiveAccessDenyReasonNoUsePermission        AppAccessEffectiveAccessDenyReason = "no_use_permission"
+	AppAccessEffectiveAccessDenyReasonPasswordChangeRequired AppAccessEffectiveAccessDenyReason = "password_change_required"
+	AppAccessEffectiveAccessDenyReasonUserInactive           AppAccessEffectiveAccessDenyReason = "user_inactive"
+)
+
+// Defines values for AppAccessEventKind.
+const (
+	AppAccessEventKindGap                AppAccessEventKind = "gap"
+	AppAccessEventKindLaunchCreated      AppAccessEventKind = "launch_created"
+	AppAccessEventKindPublicationChanged AppAccessEventKind = "publication_changed"
+	AppAccessEventKindRecovery           AppAccessEventKind = "recovery"
+	AppAccessEventKindRequestAllowed     AppAccessEventKind = "request_allowed"
+	AppAccessEventKindRequestDenied      AppAccessEventKind = "request_denied"
+	AppAccessEventKindSessionCreated     AppAccessEventKind = "session_created"
+	AppAccessEventKindSessionRevoked     AppAccessEventKind = "session_revoked"
+	AppAccessEventKindStreamDenied       AppAccessEventKind = "stream_denied"
+	AppAccessEventKindStreamRenewed      AppAccessEventKind = "stream_renewed"
+	AppAccessEventKindStreamTerminated   AppAccessEventKind = "stream_terminated"
+)
+
+// Defines values for AppAccessEventOutcome.
+const (
+	AppAccessEventOutcomeAllowed   AppAccessEventOutcome = "allowed"
+	AppAccessEventOutcomeCompleted AppAccessEventOutcome = "completed"
+	AppAccessEventOutcomeDenied    AppAccessEventOutcome = "denied"
+	AppAccessEventOutcomeFailed    AppAccessEventOutcome = "failed"
+	AppAccessEventOutcomeRevoked   AppAccessEventOutcome = "revoked"
+)
+
+// Defines values for AppAccessEventReason.
+const (
+	AppAccessEventReasonAdmin                     AppAccessEventReason = "admin"
+	AppAccessEventReasonConnectionClosed          AppAccessEventReason = "connection_closed"
+	AppAccessEventReasonDroppedEvents             AppAccessEventReason = "dropped_events"
+	AppAccessEventReasonFeatureDisabled           AppAccessEventReason = "feature_disabled"
+	AppAccessEventReasonFeatureUnavailable        AppAccessEventReason = "feature_unavailable"
+	AppAccessEventReasonInfrastructureUnavailable AppAccessEventReason = "infrastructure_unavailable"
+	AppAccessEventReasonInstallationChanged       AppAccessEventReason = "installation_changed"
+	AppAccessEventReasonLeaseExpired              AppAccessEventReason = "lease_expired"
+	AppAccessEventReasonMembershipUnavailable     AppAccessEventReason = "membership_unavailable"
+	AppAccessEventReasonNoActiveGrant             AppAccessEventReason = "no_active_grant"
+	AppAccessEventReasonNoUsePermission           AppAccessEventReason = "no_use_permission"
+	AppAccessEventReasonNone                      AppAccessEventReason = "none"
+	AppAccessEventReasonParentUnavailable         AppAccessEventReason = "parent_unavailable"
+	AppAccessEventReasonPublicationUnavailable    AppAccessEventReason = "publication_unavailable"
+	AppAccessEventReasonRecovery                  AppAccessEventReason = "recovery"
+	AppAccessEventReasonSelf                      AppAccessEventReason = "self"
+	AppAccessEventReasonSessionInvalid            AppAccessEventReason = "session_invalid"
+	AppAccessEventReasonSessionRevoked            AppAccessEventReason = "session_revoked"
+	AppAccessEventReasonUserInactive              AppAccessEventReason = "user_inactive"
+)
+
+// Defines values for AppAccessGatewayRuntimeStatus.
+const (
+	AppAccessGatewayRuntimeStatusSupported   AppAccessGatewayRuntimeStatus = "supported"
+	AppAccessGatewayRuntimeStatusUnavailable AppAccessGatewayRuntimeStatus = "unavailable"
+	AppAccessGatewayRuntimeStatusUnknown     AppAccessGatewayRuntimeStatus = "unknown"
+	AppAccessGatewayRuntimeStatusUnsupported AppAccessGatewayRuntimeStatus = "unsupported"
+)
+
+// Defines values for AppAccessGrantStatus.
+const (
+	AppAccessGrantStatusActive             AppAccessGrantStatus = "active"
+	AppAccessGrantStatusDisabled           AppAccessGrantStatus = "disabled"
+	AppAccessGrantStatusExpired            AppAccessGrantStatus = "expired"
+	AppAccessGrantStatusRevoked            AppAccessGrantStatus = "revoked"
+	AppAccessGrantStatusScheduled          AppAccessGrantStatus = "scheduled"
+	AppAccessGrantStatusSubjectUnavailable AppAccessGrantStatus = "subject_unavailable"
+)
+
+// Defines values for AppAccessGrantImpactSessionImpactAvailable.
+const (
+	False AppAccessGrantImpactSessionImpactAvailable = false
+)
+
+// Defines values for AppAccessMyAppMfaFreshnessSeconds.
+const (
+	AppAccessMyAppMfaFreshnessSecondsN900 AppAccessMyAppMfaFreshnessSeconds = 900
+)
+
+// Defines values for AppAccessMyAppsAvailability.
+const (
+	AppAccessAvailable          AppAccessMyAppsAvailability = "available"
+	AppAccessDomainUnavailable  AppAccessMyAppsAvailability = "domain_unavailable"
+	AppAccessFeatureDisabled    AppAccessMyAppsAvailability = "feature_disabled"
+	AppAccessFeatureUnavailable AppAccessMyAppsAvailability = "feature_unavailable"
+	AppAccessParentUnavailable  AppAccessMyAppsAvailability = "parent_unavailable"
+)
+
+// Defines values for AppAccessPublicationOperationStatus.
+const (
+	AppAccessPublicationActivated AppAccessPublicationOperationStatus = "activated"
+	AppAccessPublicationCancelled AppAccessPublicationOperationStatus = "cancelled"
+	AppAccessPublicationChecking  AppAccessPublicationOperationStatus = "checking"
+	AppAccessPublicationExpired   AppAccessPublicationOperationStatus = "expired"
+	AppAccessPublicationFailed    AppAccessPublicationOperationStatus = "failed"
+	AppAccessPublicationQueued    AppAccessPublicationOperationStatus = "queued"
+)
+
+// Defines values for AppAccessPublicationStage.
+const (
+	AppAccessStageFailed  AppAccessPublicationStage = "failed"
+	AppAccessStagePassed  AppAccessPublicationStage = "passed"
+	AppAccessStagePending AppAccessPublicationStage = "pending"
+)
+
+// Defines values for AppAccessPublicationStateBrowserCapability.
+const (
+	AppAccessBrowserSupported   AppAccessPublicationStateBrowserCapability = "supported"
+	AppAccessBrowserUnavailable AppAccessPublicationStateBrowserCapability = "unavailable"
+	AppAccessBrowserUnknown     AppAccessPublicationStateBrowserCapability = "unknown"
+	AppAccessBrowserUnsupported AppAccessPublicationStateBrowserCapability = "unsupported"
+)
+
+// Defines values for AppAccessPublicationTLSStage.
+const (
+	AppAccessTLSStageFailed  AppAccessPublicationTLSStage = "failed"
+	AppAccessTLSStagePassed  AppAccessPublicationTLSStage = "passed"
+	AppAccessTLSStagePending AppAccessPublicationTLSStage = "pending"
+	AppAccessTLSStageSkipped AppAccessPublicationTLSStage = "skipped"
+)
+
+// Defines values for AppAccessRevisionIcon.
+const (
+	AppAccessRevisionIconApp       AppAccessRevisionIcon = "app"
+	AppAccessRevisionIconDashboard AppAccessRevisionIcon = "dashboard"
+	AppAccessRevisionIconGlobe     AppAccessRevisionIcon = "globe"
+	AppAccessRevisionIconTerminal  AppAccessRevisionIcon = "terminal"
+)
+
+// Defines values for AppAccessSubjectKind.
+const (
+	AppAccessSubjectKindGroup AppAccessSubjectKind = "group"
+	AppAccessSubjectKindUser  AppAccessSubjectKind = "user"
+)
+
+// Defines values for AppAccessUpdateDraftInputIcon.
+const (
+	App       AppAccessUpdateDraftInputIcon = "app"
+	Dashboard AppAccessUpdateDraftInputIcon = "dashboard"
+	Globe     AppAccessUpdateDraftInputIcon = "globe"
+	Terminal  AppAccessUpdateDraftInputIcon = "terminal"
+)
+
 // Defines values for AuditLogRetentionRunStatus.
 const (
 	AuditLogRetentionRunStatusFailed    AuditLogRetentionRunStatus = "failed"
@@ -1315,11 +1595,11 @@ const (
 
 // Defines values for NodeLifecycleClaimState.
 const (
-	Aborted      NodeLifecycleClaimState = "aborted"
-	Acknowledged NodeLifecycleClaimState = "acknowledged"
-	Consumed     NodeLifecycleClaimState = "consumed"
-	Expired      NodeLifecycleClaimState = "expired"
-	Issued       NodeLifecycleClaimState = "issued"
+	NodeLifecycleClaimStateAborted      NodeLifecycleClaimState = "aborted"
+	NodeLifecycleClaimStateAcknowledged NodeLifecycleClaimState = "acknowledged"
+	NodeLifecycleClaimStateConsumed     NodeLifecycleClaimState = "consumed"
+	NodeLifecycleClaimStateExpired      NodeLifecycleClaimState = "expired"
+	NodeLifecycleClaimStateIssued       NodeLifecycleClaimState = "issued"
 )
 
 // Defines values for NodeLifecycleInstallOperationState.
@@ -1351,14 +1631,14 @@ const (
 
 // Defines values for PolicyRuleFqdnDestinationStatus.
 const (
-	ActiveGeneration      PolicyRuleFqdnDestinationStatus = "active_generation"
-	FeatureUnavailable    PolicyRuleFqdnDestinationStatus = "feature_unavailable"
-	GenerationPending     PolicyRuleFqdnDestinationStatus = "generation_pending"
-	GenerationUnavailable PolicyRuleFqdnDestinationStatus = "generation_unavailable"
-	GenerationWithdrawn   PolicyRuleFqdnDestinationStatus = "generation_withdrawn"
-	NotApplicable         PolicyRuleFqdnDestinationStatus = "not_applicable"
-	OptInDisabled         PolicyRuleFqdnDestinationStatus = "opt_in_disabled"
-	ProjectionUnavailable PolicyRuleFqdnDestinationStatus = "projection_unavailable"
+	PolicyRuleFqdnDestinationStatusActiveGeneration      PolicyRuleFqdnDestinationStatus = "active_generation"
+	PolicyRuleFqdnDestinationStatusFeatureUnavailable    PolicyRuleFqdnDestinationStatus = "feature_unavailable"
+	PolicyRuleFqdnDestinationStatusGenerationPending     PolicyRuleFqdnDestinationStatus = "generation_pending"
+	PolicyRuleFqdnDestinationStatusGenerationUnavailable PolicyRuleFqdnDestinationStatus = "generation_unavailable"
+	PolicyRuleFqdnDestinationStatusGenerationWithdrawn   PolicyRuleFqdnDestinationStatus = "generation_withdrawn"
+	PolicyRuleFqdnDestinationStatusNotApplicable         PolicyRuleFqdnDestinationStatus = "not_applicable"
+	PolicyRuleFqdnDestinationStatusOptInDisabled         PolicyRuleFqdnDestinationStatus = "opt_in_disabled"
+	PolicyRuleFqdnDestinationStatusProjectionUnavailable PolicyRuleFqdnDestinationStatus = "projection_unavailable"
 )
 
 // Defines values for PolicyRuleSrcKind.
@@ -1506,11 +1786,11 @@ const (
 
 // Defines values for UpgradeStatusState.
 const (
-	UpgradeStatusStateApplying  UpgradeStatusState = "applying"
-	UpgradeStatusStateAvailable UpgradeStatusState = "available"
-	UpgradeStatusStateFailed    UpgradeStatusState = "failed"
-	UpgradeStatusStateHealthy   UpgradeStatusState = "healthy"
-	UpgradeStatusStateRequested UpgradeStatusState = "requested"
+	Applying  UpgradeStatusState = "applying"
+	Available UpgradeStatusState = "available"
+	Failed    UpgradeStatusState = "failed"
+	Healthy   UpgradeStatusState = "healthy"
+	Requested UpgradeStatusState = "requested"
 )
 
 // Defines values for UserGroupIdpProvider.
@@ -1596,6 +1876,58 @@ const (
 const (
 	Tcp TestAgentAccessParamsProtocol = "tcp"
 	Udp TestAgentAccessParamsProtocol = "udp"
+)
+
+// Defines values for ListAppAccessRequestsParamsScope.
+const (
+	CompanyScopeManaged ListAppAccessRequestsParamsScope = "managed"
+	CompanyScopeMine    ListAppAccessRequestsParamsScope = "mine"
+)
+
+// Defines values for ListAppAccessRequestsParamsStatus.
+const (
+	CompanyFilterApproved ListAppAccessRequestsParamsStatus = "approved"
+	CompanyFilterPending  ListAppAccessRequestsParamsStatus = "pending"
+	CompanyFilterRejected ListAppAccessRequestsParamsStatus = "rejected"
+)
+
+// Defines values for ListAppAccessApplicationsParamsPublicationState.
+const (
+	AppAccessFilterDisabled    ListAppAccessApplicationsParamsPublicationState = "disabled"
+	AppAccessFilterPublished   ListAppAccessApplicationsParamsPublicationState = "published"
+	AppAccessFilterUnpublished ListAppAccessApplicationsParamsPublicationState = "unpublished"
+)
+
+// Defines values for ListManagedAppAccessGrantsParamsView.
+const (
+	ManagedGrantViewCurrent ListManagedAppAccessGrantsParamsView = "current"
+	ManagedGrantViewHistory ListManagedAppAccessGrantsParamsView = "history"
+)
+
+// Defines values for ListManagedAppAccessGrantsParamsStatus.
+const (
+	ManagedGrantFilterActive             ListManagedAppAccessGrantsParamsStatus = "active"
+	ManagedGrantFilterDisabled           ListManagedAppAccessGrantsParamsStatus = "disabled"
+	ManagedGrantFilterExpired            ListManagedAppAccessGrantsParamsStatus = "expired"
+	ManagedGrantFilterRevoked            ListManagedAppAccessGrantsParamsStatus = "revoked"
+	ManagedGrantFilterScheduled          ListManagedAppAccessGrantsParamsStatus = "scheduled"
+	ManagedGrantFilterSubjectUnavailable ListManagedAppAccessGrantsParamsStatus = "subject_unavailable"
+)
+
+// Defines values for ListAppAccessGrantsParamsView.
+const (
+	GrantViewCurrent ListAppAccessGrantsParamsView = "current"
+	GrantViewHistory ListAppAccessGrantsParamsView = "history"
+)
+
+// Defines values for ListAppAccessGrantsParamsStatus.
+const (
+	GrantFilterActive             ListAppAccessGrantsParamsStatus = "active"
+	GrantFilterDisabled           ListAppAccessGrantsParamsStatus = "disabled"
+	GrantFilterExpired            ListAppAccessGrantsParamsStatus = "expired"
+	GrantFilterRevoked            ListAppAccessGrantsParamsStatus = "revoked"
+	GrantFilterScheduled          ListAppAccessGrantsParamsStatus = "scheduled"
+	GrantFilterSubjectUnavailable ListAppAccessGrantsParamsStatus = "subject_unavailable"
 )
 
 // Defines values for SetIPsecConnectionIntentJSONBodyIntent.
@@ -3282,6 +3614,743 @@ type AlertTestResultFailureCode string
 type AlertingSetting struct {
 	Enabled bool `json:"enabled"`
 }
+
+// AppAccessAccessDecisionInput defines model for AppAccessAccessDecisionInput.
+type AppAccessAccessDecisionInput struct {
+	Decision        AppAccessAccessDecisionInputDecision `json:"decision"`
+	ExpectedVersion int64                                `json:"expected_version"`
+	ExpiresAt       *time.Time                           `json:"expires_at"`
+	Reason          *string                              `json:"reason,omitempty"`
+}
+
+// AppAccessAccessDecisionInputDecision defines model for AppAccessAccessDecisionInput.Decision.
+type AppAccessAccessDecisionInputDecision string
+
+// AppAccessAccessManagement defines model for AppAccessAccessManagement.
+type AppAccessAccessManagement struct {
+	AppAdmin       *AppAccessPerson    `json:"app_admin"`
+	AppAdminUserId *openapi_types.UUID `json:"app_admin_user_id"`
+	AppId          openapi_types.UUID  `json:"app_id"`
+	CatalogVisible bool                `json:"catalog_visible"`
+	Version        int64               `json:"version"`
+}
+
+// AppAccessAccessManagementInput defines model for AppAccessAccessManagementInput.
+type AppAccessAccessManagementInput struct {
+	AppAdminUserId  *openapi_types.UUID `json:"app_admin_user_id"`
+	CatalogVisible  bool                `json:"catalog_visible"`
+	ExpectedVersion int64               `json:"expected_version"`
+}
+
+// AppAccessAccessRequest defines model for AppAccessAccessRequest.
+type AppAccessAccessRequest struct {
+	AppAdmin       *AppAccessPerson             `json:"app_admin"`
+	AppId          openapi_types.UUID           `json:"app_id"`
+	AppName        string                       `json:"app_name"`
+	CreatedAt      time.Time                    `json:"created_at"`
+	DecidedAt      *time.Time                   `json:"decided_at"`
+	DecidedBy      *openapi_types.UUID          `json:"decided_by"`
+	DecisionReason string                       `json:"decision_reason"`
+	GrantId        *openapi_types.UUID          `json:"grant_id"`
+	Id             openapi_types.UUID           `json:"id"`
+	Reason         string                       `json:"reason"`
+	Requester      AppAccessPerson              `json:"requester"`
+	Status         AppAccessAccessRequestStatus `json:"status"`
+	Version        int64                        `json:"version"`
+}
+
+// AppAccessAccessRequestStatus defines model for AppAccessAccessRequest.Status.
+type AppAccessAccessRequestStatus string
+
+// AppAccessAccessRequestInput defines model for AppAccessAccessRequestInput.
+type AppAccessAccessRequestInput struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
+// AppAccessAccessRequests defines model for AppAccessAccessRequests.
+type AppAccessAccessRequests struct {
+	Items        []AppAccessAccessRequest `json:"items"`
+	Limit        int                      `json:"limit"`
+	Offset       int                      `json:"offset"`
+	PendingCount int64                    `json:"pending_count"`
+}
+
+// AppAccessActivePublication defines model for AppAccessActivePublication.
+type AppAccessActivePublication struct {
+	AuthorityVersion int64                           `json:"authority_version"`
+	Digest           string                          `json:"digest"`
+	GatewayId        openapi_types.UUID              `json:"gateway_id"`
+	Generation       openapi_types.UUID              `json:"generation"`
+	Hostname         string                          `json:"hostname"`
+	Revision         int64                           `json:"revision"`
+	State            AppAccessActivePublicationState `json:"state"`
+
+	// WithdrawalConfirmed Persisted exact tuple confirmation after a monotonic five-second wait begun after disable commit. Never inferred from disabled_at wall-clock age.
+	WithdrawalConfirmed   bool       `json:"withdrawal_confirmed"`
+	WithdrawalConfirmedAt *time.Time `json:"withdrawal_confirmed_at,omitempty"`
+}
+
+// AppAccessActivePublicationState defines model for AppAccessActivePublication.State.
+type AppAccessActivePublicationState string
+
+// AppAccessApplication defines model for AppAccessApplication.
+type AppAccessApplication struct {
+	// ActiveRevision Exact active serving revision; absent when unpublished or disabled.
+	ActiveRevision *int64 `json:"active_revision,omitempty"`
+
+	// ConnectorStatus Observed capability and freshness only; none of these values means published or ready.
+	ConnectorStatus     AppAccessApplicationConnectorStatus     `json:"connector_status"`
+	CreatedAt           time.Time                               `json:"created_at"`
+	Draft               AppAccessRevision                       `json:"draft"`
+	DraftRevision       int64                                   `json:"draft_revision"`
+	Id                  openapi_types.UUID                      `json:"id"`
+	MfaFreshnessSeconds AppAccessApplicationMfaFreshnessSeconds `json:"mfa_freshness_seconds"`
+	OrgId               openapi_types.UUID                      `json:"org_id"`
+	PublicationState    AppAccessApplicationPublicationState    `json:"publication_state"`
+
+	// RequireMfa Current live policy, independent of draft and published revisions.
+	RequireMfa bool                      `json:"require_mfa"`
+	State      AppAccessApplicationState `json:"state"`
+	UpdatedAt  time.Time                 `json:"updated_at"`
+	Version    int64                     `json:"version"`
+}
+
+// AppAccessApplicationConnectorStatus Observed capability and freshness only; none of these values means published or ready.
+type AppAccessApplicationConnectorStatus string
+
+// AppAccessApplicationMfaFreshnessSeconds defines model for AppAccessApplication.MfaFreshnessSeconds.
+type AppAccessApplicationMfaFreshnessSeconds int
+
+// AppAccessApplicationPublicationState defines model for AppAccessApplication.PublicationState.
+type AppAccessApplicationPublicationState string
+
+// AppAccessApplicationState defines model for AppAccessApplication.State.
+type AppAccessApplicationState string
+
+// AppAccessApplicationList defines model for AppAccessApplicationList.
+type AppAccessApplicationList struct {
+	Items  []AppAccessApplication `json:"items"`
+	Limit  int                    `json:"limit"`
+	Offset int                    `json:"offset"`
+}
+
+// AppAccessApplicationSession defines model for AppAccessApplicationSession.
+type AppAccessApplicationSession struct {
+	AppId                  openapi_types.UUID `json:"app_id"`
+	AppLabel               string             `json:"app_label"`
+	CreatedAt              time.Time          `json:"created_at"`
+	ExpiresAt              time.Time          `json:"expires_at"`
+	Id                     openapi_types.UUID `json:"id"`
+	InstallationGeneration openapi_types.UUID `json:"installation_generation"`
+	UserId                 openapi_types.UUID `json:"user_id"`
+}
+
+// AppAccessApplicationSessions defines model for AppAccessApplicationSessions.
+type AppAccessApplicationSessions struct {
+	Items  []AppAccessApplicationSession `json:"items"`
+	Limit  int                           `json:"limit"`
+	Offset int                           `json:"offset"`
+}
+
+// AppAccessCheck defines model for AppAccessCheck.
+type AppAccessCheck struct {
+	AppId         openapi_types.UUID          `json:"app_id"`
+	CompletedAt   *time.Time                  `json:"completed_at"`
+	ConnectStatus AppAccessCheckConnectStatus `json:"connect_status"`
+	CreatedAt     time.Time                   `json:"created_at"`
+	Deadline      time.Time                   `json:"deadline"`
+	Digest        string                      `json:"digest"`
+	DnsStatus     AppAccessCheckDnsStatus     `json:"dns_status"`
+
+	// ErrorCode Allowlisted redacted code; no URL, body, cookie, credential or raw network error.
+	ErrorCode  AppAccessCheckErrorCode `json:"error_code"`
+	GatewayId  openapi_types.UUID      `json:"gateway_id"`
+	Generation openapi_types.UUID      `json:"generation"`
+	Id         openapi_types.UUID      `json:"id"`
+	OrgId      openapi_types.UUID      `json:"org_id"`
+	Purpose    AppAccessCheckPurpose   `json:"purpose"`
+	Revision   int64                   `json:"revision"`
+
+	// Status Origin connectivity only; no end-user authorization or publication readiness.
+	Status    AppAccessCheckStatus    `json:"status"`
+	TlsStatus AppAccessCheckTlsStatus `json:"tls_status"`
+}
+
+// AppAccessCheckConnectStatus defines model for AppAccessCheck.ConnectStatus.
+type AppAccessCheckConnectStatus string
+
+// AppAccessCheckDnsStatus defines model for AppAccessCheck.DnsStatus.
+type AppAccessCheckDnsStatus string
+
+// AppAccessCheckErrorCode Allowlisted redacted code; no URL, body, cookie, credential or raw network error.
+type AppAccessCheckErrorCode string
+
+// AppAccessCheckPurpose defines model for AppAccessCheck.Purpose.
+type AppAccessCheckPurpose string
+
+// AppAccessCheckStatus Origin connectivity only; no end-user authorization or publication readiness.
+type AppAccessCheckStatus string
+
+// AppAccessCheckTlsStatus defines model for AppAccessCheck.TlsStatus.
+type AppAccessCheckTlsStatus string
+
+// AppAccessCheckInput defines model for AppAccessCheckInput.
+type AppAccessCheckInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+}
+
+// AppAccessCompanyApp defines model for AppAccessCompanyApp.
+type AppAccessCompanyApp struct {
+	// AccessGranted Current matching explicit access and serving authority; request status and assigned administration never imply access. Normal MFA is still required at launch.
+	AccessGranted bool                    `json:"access_granted"`
+	AppAdmin      *AppAccessPerson        `json:"app_admin"`
+	Description   string                  `json:"description"`
+	Icon          string                  `json:"icon"`
+	IconDataUrl   string                  `json:"icon_data_url"`
+	Id            openapi_types.UUID      `json:"id"`
+	LatestRequest *AppAccessAccessRequest `json:"latest_request"`
+
+	// LaunchUrl Omitted without current effective grant access; origin and public hostname are never disclosed separately.
+	LaunchUrl           *string                                `json:"launch_url,omitempty"`
+	MfaFreshnessSeconds AppAccessCompanyAppMfaFreshnessSeconds `json:"mfa_freshness_seconds"`
+	MfaRequired         bool                                   `json:"mfa_required"`
+	MfaSetupRequired    bool                                   `json:"mfa_setup_required"`
+	Name                string                                 `json:"name"`
+	RequireMfa          bool                                   `json:"require_mfa"`
+}
+
+// AppAccessCompanyAppMfaFreshnessSeconds defines model for AppAccessCompanyApp.MfaFreshnessSeconds.
+type AppAccessCompanyAppMfaFreshnessSeconds int
+
+// AppAccessCompanyApps defines model for AppAccessCompanyApps.
+type AppAccessCompanyApps struct {
+	Availability AppAccessCompanyAppsAvailability `json:"availability"`
+	Items        []AppAccessCompanyApp            `json:"items"`
+	Limit        int                              `json:"limit"`
+	Offset       int                              `json:"offset"`
+}
+
+// AppAccessCompanyAppsAvailability defines model for AppAccessCompanyApps.Availability.
+type AppAccessCompanyAppsAvailability string
+
+// AppAccessDomains defines model for AppAccessDomains.
+type AppAccessDomains struct {
+	AppBaseDomain string `json:"app_base_domain"`
+
+	// ConfigurationReady Address syntax and isolation configuration is valid. Does not imply that DNS, TLS certificates, proxy listeners or app publication are ready.
+	ConfigurationReady bool                   `json:"configuration_ready"`
+	PortalUrl          string                 `json:"portal_url"`
+	Source             AppAccessDomainsSource `json:"source"`
+	Version            int64                  `json:"version"`
+}
+
+// AppAccessDomainsSource defines model for AppAccessDomains.Source.
+type AppAccessDomainsSource string
+
+// AppAccessDomainsInput defines model for AppAccessDomainsInput.
+type AppAccessDomainsInput struct {
+	AppBaseDomain   string `json:"app_base_domain"`
+	ExpectedVersion int64  `json:"expected_version"`
+	PortalUrl       string `json:"portal_url"`
+}
+
+// AppAccessDraftInput defines model for AppAccessDraftInput.
+type AppAccessDraftInput struct {
+	AbsoluteTimeoutSeconds int `json:"absolute_timeout_seconds"`
+
+	// AllowedDestinationCidrs Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it.
+	AllowedDestinationCidrs *[]string               `json:"allowed_destination_cidrs,omitempty"`
+	Description             string                  `json:"description"`
+	GatewayId               openapi_types.UUID      `json:"gateway_id"`
+	Icon                    AppAccessDraftInputIcon `json:"icon"`
+
+	// IconDataUrl Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted.
+	IconDataUrl        *string `json:"icon_data_url,omitempty"`
+	IdleTimeoutSeconds int     `json:"idle_timeout_seconds"`
+	Name               string  `json:"name"`
+
+	// OriginCaPem Public CA certificate PEM only: at most eight CA certificates and 32 KiB; private keys refused. Omitted on PATCH preserves current trust; empty clears custom trust.
+	OriginCaPem *string `json:"origin_ca_pem,omitempty"`
+
+	// OriginUrl Exact root HTTP/HTTPS origin; browser input never supplies a dial target.
+	OriginUrl      string `json:"origin_url"`
+	PublicHostname string `json:"public_hostname"`
+}
+
+// AppAccessDraftInputIcon defines model for AppAccessDraftInput.Icon.
+type AppAccessDraftInputIcon string
+
+// AppAccessEffectiveAccess defines model for AppAccessEffectiveAccess.
+type AppAccessEffectiveAccess struct {
+	// AccessAllowed Configured eligibility with current active serving authority only. Preview never creates a session, proves a parent login or authorizes traffic; launch still requires a valid current login.
+	AccessAllowed bool                               `json:"access_allowed"`
+	DenyReason    AppAccessEffectiveAccessDenyReason `json:"deny_reason"`
+	EvaluatedAt   time.Time                          `json:"evaluated_at"`
+
+	// GrantMatch At least one currently valid explicit user/group allow matches this subject.
+	GrantMatch       bool                 `json:"grant_match"`
+	MatchingGrantIds []openapi_types.UUID `json:"matching_grant_ids"`
+
+	// NextExpiryAt Next expiry among currently matching grants; other grants may remain. Not an end-of-access promise.
+	NextExpiryAt *time.Time `json:"next_expiry_at"`
+}
+
+// AppAccessEffectiveAccessDenyReason defines model for AppAccessEffectiveAccess.DenyReason.
+type AppAccessEffectiveAccessDenyReason string
+
+// AppAccessEffectiveAccessInput defines model for AppAccessEffectiveAccessInput.
+type AppAccessEffectiveAccessInput struct {
+	// UserId Organization-scoped subject; never overrides the authenticated administrator.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// AppAccessEvent defines model for AppAccessEvent.
+type AppAccessEvent struct {
+	AppId                  openapi_types.UUID    `json:"app_id"`
+	CreatedAt              time.Time             `json:"created_at"`
+	GatewayId              *openapi_types.UUID   `json:"gateway_id,omitempty"`
+	Id                     openapi_types.UUID    `json:"id"`
+	InstallationGeneration openapi_types.UUID    `json:"installation_generation"`
+	Kind                   AppAccessEventKind    `json:"kind"`
+	Outcome                AppAccessEventOutcome `json:"outcome"`
+	ProxyId                *openapi_types.UUID   `json:"proxy_id,omitempty"`
+	Reason                 AppAccessEventReason  `json:"reason"`
+	Revision               *int64                `json:"revision,omitempty"`
+	ServingGeneration      *openapi_types.UUID   `json:"serving_generation,omitempty"`
+	SessionId              *openapi_types.UUID   `json:"session_id,omitempty"`
+	StreamId               *openapi_types.UUID   `json:"stream_id,omitempty"`
+	UserId                 *openapi_types.UUID   `json:"user_id,omitempty"`
+}
+
+// AppAccessEventKind defines model for AppAccessEvent.Kind.
+type AppAccessEventKind string
+
+// AppAccessEventOutcome defines model for AppAccessEvent.Outcome.
+type AppAccessEventOutcome string
+
+// AppAccessEventReason defines model for AppAccessEvent.Reason.
+type AppAccessEventReason string
+
+// AppAccessEventCursor defines model for AppAccessEventCursor.
+type AppAccessEventCursor struct {
+	BeforeId   openapi_types.UUID `json:"before_id"`
+	BeforeTime time.Time          `json:"before_time"`
+}
+
+// AppAccessEventTelemetry defines model for AppAccessEventTelemetry.
+type AppAccessEventTelemetry struct {
+	// Available Tenant-only process counters; false when no bounded counter entry is available. Numbers must not be interpreted when false.
+	Available       bool  `json:"available"`
+	Dropped         int64 `json:"dropped"`
+	Emitted         int64 `json:"emitted"`
+	StorageFailures int64 `json:"storage_failures"`
+}
+
+// AppAccessEvents defines model for AppAccessEvents.
+type AppAccessEvents struct {
+	Items      []AppAccessEvent        `json:"items"`
+	NextCursor *AppAccessEventCursor   `json:"next_cursor,omitempty"`
+	Telemetry  AppAccessEventTelemetry `json:"telemetry"`
+}
+
+// AppAccessGatewayRuntime defines model for AppAccessGatewayRuntime.
+type AppAccessGatewayRuntime struct {
+	CapabilityVersion int                `json:"capability_version"`
+	GatewayId         openapi_types.UUID `json:"gateway_id"`
+	OrgId             openapi_types.UUID `json:"org_id"`
+	ReportedAt        *time.Time         `json:"reported_at"`
+
+	// Status Fresh exact capability only; never a browser access or publication readiness claim.
+	Status AppAccessGatewayRuntimeStatus `json:"status"`
+}
+
+// AppAccessGatewayRuntimeStatus Fresh exact capability only; never a browser access or publication readiness claim.
+type AppAccessGatewayRuntimeStatus string
+
+// AppAccessGrant defines model for AppAccessGrant.
+type AppAccessGrant struct {
+	AppId openapi_types.UUID `json:"app_id"`
+
+	// AppLabel Same-organization application display name; never authority.
+	AppLabel  string             `json:"app_label"`
+	CreatedAt time.Time          `json:"created_at"`
+	Enabled   bool               `json:"enabled"`
+	ExpiresAt *time.Time         `json:"expires_at"`
+	Id        openapi_types.UUID `json:"id"`
+	OrgId     openapi_types.UUID `json:"org_id"`
+	RevokedAt *time.Time         `json:"revoked_at"`
+	StartsAt  *time.Time         `json:"starts_at"`
+
+	// Status Current grant status; active does not imply app publication or content access.
+	Status      AppAccessGrantStatus `json:"status"`
+	SubjectId   openapi_types.UUID   `json:"subject_id"`
+	SubjectKind AppAccessSubjectKind `json:"subject_kind"`
+
+	// SubjectLabel Organization-scoped display label; never authority.
+	SubjectLabel string    `json:"subject_label"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Version      int64     `json:"version"`
+}
+
+// AppAccessGrantStatus Current grant status; active does not imply app publication or content access.
+type AppAccessGrantStatus string
+
+// AppAccessGrantImpact defines model for AppAccessGrantImpact.
+type AppAccessGrantImpact struct {
+	EvaluatedAt  time.Time `json:"evaluated_at"`
+	GrantVersion int64     `json:"grant_version"`
+
+	// MatchingUserCount Current eligible users matching this explicit grant; application publication and feature availability are separate.
+	MatchingUserCount int64 `json:"matching_user_count"`
+
+	// SessionImpactAvailable AA-2 does not expose or fabricate live session impact.
+	SessionImpactAvailable AppAccessGrantImpactSessionImpactAvailable `json:"session_impact_available"`
+
+	// UsersLosingGrantMatchCount Matching users without another surviving current allow; not a count of open sessions or app connections.
+	UsersLosingGrantMatchCount int64 `json:"users_losing_grant_match_count"`
+}
+
+// AppAccessGrantImpactSessionImpactAvailable AA-2 does not expose or fabricate live session impact.
+type AppAccessGrantImpactSessionImpactAvailable bool
+
+// AppAccessGrantInput defines model for AppAccessGrantInput.
+type AppAccessGrantInput struct {
+	AppId   openapi_types.UUID `json:"app_id"`
+	Enabled bool               `json:"enabled"`
+
+	// ExpiresAt Exclusive expiry; null means no upper bound.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// StartsAt Inclusive start; null means no lower bound.
+	StartsAt    *time.Time           `json:"starts_at"`
+	SubjectId   openapi_types.UUID   `json:"subject_id"`
+	SubjectKind AppAccessSubjectKind `json:"subject_kind"`
+}
+
+// AppAccessGrantList defines model for AppAccessGrantList.
+type AppAccessGrantList struct {
+	Items  []AppAccessGrant `json:"items"`
+	Limit  int              `json:"limit"`
+	Offset int              `json:"offset"`
+}
+
+// AppAccessGrantRevokeInput defines model for AppAccessGrantRevokeInput.
+type AppAccessGrantRevokeInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+}
+
+// AppAccessGrantSubject defines model for AppAccessGrantSubject.
+type AppAccessGrantSubject struct {
+	Email *string              `json:"email,omitempty"`
+	Id    openapi_types.UUID   `json:"id"`
+	Kind  AppAccessSubjectKind `json:"kind"`
+	Name  string               `json:"name"`
+}
+
+// AppAccessGrantSubjects defines model for AppAccessGrantSubjects.
+type AppAccessGrantSubjects struct {
+	Items  []AppAccessGrantSubject `json:"items"`
+	Limit  int                     `json:"limit"`
+	Offset int                     `json:"offset"`
+}
+
+// AppAccessGrantUpdateInput defines model for AppAccessGrantUpdateInput.
+type AppAccessGrantUpdateInput struct {
+	Enabled         bool       `json:"enabled"`
+	ExpectedVersion int64      `json:"expected_version"`
+	ExpiresAt       *time.Time `json:"expires_at"`
+	StartsAt        *time.Time `json:"starts_at"`
+}
+
+// AppAccessLaunchInput defines model for AppAccessLaunchInput.
+type AppAccessLaunchInput struct {
+	NonceHash      string `json:"nonce_hash"`
+	RelativeTarget string `json:"relative_target"`
+}
+
+// AppAccessLaunchResult defines model for AppAccessLaunchResult.
+type AppAccessLaunchResult struct {
+	// RedirectUrl Exact server-published HTTPS host, fixed redemption path and opaque 60-second single-use code. Never log or persist this transient URL.
+	RedirectUrl string `json:"redirect_url"`
+}
+
+// AppAccessMFAPolicyInput defines model for AppAccessMFAPolicyInput.
+type AppAccessMFAPolicyInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+	RequireMfa      bool  `json:"require_mfa"`
+}
+
+// AppAccessManagedApp defines model for AppAccessManagedApp.
+type AppAccessManagedApp struct {
+	Description  string             `json:"description"`
+	Icon         string             `json:"icon"`
+	IconDataUrl  string             `json:"icon_data_url"`
+	Id           openapi_types.UUID `json:"id"`
+	Name         string             `json:"name"`
+	PendingCount int64              `json:"pending_count"`
+}
+
+// AppAccessManagedApps defines model for AppAccessManagedApps.
+type AppAccessManagedApps struct {
+	// CanManageGrants Current organization app_access:grant permission; navigation hint only, independent of app assignment.
+	CanManageGrants bool `json:"can_manage_grants"`
+
+	// CanViewApplications Current organization app_access:view permission; navigation hint only, independent of app assignment.
+	CanViewApplications bool                  `json:"can_view_applications"`
+	Items               []AppAccessManagedApp `json:"items"`
+	Limit               int                   `json:"limit"`
+	Offset              int                   `json:"offset"`
+}
+
+// AppAccessMyApp defines model for AppAccessMyApp.
+type AppAccessMyApp struct {
+	Description string `json:"description"`
+
+	// Icon Latest saved application branding; does not change the published route or access policy.
+	Icon string `json:"icon"`
+
+	// IconDataUrl Latest saved application icon as a canonical PNG data URL, or empty for the default icon. Visible after save without republishing. Published routing and access eligibility remain unchanged.
+	IconDataUrl *string            `json:"icon_data_url,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// LaunchUrl Server-derived exact published HTTPS host and fixed /__tunnex_app/start path; creates a browser-held nonce before console launch.
+	LaunchUrl           string                            `json:"launch_url"`
+	MfaFreshnessSeconds AppAccessMyAppMfaFreshnessSeconds `json:"mfa_freshness_seconds"`
+
+	// MfaRequired Current parent login needs fresh MFA before launch; the application remains visible.
+	MfaRequired bool `json:"mfa_required"`
+
+	// MfaSetupRequired No fresh MFA assurance and no confirmed local factor; guide account setup.
+	MfaSetupRequired bool   `json:"mfa_setup_required"`
+	Name             string `json:"name"`
+	RequireMfa       bool   `json:"require_mfa"`
+}
+
+// AppAccessMyAppMfaFreshnessSeconds defines model for AppAccessMyApp.MfaFreshnessSeconds.
+type AppAccessMyAppMfaFreshnessSeconds int
+
+// AppAccessMyApps defines model for AppAccessMyApps.
+type AppAccessMyApps struct {
+	Availability AppAccessMyAppsAvailability `json:"availability"`
+	Items        []AppAccessMyApp            `json:"items"`
+	Limit        int                         `json:"limit"`
+	Offset       int                         `json:"offset"`
+}
+
+// AppAccessMyAppsAvailability defines model for AppAccessMyApps.Availability.
+type AppAccessMyAppsAvailability string
+
+// AppAccessMySession defines model for AppAccessMySession.
+type AppAccessMySession struct {
+	AppId     openapi_types.UUID `json:"app_id"`
+	AppLabel  string             `json:"app_label"`
+	CreatedAt time.Time          `json:"created_at"`
+
+	// CurrentParent Server-derived equality to the current verified parent login hash.
+	CurrentParent bool               `json:"current_parent"`
+	ExpiresAt     time.Time          `json:"expires_at"`
+	Id            openapi_types.UUID `json:"id"`
+}
+
+// AppAccessMySessions defines model for AppAccessMySessions.
+type AppAccessMySessions struct {
+	Items  []AppAccessMySession `json:"items"`
+	Limit  int                  `json:"limit"`
+	Offset int                  `json:"offset"`
+}
+
+// AppAccessPerson defines model for AppAccessPerson.
+type AppAccessPerson struct {
+	Available bool               `json:"available"`
+	Email     string             `json:"email"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+}
+
+// AppAccessPublicationCancelInput defines model for AppAccessPublicationCancelInput.
+type AppAccessPublicationCancelInput struct {
+	ExpectedOperationVersion int64 `json:"expected_operation_version"`
+}
+
+// AppAccessPublicationDisableInput defines model for AppAccessPublicationDisableInput.
+type AppAccessPublicationDisableInput struct {
+	ExpectedApplicationVersion int64 `json:"expected_application_version"`
+
+	// ExpectedAuthorityVersion Zero only when no serving pointer exists, including first pending-only publication.
+	ExpectedAuthorityVersion int64 `json:"expected_authority_version"`
+}
+
+// AppAccessPublicationImpact defines model for AppAccessPublicationImpact.
+type AppAccessPublicationImpact struct {
+	ApplicationVersion int64     `json:"application_version"`
+	AuthorityVersion   int64     `json:"authority_version"`
+	EvaluatedAt        time.Time `json:"evaluated_at"`
+
+	// LiveAppSessionCount Unexpired current-installation nonrevoked stored app-session records; does not assert current eligibility or active traffic.
+	LiveAppSessionCount             int64 `json:"live_app_session_count"`
+	LiveAppSessionCountIsLowerBound bool  `json:"live_app_session_count_is_lower_bound"`
+	MatchingUserCount               int64 `json:"matching_user_count"`
+	MatchingUserCountIsLowerBound   bool  `json:"matching_user_count_is_lower_bound"`
+	SessionImpactAvailable          bool  `json:"session_impact_available"`
+}
+
+// AppAccessPublicationInput defines model for AppAccessPublicationInput.
+type AppAccessPublicationInput struct {
+	CheckId         openapi_types.UUID `json:"check_id"`
+	Digest          string             `json:"digest"`
+	ExpectedVersion int64              `json:"expected_version"`
+	IdempotencyKey  openapi_types.UUID `json:"idempotency_key"`
+	Revision        int64              `json:"revision"`
+}
+
+// AppAccessPublicationOperation defines model for AppAccessPublicationOperation.
+type AppAccessPublicationOperation struct {
+	AppId                  openapi_types.UUID           `json:"app_id"`
+	AuthorityVersion       int64                        `json:"authority_version"`
+	CompletedAt            *time.Time                   `json:"completed_at,omitempty"`
+	ConnectorConnectStatus AppAccessPublicationStage    `json:"connector_connect_status"`
+	ConnectorDnsStatus     AppAccessPublicationStage    `json:"connector_dns_status"`
+	ConnectorTlsStatus     AppAccessPublicationTLSStage `json:"connector_tls_status"`
+	CreatedAt              time.Time                    `json:"created_at"`
+	Deadline               time.Time                    `json:"deadline"`
+	Digest                 string                       `json:"digest"`
+
+	// ErrorCode Bounded safe diagnostic enum; never raw DNS/TLS/origin errors or response content.
+	ErrorCode                      string                    `json:"error_code"`
+	ExpectedActiveAuthorityVersion int64                     `json:"expected_active_authority_version"`
+	ExpectedApplicationVersion     int64                     `json:"expected_application_version"`
+	GatewayId                      openapi_types.UUID        `json:"gateway_id"`
+	Generation                     openapi_types.UUID        `json:"generation"`
+	Hostname                       string                    `json:"hostname"`
+	Id                             openapi_types.UUID        `json:"id"`
+	OriginCheckId                  openapi_types.UUID        `json:"origin_check_id"`
+	PublicDnsStatus                AppAccessPublicationStage `json:"public_dns_status"`
+	PublicTlsStatus                AppAccessPublicationStage `json:"public_tls_status"`
+	ReadinessRequestId             openapi_types.UUID        `json:"readiness_request_id"`
+
+	// ReviewedApplicationVersion Immutable original caller reviewed application version; distinct from poststage expected version.
+	ReviewedApplicationVersion int64                               `json:"reviewed_application_version"`
+	Revision                   int64                               `json:"revision"`
+	Status                     AppAccessPublicationOperationStatus `json:"status"`
+	Version                    int64                               `json:"version"`
+}
+
+// AppAccessPublicationOperationStatus defines model for AppAccessPublicationOperation.Status.
+type AppAccessPublicationOperationStatus string
+
+// AppAccessPublicationStage defines model for AppAccessPublicationStage.
+type AppAccessPublicationStage string
+
+// AppAccessPublicationState defines model for AppAccessPublicationState.
+type AppAccessPublicationState struct {
+	Active *AppAccessActivePublication `json:"active,omitempty"`
+
+	// ActiveLabel Immutable published revision name, independent of the current draft.
+	ActiveLabel        *string                                    `json:"active_label,omitempty"`
+	ApplicationVersion int64                                      `json:"application_version"`
+	BrowserCapability  AppAccessPublicationStateBrowserCapability `json:"browser_capability"`
+	LastOperation      *AppAccessPublicationOperation             `json:"last_operation,omitempty"`
+	PendingOperation   *AppAccessPublicationOperation             `json:"pending_operation,omitempty"`
+	RollbackRevisions  []AppAccessRollbackRevision                `json:"rollback_revisions"`
+}
+
+// AppAccessPublicationStateBrowserCapability defines model for AppAccessPublicationState.BrowserCapability.
+type AppAccessPublicationStateBrowserCapability string
+
+// AppAccessPublicationTLSStage defines model for AppAccessPublicationTLSStage.
+type AppAccessPublicationTLSStage string
+
+// AppAccessRevision defines model for AppAccessRevision.
+type AppAccessRevision struct {
+	AbsoluteTimeoutSeconds int `json:"absolute_timeout_seconds"`
+
+	// AllowedDestinationCidrs Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it.
+	AllowedDestinationCidrs []string              `json:"allowed_destination_cidrs"`
+	CreatedAt               time.Time             `json:"created_at"`
+	Description             string                `json:"description"`
+	Digest                  string                `json:"digest"`
+	GatewayId               openapi_types.UUID    `json:"gateway_id"`
+	Icon                    AppAccessRevisionIcon `json:"icon"`
+
+	// IconDataUrl Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted.
+	IconDataUrl        *string `json:"icon_data_url,omitempty"`
+	IdleTimeoutSeconds int     `json:"idle_timeout_seconds"`
+	Name               string  `json:"name"`
+
+	// OriginCaDigest SHA-256 of canonical public CA bundle; empty means system roots.
+	OriginCaDigest string `json:"origin_ca_digest"`
+
+	// OriginUrl Exact root HTTP/HTTPS origin; browser input never supplies a dial target.
+	OriginUrl      string `json:"origin_url"`
+	PublicHostname string `json:"public_hostname"`
+	Revision       int64  `json:"revision"`
+}
+
+// AppAccessRevisionIcon defines model for AppAccessRevision.Icon.
+type AppAccessRevisionIcon string
+
+// AppAccessRollbackInput defines model for AppAccessRollbackInput.
+type AppAccessRollbackInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+	Revision        int64 `json:"revision"`
+}
+
+// AppAccessRollbackRevision defines model for AppAccessRollbackRevision.
+type AppAccessRollbackRevision struct {
+	ActivatedAt time.Time          `json:"activated_at"`
+	Digest      string             `json:"digest"`
+	GatewayId   openapi_types.UUID `json:"gateway_id"`
+	Hostname    string             `json:"hostname"`
+	Name        string             `json:"name"`
+	Revision    int64              `json:"revision"`
+}
+
+// AppAccessSettings defines model for AppAccessSettings.
+type AppAccessSettings struct {
+	BaseDomain string `json:"base_domain"`
+
+	// DomainReady Operator domain configuration is valid; does not prove DNS, certificates, connector or traffic readiness.
+	DomainReady          bool  `json:"domain_ready"`
+	Enabled              bool  `json:"enabled"`
+	EntitlementAvailable bool  `json:"entitlement_available"`
+	Version              int64 `json:"version"`
+}
+
+// AppAccessSettingsInput defines model for AppAccessSettingsInput.
+type AppAccessSettingsInput struct {
+	Enabled         bool  `json:"enabled"`
+	ExpectedVersion int64 `json:"expected_version"`
+}
+
+// AppAccessSubjectKind defines model for AppAccessSubjectKind.
+type AppAccessSubjectKind string
+
+// AppAccessUpdateDraftInput defines model for AppAccessUpdateDraftInput.
+type AppAccessUpdateDraftInput struct {
+	AbsoluteTimeoutSeconds int `json:"absolute_timeout_seconds"`
+
+	// AllowedDestinationCidrs Explicit private destination allowlist. Empty permits safe public destinations only. Omitted on PATCH preserves current policy; an explicit empty array clears it.
+	AllowedDestinationCidrs *[]string                     `json:"allowed_destination_cidrs,omitempty"`
+	Description             string                        `json:"description"`
+	ExpectedVersion         int64                         `json:"expected_version"`
+	GatewayId               openapi_types.UUID            `json:"gateway_id"`
+	Icon                    AppAccessUpdateDraftInputIcon `json:"icon"`
+
+	// IconDataUrl Optional PNG/JPEG base64 data URL. Decoded upload and canonical PNG are each limited to 64 KiB, dimensions 1 to 512 pixels. Server strips metadata and stores a PNG per revision. Omitted on PATCH preserves the image; empty string removes it. External URLs and SVG are not accepted.
+	IconDataUrl        *string `json:"icon_data_url,omitempty"`
+	IdleTimeoutSeconds int     `json:"idle_timeout_seconds"`
+	Name               string  `json:"name"`
+
+	// OriginCaPem Public CA certificate PEM only: at most eight CA certificates and 32 KiB; private keys refused. Omitted on PATCH preserves current trust; empty clears custom trust.
+	OriginCaPem *string `json:"origin_ca_pem,omitempty"`
+
+	// OriginUrl Exact root HTTP/HTTPS origin; browser input never supplies a dial target.
+	OriginUrl      string `json:"origin_url"`
+	PublicHostname string `json:"public_hostname"`
+}
+
+// AppAccessUpdateDraftInputIcon defines model for AppAccessUpdateDraftInput.Icon.
+type AppAccessUpdateDraftInputIcon string
 
 // ApplyAgentPolicyTemplateRequest defines model for ApplyAgentPolicyTemplateRequest.
 type ApplyAgentPolicyTemplateRequest struct {
@@ -4977,6 +6046,16 @@ type MCPToolPolicyRule struct {
 	ToolName            string                  `json:"tool_name"`
 }
 
+// MFAStepUpInput defines model for MFAStepUpInput.
+type MFAStepUpInput struct {
+	Code string `json:"code"`
+}
+
+// MFAStepUpResult defines model for MFAStepUpResult.
+type MFAStepUpResult struct {
+	VerifiedAt time.Time `json:"verified_at"`
+}
+
 // MachineCredential defines model for MachineCredential.
 type MachineCredential struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -6154,6 +7233,12 @@ type SsoConnectionCallbackParams struct {
 	TnxOidcFlow *string `form:"tnx_oidc_flow,omitempty" json:"tnx_oidc_flow,omitempty"`
 }
 
+// StartSsoConnectionParams defines parameters for StartSsoConnection.
+type StartSsoConnectionParams struct {
+	// Next Validated console-relative return persisted in browser-bound single-use OIDC state.
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+}
+
 // SsoCallbackParams defines parameters for SsoCallback.
 type SsoCallbackParams struct {
 	Code  string `form:"code" json:"code"`
@@ -6167,6 +7252,9 @@ type SsoCallbackParamsProvider string
 type StartSsoLoginParams struct {
 	// Org Organization slug whose SSO config to use. OMIT IT and the server resolves the SOLE organization with this provider enabled — the login page must not ask a human to type their tenant. Resolution FAILS CLOSED: zero configured orgs and two-or-more both reject (sso_not_configured / sso_org_ambiguous) rather than guessing, and the caller then supplies the slug explicitly.
 	Org *string `form:"org,omitempty" json:"org,omitempty"`
+
+	// Next Validated console-relative return persisted in single-use server OIDC state; external destinations are refused.
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
 }
 
 // StartSsoLoginParamsProvider defines parameters for StartSsoLogin.
@@ -6321,6 +7409,134 @@ type ListAlertOccurrencesParams struct {
 	State *AlertOccurrenceState `form:"state,omitempty" json:"state,omitempty"`
 }
 
+// ListAppAccessRequestsParams defines parameters for ListAppAccessRequests.
+type ListAppAccessRequestsParams struct {
+	Scope  *ListAppAccessRequestsParamsScope  `form:"scope,omitempty" json:"scope,omitempty"`
+	Status *ListAppAccessRequestsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	AppId  *openapi_types.UUID                `form:"app_id,omitempty" json:"app_id,omitempty"`
+	Limit  *int                               `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                               `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListAppAccessRequestsParamsScope defines parameters for ListAppAccessRequests.
+type ListAppAccessRequestsParamsScope string
+
+// ListAppAccessRequestsParamsStatus defines parameters for ListAppAccessRequests.
+type ListAppAccessRequestsParamsStatus string
+
+// ListAppAccessApplicationsParams defines parameters for ListAppAccessApplications.
+type ListAppAccessApplicationsParams struct {
+	PublicationState *ListAppAccessApplicationsParamsPublicationState `form:"publication_state,omitempty" json:"publication_state,omitempty"`
+	Search           *string                                          `form:"search,omitempty" json:"search,omitempty"`
+	Limit            *int                                             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset           *int                                             `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListAppAccessApplicationsParamsPublicationState defines parameters for ListAppAccessApplications.
+type ListAppAccessApplicationsParamsPublicationState string
+
+// ArchiveAppAccessApplicationParams defines parameters for ArchiveAppAccessApplication.
+type ArchiveAppAccessApplicationParams struct {
+	ExpectedVersion int64 `form:"expected_version" json:"expected_version"`
+}
+
+// ListAppAccessGrantSubjectsParams defines parameters for ListAppAccessGrantSubjects.
+type ListAppAccessGrantSubjectsParams struct {
+	Kind   AppAccessSubjectKind `form:"kind" json:"kind"`
+	Search *string              `form:"search,omitempty" json:"search,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                 `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListManagedAppAccessGrantsParams defines parameters for ListManagedAppAccessGrants.
+type ListManagedAppAccessGrantsParams struct {
+	// Search Trimmed literal case-insensitive substring of subject label, current same-organization user name/email or group name, or application display name; applied before pagination.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// View Omitted preserves all statuses. Current defaults to active and disabled; explicit scheduled or subject_unavailable remains selectable. History defaults to revoked and expired. A status from the other view is rejected. Filters apply before pagination.
+	View *ListManagedAppAccessGrantsParamsView `form:"view,omitempty" json:"view,omitempty"`
+
+	// Status Current grant status at the response evaluation time, applied before pagination. Precedence is revoked, subject_unavailable, disabled, scheduled, expired, active.
+	Status *ListManagedAppAccessGrantsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit  *int                                    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                                    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListManagedAppAccessGrantsParamsView defines parameters for ListManagedAppAccessGrants.
+type ListManagedAppAccessGrantsParamsView string
+
+// ListManagedAppAccessGrantsParamsStatus defines parameters for ListManagedAppAccessGrants.
+type ListManagedAppAccessGrantsParamsStatus string
+
+// ListAppAccessApplicationSessionsParams defines parameters for ListAppAccessApplicationSessions.
+type ListAppAccessApplicationSessionsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListCompanyAppsParams defines parameters for ListCompanyApps.
+type ListCompanyAppsParams struct {
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListAppAccessEventsParams defines parameters for ListAppAccessEvents.
+type ListAppAccessEventsParams struct {
+	AppId      *openapi_types.UUID `form:"app_id,omitempty" json:"app_id,omitempty"`
+	UserId     *openapi_types.UUID `form:"user_id,omitempty" json:"user_id,omitempty"`
+	SessionId  *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+	BeforeTime *time.Time          `form:"before_time,omitempty" json:"before_time,omitempty"`
+	BeforeId   *openapi_types.UUID `form:"before_id,omitempty" json:"before_id,omitempty"`
+	Limit      *int                `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAppAccessGrantsParams defines parameters for ListAppAccessGrants.
+type ListAppAccessGrantsParams struct {
+	AppId       *openapi_types.UUID   `form:"app_id,omitempty" json:"app_id,omitempty"`
+	SubjectKind *AppAccessSubjectKind `form:"subject_kind,omitempty" json:"subject_kind,omitempty"`
+
+	// SubjectId Requires subject_kind; subjects and applications are scoped to this organization.
+	SubjectId *openapi_types.UUID `form:"subject_id,omitempty" json:"subject_id,omitempty"`
+
+	// Search Trimmed literal case-insensitive substring of subject label, current same-organization user name/email or group name, or application display name; applied before pagination.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// View Omitted preserves all statuses. Current defaults to active and disabled; explicit scheduled or subject_unavailable remains selectable. History defaults to revoked and expired. A status from the other view is rejected. Filters apply before pagination.
+	View *ListAppAccessGrantsParamsView `form:"view,omitempty" json:"view,omitempty"`
+
+	// Status Current grant status at the response evaluation time, applied before pagination. Precedence is revoked, subject_unavailable, disabled, scheduled, expired, active.
+	Status *ListAppAccessGrantsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit  *int                             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                             `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListAppAccessGrantsParamsView defines parameters for ListAppAccessGrants.
+type ListAppAccessGrantsParamsView string
+
+// ListAppAccessGrantsParamsStatus defines parameters for ListAppAccessGrants.
+type ListAppAccessGrantsParamsStatus string
+
+// ListManagedAppAccessAppsParams defines parameters for ListManagedAppAccessApps.
+type ListManagedAppAccessAppsParams struct {
+	AppId  *openapi_types.UUID `form:"app_id,omitempty" json:"app_id,omitempty"`
+	Limit  *int                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListMyAppAccessAppsParams defines parameters for ListMyAppAccessApps.
+type ListMyAppAccessAppsParams struct {
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListMyAppAccessSessionsParams defines parameters for ListMyAppAccessSessions.
+type ListMyAppAccessSessionsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListAuditLogsParams defines parameters for ListAuditLogs.
 type ListAuditLogsParams struct {
 	// Actor Filter by acting user (must be an org member).
@@ -6331,7 +7547,13 @@ type ListAuditLogsParams struct {
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
 
 	// To created_at <= this.
-	To       *time.Time          `form:"to,omitempty" json:"to,omitempty"`
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// TargetType Exact audit target type filter; ordinary defaults are unchanged.
+	TargetType *string `form:"target_type,omitempty" json:"target_type,omitempty"`
+
+	// TargetId Exact UUID target filter. Application changes use app_access plus the application UUID; grant and session target IDs differ.
+	TargetId *openapi_types.UUID `form:"target_id,omitempty" json:"target_id,omitempty"`
 	CursorTs *time.Time          `form:"cursor_ts,omitempty" json:"cursor_ts,omitempty"`
 	CursorId *openapi_types.UUID `form:"cursor_id,omitempty" json:"cursor_id,omitempty"`
 	Limit    *int                `form:"limit,omitempty" json:"limit,omitempty"`
@@ -6452,6 +7674,9 @@ type AiVideoGenerationJSONRequestBody = AIVideoRequest
 // UpdateAITransportSettingsJSONRequestBody defines body for UpdateAITransportSettings for application/json ContentType.
 type UpdateAITransportSettingsJSONRequestBody = AITransportSettings
 
+// UpdateAppAccessDomainsJSONRequestBody defines body for UpdateAppAccessDomains for application/json ContentType.
+type UpdateAppAccessDomainsJSONRequestBody = AppAccessDomainsInput
+
 // UpdateServerEmailSettingsJSONRequestBody defines body for UpdateServerEmailSettings for application/json ContentType.
 type UpdateServerEmailSettingsJSONRequestBody = ServerEmailSettingsInput
 
@@ -6517,6 +7742,9 @@ type LoginJSONRequestBody = LoginRequest
 
 // MfaEnrollConfirmJSONRequestBody defines body for MfaEnrollConfirm for application/json ContentType.
 type MfaEnrollConfirmJSONRequestBody = MfaCodeRequest
+
+// MfaStepUpJSONRequestBody defines body for MfaStepUp for application/json ContentType.
+type MfaStepUpJSONRequestBody = MFAStepUpInput
 
 // MfaVerifyJSONRequestBody defines body for MfaVerify for application/json ContentType.
 type MfaVerifyJSONRequestBody = MfaVerifyRequest
@@ -6703,6 +7931,66 @@ type AddAlertDestinationSubscriptionJSONRequestBody = AddAlertSubscriptionReques
 
 // SetOrganizationAlertingEnabledJSONRequestBody defines body for SetOrganizationAlertingEnabled for application/json ContentType.
 type SetOrganizationAlertingEnabledJSONRequestBody = AlertingSetting
+
+// DecideAppAccessRequestJSONRequestBody defines body for DecideAppAccessRequest for application/json ContentType.
+type DecideAppAccessRequestJSONRequestBody = AppAccessAccessDecisionInput
+
+// CreateAppAccessApplicationJSONRequestBody defines body for CreateAppAccessApplication for application/json ContentType.
+type CreateAppAccessApplicationJSONRequestBody = AppAccessDraftInput
+
+// UpdateAppAccessApplicationJSONRequestBody defines body for UpdateAppAccessApplication for application/json ContentType.
+type UpdateAppAccessApplicationJSONRequestBody = AppAccessUpdateDraftInput
+
+// UpdateAppAccessManagementJSONRequestBody defines body for UpdateAppAccessManagement for application/json ContentType.
+type UpdateAppAccessManagementJSONRequestBody = AppAccessAccessManagementInput
+
+// CreateAppAccessRequestJSONRequestBody defines body for CreateAppAccessRequest for application/json ContentType.
+type CreateAppAccessRequestJSONRequestBody = AppAccessAccessRequestInput
+
+// RequestAppAccessCheckJSONRequestBody defines body for RequestAppAccessCheck for application/json ContentType.
+type RequestAppAccessCheckJSONRequestBody = AppAccessCheckInput
+
+// PreviewAppAccessEffectiveAccessJSONRequestBody defines body for PreviewAppAccessEffectiveAccess for application/json ContentType.
+type PreviewAppAccessEffectiveAccessJSONRequestBody = AppAccessEffectiveAccessInput
+
+// CreateManagedAppAccessGrantJSONRequestBody defines body for CreateManagedAppAccessGrant for application/json ContentType.
+type CreateManagedAppAccessGrantJSONRequestBody = AppAccessGrantInput
+
+// UpdateManagedAppAccessGrantJSONRequestBody defines body for UpdateManagedAppAccessGrant for application/json ContentType.
+type UpdateManagedAppAccessGrantJSONRequestBody = AppAccessGrantUpdateInput
+
+// RevokeManagedAppAccessGrantJSONRequestBody defines body for RevokeManagedAppAccessGrant for application/json ContentType.
+type RevokeManagedAppAccessGrantJSONRequestBody = AppAccessGrantRevokeInput
+
+// UpdateAppAccessMFAPolicyJSONRequestBody defines body for UpdateAppAccessMFAPolicy for application/json ContentType.
+type UpdateAppAccessMFAPolicyJSONRequestBody = AppAccessMFAPolicyInput
+
+// CreateAppAccessPublicationOperationJSONRequestBody defines body for CreateAppAccessPublicationOperation for application/json ContentType.
+type CreateAppAccessPublicationOperationJSONRequestBody = AppAccessPublicationInput
+
+// CancelAppAccessPublicationOperationJSONRequestBody defines body for CancelAppAccessPublicationOperation for application/json ContentType.
+type CancelAppAccessPublicationOperationJSONRequestBody = AppAccessPublicationCancelInput
+
+// DisableAppAccessPublicationJSONRequestBody defines body for DisableAppAccessPublication for application/json ContentType.
+type DisableAppAccessPublicationJSONRequestBody = AppAccessPublicationDisableInput
+
+// RollbackAppAccessDraftJSONRequestBody defines body for RollbackAppAccessDraft for application/json ContentType.
+type RollbackAppAccessDraftJSONRequestBody = AppAccessRollbackInput
+
+// CreateAppAccessGrantJSONRequestBody defines body for CreateAppAccessGrant for application/json ContentType.
+type CreateAppAccessGrantJSONRequestBody = AppAccessGrantInput
+
+// UpdateAppAccessGrantJSONRequestBody defines body for UpdateAppAccessGrant for application/json ContentType.
+type UpdateAppAccessGrantJSONRequestBody = AppAccessGrantUpdateInput
+
+// RevokeAppAccessGrantJSONRequestBody defines body for RevokeAppAccessGrant for application/json ContentType.
+type RevokeAppAccessGrantJSONRequestBody = AppAccessGrantRevokeInput
+
+// LaunchMyAppAccessAppJSONRequestBody defines body for LaunchMyAppAccessApp for application/json ContentType.
+type LaunchMyAppAccessAppJSONRequestBody = AppAccessLaunchInput
+
+// UpdateAppAccessSettingsJSONRequestBody defines body for UpdateAppAccessSettings for application/json ContentType.
+type UpdateAppAccessSettingsJSONRequestBody = AppAccessSettingsInput
 
 // UpdateAuditLogRetentionJSONRequestBody defines body for UpdateAuditLogRetention for application/json ContentType.
 type UpdateAuditLogRetentionJSONRequestBody = UpdateAuditLogRetentionRequest
@@ -7139,6 +8427,14 @@ type ClientInterface interface {
 
 	UpdateAITransportSettings(ctx context.Context, body UpdateAITransportSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAppAccessDomains request
+	GetAppAccessDomains(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAppAccessDomainsWithBody request with any body
+	UpdateAppAccessDomainsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAppAccessDomains(ctx context.Context, body UpdateAppAccessDomainsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetServerEmailSettings request
 	GetServerEmailSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -7294,6 +8590,11 @@ type ClientInterface interface {
 
 	MfaEnrollConfirm(ctx context.Context, body MfaEnrollConfirmJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// MfaStepUpWithBody request with any body
+	MfaStepUpWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	MfaStepUp(ctx context.Context, body MfaStepUpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// MfaVerifyWithBody request with any body
 	MfaVerifyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -7323,7 +8624,7 @@ type ClientInterface interface {
 	SsoConnectionCallback(ctx context.Context, params *SsoConnectionCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartSsoConnection request
-	StartSsoConnection(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	StartSsoConnection(ctx context.Context, connectionId openapi_types.UUID, params *StartSsoConnectionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SsoCallback request
 	SsoCallback(ctx context.Context, provider SsoCallbackParamsProvider, params *SsoCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7808,6 +9109,181 @@ type ClientInterface interface {
 	SetOrganizationAlertingEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetOrganizationAlertingEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppAccessRequests request
+	ListAppAccessRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecideAppAccessRequestWithBody request with any body
+	DecideAppAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DecideAppAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body DecideAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppAccessApplications request
+	ListAppAccessApplications(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessApplicationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAppAccessApplicationWithBody request with any body
+	CreateAppAccessApplicationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveAppAccessApplication request
+	ArchiveAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ArchiveAppAccessApplicationParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessApplication request
+	GetAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAppAccessApplicationWithBody request with any body
+	UpdateAppAccessApplicationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessManagement request
+	GetAppAccessManagement(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAppAccessManagementWithBody request with any body
+	UpdateAppAccessManagementWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAppAccessManagement(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessManagementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAppAccessRequestWithBody request with any body
+	CreateAppAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAppAccessRequest(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestAppAccessCheckWithBody request with any body
+	RequestAppAccessCheckWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RequestAppAccessCheck(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RequestAppAccessCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessCheck request
+	GetAppAccessCheck(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, checkId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewAppAccessEffectiveAccessWithBody request with any body
+	PreviewAppAccessEffectiveAccessWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PreviewAppAccessEffectiveAccess(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body PreviewAppAccessEffectiveAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppAccessGrantSubjects request
+	ListAppAccessGrantSubjects(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessGrantSubjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListManagedAppAccessGrants request
+	ListManagedAppAccessGrants(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListManagedAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateManagedAppAccessGrantWithBody request with any body
+	CreateManagedAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateManagedAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateManagedAppAccessGrantWithBody request with any body
+	UpdateManagedAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateManagedAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body UpdateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeManagedAppAccessGrantWithBody request with any body
+	RevokeManagedAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RevokeManagedAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body RevokeManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAppAccessMFAPolicyWithBody request with any body
+	UpdateAppAccessMFAPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAppAccessMFAPolicy(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessMFAPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessPublication request
+	GetAppAccessPublication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAppAccessPublicationOperationWithBody request with any body
+	CreateAppAccessPublicationOperationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAppAccessPublicationOperation(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessPublicationOperationByKey request
+	GetAppAccessPublicationOperationByKey(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, idempotencyKey openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessPublicationOperation request
+	GetAppAccessPublicationOperation(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelAppAccessPublicationOperationWithBody request with any body
+	CancelAppAccessPublicationOperationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CancelAppAccessPublicationOperation(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, body CancelAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisableAppAccessPublicationWithBody request with any body
+	DisableAppAccessPublicationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DisableAppAccessPublication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body DisableAppAccessPublicationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessPublicationImpact request
+	GetAppAccessPublicationImpact(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessRevision request
+	GetAppAccessRevision(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, revision int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RollbackAppAccessDraftWithBody request with any body
+	RollbackAppAccessDraftWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RollbackAppAccessDraft(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RollbackAppAccessDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppAccessApplicationSessions request
+	ListAppAccessApplicationSessions(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessApplicationSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAppAccessApplicationSession request
+	RevokeAppAccessApplicationSession(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCompanyApps request
+	ListCompanyApps(ctx context.Context, orgId openapi_types.UUID, params *ListCompanyAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppAccessEvents request
+	ListAppAccessEvents(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessGatewayStatus request
+	GetAppAccessGatewayStatus(ctx context.Context, orgId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppAccessGrants request
+	ListAppAccessGrants(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAppAccessGrantWithBody request with any body
+	CreateAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAppAccessGrantWithBody request with any body
+	UpdateAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body UpdateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAppAccessGrantWithBody request with any body
+	RevokeAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RevokeAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body RevokeAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessGrantRevokeImpact request
+	GetAppAccessGrantRevokeImpact(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListManagedAppAccessApps request
+	ListManagedAppAccessApps(ctx context.Context, orgId openapi_types.UUID, params *ListManagedAppAccessAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMyAppAccessApps request
+	ListMyAppAccessApps(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LaunchMyAppAccessAppWithBody request with any body
+	LaunchMyAppAccessAppWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	LaunchMyAppAccessApp(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body LaunchMyAppAccessAppJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMyAppAccessSessions request
+	ListMyAppAccessSessions(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeMyAppAccessSession request
+	RevokeMyAppAccessSession(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppAccessSettings request
+	GetAppAccessSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAppAccessSettingsWithBody request with any body
+	UpdateAppAccessSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAppAccessSettings(ctx context.Context, orgId openapi_types.UUID, body UpdateAppAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAuditLogRetention request
 	GetAuditLogRetention(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8768,6 +10244,42 @@ func (c *Client) UpdateAITransportSettings(ctx context.Context, body UpdateAITra
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetAppAccessDomains(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessDomainsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessDomainsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessDomainsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessDomains(ctx context.Context, body UpdateAppAccessDomainsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessDomainsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetServerEmailSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetServerEmailSettingsRequest(c.Server)
 	if err != nil {
@@ -9476,6 +10988,30 @@ func (c *Client) MfaEnrollConfirm(ctx context.Context, body MfaEnrollConfirmJSON
 	return c.Client.Do(req)
 }
 
+func (c *Client) MfaStepUpWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMfaStepUpRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) MfaStepUp(ctx context.Context, body MfaStepUpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMfaStepUpRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) MfaVerifyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMfaVerifyRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -9608,8 +11144,8 @@ func (c *Client) SsoConnectionCallback(ctx context.Context, params *SsoConnectio
 	return c.Client.Do(req)
 }
 
-func (c *Client) StartSsoConnection(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStartSsoConnectionRequest(c.Server, connectionId)
+func (c *Client) StartSsoConnection(ctx context.Context, connectionId openapi_types.UUID, params *StartSsoConnectionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartSsoConnectionRequest(c.Server, connectionId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -11770,6 +13306,786 @@ func (c *Client) SetOrganizationAlertingEnabledWithBody(ctx context.Context, org
 
 func (c *Client) SetOrganizationAlertingEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetOrganizationAlertingEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppAccessRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppAccessRequestsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DecideAppAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideAppAccessRequestRequestWithBody(c.Server, orgId, requestId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DecideAppAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body DecideAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideAppAccessRequestRequest(c.Server, orgId, requestId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppAccessApplications(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessApplicationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppAccessApplicationsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessApplicationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessApplicationRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessApplicationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ArchiveAppAccessApplicationParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveAppAccessApplicationRequest(c.Server, orgId, appId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessApplicationRequest(c.Server, orgId, appId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessApplicationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessApplicationRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessApplication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessApplicationRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessManagement(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessManagementRequest(c.Server, orgId, appId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessManagementWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessManagementRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessManagement(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessManagementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessManagementRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessRequestRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessRequest(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessRequestRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestAppAccessCheckWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestAppAccessCheckRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestAppAccessCheck(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RequestAppAccessCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestAppAccessCheckRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessCheck(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, checkId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessCheckRequest(c.Server, orgId, appId, checkId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAppAccessEffectiveAccessWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAppAccessEffectiveAccessRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAppAccessEffectiveAccess(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body PreviewAppAccessEffectiveAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAppAccessEffectiveAccessRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppAccessGrantSubjects(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessGrantSubjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppAccessGrantSubjectsRequest(c.Server, orgId, appId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListManagedAppAccessGrants(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListManagedAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListManagedAppAccessGrantsRequest(c.Server, orgId, appId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateManagedAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateManagedAppAccessGrantRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateManagedAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateManagedAppAccessGrantRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateManagedAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateManagedAppAccessGrantRequestWithBody(c.Server, orgId, appId, grantId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateManagedAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body UpdateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateManagedAppAccessGrantRequest(c.Server, orgId, appId, grantId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeManagedAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeManagedAppAccessGrantRequestWithBody(c.Server, orgId, appId, grantId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeManagedAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body RevokeManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeManagedAppAccessGrantRequest(c.Server, orgId, appId, grantId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessMFAPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessMFAPolicyRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessMFAPolicy(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessMFAPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessMFAPolicyRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessPublication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessPublicationRequest(c.Server, orgId, appId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessPublicationOperationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessPublicationOperationRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessPublicationOperation(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessPublicationOperationRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessPublicationOperationByKey(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, idempotencyKey openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessPublicationOperationByKeyRequest(c.Server, orgId, appId, idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessPublicationOperation(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessPublicationOperationRequest(c.Server, orgId, appId, operationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelAppAccessPublicationOperationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAppAccessPublicationOperationRequestWithBody(c.Server, orgId, appId, operationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelAppAccessPublicationOperation(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, body CancelAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAppAccessPublicationOperationRequest(c.Server, orgId, appId, operationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DisableAppAccessPublicationWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableAppAccessPublicationRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DisableAppAccessPublication(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body DisableAppAccessPublicationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisableAppAccessPublicationRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessPublicationImpact(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessPublicationImpactRequest(c.Server, orgId, appId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessRevision(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, revision int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessRevisionRequest(c.Server, orgId, appId, revision)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RollbackAppAccessDraftWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRollbackAppAccessDraftRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RollbackAppAccessDraft(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RollbackAppAccessDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRollbackAppAccessDraftRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppAccessApplicationSessions(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessApplicationSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppAccessApplicationSessionsRequest(c.Server, orgId, appId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAppAccessApplicationSession(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAppAccessApplicationSessionRequest(c.Server, orgId, appId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCompanyApps(ctx context.Context, orgId openapi_types.UUID, params *ListCompanyAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCompanyAppsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppAccessEvents(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppAccessEventsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessGatewayStatus(ctx context.Context, orgId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessGatewayStatusRequest(c.Server, orgId, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppAccessGrants(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppAccessGrantsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessGrantRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppAccessGrantRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessGrantRequestWithBody(c.Server, orgId, grantId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body UpdateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessGrantRequest(c.Server, orgId, grantId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAppAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAppAccessGrantRequestWithBody(c.Server, orgId, grantId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAppAccessGrant(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body RevokeAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAppAccessGrantRequest(c.Server, orgId, grantId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessGrantRevokeImpact(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessGrantRevokeImpactRequest(c.Server, orgId, grantId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListManagedAppAccessApps(ctx context.Context, orgId openapi_types.UUID, params *ListManagedAppAccessAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListManagedAppAccessAppsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListMyAppAccessApps(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyAppAccessAppsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) LaunchMyAppAccessAppWithBody(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLaunchMyAppAccessAppRequestWithBody(c.Server, orgId, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) LaunchMyAppAccessApp(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body LaunchMyAppAccessAppJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLaunchMyAppAccessAppRequest(c.Server, orgId, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListMyAppAccessSessions(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyAppAccessSessionsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeMyAppAccessSession(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeMyAppAccessSessionRequest(c.Server, orgId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppAccessSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppAccessSettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessSettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAppAccessSettings(ctx context.Context, orgId openapi_types.UUID, body UpdateAppAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAppAccessSettingsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15352,6 +17668,73 @@ func NewUpdateAITransportSettingsRequestWithBody(server string, contentType stri
 	return req, nil
 }
 
+// NewGetAppAccessDomainsRequest generates requests for GetAppAccessDomains
+func NewGetAppAccessDomainsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/app-access/domains")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAppAccessDomainsRequest calls the generic UpdateAppAccessDomains builder with application/json body
+func NewUpdateAppAccessDomainsRequest(server string, body UpdateAppAccessDomainsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAppAccessDomainsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateAppAccessDomainsRequestWithBody generates requests for UpdateAppAccessDomains with any type of body
+func NewUpdateAppAccessDomainsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/app-access/domains")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetServerEmailSettingsRequest generates requests for GetServerEmailSettings
 func NewGetServerEmailSettingsRequest(server string) (*http.Request, error) {
 	var err error
@@ -16745,6 +19128,46 @@ func NewMfaEnrollConfirmRequestWithBody(server string, contentType string, body 
 	return req, nil
 }
 
+// NewMfaStepUpRequest calls the generic MfaStepUp builder with application/json body
+func NewMfaStepUpRequest(server string, body MfaStepUpJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMfaStepUpRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewMfaStepUpRequestWithBody generates requests for MfaStepUp with any type of body
+func NewMfaStepUpRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/mfa/step-up")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewMfaVerifyRequest calls the generic MfaVerify builder with application/json body
 func NewMfaVerifyRequest(server string, body MfaVerifyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -17040,7 +19463,7 @@ func NewSsoConnectionCallbackRequest(server string, params *SsoConnectionCallbac
 }
 
 // NewStartSsoConnectionRequest generates requests for StartSsoConnection
-func NewStartSsoConnectionRequest(server string, connectionId openapi_types.UUID) (*http.Request, error) {
+func NewStartSsoConnectionRequest(server string, connectionId openapi_types.UUID, params *StartSsoConnectionParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -17063,6 +19486,28 @@ func NewStartSsoConnectionRequest(server string, connectionId openapi_types.UUID
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Next != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "next", runtime.ParamLocationQuery, *params.Next); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -17169,6 +19614,22 @@ func NewStartSsoLoginRequest(server string, provider StartSsoLoginParamsProvider
 		if params.Org != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "org", runtime.ParamLocationQuery, *params.Org); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Next != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "next", runtime.ParamLocationQuery, *params.Next); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -23221,6 +25682,2883 @@ func NewSetOrganizationAlertingEnabledRequestWithBody(server string, orgId opena
 	return req, nil
 }
 
+// NewListAppAccessRequestsRequest generates requests for ListAppAccessRequests
+func NewListAppAccessRequestsRequest(server string, orgId openapi_types.UUID, params *ListAppAccessRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/access-requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "scope", runtime.ParamLocationQuery, *params.Scope); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.AppId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "app_id", runtime.ParamLocationQuery, *params.AppId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDecideAppAccessRequestRequest calls the generic DecideAppAccessRequest builder with application/json body
+func NewDecideAppAccessRequestRequest(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, body DecideAppAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDecideAppAccessRequestRequestWithBody(server, orgId, requestId, "application/json", bodyReader)
+}
+
+// NewDecideAppAccessRequestRequestWithBody generates requests for DecideAppAccessRequest with any type of body
+func NewDecideAppAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/access-requests/%s/decision", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAppAccessApplicationsRequest generates requests for ListAppAccessApplications
+func NewListAppAccessApplicationsRequest(server string, orgId openapi_types.UUID, params *ListAppAccessApplicationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.PublicationState != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "publication_state", runtime.ParamLocationQuery, *params.PublicationState); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAppAccessApplicationRequest calls the generic CreateAppAccessApplication builder with application/json body
+func NewCreateAppAccessApplicationRequest(server string, orgId openapi_types.UUID, body CreateAppAccessApplicationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAppAccessApplicationRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAppAccessApplicationRequestWithBody generates requests for CreateAppAccessApplication with any type of body
+func NewCreateAppAccessApplicationRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveAppAccessApplicationRequest generates requests for ArchiveAppAccessApplication
+func NewArchiveAppAccessApplicationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, params *ArchiveAppAccessApplicationParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "expected_version", runtime.ParamLocationQuery, params.ExpectedVersion); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppAccessApplicationRequest generates requests for GetAppAccessApplication
+func NewGetAppAccessApplicationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAppAccessApplicationRequest calls the generic UpdateAppAccessApplication builder with application/json body
+func NewUpdateAppAccessApplicationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessApplicationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAppAccessApplicationRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewUpdateAppAccessApplicationRequestWithBody generates requests for UpdateAppAccessApplication with any type of body
+func NewUpdateAppAccessApplicationRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAppAccessManagementRequest generates requests for GetAppAccessManagement
+func NewGetAppAccessManagementRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/access-management", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAppAccessManagementRequest calls the generic UpdateAppAccessManagement builder with application/json body
+func NewUpdateAppAccessManagementRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessManagementJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAppAccessManagementRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewUpdateAppAccessManagementRequestWithBody generates requests for UpdateAppAccessManagement with any type of body
+func NewUpdateAppAccessManagementRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/access-management", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateAppAccessRequestRequest calls the generic CreateAppAccessRequest builder with application/json body
+func NewCreateAppAccessRequestRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAppAccessRequestRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewCreateAppAccessRequestRequestWithBody generates requests for CreateAppAccessRequest with any type of body
+func NewCreateAppAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/access-requests", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRequestAppAccessCheckRequest calls the generic RequestAppAccessCheck builder with application/json body
+func NewRequestAppAccessCheckRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body RequestAppAccessCheckJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRequestAppAccessCheckRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewRequestAppAccessCheckRequestWithBody generates requests for RequestAppAccessCheck with any type of body
+func NewRequestAppAccessCheckRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/checks", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAppAccessCheckRequest generates requests for GetAppAccessCheck
+func NewGetAppAccessCheckRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, checkId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "checkId", runtime.ParamLocationPath, checkId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/checks/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPreviewAppAccessEffectiveAccessRequest calls the generic PreviewAppAccessEffectiveAccess builder with application/json body
+func NewPreviewAppAccessEffectiveAccessRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body PreviewAppAccessEffectiveAccessJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewAppAccessEffectiveAccessRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewPreviewAppAccessEffectiveAccessRequestWithBody generates requests for PreviewAppAccessEffectiveAccess with any type of body
+func NewPreviewAppAccessEffectiveAccessRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/effective-access", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAppAccessGrantSubjectsRequest generates requests for ListAppAccessGrantSubjects
+func NewListAppAccessGrantSubjectsRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessGrantSubjectsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/grant-subjects", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "kind", runtime.ParamLocationQuery, params.Kind); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListManagedAppAccessGrantsRequest generates requests for ListManagedAppAccessGrants
+func NewListManagedAppAccessGrantsRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListManagedAppAccessGrantsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/managed-grants", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.View != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "view", runtime.ParamLocationQuery, *params.View); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateManagedAppAccessGrantRequest calls the generic CreateManagedAppAccessGrant builder with application/json body
+func NewCreateManagedAppAccessGrantRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateManagedAppAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateManagedAppAccessGrantRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewCreateManagedAppAccessGrantRequestWithBody generates requests for CreateManagedAppAccessGrant with any type of body
+func NewCreateManagedAppAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/managed-grants", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateManagedAppAccessGrantRequest calls the generic UpdateManagedAppAccessGrant builder with application/json body
+func NewUpdateManagedAppAccessGrantRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body UpdateManagedAppAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateManagedAppAccessGrantRequestWithBody(server, orgId, appId, grantId, "application/json", bodyReader)
+}
+
+// NewUpdateManagedAppAccessGrantRequestWithBody generates requests for UpdateManagedAppAccessGrant with any type of body
+func NewUpdateManagedAppAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "grantId", runtime.ParamLocationPath, grantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/managed-grants/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeManagedAppAccessGrantRequest calls the generic RevokeManagedAppAccessGrant builder with application/json body
+func NewRevokeManagedAppAccessGrantRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body RevokeManagedAppAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevokeManagedAppAccessGrantRequestWithBody(server, orgId, appId, grantId, "application/json", bodyReader)
+}
+
+// NewRevokeManagedAppAccessGrantRequestWithBody generates requests for RevokeManagedAppAccessGrant with any type of body
+func NewRevokeManagedAppAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "grantId", runtime.ParamLocationPath, grantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/managed-grants/%s/revoke", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateAppAccessMFAPolicyRequest calls the generic UpdateAppAccessMFAPolicy builder with application/json body
+func NewUpdateAppAccessMFAPolicyRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessMFAPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAppAccessMFAPolicyRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewUpdateAppAccessMFAPolicyRequestWithBody generates requests for UpdateAppAccessMFAPolicy with any type of body
+func NewUpdateAppAccessMFAPolicyRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/mfa-policy", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAppAccessPublicationRequest generates requests for GetAppAccessPublication
+func NewGetAppAccessPublicationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAppAccessPublicationOperationRequest calls the generic CreateAppAccessPublicationOperation builder with application/json body
+func NewCreateAppAccessPublicationOperationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessPublicationOperationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAppAccessPublicationOperationRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewCreateAppAccessPublicationOperationRequestWithBody generates requests for CreateAppAccessPublicationOperation with any type of body
+func NewCreateAppAccessPublicationOperationRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication-operations", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAppAccessPublicationOperationByKeyRequest generates requests for GetAppAccessPublicationOperationByKey
+func NewGetAppAccessPublicationOperationByKeyRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, idempotencyKey openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "idempotencyKey", runtime.ParamLocationPath, idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication-operations/by-key/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppAccessPublicationOperationRequest generates requests for GetAppAccessPublicationOperation
+func NewGetAppAccessPublicationOperationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication-operations/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCancelAppAccessPublicationOperationRequest calls the generic CancelAppAccessPublicationOperation builder with application/json body
+func NewCancelAppAccessPublicationOperationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, body CancelAppAccessPublicationOperationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCancelAppAccessPublicationOperationRequestWithBody(server, orgId, appId, operationId, "application/json", bodyReader)
+}
+
+// NewCancelAppAccessPublicationOperationRequestWithBody generates requests for CancelAppAccessPublicationOperation with any type of body
+func NewCancelAppAccessPublicationOperationRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication-operations/%s/cancel", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDisableAppAccessPublicationRequest calls the generic DisableAppAccessPublication builder with application/json body
+func NewDisableAppAccessPublicationRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body DisableAppAccessPublicationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDisableAppAccessPublicationRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewDisableAppAccessPublicationRequestWithBody generates requests for DisableAppAccessPublication with any type of body
+func NewDisableAppAccessPublicationRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication/disable", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAppAccessPublicationImpactRequest generates requests for GetAppAccessPublicationImpact
+func NewGetAppAccessPublicationImpactRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/publication/impact", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppAccessRevisionRequest generates requests for GetAppAccessRevision
+func NewGetAppAccessRevisionRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, revision int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "revision", runtime.ParamLocationPath, revision)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/revisions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRollbackAppAccessDraftRequest calls the generic RollbackAppAccessDraft builder with application/json body
+func NewRollbackAppAccessDraftRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body RollbackAppAccessDraftJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRollbackAppAccessDraftRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewRollbackAppAccessDraftRequestWithBody generates requests for RollbackAppAccessDraft with any type of body
+func NewRollbackAppAccessDraftRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/rollback-draft", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAppAccessApplicationSessionsRequest generates requests for ListAppAccessApplicationSessions
+func NewListAppAccessApplicationSessionsRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessApplicationSessionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/sessions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeAppAccessApplicationSessionRequest generates requests for RevokeAppAccessApplicationSession
+func NewRevokeAppAccessApplicationSessionRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/applications/%s/sessions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCompanyAppsRequest generates requests for ListCompanyApps
+func NewListCompanyAppsRequest(server string, orgId openapi_types.UUID, params *ListCompanyAppsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/company-apps", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAppAccessEventsRequest generates requests for ListAppAccessEvents
+func NewListAppAccessEventsRequest(server string, orgId openapi_types.UUID, params *ListAppAccessEventsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/events", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.AppId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "app_id", runtime.ParamLocationQuery, *params.AppId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UserId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "user_id", runtime.ParamLocationQuery, *params.UserId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SessionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "session_id", runtime.ParamLocationQuery, *params.SessionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BeforeTime != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before_time", runtime.ParamLocationQuery, *params.BeforeTime); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BeforeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before_id", runtime.ParamLocationQuery, *params.BeforeId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppAccessGatewayStatusRequest generates requests for GetAppAccessGatewayStatus
+func NewGetAppAccessGatewayStatusRequest(server string, orgId openapi_types.UUID, gatewayId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "gatewayId", runtime.ParamLocationPath, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/gateways/%s/status", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAppAccessGrantsRequest generates requests for ListAppAccessGrants
+func NewListAppAccessGrantsRequest(server string, orgId openapi_types.UUID, params *ListAppAccessGrantsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/grants", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.AppId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "app_id", runtime.ParamLocationQuery, *params.AppId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SubjectKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "subject_kind", runtime.ParamLocationQuery, *params.SubjectKind); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SubjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "subject_id", runtime.ParamLocationQuery, *params.SubjectId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.View != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "view", runtime.ParamLocationQuery, *params.View); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAppAccessGrantRequest calls the generic CreateAppAccessGrant builder with application/json body
+func NewCreateAppAccessGrantRequest(server string, orgId openapi_types.UUID, body CreateAppAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAppAccessGrantRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAppAccessGrantRequestWithBody generates requests for CreateAppAccessGrant with any type of body
+func NewCreateAppAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/grants", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateAppAccessGrantRequest calls the generic UpdateAppAccessGrant builder with application/json body
+func NewUpdateAppAccessGrantRequest(server string, orgId openapi_types.UUID, grantId openapi_types.UUID, body UpdateAppAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAppAccessGrantRequestWithBody(server, orgId, grantId, "application/json", bodyReader)
+}
+
+// NewUpdateAppAccessGrantRequestWithBody generates requests for UpdateAppAccessGrant with any type of body
+func NewUpdateAppAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "grantId", runtime.ParamLocationPath, grantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/grants/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeAppAccessGrantRequest calls the generic RevokeAppAccessGrant builder with application/json body
+func NewRevokeAppAccessGrantRequest(server string, orgId openapi_types.UUID, grantId openapi_types.UUID, body RevokeAppAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevokeAppAccessGrantRequestWithBody(server, orgId, grantId, "application/json", bodyReader)
+}
+
+// NewRevokeAppAccessGrantRequestWithBody generates requests for RevokeAppAccessGrant with any type of body
+func NewRevokeAppAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "grantId", runtime.ParamLocationPath, grantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/grants/%s/revoke", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAppAccessGrantRevokeImpactRequest generates requests for GetAppAccessGrantRevokeImpact
+func NewGetAppAccessGrantRevokeImpactRequest(server string, orgId openapi_types.UUID, grantId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "grantId", runtime.ParamLocationPath, grantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/grants/%s/revoke-impact", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListManagedAppAccessAppsRequest generates requests for ListManagedAppAccessApps
+func NewListManagedAppAccessAppsRequest(server string, orgId openapi_types.UUID, params *ListManagedAppAccessAppsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/managed-apps", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.AppId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "app_id", runtime.ParamLocationQuery, *params.AppId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMyAppAccessAppsRequest generates requests for ListMyAppAccessApps
+func NewListMyAppAccessAppsRequest(server string, orgId openapi_types.UUID, params *ListMyAppAccessAppsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/my-apps", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "search", runtime.ParamLocationQuery, *params.Search); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewLaunchMyAppAccessAppRequest calls the generic LaunchMyAppAccessApp builder with application/json body
+func NewLaunchMyAppAccessAppRequest(server string, orgId openapi_types.UUID, appId openapi_types.UUID, body LaunchMyAppAccessAppJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewLaunchMyAppAccessAppRequestWithBody(server, orgId, appId, "application/json", bodyReader)
+}
+
+// NewLaunchMyAppAccessAppRequestWithBody generates requests for LaunchMyAppAccessApp with any type of body
+func NewLaunchMyAppAccessAppRequestWithBody(server string, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "appId", runtime.ParamLocationPath, appId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/my-apps/%s/launch", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListMyAppAccessSessionsRequest generates requests for ListMyAppAccessSessions
+func NewListMyAppAccessSessionsRequest(server string, orgId openapi_types.UUID, params *ListMyAppAccessSessionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/my-sessions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeMyAppAccessSessionRequest generates requests for RevokeMyAppAccessSession
+func NewRevokeMyAppAccessSessionRequest(server string, orgId openapi_types.UUID, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/my-sessions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppAccessSettingsRequest generates requests for GetAppAccessSettings
+func NewGetAppAccessSettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAppAccessSettingsRequest calls the generic UpdateAppAccessSettings builder with application/json body
+func NewUpdateAppAccessSettingsRequest(server string, orgId openapi_types.UUID, body UpdateAppAccessSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAppAccessSettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateAppAccessSettingsRequestWithBody generates requests for UpdateAppAccessSettings with any type of body
+func NewUpdateAppAccessSettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/app-access/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetAuditLogRetentionRequest generates requests for GetAuditLogRetention
 func NewGetAuditLogRetentionRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -23429,6 +28767,38 @@ func NewListAuditLogsRequest(server string, orgId openapi_types.UUID, params *Li
 		if params.To != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.TargetType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "target_type", runtime.ParamLocationQuery, *params.TargetType); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.TargetId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "target_id", runtime.ParamLocationQuery, *params.TargetId); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -31551,6 +36921,14 @@ type ClientWithResponsesInterface interface {
 
 	UpdateAITransportSettingsWithResponse(ctx context.Context, body UpdateAITransportSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAITransportSettingsResponse, error)
 
+	// GetAppAccessDomainsWithResponse request
+	GetAppAccessDomainsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAppAccessDomainsResponse, error)
+
+	// UpdateAppAccessDomainsWithBodyWithResponse request with any body
+	UpdateAppAccessDomainsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessDomainsResponse, error)
+
+	UpdateAppAccessDomainsWithResponse(ctx context.Context, body UpdateAppAccessDomainsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessDomainsResponse, error)
+
 	// GetServerEmailSettingsWithResponse request
 	GetServerEmailSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerEmailSettingsResponse, error)
 
@@ -31706,6 +37084,11 @@ type ClientWithResponsesInterface interface {
 
 	MfaEnrollConfirmWithResponse(ctx context.Context, body MfaEnrollConfirmJSONRequestBody, reqEditors ...RequestEditorFn) (*MfaEnrollConfirmResponse, error)
 
+	// MfaStepUpWithBodyWithResponse request with any body
+	MfaStepUpWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MfaStepUpResponse, error)
+
+	MfaStepUpWithResponse(ctx context.Context, body MfaStepUpJSONRequestBody, reqEditors ...RequestEditorFn) (*MfaStepUpResponse, error)
+
 	// MfaVerifyWithBodyWithResponse request with any body
 	MfaVerifyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MfaVerifyResponse, error)
 
@@ -31735,7 +37118,7 @@ type ClientWithResponsesInterface interface {
 	SsoConnectionCallbackWithResponse(ctx context.Context, params *SsoConnectionCallbackParams, reqEditors ...RequestEditorFn) (*SsoConnectionCallbackResponse, error)
 
 	// StartSsoConnectionWithResponse request
-	StartSsoConnectionWithResponse(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*StartSsoConnectionResponse, error)
+	StartSsoConnectionWithResponse(ctx context.Context, connectionId openapi_types.UUID, params *StartSsoConnectionParams, reqEditors ...RequestEditorFn) (*StartSsoConnectionResponse, error)
 
 	// SsoCallbackWithResponse request
 	SsoCallbackWithResponse(ctx context.Context, provider SsoCallbackParamsProvider, params *SsoCallbackParams, reqEditors ...RequestEditorFn) (*SsoCallbackResponse, error)
@@ -32220,6 +37603,181 @@ type ClientWithResponsesInterface interface {
 	SetOrganizationAlertingEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error)
 
 	SetOrganizationAlertingEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error)
+
+	// ListAppAccessRequestsWithResponse request
+	ListAppAccessRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessRequestsParams, reqEditors ...RequestEditorFn) (*ListAppAccessRequestsResponse, error)
+
+	// DecideAppAccessRequestWithBodyWithResponse request with any body
+	DecideAppAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideAppAccessRequestResponse, error)
+
+	DecideAppAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body DecideAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideAppAccessRequestResponse, error)
+
+	// ListAppAccessApplicationsWithResponse request
+	ListAppAccessApplicationsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessApplicationsParams, reqEditors ...RequestEditorFn) (*ListAppAccessApplicationsResponse, error)
+
+	// CreateAppAccessApplicationWithBodyWithResponse request with any body
+	CreateAppAccessApplicationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessApplicationResponse, error)
+
+	CreateAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessApplicationResponse, error)
+
+	// ArchiveAppAccessApplicationWithResponse request
+	ArchiveAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ArchiveAppAccessApplicationParams, reqEditors ...RequestEditorFn) (*ArchiveAppAccessApplicationResponse, error)
+
+	// GetAppAccessApplicationWithResponse request
+	GetAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessApplicationResponse, error)
+
+	// UpdateAppAccessApplicationWithBodyWithResponse request with any body
+	UpdateAppAccessApplicationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessApplicationResponse, error)
+
+	UpdateAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessApplicationResponse, error)
+
+	// GetAppAccessManagementWithResponse request
+	GetAppAccessManagementWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessManagementResponse, error)
+
+	// UpdateAppAccessManagementWithBodyWithResponse request with any body
+	UpdateAppAccessManagementWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessManagementResponse, error)
+
+	UpdateAppAccessManagementWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessManagementJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessManagementResponse, error)
+
+	// CreateAppAccessRequestWithBodyWithResponse request with any body
+	CreateAppAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessRequestResponse, error)
+
+	CreateAppAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessRequestResponse, error)
+
+	// RequestAppAccessCheckWithBodyWithResponse request with any body
+	RequestAppAccessCheckWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestAppAccessCheckResponse, error)
+
+	RequestAppAccessCheckWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RequestAppAccessCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestAppAccessCheckResponse, error)
+
+	// GetAppAccessCheckWithResponse request
+	GetAppAccessCheckWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, checkId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessCheckResponse, error)
+
+	// PreviewAppAccessEffectiveAccessWithBodyWithResponse request with any body
+	PreviewAppAccessEffectiveAccessWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAppAccessEffectiveAccessResponse, error)
+
+	PreviewAppAccessEffectiveAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body PreviewAppAccessEffectiveAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAppAccessEffectiveAccessResponse, error)
+
+	// ListAppAccessGrantSubjectsWithResponse request
+	ListAppAccessGrantSubjectsWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessGrantSubjectsParams, reqEditors ...RequestEditorFn) (*ListAppAccessGrantSubjectsResponse, error)
+
+	// ListManagedAppAccessGrantsWithResponse request
+	ListManagedAppAccessGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListManagedAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*ListManagedAppAccessGrantsResponse, error)
+
+	// CreateManagedAppAccessGrantWithBodyWithResponse request with any body
+	CreateManagedAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateManagedAppAccessGrantResponse, error)
+
+	CreateManagedAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateManagedAppAccessGrantResponse, error)
+
+	// UpdateManagedAppAccessGrantWithBodyWithResponse request with any body
+	UpdateManagedAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateManagedAppAccessGrantResponse, error)
+
+	UpdateManagedAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body UpdateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateManagedAppAccessGrantResponse, error)
+
+	// RevokeManagedAppAccessGrantWithBodyWithResponse request with any body
+	RevokeManagedAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeManagedAppAccessGrantResponse, error)
+
+	RevokeManagedAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body RevokeManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeManagedAppAccessGrantResponse, error)
+
+	// UpdateAppAccessMFAPolicyWithBodyWithResponse request with any body
+	UpdateAppAccessMFAPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessMFAPolicyResponse, error)
+
+	UpdateAppAccessMFAPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessMFAPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessMFAPolicyResponse, error)
+
+	// GetAppAccessPublicationWithResponse request
+	GetAppAccessPublicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationResponse, error)
+
+	// CreateAppAccessPublicationOperationWithBodyWithResponse request with any body
+	CreateAppAccessPublicationOperationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessPublicationOperationResponse, error)
+
+	CreateAppAccessPublicationOperationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessPublicationOperationResponse, error)
+
+	// GetAppAccessPublicationOperationByKeyWithResponse request
+	GetAppAccessPublicationOperationByKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, idempotencyKey openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationOperationByKeyResponse, error)
+
+	// GetAppAccessPublicationOperationWithResponse request
+	GetAppAccessPublicationOperationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationOperationResponse, error)
+
+	// CancelAppAccessPublicationOperationWithBodyWithResponse request with any body
+	CancelAppAccessPublicationOperationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelAppAccessPublicationOperationResponse, error)
+
+	CancelAppAccessPublicationOperationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, body CancelAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelAppAccessPublicationOperationResponse, error)
+
+	// DisableAppAccessPublicationWithBodyWithResponse request with any body
+	DisableAppAccessPublicationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DisableAppAccessPublicationResponse, error)
+
+	DisableAppAccessPublicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body DisableAppAccessPublicationJSONRequestBody, reqEditors ...RequestEditorFn) (*DisableAppAccessPublicationResponse, error)
+
+	// GetAppAccessPublicationImpactWithResponse request
+	GetAppAccessPublicationImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationImpactResponse, error)
+
+	// GetAppAccessRevisionWithResponse request
+	GetAppAccessRevisionWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, revision int64, reqEditors ...RequestEditorFn) (*GetAppAccessRevisionResponse, error)
+
+	// RollbackAppAccessDraftWithBodyWithResponse request with any body
+	RollbackAppAccessDraftWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RollbackAppAccessDraftResponse, error)
+
+	RollbackAppAccessDraftWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RollbackAppAccessDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*RollbackAppAccessDraftResponse, error)
+
+	// ListAppAccessApplicationSessionsWithResponse request
+	ListAppAccessApplicationSessionsWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessApplicationSessionsParams, reqEditors ...RequestEditorFn) (*ListAppAccessApplicationSessionsResponse, error)
+
+	// RevokeAppAccessApplicationSessionWithResponse request
+	RevokeAppAccessApplicationSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAppAccessApplicationSessionResponse, error)
+
+	// ListCompanyAppsWithResponse request
+	ListCompanyAppsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListCompanyAppsParams, reqEditors ...RequestEditorFn) (*ListCompanyAppsResponse, error)
+
+	// ListAppAccessEventsWithResponse request
+	ListAppAccessEventsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessEventsParams, reqEditors ...RequestEditorFn) (*ListAppAccessEventsResponse, error)
+
+	// GetAppAccessGatewayStatusWithResponse request
+	GetAppAccessGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessGatewayStatusResponse, error)
+
+	// ListAppAccessGrantsWithResponse request
+	ListAppAccessGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*ListAppAccessGrantsResponse, error)
+
+	// CreateAppAccessGrantWithBodyWithResponse request with any body
+	CreateAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessGrantResponse, error)
+
+	CreateAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessGrantResponse, error)
+
+	// UpdateAppAccessGrantWithBodyWithResponse request with any body
+	UpdateAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessGrantResponse, error)
+
+	UpdateAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body UpdateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessGrantResponse, error)
+
+	// RevokeAppAccessGrantWithBodyWithResponse request with any body
+	RevokeAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeAppAccessGrantResponse, error)
+
+	RevokeAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body RevokeAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAppAccessGrantResponse, error)
+
+	// GetAppAccessGrantRevokeImpactWithResponse request
+	GetAppAccessGrantRevokeImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessGrantRevokeImpactResponse, error)
+
+	// ListManagedAppAccessAppsWithResponse request
+	ListManagedAppAccessAppsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListManagedAppAccessAppsParams, reqEditors ...RequestEditorFn) (*ListManagedAppAccessAppsResponse, error)
+
+	// ListMyAppAccessAppsWithResponse request
+	ListMyAppAccessAppsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessAppsParams, reqEditors ...RequestEditorFn) (*ListMyAppAccessAppsResponse, error)
+
+	// LaunchMyAppAccessAppWithBodyWithResponse request with any body
+	LaunchMyAppAccessAppWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LaunchMyAppAccessAppResponse, error)
+
+	LaunchMyAppAccessAppWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body LaunchMyAppAccessAppJSONRequestBody, reqEditors ...RequestEditorFn) (*LaunchMyAppAccessAppResponse, error)
+
+	// ListMyAppAccessSessionsWithResponse request
+	ListMyAppAccessSessionsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessSessionsParams, reqEditors ...RequestEditorFn) (*ListMyAppAccessSessionsResponse, error)
+
+	// RevokeMyAppAccessSessionWithResponse request
+	RevokeMyAppAccessSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeMyAppAccessSessionResponse, error)
+
+	// GetAppAccessSettingsWithResponse request
+	GetAppAccessSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessSettingsResponse, error)
+
+	// UpdateAppAccessSettingsWithBodyWithResponse request with any body
+	UpdateAppAccessSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessSettingsResponse, error)
+
+	UpdateAppAccessSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateAppAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessSettingsResponse, error)
 
 	// GetAuditLogRetentionWithResponse request
 	GetAuditLogRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAuditLogRetentionResponse, error)
@@ -33224,6 +38782,52 @@ func (r UpdateAITransportSettingsResponse) StatusCode() int {
 	return 0
 }
 
+type GetAppAccessDomainsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessDomains
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessDomainsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessDomainsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAppAccessDomainsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessDomains
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAppAccessDomainsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAppAccessDomainsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetServerEmailSettingsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -34072,6 +39676,29 @@ func (r MfaEnrollConfirmResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r MfaEnrollConfirmResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type MfaStepUpResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MFAStepUpResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r MfaStepUpResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MfaStepUpResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -37072,6 +42699,1038 @@ func (r SetOrganizationAlertingEnabledResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetOrganizationAlertingEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAppAccessRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessAccessRequests
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppAccessRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppAccessRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DecideAppAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DecideAppAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DecideAppAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAppAccessApplicationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessApplicationList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppAccessApplicationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppAccessApplicationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAppAccessApplicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AppAccessApplication
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAppAccessApplicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAppAccessApplicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveAppAccessApplicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveAppAccessApplicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveAppAccessApplicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessApplicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessApplication
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessApplicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessApplicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAppAccessApplicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessApplication
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAppAccessApplicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAppAccessApplicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessManagementResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessAccessManagement
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessManagementResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessManagementResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAppAccessManagementResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessAccessManagement
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAppAccessManagementResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAppAccessManagementResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAppAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAppAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAppAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RequestAppAccessCheckResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *AppAccessCheck
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestAppAccessCheckResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestAppAccessCheckResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessCheckResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessCheck
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessCheckResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessCheckResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PreviewAppAccessEffectiveAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessEffectiveAccess
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewAppAccessEffectiveAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewAppAccessEffectiveAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAppAccessGrantSubjectsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrantSubjects
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppAccessGrantSubjectsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppAccessGrantSubjectsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListManagedAppAccessGrantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrantList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListManagedAppAccessGrantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListManagedAppAccessGrantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateManagedAppAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateManagedAppAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateManagedAppAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateManagedAppAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateManagedAppAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateManagedAppAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeManagedAppAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeManagedAppAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeManagedAppAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAppAccessMFAPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessApplication
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAppAccessMFAPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAppAccessMFAPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessPublicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessPublicationState
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessPublicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessPublicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAppAccessPublicationOperationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AppAccessPublicationOperation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAppAccessPublicationOperationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAppAccessPublicationOperationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessPublicationOperationByKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessPublicationOperation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessPublicationOperationByKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessPublicationOperationByKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessPublicationOperationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessPublicationOperation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessPublicationOperationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessPublicationOperationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelAppAccessPublicationOperationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessPublicationOperation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelAppAccessPublicationOperationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelAppAccessPublicationOperationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DisableAppAccessPublicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessPublicationState
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DisableAppAccessPublicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DisableAppAccessPublicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessPublicationImpactResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessPublicationImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessPublicationImpactResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessPublicationImpactResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessRevisionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessRevision
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessRevisionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessRevisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RollbackAppAccessDraftResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessApplication
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RollbackAppAccessDraftResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RollbackAppAccessDraftResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAppAccessApplicationSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessApplicationSessions
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppAccessApplicationSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppAccessApplicationSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAppAccessApplicationSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAppAccessApplicationSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAppAccessApplicationSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCompanyAppsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessCompanyApps
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCompanyAppsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCompanyAppsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAppAccessEventsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessEvents
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppAccessEventsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppAccessEventsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessGatewayStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGatewayRuntime
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessGatewayStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessGatewayStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAppAccessGrantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrantList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppAccessGrantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppAccessGrantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAppAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AppAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAppAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAppAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAppAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAppAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAppAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAppAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAppAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAppAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessGrantRevokeImpactResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessGrantImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessGrantRevokeImpactResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessGrantRevokeImpactResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListManagedAppAccessAppsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessManagedApps
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListManagedAppAccessAppsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListManagedAppAccessAppsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListMyAppAccessAppsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessMyApps
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyAppAccessAppsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyAppAccessAppsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type LaunchMyAppAccessAppResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessLaunchResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r LaunchMyAppAccessAppResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LaunchMyAppAccessAppResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListMyAppAccessSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessMySessions
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyAppAccessSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyAppAccessSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeMyAppAccessSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeMyAppAccessSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeMyAppAccessSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAppAccessSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppAccessSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppAccessSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAppAccessSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppAccessSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAppAccessSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAppAccessSettingsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -41246,6 +47905,32 @@ func (c *ClientWithResponses) UpdateAITransportSettingsWithResponse(ctx context.
 	return ParseUpdateAITransportSettingsResponse(rsp)
 }
 
+// GetAppAccessDomainsWithResponse request returning *GetAppAccessDomainsResponse
+func (c *ClientWithResponses) GetAppAccessDomainsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAppAccessDomainsResponse, error) {
+	rsp, err := c.GetAppAccessDomains(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessDomainsResponse(rsp)
+}
+
+// UpdateAppAccessDomainsWithBodyWithResponse request with arbitrary body returning *UpdateAppAccessDomainsResponse
+func (c *ClientWithResponses) UpdateAppAccessDomainsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessDomainsResponse, error) {
+	rsp, err := c.UpdateAppAccessDomainsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessDomainsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAppAccessDomainsWithResponse(ctx context.Context, body UpdateAppAccessDomainsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessDomainsResponse, error) {
+	rsp, err := c.UpdateAppAccessDomains(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessDomainsResponse(rsp)
+}
+
 // GetServerEmailSettingsWithResponse request returning *GetServerEmailSettingsResponse
 func (c *ClientWithResponses) GetServerEmailSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerEmailSettingsResponse, error) {
 	rsp, err := c.GetServerEmailSettings(ctx, reqEditors...)
@@ -41755,6 +48440,23 @@ func (c *ClientWithResponses) MfaEnrollConfirmWithResponse(ctx context.Context, 
 	return ParseMfaEnrollConfirmResponse(rsp)
 }
 
+// MfaStepUpWithBodyWithResponse request with arbitrary body returning *MfaStepUpResponse
+func (c *ClientWithResponses) MfaStepUpWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MfaStepUpResponse, error) {
+	rsp, err := c.MfaStepUpWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMfaStepUpResponse(rsp)
+}
+
+func (c *ClientWithResponses) MfaStepUpWithResponse(ctx context.Context, body MfaStepUpJSONRequestBody, reqEditors ...RequestEditorFn) (*MfaStepUpResponse, error) {
+	rsp, err := c.MfaStepUp(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMfaStepUpResponse(rsp)
+}
+
 // MfaVerifyWithBodyWithResponse request with arbitrary body returning *MfaVerifyResponse
 func (c *ClientWithResponses) MfaVerifyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MfaVerifyResponse, error) {
 	rsp, err := c.MfaVerifyWithBody(ctx, contentType, body, reqEditors...)
@@ -41850,8 +48552,8 @@ func (c *ClientWithResponses) SsoConnectionCallbackWithResponse(ctx context.Cont
 }
 
 // StartSsoConnectionWithResponse request returning *StartSsoConnectionResponse
-func (c *ClientWithResponses) StartSsoConnectionWithResponse(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*StartSsoConnectionResponse, error) {
-	rsp, err := c.StartSsoConnection(ctx, connectionId, reqEditors...)
+func (c *ClientWithResponses) StartSsoConnectionWithResponse(ctx context.Context, connectionId openapi_types.UUID, params *StartSsoConnectionParams, reqEditors ...RequestEditorFn) (*StartSsoConnectionResponse, error) {
+	rsp, err := c.StartSsoConnection(ctx, connectionId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -43420,6 +50122,571 @@ func (c *ClientWithResponses) SetOrganizationAlertingEnabledWithResponse(ctx con
 		return nil, err
 	}
 	return ParseSetOrganizationAlertingEnabledResponse(rsp)
+}
+
+// ListAppAccessRequestsWithResponse request returning *ListAppAccessRequestsResponse
+func (c *ClientWithResponses) ListAppAccessRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessRequestsParams, reqEditors ...RequestEditorFn) (*ListAppAccessRequestsResponse, error) {
+	rsp, err := c.ListAppAccessRequests(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppAccessRequestsResponse(rsp)
+}
+
+// DecideAppAccessRequestWithBodyWithResponse request with arbitrary body returning *DecideAppAccessRequestResponse
+func (c *ClientWithResponses) DecideAppAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideAppAccessRequestResponse, error) {
+	rsp, err := c.DecideAppAccessRequestWithBody(ctx, orgId, requestId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideAppAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) DecideAppAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body DecideAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideAppAccessRequestResponse, error) {
+	rsp, err := c.DecideAppAccessRequest(ctx, orgId, requestId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideAppAccessRequestResponse(rsp)
+}
+
+// ListAppAccessApplicationsWithResponse request returning *ListAppAccessApplicationsResponse
+func (c *ClientWithResponses) ListAppAccessApplicationsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessApplicationsParams, reqEditors ...RequestEditorFn) (*ListAppAccessApplicationsResponse, error) {
+	rsp, err := c.ListAppAccessApplications(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppAccessApplicationsResponse(rsp)
+}
+
+// CreateAppAccessApplicationWithBodyWithResponse request with arbitrary body returning *CreateAppAccessApplicationResponse
+func (c *ClientWithResponses) CreateAppAccessApplicationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessApplicationResponse, error) {
+	rsp, err := c.CreateAppAccessApplicationWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessApplicationResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessApplicationResponse, error) {
+	rsp, err := c.CreateAppAccessApplication(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessApplicationResponse(rsp)
+}
+
+// ArchiveAppAccessApplicationWithResponse request returning *ArchiveAppAccessApplicationResponse
+func (c *ClientWithResponses) ArchiveAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ArchiveAppAccessApplicationParams, reqEditors ...RequestEditorFn) (*ArchiveAppAccessApplicationResponse, error) {
+	rsp, err := c.ArchiveAppAccessApplication(ctx, orgId, appId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveAppAccessApplicationResponse(rsp)
+}
+
+// GetAppAccessApplicationWithResponse request returning *GetAppAccessApplicationResponse
+func (c *ClientWithResponses) GetAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessApplicationResponse, error) {
+	rsp, err := c.GetAppAccessApplication(ctx, orgId, appId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessApplicationResponse(rsp)
+}
+
+// UpdateAppAccessApplicationWithBodyWithResponse request with arbitrary body returning *UpdateAppAccessApplicationResponse
+func (c *ClientWithResponses) UpdateAppAccessApplicationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessApplicationResponse, error) {
+	rsp, err := c.UpdateAppAccessApplicationWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessApplicationResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAppAccessApplicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessApplicationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessApplicationResponse, error) {
+	rsp, err := c.UpdateAppAccessApplication(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessApplicationResponse(rsp)
+}
+
+// GetAppAccessManagementWithResponse request returning *GetAppAccessManagementResponse
+func (c *ClientWithResponses) GetAppAccessManagementWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessManagementResponse, error) {
+	rsp, err := c.GetAppAccessManagement(ctx, orgId, appId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessManagementResponse(rsp)
+}
+
+// UpdateAppAccessManagementWithBodyWithResponse request with arbitrary body returning *UpdateAppAccessManagementResponse
+func (c *ClientWithResponses) UpdateAppAccessManagementWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessManagementResponse, error) {
+	rsp, err := c.UpdateAppAccessManagementWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessManagementResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAppAccessManagementWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessManagementJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessManagementResponse, error) {
+	rsp, err := c.UpdateAppAccessManagement(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessManagementResponse(rsp)
+}
+
+// CreateAppAccessRequestWithBodyWithResponse request with arbitrary body returning *CreateAppAccessRequestResponse
+func (c *ClientWithResponses) CreateAppAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessRequestResponse, error) {
+	rsp, err := c.CreateAppAccessRequestWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAppAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessRequestResponse, error) {
+	rsp, err := c.CreateAppAccessRequest(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessRequestResponse(rsp)
+}
+
+// RequestAppAccessCheckWithBodyWithResponse request with arbitrary body returning *RequestAppAccessCheckResponse
+func (c *ClientWithResponses) RequestAppAccessCheckWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestAppAccessCheckResponse, error) {
+	rsp, err := c.RequestAppAccessCheckWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestAppAccessCheckResponse(rsp)
+}
+
+func (c *ClientWithResponses) RequestAppAccessCheckWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RequestAppAccessCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestAppAccessCheckResponse, error) {
+	rsp, err := c.RequestAppAccessCheck(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestAppAccessCheckResponse(rsp)
+}
+
+// GetAppAccessCheckWithResponse request returning *GetAppAccessCheckResponse
+func (c *ClientWithResponses) GetAppAccessCheckWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, checkId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessCheckResponse, error) {
+	rsp, err := c.GetAppAccessCheck(ctx, orgId, appId, checkId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessCheckResponse(rsp)
+}
+
+// PreviewAppAccessEffectiveAccessWithBodyWithResponse request with arbitrary body returning *PreviewAppAccessEffectiveAccessResponse
+func (c *ClientWithResponses) PreviewAppAccessEffectiveAccessWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAppAccessEffectiveAccessResponse, error) {
+	rsp, err := c.PreviewAppAccessEffectiveAccessWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAppAccessEffectiveAccessResponse(rsp)
+}
+
+func (c *ClientWithResponses) PreviewAppAccessEffectiveAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body PreviewAppAccessEffectiveAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAppAccessEffectiveAccessResponse, error) {
+	rsp, err := c.PreviewAppAccessEffectiveAccess(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAppAccessEffectiveAccessResponse(rsp)
+}
+
+// ListAppAccessGrantSubjectsWithResponse request returning *ListAppAccessGrantSubjectsResponse
+func (c *ClientWithResponses) ListAppAccessGrantSubjectsWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessGrantSubjectsParams, reqEditors ...RequestEditorFn) (*ListAppAccessGrantSubjectsResponse, error) {
+	rsp, err := c.ListAppAccessGrantSubjects(ctx, orgId, appId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppAccessGrantSubjectsResponse(rsp)
+}
+
+// ListManagedAppAccessGrantsWithResponse request returning *ListManagedAppAccessGrantsResponse
+func (c *ClientWithResponses) ListManagedAppAccessGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListManagedAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*ListManagedAppAccessGrantsResponse, error) {
+	rsp, err := c.ListManagedAppAccessGrants(ctx, orgId, appId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListManagedAppAccessGrantsResponse(rsp)
+}
+
+// CreateManagedAppAccessGrantWithBodyWithResponse request with arbitrary body returning *CreateManagedAppAccessGrantResponse
+func (c *ClientWithResponses) CreateManagedAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateManagedAppAccessGrantResponse, error) {
+	rsp, err := c.CreateManagedAppAccessGrantWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateManagedAppAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateManagedAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateManagedAppAccessGrantResponse, error) {
+	rsp, err := c.CreateManagedAppAccessGrant(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateManagedAppAccessGrantResponse(rsp)
+}
+
+// UpdateManagedAppAccessGrantWithBodyWithResponse request with arbitrary body returning *UpdateManagedAppAccessGrantResponse
+func (c *ClientWithResponses) UpdateManagedAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateManagedAppAccessGrantResponse, error) {
+	rsp, err := c.UpdateManagedAppAccessGrantWithBody(ctx, orgId, appId, grantId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateManagedAppAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateManagedAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body UpdateManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateManagedAppAccessGrantResponse, error) {
+	rsp, err := c.UpdateManagedAppAccessGrant(ctx, orgId, appId, grantId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateManagedAppAccessGrantResponse(rsp)
+}
+
+// RevokeManagedAppAccessGrantWithBodyWithResponse request with arbitrary body returning *RevokeManagedAppAccessGrantResponse
+func (c *ClientWithResponses) RevokeManagedAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeManagedAppAccessGrantResponse, error) {
+	rsp, err := c.RevokeManagedAppAccessGrantWithBody(ctx, orgId, appId, grantId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeManagedAppAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) RevokeManagedAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, grantId openapi_types.UUID, body RevokeManagedAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeManagedAppAccessGrantResponse, error) {
+	rsp, err := c.RevokeManagedAppAccessGrant(ctx, orgId, appId, grantId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeManagedAppAccessGrantResponse(rsp)
+}
+
+// UpdateAppAccessMFAPolicyWithBodyWithResponse request with arbitrary body returning *UpdateAppAccessMFAPolicyResponse
+func (c *ClientWithResponses) UpdateAppAccessMFAPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessMFAPolicyResponse, error) {
+	rsp, err := c.UpdateAppAccessMFAPolicyWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessMFAPolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAppAccessMFAPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body UpdateAppAccessMFAPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessMFAPolicyResponse, error) {
+	rsp, err := c.UpdateAppAccessMFAPolicy(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessMFAPolicyResponse(rsp)
+}
+
+// GetAppAccessPublicationWithResponse request returning *GetAppAccessPublicationResponse
+func (c *ClientWithResponses) GetAppAccessPublicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationResponse, error) {
+	rsp, err := c.GetAppAccessPublication(ctx, orgId, appId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessPublicationResponse(rsp)
+}
+
+// CreateAppAccessPublicationOperationWithBodyWithResponse request with arbitrary body returning *CreateAppAccessPublicationOperationResponse
+func (c *ClientWithResponses) CreateAppAccessPublicationOperationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessPublicationOperationResponse, error) {
+	rsp, err := c.CreateAppAccessPublicationOperationWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessPublicationOperationResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAppAccessPublicationOperationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body CreateAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessPublicationOperationResponse, error) {
+	rsp, err := c.CreateAppAccessPublicationOperation(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessPublicationOperationResponse(rsp)
+}
+
+// GetAppAccessPublicationOperationByKeyWithResponse request returning *GetAppAccessPublicationOperationByKeyResponse
+func (c *ClientWithResponses) GetAppAccessPublicationOperationByKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, idempotencyKey openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationOperationByKeyResponse, error) {
+	rsp, err := c.GetAppAccessPublicationOperationByKey(ctx, orgId, appId, idempotencyKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessPublicationOperationByKeyResponse(rsp)
+}
+
+// GetAppAccessPublicationOperationWithResponse request returning *GetAppAccessPublicationOperationResponse
+func (c *ClientWithResponses) GetAppAccessPublicationOperationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationOperationResponse, error) {
+	rsp, err := c.GetAppAccessPublicationOperation(ctx, orgId, appId, operationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessPublicationOperationResponse(rsp)
+}
+
+// CancelAppAccessPublicationOperationWithBodyWithResponse request with arbitrary body returning *CancelAppAccessPublicationOperationResponse
+func (c *ClientWithResponses) CancelAppAccessPublicationOperationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelAppAccessPublicationOperationResponse, error) {
+	rsp, err := c.CancelAppAccessPublicationOperationWithBody(ctx, orgId, appId, operationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAppAccessPublicationOperationResponse(rsp)
+}
+
+func (c *ClientWithResponses) CancelAppAccessPublicationOperationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, operationId openapi_types.UUID, body CancelAppAccessPublicationOperationJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelAppAccessPublicationOperationResponse, error) {
+	rsp, err := c.CancelAppAccessPublicationOperation(ctx, orgId, appId, operationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAppAccessPublicationOperationResponse(rsp)
+}
+
+// DisableAppAccessPublicationWithBodyWithResponse request with arbitrary body returning *DisableAppAccessPublicationResponse
+func (c *ClientWithResponses) DisableAppAccessPublicationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DisableAppAccessPublicationResponse, error) {
+	rsp, err := c.DisableAppAccessPublicationWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableAppAccessPublicationResponse(rsp)
+}
+
+func (c *ClientWithResponses) DisableAppAccessPublicationWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body DisableAppAccessPublicationJSONRequestBody, reqEditors ...RequestEditorFn) (*DisableAppAccessPublicationResponse, error) {
+	rsp, err := c.DisableAppAccessPublication(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisableAppAccessPublicationResponse(rsp)
+}
+
+// GetAppAccessPublicationImpactWithResponse request returning *GetAppAccessPublicationImpactResponse
+func (c *ClientWithResponses) GetAppAccessPublicationImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessPublicationImpactResponse, error) {
+	rsp, err := c.GetAppAccessPublicationImpact(ctx, orgId, appId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessPublicationImpactResponse(rsp)
+}
+
+// GetAppAccessRevisionWithResponse request returning *GetAppAccessRevisionResponse
+func (c *ClientWithResponses) GetAppAccessRevisionWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, revision int64, reqEditors ...RequestEditorFn) (*GetAppAccessRevisionResponse, error) {
+	rsp, err := c.GetAppAccessRevision(ctx, orgId, appId, revision, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessRevisionResponse(rsp)
+}
+
+// RollbackAppAccessDraftWithBodyWithResponse request with arbitrary body returning *RollbackAppAccessDraftResponse
+func (c *ClientWithResponses) RollbackAppAccessDraftWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RollbackAppAccessDraftResponse, error) {
+	rsp, err := c.RollbackAppAccessDraftWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRollbackAppAccessDraftResponse(rsp)
+}
+
+func (c *ClientWithResponses) RollbackAppAccessDraftWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body RollbackAppAccessDraftJSONRequestBody, reqEditors ...RequestEditorFn) (*RollbackAppAccessDraftResponse, error) {
+	rsp, err := c.RollbackAppAccessDraft(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRollbackAppAccessDraftResponse(rsp)
+}
+
+// ListAppAccessApplicationSessionsWithResponse request returning *ListAppAccessApplicationSessionsResponse
+func (c *ClientWithResponses) ListAppAccessApplicationSessionsWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, params *ListAppAccessApplicationSessionsParams, reqEditors ...RequestEditorFn) (*ListAppAccessApplicationSessionsResponse, error) {
+	rsp, err := c.ListAppAccessApplicationSessions(ctx, orgId, appId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppAccessApplicationSessionsResponse(rsp)
+}
+
+// RevokeAppAccessApplicationSessionWithResponse request returning *RevokeAppAccessApplicationSessionResponse
+func (c *ClientWithResponses) RevokeAppAccessApplicationSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAppAccessApplicationSessionResponse, error) {
+	rsp, err := c.RevokeAppAccessApplicationSession(ctx, orgId, appId, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAppAccessApplicationSessionResponse(rsp)
+}
+
+// ListCompanyAppsWithResponse request returning *ListCompanyAppsResponse
+func (c *ClientWithResponses) ListCompanyAppsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListCompanyAppsParams, reqEditors ...RequestEditorFn) (*ListCompanyAppsResponse, error) {
+	rsp, err := c.ListCompanyApps(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCompanyAppsResponse(rsp)
+}
+
+// ListAppAccessEventsWithResponse request returning *ListAppAccessEventsResponse
+func (c *ClientWithResponses) ListAppAccessEventsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessEventsParams, reqEditors ...RequestEditorFn) (*ListAppAccessEventsResponse, error) {
+	rsp, err := c.ListAppAccessEvents(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppAccessEventsResponse(rsp)
+}
+
+// GetAppAccessGatewayStatusWithResponse request returning *GetAppAccessGatewayStatusResponse
+func (c *ClientWithResponses) GetAppAccessGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessGatewayStatusResponse, error) {
+	rsp, err := c.GetAppAccessGatewayStatus(ctx, orgId, gatewayId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessGatewayStatusResponse(rsp)
+}
+
+// ListAppAccessGrantsWithResponse request returning *ListAppAccessGrantsResponse
+func (c *ClientWithResponses) ListAppAccessGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAppAccessGrantsParams, reqEditors ...RequestEditorFn) (*ListAppAccessGrantsResponse, error) {
+	rsp, err := c.ListAppAccessGrants(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppAccessGrantsResponse(rsp)
+}
+
+// CreateAppAccessGrantWithBodyWithResponse request with arbitrary body returning *CreateAppAccessGrantResponse
+func (c *ClientWithResponses) CreateAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppAccessGrantResponse, error) {
+	rsp, err := c.CreateAppAccessGrantWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppAccessGrantResponse, error) {
+	rsp, err := c.CreateAppAccessGrant(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppAccessGrantResponse(rsp)
+}
+
+// UpdateAppAccessGrantWithBodyWithResponse request with arbitrary body returning *UpdateAppAccessGrantResponse
+func (c *ClientWithResponses) UpdateAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessGrantResponse, error) {
+	rsp, err := c.UpdateAppAccessGrantWithBody(ctx, orgId, grantId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body UpdateAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessGrantResponse, error) {
+	rsp, err := c.UpdateAppAccessGrant(ctx, orgId, grantId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessGrantResponse(rsp)
+}
+
+// RevokeAppAccessGrantWithBodyWithResponse request with arbitrary body returning *RevokeAppAccessGrantResponse
+func (c *ClientWithResponses) RevokeAppAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeAppAccessGrantResponse, error) {
+	rsp, err := c.RevokeAppAccessGrantWithBody(ctx, orgId, grantId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAppAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) RevokeAppAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, body RevokeAppAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAppAccessGrantResponse, error) {
+	rsp, err := c.RevokeAppAccessGrant(ctx, orgId, grantId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAppAccessGrantResponse(rsp)
+}
+
+// GetAppAccessGrantRevokeImpactWithResponse request returning *GetAppAccessGrantRevokeImpactResponse
+func (c *ClientWithResponses) GetAppAccessGrantRevokeImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessGrantRevokeImpactResponse, error) {
+	rsp, err := c.GetAppAccessGrantRevokeImpact(ctx, orgId, grantId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessGrantRevokeImpactResponse(rsp)
+}
+
+// ListManagedAppAccessAppsWithResponse request returning *ListManagedAppAccessAppsResponse
+func (c *ClientWithResponses) ListManagedAppAccessAppsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListManagedAppAccessAppsParams, reqEditors ...RequestEditorFn) (*ListManagedAppAccessAppsResponse, error) {
+	rsp, err := c.ListManagedAppAccessApps(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListManagedAppAccessAppsResponse(rsp)
+}
+
+// ListMyAppAccessAppsWithResponse request returning *ListMyAppAccessAppsResponse
+func (c *ClientWithResponses) ListMyAppAccessAppsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessAppsParams, reqEditors ...RequestEditorFn) (*ListMyAppAccessAppsResponse, error) {
+	rsp, err := c.ListMyAppAccessApps(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyAppAccessAppsResponse(rsp)
+}
+
+// LaunchMyAppAccessAppWithBodyWithResponse request with arbitrary body returning *LaunchMyAppAccessAppResponse
+func (c *ClientWithResponses) LaunchMyAppAccessAppWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LaunchMyAppAccessAppResponse, error) {
+	rsp, err := c.LaunchMyAppAccessAppWithBody(ctx, orgId, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLaunchMyAppAccessAppResponse(rsp)
+}
+
+func (c *ClientWithResponses) LaunchMyAppAccessAppWithResponse(ctx context.Context, orgId openapi_types.UUID, appId openapi_types.UUID, body LaunchMyAppAccessAppJSONRequestBody, reqEditors ...RequestEditorFn) (*LaunchMyAppAccessAppResponse, error) {
+	rsp, err := c.LaunchMyAppAccessApp(ctx, orgId, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLaunchMyAppAccessAppResponse(rsp)
+}
+
+// ListMyAppAccessSessionsWithResponse request returning *ListMyAppAccessSessionsResponse
+func (c *ClientWithResponses) ListMyAppAccessSessionsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListMyAppAccessSessionsParams, reqEditors ...RequestEditorFn) (*ListMyAppAccessSessionsResponse, error) {
+	rsp, err := c.ListMyAppAccessSessions(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyAppAccessSessionsResponse(rsp)
+}
+
+// RevokeMyAppAccessSessionWithResponse request returning *RevokeMyAppAccessSessionResponse
+func (c *ClientWithResponses) RevokeMyAppAccessSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeMyAppAccessSessionResponse, error) {
+	rsp, err := c.RevokeMyAppAccessSession(ctx, orgId, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeMyAppAccessSessionResponse(rsp)
+}
+
+// GetAppAccessSettingsWithResponse request returning *GetAppAccessSettingsResponse
+func (c *ClientWithResponses) GetAppAccessSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAppAccessSettingsResponse, error) {
+	rsp, err := c.GetAppAccessSettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppAccessSettingsResponse(rsp)
+}
+
+// UpdateAppAccessSettingsWithBodyWithResponse request with arbitrary body returning *UpdateAppAccessSettingsResponse
+func (c *ClientWithResponses) UpdateAppAccessSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAppAccessSettingsResponse, error) {
+	rsp, err := c.UpdateAppAccessSettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAppAccessSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateAppAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAppAccessSettingsResponse, error) {
+	rsp, err := c.UpdateAppAccessSettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAppAccessSettingsResponse(rsp)
 }
 
 // GetAuditLogRetentionWithResponse request returning *GetAuditLogRetentionResponse
@@ -46085,6 +53352,72 @@ func ParseUpdateAITransportSettingsResponse(rsp *http.Response) (*UpdateAITransp
 	return response, nil
 }
 
+// ParseGetAppAccessDomainsResponse parses an HTTP response from a GetAppAccessDomainsWithResponse call
+func ParseGetAppAccessDomainsResponse(rsp *http.Response) (*GetAppAccessDomainsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessDomainsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessDomains
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAppAccessDomainsResponse parses an HTTP response from a UpdateAppAccessDomainsWithResponse call
+func ParseUpdateAppAccessDomainsResponse(rsp *http.Response) (*UpdateAppAccessDomainsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAppAccessDomainsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessDomains
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetServerEmailSettingsResponse parses an HTTP response from a GetServerEmailSettingsWithResponse call
 func ParseGetServerEmailSettingsResponse(rsp *http.Response) (*GetServerEmailSettingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -47298,6 +54631,39 @@ func ParseMfaEnrollConfirmResponse(rsp *http.Response) (*MfaEnrollConfirmRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest MfaRecoveryCodes
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMfaStepUpResponse parses an HTTP response from a MfaStepUpWithResponse call
+func ParseMfaStepUpResponse(rsp *http.Response) (*MfaStepUpResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MfaStepUpResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MFAStepUpResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -51539,6 +58905,1470 @@ func ParseSetOrganizationAlertingEnabledResponse(rsp *http.Response) (*SetOrgani
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AlertingSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppAccessRequestsResponse parses an HTTP response from a ListAppAccessRequestsWithResponse call
+func ParseListAppAccessRequestsResponse(rsp *http.Response) (*ListAppAccessRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppAccessRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessAccessRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDecideAppAccessRequestResponse parses an HTTP response from a DecideAppAccessRequestWithResponse call
+func ParseDecideAppAccessRequestResponse(rsp *http.Response) (*DecideAppAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DecideAppAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppAccessApplicationsResponse parses an HTTP response from a ListAppAccessApplicationsWithResponse call
+func ParseListAppAccessApplicationsResponse(rsp *http.Response) (*ListAppAccessApplicationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppAccessApplicationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessApplicationList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAppAccessApplicationResponse parses an HTTP response from a CreateAppAccessApplicationWithResponse call
+func ParseCreateAppAccessApplicationResponse(rsp *http.Response) (*CreateAppAccessApplicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAppAccessApplicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AppAccessApplication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveAppAccessApplicationResponse parses an HTTP response from a ArchiveAppAccessApplicationWithResponse call
+func ParseArchiveAppAccessApplicationResponse(rsp *http.Response) (*ArchiveAppAccessApplicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveAppAccessApplicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessApplicationResponse parses an HTTP response from a GetAppAccessApplicationWithResponse call
+func ParseGetAppAccessApplicationResponse(rsp *http.Response) (*GetAppAccessApplicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessApplicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessApplication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAppAccessApplicationResponse parses an HTTP response from a UpdateAppAccessApplicationWithResponse call
+func ParseUpdateAppAccessApplicationResponse(rsp *http.Response) (*UpdateAppAccessApplicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAppAccessApplicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessApplication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessManagementResponse parses an HTTP response from a GetAppAccessManagementWithResponse call
+func ParseGetAppAccessManagementResponse(rsp *http.Response) (*GetAppAccessManagementResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessManagementResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessAccessManagement
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAppAccessManagementResponse parses an HTTP response from a UpdateAppAccessManagementWithResponse call
+func ParseUpdateAppAccessManagementResponse(rsp *http.Response) (*UpdateAppAccessManagementResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAppAccessManagementResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessAccessManagement
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAppAccessRequestResponse parses an HTTP response from a CreateAppAccessRequestWithResponse call
+func ParseCreateAppAccessRequestResponse(rsp *http.Response) (*CreateAppAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAppAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRequestAppAccessCheckResponse parses an HTTP response from a RequestAppAccessCheckWithResponse call
+func ParseRequestAppAccessCheckResponse(rsp *http.Response) (*RequestAppAccessCheckResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestAppAccessCheckResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest AppAccessCheck
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessCheckResponse parses an HTTP response from a GetAppAccessCheckWithResponse call
+func ParseGetAppAccessCheckResponse(rsp *http.Response) (*GetAppAccessCheckResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessCheckResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessCheck
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewAppAccessEffectiveAccessResponse parses an HTTP response from a PreviewAppAccessEffectiveAccessWithResponse call
+func ParsePreviewAppAccessEffectiveAccessResponse(rsp *http.Response) (*PreviewAppAccessEffectiveAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewAppAccessEffectiveAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessEffectiveAccess
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppAccessGrantSubjectsResponse parses an HTTP response from a ListAppAccessGrantSubjectsWithResponse call
+func ParseListAppAccessGrantSubjectsResponse(rsp *http.Response) (*ListAppAccessGrantSubjectsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppAccessGrantSubjectsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrantSubjects
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListManagedAppAccessGrantsResponse parses an HTTP response from a ListManagedAppAccessGrantsWithResponse call
+func ParseListManagedAppAccessGrantsResponse(rsp *http.Response) (*ListManagedAppAccessGrantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListManagedAppAccessGrantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrantList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateManagedAppAccessGrantResponse parses an HTTP response from a CreateManagedAppAccessGrantWithResponse call
+func ParseCreateManagedAppAccessGrantResponse(rsp *http.Response) (*CreateManagedAppAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateManagedAppAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateManagedAppAccessGrantResponse parses an HTTP response from a UpdateManagedAppAccessGrantWithResponse call
+func ParseUpdateManagedAppAccessGrantResponse(rsp *http.Response) (*UpdateManagedAppAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateManagedAppAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeManagedAppAccessGrantResponse parses an HTTP response from a RevokeManagedAppAccessGrantWithResponse call
+func ParseRevokeManagedAppAccessGrantResponse(rsp *http.Response) (*RevokeManagedAppAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeManagedAppAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAppAccessMFAPolicyResponse parses an HTTP response from a UpdateAppAccessMFAPolicyWithResponse call
+func ParseUpdateAppAccessMFAPolicyResponse(rsp *http.Response) (*UpdateAppAccessMFAPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAppAccessMFAPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessApplication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessPublicationResponse parses an HTTP response from a GetAppAccessPublicationWithResponse call
+func ParseGetAppAccessPublicationResponse(rsp *http.Response) (*GetAppAccessPublicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessPublicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessPublicationState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAppAccessPublicationOperationResponse parses an HTTP response from a CreateAppAccessPublicationOperationWithResponse call
+func ParseCreateAppAccessPublicationOperationResponse(rsp *http.Response) (*CreateAppAccessPublicationOperationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAppAccessPublicationOperationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AppAccessPublicationOperation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessPublicationOperationByKeyResponse parses an HTTP response from a GetAppAccessPublicationOperationByKeyWithResponse call
+func ParseGetAppAccessPublicationOperationByKeyResponse(rsp *http.Response) (*GetAppAccessPublicationOperationByKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessPublicationOperationByKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessPublicationOperation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessPublicationOperationResponse parses an HTTP response from a GetAppAccessPublicationOperationWithResponse call
+func ParseGetAppAccessPublicationOperationResponse(rsp *http.Response) (*GetAppAccessPublicationOperationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessPublicationOperationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessPublicationOperation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelAppAccessPublicationOperationResponse parses an HTTP response from a CancelAppAccessPublicationOperationWithResponse call
+func ParseCancelAppAccessPublicationOperationResponse(rsp *http.Response) (*CancelAppAccessPublicationOperationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelAppAccessPublicationOperationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessPublicationOperation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDisableAppAccessPublicationResponse parses an HTTP response from a DisableAppAccessPublicationWithResponse call
+func ParseDisableAppAccessPublicationResponse(rsp *http.Response) (*DisableAppAccessPublicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DisableAppAccessPublicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessPublicationState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessPublicationImpactResponse parses an HTTP response from a GetAppAccessPublicationImpactWithResponse call
+func ParseGetAppAccessPublicationImpactResponse(rsp *http.Response) (*GetAppAccessPublicationImpactResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessPublicationImpactResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessPublicationImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessRevisionResponse parses an HTTP response from a GetAppAccessRevisionWithResponse call
+func ParseGetAppAccessRevisionResponse(rsp *http.Response) (*GetAppAccessRevisionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessRevisionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessRevision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRollbackAppAccessDraftResponse parses an HTTP response from a RollbackAppAccessDraftWithResponse call
+func ParseRollbackAppAccessDraftResponse(rsp *http.Response) (*RollbackAppAccessDraftResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RollbackAppAccessDraftResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessApplication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppAccessApplicationSessionsResponse parses an HTTP response from a ListAppAccessApplicationSessionsWithResponse call
+func ParseListAppAccessApplicationSessionsResponse(rsp *http.Response) (*ListAppAccessApplicationSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppAccessApplicationSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessApplicationSessions
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAppAccessApplicationSessionResponse parses an HTTP response from a RevokeAppAccessApplicationSessionWithResponse call
+func ParseRevokeAppAccessApplicationSessionResponse(rsp *http.Response) (*RevokeAppAccessApplicationSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAppAccessApplicationSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCompanyAppsResponse parses an HTTP response from a ListCompanyAppsWithResponse call
+func ParseListCompanyAppsResponse(rsp *http.Response) (*ListCompanyAppsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCompanyAppsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessCompanyApps
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppAccessEventsResponse parses an HTTP response from a ListAppAccessEventsWithResponse call
+func ParseListAppAccessEventsResponse(rsp *http.Response) (*ListAppAccessEventsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppAccessEventsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessEvents
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessGatewayStatusResponse parses an HTTP response from a GetAppAccessGatewayStatusWithResponse call
+func ParseGetAppAccessGatewayStatusResponse(rsp *http.Response) (*GetAppAccessGatewayStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessGatewayStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGatewayRuntime
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppAccessGrantsResponse parses an HTTP response from a ListAppAccessGrantsWithResponse call
+func ParseListAppAccessGrantsResponse(rsp *http.Response) (*ListAppAccessGrantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppAccessGrantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrantList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAppAccessGrantResponse parses an HTTP response from a CreateAppAccessGrantWithResponse call
+func ParseCreateAppAccessGrantResponse(rsp *http.Response) (*CreateAppAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAppAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AppAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAppAccessGrantResponse parses an HTTP response from a UpdateAppAccessGrantWithResponse call
+func ParseUpdateAppAccessGrantResponse(rsp *http.Response) (*UpdateAppAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAppAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAppAccessGrantResponse parses an HTTP response from a RevokeAppAccessGrantWithResponse call
+func ParseRevokeAppAccessGrantResponse(rsp *http.Response) (*RevokeAppAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAppAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessGrantRevokeImpactResponse parses an HTTP response from a GetAppAccessGrantRevokeImpactWithResponse call
+func ParseGetAppAccessGrantRevokeImpactResponse(rsp *http.Response) (*GetAppAccessGrantRevokeImpactResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessGrantRevokeImpactResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessGrantImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListManagedAppAccessAppsResponse parses an HTTP response from a ListManagedAppAccessAppsWithResponse call
+func ParseListManagedAppAccessAppsResponse(rsp *http.Response) (*ListManagedAppAccessAppsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListManagedAppAccessAppsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessManagedApps
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMyAppAccessAppsResponse parses an HTTP response from a ListMyAppAccessAppsWithResponse call
+func ParseListMyAppAccessAppsResponse(rsp *http.Response) (*ListMyAppAccessAppsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyAppAccessAppsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessMyApps
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLaunchMyAppAccessAppResponse parses an HTTP response from a LaunchMyAppAccessAppWithResponse call
+func ParseLaunchMyAppAccessAppResponse(rsp *http.Response) (*LaunchMyAppAccessAppResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LaunchMyAppAccessAppResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessLaunchResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMyAppAccessSessionsResponse parses an HTTP response from a ListMyAppAccessSessionsWithResponse call
+func ParseListMyAppAccessSessionsResponse(rsp *http.Response) (*ListMyAppAccessSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyAppAccessSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessMySessions
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeMyAppAccessSessionResponse parses an HTTP response from a RevokeMyAppAccessSessionWithResponse call
+func ParseRevokeMyAppAccessSessionResponse(rsp *http.Response) (*RevokeMyAppAccessSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeMyAppAccessSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppAccessSettingsResponse parses an HTTP response from a GetAppAccessSettingsWithResponse call
+func ParseGetAppAccessSettingsResponse(rsp *http.Response) (*GetAppAccessSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppAccessSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAppAccessSettingsResponse parses an HTTP response from a UpdateAppAccessSettingsWithResponse call
+func ParseUpdateAppAccessSettingsResponse(rsp *http.Response) (*UpdateAppAccessSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAppAccessSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppAccessSettings
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

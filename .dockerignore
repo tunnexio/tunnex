@@ -15,3 +15,6 @@
 # applies to EVERY image (api, node, migrate, operator, web) and a broader ignore risks silently
 # starving a build that legitimately reads those paths. Add entries one at a time, with a reason.
 **/node_modules
+# Local App Access credentials, database backups and qualification binaries must
+# not enter any image build context.
+tests/app-access-local/.runtime

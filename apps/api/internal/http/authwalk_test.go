@@ -20,6 +20,30 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
+	"updateappaccessmanagement":   `{"expected_version":1,"catalog_visible":false,"app_admin_user_id":null}`,
+	"createappaccessrequest":      `{}`,
+	"decideappaccessrequest":      `{"expected_version":1,"decision":"approved","expires_at":null}`,
+	"createmanagedappaccessgrant": `{"app_id":"00000000-0000-4000-8000-000000000001","subject_kind":"user","subject_id":"00000000-0000-4000-8000-000000000002","enabled":true,"starts_at":null,"expires_at":null}`,
+	"updatemanagedappaccessgrant": `{"enabled":false,"starts_at":null,"expires_at":null,"expected_version":1}`,
+	"revokemanagedappaccessgrant": `{"expected_version":1}`,
+
+	"updateappaccessmfapolicy":            `{"require_mfa":true,"expected_version":1}`,
+	"mfastepup":                           `{"code":"123456"}`,
+	"updateappaccessdomains":              `{"portal_url":"https://internal.tunnex.app","app_base_domain":"internal.tunnex.app","expected_version":0}`,
+	"createappaccesspublicationoperation": `{"expected_version":1,"revision":1,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","check_id":"00000000-0000-4000-8000-000000000001","idempotency_key":"00000000-0000-4000-8000-000000000002"}`,
+	"cancelappaccesspublicationoperation": `{"expected_operation_version":1}`,
+	"disableappaccesspublication":         `{"expected_application_version":1,"expected_authority_version":0}`,
+	"rollbackappaccessdraft":              `{"expected_version":1,"revision":1}`,
+	"launchmyappaccessapp":                `{"nonce_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","relative_target":"/"}`,
+	"requestappaccesscheck":               `{"expected_version":1}`,
+	"createappaccessgrant":                `{"app_id":"00000000-0000-4000-8000-000000000001","subject_kind":"user","subject_id":"00000000-0000-4000-8000-000000000002","enabled":true,"starts_at":null,"expires_at":null}`,
+	"updateappaccessgrant":                `{"enabled":false,"starts_at":null,"expires_at":null,"expected_version":1}`,
+	"revokeappaccessgrant":                `{"expected_version":1}`,
+	"previewappaccesseffectiveaccess":     `{"user_id":"00000000-0000-4000-8000-000000000002"}`,
+	// AA-1 inert draft metadata reaches authentication without publishing access.
+	"updateappaccesssettings":       `{"enabled":false,"expected_version":1}`,
+	"createappaccessapplication":    `{"name":"Walk","description":"","icon":"app","origin_url":"https://origin.example.test","gateway_id":"00000000-0000-4000-8000-000000000001","public_hostname":"walk.apps.example.test","idle_timeout_seconds":1800,"absolute_timeout_seconds":28800}`,
+	"updateappaccessapplication":    `{"name":"Walk","description":"","icon":"app","origin_url":"https://origin.example.test","gateway_id":"00000000-0000-4000-8000-000000000001","public_hostname":"walk.apps.example.test","idle_timeout_seconds":1800,"absolute_timeout_seconds":28800,"expected_version":1}`,
 	"setcrossgatewayclientsenabled": `{"enabled":true}`,
 	"updateaitransportsettings":     `{"allow_http":false,"revision":1}`,
 	"updateserveremailsettings":     `{"enabled":false,"host":"","port":587,"from":"","username":"","revision":0,"password_action":"keep"}`,
@@ -159,6 +183,8 @@ var walkBodies = map[string]string{
 // structurally valid so this walk measures authentication rather than the
 // generated parameter validator. Keep values inert and non-secret.
 var walkQueries = map[string]string{
+	"listappaccessgrantsubjects":              "?kind=user",
+	"archiveappaccessapplication":             "?expected_version=1",
 	"getipseceligibility":                     "?site_id=00000000-0000-4000-8000-000000000001&gateway_node_id=00000000-0000-4000-8000-000000000002",
 	"getconnectivitysession":                  "?generation=1",
 	"publishconnectivitysnapshot":             "?generation=1",
@@ -193,6 +219,10 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 				continue
 			}
 			reqPath := strings.ReplaceAll(path, "{orgId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{appId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{checkId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{grantId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{revision}", "1")
 			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{provider}", "google")
 			reqPath = strings.ReplaceAll(reqPath, "{userId}", uuid.NewString())
@@ -213,6 +243,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{serviceChildId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{claim}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{operationId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{idempotencyKey}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
 			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())

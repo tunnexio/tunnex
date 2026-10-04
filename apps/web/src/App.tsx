@@ -2,7 +2,7 @@ import ClientConnectPage from "./pages/Connect";
 import NetworkSetup from "./pages/NetworkSetup";
 import SiteToSite from "./pages/SiteToSite";
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { PRODUCT_NAME } from "./brand";
 import { api } from "./lib/api";
 import { loginDestination, resolveMfaGateRoute } from "./lib/authroute";
@@ -43,12 +43,15 @@ import AccessGroups from "./pages/AccessGroups";
 import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
 import AccessKubernetesScopes from "./pages/AccessKubernetesScopes";
 import Access from "./pages/Access";
+import AppAccess from "./pages/AppAccess";
+import { AppAccessLaunch } from "./pages/AppAccessMyApplications";
 import Users from "./pages/Users";
 import { LegacyWorkspaceRedirect } from "./components/LegacyWorkspaceRedirect";
 import { AgentModelAccess } from "./pages/AgentsAIGateway";
 import Settings from "./pages/Settings";
 import AccessEvents from "./pages/AccessEvents";
 import AuditLog from "./pages/AuditLog";
+import AppAccessEvents from "./pages/AppAccessEvents";
 import Alerts from "./pages/Alerts";
 
 const VisualGallery = import.meta.env.VITE_VISUAL_GALLERY === "1"
@@ -196,6 +199,18 @@ function ProductApp() {
             <Route path="/agents/groups" element={<AccessGroups scope="agents" />} />
             <Route path="/agents/policies" element={<AgentsPolicyTemplates />} />
             <Route path="/agents/:agentId" element={<AgentDetail />} />
+            <Route path="/app-access" element={<AppAccess />} />
+            <Route path="/app-access/access" element={<AppAccess />} />
+            <Route path="/app-access/applications" element={<AppAccess />} />
+            <Route path="/app-access/applications/new" element={<AppAccess />} />
+            <Route path="/app-access/applications/:appId" element={<AppAccess />} />
+            <Route path="/app-access/my-applications" element={<AppAccess />} />
+              <Route path="/app-access/company-applications" element={<AppAccess />} />
+              <Route path="/app-access/my-requests" element={<AppAccess />} />
+              <Route path="/app-access/requests" element={<AppAccess />} />
+              <Route path="/app-access/managed-applications" element={<AppAccess />} />
+              <Route path="/app-access/managed-applications/:appId" element={<AppAccess />} />
+            <Route path="/app-access/launch" element={<AppAccessLaunch />} />
             <Route path="/access" element={<Access />} />
             <Route path="/access/groups" element={<LegacyWorkspaceRedirect groups />} />
             <Route path="/users/groups" element={<AccessGroups scope="people" />} />
@@ -206,7 +221,7 @@ function ProductApp() {
             <Route path="/access/kubernetes-scopes" element={<AccessKubernetesScopes />} />
             <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/access-events" element={<AccessEvents />} />
+            <Route path="/access-events" element={<AccessEventsRoute />} />
             <Route path="/audit" element={<AuditLog />} />
             <Route path="/alerts" element={<Alerts />} />
           </Route>
@@ -221,6 +236,12 @@ function ProductApp() {
 // RequireAuth gates the authenticated area: it waits out the /me bootstrap (no
 // login flash for an already-authenticated user), then redirects anonymous users
 // to /login. Renders the nested routes via <Outlet />.
+function AccessEventsRoute() {
+  const [params] = useSearchParams();
+  const applications = params.get("source") === "applications";
+  return <div className="space-y-5"><nav aria-label="Access event sources" className="workspace-tabs"><Link className="text-brand" aria-current={!applications ? "page" : undefined} to="/access-events">Network events</Link><Link className="text-brand" aria-current={applications ? "page" : undefined} to="/access-events?source=applications">Application events</Link></nav>{applications ? <AppAccessEvents /> : <AccessEvents />}</div>;
+}
+
 function RequireAuth() {
   const { state } = useAuth();
   const location = useLocation();
@@ -251,9 +272,13 @@ function RequireAuth() {
   const gateRoute = resolveMfaGateRoute(
     Boolean(state.user.mfa_enrollment_required),
     location.pathname,
+    new URLSearchParams(location.search).get("next"),
   );
   if (gateRoute) {
-    return <Navigate to={gateRoute} replace />;
+    const destination = state.user.mfa_enrollment_required
+      ? `${gateRoute}?next=${encodeURIComponent(location.pathname + location.search)}`
+      : gateRoute;
+    return <Navigate to={destination} replace />;
   }
   return <Outlet />;
 }

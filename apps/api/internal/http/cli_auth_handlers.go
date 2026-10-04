@@ -104,7 +104,7 @@ func (s apiServer) CliDeviceStart(ctx context.Context, _ api.CliDeviceStartReque
 	return api.CliDeviceStart200JSONResponse{
 		Body: api.CliDeviceStartResult{
 			DeviceCode: d.DeviceCode, UserCode: d.UserCode,
-			VerificationUri: s.appBaseURL + "/cli-device",
+			VerificationUri: s.publicURL(ctx) + "/cli-device",
 			Interval:        d.Interval, ExpiresIn: d.ExpiresIn,
 		},
 		Headers: api.CliDeviceStart200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},

@@ -24,6 +24,8 @@ SELECT * FROM audit_logs
 WHERE org_id = $1
   AND (sqlc.narg('actor')::uuid IS NULL OR actor_user_id = sqlc.narg('actor'))
   AND (sqlc.narg('action')::text IS NULL OR action = sqlc.narg('action'))
+  AND (sqlc.narg('target_type')::text IS NULL OR target_type = sqlc.narg('target_type'))
+  AND (sqlc.narg('target_id')::text IS NULL OR target_id = sqlc.narg('target_id'))
   AND (sqlc.narg('from_ts')::timestamptz IS NULL OR created_at >= sqlc.narg('from_ts'))
   AND (sqlc.narg('to_ts')::timestamptz IS NULL OR created_at <= sqlc.narg('to_ts'))
   AND (sqlc.narg('cursor_ts')::timestamptz IS NULL OR (created_at, id) < (sqlc.narg('cursor_ts'), sqlc.narg('cursor_id')::uuid))
@@ -97,6 +99,7 @@ WHERE NOT EXISTS (
               SELECT 1
               FROM audit_logs audit
               WHERE audit.org_id=setting.org_id
+      AND NOT COALESCE((audit.target_type='app_access' AND audit.action IN ('app_access.grant_created','app_access.grant_updated','app_access.grant_revoked','app_access.grant_subject_removed','app_access.grant_retention_context')),false)
                 AND audit.created_at
                     < statement_timestamp()
                         - setting.retention_days * interval '24 hours'
@@ -265,6 +268,7 @@ SELECT audit_log_retention_prune_batch(
 SELECT EXISTS (
     SELECT 1 FROM audit_logs audit
     WHERE audit.org_id=sqlc.arg(org_id)
+      AND NOT COALESCE((audit.target_type='app_access' AND audit.action IN ('app_access.grant_created','app_access.grant_updated','app_access.grant_revoked','app_access.grant_subject_removed','app_access.grant_retention_context')),false)
       AND audit.created_at < sqlc.arg(older_than)
       AND NOT EXISTS (
           SELECT 1 FROM k8s_connector_handoff_operations operation

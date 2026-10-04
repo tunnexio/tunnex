@@ -1,0 +1,10 @@
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM app_access_gateway_runtime) OR EXISTS(SELECT 1 FROM app_access_connector_assignments) OR EXISTS(SELECT 1 FROM app_access_origin_checks) OR EXISTS(SELECT 1 FROM app_access_revisions WHERE cardinality(allowed_destination_cidrs)>0 OR origin_ca_pem<>'') THEN RAISE EXCEPTION 'App Access connector/policy history exists; refusing destructive down migration'; END IF; END $$;
+DROP TABLE app_access_origin_checks;
+DROP TABLE app_access_connector_assignments;
+DROP TABLE app_access_gateway_runtime;
+DROP FUNCTION app_access_connector_tuple_immutable();
+ALTER TABLE app_access_revisions DROP CONSTRAINT app_access_revision_connector_tuple;
+ALTER TABLE app_access_revisions DROP CONSTRAINT app_access_origin_cidr_limit;
+ALTER TABLE app_access_revisions DROP COLUMN allowed_destination_cidrs;
+ALTER TABLE app_access_revisions DROP COLUMN origin_ca_pem;
+ALTER TABLE app_access_revisions DROP COLUMN origin_ca_digest;

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -25,9 +26,12 @@ type requestTransport struct {
 
 type requestTransportKey struct{}
 type requestTransportState struct {
-	secure       bool
-	splitCookies bool
-	flowBinding  string
+	secure           bool
+	splitCookies     bool
+	flowBinding      string
+	sessionToken     string
+	ambiguousSession bool
+	authority        string
 }
 
 var proxyDNSName = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.?$`)
@@ -85,7 +89,7 @@ func (t *requestTransport) trusted(ctx context.Context, remote string) bool {
 func (t *requestTransport) middleware(next http.Handler) http.Handler {
 	configured := len(t.prefixes)+len(t.names) > 0
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state := requestTransportState{secure: r.TLS != nil, splitCookies: configured}
+		state := requestTransportState{secure: r.TLS != nil, splitCookies: configured, authority: r.Host}
 		if configured {
 			values := r.Header.Values("X-Forwarded-Proto")
 			trusted := t.trusted(r.Context(), r.RemoteAddr)
@@ -103,6 +107,15 @@ func (t *requestTransport) middleware(next http.Handler) http.Handler {
 			}
 		}
 		ctx := context.WithValue(r.Context(), requestTransportKey{}, state)
+		sessionCookies := 0
+		for _, cookie := range r.Cookies() {
+			if cookie.Name == sessionCookieName(ctx) {
+				sessionCookies++
+				state.ambiguousSession = sessionCookies > 1
+				state.sessionToken = cookie.Value
+			}
+		}
+		ctx = context.WithValue(r.Context(), requestTransportKey{}, state)
 		if c, err := r.Cookie(connectionFlowCookieName(ctx)); err == nil {
 			state.flowBinding = c.Value
 			ctx = context.WithValue(r.Context(), requestTransportKey{}, state)
@@ -120,17 +133,20 @@ func requestHTTPS(ctx context.Context) (bool, bool) {
 
 func sessionCookieName(ctx context.Context) string {
 	state, _ := ctx.Value(requestTransportKey{}).(requestTransportState)
-	if !state.splitCookies {
-		return session.CookieName
-	}
 	if state.secure {
 		return "__Host-tunnex_session"
+	}
+	if !state.splitCookies {
+		return session.CookieName
 	}
 	return "tunnex_session_http"
 }
 
 func requestCookieSecure(ctx context.Context, legacy bool) bool {
 	state, _ := ctx.Value(requestTransportKey{}).(requestTransportState)
+	if state.secure {
+		return true
+	}
 	if state.splitCookies {
 		return state.secure
 	}
@@ -139,18 +155,18 @@ func requestCookieSecure(ctx context.Context, legacy bool) bool {
 
 func connectionFlowCookieName(ctx context.Context) string {
 	state, _ := ctx.Value(requestTransportKey{}).(requestTransportState)
-	if !state.splitCookies {
-		return "tnx_oidc_flow"
-	}
 	if state.secure {
 		return "__Host-tnx_oidc_flow"
+	}
+	if !state.splitCookies {
+		return "tnx_oidc_flow"
 	}
 	return "tnx_oidc_flow_http"
 }
 
 func connectionFlowBinding(ctx context.Context, legacy *string) string {
 	state, _ := ctx.Value(requestTransportKey{}).(requestTransportState)
-	if state.splitCookies {
+	if state.splitCookies || state.secure {
 		return state.flowBinding
 	}
 	if legacy != nil {
@@ -175,9 +191,24 @@ func clearSessionCookies(w http.ResponseWriter, name string, secure bool) {
 // carry its isolated browser binding into an HTTPS callback. Direct users to
 // that console before creating a flow rather than weakening the secure cookie.
 func requireSSOCallbackTransport(ctx context.Context, baseURL string) error {
-	state, _ := ctx.Value(requestTransportKey{}).(requestTransportState)
-	if state.splitCookies && !state.secure && strings.HasPrefix(baseURL, "https://") {
+	state, known := ctx.Value(requestTransportKey{}).(requestTransportState)
+	if known && !state.secure && strings.HasPrefix(baseURL, "https://") {
 		return apierr.BadRequest("sso_https_required", "Open the HTTPS console to sign in with SSO or test an SSO connection.")
 	}
+	if known && state.authority != "" {
+		base, err := url.Parse(baseURL)
+		if err != nil || !strings.EqualFold(originAuthority(base.Host, state.secure), originAuthority(state.authority, state.secure)) {
+			return apierr.BadRequest("sso_portal_required", "Open the configured portal address to sign in with SSO or test an SSO connection.")
+		}
+	}
 	return nil
+}
+
+// Browsers serialize origins without the default port; Host may retain it.
+func originAuthority(authority string, secure bool) string {
+	port := ":80"
+	if secure {
+		port = ":443"
+	}
+	return strings.TrimSuffix(strings.ToLower(authority), port)
 }

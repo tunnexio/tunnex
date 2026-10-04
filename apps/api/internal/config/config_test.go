@@ -5,6 +5,30 @@ import (
 	"testing"
 )
 
+func TestAppAccessRestoreMarkerConfig(t *testing.T) {
+	t.Setenv("TUNNEX_APP_ACCESS_RESTORE_MARKER", "")
+	if Load().AppAccessRestoreMarker != "" {
+		t.Fatal("restore marker must remain opt-in")
+	}
+	t.Setenv("TUNNEX_APP_ACCESS_RESTORE_MARKER", "/operator/restore.pending")
+	if Load().AppAccessRestoreMarker != "/operator/restore.pending" {
+		t.Fatal("restore marker environment was not loaded")
+	}
+}
+
+func TestAppAccessRestoreMarkerRequiredForConfiguredAuthority(t *testing.T) {
+	for _, c := range []Config{{AppAccessBaseDomain: "apps.example.net"}, {AppProxyAuthorityAddr: ":18448"}, {AppAccessRestoreMarker: "relative.marker"}, {AppAccessBaseDomain: "apps.example.net", AppAccessRestoreMarker: "relative.marker"}} {
+		if c.ValidateAppAccessRestoreMarker() == nil {
+			t.Fatal("configured authority admitted missing/relative restore fence")
+		}
+	}
+	for _, c := range []Config{{}, {AppAccessBaseDomain: "apps.example.net", AppAccessRestoreMarker: "/operator/restore.pending"}, {AppProxyAuthorityAddr: ":18448", AppAccessRestoreMarker: "/operator/restore.pending"}} {
+		if err := c.ValidateAppAccessRestoreMarker(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestAppBaseURLLooksLocal guards the boot-time misconfiguration warning: a remote
 // deploy left at the localhost default ships unreachable email links (POC-surfaced).
 func TestAppBaseURLLooksLocal(t *testing.T) {

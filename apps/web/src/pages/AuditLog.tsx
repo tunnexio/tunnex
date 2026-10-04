@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
@@ -32,8 +33,8 @@ const selectCls =
   "rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400";
 
 // Filters applied to the feed. Empty string = unset.
-type Filters = { actor: string; action: string; from: string; to: string };
-const NO_FILTERS: Filters = { actor: "", action: "", from: "", to: "" };
+type Filters = { actor: string; action: string; from: string; to: string; targetType: string; targetId: string };
+const NO_FILTERS: Filters = { actor: "", action: "", from: "", to: "", targetType: "", targetId: "" };
 
 // A type=date value is a calendar day ("YYYY-MM-DD"); parse it in the user's LOCAL
 // zone (no trailing Z) and cover the whole day so `created_at <= to` is inclusive.
@@ -66,6 +67,9 @@ function detailValue(value: unknown): string {
 }
 
 export default function AuditLog() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetType = searchParams.get("target_type") ?? "";
+  const targetId = searchParams.get("target_id") ?? "";
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
   // fetched itself, which is what made a second organization unreachable.
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
@@ -76,7 +80,7 @@ export default function AuditLog() {
   // `filters` is the editing state; `applied` is the set that produced the current
   // list — "Load more" must page with `applied`, never mid-edit `filters`, or the
   // keyset cursor (from the applied list) mixes with a different filter set.
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, targetType, targetId });
   const [applied, setApplied] = useState<Filters>(NO_FILTERS);
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,6 +98,7 @@ export default function AuditLog() {
   // (page.length === PAGE would dead-click at exact multiples).
   async function fetchPage(orgId: string, f: Filters, cursor?: AuditLogEntry) {
     const seq = ++reqSeq.current;
+    if (f.targetId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(f.targetId)) { setError("Choose a valid target UUID."); setBusy(false); return; }
     setBusy(true);
     setError(null);
     const { data, error } = await api.GET(
@@ -104,6 +109,8 @@ export default function AuditLog() {
           query: {
             actor: f.actor || undefined,
             action: f.action || undefined,
+            target_type: f.targetType || undefined,
+            target_id: f.targetId || undefined,
             from: f.from ? dayStart(f.from) : undefined,
             to: f.to ? dayEnd(f.to) : undefined,
             cursor_ts: cursor?.created_at,
@@ -171,7 +178,13 @@ export default function AuditLog() {
           ),
         );
       }
-      if (!cancelled) await fetchPage(first.id, NO_FILTERS);
+      if (!cancelled) {
+        const linked = { ...NO_FILTERS, targetType, targetId };
+        setFilters(linked); setApplied(linked);
+        if (targetId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
+          setEntries([]); setMore(false); setBusy(false); setError("Choose a valid target UUID.");
+        } else await fetchPage(first.id, linked);
+      }
     })();
     return () => {
       cancelled = true;
@@ -185,13 +198,14 @@ export default function AuditLog() {
     //
     // ⚠ THE SAME DEPENDENCY ALSO MAKES THE SWITCHER WORK. One line, two properties: without it the page
     // either never loads at all, or loads once and then lies about which tenant it is showing.
-  }, [currentOrg, authState]);
+  }, [currentOrg, authState, targetType, targetId]);
 
   function applyFilters(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSelected(null);
     if (filters.from && filters.to && filters.from > filters.to) { setError("Choose an end date on or after the start date."); return; }
+    if (filters.targetId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.targetId)) { setError("Choose a valid target UUID."); return; }
     if (org) void fetchPage(org.id, filters); // from the top with the new filters
   }
 
@@ -265,6 +279,8 @@ export default function AuditLog() {
                 className="min-h-9 w-full rounded-md border border-white/10 bg-ink-900 px-3 text-sm text-white placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
               />
             </label>
+            <label className="min-w-0 text-sm text-ink-tertiary"><span>Target type</span><Input aria-label="Target type" value={filters.targetType} onChange={(e) => setFilters((f) => ({ ...f, targetType: e.target.value }))} /></label>
+            <label className="min-w-0 text-sm text-ink-tertiary"><span>Target UUID</span><Input aria-label="Target UUID" value={filters.targetId} onChange={(e) => setFilters((f) => ({ ...f, targetId: e.target.value }))} /></label>
             <datalist id="audit-action-options">{Array.from(new Set(entries.map(entry => entry.action))).sort().map(action => <option key={action} value={action}>{actionLabel(action)}</option>)}</datalist>
             <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
               <span>From</span>
@@ -298,6 +314,7 @@ export default function AuditLog() {
                   type="button"
                   variant="ghost"
                   onClick={() => {
+                    if (targetType || targetId) { setSearchParams({}); return; }
                     setFilters(NO_FILTERS);
                     setSelected(null);
                     if (org) void fetchPage(org.id, NO_FILTERS);

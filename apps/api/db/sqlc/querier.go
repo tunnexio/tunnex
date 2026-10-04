@@ -19,6 +19,7 @@ type Querier interface {
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AccessEventRetentionMorePending(ctx context.Context, arg AccessEventRetentionMorePendingParams) (*bool, error)
 	AcknowledgeLifecycleJoinToken(ctx context.Context, arg AcknowledgeLifecycleJoinTokenParams) (int64, error)
+	ActivateAppAccessServingPublication(ctx context.Context, arg ActivateAppAccessServingPublicationParams) (int64, error)
 	ActivateSSOConnection(ctx context.Context, arg ActivateSSOConnectionParams) (SsoConnection, error)
 	AddAgentGroupMember(ctx context.Context, arg AddAgentGroupMemberParams) (int64, error)
 	AddAlertSubscription(ctx context.Context, arg AddAlertSubscriptionParams) (AlertSubscription, error)
@@ -36,10 +37,28 @@ type Querier interface {
 	// lint:cross-org — site_id is org-checked by the caller (GetSite) before this insert; site_subnets
 	// has no org_id column of its own (it inherits the site's org via the FK).
 	AddSiteSubnet(ctx context.Context, arg AddSiteSubnetParams) (SiteSubnet, error)
+	// lint:allow-deleted -- Recovery must advance inactive and soft-deleted accounts too; restored stale parents must not revive if an account is later restored.
+	// lint:cross-org -- Offline installation recovery invalidates restored native parents and password-verified MFA challenges for all accounts, including inactive accounts.
+	AdvanceAllUserAppAuthEpoch(ctx context.Context) (int64, error)
+	AdvanceAppAccessApplicationAuthorityVersion(ctx context.Context, arg AdvanceAppAccessApplicationAuthorityVersionParams) (int64, error)
+	AdvanceAppAccessDraft(ctx context.Context, arg AdvanceAppAccessDraftParams) error
 	// Every non-CAS phase advance has an operation-ID + exact-scope + expected
 	// phase CAS. The table trigger admits only the next ordered phase (or failed),
 	// while the receipt checks prevent a phase from claiming evidence it lacks.
 	AdvanceK8sConnectorHandoffOperationPhase(ctx context.Context, arg AdvanceK8sConnectorHandoffOperationPhaseParams) (K8sConnectorHandoffOperation, error)
+	// lint:cross-org — user-scoped factor reset revokes prior app authority.
+	AdvanceUserAppAuthEpochForMFA(ctx context.Context, id uuid.UUID) (int64, error)
+	AppAccessBrowserGatewayWorkCount(ctx context.Context, arg AppAccessBrowserGatewayWorkCountParams) (int64, error)
+	AppAccessCompanyAppPublished(ctx context.Context, arg AppAccessCompanyAppPublishedParams) (string, error)
+	AppAccessEvaluationUser(ctx context.Context, arg AppAccessEvaluationUserParams) (AppAccessEvaluationUserRow, error)
+	AppAccessGatewayExists(ctx context.Context, arg AppAccessGatewayExistsParams) (bool, error)
+	AppAccessGatewayWorkCounts(ctx context.Context, arg AppAccessGatewayWorkCountsParams) (AppAccessGatewayWorkCountsRow, error)
+	AppAccessGrantSubjectAvailable(ctx context.Context, arg AppAccessGrantSubjectAvailableParams) (*bool, error)
+	AppAccessOrganizationExists(ctx context.Context, id uuid.UUID) (bool, error)
+	AppAccessPublicationMatchingUserCount(ctx context.Context, arg AppAccessPublicationMatchingUserCountParams) (int64, error)
+	AppAccessRetentionMorePending(ctx context.Context, arg AppAccessRetentionMorePendingParams) (bool, error)
+	AppAccessRevokeImpact(ctx context.Context, arg AppAccessRevokeImpactParams) (AppAccessRevokeImpactRow, error)
+	AppAccessSessionRevoked(ctx context.Context, arg AppAccessSessionRevokedParams) (bool, error)
 	ApproveAgentAccessRequest(ctx context.Context, arg ApproveAgentAccessRequestParams) (AgentAccessRequest, error)
 	// The browser leg binds the human's identity to the pending device code.
 	ApproveCliDeviceCode(ctx context.Context, arg ApproveCliDeviceCodeParams) (int64, error)
@@ -51,6 +70,7 @@ type Querier interface {
 	// approving an already-approved subnet is a no-op UPDATE.
 	ApproveSiteSubnet(ctx context.Context, id uuid.UUID) (SiteSubnet, error)
 	ArchiveAlertDestination(ctx context.Context, arg ArchiveAlertDestinationParams) (int64, error)
+	ArchiveAppAccessApplication(ctx context.Context, arg ArchiveAppAccessApplicationParams) (int64, error)
 	AssignAgentMCPProfile(ctx context.Context, arg AssignAgentMCPProfileParams) (AgentMcpProfileAssignment, error)
 	// S15.1 (D14/D19 step 2) — an admin NAMES the owner. There is no created_by on this table, so the minting
 	// user is not recoverable from the row: the admin is CHOOSING, not confirming, and nothing here guesses.
@@ -63,6 +83,8 @@ type Querier interface {
 	// Call only inside the device-locked transaction. This separate statement gets
 	// a fresh READ COMMITTED snapshot after a lock wait; it does not promote.
 	AuthenticateAgentRuntimeCredential(ctx context.Context, arg AuthenticateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
+	// lint:cross-org -- Installation-wide dedicated proxy identity; no tenant authority is stored here.
+	AuthenticateAppAccessProxyCredential(ctx context.Context, tokenHash []byte) (AppAccessProxyCredential, error)
 	// Flip an EXISTING manual group to idp_sync. The WHERE origin='manual' clause makes a re-bind of
 	// an already-synced group a no-row (the app layer maps that + the not-empty check to a 409). The
 	// disjointness (D1) and the not-empty rule are enforced above this; this only flips a clean group.
@@ -92,10 +114,20 @@ type Querier interface {
 	// never derive colliding seq (review #1). flow_seq lives on organizations and is NEVER swept,
 	// so seq is monotonic + sweep-proof (review #6). The batch's seqs are (returned-n+1)..returned.
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
+	// lint:cross-org — verified native login has no organization context.
+	CASUserPasswordRehash(ctx context.Context, arg CASUserPasswordRehashParams) (int64, error)
 	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
+	// lint:cross-org -- Offline installation recovery withdraws all pending publication work and invalidates its proxy readiness claims.
+	CancelAllAppAccessPublicationOperations(ctx context.Context) (int64, error)
+	CancelAppAccessPublicationOperation(ctx context.Context, arg CancelAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
+	CancelAppAccessPublicationOperations(ctx context.Context, arg CancelAppAccessPublicationOperationsParams) (int64, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
 	ChangeMemberRoles(ctx context.Context, arg ChangeMemberRolesParams) (Membership, error)
+	// lint:cross-org — native password verification is user scoped.
+	ChangePasswordCASAndBumpAppAuthEpoch(ctx context.Context, arg ChangePasswordCASAndBumpAppAuthEpochParams) (User, error)
 	ClaimAgentWorkflowAssertion(ctx context.Context, arg ClaimAgentWorkflowAssertionParams) (AgentWorkflowProvenanceUsedAssertion, error)
+	ClaimAppAccessChecks(ctx context.Context, arg ClaimAppAccessChecksParams) error
+	ClaimAppAccessPublicationReadiness(ctx context.Context, arg ClaimAppAccessPublicationReadinessParams) (AppAccessPublicationOperation, error)
 	// lint:cross-org — the leader-gated dispatcher claims only its bounded due
 	// batch, atomically moving each delivery out of the pending queue.
 	ClaimDueAlertDeliveries(ctx context.Context, arg ClaimDueAlertDeliveriesParams) ([]AlertDelivery, error)
@@ -106,6 +138,7 @@ type Querier interface {
 	// device is freed. Returns the affected devices for auditing + org push. Runs at
 	// open-build boot; idempotent (no blocks -> no rows).
 	ClearAllHealthBlocks(ctx context.Context) ([]ClearAllHealthBlocksRow, error)
+	ClearAppAccessPublicationWithdrawalConfirmation(ctx context.Context, arg ClearAppAccessPublicationWithdrawalConfirmationParams) error
 	ClearMustChangePassword(ctx context.Context, id uuid.UUID) error
 	// S7.4b (X-4): clear the desync stamp on RECONVERGENCE or non-enforcing (applied == pushed,
 	// or pushed == "" ). Convergence is a STATE predicate — revert-to-clear (admin reverts the
@@ -126,7 +159,13 @@ type Querier interface {
 	// operation to enable_serving. If any predicate is stale, it returns no row;
 	// it cannot leave a pool CAS without its receipt/audit/phase record.
 	CommitK8sConnectorHandoffCAS(ctx context.Context, arg CommitK8sConnectorHandoffCASParams) (K8sConnectorHandoffOperation, error)
+	CompleteAppAccessCheck(ctx context.Context, arg CompleteAppAccessCheckParams) (AppAccessOriginCheck, error)
+	CompleteAppAccessPublicationReadiness(ctx context.Context, arg CompleteAppAccessPublicationReadinessParams) (AppAccessPublicationOperation, error)
 	CompleteLifecycleInstallOperation(ctx context.Context, arg CompleteLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
+	// lint:cross-org -- Only post-commit monotonic withdrawal wait may confirm this exact recovery generation/version.
+	ConfirmAppAccessInstallationRecovery(ctx context.Context, arg ConfirmAppAccessInstallationRecoveryParams) (AppAccessInstallationAuthority, error)
+	// Only the service's post-commit monotonic wait may call this; wall-clock age is not withdrawal proof.
+	ConfirmAppAccessPublicationWithdrawal(ctx context.Context, arg ConfirmAppAccessPublicationWithdrawalParams) (AppAccessServingPublication, error)
 	// lint:cross-org — user-scoped credential.
 	// Arm enrollment: only an UNCONFIRMED row flips to confirmed, stamping the confirming code's
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
@@ -200,6 +239,8 @@ type Querier interface {
 	// reach a state where the guard says a holder exists and no human can log in — the exact unrecoverable
 	// state it exists to prevent.
 	CountCPAdmins(ctx context.Context) (int64, error)
+	// lint:cross-org -- Dedicated installation proxy's bounded outstanding readiness claims span only its own current credential version.
+	CountClaimedAppAccessReadiness(ctx context.Context, arg CountClaimedAppAccessReadinessParams) (int64, error)
 	// CountClusterCascade returns what a DeregisterCluster will destroy, for the audit trail (H2): the number of
 	// LIVE exposed Services in the cluster, and the number of policy grants (rules) that reference ANY Service in
 	// it. Both are FK ON DELETE CASCADE'd when the cluster row is deleted, so the audit must capture them BEFORE
@@ -299,6 +340,7 @@ type Querier interface {
 	// global deactivation; each row's org_id is used in the correlated subquery.
 	CountOrgsWhereSoleOwner(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountOwners(ctx context.Context, orgID uuid.UUID) (int64, error)
+	CountPendingAppAccessRequests(ctx context.Context, arg CountPendingAppAccessRequestsParams) (int64, error)
 	// lint:cross-org — org-scoped by org_id; counts policy rules that name this site as src OR dst. S8.3 D1/D4:
 	// the reverse-link "rules referencing this site" and the delete-cascade preview share this ONE count.
 	CountPolicyRulesReferencingSite(ctx context.Context, arg CountPolicyRulesReferencingSiteParams) (int64, error)
@@ -337,6 +379,14 @@ type Querier interface {
 	CreateAlertDelivery(ctx context.Context, arg CreateAlertDeliveryParams) (AlertDelivery, error)
 	CreateAlertDeliveryCooldown(ctx context.Context, arg CreateAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	CreateAlertDestination(ctx context.Context, arg CreateAlertDestinationParams) (AlertDestination, error)
+	CreateAppAccessApplication(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	CreateAppAccessAssignment(ctx context.Context, arg CreateAppAccessAssignmentParams) (AppAccessConnectorAssignment, error)
+	CreateAppAccessCheck(ctx context.Context, arg CreateAppAccessCheckParams) (AppAccessOriginCheck, error)
+	CreateAppAccessGrant(ctx context.Context, arg CreateAppAccessGrantParams) (AppAccessGrant, error)
+	CreateAppAccessProxyCredential(ctx context.Context, arg CreateAppAccessProxyCredentialParams) (AppAccessProxyCredential, error)
+	CreateAppAccessPublicationOperation(ctx context.Context, arg CreateAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
+	CreateAppAccessRequest(ctx context.Context, arg CreateAppAccessRequestParams) (AppAccessRequest, error)
+	CreateAppAccessRetentionRun(ctx context.Context, orgID uuid.UUID) (AppAccessRetentionRun, error)
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
 	CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapAdminParams) (User, error)
 	CreateCliAuthCode(ctx context.Context, arg CreateCliAuthCodeParams) (CliAuthCode, error)
@@ -361,6 +411,8 @@ type Querier interface {
 	CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error)
 	// Called only for a user created in the same import transaction; never upserts an existing account.
 	CreateDirectoryMembership(ctx context.Context, arg CreateDirectoryMembershipParams) error
+	CreateDisabledAppAccessPublicationFromDraft(ctx context.Context, arg CreateDisabledAppAccessPublicationFromDraftParams) (int64, error)
+	CreateDisabledAppAccessPublicationFromOperation(ctx context.Context, arg CreateDisabledAppAccessPublicationFromOperationParams) (int64, error)
 	CreateDomainClaim(ctx context.Context, arg CreateDomainClaimParams) (DomainClaim, error)
 	// ── group mapping (create / bind / unbind) ───────────────────────────────────────
 	// Create a fresh Tunnex group already bound to an IdP group (origin='idp_sync').
@@ -395,6 +447,8 @@ type Querier interface {
 	// ── mfa_challenges (the login second-step token — NOT a session) ───────────────────
 	// lint:cross-org — user-scoped login challenge (pre-session, no org context).
 	CreateMfaChallenge(ctx context.Context, arg CreateMfaChallengeParams) error
+	// lint:cross-org — verified native password login challenge precedes organization selection.
+	CreateMfaChallengeWithAuthority(ctx context.Context, arg CreateMfaChallengeWithAuthorityParams) (int64, error)
 	// owner_user_id is carried from the redeemed token's issuer (S15.2 slice 1). ⚠ It may be NULL: tokens minted
 	// before 0066 have no issuer and never will, and D25 ruled an agent is NEVER refused at use for want of an
 	// owner — it degrades and is flagged. The refusal lives at enrolment (slice 2), on NEW nodes.
@@ -439,6 +493,10 @@ type Querier interface {
 	// (FK ON DELETE CASCADE), so there is no deleted_at filter here.
 	// ── user_groups (the rule SUBJECT) ──────────────────────────────────────────────
 	CreateUserGroup(ctx context.Context, arg CreateUserGroupParams) (UserGroup, error)
+	CurrentAppAccessAssignment(ctx context.Context, arg CurrentAppAccessAssignmentParams) (AppAccessConnectorAssignment, error)
+	// lint:cross-org -- Installation-wide dedicated proxy identity, rechecked before every internal port.
+	CurrentAppAccessProxyCredential(ctx context.Context, arg CurrentAppAccessProxyCredentialParams) (AppAccessProxyCredential, error)
+	DecideAppAccessRequest(ctx context.Context, arg DecideAppAccessRequestParams) (int64, error)
 	// lint:cross-org — keyed by device_id (the caller already authorized the device
 	// via its org). Clears a device's live status (on revoke) so a revoked device
 	// never reports stale online/handshake via the API.
@@ -517,6 +575,9 @@ type Querier interface {
 	// Explicitly finish demotion before promotion. A single multi-row UPDATE can
 	// visit the candidate first and violate the immediate one-current index.
 	DemoteAgentRuntimeCredentialPredecessor(ctx context.Context, arg DemoteAgentRuntimeCredentialPredecessorParams) (AgentRuntimeCredential, error)
+	// lint:cross-org -- Offline installation recovery advances every retained serving pointer and clears withdrawal proof before the full monotonic wait.
+	DisableAllAppAccessServingPublications(ctx context.Context) (int64, error)
+	DisableAppAccessServingPublication(ctx context.Context, arg DisableAppAccessServingPublicationParams) (int64, error)
 	// lint:cross-org — the device was just inserted in this same org-scoped transaction;
 	// the device ID is not an authorization input and this existence check does not
 	// expose or mutate a device outside the caller's already-authorized create.
@@ -526,12 +587,16 @@ type Querier interface {
 	// The org join is the tenant boundary; device ids are globally unique, but a
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
 	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (EnsureAgentRuntimeStateRow, error)
+	EnsureAppAccessSettings(ctx context.Context, orgID uuid.UUID) error
 	EnsureConnectivityIssuanceLock(ctx context.Context, orgID uuid.UUID) error
 	EnsureConnectivityProfile(ctx context.Context, orgID uuid.UUID) error
 	ExpireAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentAccessRequestParams) (AgentAccessRequest, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
 	ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error
+	ExpireAppAccessChecks(ctx context.Context, arg ExpireAppAccessChecksParams) error
+	ExpireAppAccessPublicationOperations(ctx context.Context, arg ExpireAppAccessPublicationOperationsParams) error
+	ExpireAppAccessRetentionRun(ctx context.Context, orgID uuid.UUID) (int64, error)
 	ExpireAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error)
 	// S7.5.4: move a temporary grant's window IN PLACE (never delete+recreate — that would
 	// churn the /32 out+back and cause a spurious push). The `expires_at > now()` predicate
@@ -541,8 +606,12 @@ type Querier interface {
 	// (expires_at NOT NULL), still-LIVE grant can be extended.
 	ExtendPolicyRule(ctx context.Context, arg ExtendPolicyRuleParams) (PolicyRule, error)
 	FailAgentMCPOAuthConnection(ctx context.Context, arg FailAgentMCPOAuthConnectionParams) (int64, error)
+	FailAppAccessPublicationOperation(ctx context.Context, arg FailAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
 	FinalizeAccessEventRetentionRunFailure(ctx context.Context, arg FinalizeAccessEventRetentionRunFailureParams) (AccessEventRetentionRun, error)
 	FinalizeAccessEventRetentionRunSuccess(ctx context.Context, arg FinalizeAccessEventRetentionRunSuccessParams) (AccessEventRetentionRun, error)
+	FinalizeAppAccessApplicationChecks(ctx context.Context, arg FinalizeAppAccessApplicationChecksParams) error
+	FinalizeAppAccessRetentionFailure(ctx context.Context, arg FinalizeAppAccessRetentionFailureParams) (AppAccessRetentionRun, error)
+	FinalizeAppAccessRetentionSuccess(ctx context.Context, arg FinalizeAppAccessRetentionSuccessParams) (AppAccessRetentionRun, error)
 	FinalizeAuditLogRetentionRunFailure(ctx context.Context, arg FinalizeAuditLogRetentionRunFailureParams) (AuditLogRetentionRun, error)
 	FinalizeAuditLogRetentionRunSuccess(ctx context.Context, arg FinalizeAuditLogRetentionRunSuccessParams) (AuditLogRetentionRun, error)
 	FinishAlertDeliveryWithAttempt(ctx context.Context, arg FinishAlertDeliveryWithAttemptParams) (AlertDeliveryAttempt, error)
@@ -586,6 +655,31 @@ type Querier interface {
 	GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg GetAlertDeliveryCooldownForUpdateParams) (AlertDeliveryCooldown, error)
 	GetAlertDestination(ctx context.Context, arg GetAlertDestinationParams) (AlertDestination, error)
 	GetAlertDestinationForDelivery(ctx context.Context, arg GetAlertDestinationForDeliveryParams) (AlertDestination, error)
+	GetAppAccessApplication(ctx context.Context, arg GetAppAccessApplicationParams) (GetAppAccessApplicationRow, error)
+	GetAppAccessAssignmentGeneration(ctx context.Context, arg GetAppAccessAssignmentGenerationParams) (AppAccessConnectorAssignment, error)
+	GetAppAccessBrowserGatewayRuntime(ctx context.Context, arg GetAppAccessBrowserGatewayRuntimeParams) (AppAccessBrowserGatewayRuntime, error)
+	GetAppAccessCheck(ctx context.Context, arg GetAppAccessCheckParams) (AppAccessOriginCheck, error)
+	GetAppAccessDomainSettings(ctx context.Context) (GetAppAccessDomainSettingsRow, error)
+	GetAppAccessGatewayRuntime(ctx context.Context, arg GetAppAccessGatewayRuntimeParams) (AppAccessGatewayRuntime, error)
+	GetAppAccessGrant(ctx context.Context, arg GetAppAccessGrantParams) (AppAccessGrant, error)
+	// lint:cross-org -- Installation UUID is global restore authority, never a body-selected tenant.
+	GetAppAccessInstallationAuthority(ctx context.Context) (AppAccessInstallationAuthority, error)
+	// JSON projection keeps historical pre-policy schema reads compatible; writes require migration 176.
+	GetAppAccessMFAPolicy(ctx context.Context, arg GetAppAccessMFAPolicyParams) (bool, error)
+	GetAppAccessManagement(ctx context.Context, arg GetAppAccessManagementParams) (GetAppAccessManagementRow, error)
+	GetAppAccessPublicationOperation(ctx context.Context, arg GetAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
+	GetAppAccessPublicationOperationByKey(ctx context.Context, arg GetAppAccessPublicationOperationByKeyParams) (AppAccessPublicationOperation, error)
+	// lint:cross-org -- Dedicated proxy derives immutable tenant/binding from server-issued operation ID before validating body tuple and claimed ownership.
+	GetAppAccessReadinessOperationByID(ctx context.Context, operationID uuid.UUID) (AppAccessPublicationOperation, error)
+	GetAppAccessRequest(ctx context.Context, arg GetAppAccessRequestParams) (GetAppAccessRequestRow, error)
+	GetAppAccessRevision(ctx context.Context, arg GetAppAccessRevisionParams) (AppAccessRevision, error)
+	GetAppAccessServingApplicationHostname(ctx context.Context, arg GetAppAccessServingApplicationHostnameParams) (string, error)
+	GetAppAccessServingPublication(ctx context.Context, arg GetAppAccessServingPublicationParams) (AppAccessServingPublication, error)
+	GetAppAccessServingPublicationLabel(ctx context.Context, arg GetAppAccessServingPublicationLabelParams) (string, error)
+	GetAppAccessSessionRevocation(ctx context.Context, arg GetAppAccessSessionRevocationParams) (AppAccessSessionRevocation, error)
+	GetAppAccessSessionRevocationForApplication(ctx context.Context, arg GetAppAccessSessionRevocationForApplicationParams) (AppAccessSessionRevocation, error)
+	GetAppAccessSessionRevocationForUser(ctx context.Context, arg GetAppAccessSessionRevocationForUserParams) (AppAccessSessionRevocation, error)
+	GetAppAccessSettings(ctx context.Context, id uuid.UUID) (GetAppAccessSettingsRow, error)
 	GetAuditLogRetentionSettings(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionSetting, error)
 	GetAuditLogRetentionSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionSetting, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
@@ -600,6 +694,7 @@ type Querier interface {
 	// Serialize the old/new audit transition with concurrent setting changes.
 	GetCrossGatewaySettingForUpdate(ctx context.Context, id uuid.UUID) (bool, error)
 	GetCurrentAgentOwnerCandidate(ctx context.Context, arg GetCurrentAgentOwnerCandidateParams) (uuid.UUID, error)
+	GetCurrentAppAccessUserGrant(ctx context.Context, arg GetCurrentAppAccessUserGrantParams) (AppAccessGrant, error)
 	GetDevice(ctx context.Context, arg GetDeviceParams) (Device, error)
 	// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
 	// owning user (S7.5.4 v3 flow attribution: src_device_id -> src_user_id, a clean FK join,
@@ -676,6 +771,10 @@ type Querier interface {
 	GetLifecycleDatabaseTime(ctx context.Context) (time.Time, error)
 	GetLifecycleInstallOperationForOrg(ctx context.Context, arg GetLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
 	GetLifecycleJoinTokenForOrg(ctx context.Context, arg GetLifecycleJoinTokenForOrgParams) (NodeJoinToken, error)
+	// lint:cross-org — user-scoped pre-session lookup; authority is rechecked under lock.
+	GetLiveMfaChallenge(ctx context.Context, tokenHash []byte) (MfaChallenge, error)
+	// lint:cross-org — user-scoped credential authority lock.
+	GetMFAUserForUpdate(ctx context.Context, id uuid.UUID) (User, error)
 	// lint:cross-org — an auth lookup by the secret HASH; the row resolves the org (the hash IS the credential).
 	// Returns the row regardless of revoked state — the auth path applies the NO-ORACLE check (revoked /
 	// unknown are indistinguishable at the wire), exactly like the CLI credential path.
@@ -815,6 +914,7 @@ type Querier interface {
 	// query boundary into a public handler; the provenance facade selects one
 	// only after exact non-secret artifact identity validation.
 	GetPoolVIPOwnershipFreshHandoffEnvelopeBodies(ctx context.Context, arg GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesParams) (GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesRow, error)
+	GetPreviouslyActivatedAppAccessRevision(ctx context.Context, arg GetPreviouslyActivatedAppAccessRevisionParams) (AppAccessRevision, error)
 	GetResource(ctx context.Context, arg GetResourceParams) (Resource, error)
 	GetRunningAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	GetRunningAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error)
@@ -829,6 +929,8 @@ type Querier interface {
 	GetSystemSetting(ctx context.Context, key string) (string, error)
 	// lint:cross-org — user-scoped credential.
 	GetTOTP(ctx context.Context, userID uuid.UUID) (UserTotp, error)
+	// lint:cross-org — user-scoped credential enrollment lock.
+	GetTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserGroup(ctx context.Context, arg GetUserGroupParams) (UserGroup, error)
@@ -865,6 +967,9 @@ type Querier interface {
 	InsertAccessEventRetentionSettings(ctx context.Context, arg InsertAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error)
 	InsertAgentAccessOperation(ctx context.Context, arg InsertAgentAccessOperationParams) (int64, error)
 	InsertAgentAccessRequestEvent(ctx context.Context, arg InsertAgentAccessRequestEventParams) (AgentAccessRequestEvent, error)
+	InsertAppAccessEvent(ctx context.Context, arg InsertAppAccessEventParams) (AppAccessEvent, error)
+	InsertAppAccessRevision(ctx context.Context, arg InsertAppAccessRevisionParams) error
+	InsertAppAccessSessionRevocation(ctx context.Context, arg InsertAppAccessSessionRevocationParams) (AppAccessSessionRevocation, error)
 	// audit_logs is append-only for ordinary callers. The only deletion seam is the
 	// bounded security-definer retention function introduced in migration 0129.
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (AuditLog, error)
@@ -892,11 +997,16 @@ type Querier interface {
 	InvalidateUserTokens(ctx context.Context, arg InvalidateUserTokensParams) error
 	IsAccessEventRetentionDue(ctx context.Context, arg IsAccessEventRetentionDueParams) (*bool, error)
 	IsAgentTemplateManagedRule(ctx context.Context, arg IsAgentTemplateManagedRuleParams) (bool, error)
+	IsAppAccessRetentionDue(ctx context.Context, orgID uuid.UUID) (bool, error)
+	// lint:cross-org — exact hashed native parent token independently establishes its revocation lookup.
+	IsAppParentLogoutRevoked(ctx context.Context, parentHash []byte) (bool, error)
 	IsAuditLogRetentionDue(ctx context.Context, arg IsAuditLogRetentionDueParams) (*bool, error)
 	// lint:cross-org — callback checks its locked connection and active organization membership before reading provenance for this exact issuer and subject.
 	IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error)
 	// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
+	LastAppAccessPublicationOperation(ctx context.Context, arg LastAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
+	LatestOwnAppAccessRequest(ctx context.Context, arg LatestOwnAppAccessRequestParams) (uuid.UUID, error)
 	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
 	ListAIGatewayAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayAssignmentsRow, error)
 	ListAIGatewayNativeBindings(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayNativeBindingsRow, error)
@@ -1065,6 +1175,17 @@ type Querier interface {
 	ListAlertDestinationsForEvent(ctx context.Context, arg ListAlertDestinationsForEventParams) ([]AlertDestination, error)
 	ListAlertSubscriptions(ctx context.Context, arg ListAlertSubscriptionsParams) ([]AlertSubscription, error)
 	ListAlertingEnabledOrganizations(ctx context.Context) ([]uuid.UUID, error)
+	ListAppAccessApplicationIDs(ctx context.Context, arg ListAppAccessApplicationIDsParams) ([]uuid.UUID, error)
+	ListAppAccessCompanyCandidates(ctx context.Context, arg ListAppAccessCompanyCandidatesParams) ([]ListAppAccessCompanyCandidatesRow, error)
+	// lint:cross-org -- Bounded installation retention worker enumerates tenant IDs only; each prune then uses exact org scope.
+	ListAppAccessEventRetentionOrganizations(ctx context.Context, arg ListAppAccessEventRetentionOrganizationsParams) ([]uuid.UUID, error)
+	ListAppAccessEvents(ctx context.Context, arg ListAppAccessEventsParams) ([]AppAccessEvent, error)
+	ListAppAccessGrantGroupSubjects(ctx context.Context, arg ListAppAccessGrantGroupSubjectsParams) ([]ListAppAccessGrantGroupSubjectsRow, error)
+	ListAppAccessGrantUserSubjects(ctx context.Context, arg ListAppAccessGrantUserSubjectsParams) ([]ListAppAccessGrantUserSubjectsRow, error)
+	ListAppAccessGrants(ctx context.Context, arg ListAppAccessGrantsParams) ([]AppAccessGrant, error)
+	// lint:cross-org -- Dedicated installation proxy derives tenants from persisted pending operations; human/body identifiers do not select work.
+	ListAppAccessReadinessCandidates(ctx context.Context, arg ListAppAccessReadinessCandidatesParams) ([]ListAppAccessReadinessCandidatesRow, error)
+	ListAppAccessRequestIDs(ctx context.Context, arg ListAppAccessRequestIDsParams) ([]uuid.UUID, error)
 	// S20.4 compiler input. One row lowers an active scope rule to one ordinary
 	// exact k8s_service destination. The selected report is the latest eligible
 	// snapshot for the exact current connector generation; an older still-fresh
@@ -1090,6 +1211,8 @@ type Querier interface {
 	//
 	// Returns the address each device HELD, so the caller can ask the allocation oracle whether it is still free.
 	ListCascadeRevokedDevicesForNode(ctx context.Context, nodeID uuid.UUID) ([]ListCascadeRevokedDevicesForNodeRow, error)
+	// lint:cross-org -- Dedicated installation proxy's own current credential version identifies admitted outstanding work; stored operations derive tenant scope.
+	ListClaimedAppAccessReadiness(ctx context.Context, arg ListClaimedAppAccessReadinessParams) ([]AppAccessPublicationOperation, error)
 	ListCliCredentialsForUser(ctx context.Context, userID uuid.UUID) ([]CliCredential, error)
 	// Same owner/membership/posture boundary as active peers and policy subjects.
 	// Intentionally includes human and agent devices, with either client transport.
@@ -1144,6 +1267,10 @@ type Querier interface {
 	// lint:cross-org — the leader-gated dispatcher intentionally claims due
 	// deliveries across all tenants. It never exposes this query to a human route.
 	ListDueAlertDeliveries(ctx context.Context, arg ListDueAlertDeliveriesParams) ([]AlertDelivery, error)
+	// Fixed App Access retention has no public/manual cleanup API or caller cutoff.
+	// lint:cross-org — the leader enumerates only fixed-policy work or expired claims.
+	// lint:allow-deleted — soft-deleted organizations keep their fixed evidence policy.
+	ListDueAppAccessRetentionOrganizations(ctx context.Context, pageLimit int32) ([]uuid.UUID, error)
 	// lint:cross-org — new claims require an explicitly persisted bounded policy
 	// and eligible evidence. Expired claims are still enumerated for recovery even
 	// after the final eligible row is gone or the policy returns to Forever.
@@ -1161,6 +1288,10 @@ type Querier interface {
 	// MORE THAN ONE member — i.e. a pinned HA set with at least one standby; a single-hub org has nothing to
 	// fail over (S8.6 Slice 4). Reads the CONFIGURED membership (the intent) — the reduce's field rename.
 	ListFailoverOrgs(ctx context.Context) ([]uuid.UUID, error)
+	// Search and status are resolved in this same statement before pagination.
+	ListFilteredAppAccessGrants(ctx context.Context, arg ListFilteredAppAccessGrantsParams) ([]ListFilteredAppAccessGrantsRow, error)
+	ListGatewayAppAccessAssignments(ctx context.Context, arg ListGatewayAppAccessAssignmentsParams) ([]ListGatewayAppAccessAssignmentsRow, error)
+	ListGatewayAppAccessBrowserAssignments(ctx context.Context, arg ListGatewayAppAccessBrowserAssignmentsParams) ([]ListGatewayAppAccessBrowserAssignmentsRow, error)
 	// Candidate IDs only; caller must reauthorize each row through Store.Read.
 	ListGatewayConnectivityKeys(ctx context.Context, arg ListGatewayConnectivityKeysParams) ([]ListGatewayConnectivityKeysRow, error)
 	ListGroupMembers(ctx context.Context, arg ListGroupMembersParams) ([]ListGroupMembersRow, error)
@@ -1293,10 +1424,14 @@ type Querier interface {
 	// condition it would drift, and the two would disagree about which rows are excluded — the one-truth
 	// violation, in the pair whose whole purpose is to agree.
 	ListMalformedKeyPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListMalformedKeyPeersForNodeRow, error)
+	ListManagedAppAccessApps(ctx context.Context, arg ListManagedAppAccessAppsParams) ([]ListManagedAppAccessAppsRow, error)
 	ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]Membership, error)
 	// lint:cross-org — intentionally spans orgs: a user's memberships across all
 	// their organizations (used to resolve which orgs a principal belongs to).
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]Membership, error)
+	// Publication and explicit current grants are filtered before paging. Only saved
+	// branding comes from the latest draft; names, routes and access stay published.
+	ListMyAppAccessPublishedCandidates(ctx context.Context, arg ListMyAppAccessPublishedCandidatesParams) ([]ListMyAppAccessPublishedCandidatesRow, error)
 	// lint:cross-org — org-scoped. The node ids currently bound to a site — the bodyless-unbind sole-gateway
 	// resolution (S8.6 #6 compat): a legacy DELETE with no body unbinds the site's ONE gateway; more than one
 	// requires an explicit node_id.
@@ -1373,6 +1508,7 @@ type Querier interface {
 	// lint:cross-org — keyed by the mTLS-authorized gateway node, exactly like
 	// ListActiveWireGuardPeersForNode.
 	ListPreparedAgentWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListPreparedAgentWireGuardPeersForNodeRow, error)
+	ListPreviouslyActivatedAppAccessRevisions(ctx context.Context, arg ListPreviouslyActivatedAppAccessRevisionsParams) ([]ListPreviouslyActivatedAppAccessRevisionsRow, error)
 	// lint:cross-org — minimal public login choices; explicit IDs prevent tenant guessing.
 	ListPublicLoginConnections(ctx context.Context) ([]ListPublicLoginConnectionsRow, error)
 	ListResourcesByOrg(ctx context.Context, orgID uuid.UUID) ([]Resource, error)
@@ -1443,6 +1579,7 @@ type Querier interface {
 	// lint:allow-deleted — retention must continue draining events for a soft-deleted
 	// tenant. The row lock serializes scheduled/manual claims for that tenant.
 	LockAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	LockActiveAppAccessOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	LockAgentAccessGroupDestination(ctx context.Context, arg LockAgentAccessGroupDestinationParams) (uuid.UUID, error)
 	LockAgentAccessK8sClusterDestinations(ctx context.Context, arg LockAgentAccessK8sClusterDestinationsParams) ([]uuid.UUID, error)
 	LockAgentAccessK8sServiceDestination(ctx context.Context, arg LockAgentAccessK8sServiceDestinationParams) (uuid.UUID, error)
@@ -1451,6 +1588,26 @@ type Querier interface {
 	// closing the count/delete race without retaining a permanent history FK.
 	LockAgentAccessResourceDestination(ctx context.Context, arg LockAgentAccessResourceDestinationParams) (uuid.UUID, error)
 	LockAgentAccessSiteDestination(ctx context.Context, arg LockAgentAccessSiteDestinationParams) (uuid.UUID, error)
+	LockAppAccessApplication(ctx context.Context, arg LockAppAccessApplicationParams) (int64, error)
+	LockAppAccessCheck(ctx context.Context, arg LockAppAccessCheckParams) (AppAccessOriginCheck, error)
+	LockAppAccessCompanyActor(ctx context.Context, arg LockAppAccessCompanyActorParams) (LockAppAccessCompanyActorRow, error)
+	LockAppAccessGateway(ctx context.Context, arg LockAppAccessGatewayParams) (LockAppAccessGatewayRow, error)
+	LockAppAccessGatewayRuntime(ctx context.Context, arg LockAppAccessGatewayRuntimeParams) (AppAccessGatewayRuntime, error)
+	LockAppAccessGrant(ctx context.Context, arg LockAppAccessGrantParams) (AppAccessGrant, error)
+	// lint:allow-deleted -- Lock only the same-org directory identity before FK cleanup; this query grants no subject eligibility or read projection.
+	// Lock unavailable subjects too: directory deletion must finish before the app
+	// and grant rows are locked; this does not make the subject eligible for access.
+	LockAppAccessGrantUserDirectory(ctx context.Context, arg LockAppAccessGrantUserDirectoryParams) (uuid.UUID, error)
+	LockAppAccessGroupSubject(ctx context.Context, arg LockAppAccessGroupSubjectParams) (string, error)
+	// lint:cross-org -- Offline installation recovery serializes its generation change.
+	LockAppAccessInstallationAuthority(ctx context.Context) (AppAccessInstallationAuthority, error)
+	// lint:cross-org -- Operator-local provisioning of installation-wide service credentials.
+	LockAppAccessProxyCredential(ctx context.Context, id uuid.UUID) (AppAccessProxyCredential, error)
+	LockAppAccessPublicationOperation(ctx context.Context, arg LockAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
+	LockAppAccessRequest(ctx context.Context, arg LockAppAccessRequestParams) (AppAccessRequest, error)
+	LockAppAccessServingPublication(ctx context.Context, arg LockAppAccessServingPublicationParams) (AppAccessServingPublication, error)
+	LockAppAccessSettings(ctx context.Context, orgID uuid.UUID) (bool, error)
+	LockAppAccessUserSubject(ctx context.Context, arg LockAppAccessUserSubjectParams) (LockAppAccessUserSubjectRow, error)
 	// lint:allow-deleted — a persisted bounded policy keeps draining evidence for
 	// a soft-deleted tenant. The row lock serializes scheduled/manual claims.
 	LockAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
@@ -1490,6 +1647,9 @@ type Querier interface {
 	// Do not lock a credential before its device: device lifecycle triggers take
 	// those locks in device -> credential order. Re-read below AFTER the device lock.
 	LookupAgentRuntimeCredentialBinding(ctx context.Context, tokenHash []byte) (LookupAgentRuntimeCredentialBindingRow, error)
+	// lint:cross-org -- Dedicated authenticated proxy derives tenant from globally unique exact publication hostname; live org and exact revision/gateway/host joins constrain projection.
+	LookupAppAccessServingRoute(ctx context.Context, hostname string) (LookupAppAccessServingRouteRow, error)
+	MarkAppAccessPublicationActivated(ctx context.Context, arg MarkAppAccessPublicationActivatedParams) (AppAccessPublicationOperation, error)
 	// Delivery is recorded THE FIRST TIME a certificate authenticates, and only then: the WHERE clause makes this a
 	// no-op on every subsequent request, so the agent channel pays one write per credential rather than one per call.
 	//
@@ -1501,7 +1661,10 @@ type Querier interface {
 	MarkDomainVerified(ctx context.Context, arg MarkDomainVerifiedParams) (DomainClaim, error)
 	MarkEmailVerified(ctx context.Context, id uuid.UUID) error
 	MarkLifecycleInstallOperationAborted(ctx context.Context, arg MarkLifecycleInstallOperationAbortedParams) (NodeLifecycleInstallOperation, error)
+	MatchingAppAccessGrants(ctx context.Context, arg MatchingAppAccessGrantsParams) ([]MatchingAppAccessGrantsRow, error)
 	NextAgentPolicyTemplateVersion(ctx context.Context, arg NextAgentPolicyTemplateVersionParams) (int32, error)
+	// JSON projection preserves historical pre-release schema qualification.
+	OwnsAppAccessHostname(ctx context.Context, arg OwnsAppAccessHostnameParams) (*bool, error)
 	// lint:cross-org — the token itself is the credential; the org comes from the returned row.
 	//
 	// ⛔ READ WITHOUT CONSUMING, so a refusal that the operator can FIX does not destroy their token.
@@ -1513,6 +1676,9 @@ type Querier interface {
 	// ⚠ THIS DOES NOT WEAKEN SINGLE-USE. ConsumeJoinToken still performs the atomic claim; this only lets the
 	// pre-flight checks run first, and both happen inside one transaction.
 	PeekJoinToken(ctx context.Context, tokenHash []byte) (NodeJoinToken, error)
+	PendingAppAccessCheck(ctx context.Context, arg PendingAppAccessCheckParams) (AppAccessOriginCheck, error)
+	PendingAppAccessPublicationOperation(ctx context.Context, arg PendingAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
+	PendingOwnAppAccessRequest(ctx context.Context, arg PendingOwnAppAccessRequestParams) (uuid.UUID, error)
 	PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error)
 	PrepareAgentWireGuardCandidate(ctx context.Context, arg PrepareAgentWireGuardCandidateParams) (AgentWireguardRotation, error)
 	// Exact successor only; a refusal MUST roll back the preceding demotion.
@@ -1524,6 +1690,10 @@ type Querier interface {
 	// Bound automatic scheduler history without weakening manual idempotency:
 	// manual runs and running claims are never candidates.
 	PruneAccessEventRetentionRunHistory(ctx context.Context, arg PruneAccessEventRetentionRunHistoryParams) (int64, error)
+	PruneAppAccessAssignmentHistory(ctx context.Context, arg PruneAppAccessAssignmentHistoryParams) error
+	PruneAppAccessCheckHistory(ctx context.Context, arg PruneAppAccessCheckHistoryParams) error
+	PruneAppAccessEvents(ctx context.Context, arg PruneAppAccessEventsParams) (int64, error)
+	PruneAppAccessRetentionBatch(ctx context.Context, runID uuid.UUID) (int64, error)
 	// Bound automatic scheduler history without weakening manual idempotency:
 	// manual runs and running claims are never candidates.
 	PruneAuditLogRetentionRunHistory(ctx context.Context, arg PruneAuditLogRetentionRunHistoryParams) (int64, error)
@@ -1532,6 +1702,8 @@ type Querier interface {
 	PruneAuditLogsByAgeBatch(ctx context.Context, runID uuid.UUID) (int64, error)
 	PruneConnectivityIssuances(ctx context.Context, arg PruneConnectivityIssuancesParams) error
 	ReadConnectivityProfile(ctx context.Context, orgID uuid.UUID) (ConnectivityProfile, error)
+	// lint:cross-org — exact native parent session logout is user scoped.
+	RecordAppParentLogout(ctx context.Context, arg RecordAppParentLogoutParams) error
 	RecordConnectivityIssuance(ctx context.Context, arg RecordConnectivityIssuanceParams) error
 	// One stamp for all three poll outcomes (the two-tier health, D2):
 	//   success  → ok=true,  advance_clock=true  (last_sync_at = now; error cleared)
@@ -1595,6 +1767,7 @@ type Querier interface {
 	RemoveImportedBootstrapSource(ctx context.Context, arg RemoveImportedBootstrapSourceParams) error
 	RemoveMember(ctx context.Context, arg RemoveMemberParams) (int64, error)
 	RenewAccessEventRetentionRunLease(ctx context.Context, arg RenewAccessEventRetentionRunLeaseParams) (int64, error)
+	RenewAppAccessRetentionRun(ctx context.Context, arg RenewAppAccessRetentionRunParams) (int64, error)
 	RenewAuditLogRetentionRunLease(ctx context.Context, arg RenewAuditLogRetentionRunLeaseParams) (int64, error)
 	// lint:cross-org — keyed by node id after the caller authorized via the current
 	// cert; renewal rotates the serial and stamps activity/version.
@@ -1612,10 +1785,14 @@ type Querier interface {
 	// rolling back success, and an error at or below an already-applied revision is
 	// cleared rather than resurrected.
 	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (ReportAgentRuntimeStateRow, error)
+	ReportAppAccessApplied(ctx context.Context, arg ReportAppAccessAppliedParams) error
+	ReportAppAccessBrowserGatewayRuntime(ctx context.Context, arg ReportAppAccessBrowserGatewayRuntimeParams) (AppAccessBrowserGatewayRuntime, error)
+	ReportAppAccessGatewayRuntime(ctx context.Context, arg ReportAppAccessGatewayRuntimeParams) (AppAccessGatewayRuntime, error)
 	RequestAbortLifecycleInstallOperation(ctx context.Context, arg RequestAbortLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
 	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
 	RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	ReserveAlertDeliveryCooldown(ctx context.Context, arg ReserveAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
+	ReserveAppAccessHostname(ctx context.Context, arg ReserveAppAccessHostnameParams) error
 	ResetK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg ResetK8sConnectorPoolHealthCandidateTicksParams) (int64, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
@@ -1659,10 +1836,15 @@ type Querier interface {
 	// lint:cross-org — keyed by user + org inside the org-scoped reactivate transaction.
 	RestoreOVPNCertsForReactivatedUser(ctx context.Context, arg RestoreOVPNCertsForReactivatedUserParams) ([]string, error)
 	RevokeAgentAccessRequest(ctx context.Context, arg RevokeAgentAccessRequestParams) (AgentAccessRequest, error)
+	// lint:cross-org -- Offline installation recovery revokes the dedicated AppProxy family only; no operator or gateway credentials are touched.
+	RevokeAllAppAccessProxyCredentials(ctx context.Context) (int64, error)
 	// The SWEEP: password reset and account deactivation kill every live CLI
 	// credential exactly like they kill sessions (a surviving credential would be a
 	// back door around the sweep).
 	RevokeAllCliCredentialsForUser(ctx context.Context, userID uuid.UUID) error
+	RevokeAppAccessGrant(ctx context.Context, arg RevokeAppAccessGrantParams) (AppAccessGrant, error)
+	// lint:cross-org -- Operator-local revocation of installation-wide service credentials.
+	RevokeAppAccessProxyCredential(ctx context.Context, id uuid.UUID) (AppAccessProxyCredential, error)
 	// Self-scoped: the WHERE user_id makes another user's credential unreachable
 	// (idempotent 204 semantics; no existence leak).
 	RevokeCliCredential(ctx context.Context, arg RevokeCliCredentialParams) (int64, error)
@@ -1746,6 +1928,9 @@ type Querier interface {
 	// upstream, mirrors RevokeDevicesForNode).
 	RevokeOVPNClientCertsForNode(ctx context.Context, nodeID uuid.UUID) ([]uuid.UUID, error)
 	RevokeOrgConnectivitySessions(ctx context.Context, orgID uuid.UUID) error
+	// lint:cross-org -- Offline listeners-stopped recovery CAS; database UUID alone does not detect rollback of its own backup.
+	RotateAppAccessInstallationAuthority(ctx context.Context, expectedVersion int64) (AppAccessInstallationAuthority, error)
+	RunningAppAccessChecks(ctx context.Context, arg RunningAppAccessChecksParams) ([]AppAccessOriginCheck, error)
 	SaveConnectivityProfile(ctx context.Context, arg SaveConnectivityProfileParams) (ConnectivityProfile, error)
 	SaveConnectivitySnapshot(ctx context.Context, arg SaveConnectivitySnapshotParams) (ConnectivitySession, error)
 	SaveSSOConnection(ctx context.Context, arg SaveSSOConnectionParams) (SsoConnection, error)
@@ -1825,6 +2010,8 @@ type Querier interface {
 	// Replay guard: advance the last-accepted timestep after a successful verify.
 	SetTOTPLastTimestep(ctx context.Context, arg SetTOTPLastTimestepParams) error
 	SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error
+	// lint:cross-org — native reset credential is user scoped.
+	SetUserPasswordAndBumpAppAuthEpoch(ctx context.Context, arg SetUserPasswordAndBumpAppAuthEpochParams) (User, error)
 	SetUserStatus(ctx context.Context, arg SetUserStatusParams) error
 	// Match the WireGuard roster's active owner/membership/posture/key gates.
 	// Device serialization plus shared eligibility locks keep the snapshot stable
@@ -1892,6 +2079,7 @@ type Querier interface {
 	// convention shape as RestoreCascadeRevokedDevice: a caller who skipped the candidate filter still cannot
 	// re-home a revoked device and thereby hand it back onto a live gateway.
 	TransferDeviceToNode(ctx context.Context, arg TransferDeviceToNodeParams) (Device, error)
+	TryInsertAppAccessSessionRevocation(ctx context.Context, arg TryInsertAppAccessSessionRevocationParams) (int64, error)
 	// An operator request already owns the device row. A reporting gateway may
 	// own this rotation row while awaiting that device; never wait in reverse
 	// order. Missing rows permit first rotation, 55P03 is retryable contention.
@@ -1906,6 +2094,10 @@ type Querier interface {
 	UpdateAccessEventRetentionSettings(ctx context.Context, arg UpdateAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error)
 	UpdateAgentLifecycle(ctx context.Context, arg UpdateAgentLifecycleParams) (Device, error)
 	UpdateAgentProfile(ctx context.Context, arg UpdateAgentProfileParams) (AgentProfile, error)
+	UpdateAppAccessGrant(ctx context.Context, arg UpdateAppAccessGrantParams) (AppAccessGrant, error)
+	UpdateAppAccessMFAPolicy(ctx context.Context, arg UpdateAppAccessMFAPolicyParams) (int64, error)
+	UpdateAppAccessManagement(ctx context.Context, arg UpdateAppAccessManagementParams) (int64, error)
+	UpdateAppAccessSettings(ctx context.Context, arg UpdateAppAccessSettingsParams) (int64, error)
 	UpdateAuditLogRetentionSettings(ctx context.Context, arg UpdateAuditLogRetentionSettingsParams) (AuditLogRetentionSetting, error)
 	// Mode changes preserve the device principal, gateway, credential and pool allocation. The caller
 	// authorizes ownership; the service serializes this update with a row lock before invoking it.
@@ -2009,6 +2201,10 @@ type Querier interface {
 	// lint:cross-org — callback validates the locked connection against its server-side flow and rechecks administrator membership before marking this exact revision tested.
 	VerifySSOConnection(ctx context.Context, arg VerifySSOConnectionParams) (int64, error)
 	VersionProviderRangeOrganization(ctx context.Context, id uuid.UUID) error
+	WithdrawAppAccessApplicationAssignment(ctx context.Context, arg WithdrawAppAccessApplicationAssignmentParams) error
+	WithdrawGatewayAppAccessAssignments(ctx context.Context, arg WithdrawGatewayAppAccessAssignmentsParams) error
+	WithdrawInvalidAppAccessChecks(ctx context.Context, arg WithdrawInvalidAppAccessChecksParams) error
+	WithdrawStaleAppAccessAssignments(ctx context.Context, arg WithdrawStaleAppAccessAssignmentsParams) error
 }
 
 var _ Querier = (*Queries)(nil)

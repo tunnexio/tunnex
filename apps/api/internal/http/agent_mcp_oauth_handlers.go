@@ -71,12 +71,12 @@ func (r mcpOAuthCallbackResponse) VisitMcpOAuthCallbackResponse(w http.ResponseW
 
 func (s apiServer) McpOAuthCallback(ctx context.Context, req api.McpOAuthCallbackRequestObject) (api.McpOAuthCallbackResponseObject, error) {
 	if s.mcpOAuth == nil {
-		return mcpOAuthCallbackResponse{location: s.appBaseURL + "/agents?mcp_oauth=failed"}, nil
+		return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + "/agents?mcp_oauth=failed"}, nil
 	}
 	if err := s.mcpOAuth.Complete(ctx, req.Params.State, req.Params.Code); err != nil {
-		return mcpOAuthCallbackResponse{location: s.appBaseURL + "/agents?mcp_oauth=failed"}, nil
+		return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + "/agents?mcp_oauth=failed"}, nil
 	}
-	return mcpOAuthCallbackResponse{location: s.appBaseURL + "/agents?mcp_oauth=connected"}, nil
+	return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + "/agents?mcp_oauth=connected"}, nil
 }
 
 func toAPIMCPOAuthConnection(row mcpoauth.Connection) api.AgentMCPOAuthConnection {

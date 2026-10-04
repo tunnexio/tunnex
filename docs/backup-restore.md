@@ -68,6 +68,12 @@ this control plane has the key this backup was sealed under?*
 
 ## Restoring
 
+When App Access is installed, restore through the [explicit App Access recovery runner](../deploy/app-access/README.md). It requires a custom-format PostgreSQL dump and a manifest created with `TUNNEX_BACKUP_DUMP_SHA256` set to that dump's SHA256; its dry run verifies the dump binding, master-key fingerprint and supported schema version. An unknown schema version or a dump newer than the helper binary is refused. The external restore marker must be shared by every API/proxy and retained outside either store's backups. The runner pins an explicit local Unix Docker socket, matches the helper's database, secret sources, mounts and cached image to the actual API, freezes its reviewed Compose configuration, creates the marker, stops and checks listeners, restores, rotates installation authority and verifies completion before releasing the marker. Recovery also refuses a dirty, unsupported or incomplete schema and retains the marker on failure. Listeners remain stopped for operator review.
+
+Restoring either PostgreSQL or Redis requires fresh browser authority recovery. Previous sessions, launch records, proxy credentials and serving publications are invalidated even if copied back from a snapshot. Reprovision the dedicated proxy credential, sign in again, and review/check/republish intended applications. Existing gateway enrollment trust and VPN keys are retained. A UUID inside a restored database cannot detect an unauthorized raw restore of that same database. The single-host runner does not qualify Kubernetes or HA fencing.
+
+The following existing procedure applies to installations without App Access:
+
 ```bash
 # 1. Put the master key in place FIRST (the CP will not start without it, and will never mint one).
 # 2. Verify BEFORE writing anything — this refuses if the key does not match the backup.
@@ -88,6 +94,8 @@ If the fingerprints differ, the error names both and tells you what would have h
 key that belongs to that backup and retry.
 
 ## After a restore
+
+App Access browser sessions require the fresh authority workflow above. The retained gateway identity behavior below concerns gateway enrollment and VPN connectivity.
 
 Your gateways reconnect on their own. They hold their own keys and pin the agent CA — which is in the
 restored database, sealed under the key you just verified — so no re-enrolment, no new certificates, and no

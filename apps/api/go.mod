@@ -6,6 +6,7 @@ module github.com/tunnexio/tunnex/apps/api
 go 1.26.8
 
 require (
+	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/getkin/kin-openapi v0.144.0
@@ -52,3 +53,5 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace github.com/tunnexio/tunnex/packages/apptransport => ../../packages/apptransport

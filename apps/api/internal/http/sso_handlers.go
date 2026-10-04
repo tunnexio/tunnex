@@ -3,7 +3,9 @@ package http
 import (
 	"context"
 	"errors"
+	"github.com/tunnexio/tunnex/apps/api/internal/sso"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -25,6 +27,11 @@ type ssoPort interface {
 	HandleCallback(ctx context.Context, provider, code, state string) (userID uuid.UUID, err error)
 	SetConfig(ctx context.Context, actor, orgID uuid.UUID, provider, clientID, clientSecret, tenantID string, enabled bool) error
 	ViewConfig(ctx context.Context, orgID uuid.UUID, provider string) (SSOConfigView, error)
+}
+
+type ssoAuthorityPort interface {
+	StartLoginWithReturn(context.Context, string, string, string) (string, error)
+	HandleCallbackWithAuthority(context.Context, string, string, string) (sso.LoginResult, error)
 }
 
 // SSOConfigView is the non-secret projection returned by the read endpoint. It
@@ -76,18 +83,37 @@ func (s apiServer) StartSsoLogin(ctx context.Context, req api.StartSsoLoginReque
 	if s.sso == nil {
 		return nil, editionRequired()
 	}
+	if err := requireSSOCallbackTransport(ctx, s.publicURL(ctx)); err != nil {
+		return nil, err
+	}
 	// The slug is OPTIONAL now — omitted (or whitespace) means "derive the tenant", which the
 	// port fails closed on rather than guessing. Trimmed here so " " is the same request as none.
 	org := ""
 	if req.Params.Org != nil {
 		org = strings.TrimSpace(*req.Params.Org)
 	}
-	url, err := s.sso.StartLogin(ctx, org, string(req.Provider))
+	next := ""
+	if req.Params.Next != nil {
+		next = *req.Params.Next
+	}
+	next, e := sso.SafeInternalReturn(next)
+	if e != nil {
+		return nil, e
+	}
+	var redirect string
+	var err error
+	if port, ok := s.sso.(ssoAuthorityPort); ok {
+		redirect, err = port.StartLoginWithReturn(ctx, org, string(req.Provider), next)
+	} else if next != "" {
+		return nil, apierr.New(503, "sso_return_unavailable", "sign-in return unavailable")
+	} else {
+		redirect, err = s.sso.StartLogin(ctx, org, string(req.Provider))
+	}
 	if err != nil {
 		return nil, err
 	}
 	return api.StartSsoLogin200JSONResponse{
-		Body:    api.SsoRedirect{RedirectUrl: url},
+		Body:    api.SsoRedirect{RedirectUrl: redirect},
 		Headers: api.StartSsoLogin200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }
@@ -119,18 +145,49 @@ func (s apiServer) SsoCallback(ctx context.Context, req api.SsoCallbackRequestOb
 	if s.sso == nil {
 		return nil, editionRequired()
 	}
-	userID, err := s.sso.HandleCallback(ctx, string(req.Provider), req.Params.Code, req.Params.State)
+	var result sso.LoginResult
+	var err error
+	port, stamped := s.sso.(ssoAuthorityPort)
+	if stamped {
+		result, err = port.HandleCallbackWithAuthority(ctx, string(req.Provider), req.Params.Code, req.Params.State)
+	} else {
+		result.UserID, err = s.sso.HandleCallback(ctx, string(req.Provider), req.Params.Code, req.Params.State)
+	}
+	next, _ := sso.SafeInternalReturn(result.Next)
+	portalURL := s.ssoCallbackPortalURL(ctx, result.PortalURL)
 	if err != nil {
 		// Redirect to a human-readable login landing carrying the reject reason,
 		// not a raw error body. Reflect only KNOWN reject codes into the URL (never
 		// arbitrary error text), falling back to a generic code otherwise.
-		return ssoCallbackResponse{location: s.appBaseURL + "/login?sso_error=" + ssoErrorCode(err)}, nil
+		return ssoCallbackResponse{location: ssoLoginRetryURL(portalURL, next, ssoErrorCode(err))}, nil
 	}
-	sess, err := s.sessions.Create(ctx, userID, authctx.AuthSSO) // SSO mints a fresh session (fixation rule)
+	var sess session.Session
+	if stamped {
+		if result.AppAuthEpoch <= 0 {
+			return nil, apierr.New(503, "sso_authority_unavailable", "sign-in authority unavailable")
+		}
+		if result.MFAVerifiedAt.IsZero() {
+			sess, err = s.sessions.CreateWithAuthority(ctx, result.UserID, authctx.AuthSSO, result.AppAuthEpoch)
+		} else {
+			sess, err = s.sessions.CreateWithMFAAuthority(ctx, result.UserID, authctx.AuthSSO, result.AppAuthEpoch, result.MFAVerifiedAt, "sso_mfa")
+		}
+	} else {
+		sess, err = s.sessions.Create(ctx, result.UserID, authctx.AuthSSO)
+	}
 	if err != nil {
 		return nil, err
 	}
-	return ssoCallbackResponse{sess: sess, setCookie: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), location: s.appBaseURL + "/"}, nil
+	return ssoCallbackResponse{sess: sess, setCookie: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), location: ssoSuccessURL(portalURL, next)}, nil
+}
+
+// Keep the landing on the host that received the callback and its host-only
+// session cookie. This value comes only from consumed server-side SSO state;
+// older flows and adapters without it retain the configured portal fallback.
+func (s apiServer) ssoCallbackPortalURL(ctx context.Context, pinned string) string {
+	if pinned != "" {
+		return pinned
+	}
+	return s.publicURL(ctx)
 }
 
 // ssoRejectCodes is the allowlist of SSO callback reject reasons the SPA renders
@@ -212,4 +269,20 @@ func (s apiServer) GetSsoConfig(ctx context.Context, req api.GetSsoConfigRequest
 		Body:    body,
 		Headers: api.GetSsoConfig200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
+}
+
+func ssoSuccessURL(base, next string) string {
+	safe, e := sso.SafeInternalReturn(next)
+	if e != nil || safe == "" {
+		safe = "/"
+	}
+	return base + safe
+}
+func ssoLoginRetryURL(base, next, code string) string {
+	q := url.Values{"sso_error": {code}}
+	safe, e := sso.SafeInternalReturn(next)
+	if e == nil && safe != "" {
+		q.Set("next", safe)
+	}
+	return base + "/login?" + q.Encode()
 }

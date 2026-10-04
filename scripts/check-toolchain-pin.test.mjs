@@ -1,17 +1,21 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 
 const root = resolve(import.meta.dirname, '..');
-const files = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
+const files = [...new Set([...execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
   .trim().split('\n').filter((path) =>
     /^apps\/[^/]+\/go\.mod$/.test(path) ||
+    /^packages\/[^/]+\/go\.mod$/.test(path) ||
     /^apps\/[^/]+\/Dockerfile$/.test(path) ||
     /^deploy\/docker\/[^/]+\.Dockerfile$/.test(path) ||
-    ['Makefile', '.devcontainer/devcontainer.json', 'scripts/check-toolchain-pin.sh'].includes(path));
+    ['Makefile', '.devcontainer/devcontainer.json', 'scripts/check-toolchain-pin.sh'].includes(path)),
+  ...['apps', 'packages'].flatMap((directory) => readdirSync(join(root, directory))
+    .map((name) => `${directory}/${name}/go.mod`).filter((path) => existsSync(join(root, path)))),
+  'deploy/docker/app-proxy.Dockerfile'])];
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'tunnex-toolchain-contract-'));
@@ -50,6 +54,15 @@ test('first-party module drift remains blocking', (t) => {
   const result = check(dir);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /MISMATCH/);
+});
+test('shared transport module drift remains blocking', (t) => {
+  const dir = fixture(t);
+  const file = 'packages/apptransport/go.mod';
+  const original = readFileSync(join(dir, file), 'utf8').match(/^go (\S+)/m)[0];
+  replace(dir, file, original, 'go 1.0.0');
+  const result = check(dir);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /MISMATCH.*packages\/apptransport\/go\.mod/);
 });
 test('other Docker builders cannot opt into the upstream exception', (t) => {
   const dir = fixture(t);

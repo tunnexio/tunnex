@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateGates } from './ci-gates.mjs';
 
 const full = () => Object.fromEntries(
-  ['scope', 'contracts', 'codegen', 'api', 'tooling', 'web'].map(name => [
+  ['scope', 'contracts', 'codegen', 'api', 'app-access-integration', 'tooling', 'web'].map(name => [
     name, { result: 'success', ...(name === 'scope' ? {
       outputs: { go: 'true', web: 'true', codegen: 'true', docs_only: 'false' },
     } : {}) },
@@ -35,7 +35,7 @@ test('all valid classification combinations preserve conditional skips', () => {
     for (const codegen of ['true', 'false']) {
       const needs = full();
       Object.assign(needs.scope.outputs, { go, web, codegen });
-      if (go === 'false') needs.api.result = needs.tooling.result = 'skipped';
+      if (go === 'false') needs.api.result = needs['app-access-integration'].result = needs.tooling.result = 'skipped';
       if (codegen === 'false') needs.codegen.result = 'skipped';
       assert.deepEqual(validateGates(needs), []);
     }
@@ -44,7 +44,7 @@ test('all valid classification combinations preserve conditional skips', () => {
 test('docs-only still requires contracts and E2E spec compilation', () => {
   const needs = full();
   needs.scope.outputs = { go: 'false', web: 'false', codegen: 'false', docs_only: 'true' };
-  for (const key of ['api', 'tooling', 'codegen']) needs[key].result = 'skipped';
+  for (const key of ['api', 'app-access-integration', 'tooling', 'codegen']) needs[key].result = 'skipped';
   assert.deepEqual(validateGates(needs), []);
   needs.web.result = 'skipped';
   assert.ok(validateGates(needs).length);
@@ -84,13 +84,13 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   assert.ok(jobs.api.steps.some(s => /API_TEST_SHARD=\$\{\{ matrix.shard \}\}/.test(s.run ?? '')));
   assert.equal(jobs.api.strategy['fail-fast'], false);
   assert.match(jobs.api.env.COMPOSE_PROJECT_NAME, /matrix.edition/);
-  for (const name of ['api', 'tooling']) {
+  for (const name of ['api', 'app-access-integration', 'tooling']) {
     assert.equal(jobs[name].if, "needs.scope.outputs.go == 'true'");
   }
   assert.equal(jobs.codegen.if, "needs.scope.outputs.codegen == 'true'");
   assert.equal(jobs.web.if, undefined);
   assert.ok(jobs.web.steps.some(step => !step.if && /tsc --noEmit/.test(step.run ?? '')));
-  for (const name of ['scope', 'contracts', 'codegen', 'api', 'tooling', 'web', 'gates']) {
+  for (const name of ['scope', 'contracts', 'codegen', 'api', 'app-access-integration', 'tooling', 'web', 'gates']) {
     assert.equal(jobs[name].steps.find(step => /^actions\/checkout@[0-9a-f]{40}$/.test(step.uses ?? ''))
       .with['fetch-depth'], 0, `${name} must preserve historical regression inputs`);
     assert.notEqual(jobs[name]['continue-on-error'], true);
@@ -187,4 +187,87 @@ test('API test runner edits select both edition test lanes', t => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(readFileSync(output, 'utf8'), /^go=true$/m);
   assert.match(readFileSync(output, 'utf8'), /^docs_only=false$/m);
+});
+
+test('App Access integration owns its services and cannot pass on skipped evidence', (t) => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const job = JSON.parse(parsed.stdout).jobs['app-access-integration'];
+  assert.deepEqual(job.strategy.matrix.edition, ['open', 'enterprise']);
+  assert.equal(job.strategy['fail-fast'], false);
+  assert.equal(job.env.APP_ACCESS_LOCAL_INTEGRATION, '1');
+  assert.equal(job.env.GOFLAGS, '-mod=readonly');
+  assert.deepEqual(Object.keys(job.services).sort(), ['postgres', 'redis']);
+  for (const service of Object.values(job.services)) {
+    assert.equal(service.ports, undefined, 'fixture service must not publish host ports');
+    assert.equal(service.volumes, undefined, 'fixture service must not reuse external data');
+  }
+  const scripts = job.steps.map(step => step.run ?? '').join('\n');
+  assert.doesNotMatch(scripts, /make migrate|seed-fixtures|FLUSHALL|docker (?:system|volume) prune/);
+  assert.match(scripts, /cmp app-access-ci\/parent-before\.txt app-access-ci\/parent-after\.txt/);
+  assert.match(scripts, /go test -json -count=1 -p=1 .*\.\/internal\/appaccess/);
+  assert.match(scripts, /TestAppParentLogoutLocalIntegration\|TestAppParentPasswordReplacementLocalIntegration\|TestNativeSSOConfigRestoreLocalDatabase/);
+  assert.match(scripts, /\^TestNewAtVersionPreservesParentSchema\$/);
+  assert.ok(job.steps.find(step => step.name?.startsWith('Require actual test')).if.startsWith('always()'));
+  assert.match(readFileSync('Makefile', 'utf8'), /^SQLC_IMAGE \?= sqlc\/sqlc:1\.31\.1$/m);
+  assert.match(readFileSync('Makefile', 'utf8'), /-w \/src \$\(SQLC_IMAGE\) generate/);
+
+  // Execute the real workflow evidence verifier with synthetic event streams:
+  // exit0 alone, a missing test, a skipped subtest or malformed JSON must fail.
+  const verification = job.steps.find(step => step.name?.startsWith('Require actual test')).run;
+  const code = verification.match(/python3 - <<'PY'\n([\s\S]*?)\nPY(?:\n|$)/)?.[1];
+  assert.ok(code, 'workflow JSON verifier must remain exercised');
+  const dir = mkdtempSync(join(tmpdir(), 'app-access-ci-evidence-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const out = join(dir, 'app-access-ci');
+  mkdirSync(out);
+  writeFileSync(join(out, 'expected-tests.json'), JSON.stringify(['TestOwnedFeature']));
+  const suites = {
+    appaccess: ['TestOwnedFeature'],
+    'http-authority': ['TestAppParentLogoutLocalIntegration', 'TestAppParentPasswordReplacementLocalIntegration', 'TestNativeSSOConfigRestoreLocalDatabase'],
+    testpostgres: ['TestNewAtVersionPreservesParentSchema'],
+  };
+  const success = names => [...names.map(Test => ({ Action: 'pass', Test })), { Action: 'pass' }];
+  const write = (name, rows) => writeFileSync(join(out, `${name}.jsonl`), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+  const reset = () => Object.entries(suites).forEach(([name, names]) => write(name, success(names)));
+  const run = () => spawnSync('python3', ['-c', code], { cwd: dir, encoding: 'utf8' });
+  reset();
+  assert.equal(run().status, 0);
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).appaccess.functional_skips, 0);
+  for (const name of Object.keys(suites)) {
+    reset();
+    write(name, [{ Action: 'pass' }]);
+    assert.notEqual(run().status, 0, `${name}: package pass without expected tests`);
+    reset();
+    write(name, [...success(suites[name]), { Action: 'skip', Test: `${suites[name][0]}/missing fixture` }]);
+    assert.notEqual(run().status, 0, `${name}: functional subtest skipped`);
+    reset();
+    write(name, [...success(suites[name]), { Action: 'fail' }]);
+    assert.notEqual(run().status, 0, `${name}: package failure`);
+    reset();
+    writeFileSync(join(out, `${name}.jsonl`), 'not JSON\n');
+    assert.notEqual(run().status, 0, `${name}: invalid evidence`);
+  }
+});
+
+
+test('App Access shipping contracts run after Helm with an explicit isolated YAML dependency', () => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const steps = JSON.parse(parsed.stdout).jobs.contracts.steps;
+  const helm = steps.findIndex(step => step.uses?.startsWith('azure/setup-helm@'));
+  const index = steps.findIndex(step => step.name === 'App Access packaging, restore and upgrade contracts');
+  assert.ok(helm >= 0 && index > helm, 'shipping contracts require the pinned Helm setup');
+  const step = steps[index];
+  assert.equal(step.if, undefined, 'shipping guards must not be silently conditional');
+  assert.equal(step['timeout-minutes'], 5);
+  assert.notEqual(step['continue-on-error'], true);
+  assert.match(step.run, /python3 -m venv/);
+  assert.match(step.run, /\$RUNNER_TEMP\/app-access-contracts/);
+  assert.match(step.run, /pip install --disable-pip-version-check 'PyYAML==6\.0\.2'/);
+  assert.match(step.run, /-B -m unittest discover -s deploy\/app-access\/tests -p 'test_\*\.py' -v/);
+  assert.ok(step.run.indexOf('pip install') < step.run.indexOf('unittest discover'));
+  assert.doesNotMatch(step.run, /docker|kubectl|helm (?:install|upgrade)/);
 });

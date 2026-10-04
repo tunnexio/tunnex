@@ -109,3 +109,20 @@ SELECT EXISTS (
     JOIN memberships m ON m.org_id = om.org_id
     WHERE m.user_id = $1 AND om.enforce
 );
+
+
+-- name: GetMFAUserForUpdate :one
+-- lint:cross-org — user-scoped credential authority lock.
+SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;
+
+-- name: GetTOTPForUpdate :one
+-- lint:cross-org — user-scoped credential enrollment lock.
+SELECT * FROM user_totp WHERE user_id = $1 FOR UPDATE;
+
+-- name: AdvanceUserAppAuthEpochForMFA :execrows
+-- lint:cross-org — user-scoped factor reset revokes prior app authority.
+UPDATE users SET app_auth_epoch = app_auth_epoch + 1 WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetLiveMfaChallenge :one
+-- lint:cross-org — user-scoped pre-session lookup; authority is rechecked under lock.
+SELECT * FROM mfa_challenges WHERE token_hash = $1 AND expires_at > now();

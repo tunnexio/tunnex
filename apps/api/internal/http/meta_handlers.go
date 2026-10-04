@@ -92,7 +92,7 @@ func (s apiServer) GetMeta(ctx context.Context, _ api.GetMetaRequestObject) (api
 			setup = done
 		}
 	}
-	base := s.appBaseURL // S8.2c: the CP's authoritative public URL for the gateway-enroll command
+	base := s.publicURL(ctx) // S8.2c: the CP's authoritative public URL for the gateway-enroll command
 	gatewayURL := s.gatewayControlURL
 	if s.system != nil {
 		if configured, err := s.system.GetSystemSetting(ctx, gatewayControlSettingKey); err == nil && configured != "" {

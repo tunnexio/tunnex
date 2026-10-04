@@ -39,19 +39,22 @@ func NewSSOPort(pool *pgxpool.Pool, sealer *crypto.Sealer, rdb *redis.Client, ba
 // normal browser case, not an error: the login page asks for an email and a provider and nothing
 // else, so the tenant has to be derived rather than typed.
 func (a *ssoAdapter) StartLogin(ctx context.Context, orgSlug, provider string) (string, error) {
+	return a.StartLoginWithReturn(ctx, orgSlug, provider, "")
+}
+func (a *ssoAdapter) StartLoginWithReturn(ctx context.Context, orgSlug, provider, next string) (string, error) {
 	q := sqlc.New(a.pool)
 	if orgSlug == "" {
 		orgID, err := soleSSOOrg(ctx, q, provider)
 		if err != nil {
 			return "", err
 		}
-		return a.svc.StartLogin(ctx, orgID, provider)
+		return a.svc.StartLoginWithReturn(ctx, orgID, provider, next)
 	}
 	org, err := q.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return "", apierr.NotFound("org_not_found", "organization not found")
 	}
-	return a.svc.StartLogin(ctx, org.ID, provider)
+	return a.svc.StartLoginWithReturn(ctx, org.ID, provider, next)
 }
 
 // enabledSSOOrgLister is the single query soleSSOOrg needs; *sqlc.Queries satisfies it.
@@ -112,4 +115,8 @@ func (a *ssoAdapter) ViewConfig(ctx context.Context, orgID uuid.UUID, provider s
 		Enabled:           v.Enabled,
 		UpdatedAt:         v.UpdatedAt,
 	}, nil
+}
+
+func (a *ssoAdapter) HandleCallbackWithAuthority(ctx context.Context, provider, code, state string) (sso.LoginResult, error) {
+	return a.svc.HandleCallbackWithAuthority(ctx, provider, code, state)
 }

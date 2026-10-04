@@ -105,6 +105,7 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     // Without this, deleting NAV_GROUPS entirely would make all five assertions above compare [] to [] and
     // pass. The parity check compares the render to the source, so the source has to be asserted too.
     expect(expected.length).toBeGreaterThanOrEqual(8);
+    expect(expected).toContain("/app-access");
   });
 
   it("[triage] the drawer is BEHIND a menu button, and its links are absent until it is opened", async () => {

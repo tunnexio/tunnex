@@ -4,6 +4,7 @@ import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
   Button,
+  ErrorText,
   Field,
   Input,
   Modal,
@@ -11,6 +12,7 @@ import {
   SettingValue,
 } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
+import { mfaRequiresSignIn, MfaSignInAgain } from "./MfaSessionRequired";
 
 /**
  * MfaSettings — self-service TOTP (OPEN, all editions, S7.5.5). Verify-before-arm ceremony:
@@ -19,7 +21,7 @@ import { OneTimeSecretModal } from "./OneTimeSecret";
  * the user unenrolled (the secret is unconfirmed) and is fully restartable — starting again
  * replaces the pending secret. Enrolled state carries the D11 low-remaining warning.
  */
-export function MfaSettings() {
+export function MfaSettings({ onEnrolled, setupLabel = "Set up", signInReturnTo }: { onEnrolled?: () => void; setupLabel?: string; signInReturnTo?: string } = {}) {
   const [enrolled, setEnrolled] = useState<boolean | null>(null); // null = loading
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
   const [phase, setPhase] = useState<"idle" | "enrolling">("idle");
@@ -32,20 +34,39 @@ export function MfaSettings() {
   const [recovery, setRecovery] = useState<string[] | null>(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [acknowledgedEnrollment, setAcknowledgedEnrollment] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionRequired, setSessionRequired] = useState(false);
   const { setUser } = useAuth();
 
-  async function refresh() {
-    const { data } = await api.GET("/api/v1/auth/me");
-    if (data) {
-      // Update the GLOBAL auth user too: confirming here clears mfa_enrollment_required, which
-      // lifts the RequireAuth enrollment gate without a re-login.
+  function expiredSession(error: unknown): boolean {
+    if (!mfaRequiresSignIn(error)) return false;
+    setSessionRequired(true);
+    setPhase("idle"); setManaging(false); setConfirmDisable(false);
+    setOtpauth(""); setManualKey(""); setCode("");
+    setError("Your sign-in session is no longer valid. Sign in again to manage MFA.");
+    return true;
+  }
+
+  async function refresh(afterEnrollment = false) {
+    setError(null);
+    try {
+      const { data, error } = await api.GET("/api/v1/auth/me");
+      if (!data || error) {
+        setEnrolled(null);
+        if (expiredSession(error)) return;
+        setError(apiErrorMessage(error, "Could not read your MFA status. Retry before changing setup."));
+        return;
+      }
+      // Enrollment calls this only after recovery codes are acknowledged; ordinary status reads also refresh account state.
       setUser(data);
       const rem = data.recovery_codes_remaining;
       setEnrolled(rem !== undefined && rem !== null);
       setRemaining(rem ?? undefined);
-    } else {
-      setEnrolled(false);
+      if (afterEnrollment && rem !== undefined && rem !== null) onEnrolled?.();
+    } catch {
+      setEnrolled(null);
+      setError("Could not read your MFA status. Retry before changing setup.");
     }
   }
   useEffect(() => {
@@ -55,9 +76,13 @@ export function MfaSettings() {
   async function start() {
     setBusy(true);
     setError(null);
-    const { data, error } = await api.POST("/api/v1/auth/mfa/enroll", {});
+    setAcknowledgedEnrollment(false);
+    const result = await api.POST("/api/v1/auth/mfa/enroll", {}).catch(() => null);
+    if (!result) { setBusy(false); setError("Could not start two-factor setup. Please retry."); return; }
+    const { data, error } = result;
     setBusy(false);
     if (error || !data) {
+      if (expiredSession(error)) return;
       setError(apiErrorMessage(error, "Could not start two-factor setup."));
       return;
     }
@@ -72,11 +97,12 @@ export function MfaSettings() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { data, error } = await api.POST("/api/v1/auth/mfa/enroll/confirm", {
-      body: { code },
-    });
+    const result = await api.POST("/api/v1/auth/mfa/enroll/confirm", { body: { code } }).catch(() => null);
+    if (!result) { setBusy(false); setError("Could not confirm setup. Check your account MFA status before starting again."); return; }
+    const { data, error } = result;
     setBusy(false);
     if (error || !data) {
+      if (expiredSession(error)) return;
       setError(
         apiErrorMessage(
           error,
@@ -98,16 +124,21 @@ export function MfaSettings() {
   async function disable() {
     setBusy(true);
     setError(null);
-    const { error } = await api.DELETE("/api/v1/auth/mfa", {});
+    const result = await api.DELETE("/api/v1/auth/mfa", {}).catch(() => null);
+    if (!result) { setBusy(false); setError("Could not confirm that MFA was turned off. Retry reading your MFA status."); return; }
+    const { error } = result;
     setBusy(false);
     setConfirmDisable(false);
     if (error) {
+      if (expiredSession(error)) return;
       setError(
         apiErrorMessage(error, "Could not turn off two-factor authentication."),
       );
       return;
     }
-    void refresh();
+    // Removing the account factor invalidates its existing parent sessions.
+    setManaging(false); setEnrolled(false); setRemaining(undefined); setSessionRequired(true);
+    setError("Two-factor authentication was turned off. Sign in again before changing account settings.");
   }
 
   return (
@@ -118,7 +149,7 @@ export function MfaSettings() {
     <SettingRow
       label="Two-factor authentication"
       description="Require a code from an authenticator app when signing in."
-      error={error}
+      error={phase === "enrolling" || managing ? null : error}
     >
       <div className="flex items-center gap-3">
         {enrolled === null ? (
@@ -128,12 +159,14 @@ export function MfaSettings() {
             {enrolled ? "On" : "Off"}
           </SettingValue>
         )}
-        {enrolled === false && (
+        {sessionRequired && <MfaSignInAgain next={signInReturnTo ?? window.location.pathname + window.location.search} />}
+        {!sessionRequired && enrolled === null && error && <Button variant="ghost" onClick={() => void refresh(acknowledgedEnrollment)}>Retry MFA status</Button>}
+        {!sessionRequired && enrolled === false && (
           <Button variant="ghost" onClick={start} disabled={busy}>
-            {busy ? "Starting…" : "Set up"}
+            {busy ? "Starting…" : setupLabel}
           </Button>
         )}
-        {enrolled === true && (
+        {!sessionRequired && enrolled === true && (
           <Button
             variant="ghost"
             onClick={() => setManaging(true)}
@@ -155,6 +188,7 @@ export function MfaSettings() {
           }
         >
         <div className="space-y-4">
+          <ErrorText>{error}</ErrorText>
           <p className="text-xs text-slate-400">
             Scan this with your authenticator app, then enter the 6-digit code
             it shows to finish.
@@ -214,6 +248,7 @@ export function MfaSettings() {
           }
         >
         <div className="space-y-3">
+          <ErrorText>{error}</ErrorText>
           <p className="text-xs text-emerald-400">
             Two-factor authentication is on.
           </p>
@@ -255,10 +290,11 @@ export function MfaSettings() {
           downloadFilename="tunnex-recovery-codes.txt"
           onDismiss={() => {
             setRecovery(null);
+            setAcknowledgedEnrollment(true);
             // WF-5: clear the gate ONLY now (after the codes are acknowledged). On the forced-enroll
             // path this is what releases the user to the app (RequireAuth), so the recovery modal is
             // never skipped; on the Settings path it just refreshes the enrolled/remaining state.
-            void refresh();
+            void refresh(true);
           }}
         />
       )}

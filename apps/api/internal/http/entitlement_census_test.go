@@ -45,6 +45,7 @@ type disposition struct {
 // including one that gave SSO away. The independent restatement IS the mechanism: a check must be able to
 // DISAGREE with the thing it checks, and derivation removes that ability while looking like rigour.
 var TIERS = map[string]disposition{
+	"app_access":    {Enterprise, "browser App Access; named capability plus explicit organization opt-in"},
 	"multi_gateway": {Enterprise, "more than one gateway. Community 1 · trial 2 · Starter 5 · Growth 20 · Scale unlimited"},
 	"multi_org":     {Enterprise, "more than one organization"},
 	"sso":           {Enterprise, "SSO/OIDC — Google and Microsoft Entra"},
@@ -114,7 +115,8 @@ func TestEnterpriseGatesMatchFounderDispositions(t *testing.T) {
 		}
 	}
 	sort.Strings(ent)
-	want := []string{"agent_jit_access", "fqdn_resources", "idp_sync", "k8s_cluster_scopes", "multi_gateway", "multi_org", "sso"}
+	// app_access is the local AA-0 implementation proposal, not a new founder-ratified SKU.
+	want := []string{"agent_jit_access", "app_access", "fqdn_resources", "idp_sync", "k8s_cluster_scopes", "multi_gateway", "multi_org", "sso"}
 	if strings.Join(ent, ",") != strings.Join(want, ",") {
 		t.Errorf("the Enterprise tier is %v; expected %v.\n\nIf a capability MOVED tiers that is a product "+
 			"decision, and docs/S12.1-licensing-decisions.md must move with it.", ent, want)

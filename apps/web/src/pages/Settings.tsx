@@ -1,5 +1,7 @@
 import { CrossGatewaySettings } from "../components/CrossGatewaySettings";
 import { AITransportSettings } from "../components/AITransportSettings";
+import { AppAccessDomainsSettings } from "../components/AppAccessDomainsSettings";
+import { AppAccessFeatureSettings } from "../components/AppAccessFeatureSettings";
 import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
 import { SsoSelfLink } from "../components/SsoSelfLink";
 import { SsoConnections } from "../components/SsoConnections";
@@ -168,6 +170,12 @@ export default function Settings() {
     // confident, wrong statement — permanently, for every user. The same line is what makes the switcher work.
   }, [myId, currentOrg, orgFailed, orgLoading]);
 
+  const appAccessRoles = useMemo(() => {
+    const member = members?.find(row => row.user_id === myId && row.status === "active");
+    return member ? member.roles ?? [member.role] : [];
+  }, [members, myId]);
+  const canViewAppAccess = can(appAccessRoles, "app_access:view");
+  const canManageAppAccess = can(appAccessRoles, "app_access:manage");
   const isAdmin = can(myRole, "org:update");
   const canManageDataRetention =
     can(myRole, "access_event_retention:manage") ||
@@ -235,7 +243,7 @@ export default function Settings() {
             : "Manage your account security and view your plan."
         }
       />
-      <ErrorText>{active === "email-delivery" || active === "ai-transport" ? null : error}</ErrorText>
+      <ErrorText>{active === "email-delivery" || active === "ai-transport" || active === "app-access-domains" ? null : error}</ErrorText>
 
       {/* Desktop-only: server connection + sign-out for THIS client (renders nothing
           in the browser build). Above the org sections — it's a device concern, not
@@ -286,6 +294,11 @@ export default function Settings() {
         {serverAdmin && active === "ai-transport" && state.status === "authed" && (
           <SettingGroup id="ai-transport" title="AI Gateway transport" tabpanel>
             <AITransportSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
+          </SettingGroup>
+        )}
+        {serverAdmin && active === "app-access-domains" && state.status === "authed" && (
+          <SettingGroup id="app-access-domains" title="App Access domains" tabpanel>
+            <AppAccessDomainsSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
         {org && isAdmin && active === "organization" && (
@@ -413,6 +426,7 @@ export default function Settings() {
           <SettingGroup id="features" title="Features"
             tabpanel>
             <div className="flex flex-col gap-3.5">
+              <AppAccessFeatureSettings orgId={org.id} permitted={canViewAppAccess} canEdit={canManageAppAccess && emailVerified} />
               {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
               <CrossGatewaySettings key={org.id} org={org} canEdit={can(myRole, "org:update") && emailVerified} onSaved={setOrg} />
               <OrgOVPNToggle
@@ -1771,6 +1785,7 @@ const RAIL: ReadonlyArray<{
   },
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
+  { id: "app-access-domains", label: "App Access domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,

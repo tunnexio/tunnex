@@ -41,6 +41,10 @@ type Session struct {
 	// No Redis migration needed: legacy sessions decode with "" and age out; the MFA gate reads "" as
 	// non-local (exempt), consistent with D8 (enforce governs new logins, not live sessions).
 	AuthMethod string `json:"auth_method,omitempty"`
+	// AppAuthEpoch is captured by trusted login verification. Zero marks legacy authority.
+	AppAuthEpoch       int64     `json:"app_auth_epoch,omitempty"`
+	MFAVerifiedAt      time.Time `json:"mfa_verified_at,omitempty"`
+	MFAAssuranceSource string    `json:"mfa_assurance_source,omitempty"`
 }
 
 // Store persists sessions in Redis.
@@ -75,24 +79,66 @@ func userKey(u uuid.UUID) string { return "usess:" + u.String() }
 // Create mints a brand-new session for userID (fresh id => fixation-safe). authMethod records HOW
 // the user authenticated (authctx.AuthLocalPassword | AuthSSO) — stamped once, immutable thereafter.
 func (s *Store) Create(ctx context.Context, userID uuid.UUID, authMethod string) (Session, error) {
+	return s.create(ctx, userID, authMethod, 0)
+}
+
+// CreateWithAuthority stamps the epoch captured by trusted authentication.
+func (s *Store) CreateWithAuthority(ctx context.Context, userID uuid.UUID, authMethod string, epoch int64) (Session, error) {
+	if epoch <= 0 {
+		return Session{}, errors.New("invalid session authority epoch")
+	}
+	return s.create(ctx, userID, authMethod, epoch)
+}
+
+// CreateReplacementWithAuthority rotates a parent without extending its original
+// absolute login lifetime or changing its authentication method.
+func (s *Store) CreateReplacementWithAuthority(ctx context.Context, parent Session, epoch int64) (Session, error) {
+	if parent.ID == "" || parent.UserID == uuid.Nil || epoch <= 0 || !parent.ExpiresAt.After(s.now()) {
+		return Session{}, ErrNotFound
+	}
+	return s.createUntil(ctx, parent.UserID, parent.AuthMethod, epoch, parent.ExpiresAt)
+}
+
+func (s *Store) create(ctx context.Context, userID uuid.UUID, authMethod string, epoch int64) (Session, error) {
+	return s.createUntil(ctx, userID, authMethod, epoch, time.Time{})
+}
+
+func (s *Store) createUntil(ctx context.Context, userID uuid.UUID, authMethod string, epoch int64, deadline time.Time) (Session, error) {
+	return s.createUntilWithMFA(ctx, userID, authMethod, epoch, deadline, time.Time{}, "")
+}
+
+func (s *Store) createUntilWithMFA(ctx context.Context, userID uuid.UUID, authMethod string, epoch int64, deadline, verifiedAt time.Time, source string) (Session, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return Session{}, err
 	}
 	now := s.now()
 	sess := Session{
-		ID:         base64.RawURLEncoding.EncodeToString(b),
-		UserID:     userID,
-		CreatedAt:  now,
-		ExpiresAt:  now.Add(s.absolute),
-		AuthMethod: authMethod,
+		ID:                 base64.RawURLEncoding.EncodeToString(b),
+		UserID:             userID,
+		CreatedAt:          now,
+		ExpiresAt:          now.Add(s.absolute),
+		AuthMethod:         authMethod,
+		AppAuthEpoch:       epoch,
+		MFAVerifiedAt:      verifiedAt,
+		MFAAssuranceSource: source,
+	}
+	if !deadline.IsZero() && deadline.Before(sess.ExpiresAt) {
+		sess.ExpiresAt = deadline
+	}
+	ttl := s.idle
+	if remaining := sess.ExpiresAt.Sub(now); remaining < ttl {
+		ttl = remaining
+	}
+	if ttl <= 0 {
+		return Session{}, ErrNotFound
 	}
 	data, err := json.Marshal(sess)
 	if err != nil {
 		return Session{}, err
 	}
 	pipe := s.rdb.TxPipeline()
-	pipe.Set(ctx, sessKey(sess.ID), data, s.idle)
+	pipe.Set(ctx, sessKey(sess.ID), data, ttl)
 	pipe.SAdd(ctx, userKey(userID), sess.ID)
 	pipe.Expire(ctx, userKey(userID), s.absolute)
 	if _, err := pipe.Exec(ctx); err != nil {
@@ -126,6 +172,39 @@ func (s *Store) Get(ctx context.Context, id string) (Session, error) {
 	}
 	s.rdb.Expire(ctx, sessKey(id), ttl)
 	return sess, nil
+}
+
+// GetNoTouch reads the record and remaining idle lifetime atomically without
+// extending, deleting, or otherwise changing parent authority. The returned
+// deadline starts before the Redis decision, so latency cannot extend its TTL.
+func (s *Store) GetNoTouch(ctx context.Context, id string) (Session, time.Time, error) {
+	started := s.now()
+	result, err := s.rdb.Eval(ctx, `local value = redis.call('GET', KEYS[1])
+ if not value then return {'', -2} end
+ return {value, redis.call('PTTL', KEYS[1])}`, []string{sessKey(id)}).Slice()
+	if err != nil {
+		return Session{}, time.Time{}, err
+	}
+	if len(result) != 2 {
+		return Session{}, time.Time{}, ErrNotFound
+	}
+	data, ok := result[0].(string)
+	ttl, ttlOK := result[1].(int64)
+	if !ok || !ttlOK || ttl <= 0 {
+		return Session{}, time.Time{}, ErrNotFound
+	}
+	var sess Session
+	if json.Unmarshal([]byte(data), &sess) != nil || sess.ID != id || sess.UserID == uuid.Nil || sess.ExpiresAt.IsZero() || sess.AppAuthEpoch < 0 {
+		return Session{}, time.Time{}, ErrNotFound
+	}
+	deadline := started.Add(time.Duration(ttl) * time.Millisecond)
+	if sess.ExpiresAt.Before(deadline) {
+		deadline = sess.ExpiresAt
+	}
+	if !s.now().Before(deadline) {
+		return Session{}, time.Time{}, ErrNotFound
+	}
+	return sess, deadline, nil
 }
 
 // Delete removes a single session and de-indexes it.

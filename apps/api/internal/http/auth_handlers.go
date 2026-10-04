@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"net/http"
 
@@ -118,7 +119,7 @@ func (s apiServer) Login(ctx context.Context, req api.LoginRequestObject) (api.L
 			return nil, cerr
 		}
 		if challenged {
-			token, ttl, e := s.mfa.CreateChallenge(ctx, user.ID)
+			token, ttl, e := s.mfa.CreateChallengeWithAuthority(ctx, user.ID, user.AppAuthEpoch)
 			if e != nil {
 				return nil, e
 			}
@@ -138,7 +139,7 @@ func (s apiServer) Login(ctx context.Context, req api.LoginRequestObject) (api.L
 		}
 		enrollmentRequired = gated
 	}
-	sess, err := s.sessions.Create(ctx, user.ID, authctx.AuthLocalPassword)
+	sess, err := s.sessions.CreateWithAuthority(ctx, user.ID, authctx.AuthLocalPassword, user.AppAuthEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -252,8 +253,36 @@ func (s apiServer) CurrentUser(ctx context.Context, _ api.CurrentUserRequestObje
 
 // Logout revokes the current session and clears the cookie.
 func (s apiServer) Logout(ctx context.Context, _ api.LogoutRequestObject) (api.LogoutResponseObject, error) {
+	state, _ := ctx.Value(requestTransportKey{}).(requestTransportState)
+	id := state.sessionToken
 	if p, ok := authctx.PrincipalFrom(ctx); ok && p.SessionID != "" {
-		_ = s.sessions.Delete(ctx, p.SessionID)
+		id = p.SessionID
+	}
+	if state.ambiguousSession {
+		return nil, apierr.BadRequest("invalid_session", "session cookie is ambiguous")
+	}
+	if id != "" {
+		if s.sessions == nil || s.system == nil {
+			return nil, apierr.New(503, "logout_unavailable", "Could not confirm sign-out. Please retry.")
+		}
+		hash := sha256.Sum256([]byte(id))
+		revoked, err := s.system.IsAppParentLogoutRevoked(ctx, hash[:])
+		if err != nil {
+			return nil, apierr.New(503, "logout_unavailable", "Could not confirm sign-out. Please retry.")
+		}
+		if revoked {
+			_ = s.sessions.Delete(ctx, id)
+			return logoutResponse{secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), requestID: middleware.GetReqID(ctx)}, nil
+		}
+		sess, _, err := s.sessions.GetNoTouch(ctx, id)
+		if err != nil {
+			return nil, apierr.New(503, "logout_unavailable", "Could not confirm sign-out. Please retry.")
+		}
+		if e := s.system.RecordAppParentLogout(ctx, sqlc.RecordAppParentLogoutParams{ParentHash: hash[:], UserID: sess.UserID, ParentExpiresAt: sess.ExpiresAt}); e != nil {
+			return nil, apierr.New(503, "logout_unavailable", "Could not confirm sign-out. Please retry.")
+		}
+		// The durable denial commits first. Redis cleanup cannot restore app authority.
+		_ = s.sessions.Delete(ctx, id)
 	}
 	return logoutResponse{secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), requestID: middleware.GetReqID(ctx)}, nil
 }
@@ -319,10 +348,41 @@ func (s apiServer) ChangePassword(ctx context.Context, req api.ChangePasswordReq
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
-	if err := s.auth.ChangePassword(ctx, p.UserID, req.Body.CurrentPassword, req.Body.NewPassword); err != nil {
+	var parent session.Session
+	if p.SessionID != "" {
+		if s.sessions == nil {
+			return nil, apierr.New(503, "password_change_unavailable", "Could not change the password. Please retry.")
+		}
+		parent, _, err = s.sessions.GetNoTouch(ctx, p.SessionID)
+		if err != nil || parent.UserID != p.UserID || parent.AuthMethod != p.AuthMethod {
+			return nil, apierr.New(503, "password_change_unavailable", "Could not change the password. Please retry.")
+		}
+	}
+	user, err := s.auth.ChangePasswordWithAuthority(ctx, p.UserID, req.Body.CurrentPassword, req.Body.NewPassword)
+	if err != nil {
 		return nil, err
 	}
-	return api.ChangePassword204Response{
-		Headers: api.ChangePassword204ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
-	}, nil
+	if p.SessionID != "" {
+		sess, err := s.sessions.CreateReplacementWithAuthority(ctx, parent, user.AppAuthEpoch)
+		if err != nil {
+			return nil, apierr.New(503, "password_changed_login_required", "Password changed. Sign in again with your new password.")
+		}
+		_ = s.sessions.Delete(ctx, p.SessionID)
+		return changePasswordResponse{sess: sess, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), requestID: middleware.GetReqID(ctx)}, nil
+	}
+	return api.ChangePassword204Response{Headers: api.ChangePassword204ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
+type changePasswordResponse struct {
+	sess       session.Session
+	secure     bool
+	cookieName string
+	requestID  string
+}
+
+func (r changePasswordResponse) VisitChangePasswordResponse(w http.ResponseWriter) error {
+	session.SetNamedCookie(w, r.sess, r.cookieName, r.secure)
+	w.Header().Set("X-Request-Id", r.requestID)
+	w.WriteHeader(http.StatusNoContent)
+	return nil
 }

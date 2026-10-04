@@ -24,7 +24,10 @@ func (s apiServer) connectionService() (*sso.Service, error) {
 	return a.svc, nil
 }
 func (s apiServer) connectionView(c sqlc.SsoConnection) api.SsoConnection {
-	v := api.SsoConnection{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Provider: api.SsoConnectionProvider(c.Provider), IssuerUrl: c.IssuerUrl, ClientId: c.ClientID, Enabled: c.Enabled, Revision: c.Revision, Verified: c.TestedRevision != nil && *c.TestedRevision == c.Revision, UpdatedAt: c.UpdatedAt, CallbackUrl: s.appBaseURL + "/api/v1/auth/sso-connections/callback", LoginUrl: s.appBaseURL + "/login?connection=" + c.ID.String()}
+	return s.connectionViewContext(context.Background(), c)
+}
+func (s apiServer) connectionViewContext(ctx context.Context, c sqlc.SsoConnection) api.SsoConnection {
+	v := api.SsoConnection{Id: c.ID, OrgId: c.OrgID, Name: c.Name, Provider: api.SsoConnectionProvider(c.Provider), IssuerUrl: c.IssuerUrl, ClientId: c.ClientID, Enabled: c.Enabled, Revision: c.Revision, Verified: c.TestedRevision != nil && *c.TestedRevision == c.Revision, UpdatedAt: c.UpdatedAt, CallbackUrl: s.publicURL(ctx) + "/api/v1/auth/sso-connections/callback", LoginUrl: s.publicURL(ctx) + "/login?connection=" + c.ID.String()}
 	if c.TestedAt.Valid {
 		v.TestedAt = &c.TestedAt.Time
 	}
@@ -47,7 +50,7 @@ func (s apiServer) ListSsoConnections(ctx context.Context, req api.ListSsoConnec
 	}
 	items := []api.SsoConnection{}
 	for _, c := range rows {
-		items = append(items, s.connectionView(c))
+		items = append(items, s.connectionViewContext(ctx, c))
 	}
 	return api.ListSsoConnections200JSONResponse{Items: items}, nil
 }
@@ -70,7 +73,7 @@ func (s apiServer) SaveSsoConnection(ctx context.Context, req api.SaveSsoConnect
 	if e != nil {
 		return nil, e
 	}
-	return api.SaveSsoConnection200JSONResponse(s.connectionView(c)), nil
+	return api.SaveSsoConnection200JSONResponse(s.connectionViewContext(ctx, c)), nil
 }
 func (s apiServer) ActivateSsoConnection(ctx context.Context, req api.ActivateSsoConnectionRequestObject) (api.ActivateSsoConnectionResponseObject, error) {
 	if _, e := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); e != nil {
@@ -91,7 +94,7 @@ func (s apiServer) ActivateSsoConnection(ctx context.Context, req api.ActivateSs
 	if e != nil {
 		return nil, e
 	}
-	return api.ActivateSsoConnection200JSONResponse(s.connectionView(c)), nil
+	return api.ActivateSsoConnection200JSONResponse(s.connectionViewContext(ctx, c)), nil
 }
 func (s apiServer) TestSsoConnection(ctx context.Context, req api.TestSsoConnectionRequestObject) (api.TestSsoConnectionResponseObject, error) {
 	if _, e := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); e != nil {
@@ -104,7 +107,7 @@ func (s apiServer) TestSsoConnection(ctx context.Context, req api.TestSsoConnect
 	if e != nil {
 		return nil, e
 	}
-	if e = requireSSOCallbackTransport(ctx, s.appBaseURL); e != nil {
+	if e = requireSSOCallbackTransport(ctx, s.publicURL(ctx)); e != nil {
 		return nil, e
 	}
 	if req.Body == nil {
@@ -129,14 +132,18 @@ func (s apiServer) StartSsoConnection(ctx context.Context, req api.StartSsoConne
 	if e != nil {
 		return nil, e
 	}
-	if e = requireSSOCallbackTransport(ctx, s.appBaseURL); e != nil {
+	if e = requireSSOCallbackTransport(ctx, s.publicURL(ctx)); e != nil {
 		return nil, e
 	}
 	binding, e := sso.RandomToken()
 	if e != nil {
 		return nil, e
 	}
-	redirect, e := svc.StartConnection(ctx, uuid.Nil, req.ConnectionId, uuid.Nil, false, false, binding)
+	next := ""
+	if req.Params.Next != nil {
+		next = *req.Params.Next
+	}
+	redirect, e := svc.StartConnectionWithReturn(ctx, uuid.Nil, req.ConnectionId, uuid.Nil, false, false, binding, next)
 	if e != nil {
 		return nil, e
 	}
@@ -175,6 +182,11 @@ func (s apiServer) SsoConnectionCallback(ctx context.Context, req api.SsoConnect
 	}
 	binding := connectionFlowBinding(ctx, req.Params.TnxOidcFlow)
 	result, e := svc.CompleteConnection(ctx, code, req.Params.State, binding, actor)
+	return s.completeSSOConnectionResponse(ctx, result, e)
+}
+
+func (s apiServer) completeSSOConnectionResponse(ctx context.Context, result sso.ConnectionResult, e error) (api.SsoConnectionCallbackResponseObject, error) {
+	portalURL := s.ssoCallbackPortalURL(ctx, result.PortalURL)
 	if result.Test || result.Link {
 		status := "verified"
 		if result.Link {
@@ -184,16 +196,21 @@ func (s apiServer) SsoConnectionCallback(ctx context.Context, req api.SsoConnect
 			status = connectionErrorCode(e)
 		}
 		query := url.Values{"section": {"authentication"}, "sso_test": {status}, "sso_org": {result.OrgID.String()}, "sso_connection": {result.ConnectionID.String()}}
-		return connectionCallbackResponse{location: s.appBaseURL + "/settings?" + query.Encode(), secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
+		return connectionCallbackResponse{location: portalURL + "/settings?" + query.Encode(), secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 	}
 	if e != nil {
-		return connectionCallbackResponse{location: connectionLoginFailureURL(s.appBaseURL, result.ConnectionID, e), secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
+		return connectionCallbackResponse{location: connectionFailureReturnURL(portalURL, result.ConnectionID, result.Next, e), secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 	}
-	sess, e := s.sessions.Create(ctx, result.UserID, authctx.AuthSSO)
+	var sess session.Session
+	if result.MFAVerifiedAt.IsZero() {
+		sess, e = s.sessions.CreateWithAuthority(ctx, result.UserID, authctx.AuthSSO, result.AppAuthEpoch)
+	} else {
+		sess, e = s.sessions.CreateWithMFAAuthority(ctx, result.UserID, authctx.AuthSSO, result.AppAuthEpoch, result.MFAVerifiedAt, "sso_mfa")
+	}
 	if e != nil {
 		return nil, e
 	}
-	return connectionCallbackResponse{location: s.appBaseURL + "/", sess: sess, login: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
+	return connectionCallbackResponse{location: ssoSuccessURL(portalURL, result.Next), sess: sess, login: true, secure: requestCookieSecure(ctx, s.cookieSecure), cookieName: sessionCookieName(ctx), flowCookieName: connectionFlowCookieName(ctx)}, nil
 }
 
 func setConnectionFlowCookie(w http.ResponseWriter, value string, secure bool, maxAge int) {
@@ -256,7 +273,7 @@ func (s apiServer) ListAvailableSsoConnections(ctx context.Context, req api.List
 	items := []api.SsoConnection{}
 	for _, c := range rows {
 		if c.Enabled {
-			items = append(items, s.connectionView(c))
+			items = append(items, s.connectionViewContext(ctx, c))
 		}
 	}
 	return api.ListAvailableSsoConnections200JSONResponse{Items: items}, nil
@@ -273,7 +290,7 @@ func (s apiServer) LinkSsoConnection(ctx context.Context, req api.LinkSsoConnect
 	if e != nil {
 		return nil, e
 	}
-	if e = requireSSOCallbackTransport(ctx, s.appBaseURL); e != nil {
+	if e = requireSSOCallbackTransport(ctx, s.publicURL(ctx)); e != nil {
 		return nil, e
 	}
 	binding, e := sso.RandomToken()
@@ -293,4 +310,19 @@ func connectionLoginFailureURL(base string, id uuid.UUID, err error) string {
 		query.Set("connection", id.String())
 	}
 	return base + "/login?" + query.Encode()
+}
+
+func connectionFailureReturnURL(base string, id uuid.UUID, next string, e error) string {
+	raw := connectionLoginFailureURL(base, id, e)
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	safe, err := sso.SafeInternalReturn(next)
+	if err == nil && safe != "" {
+		q := u.Query()
+		q.Set("next", safe)
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
 }

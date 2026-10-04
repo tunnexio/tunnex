@@ -205,13 +205,14 @@ function BrowserLogin() {
       </p>
 
       {connections.map(connection => <button key={connection.id} className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#1C1C20] px-4 py-3 text-sm font-medium text-slate-200 transition-all duration-200 hover:border-white/20 hover:bg-[#25252B] active:scale-[0.99]" onClick={async () => {
-        const { data, error } = await api.GET("/api/v1/auth/sso-connections/{connectionId}/start", { params: { path: { connectionId: connection.id } } });
+        const next = params.get("next");
+        const { data, error } = await api.GET("/api/v1/auth/sso-connections/{connectionId}/start", { params: { path: { connectionId: connection.id }, ...(next ? { query: { next: loginDestination(next) } } : {}) } });
         if (error || !data) setError(apiErrorMessage(error, "Company sign-in is unavailable."));
         else window.location.assign(data.redirect_url);
       }}>
         {connection.provider === "okta" ? <img src="/providers/okta.svg" alt="" aria-hidden="true" className="h-6 w-6 shrink-0 invert" /> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z" /><path d="m8.5 12 2.5 2.5 4.5-5" /></svg>}
         <span>Continue with {connection.provider === "okta" ? "Okta" : connection.name}{connections.length > 1 && connection.provider === "okta" ? ` · ${connection.name}` : ""}</span></button>)}
-      <SsoSection providers={ssoProviders} onError={setError} />
+      <SsoSection providers={ssoProviders} onError={setError} next={params.get("next") ? loginDestination(params.get("next")) : undefined} />
 
       {hasSSO && <div className="my-5 flex items-center gap-3">
         <span className="h-px flex-1 bg-white/10" />
@@ -286,9 +287,11 @@ function BrowserLogin() {
 function SsoSection({
   providers,
   onError,
+  next,
 }: {
   providers: string[];
   onError: (m: string) => void;
+  next?: string;
 }) {
   // ⛔ THE ORGANIZATION FIELD IS GONE FROM THE DEFAULT PATH, AND NOT BECAUSE IT WAS TIDIED AWAY.
   // Nobody signing in knows their tenant SLUG — they know their email and which button their
@@ -309,7 +312,7 @@ function SsoSection({
     const slug = org.trim();
     const { data, error } = await api.GET("/api/v1/auth/sso/{provider}/start", {
       // Omitted entirely when blank — an empty string is a slug the server would try to look up.
-      params: { path: { provider }, query: slug ? { org: slug } : undefined },
+      params: { path: { provider }, query: slug || next ? { ...(slug ? { org: slug } : {}), ...(next ? { next } : {}) } : undefined },
     });
     if (error || !data) {
       const code = (error as { error?: { code?: string } } | undefined)?.error

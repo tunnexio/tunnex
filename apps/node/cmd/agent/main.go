@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/aivpn"
+	"github.com/tunnexio/tunnex/apps/node/internal/appaccess"
 	"github.com/tunnexio/tunnex/apps/node/internal/control"
 	"github.com/tunnexio/tunnex/apps/node/internal/dnsforward"
 	"github.com/tunnexio/tunnex/apps/node/internal/egress"
@@ -36,6 +37,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
 	"github.com/tunnexio/tunnex/apps/node/internal/relay"
+	"github.com/tunnexio/tunnex/packages/apptransport/originpolicy"
 )
 
 const (
@@ -186,6 +188,30 @@ func main() {
 	if err != nil {
 		logger.Error("agent_client_failed", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+	appClient, appErr := client.NewAppAccessClient(os.Getenv("TUNNEX_APP_ACCESS_CONTROL_URL"))
+	if appErr != nil {
+		logger.Error("app_access_control_configuration_refused")
+	} else {
+		appRuntime := appaccess.New(appClient, logger)
+		if err := appRuntime.DenyControlEndpoint(apiURL); err != nil {
+			logger.Error("app_access_control_configuration_refused")
+		} else {
+			if browserEndpoint := os.Getenv("TUNNEX_APP_PROXY_URL"); browserEndpoint != "" {
+				_, browserTLS, tlsErr := client.AppAccessTLSConfig(browserEndpoint)
+				if tlsErr != nil || appRuntime.DenyControlEndpoint(browserEndpoint) != nil {
+					logger.Error("app_browser_configuration_refused")
+				} else {
+					browserPool, poolErr := appaccess.NewBrowserPool(browserEndpoint, browserTLS, originpolicy.Checker{ControlHosts: append([]string(nil), appRuntime.ControlHosts...)})
+					if poolErr != nil {
+						logger.Error("app_browser_configuration_refused")
+					} else {
+						go appaccess.ObserveBrowser(ctx, appClient, browserPool, logger)
+					}
+				}
+			}
+			go appRuntime.Run(ctx)
+		}
 	}
 	if err := startIPsecRuntime(ctx, client, certDir, logger); err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")

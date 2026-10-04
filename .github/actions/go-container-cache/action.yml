@@ -16,6 +16,6 @@ runs:
     - uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/tunnex-go-cache
-        key: go-container-v1-${{ runner.os }}-${{ runner.arch }}-1.25.13-alpine-${{ github.job }}-${{ inputs.lane }}-${{ hashFiles('apps/**/go.sum', 'apps/**/go.mod') }}-${{ github.sha }}
+        key: go-container-v1-${{ runner.os }}-${{ runner.arch }}-1.25.13-alpine-${{ github.job }}-${{ inputs.lane }}-${{ hashFiles('apps/**/go.sum', 'apps/**/go.mod', 'packages/**/go.sum', 'packages/**/go.mod') }}-${{ github.sha }}
         restore-keys: |
-          go-container-v1-${{ runner.os }}-${{ runner.arch }}-1.25.13-alpine-${{ github.job }}-${{ inputs.lane }}-${{ hashFiles('apps/**/go.sum', 'apps/**/go.mod') }}-
+          go-container-v1-${{ runner.os }}-${{ runner.arch }}-1.25.13-alpine-${{ github.job }}-${{ inputs.lane }}-${{ hashFiles('apps/**/go.sum', 'apps/**/go.mod', 'packages/**/go.sum', 'packages/**/go.mod') }}-

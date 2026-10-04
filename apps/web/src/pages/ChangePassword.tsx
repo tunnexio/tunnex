@@ -30,6 +30,7 @@ export function ChangePassword() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loginRequired, setLoginRequired] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +46,9 @@ export function ChangePassword() {
         body: { current_password: current, new_password: next },
       });
       if (err) {
+        if (err.error?.code === "password_changed_login_required") {
+          setLoginRequired(true);
+        }
         setError(apiErrorMessage(err, "Could not change the password."));
         return;
       }
@@ -71,7 +75,12 @@ export function ChangePassword() {
         going any further.
       </p>
 
-      <form onSubmit={submit} className="mt-5 space-y-3">
+      {loginRequired ? <div className="mt-5 space-y-3"><ErrorText>{error}</ErrorText><Button onClick={() => {
+        const destination = loginDestination(params.get("next"));
+        const nextPath = destination.startsWith("/change-password") ? "/dashboard" : destination;
+        // Reload authentication from the server; the committed epoch invalidated this parent.
+        window.location.assign(`/login?next=${encodeURIComponent(nextPath)}`);
+      }}>Sign in with your new password</Button></div> : <form onSubmit={submit} className="mt-5 space-y-3">
         <Field label="Current password">
           <Input
             type="password"
@@ -100,7 +109,7 @@ export function ChangePassword() {
         <Button type="submit" disabled={busy} className="w-full">
           {busy ? "Saving…" : "Set password"}
         </Button>
-      </form>
+      </form>}
     </AuthLayout>
   );
 }

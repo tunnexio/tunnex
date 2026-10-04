@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
@@ -49,6 +50,16 @@ func (s apiServer) ListAuditLogs(ctx context.Context, req api.ListAuditLogsReque
 	principal, _ := authctx.PrincipalFrom(authorized)
 	p := req.Params
 	f := tenancy.AuditFilter{Limit: auditDefaultLimit, Action: p.Action, From: p.From, To: p.To, CursorTS: p.CursorTs}
+	if p.TargetType != nil {
+		if !utf8.ValidString(*p.TargetType) || utf8.RuneCountInString(*p.TargetType) < 1 || utf8.RuneCountInString(*p.TargetType) > 100 {
+			return nil, apierr.BadRequest("invalid_target_filter", "invalid audit target type")
+		}
+		f.TargetType = p.TargetType
+	}
+	if p.TargetId != nil {
+		target := p.TargetId.String()
+		f.TargetID = &target
+	}
 	if p.Limit != nil {
 		lim := *p.Limit
 		if lim < 1 {

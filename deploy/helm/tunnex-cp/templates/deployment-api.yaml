@@ -1,3 +1,4 @@
+{{- include "tunnex-cp.appAccessGuard" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,8 +33,9 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
-        {{- if .Values.database.tls.existingSecret }}
+        {{- if or .Values.database.tls.existingSecret .Values.appAccess.enabled }}
         fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
         {{- end }}
       containers:
         - name: api
@@ -44,11 +46,19 @@ spec:
               containerPort: 8080
             - name: agent-mtls
               containerPort: 8443
+            {{- if .Values.appAccess.enabled }}
+            - {name: app-authority, containerPort: 8445}
+            {{- end }}
           env:
             - name: TUNNEX_ENV
               value: {{ .Values.env | quote }}
             - name: TUNNEX_LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
+            {{- if .Values.appAccess.enabled }}
+            - {name: TUNNEX_APP_ACCESS_BASE_DOMAIN, value: {{ .Values.appAccess.baseDomain | quote }}}
+            - {name: TUNNEX_APP_PROXY_AUTHORITY_ADDR, value: ":8445"}
+            - {name: TUNNEX_APP_ACCESS_RESTORE_MARKER, value: /var/lib/tunnex/app-restore/app-access.pending.json}
+            {{- end }}
             - name: TUNNEX_API_ADDR
               value: ":8080"
             - name: TUNNEX_AGENT_ADDR
@@ -130,6 +140,9 @@ spec:
               value: {{ required "redis.url or redis.urlSecret is required (external Redis — this chart runs no bundled Redis)" .Values.redis.url | quote }}
             {{- end }}
           volumeMounts:
+            {{- if .Values.appAccess.enabled }}
+            - {name: app-restore, mountPath: /var/lib/tunnex/app-restore, subPath: app-restore, readOnly: true}
+            {{- end }}
             {{- if .Values.aiGateway.customProviders.enabled }}
             - {name: ai-custom-policy, mountPath: /etc/tunnex/ai-custom, readOnly: true}
             {{- end }}
@@ -195,6 +208,10 @@ spec:
             limits: {memory: 128Mi}
         {{- end }}
       volumes:
+        {{- if .Values.appAccess.enabled }}
+        - name: app-restore
+          persistentVolumeClaim: {claimName: {{ .Values.appAccess.restore.existingClaim | quote }}}
+        {{- end }}
         {{- if .Values.aiGateway.customProviders.enabled }}
         - name: ai-custom-policy
           configMap: {name: {{ include "tunnex-cp.fullname" . }}-ai-custom}

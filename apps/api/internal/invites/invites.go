@@ -5,11 +5,13 @@ package invites
 
 import (
 	"context"
+
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/tunnexio/tunnex/apps/api/internal/publicurl"
 	"log/slog"
 	"strings"
 	"time"
@@ -121,7 +123,7 @@ func (s *Service) Create(ctx context.Context, actor, orgID uuid.UUID, email, rol
 	// ⭐ THE INVITE SURVIVES A DELIVERY FAILURE, and the caller is told. The row is real and the link is
 	// valid; destroying it because mail is down would throw away the one thing the operator can still hand
 	// over by another route.
-	if err := s.send(ctx, mail.InviteMessage(email, s.baseURL+"/accept-invite?token="+raw, "")); err != nil {
+	if err := s.send(ctx, mail.InviteMessage(email, publicurl.From(ctx, s.baseURL)+"/accept-invite?token="+raw, "")); err != nil {
 		return raw, ErrNotDelivered
 	}
 	return raw, nil
@@ -250,7 +252,7 @@ func (s *Service) Resend(ctx context.Context, actor, orgID uuid.UUID, email stri
 	if err != nil {
 		return err
 	}
-	if err := s.send(ctx, mail.ResendInviteMessage(email, s.baseURL+"/accept-invite?token="+raw, "")); err != nil {
+	if err := s.send(ctx, mail.ResendInviteMessage(email, publicurl.From(ctx, s.baseURL)+"/accept-invite?token="+raw, "")); err != nil {
 		return ErrNotDelivered // the token was re-minted; only the delivery failed
 	}
 	return nil

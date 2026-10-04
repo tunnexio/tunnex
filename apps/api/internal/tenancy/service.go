@@ -653,12 +653,13 @@ func (s *Service) Overview(ctx context.Context, orgID uuid.UUID, activityActor *
 // field means "unfiltered"; CursorTS+CursorID together fetch the page after that
 // keyset position ((created_at,id) DESC).
 type AuditFilter struct {
-	Actor    *uuid.UUID
-	Action   *string
-	From, To *time.Time
-	CursorTS *time.Time
-	CursorID *uuid.UUID
-	Limit    int32
+	TargetType, TargetID *string
+	Actor                *uuid.UUID
+	Action               *string
+	From, To             *time.Time
+	CursorTS             *time.Time
+	CursorID             *uuid.UUID
+	Limit                int32
 }
 
 // ListAuditLogs returns a keyset page of the org's audit feed, newest first,
@@ -670,6 +671,8 @@ func (s *Service) ListAuditLogs(ctx context.Context, orgID uuid.UUID, f AuditFil
 		p.Actor = pgtype.UUID{Bytes: *f.Actor, Valid: true}
 	}
 	p.Action = f.Action
+	p.TargetType = f.TargetType
+	p.TargetID = f.TargetID
 	if f.From != nil {
 		p.FromTs = pgtype.Timestamptz{Time: *f.From, Valid: true}
 	}

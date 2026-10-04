@@ -100,18 +100,19 @@ vi.mock("../src/lib/api", async () => {
   };
 });
 
+import { MemoryRouter } from "react-router-dom";
 import { OrgProvider } from "../src/lib/useOrg";
 import AuditLog from "../src/pages/AuditLog";
 import { AuthProvider } from "../src/lib/auth";
 
-const withAuth = (ui: React.ReactElement) =>
+const withAuth = (ui: React.ReactElement, initialEntry = "/audit") =>
   // ⛔ THE ORG PROVIDER IS PART OF THE AUTHENTICATED SHELL (S12.5), so it is part of the harness that
   // stands in for it. A page rendered without it throws — deliberately: `useOrg()` refuses to guess, and a
   // test that quietly rendered without an org would be exercising a state production never reaches.
   render(
-    <AuthProvider>
+    <MemoryRouter initialEntries={[initialEntry]}><AuthProvider>
       <OrgProvider>{ui}</OrgProvider>
-    </AuthProvider>,
+    </AuthProvider></MemoryRouter>,
   );
 
 beforeEach(() => {
@@ -265,4 +266,25 @@ describe("AuditLog — the server is its pager", () => {
     expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
     expect(screen.queryByLabelText("Rows per page")).toBeNull();
   });
+});
+
+
+it("application audit links scope the initial query and preserve that scope while paging", async () => {
+  const appId = "11111111-1111-4111-8111-111111111111";
+  withAuth(<AuditLog />, `/audit?target_type=app_access&target_id=${appId}`);
+  await screen.findByRole("table", { name: "Audit events" });
+  expect(queries[0]).toMatchObject({ target_type: "app_access", target_id: appId });
+  fireEvent.change(screen.getByLabelText("Target UUID"), { target: { value: "22222222-2222-4222-8222-222222222222" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Load more from server" }));
+  await waitFor(() => expect(queries.length).toBe(2));
+  expect(queries[1]).toMatchObject({ target_type: "app_access", target_id: appId, cursor_id: expect.any(String) });
+});
+
+it("an invalid deep-link target refuses an audit read until corrected", async () => {
+  withAuth(<AuditLog />, "/audit?target_type=app_access&target_id=invalid");
+  await screen.findByText("Choose a valid target UUID.");
+  expect(queries).toHaveLength(0);
+  fireEvent.change(screen.getByLabelText("Target UUID"), { target: { value: "11111111-1111-4111-8111-111111111111" } });
+  fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+  await waitFor(() => expect(queries).toHaveLength(1));
 });

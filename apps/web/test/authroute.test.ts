@@ -26,6 +26,12 @@ describe("resolveMfaGateRoute — MFA-enrollment gate routing (confine + release
     expect(resolveMfaGateRoute(false, "/dashboard")).toBeNull();
     expect(resolveMfaGateRoute(false, "/settings")).toBeNull();
   });
+  it("releases successful enrollment to the original app handoff and prevents self-loops", () => {
+    const target = "/app-access/launch?appId=app&nonce_hash=browser";
+    expect(resolveMfaGateRoute(false, "/enroll-mfa", target)).toBe(target);
+    expect(resolveMfaGateRoute(false, "/enroll-mfa", "//evil.example")).toBe("/dashboard");
+    expect(resolveMfaGateRoute(false, "/enroll-mfa", "/enroll-mfa?next=/enroll-mfa")).toBe("/dashboard");
+  });
 });
 
 describe("login destination", () => {

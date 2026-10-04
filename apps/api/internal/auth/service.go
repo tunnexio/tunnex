@@ -12,7 +12,9 @@ package auth
 
 import (
 	"context"
+
 	"errors"
+	"github.com/tunnexio/tunnex/apps/api/internal/publicurl"
 	"log/slog"
 	"strings"
 	"time"
@@ -85,7 +87,7 @@ func (s *Service) Signup(ctx context.Context, email, name, pw string) error {
 
 	existing, err := s.q.GetUserByEmail(ctx, email)
 	if err == nil {
-		s.send(ctx, mail.AccountExistsMessage(existing.Email, s.baseURL+"/reset-password"))
+		s.send(ctx, mail.AccountExistsMessage(existing.Email, publicurl.From(ctx, s.baseURL)+"/reset-password"))
 		return nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -114,7 +116,7 @@ func (s *Service) Signup(ctx context.Context, email, name, pw string) error {
 	if err != nil {
 		return err
 	}
-	s.send(ctx, mail.VerifyEmailMessage(email, s.baseURL+"/verify-email?token="+raw))
+	s.send(ctx, mail.VerifyEmailMessage(email, publicurl.From(ctx, s.baseURL)+"/verify-email?token="+raw))
 	return nil
 }
 
@@ -146,8 +148,13 @@ func (s *Service) Authenticate(ctx context.Context, email, pw string) (sqlc.User
 	}
 	if needsRehash {
 		if nh, herr := password.Hash(pw); herr == nil {
-			if serr := s.q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{ID: user.ID, PasswordHash: &nh}); serr != nil {
+			rows, serr := s.q.CASUserPasswordRehash(ctx, sqlc.CASUserPasswordRehashParams{UserID: user.ID, ExpectedHash: user.PasswordHash, ExpectedEpoch: user.AppAuthEpoch, NewHash: &nh})
+			if serr != nil {
 				s.logger.Warn("rehash_failed", slog.String("user_id", user.ID.String()), slog.String("error", serr.Error()))
+				return sqlc.User{}, serr
+			}
+			if rows != 1 {
+				return sqlc.User{}, errInvalidCredentials()
 			}
 		}
 	}
@@ -187,7 +194,7 @@ func (s *Service) ResendVerification(ctx context.Context, userID uuid.UUID) erro
 	}); err != nil {
 		return err
 	}
-	s.send(ctx, mail.VerifyEmailMessage(user.Email, s.baseURL+"/verify-email?token="+raw))
+	s.send(ctx, mail.VerifyEmailMessage(user.Email, publicurl.From(ctx, s.baseURL)+"/verify-email?token="+raw))
 	return nil
 }
 
@@ -233,7 +240,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	if err != nil {
 		return err
 	}
-	s.send(ctx, mail.PasswordResetMessage(email, s.baseURL+"/reset-password?token="+raw))
+	s.send(ctx, mail.PasswordResetMessage(email, publicurl.From(ctx, s.baseURL)+"/reset-password?token="+raw))
 	return nil
 }
 
@@ -259,7 +266,7 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, newPassword strin
 			return err
 		}
 		resetUserID = tok.UserID
-		if err := q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{ID: tok.UserID, PasswordHash: &hash}); err != nil {
+		if _, err := q.SetUserPasswordAndBumpAppAuthEpoch(ctx, sqlc.SetUserPasswordAndBumpAppAuthEpochParams{UserID: tok.UserID, NewHash: &hash}); err != nil {
 			return err
 		}
 		// The SWEEP also kills every live CLI credential (S5.1): a reset signals
@@ -297,12 +304,19 @@ func errInvalidCredentials() error {
 // ⛔ IT CLEARS `must_change_password` IN THE SAME TRANSACTION THAT SETS THE HASH. Two statements could
 // leave an account with a new password and the wall still up — locked out by its own remedy.
 func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, current, next string) error {
+	_, err := s.ChangePasswordWithAuthority(ctx, userID, current, next)
+	return err
+}
+
+// ChangePasswordWithAuthority returns the epoch committed by this verified change.
+// A later credential reset must never be adopted when minting its replacement parent.
+func (s *Service) ChangePasswordWithAuthority(ctx context.Context, userID uuid.UUID, current, next string) (sqlc.User, error) {
 	if len(next) < password.MinPasswordLen {
-		return apierr.BadRequest("weak_password", password.ErrPasswordShort.Error())
+		return sqlc.User{}, apierr.BadRequest("weak_password", password.ErrPasswordShort.Error())
 	}
 	user, err := s.q.GetUserByID(ctx, userID)
 	if err != nil {
-		return err
+		return sqlc.User{}, err
 	}
 	// ⚠ A live session is not proof of knowing the credential — a borrowed browser is enough.
 	ok := false
@@ -314,26 +328,33 @@ func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, current,
 		}
 	}
 	if !ok {
-		return apierr.BadRequest("invalid_credentials", "the current password is incorrect")
+		return sqlc.User{}, apierr.BadRequest("invalid_credentials", "the current password is incorrect")
 	}
 	// A bootstrap/invitation password is a one-time credential. Reusing it as the permanent
 	// password defeats the forced-change boundary and leaves the emailed secret valid forever.
 	if err := rejectPasswordReuse(*user.PasswordHash, next); err != nil {
-		return err
+		return sqlc.User{}, err
 	}
 	hash, err := password.Hash(next)
 	if err != nil {
-		return err
+		return sqlc.User{}, err
 	}
+	var updated sqlc.User
 	if e := s.withTx(ctx, func(q *sqlc.Queries) error {
-		if e := q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{ID: userID, PasswordHash: &hash}); e != nil {
+		var e error
+		updated, e = q.ChangePasswordCASAndBumpAppAuthEpoch(ctx, sqlc.ChangePasswordCASAndBumpAppAuthEpochParams{UserID: userID, ExpectedHash: user.PasswordHash, ExpectedEpoch: user.AppAuthEpoch, NewHash: &hash})
+		if e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				return errInvalidCredentials()
+			}
 			return e
 		}
 		return q.ClearMustChangePassword(ctx, userID)
 	}); e != nil {
-		return e
+		return sqlc.User{}, e
 	}
-	return nil
+	updated.MustChangePassword = false
+	return updated, nil
 }
 
 func rejectPasswordReuse(currentHash, next string) error {

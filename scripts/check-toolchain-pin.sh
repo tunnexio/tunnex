@@ -20,7 +20,8 @@ record() { seen+=("$1|$2"); note "$1" "$2"; }
 echo "Go toolchain pin — agreement check"
 
 # 1. Every Go module's `go` directive (this is what CI's setup-go resolves via go-version-file).
-for mod in apps/*/go.mod; do
+for mod in apps/*/go.mod packages/*/go.mod; do
+  [ -f "$mod" ] || continue
   v=$(awk '/^go /{print $2; exit}' "$mod")
   record "$mod (go directive)" "$v"
 done
@@ -75,7 +76,7 @@ if [ "$fail" -ne 0 ]; then
     [ "$v" = "$expected" ] || echo "  MISMATCH  ${e%%|*} = $v" >&2
   done
   echo >&2
-  echo "Bump first-party pins together: apps/*/go.mod, Makefile GO_IMAGE, first-party Dockerfiles, .devcontainer." >&2
+  echo "Bump first-party pins together: apps/*/go.mod, packages/*/go.mod, Makefile GO_IMAGE, first-party Dockerfiles, .devcontainer." >&2
   exit 1
 fi
 echo "OK — first-party Go toolchain pins agree: $expected; upstream build pin checked separately"

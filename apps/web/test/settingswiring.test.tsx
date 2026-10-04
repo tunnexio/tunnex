@@ -44,6 +44,11 @@ let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup 
 let serverAdmin = false;
 let edition: "open" | "enterprise" = "enterprise";
 let currentRole: "owner" | "admin" | "member" = "owner";
+let currentRoles: string[] | undefined;
+let membershipStatus = "active";
+let emailVerified = true;
+let appAccessEnabled = false;
+let appAccessVersion = 2;
 let ovpnEnabled = false;
 let agentTemplatesEnabled = false;
 let jitAccessEnabled = false;
@@ -86,9 +91,10 @@ vi.mock("../src/lib/api", async () => {
         if (path === "/api/v1/organizations/{orgId}/idp-sync/{provider}/health")
           return { data: { provider: "microsoft", sync_health: "ok", last_sync_ok: true, provisioning_allowed: provisioningAllowed } };
         if (path === "/api/v1/auth/me")
-          return { data: { id: "u1", email: "a@b.c", email_verified: true, cp_admin: serverAdmin } };
+          return { data: { id: "u1", email: "a@b.c", email_verified: emailVerified, cp_admin: serverAdmin } };
         if (path === "/api/v1/meta") return { data: { edition } };
         if (path === "/api/v1/admin/ai-transport-settings") return { data: { allow_http: false, revision: 1 } };
+        if (path === "/api/v1/admin/app-access/domains") return { data: { portal_url: "https://internal.tunnex.app", app_base_domain: "internal.tunnex.app", version: 0, source: "environment", configuration_ready: true } };
         if (path === "/api/v1/license") {
           if (deferNewOrgSecurityLoad) return new Promise((resolve) => { resolveDeferredLicence = () => resolve({ data: { features: ["agent_jit_access"] } }); });
           return { data: { features: ["agent_jit_access"] } };
@@ -126,7 +132,7 @@ vi.mock("../src/lib/api", async () => {
         }
         if (path.endsWith("/members"))
           return {
-            data: [{ user_id: "u1", role: currentRole, email_verified: true }],
+            data: [{ user_id: "u1", role: currentRole, roles: currentRoles, status: membershipStatus, email_verified: emailVerified }],
           };
         if (path.includes("/sso/"))
           return ssoFail
@@ -138,6 +144,8 @@ vi.mock("../src/lib/api", async () => {
                 data: undefined,
                 error: { error: { code: "sso_not_configured" } },
               };
+        if (path === "/api/v1/organizations/{orgId}/app-access/settings")
+          return { data: { enabled: appAccessEnabled, version: appAccessVersion, entitlement_available: true, base_domain: "apps.example", domain_ready: true } };
         if (path.endsWith("/agent-jit-access-settings"))
           return { data: { enabled: jitAccessEnabled, pending_requests: 0, approved_requests: 0 } };
         if (path.endsWith("/device-approval")) {
@@ -177,6 +185,14 @@ vi.mock("../src/lib/api", async () => {
         if (path.endsWith("/alert-deliveries"))
           return { data: alertDeliveries };
         return { data: [] };
+      }),
+      PATCH: vi.fn(async (path: string, request: { body?: { enabled?: boolean; expected_version?: number } }) => {
+        if (path === "/api/v1/organizations/{orgId}/app-access/settings") {
+          appAccessEnabled = request.body?.enabled === true;
+          appAccessVersion++;
+          return { data: { enabled: appAccessEnabled, version: appAccessVersion, entitlement_available: true, base_domain: "apps.example", domain_ready: true } };
+        }
+        return { data: {} };
       }),
       PUT: vi.fn(async (path: string, request: { params?: { path?: { orgId?: string } }; body?: { enabled?: boolean; mode?: "on" | "off" } }) => {
         if (path.endsWith("/agent-policy-template-settings"))
@@ -284,6 +300,11 @@ beforeEach(() => {
   __lateGets = [];
   edition = "enterprise";
   currentRole = "owner";
+  currentRoles = undefined;
+  membershipStatus = "active";
+  emailVerified = true;
+  appAccessEnabled = false;
+  appAccessVersion = 2;
   ovpnEnabled = false;
   agentTemplatesEnabled = false;
   jitAccessEnabled = false;
@@ -849,5 +870,96 @@ describe("Settings — server AI transport permission", () => {
     expect(screen.getByRole("tabpanel").id).toBe("ai-transport");
     expect(screen.getByRole("tab", { name: "AI Gateway transport" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("Saved policy: HTTPS required")).toBeTruthy();
+  });
+});
+
+
+describe("Settings — server App Access domain permission", () => {
+  beforeEach(() => { vi.mocked(api.GET).mockClear(); });
+  it("hides shared domains and does not fetch them for an organization owner", async () => {
+    window.history.replaceState({}, "", "/settings?section=app-access-domains");
+    withAuth(<Settings />);
+    await screen.findByRole("tab", { name: "Organization" });
+    expect(screen.queryByRole("tab", { name: "App Access domains" })).toBeNull();
+    expect(screen.queryByLabelText("Portal URL")).toBeNull();
+    const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
+    expect(reads.some(([path]) => path === "/api/v1/admin/app-access/domains")).toBe(false);
+  });
+
+  it("opens the App Access domains deep link for a server administrator", async () => {
+    serverAdmin = true;
+    window.history.replaceState({}, "", "/settings?section=app-access-domains");
+    withAuth(<Settings />);
+    await screen.findByLabelText("Portal URL");
+    expect(screen.getByRole("tabpanel").id).toBe("app-access-domains");
+    expect(screen.getByRole("tab", { name: "App Access domains" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps server-wide domains available without an organization", async () => {
+    serverAdmin = true;
+    const get = defaultGetImplementation as unknown as (path: string, options: unknown) => Promise<unknown>;
+    vi.mocked(api.GET).mockImplementation(((path: string, options: unknown) => path === "/api/v1/organizations" ? Promise.resolve({ data: [] }) : get(path, options)) as typeof defaultGetImplementation);
+    window.history.replaceState({}, "", "/settings?section=app-access-domains");
+    withAuth(<Settings />);
+    expect(await screen.findByLabelText("Application base domain")).toHaveProperty("value", "internal.tunnex.app");
+    expect(screen.getByRole("tabpanel").id).toBe("app-access-domains");
+    expect(screen.queryByText("No organization available.")).toBeNull();
+  });
+});
+
+describe("Settings — App Access belongs under Features", () => {
+  beforeEach(() => { vi.mocked(api.GET).mockClear(); vi.mocked(api.PATCH).mockClear(); });
+
+  it("opens the Features deep link and persists explicit App Access opt-in for a verified active administrator", async () => {
+    currentRole = "admin"; currentRoles = ["admin", "member"];
+    window.history.replaceState({}, "", "/settings?section=features");
+    withAuth(<Settings />);
+    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    expect(screen.getByRole("tabpanel").id).toBe("features");
+    expect(screen.getByRole("tab", { name: "Features" }).getAttribute("aria-selected")).toBe("true");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(api.PATCH).not.toHaveBeenCalled();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+    expect(api.PATCH).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/settings", {
+      params: { path: { orgId: "org-1" } }, body: { enabled: true, expected_version: 2 },
+    });
+    await openSection(/^Organization$/);
+    await openSection(/^Features$/);
+    expect((await screen.findByRole("switch", { name: "App Access" })).getAttribute("aria-checked")).toBe("true");
+    expect(api.PATCH).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps App Access read-only for an unverified administrator", async () => {
+    currentRole = "admin"; emailVerified = false;
+    window.history.replaceState({}, "", "/settings?section=features");
+    withAuth(<Settings />);
+    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    expect(toggle).toHaveProperty("disabled", true);
+    fireEvent.click(toggle);
+    expect(api.PATCH).not.toHaveBeenCalled();
+  });
+
+  it("does not load App Access controls for an inactive administrator membership", async () => {
+    currentRole = "admin"; membershipStatus = "deactivated";
+    window.history.replaceState({}, "", "/settings?section=features");
+    withAuth(<Settings />);
+    await screen.findByRole("switch", { name: "OpenVPN" });
+    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
+    const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
+    expect(reads.some(([path]) => path === "/api/v1/organizations/{orgId}/app-access/settings")).toBe(false);
+    expect(api.PATCH).not.toHaveBeenCalled();
+  });
+
+  it("does not turn an ordinary member's server-admin flag into organization App Access authority", async () => {
+    currentRole = "member"; serverAdmin = true;
+    window.history.replaceState({}, "", "/settings?section=features");
+    withAuth(<Settings />);
+    await screen.findByRole("tab", { name: "Email delivery" });
+    expect(screen.queryByRole("tab", { name: "Features" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
+    const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
+    expect(reads.some(([path]) => path === "/api/v1/organizations/{orgId}/app-access/settings")).toBe(false);
+    expect(api.PATCH).not.toHaveBeenCalled();
   });
 });

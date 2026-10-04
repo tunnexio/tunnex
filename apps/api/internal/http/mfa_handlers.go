@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -13,11 +14,11 @@ import (
 
 // MfaEnrollStart POST /auth/mfa/enroll — begin TOTP enrollment (OPEN; verified session).
 func (s apiServer) MfaEnrollStart(ctx context.Context, req api.MfaEnrollStartRequestObject) (api.MfaEnrollStartResponseObject, error) {
-	p, err := requireVerifiedSessionUser(ctx)
+	parent, err := s.mfaParent(ctx)
 	if err != nil {
 		return nil, err
 	}
-	uri, key, err := s.mfa.StartEnrollment(ctx, p.UserID)
+	uri, key, err := s.mfa.StartEnrollmentWithAuthority(ctx, parent.UserID, parent.AppAuthEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -29,16 +30,25 @@ func (s apiServer) MfaEnrollStart(ctx context.Context, req api.MfaEnrollStartReq
 
 // MfaEnrollConfirm POST /auth/mfa/enroll/confirm — arm MFA with a valid code; returns recovery codes once.
 func (s apiServer) MfaEnrollConfirm(ctx context.Context, req api.MfaEnrollConfirmRequestObject) (api.MfaEnrollConfirmResponseObject, error) {
-	p, err := requireVerifiedSessionUser(ctx)
+	parent, err := s.mfaParent(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
-	codes, err := s.mfa.ConfirmEnrollment(ctx, p.UserID, req.Body.Code)
+	if err := s.mfaAttempt(ctx, parent); err != nil {
+		return nil, err
+	}
+	codes, at, err := s.mfa.ConfirmEnrollmentWithAuthority(ctx, parent.UserID, parent.AppAuthEpoch, req.Body.Code)
 	if err != nil {
 		return nil, err
+	}
+	// Confirmation has committed and these recovery codes are shown once. If
+	// Redis or concurrent logout prevents promotion, return the codes honestly;
+	// the app remains gated until a later successful step-up.
+	if s.validateMFAParent(ctx, parent) == nil {
+		_, _ = s.sessions.PromoteMFA(ctx, parent, at, session.MFAAssuranceLocalTOTP)
 	}
 	return api.MfaEnrollConfirm200JSONResponse{
 		Body:    api.MfaRecoveryCodes{RecoveryCodes: codes},
@@ -81,11 +91,16 @@ func (s apiServer) MfaVerify(ctx context.Context, req api.MfaVerifyRequestObject
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
-	user, _, err := s.mfa.VerifyChallenge(ctx, req.Body.Challenge, req.Body.Code)
+	verifiedAt := time.Now().UTC()
+	user, viaRecovery, err := s.mfa.VerifyChallenge(ctx, req.Body.Challenge, req.Body.Code)
 	if err != nil {
 		return nil, err
 	}
-	sess, err := s.sessions.Create(ctx, user.ID, authctx.AuthLocalPassword)
+	source := session.MFAAssuranceLocalTOTP
+	if viaRecovery {
+		source = session.MFAAssuranceLocalRecovery
+	}
+	sess, err := s.sessions.CreateWithMFAAuthority(ctx, user.ID, authctx.AuthLocalPassword, user.AppAuthEpoch, verifiedAt, source)
 	if err != nil {
 		return nil, err
 	}

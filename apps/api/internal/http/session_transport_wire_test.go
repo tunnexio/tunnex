@@ -51,6 +51,7 @@ func TestSessionTransportLoginAndProtectedRoutes(t *testing.T) {
 	sessions := session.NewWithClient(redisClient, time.Hour, 24*time.Hour)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler, err := NewRouter(logger, Deps{
+		System: sqlc.New(pool),
 		Auth:   auth.NewService(pool, nil, "https://console.example.test", sessions, logger),
 		AuthFn: SessionAuth(sessions, sqlc.New(pool)), Sessions: sessions,
 		Orgs: tenancy.NewService(pool), Members: tenancy.NewMembershipService(pool, sessions),

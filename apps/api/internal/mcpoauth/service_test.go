@@ -17,6 +17,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/publicurl"
 )
 
 func TestAuthorizationMetadataBindsProtectedResource(t *testing.T) {
@@ -94,7 +95,7 @@ func TestStartAndCompleteUsesPKCEAndSealedCustody(t *testing.T) {
 		case "/issuer/.well-known/oauth-authorization-server":
 			_, _ = w.Write([]byte(`{"authorization_endpoint":"` + server.URL + `/authorize","token_endpoint":"` + server.URL + `/token","protected_resources":["https://mcp.example/resource"]}`))
 		case "/token":
-			if err := r.ParseForm(); err != nil || r.Form.Get("resource") != "https://mcp.example/resource" || r.Form.Get("code_verifier") == "" {
+			if err := r.ParseForm(); err != nil || r.Form.Get("resource") != "https://mcp.example/resource" || r.Form.Get("code_verifier") == "" || r.Form.Get("redirect_uri") != "https://portal.example.org/api/v1/mcp/oauth/callback" {
 				http.Error(w, "bad request", http.StatusBadRequest)
 				return
 			}
@@ -106,7 +107,7 @@ func TestStartAndCompleteUsesPKCEAndSealedCustody(t *testing.T) {
 	defer server.Close()
 	svc := New(sqlc.New(pool), sealer, redis.NewClient(&redis.Options{Addr: mini.Addr()}), "https://cp.example")
 	svc.http = server.Client()
-	started, err := svc.Start(ctx, StartInput{OrgID: org, DeviceID: device, ActorID: user, Endpoint: "https://mcp.example/rpc", Resource: "https://mcp.example/resource", Issuer: server.URL + "/issuer", Scopes: []string{"tools:read"}, ClientID: "registered-client", ClientSecret: "client-secret"})
+	started, err := svc.Start(publicurl.With(ctx, "https://portal.example.org"), StartInput{OrgID: org, DeviceID: device, ActorID: user, Endpoint: "https://mcp.example/rpc", Resource: "https://mcp.example/resource", Issuer: server.URL + "/issuer", Scopes: []string{"tools:read"}, ClientID: "registered-client", ClientSecret: "client-secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,10 +116,10 @@ func TestStartAndCompleteUsesPKCEAndSealedCustody(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := authURL.Query().Get("state")
-	if state == "" || authURL.Query().Get("code_challenge_method") != "S256" || authURL.Query().Get("resource") != "https://mcp.example/resource" {
+	if state == "" || authURL.Query().Get("code_challenge_method") != "S256" || authURL.Query().Get("resource") != "https://mcp.example/resource" || authURL.Query().Get("redirect_uri") != "https://portal.example.org/api/v1/mcp/oauth/callback" {
 		t.Fatalf("authorization URL=%s", started.RedirectURL)
 	}
-	if err := svc.Complete(ctx, state, "code"); err != nil {
+	if err := svc.Complete(publicurl.With(ctx, "https://changed.example.org"), state, "code"); err != nil {
 		t.Fatal(err)
 	}
 	row, err := sqlc.New(pool).GetAgentMCPOAuthConnection(ctx, sqlc.GetAgentMCPOAuthConnectionParams{ID: started.ConnectionID, OrgID: org, DeviceID: device})

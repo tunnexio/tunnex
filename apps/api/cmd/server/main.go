@@ -10,10 +10,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -23,6 +26,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/google/uuid"
+	"golang.org/x/net/netutil"
 
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
@@ -33,6 +37,8 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/aitransport"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
+	"github.com/tunnexio/tunnex/apps/api/internal/appaccess"
+	"github.com/tunnexio/tunnex/apps/api/internal/appdomains"
 	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
@@ -72,6 +78,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 	"github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance"
+	"github.com/tunnexio/tunnex/packages/apptransport/restorebarrier"
 )
 
 func main() {
@@ -79,6 +86,14 @@ func main() {
 
 	logger := applog.New(cfg.LogLevel)
 	slog.SetDefault(logger)
+	if err := cfg.ValidateAppAccessRestoreMarker(); err != nil {
+		logger.Error("app_access_restore_marker_required")
+		os.Exit(1)
+	}
+	if err := restorebarrier.Check(cfg.AppAccessRestoreMarker); err != nil {
+		logger.Error("app_access_restore_pending")
+		os.Exit(1)
+	}
 
 	// --- S0.3: bootstrap roots of trust (fail loudly, never regenerate) ---
 	// S10.1: an operator-provided master/session source pre-empts the volume (an
@@ -540,7 +555,24 @@ func main() {
 	ipsecStore := ipsec.NewConnectionStore(pool)
 	ipsecStore.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
+	// Invalid console URLs must not erase the app-domain isolation constraint.
+	consoleHost := ""
+	if u, parseErr := url.Parse(cfg.AppBaseURL); parseErr == nil && (u.Scheme == "http" || u.Scheme == "https") && u.User == nil {
+		consoleHost = u.Hostname()
+	}
+	domainSettings := appdomains.New(pool, appdomains.Config{PortalURL: cfg.AppBaseURL, AppBaseDomain: cfg.AppAccessBaseDomain})
+	appAccessSvc := appaccess.NewService(pool, appaccess.Config{AppBaseDomain: cfg.AppAccessBaseDomain, ConsoleURL: cfg.AppBaseURL, ConsoleHosts: []string{consoleHost}}).WithDomainProvider(domainSettings).WithSessionAuthority(sessions, appaccess.NewAppSessionStore(sessions.Client()), sealer, func(ctx context.Context, user uuid.UUID) (bool, error) {
+		if !apphttp.NewMfaEnforceEdition() {
+			return false, nil
+		}
+		return mfaSvc.IsEnrollmentGated(ctx, user)
+	})
+	appAccessSvc.WithMFAEnrollmentChecker(mfaSvc.HasConfirmedTOTP)
+	appEvents := appaccess.NewEventProducer(pool)
+	defer appEvents.Close()
+	appAccessSvc.WithEventProducer(appEvents)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
+		AppDomains:         domainSettings,
 		IPsecStatus:        ipsecStore,
 		IPsecRuntime:       ipsecStore,
 		IPsecEligibility:   ipsecStore,
@@ -584,6 +616,7 @@ func main() {
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
+		AppAccess:             appAccessSvc,
 		FQDNResources:         fqdnresources.New(pool),
 		FQDNSettingNotify:     fqdnInvalidator,
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
@@ -627,6 +660,8 @@ func main() {
 
 	// mTLS agent control channel (separate listener; client certs verified vs CA).
 	agentCh := apphttp.NewAgentChannel(nodeSvc, agentCA, pushHub, logger)
+	agentCh.SetAppAccessConnector(appAccessSvc, licenceMgr)
+	defer agentCh.CloseAppAccessConnector()
 	agentCh.SetIPsecRuntime(ipsecStore, sealer)
 	agentCh.SetConnectivityStore(connectivityStore)
 	agentCh.SetVPNInference(aiAdapter, aiPolicies)
@@ -795,7 +830,7 @@ func main() {
 			}
 		}
 	}()
-	// Audit logs keep their original retain-forever behavior until an
+	// Other audit categories keep their original retain-forever behavior until an
 	// organization explicitly saves a bounded policy. The same leader fence as
 	// the access-event scheduler ensures exactly one replica claims durable runs.
 	go func() {
@@ -824,6 +859,46 @@ func main() {
 					}
 					if claimed {
 						logger.Info("audit_log_retention_run", slog.String("org_id", orgID.String()), slog.Int64("deleted", run.DeletedRows), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
+					}
+				}
+				scancel()
+			}
+		}
+	}()
+	// Fixed App Access grant retention is separate from organization-configured
+	// retention. Confirm leadership before claims and bound each pass by the shutdown context.
+	go func() {
+		t := time.NewTicker(appaccess.GrantRetentionSchedulerPollInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-retentionStop:
+				return
+			case <-t.C:
+				if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+					continue
+				}
+				sctx, scancel := context.WithTimeout(electorCtx, 2*time.Minute)
+				orgs, err := appAccessSvc.ListRetentionDueOrganizations(sctx, 100)
+				if err != nil {
+					logger.Error("app_access_retention_due_list_failed", slog.String("error", err.Error()))
+					scancel()
+					continue
+				}
+				for _, orgID := range orgs {
+					if sctx.Err() != nil {
+						break
+					}
+					if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+						break
+					}
+					run, claimed, runErr := appAccessSvc.RunRetentionScheduled(sctx, orgID)
+					if runErr != nil {
+						logger.Error("app_access_retention_run_failed", slog.String("org_id", orgID.String()), slog.String("error", runErr.Error()))
+						continue
+					}
+					if claimed {
+						logger.Info("app_access_retention_run", slog.String("org_id", orgID.String()), slog.String("run_id", run.ID.String()), slog.Int64("grants_deleted", run.GrantsDeleted), slog.Int64("audits_deleted", run.AuditsDeleted), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
 					}
 				}
 				scancel()
@@ -1051,6 +1126,27 @@ func main() {
 		}
 	}()
 
+	// App authority is deliberately separate from browser and gateway identity.
+	var appProxySrv *http.Server
+	if cfg.AppProxyAuthorityAddr != "" {
+		leaf, err := agentCA.ServerTLSCertificate("tunnex-app-authority")
+		if err != nil {
+			logger.Error("app_proxy_authority_tls_failed")
+			os.Exit(1)
+		}
+		listener, err := net.Listen("tcp", cfg.AppProxyAuthorityAddr)
+		if err != nil {
+			logger.Error("app_proxy_authority_bind_failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		appProxySrv = &http.Server{Handler: apphttp.NewAppProxyAuthorityHandler(appAccessSvc, func() bool { return licenceMgr.Has(licence.FeatAppAccess, time.Now()) }), TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{leaf}, NextProtos: []string{"http/1.1"}}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32768}
+		go func() {
+			if err := appProxySrv.ServeTLS(netutil.LimitListener(listener, 256), "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("app_proxy_authority_failed", slog.String("error", err.Error()))
+			}
+		}()
+	}
+
 	// S11 D3.1-D3.3: the metrics + readiness listener, on its OWN port (never the public router) and
 	// bound to loopback unless explicitly configured otherwise — so operational fleet data cannot become
 	// internet-reachable by a default nobody revisited. FleetHealthCounts reads the SAME PolicyHealthForNodes
@@ -1080,6 +1176,7 @@ func main() {
 			return nodeSvc.FleetHealthCounts(ctx)
 		}, elector.IsLeader)
 		metrics.RegisterPool(reg, pool)
+		reg.MustRegister(appEvents)
 		// readiness = the DB answers. A CP that cannot reach postgres serves nothing useful, and naming the
 		// reason beats a bare 503 (diagnosis-from-logs at the readiness tier).
 		ready := func() error { return pool.Ping(metricsCtx) }
@@ -1113,6 +1210,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = agentSrv.Shutdown(ctx)
+	if appProxySrv != nil {
+		_ = appProxySrv.Shutdown(ctx)
+	}
 	pollCancel()        // stop the idp-sync poller
 	stopFQDNScheduler() // stop bounded FQDN work before releasing DB leadership/pool
 	_ = handoffComposition.Activation.Stop(ctx)
