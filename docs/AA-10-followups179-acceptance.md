@@ -75,6 +75,34 @@ fixture identities were preserved. The qualification report SHA256 is
 These follow-up checks do not change the historical schema-179 runtime attestation
 above; later deployment and final-commit CI evidence are recorded separately.
 
+The dedicated test CP subsequently upgraded to clean schema180 with API image
+`tunnex-app-access-live-api:app-access180-eab88596c2fd503a-r3`. Its verification
+record confirms exactly three new timestamp triggers, all 273 prior public
+triggers and their shared function unchanged, and all 23 protected durable
+projections preserved. Member login, one-click private Wiki access, the protected
+app's MFA label, and logout passed after this upgrade. Web, gateway, proxy, TLS
+and DNS were unchanged. This is separate evidence from the schema179 acceptance.
+
+## Security scan follow-up
+
+The origin transport now constructs its outbound URL from the registered origin
+and explicitly copied path/query fields. Browser-supplied authority, userinfo and
+opaque URL fields cannot enter it; pinned-IP dialing and origin policy remain in
+force. Navigation checks explicitly reject both network-path and backslash
+authority forms before parsing. The identity-only helper is named
+`requireVerifiedPrincipal`; the password-change gate and random-token hashing
+are unchanged.
+
+CodeQL alert182 was independently triaged as a false positive: its reported edge
+from API multipart `fw.Write(audio)` to the separately built proxy's
+`streamWriter.Write` cannot execute. The concrete multipart writer writes to a
+local `bytes.Buffer`, and neither binary imports the other's implementation.
+The exact-path review SHA256 is
+`8567dc0a89de8f106783f611638ef290d694f94f6af043ba9297cfe7ae94b6e0`.
+Only that alert was dismissed; scan scope, queries, thresholds and proxy response
+bodies were unchanged. Latest-commit CI and deployment of these follow-up source
+changes require their own evidence.
+
 ## Qualification limits
 
 Live retention found **zero eligible aged rows** and executed no purge; aged-data

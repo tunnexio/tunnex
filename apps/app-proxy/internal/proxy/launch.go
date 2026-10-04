@@ -26,7 +26,7 @@ func secret32(value string) bool {
 	return e == nil && len(raw) == 32
 }
 func navigationTarget(value string) (string, error) {
-	if len(value) > 8192 || !strings.HasPrefix(value, "/") {
+	if len(value) > 8192 || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.HasPrefix(value, "/\\") {
 		return "", apptransport.ErrRequest
 	}
 	u, e := url.Parse(value)

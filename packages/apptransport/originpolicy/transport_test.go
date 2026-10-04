@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"sync/atomic"
 	"testing"
 )
@@ -136,4 +137,54 @@ func TestStreamingTransportRefreshesAllDNSAndControlAliases(t *testing.T) {
 		t.Fatal("changed allowed DNS was not freshly dialed")
 	}
 
+}
+
+func TestStreamingTransportBrowserURLCannotChangeOrigin(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.Host != "origin.example" || r.URL.Host != "" || r.URL.Scheme != "" || r.URL.Path != "/reports/detail" || r.URL.RawPath != "/reports%2Fdetail" || r.URL.RawQuery != "next=https%3A%2F%2Fevil.example%2F&x=1" {
+			t.Errorf("browser URL changed registered origin or path/query: host=%q url=%v", r.Host, r.URL)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Error("browser URL userinfo became origin credentials")
+		}
+		w.Header().Set("Location", "http://169.254.169.254/latest/meta-data")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+	policy, err := Normalize([]string{"10.1.2.3/32"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dials atomic.Int32
+	tr := &Transport{Origin: "http://origin.example", Policy: policy, Checker: Checker{
+		Lookup: func(context.Context, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("10.1.2.3")}, nil
+		},
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dials.Add(1)
+			if network != "tcp" || address != "10.1.2.3:80" {
+				t.Errorf("browser URL changed numeric dial: %q %q", network, address)
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+		},
+	}}
+	request := &http.Request{Method: http.MethodGet, Header: make(http.Header), Host: "browser.example", URL: &url.URL{
+		Scheme: "https", Host: "169.254.169.254:9443", User: url.UserPassword("browser", "untrusted"),
+		Opaque: "//169.254.169.254/forged", OmitHost: true,
+		Path: "/reports/detail", RawPath: "/reports%2Fdetail", RawQuery: "next=https%3A%2F%2Fevil.example%2F&x=1",
+		Fragment: "browser-fragment", RawFragment: "browser%2Dfragment",
+	}}
+	response, err := tr.RoundTrip(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusFound || dials.Load() != 1 || hits.Load() != 1 {
+		t.Fatal("transport followed redirect or did not use its single pinned origin")
+	}
+	if request.URL.Host != "169.254.169.254:9443" || request.URL.Opaque != "//169.254.169.254/forged" || request.Host != "browser.example" {
+		t.Fatal("transport mutated caller URL")
+	}
 }

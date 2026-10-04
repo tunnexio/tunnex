@@ -341,7 +341,7 @@ func (s apiServer) ConfirmPasswordReset(ctx context.Context, req api.ConfirmPass
 // of knowing the credential — a borrowed browser is enough — and this is the act that makes a printed,
 // log-visible password permanent.
 func (s apiServer) ChangePassword(ctx context.Context, req api.ChangePasswordRequestObject) (api.ChangePasswordResponseObject, error) {
-	p, err := requireVerifiedUserAllowingPasswordChange(ctx)
+	p, err := requireVerifiedPrincipal(ctx)
 	if err != nil {
 		return nil, err
 	}

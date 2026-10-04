@@ -47,7 +47,7 @@ func RelativeTarget(u *url.URL) (string, error) {
 		return "", ErrRequest
 	}
 	value := u.RequestURI()
-	if len(value) > 8192 || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
+	if len(value) > 8192 || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.HasPrefix(value, "/\\") {
 		return "", ErrRequest
 	}
 	decoded, e := url.PathUnescape(u.EscapedPath())
