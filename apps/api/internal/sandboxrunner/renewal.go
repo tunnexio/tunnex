@@ -1,6 +1,7 @@
 package sandboxrunner
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/tls"
@@ -21,6 +22,7 @@ type Issuer struct {
 	runnerURI  string
 	renewed    []byte
 	renewedAt  time.Time
+	renewedKey []byte
 }
 
 func NewIssuer(caPEM, keyPEM []byte, controller tls.Certificate, runnerURI string) (*Issuer, error) {
@@ -106,7 +108,7 @@ func (i *Issuer) RenewRunner(leaf *x509.Certificate) ([]byte, error) {
 	if leaf == nil || len(leaf.URIs) != 1 || leaf.URIs[0].String() != i.runnerURI || leaf.CheckSignatureFrom(i.root) != nil || now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
 		return nil, ErrInvalid
 	}
-	if len(i.renewed) > 0 && now.Sub(i.renewedAt) < time.Hour {
+	if len(i.renewed) > 0 && bytes.Equal(i.renewedKey, leaf.RawSubjectPublicKeyInfo) && now.Sub(i.renewedAt) < time.Hour {
 		return append([]byte(nil), i.renewed...), nil
 	}
 	raw, e := i.issue(leaf, x509.ExtKeyUsageClientAuth, now)
@@ -115,5 +117,6 @@ func (i *Issuer) RenewRunner(leaf *x509.Certificate) ([]byte, error) {
 	}
 	i.renewed = raw
 	i.renewedAt = now
+	i.renewedKey = append([]byte(nil), leaf.RawSubjectPublicKeyInfo...)
 	return append([]byte(nil), raw...), nil
 }
