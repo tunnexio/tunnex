@@ -22,6 +22,10 @@ worktrees, live services and qualification limits remain preserved.
    be reused only to create unique, independently owned test databases. Keep
    historical-version and migration tests independent; retire every owned
    template and child. Do not remove assertions, skip tests or relax the gate.
+5. **Producer interoperability prerequisite — locked:** the API test container
+   must provide Python for the real stdlib machine-report producer assertion.
+   The pinned Alpine Go image lacks it. Add the interpreter only to the test
+   target; workload images and their offline launch path remain unchanged.
 
 ## Acceptance and execution order
 
