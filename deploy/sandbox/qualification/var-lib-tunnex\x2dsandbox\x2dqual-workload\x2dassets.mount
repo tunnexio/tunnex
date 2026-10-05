@@ -1,0 +1,12 @@
+[Unit]
+Description=Tunnex task-only bounded workload assets
+Before=tunnex-sandbox-qual-worker.service
+
+[Mount]
+What=/var/lib/tunnex-sandbox-qual/workload-assets.ext4
+Where=/var/lib/tunnex-sandbox-qual/workload-assets
+Type=ext4
+Options=loop,nodev,nosuid
+
+[Install]
+WantedBy=multi-user.target

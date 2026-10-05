@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { loadDeploymentMeta } from "../lib/deploymentMeta";
 import { StatusDot } from "./ui";
 
 // A small control-plane health indicator. It also keeps the /healthz correlation
@@ -21,9 +22,8 @@ export function HealthStatus() {
           return;
         }
         setState("up");
-        void api
-          .GET("/api/v1/meta")
-          .then(({ data: meta }) => {
+        void loadDeploymentMeta()
+          .then(meta => {
             if (!cancelled) {
               setVersion(meta?.upgrade?.current_version?.trim() || null);
             }

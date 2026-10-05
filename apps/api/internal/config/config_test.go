@@ -152,3 +152,52 @@ func TestTrustedProxiesRequireExplicitConfiguration(t *testing.T) {
 		t.Fatalf("proxy peers = %q", peers)
 	}
 }
+
+func TestAPITLSRequiresCompleteOperatorPair(t *testing.T) {
+	for _, c := range []Config{{}, {APITLSCertificateFile: "/fixture/server.crt", APITLSPrivateKeyFile: "/fixture/server.key"}} {
+		if err := c.ValidateAPITLS(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []Config{{APITLSCertificateFile: "/fixture/server.crt"}, {APITLSPrivateKeyFile: "/fixture/server.key"}} {
+		if c.ValidateAPITLS() == nil {
+			t.Fatal("partial API TLS configuration accepted")
+		}
+	}
+}
+
+func TestSandboxFixtureRequiresPrivateIsolatedDatabaseAndTLS(t *testing.T) {
+	c := Config{SandboxFixtureOrgID: "00000000-0000-4000-8000-000000000001", DatabaseURL: "postgres://fixture@172.18.0.2/tunnex_sandbox_qual_test", AppBaseURL: "https://172.18.0.10:8443", APITLSCertificateFile: "/fixture/cert", APITLSPrivateKeyFile: "/fixture/key"}
+	if err := c.ValidateSandboxFixture(); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*Config){func(c *Config) { c.DatabaseURL = "postgres://fixture@172.18.0.2/tunnex" }, func(c *Config) { c.AppBaseURL = "https://203.0.113.1:8443" }, func(c *Config) { c.AppBaseURL = "http://172.18.0.10:8443" }, func(c *Config) { c.APITLSPrivateKeyFile = "" }, func(c *Config) { c.SandboxFixtureOrgID = "invalid" }} {
+		bad := c
+		change(&bad)
+		if bad.ValidateSandboxFixture() == nil {
+			t.Fatal("ordinary/unprotected fixture accepted")
+		}
+	}
+	if (Config{}).ValidateSandboxFixture() != nil {
+		t.Fatal("default closed deployment refused")
+	}
+}
+
+func TestSandboxRuntimeConfigIndependentFromFixture(t *testing.T) {
+	if (Config{}).ValidateSandboxRuntime() != nil {
+		t.Fatal("default runtime activated")
+	}
+	c := Config{SandboxRuntimeConfigFile: "/etc/tunnex/sandbox-runtime.json"}
+	if c.ValidateSandboxRuntime() != nil {
+		t.Fatal("native bounded file denied")
+	}
+	c.SandboxFixtureOrgID = "00000000-0000-4000-8000-000000000001"
+	if c.ValidateSandboxRuntime() == nil {
+		t.Fatal("native runtime shared fixture mode")
+	}
+	c.SandboxFixtureOrgID = ""
+	c.SandboxRuntimeConfigFile = "/tmp/runtime.json"
+	if c.ValidateSandboxRuntime() == nil {
+		t.Fatal("arbitrary runtime config path admitted")
+	}
+}

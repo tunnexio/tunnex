@@ -16,6 +16,7 @@ import { Button } from "./ui";
 import { SetupReturn } from "./SetupReturn";
 import { IdentityBadges } from "./IdentityBadges";
 import { useLayoutCapability } from "./ComposeGate";
+import { useSandboxModuleState } from "../lib/deploymentMeta";
 import { CommandPalette } from "./CommandPalette";
 import { useNavCounts } from "../lib/useNavCounts";
 import { Icon, type IconName } from "./Icon";
@@ -53,6 +54,10 @@ export const NAV_GROUPS: Array<{
       { to: "/kubernetes", label: "Kubernetes", icon: "boxes" },
 
     ],
+  },
+  {
+    group: "WORKSPACES",
+    items: [{ to: "/sandboxes", label: "Sandboxes", icon: "boxes" }],
   },
   {
     group: "AI",
@@ -127,11 +132,13 @@ function NavGroups({
   counts: NavCounts;
   collapsed?: boolean;
 }) {
+  const sandboxState = useSandboxModuleState();
+  const groups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") })).filter(group => group.items.length > 0);
   const shows = navShows(collapsed ? "closed" : "open");
   const { pathname } = useLocation();
   return (
     <>
-      {NAV_GROUPS.map((g) => (
+      {groups.map((g) => (
         <div key={g.group || "root"} className="mb-3">
           {/* ⛔ HEADERS GO, DESTINATIONS STAY. A rail that dropped a destination would make it
               unreachable rather than compact — the collapse is a presentation, never a filter. */}

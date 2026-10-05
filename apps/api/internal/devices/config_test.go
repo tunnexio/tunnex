@@ -82,3 +82,18 @@ func TestBuildConfigIPv4OnlyFullTunnel(t *testing.T) {
 		t.Fatalf("IPv4-only full-tunnel must carry only the IPv4 default route:\n%s", conf)
 	}
 }
+
+func TestBuildConfigExplicitSandboxMTUAndOrdinaryDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mtu  int
+		want string
+	}{{"ordinary default", 0, "MTU = 1420\n"}, {"ordinary explicit", clientMTU, "MTU = 1420\n"}, {"authenticated sandbox profile", sandboxMTU, "MTU = 1280\n"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := buildConfig(configParams{mtu: tc.mtu, address: "10.99.0.2", privateKey: "k", serverPubKey: "s", endpoint: "h:51820", allowedIPs: []string{"10.99.0.0/24"}})
+			if !strings.Contains(conf, tc.want) || strings.Count(conf, "MTU = ") != 1 {
+				t.Fatal("wrong profile MTU", conf)
+			}
+		})
+	}
+}

@@ -155,6 +155,8 @@ type PolicyProvider interface {
 
 // Service provides node control-plane operations.
 type Service struct {
+	// qualificationTransport is selected only by the validated private fixture server.
+	qualificationTransport bool
 	// licence answers the entitlement questions. ⚠ nil means Community — the fail-open default.
 	licence *licence.Manager
 	pool    *pgxpool.Pool
@@ -215,6 +217,16 @@ func (s *Service) CountLiveGateways(ctx context.Context) (int64, error) {
 }
 
 func (s *Service) SetPolicyProvider(p PolicyProvider) { s.policy = p }
+
+// UseSandboxQualificationTransport selects the approved fixture-only private
+// UDP port. Ordinary deployments keep their established51820 listener.
+func (s *Service) UseSandboxQualificationTransport() { s.qualificationTransport = true }
+func (s *Service) wireGuardListenPort() int {
+	if s.qualificationTransport {
+		return 51830
+	}
+	return 51820
+}
 
 // SetOVPNServerCertProvider wires the D-S9.6 server-cert delivery (ovpn.Service.EnsureServerCert).
 func (s *Service) SetOVPNServerCertProvider(fn func(ctx context.Context, orgID, nodeID uuid.UUID) (ca, cert, key string, err error)) {
@@ -670,7 +682,7 @@ func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		NodeID:           node.ID.String(),
 		InterfaceAddress: gatewayCIDR,
 		MTU:              1420,
-		ListenPort:       51820,
+		ListenPort:       s.wireGuardListenPort(),
 		Peers:            peers,
 		// D-S9.5-OPTIN: run the OVPN server on this gateway iff the org opted in (org-level for now).
 		OVPNEnabled: orgErr == nil && org.OvpnEnabled,
@@ -720,7 +732,15 @@ func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 	var topo siteTopology
 	var haveTopo bool
 	var activeHub uuid.UUID
-	if node.SiteID.Valid || (orgErr == nil && org.CrossGatewayClientsEnabled) {
+	needTopology := node.SiteID.Valid || (orgErr == nil && org.CrossGatewayClientsEnabled)
+	if !needTopology && orgErr == nil && org.SandboxesEnabled {
+		var err error
+		needTopology, err = gatewaymesh.HasScopedSandboxTerminals(ctx, s.q, node.OrgID)
+		if err != nil {
+			return DesiredState{}, err
+		}
+	}
+	if needTopology {
 		load := s.siteTopoLoad
 		if load == nil { // directly-constructed Service (tests) → the real loader
 			load = s.loadSiteTopology
@@ -769,6 +789,19 @@ func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 			// intentionally authoritative for canonical peers, but it must not erase a
 			// prepared candidate before the reporter can acknowledge its empty-
 			// AllowedIPs stage.
+			// Sandbox transport stays on its admitted gateway; ordinary hub
+			// failover must neither widen nor remove that independent binding.
+			ownedSandboxKeys := map[string]bool{}
+			for _, row := range rows {
+				if row.Kind == "sandbox" {
+					ownedSandboxKeys[row.PublicKey] = true
+				}
+			}
+			for _, peer := range peers {
+				if ownedSandboxKeys[peer.PublicKey] {
+					wp = append(wp, peer)
+				}
+			}
 			ds.Peers = widenedPeersWithWarmCandidates(wp, stagedRows)
 			// WF-OVPN-9: widen the OVPN roster (CCD) across the SAME members so a multi-remote .ovpn reaches an
 			// accepting gateway whichever it fails over to — the OpenVPN twin of the WG peer widening above,
@@ -916,7 +949,7 @@ func (s *Service) widenedDevicePeers(ctx context.Context, memberIDs []uuid.UUID,
 			// guard-not-mirrored miss (the main peer path had the D-S9.4-MODEL skip; this WF-A hub-set
 			// path predates keyless devices) is now owned at the SOURCE by ListActiveWireGuardPeersForNode's
 			// `public_key <> ''`; this is a subordinate assertion at the second consumer.
-			if r.PublicKey == "" {
+			if r.PublicKey == "" || r.Kind == "sandbox" {
 				continue
 			}
 			if seen[r.PublicKey] {
@@ -1073,7 +1106,7 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 	if err != nil && err != pgx.ErrNoRows {
 		return siteTopology{}, err
 	}
-	clientGraph, err := gatewaymesh.Load(ctx, s.q, orgID, settings.CrossGatewayClientsEnabled)
+	clientGraph, err := gatewaymesh.Load(ctx, s.q, orgID, settings.CrossGatewayClientsEnabled, settings.SandboxesEnabled)
 	if err != nil {
 		return siteTopology{}, err
 	}
@@ -2457,6 +2490,13 @@ func (s *Service) LoadSiteTopoBatch(ctx context.Context, orgID uuid.UUID, nodes 
 			return b
 		}
 		needTopology = settings.CrossGatewayClientsEnabled
+		if !needTopology && settings.SandboxesEnabled {
+			needTopology, err = gatewaymesh.HasScopedSandboxTerminals(ctx, s.q, orgID)
+			if err != nil {
+				b.ok = false
+				return b
+			}
+		}
 	}
 	if needTopology {
 		now := time.Now()

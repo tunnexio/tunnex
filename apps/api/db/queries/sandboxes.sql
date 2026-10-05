@@ -1,0 +1,57 @@
+-- name: ListActiveSandboxProjections :many
+-- Only active current creators and enabled templates in enforcing organizations
+-- contribute. Desired deletion/stop and expiry withdraw grants immediately.
+SELECT s.id, s.peer_id, s.creator_id, s.requested_scope, t.maximum_scope, s.terminal_device_id, s.local_terminal_gateway_id,r.terminal_gateway_id AS remote_terminal_gateway_id,r.runtime_gateway_id AS remote_runtime_gateway_id
+FROM sandboxes s
+LEFT JOIN sandbox_remote_terminal_routes r ON r.sandbox_id=s.id AND r.org_id=s.org_id
+JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
+JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
+JOIN devices d ON d.id=s.peer_id AND d.org_id=s.org_id AND d.user_id=s.creator_id AND d.kind='sandbox'
+WHERE s.org_id=$1 AND s.desired_state='started' AND s.observed_state IN ('creating','starting','ready')
+  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s.selected_skills) selection
+ LEFT JOIN sandbox_skill_revisions r ON r.id=(selection->>'revision_id')::uuid AND r.org_id=s.org_id AND r.enabled
+ LEFT JOIN sandbox_template_skills a ON a.org_id=s.org_id AND a.template_id=s.template_id AND a.revision_id=r.id
+ LEFT JOIN sandbox_custom_skills c ON c.id=r.custom_skill_id AND c.org_id=s.org_id AND c.owner_id=s.creator_id AND c.deleted_at IS NULL
+ WHERE r.id IS NULL OR (r.owner_id IS NULL AND a.revision_id IS NULL) OR (r.owner_id IS NOT NULL AND (r.owner_id<>s.creator_id OR c.id IS NULL)))
+ AND s.expires_at>now() AND sandbox_delegation_valid(s.id) AND d.status='active' AND NOT d.health_blocked AND d.deleted_at IS NULL
+ORDER BY s.id;
+
+-- name: GetSandboxBootstrapToken :one
+-- Public redemption identity derives entirely from the hash-bound sandbox.
+SELECT b.id,b.org_id,b.sandbox_id,b.gateway_node_id,b.generation,s.creator_id,s.name
+FROM sandbox_bootstrap_tokens b
+JOIN sandboxes s ON s.id=b.sandbox_id AND s.org_id=b.org_id
+JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
+JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
+JOIN nodes n ON n.id=b.gateway_node_id AND n.org_id=s.org_id AND n.status='active'
+WHERE b.token_hash=$1 AND b.consumed_at IS NULL AND b.expires_at>now()
+ AND (s.local_terminal_gateway_id IS NULL OR s.local_terminal_gateway_id=b.gateway_node_id)
+ AND NOT EXISTS(SELECT 1 FROM sandbox_remote_terminal_routes r WHERE r.sandbox_id=s.id AND r.org_id=s.org_id AND r.runtime_gateway_id<>b.gateway_node_id)
+ AND s.peer_id IS NULL AND s.generation=b.generation AND s.desired_state='started'
+ AND s.observed_state IN ('creating','starting') AND s.expires_at>now() AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s.selected_skills) selection
+ LEFT JOIN sandbox_skill_revisions r ON r.id=(selection->>'revision_id')::uuid AND r.org_id=s.org_id AND r.enabled
+ LEFT JOIN sandbox_template_skills a ON a.org_id=s.org_id AND a.template_id=s.template_id AND a.revision_id=r.id
+ LEFT JOIN sandbox_custom_skills c ON c.id=r.custom_skill_id AND c.org_id=s.org_id AND c.owner_id=s.creator_id AND c.deleted_at IS NULL
+ WHERE r.id IS NULL OR (r.owner_id IS NULL AND a.revision_id IS NULL) OR (r.owner_id IS NOT NULL AND (r.owner_id<>s.creator_id OR c.id IS NULL)));
+
+-- name: BindSandboxPeer :one
+UPDATE sandboxes SET peer_id=$4
+WHERE id=$1 AND org_id=$2 AND generation=$3 AND peer_id IS NULL AND desired_state='started' AND expires_at>now()
+RETURNING id;
+
+-- name: ConsumeSandboxBootstrapToken :one
+UPDATE sandbox_bootstrap_tokens SET consumed_at=now()
+WHERE token_hash=$1 AND org_id=$2 AND consumed_at IS NULL AND expires_at>now()
+RETURNING id;
+
+-- name: CreateSandboxRuntimeCredential :exec
+INSERT INTO sandbox_runtime_credentials(org_id,sandbox_id,peer_id,token_hash) VALUES($1,$2,$3,$4);
+-- name: ListActiveSandboxEnforcementNodes :many
+SELECT * FROM nodes WHERE org_id=$1 AND status='active' ORDER BY id LIMIT 101;
+
+-- name: GetSandboxEnforcementNode :one
+SELECT * FROM nodes WHERE org_id=$1 AND id=$2 AND status='active';

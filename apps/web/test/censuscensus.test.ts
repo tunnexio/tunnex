@@ -28,14 +28,16 @@ const TEST_DIR = __dirname;
 /**
  * Files that read from disk but are NOT censuses over source, each with why.
  *
- * ⚠ "It reads a path, not a body" is the only reason accepted so far. A file that inspects CONTENT
- * and claims exemption is the case this register exists to make visible.
+ * Content reads need a bounded exception: the temporary SSH fixtures below are checked against
+ * their complete read-call inventory so adding a source read still fails this census.
  */
 const EXEMPT: Record<string, string> = {
   "screencensus.test.ts":
     "reads DIRECTORY ENTRIES only (readdirSync over pages/) and never opens a file — there is no body to carry a comment.",
   "censuscensus.test.ts":
     "this file — it reads the test tree itself, and stripping comments from a test would hide the very import it is checking for.",
+  "sandbox-connection.test.ts":
+    "reads only three owned temporary SSH execution fixtures (pin, arguments and known_hosts); these are command results, not application source.",
 };
 
 function testFiles(): string[] {
@@ -71,6 +73,18 @@ describe("⛔ every census over source strips comments first", () => {
     if (EXEMPT[f]) {
       it(`${f} is registered exempt, and the reason is real`, () => {
         expect(EXEMPT[f]!.length).toBeGreaterThan(40);
+        if (f === "sandbox-connection.test.ts") {
+          const body = stripJsComments(raw);
+          expect(body).toContain('const dir=mkdtempSync(join(tmpdir(),"sandbox-connect-test-"))');
+          expect(body).toContain('const general=join(dir,"known_hosts")');
+          expect(body.match(/\breadFileSync\s*\([^;\n]*?"utf8"\)/g)).toEqual([
+            'readFileSync(join(dir,"pin"),"utf8")',
+            'readFileSync(join(dir,"args"),"utf8")',
+            'readFileSync(general,"utf8")',
+          ]);
+          expect(body.match(/\breadFileSync\s*\(/g)).toHaveLength(3);
+          return;
+        }
         // The one exemption reason accepted: it never opens a body. Assert that, do not trust it.
         if (f !== "censuscensus.test.ts") {
           expect(

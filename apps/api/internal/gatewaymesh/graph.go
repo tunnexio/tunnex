@@ -29,11 +29,14 @@ type Peer struct {
 	Prefixes            []string
 }
 type Graph struct {
-	Relay       uuid.UUID
-	Unavailable string
-	gateways    map[uuid.UUID]Gateway
-	owners      map[netip.Addr]uuid.UUID
-	aliases     map[netip.Addr]netip.Addr
+	sandboxScoped        bool
+	sandboxTerminalPairs map[sandboxTerminalPair]bool
+	sandboxTerminalGraph *Graph // separate exact corridor; never legacy grant ownership
+	Relay                uuid.UUID
+	Unavailable          string
+	gateways             map[uuid.UUID]Gateway
+	owners               map[netip.Addr]uuid.UUID
+	aliases              map[netip.Addr]netip.Addr
 }
 
 // ActiveOrder is the existing hub-set derivation: demoted members remain warm
@@ -202,6 +205,18 @@ func (g *Graph) Owner(value string) uuid.UUID {
 // host routes to its owning gateway; on a spoke remote hosts route to the relay.
 // Local hosts are excluded, including HA clients hosted by the active primary.
 func (g *Graph) Peers(nodeID uuid.UUID) []Peer {
+	if g == nil {
+		return nil
+	}
+	peers := g.ordinaryPeers(nodeID)
+	if g.sandboxTerminalGraph != nil {
+		peers = append(peers, g.sandboxTerminalGraph.Peers(nodeID)...)
+		sort.Slice(peers, func(i, j int) bool { return peers[i].PublicKey < peers[j].PublicKey })
+	}
+	return peers
+}
+
+func (g *Graph) ordinaryPeers(nodeID uuid.UUID) []Peer {
 	if g == nil || g.Relay == uuid.Nil {
 		return nil
 	}

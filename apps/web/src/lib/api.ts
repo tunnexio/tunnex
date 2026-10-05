@@ -133,3 +133,13 @@ export function apiErrorCode(error: unknown): string | undefined {
 
 export type ServerEmailSettings = components["schemas"]["ServerEmailSettings"];
 export type ServerEmailSettingsInput = components["schemas"]["ServerEmailSettingsInput"];
+
+export type Sandbox = components["schemas"]["Sandbox"];
+export type SandboxTemplate = components["schemas"]["SandboxTemplate"];
+export type SandboxSkill = components["schemas"]["SandboxSkill"];
+export type SandboxScope = components["schemas"]["SandboxScope"];
+
+export type SandboxCreationStatus = components["schemas"]["SandboxCreationStatus"];
+export type SandboxSetup = components["schemas"]["SandboxSetup"];
+
+export type SandboxImageProfile = components["schemas"]["SandboxImageProfile"];

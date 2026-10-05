@@ -1,0 +1,27 @@
+[Unit]
+Description=Tunnex confined qualification network helper
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=root
+Group=tunnex-sandbox-qual
+EnvironmentFile=/var/lib/tunnex-sandbox-qual/helper/gateway.env
+ExecStart=/var/lib/tunnex-sandbox-qual/bin/tunnex-sandbox-network --socket=/run/tunnex-sandbox-qual/helper/control.sock --state=/var/lib/tunnex-sandbox-qual/helper/manifests --worker-uid=1101 --subuid-start=200000 --subuid-count=65536 --gateway-node-id=${GATEWAY_NODE_ID} --gateway-runtime-id=${GATEWAY_RUNTIME_ID} --gateway-image-digest=${GATEWAY_IMAGE_DIGEST} --gateway-interface=${GATEWAY_INTERFACE} --probe-binary=/var/lib/tunnex-sandbox-qual/bin/tunnex-sandbox-ssh-probe --probe-sha256=${PROBE_SHA256}
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=tunnex-sandbox-qual/helper
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0007
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/tunnex-sandbox-qual/helper /run/tunnex-sandbox-qual/helper
+MemoryMax=64M
+TasksMax=32
+Environment=GOMAXPROCS=1 GOMEMLIMIT=24MiB
+
+[Install]
+WantedBy=multi-user.target

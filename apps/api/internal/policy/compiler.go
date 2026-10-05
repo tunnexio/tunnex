@@ -77,6 +77,11 @@ const (
 // artifact stays IP-only, no wire-version bump. Expired temporary rules are
 // filtered OUT of the Snapshot before Compile (the pure compiler is clockless).
 type Rule struct {
+	sandboxScopedTerminal bool
+	sandboxLocalTerminal  bool      // immutable local-only terminal proof; bypass remote placement
+	sandboxProjected      bool      // only bounded compiler-generated sandbox rules may match
+	sandboxTerminalNode   uuid.UUID // compiler-only creator terminal destination gateway
+
 	ID              uuid.UUID // the CP policy_rules.uuid — stamped onto each produced AllowEntry as rule_id (S7.5.1)
 	SrcKind         string    // "group" | "user" | "site" (S8.2) | "cidr" (S8.7) ("" treated as group for legacy rows)
 	SrcGroupID      uuid.UUID
@@ -198,8 +203,8 @@ type Device struct {
 	UserID     uuid.UUID
 	NodeID     uuid.UUID
 	AssignedIP string
-	// Kind (S15.3) — 'human' | 'agent'. Used ONLY to match a src_kind='agent' rule to the agent's own
-	// device. ⚠ It never enters the enforcement projection: the artifact still emits SrcIP/DstCIDR/
+	// Kind — 'human' | 'agent' | 'sandbox'. Sandbox subjects are excluded from
+	// legacy source grants and human destination groups until explicit projection exists. ⚠ It never enters the enforcement projection: the artifact still emits SrcIP/DstCIDR/
 	// Protocol/PortLow/PortHigh, and `hashAllow` is unchanged.
 	Kind string
 	// ConfigRevision is the managed agent revision captured in the same DB
@@ -228,6 +233,8 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
+	Sandboxes []SandboxProjection
+
 	// CrossGatewayGraph supplies transport ownership, never a blanket grant.
 	CrossGatewayGraph *gatewaymesh.Graph
 	// IPsecNetworks is populated only by a future qualified runtime service.
@@ -275,6 +282,7 @@ type AgentGroupMembership struct {
 // The enforcing path can never set Mesh=true, so it is structurally incapable of
 // reproducing the wg0<->wg0 blanket accept it replaces.
 func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
+	s = expandSandboxProjection(s)
 	mesh := s.Mode == ModeOff
 	subjects := subjectAttribution(s.Devices)
 	for _, subject := range append([]policyspec.SubjectAttribution(nil), subjects...) {
@@ -434,7 +442,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	{
 		seen := map[uuid.UUID]map[string]bool{}
 		for _, d := range s.Devices {
-			if d.AssignedIP == "" {
+			if d.AssignedIP == "" || d.Kind == "sandbox" {
 				continue
 			}
 			for g := range userGroups[d.UserID] {
@@ -624,10 +632,28 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 				if !ok || res.CIDR == "" {
 					continue
 				}
+				// A local terminal targets a managed same-gateway identity, never a site subnet.
+				if r.SrcKind == "sandbox_terminal" && r.sandboxProjected && r.sandboxLocalTerminal && d.NodeID == r.sandboxTerminalNode {
+					addWithProvenance(d.NodeID, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()}, false)
+					continue
+				}
+				if r.SrcKind == "sandbox_terminal" && r.sandboxProjected && r.sandboxScopedTerminal {
+					entry := policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()}
+					addWithProvenance(d.NodeID, entry, false)
+					addWithProvenance(r.sandboxTerminalNode, entry, false)
+					continue
+				}
 				// A3b: a resource inside a site's approved subnet is site-fronted — the grant also lands
 				// on that site's gateway + the hub (both-enforce). A non-site resource keeps the
 				// device-node-only placement.
-				for _, node := range devGrantNodes(d.NodeID, siteOwning(res.CIDR)) {
+				enforcement := devGrantNodes(d.NodeID, siteOwning(res.CIDR))
+				if r.SrcKind == "sandbox_terminal" && r.sandboxProjected && r.sandboxTerminalNode != uuid.Nil {
+					enforcement = append(enforcement, r.sandboxTerminalNode)
+					if d.NodeID != r.sandboxTerminalNode && hubNode != uuid.Nil {
+						enforcement = append(enforcement, hubNode)
+					}
+				}
+				for _, node := range enforcement {
 					add(node, policyspec.AllowEntry{
 						SrcIP:       d.AssignedIP,
 						DstCIDR:     res.CIDR,

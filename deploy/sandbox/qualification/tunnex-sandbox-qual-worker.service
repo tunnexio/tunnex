@@ -1,0 +1,31 @@
+[Unit]
+Description=Tunnex single-sandbox qualification worker
+Requires=tunnex-sandbox-qual-network.service var-lib-tunnex\x2dsandbox\x2dqual-workload\x2dassets.mount
+After=tunnex-sandbox-qual-network.service var-lib-tunnex\x2dsandbox\x2dqual-workload\x2dassets.mount
+
+[Service]
+Type=simple
+User=tunnex-sandbox-qual
+Group=tunnex-sandbox-qual
+WorkingDirectory=/var/lib/tunnex-sandbox-qual/worker
+ExecStart=/var/lib/tunnex-sandbox-qual/bin/tunnex-sandbox-worker --fixture-config=/var/lib/tunnex-sandbox-qual/worker/config.json
+Restart=on-failure
+RestartSec=2
+KillMode=process
+Delegate=yes
+# Keep the controller in a leaf so rootless cgroupfs can place the bounded
+# workload beneath this delegated unit without using host system.slice.
+DelegateSubgroup=control
+RuntimeDirectory=tunnex-sandbox-qual/worker
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+UMask=0077
+MemoryMax=224M
+TasksMax=256
+Environment=GOMAXPROCS=1 GOMEMLIMIT=64MiB
+# newuidmap/newgidmap require the existing setuid host helpers. Workloads
+# independently enforce no-new-privileges and cap-drop=ALL.
+NoNewPrivileges=no
+
+[Install]
+WantedBy=multi-user.target

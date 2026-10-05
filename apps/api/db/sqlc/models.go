@@ -2139,6 +2139,10 @@ type Organization struct {
 	AiGatewayEnabled            bool               `json:"ai_gateway_enabled"`
 	AiGatewayRevision           int64              `json:"ai_gateway_revision"`
 	CrossGatewayClientsEnabled  bool               `json:"cross_gateway_clients_enabled"`
+	SandboxesEnabled            bool               `json:"sandboxes_enabled"`
+	MaxSandboxesPerUser         int32              `json:"max_sandboxes_per_user"`
+	MaxSandboxes                int32              `json:"max_sandboxes"`
+	SandboxDelegationEnabled    bool               `json:"sandbox_delegation_enabled"`
 }
 
 type OvpnClientCert struct {
@@ -2327,6 +2331,184 @@ type Resource struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Label     *string   `json:"label"`
+}
+
+type Sandbox struct {
+	ID                     uuid.UUID   `json:"id"`
+	OrgID                  uuid.UUID   `json:"org_id"`
+	CreatorID              uuid.UUID   `json:"creator_id"`
+	TemplateID             uuid.UUID   `json:"template_id"`
+	Name                   string      `json:"name"`
+	RequestedScope         []byte      `json:"requested_scope"`
+	PeerID                 pgtype.UUID `json:"peer_id"`
+	DesiredState           string      `json:"desired_state"`
+	ObservedState          string      `json:"observed_state"`
+	Generation             int64       `json:"generation"`
+	IdempotencyKey         string      `json:"idempotency_key"`
+	RequestHash            []byte      `json:"request_hash"`
+	CreatedAt              time.Time   `json:"created_at"`
+	ExpiresAt              time.Time   `json:"expires_at"`
+	SelectedSkills         []byte      `json:"selected_skills"`
+	SshPublicKeys          []byte      `json:"ssh_public_keys"`
+	TerminalDeviceID       pgtype.UUID `json:"terminal_device_id"`
+	LocalTerminalGatewayID pgtype.UUID `json:"local_terminal_gateway_id"`
+}
+
+type SandboxBootstrapToken struct {
+	ID            uuid.UUID          `json:"id"`
+	OrgID         uuid.UUID          `json:"org_id"`
+	SandboxID     uuid.UUID          `json:"sandbox_id"`
+	GatewayNodeID uuid.UUID          `json:"gateway_node_id"`
+	Generation    int64              `json:"generation"`
+	TokenHash     []byte             `json:"token_hash"`
+	CreatedAt     time.Time          `json:"created_at"`
+	ExpiresAt     time.Time          `json:"expires_at"`
+	ConsumedAt    pgtype.Timestamptz `json:"consumed_at"`
+}
+
+type SandboxCustomSkill struct {
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	OwnerID           uuid.UUID          `json:"owner_id"`
+	CurrentRevisionID uuid.UUID          `json:"current_revision_id"`
+	Generation        int64              `json:"generation"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	RequestHash       []byte             `json:"request_hash"`
+	CreatedAt         time.Time          `json:"created_at"`
+	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
+}
+
+type SandboxDelegatedInstance struct {
+	SandboxID    uuid.UUID `json:"sandbox_id"`
+	DelegationID uuid.UUID `json:"delegation_id"`
+}
+
+type SandboxDelegation struct {
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	OwnerID          uuid.UUID          `json:"owner_id"`
+	MachineID        uuid.UUID          `json:"machine_id"`
+	TemplateID       uuid.UUID          `json:"template_id"`
+	MaxTtlSeconds    int32              `json:"max_ttl_seconds"`
+	MaxActive        int32              `json:"max_active"`
+	MaximumScope     []byte             `json:"maximum_scope"`
+	SkillRevisionIds []uuid.UUID        `json:"skill_revision_ids"`
+	ExpiresAt        time.Time          `json:"expires_at"`
+	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt        time.Time          `json:"created_at"`
+}
+
+type SandboxLaunchOperation struct {
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	SandboxID         uuid.UUID          `json:"sandbox_id"`
+	Generation        int64              `json:"generation"`
+	GatewayNodeID     uuid.UUID          `json:"gateway_node_id"`
+	RuntimeID         string             `json:"runtime_id"`
+	SpecHash          string             `json:"spec_hash"`
+	BootstrapTokenID  uuid.UUID          `json:"bootstrap_token_id"`
+	HandoffCiphertext *string            `json:"handoff_ciphertext"`
+	CreatedAt         time.Time          `json:"created_at"`
+	ConfirmedAt       pgtype.Timestamptz `json:"confirmed_at"`
+}
+
+type SandboxNetworkWithdrawal struct {
+	SandboxID         uuid.UUID   `json:"sandbox_id"`
+	OrgID             uuid.UUID   `json:"org_id"`
+	Generation        int64       `json:"generation"`
+	OperationID       uuid.UUID   `json:"operation_id"`
+	NetworkGeneration int64       `json:"network_generation"`
+	PeerID            uuid.UUID   `json:"peer_id"`
+	RuntimeID         string      `json:"runtime_id"`
+	SpecHash          string      `json:"spec_hash"`
+	ObservedAt        time.Time   `json:"observed_at"`
+	NetworkEpochID    pgtype.UUID `json:"network_epoch_id"`
+}
+
+type SandboxRemoteTerminalRoute struct {
+	SandboxID               uuid.UUID `json:"sandbox_id"`
+	OrgID                   uuid.UUID `json:"org_id"`
+	TerminalDeviceID        uuid.UUID `json:"terminal_device_id"`
+	TerminalGatewayID       uuid.UUID `json:"terminal_gateway_id"`
+	RuntimeGatewayID        uuid.UUID `json:"runtime_gateway_id"`
+	TerminalGatewayEndpoint string    `json:"terminal_gateway_endpoint"`
+	RuntimeGatewayEndpoint  string    `json:"runtime_gateway_endpoint"`
+}
+
+type SandboxRuntimeBinding struct {
+	SandboxID       uuid.UUID          `json:"sandbox_id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	SpecHash        string             `json:"spec_hash"`
+	ImageDigest     string             `json:"image_digest"`
+	MemoryMib       int32              `json:"memory_mib"`
+	Cpus            int32              `json:"cpus"`
+	Pids            int32              `json:"pids"`
+	RuntimeID       *string            `json:"runtime_id"`
+	CreatedAt       time.Time          `json:"created_at"`
+	WorkerRetiredAt pgtype.Timestamptz `json:"worker_retired_at"`
+}
+
+type SandboxRuntimeCredential struct {
+	OrgID     uuid.UUID          `json:"org_id"`
+	SandboxID uuid.UUID          `json:"sandbox_id"`
+	PeerID    uuid.UUID          `json:"peer_id"`
+	TokenHash []byte             `json:"token_hash"`
+	CreatedAt time.Time          `json:"created_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type SandboxSkillRevision struct {
+	ID            uuid.UUID   `json:"id"`
+	OrgID         uuid.UUID   `json:"org_id"`
+	Manifest      []byte      `json:"manifest"`
+	Enabled       bool        `json:"enabled"`
+	OwnerID       pgtype.UUID `json:"owner_id"`
+	CustomSkillID pgtype.UUID `json:"custom_skill_id"`
+	Revision      int32       `json:"revision"`
+	Document      *string     `json:"document"`
+}
+
+type SandboxStartEpoch struct {
+	ID          uuid.UUID `json:"id"`
+	SandboxID   uuid.UUID `json:"sandbox_id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	Generation  int64     `json:"generation"`
+	OperationID uuid.UUID `json:"operation_id"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type SandboxTemplate struct {
+	ID            uuid.UUID `json:"id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	Name          string    `json:"name"`
+	ImageDigest   string    `json:"image_digest"`
+	MaximumScope  []byte    `json:"maximum_scope"`
+	MemoryMib     int32     `json:"memory_mib"`
+	MaxTtlSeconds int32     `json:"max_ttl_seconds"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type SandboxTemplateSkill struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	TemplateID uuid.UUID `json:"template_id"`
+	RevisionID uuid.UUID `json:"revision_id"`
+}
+
+type SandboxTerminalIdentity struct {
+	SandboxID          uuid.UUID `json:"sandbox_id"`
+	OrgID              uuid.UUID `json:"org_id"`
+	HostPublicKey      string    `json:"host_public_key"`
+	HostKeyFingerprint string    `json:"host_key_fingerprint"`
+}
+
+type SavedSshKey struct {
+	ID          uuid.UUID `json:"id"`
+	UserID      uuid.UUID `json:"user_id"`
+	Name        string    `json:"name"`
+	PublicKey   string    `json:"public_key"`
+	Fingerprint string    `json:"fingerprint"`
+	IsDefault   bool      `json:"is_default"`
 }
 
 type ServerAiTransportSetting struct {

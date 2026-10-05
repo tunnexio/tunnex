@@ -193,17 +193,22 @@ func requireVerifiedSessionUser(ctx context.Context) (*authctx.Principal, error)
 // typed responses on success and plain errors on failure; the strict handler's
 // ResponseErrorHandlerFunc renders those errors as the standard envelope.
 type apiServer struct {
-	emailSettings    emailSettingsRepository
-	ipsecRuntime     ipsecRuntimeRepository
-	ipsecStatus      ipsecStatusRepository
-	ipsecEligibility ipsecEligibilityRepository
-	ipsecProviders   ipsecProviderRepository
-	ipsecSealer      *crypto.Sealer
-	ipsecConnections ipsecConnectionRepository
-	ipsecSettings    ipsecSettingsRepository
-	system           *sqlc.Queries
-	connectivity     *connectivity.Store
-	orgs             *tenancy.Service
+	sandboxModuleState       string
+	sandboxes                sandboxRepository
+	sandboxProvisioningReady func() bool
+	sandboxWake              func()
+	sandboxSkillsReady       func() bool
+	emailSettings            emailSettingsRepository
+	ipsecRuntime             ipsecRuntimeRepository
+	ipsecStatus              ipsecStatusRepository
+	ipsecEligibility         ipsecEligibilityRepository
+	ipsecProviders           ipsecProviderRepository
+	ipsecSealer              *crypto.Sealer
+	ipsecConnections         ipsecConnectionRepository
+	ipsecSettings            ipsecSettingsRepository
+	system                   *sqlc.Queries
+	connectivity             *connectivity.Store
+	orgs                     *tenancy.Service
 	// licence is the entitlement source, read on every gated question. ⚠ nil => Community (fail-open).
 	licence            *licence.Manager
 	cliAuth            *cliauth.Service

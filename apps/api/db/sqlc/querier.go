@@ -103,6 +103,7 @@ type Querier interface {
 	// write itself enforces the re-home refusal the read alone could only race on. The caller re-reads on 0
 	// rows to emit the right typed error (same-site no-op / already-bound-elsewhere / node-or-site-not-found).
 	BindNodeToSite(ctx context.Context, arg BindNodeToSiteParams) (int64, error)
+	BindSandboxPeer(ctx context.Context, arg BindSandboxPeerParams) (uuid.UUID, error)
 	BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDesiredRevisionParams) (BumpAgentDesiredRevisionRow, error)
 	// Atomically ALLOCATE the next monotonic per-org CRL number (D-S9.5-1: per-org, never a global counter).
 	// Concurrent rebuilds get DISTINCT numbers; the crl_pem is set immediately after by SetOVPNCRL for THIS
@@ -202,6 +203,7 @@ type Querier interface {
 	// a challenge written by a previous version that did not know the column. No such version exists — 0058 created
 	// this table in the same release — so the fallback could only ever match rows this version wrote itself.
 	ConsumeRekeyChallenge(ctx context.Context, arg ConsumeRekeyChallengeParams) (NodeRekeyChallenge, error)
+	ConsumeSandboxBootstrapToken(ctx context.Context, arg ConsumeSandboxBootstrapTokenParams) (uuid.UUID, error)
 	CountAccessSources(ctx context.Context, arg CountAccessSourcesParams) (int64, error)
 	CountActiveDevicesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 	// ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
@@ -486,6 +488,7 @@ type Querier interface {
 	// ⚠ `label` is a free-text OPERATOR NOTE (S15.3). It is NOT read by the compiler — CanonicalHash sees
 	// cidr, protocol and the port bounds only — so it cannot desync an artifact or bump RequiredVersion.
 	CreateResource(ctx context.Context, arg CreateResourceParams) (Resource, error)
+	CreateSandboxRuntimeCredential(ctx context.Context, arg CreateSandboxRuntimeCredentialParams) error
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Zero Trust policy model (S7.1). Enterprise feature; model-only (no data plane).
@@ -923,6 +926,9 @@ type Querier interface {
 	GetSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
 	// lint:cross-org — identity namespace is the explicit connection plus issuer and subject; callback checks flow ownership, and directory sync resolves the connection from its tenant-scoped config.
 	GetSSOConnectionIdentity(ctx context.Context, arg GetSSOConnectionIdentityParams) (uuid.UUID, error)
+	// Public redemption identity derives entirely from the hash-bound sandbox.
+	GetSandboxBootstrapToken(ctx context.Context, tokenHash []byte) (GetSandboxBootstrapTokenRow, error)
+	GetSandboxEnforcementNode(ctx context.Context, arg GetSandboxEnforcementNodeParams) (Node, error)
 	GetSite(ctx context.Context, arg GetSiteParams) (Site, error)
 	// lint:cross-org — org-scoped via the join to sites.org_id.
 	GetSiteSubnetForOrg(ctx context.Context, arg GetSiteSubnetForOrgParams) (GetSiteSubnetForOrgRow, error)
@@ -1091,6 +1097,10 @@ type Querier interface {
 	// FQDN-aware compiler later fail-closes unless its full current contract is
 	// available and enabled.
 	ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActivePolicyRulesForOrgRow, error)
+	ListActiveSandboxEnforcementNodes(ctx context.Context, orgID uuid.UUID) ([]Node, error)
+	// Only active current creators and enabled templates in enforcing organizations
+	// contribute. Desired deletion/stop and expiry withdraw grants immediately.
+	ListActiveSandboxProjections(ctx context.Context, orgID uuid.UUID) ([]ListActiveSandboxProjectionsRow, error)
 	// fetches the peers for its own node). TWO invariants own this query (both load-bearing):
 	//   IDENTITY-BINDING (main hotfix): a peer is present only while its owning user has an
 	//   ACTIVE, CURRENT-MEMBER identity — the users + memberships joins + NOT health_blocked
@@ -1511,11 +1521,17 @@ type Querier interface {
 	ListPreviouslyActivatedAppAccessRevisions(ctx context.Context, arg ListPreviouslyActivatedAppAccessRevisionsParams) ([]ListPreviouslyActivatedAppAccessRevisionsRow, error)
 	// lint:cross-org — minimal public login choices; explicit IDs prevent tenant guessing.
 	ListPublicLoginConnections(ctx context.Context) ([]ListPublicLoginConnectionsRow, error)
+	// Immutable remote identity reserves a dedicated runtime even when its
+	// corridor is withdrawn. It must never fall back to broad client carriage.
+	ListReservedSandboxRuntimeGateways(ctx context.Context, orgID uuid.UUID) ([]ListReservedSandboxRuntimeGatewaysRow, error)
 	ListResourcesByOrg(ctx context.Context, orgID uuid.UUID) ([]Resource, error)
 	// The CRL entries for an org: serials revoked and not yet past expiry (an expired cert need not
 	// appear on the CRL — it's rejected on validity anyway). Slice 5 renders these into the CRL.
 	ListRevokedOVPNSerialsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListRevokedOVPNSerialsByOrgRow, error)
 	ListSSOConnections(ctx context.Context, orgID uuid.UUID) ([]SsoConnection, error)
+	// Only explicitly pinned, current active sandbox/terminal pairs provide routes.
+	// Transport carries no grant and does not include the historical reservation.
+	ListScopedSandboxTerminalRoutes(ctx context.Context, orgID uuid.UUID) ([]ListScopedSandboxTerminalRoutesRow, error)
 	// lint:cross-org — org-scoped directly. S8.4: each site's dns_forwarding JSONB ([{domain,resolver_ip}]),
 	// unioned CP-side into the org forwarding table compiled onto every gateway.
 	ListSiteDNSForwardsForOrg(ctx context.Context, orgID uuid.UUID) ([][]byte, error)

@@ -73,6 +73,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
 	"github.com/tunnexio/tunnex/apps/api/internal/secrets"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
@@ -86,6 +87,10 @@ func main() {
 
 	logger := applog.New(cfg.LogLevel)
 	slog.SetDefault(logger)
+	if cfg.ValidateAPITLS() != nil || cfg.ValidateSandboxFixture() != nil || cfg.ValidateSandboxRuntime() != nil || cfg.ValidateSandboxModule() != nil {
+		logger.Error("api_tls_configuration_invalid")
+		os.Exit(1)
+	}
 	if err := cfg.ValidateAppAccessRestoreMarker(); err != nil {
 		logger.Error("app_access_restore_marker_required")
 		os.Exit(1)
@@ -310,6 +315,9 @@ func main() {
 	// S7.2: wire the Zero Trust policy source for the desired state (nil in the open
 	// build -> no policy field -> agents keep the legacy mesh).
 	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool, licenceMgr))
+	if cfg.SandboxFixtureOrgID != "" {
+		nodeSvc.UseSandboxQualificationTransport()
+	}
 	nodes.LogPolicyHealthTuning(logger) // S7.4b: assumed R + derived T (operator discoverability)
 	pushHub := nodepush.New()
 	// One post-commit invalidator serves both resolver lifecycle transitions and
@@ -552,6 +560,73 @@ func main() {
 		logger.Error("relay_issuance_configuration_invalid", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	module, err := initializeSandboxModule(cfg, func() error {
+		checkCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return sandboxes.CheckModuleRetired(checkCtx, pool)
+	}, func() (sandboxModule, error) {
+		sandboxStore := sandboxes.NewStore(pool).WithPolicyNotify(fqdnInvalidator.InvalidateOrg)
+		fixtureAvailable := cfg.SandboxFixtureOrgID != ""
+		if fixtureAvailable {
+			sandboxStore.WithQualificationOrg(uuid.MustParse(cfg.SandboxFixtureOrgID))
+		}
+		// Qualified runtime/network adapters are intentionally absent until validated.
+		var apiSandboxOrchestrator *sandboxes.APIOrchestrator
+		var moduleClose func() error
+		sandboxAvailable := func() bool { return fixtureAvailable }
+		var sandboxWake func()
+		if cfg.SandboxRuntimeConfigFile != "" {
+			runtimeConfig, runtimeErr := sandboxes.LoadAPIWorkerConfig(cfg.SandboxRuntimeConfigFile)
+			if runtimeErr != nil {
+				return sandboxModule{}, runtimeErr
+			}
+			runtimeClient, runtimeErr := runtimeConfig.Client()
+			if runtimeErr == nil {
+				moduleClose = runtimeClient.Close
+			}
+			if runtimeErr == nil {
+				// Client close is owned by the module lifecycle.
+				apiSandboxOrchestrator, runtimeErr = sandboxes.NewAPIOrchestrator(sandboxStore, runtimeConfig.Binding, runtimeClient, nodeSvc, sealer)
+			}
+			if runtimeErr != nil {
+				if moduleClose != nil {
+					_ = moduleClose()
+				}
+				return sandboxModule{}, runtimeErr
+			}
+			if cfg.SandboxModuleState() != "draining" {
+				if runtimeErr = apiSandboxOrchestrator.ConfigureInitialCreate(runtimeConfig.InitialCreate); runtimeErr != nil {
+					_ = moduleClose()
+					return sandboxModule{}, runtimeErr
+				}
+			}
+			sandboxAvailable = func() bool {
+				checkTimeout := 300 * time.Millisecond
+				if runtimeConfig.Remote != nil {
+					checkTimeout = 3 * time.Second
+				}
+				checkCtx, cancel := context.WithTimeout(context.Background(), checkTimeout)
+				defer cancel()
+				return runtimeConfig.Binding.Validate() == nil && (runtimeConfig.Binding.Persistent() || time.Now().Before(runtimeConfig.Binding.ExpiresAt)) && runtimeClient.CheckBinding(checkCtx, runtimeConfig.Binding) == nil
+			}
+			sandboxWake = apiSandboxOrchestrator.Wake
+		}
+
+		m := sandboxModule{store: sandboxStore, available: sandboxAvailable, wake: sandboxWake, close: moduleClose}
+		if apiSandboxOrchestrator != nil {
+			m.run = apiSandboxOrchestrator.Run
+		}
+		return m, nil
+	})
+	if err != nil {
+		logger.Error("sandbox_module_configuration_invalid", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	if module.close != nil {
+		defer module.close()
+	}
+	sandboxDeps := module.deps()
+
 	ipsecStore := ipsec.NewConnectionStore(pool)
 	ipsecStore.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
@@ -572,23 +647,28 @@ func main() {
 	defer appEvents.Close()
 	appAccessSvc.WithEventProducer(appEvents)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
-		AppDomains:         domainSettings,
-		IPsecStatus:        ipsecStore,
-		IPsecRuntime:       ipsecStore,
-		IPsecEligibility:   ipsecStore,
-		IPsecConnections:   ipsecStore,
-		IPsecProviders:     ipsecStore,
-		IPsecSealer:        sealer,
-		IPsecSettings:      ipsec.NewSettingsStore(pool),
-		System:             systemQueries,
-		AICredentials:      aiCredentials,
-		AIWorkloads:        aiWorkloads,
-		AIPolicies:         aiPolicies,
-		AIEngineInstalled:  cfg.AIBootstrapInstalled,
-		AIAllowPrivateHTTP: cfg.AIAllowPrivateHTTP,
-		AITransport:        aitransport.New(pool),
-		AIAdapter:          aiAdapter,
-		AgentRuntimePool:   pool,
+		AppDomains:               domainSettings,
+		Sandboxes:                sandboxDeps.Sandboxes,
+		SandboxModuleState:       sandboxDeps.SandboxModuleState,
+		SandboxProvisioningReady: sandboxDeps.SandboxProvisioningReady,
+		SandboxSkillsReady:       sandboxDeps.SandboxSkillsReady,
+		SandboxWake:              sandboxDeps.SandboxWake,
+		IPsecStatus:              ipsecStore,
+		IPsecRuntime:             ipsecStore,
+		IPsecEligibility:         ipsecStore,
+		IPsecConnections:         ipsecStore,
+		IPsecProviders:           ipsecStore,
+		IPsecSealer:              sealer,
+		IPsecSettings:            ipsec.NewSettingsStore(pool),
+		System:                   systemQueries,
+		AICredentials:            aiCredentials,
+		AIWorkloads:              aiWorkloads,
+		AIPolicies:               aiPolicies,
+		AIEngineInstalled:        cfg.AIBootstrapInstalled,
+		AIAllowPrivateHTTP:       cfg.AIAllowPrivateHTTP,
+		AITransport:              aitransport.New(pool),
+		AIAdapter:                aiAdapter,
+		AgentRuntimePool:         pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
 		}),
@@ -660,6 +740,7 @@ func main() {
 
 	// mTLS agent control channel (separate listener; client certs verified vs CA).
 	agentCh := apphttp.NewAgentChannel(nodeSvc, agentCA, pushHub, logger)
+	agentCh.SetPolicyReportNotify(module.wake)
 	agentCh.SetAppAccessConnector(appAccessSvc, licenceMgr)
 	defer agentCh.CloseAppAccessConnector()
 	agentCh.SetIPsecRuntime(ipsecStore, sealer)
@@ -698,6 +779,17 @@ func main() {
 	// every acquired connection is released. Cancel-then-close is therefore the required order, and getting
 	// it backwards deadlocks shutdown — found by a test that hung on exactly that.
 	electorCtx, stopElector := context.WithCancel(context.Background())
+	if module.run != nil {
+		go func() {
+			err := module.run(electorCtx, func(id uuid.UUID, failure error) {
+				logger.LogAttrs(electorCtx, slog.LevelWarn, "sandbox_runtime_reconcile_pending", sandboxes.ReconcileLogAttrs(id, failure)...)
+			})
+			if err != nil && electorCtx.Err() == nil {
+				logger.Warn("sandbox_runtime_worker_unavailable")
+			}
+		}()
+	}
+
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
@@ -1191,7 +1283,13 @@ func main() {
 			slog.String("addr", cfg.Addr),
 			slog.String("env", cfg.Env),
 		)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if cfg.APITLSCertificateFile != "" {
+			err = srv.ListenAndServeTLS(cfg.APITLSCertificateFile, cfg.APITLSPrivateKeyFile)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
 	}()

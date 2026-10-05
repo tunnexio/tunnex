@@ -24,8 +24,13 @@ var notShipped = map[string]string{
 	// on a laptop, where the gate is the only thing standing between an operator and walking the login flow
 	// on an unlicensed stack; in the production image it would be a gate-bypassing credential writer sitting
 	// next to the master key it seals with.
-	"dev-sso-config": "development tool (F-SSO) — writes a sealed per-org SSO config while bypassing the SSO entitlement gate; shipping a gate-bypassing credential writer into the runtime image is the opposite of the reason the gate exists",
-	"walk-bootstrap": "box-walk rig setup; a test harness, not an operator tool",
+	"dev-sso-config":               "development tool (F-SSO) — writes a sealed per-org SSO config while bypassing the SSO entitlement gate; shipping a gate-bypassing credential writer into the runtime image is the opposite of the reason the gate exists",
+	"walk-bootstrap":               "box-walk rig setup; a test harness, not an operator tool",
+	"tunnex-sandbox-fixture-setup": "local qualification fixture setup; writes fixture catalog and bindings, not a production API-container operation",
+	"tunnex-sandbox-worker":        "legacy DB-backed qualification worker; installed separately on its dedicated fixture host, not in the API container",
+	"tunnex-sandbox-runtime":       "dedicated Linux runner artifact; requires runner-local rootless provider and namespace helper, never runs in the API container",
+	"tunnex-sandbox-ssh-probe":     "fixed Linux namespace probe invoked by the runner-local helper; installed separately at its pinned host path",
+	"tunnex-sandbox-runner-enroll": "offline operator certificate enrollment artifact; issuer key generation is separate from the API runtime image",
 }
 
 // TestEveryOperatorToolShipsInTheImage — the packaging tier of artifact-exists-≠-artifact-works.

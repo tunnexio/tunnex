@@ -3,11 +3,15 @@ package config
 
 import (
 	"errors"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/metrics"
 )
@@ -27,7 +31,12 @@ func (c Config) ValidateAppAccessRestoreMarker() error {
 // Config holds the process configuration resolved at startup.
 type Config struct {
 	// Addr is the host:port the HTTP server binds to.
-	Addr string
+	Addr                     string
+	APITLSCertificateFile    string
+	APITLSPrivateKeyFile     string
+	SandboxModule            string
+	SandboxFixtureOrgID      string
+	SandboxRuntimeConfigFile string
 	// AgentAddr is the host:port the mTLS agent control channel binds to (S3.1).
 	AgentAddr string
 	// MetricsAddr is the host:port the metrics + readiness listener binds to (S11 D3.2). It is a SEPARATE
@@ -186,6 +195,11 @@ func (c Config) AppBaseURLLooksLocal() bool {
 func Load() Config {
 	return Config{
 		Addr:                        getenv("TUNNEX_API_ADDR", ":8080"),
+		APITLSCertificateFile:       getenv("TUNNEX_API_TLS_CERT_FILE", ""),
+		APITLSPrivateKeyFile:        getenv("TUNNEX_API_TLS_KEY_FILE", ""),
+		SandboxModule:               strings.TrimSpace(getenv("TUNNEX_SANDBOX_MODULE", "")),
+		SandboxFixtureOrgID:         getenv("TUNNEX_SANDBOX_FIXTURE_ORG_ID", ""),
+		SandboxRuntimeConfigFile:    getenv("TUNNEX_SANDBOX_RUNTIME_CONFIG_FILE", ""),
 		AgentAddr:                   getenv("TUNNEX_AGENT_ADDR", ":8443"),
 		MetricsAddr:                 getenv("TUNNEX_METRICS_ADDR", metrics.DefaultAddr),
 		Env:                         getenv("TUNNEX_ENV", "development"),
@@ -322,4 +336,45 @@ func getint64(key string, fallback int64) int64 {
 		return fallback
 	}
 	return n
+}
+
+func (c Config) ValidateAPITLS() error {
+	if (c.APITLSCertificateFile == "") != (c.APITLSPrivateKeyFile == "") {
+		return errors.New("API TLS certificate and key must be configured together")
+	}
+	return nil
+}
+
+// Isolated fixture availability can never be enabled for an ordinary CP DSN.
+func (c Config) ValidateSandboxFixture() error {
+	if c.SandboxFixtureOrgID == "" {
+		return nil
+	}
+	id, err := uuid.Parse(c.SandboxFixtureOrgID)
+	if err != nil || id == uuid.Nil {
+		return errors.New("invalid fixture organization")
+	}
+	db, err := url.Parse(c.DatabaseURL)
+	if err != nil || !strings.HasPrefix(db.Path, "/tunnex_sandbox_qual_") {
+		return errors.New("fixture requires its isolated database")
+	}
+	server, err := url.Parse(c.AppBaseURL)
+	if err != nil || server.Scheme != "https" || c.APITLSCertificateFile == "" || c.APITLSPrivateKeyFile == "" {
+		return errors.New("fixture requires explicit HTTPS")
+	}
+	ip := net.ParseIP(server.Hostname())
+	if ip == nil || ip.To4() == nil || !ip.IsPrivate() {
+		return errors.New("fixture requires its private IPv4 endpoint")
+	}
+	return nil
+}
+
+func (c Config) ValidateSandboxRuntime() error {
+	if c.SandboxRuntimeConfigFile == "" {
+		return nil
+	}
+	if c.SandboxFixtureOrgID != "" || c.SandboxRuntimeConfigFile != "/etc/tunnex/sandbox-runtime.json" {
+		return errors.New("invalid sandbox runtime configuration")
+	}
+	return nil
 }

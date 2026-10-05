@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	clientMTU = 1420 // match the server interface MTU (S3.2 decision)
-	keepalive = 25   // seconds; makes the client initiate a handshake through NAT
+	clientMTU  = 1420 // match the server interface MTU (S3.2 decision)
+	sandboxMTU = 1280 // bounded sandbox path avoids the measured outer-path fragmentation limit
+	keepalive  = 25   // seconds; makes the client initiate a handshake through NAT
 	// fullTunnelDNS is handed to full-tunnel clients so name resolution still
 	// works once 0.0.0.0/0 captures all traffic (the previous resolver may be
 	// unreachable through the tunnel). Split-tunnel clients keep their own DNS.
@@ -16,6 +17,7 @@ const (
 
 // configParams are the inputs to a client .conf.
 type configParams struct {
+	mtu          int    // explicit profile MTU; zero preserves the ordinary-device default
 	address      string // peer tunnel IP (no mask)
 	ipv6Address  string // optional peer IPv6 tunnel IP (no mask)
 	privateKey   string // the client's private key (one-time, server-generated flow)
@@ -38,7 +40,11 @@ func buildConfig(p configParams) string {
 	if p.dns != "" {
 		b.WriteString("DNS = " + p.dns + "\n")
 	}
-	b.WriteString(fmt.Sprintf("MTU = %d\n", clientMTU))
+	mtu := p.mtu
+	if mtu == 0 {
+		mtu = clientMTU
+	}
+	b.WriteString(fmt.Sprintf("MTU = %d\n", mtu))
 	b.WriteString("\n[Peer]\n")
 	b.WriteString("PublicKey = " + p.serverPubKey + "\n")
 	b.WriteString("Endpoint = " + p.endpoint + "\n")

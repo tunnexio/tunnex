@@ -56,6 +56,7 @@ type AgentChannel struct {
 	baseAuthorityStore         nodes.KubernetesOwnershipBaseAuthorityStore
 	serviceUIDObservationStore nodes.K8sServiceUIDObservationStore
 	serviceInventoryStore      nodes.K8sServiceInventoryStore
+	policyReportNotify         func()
 }
 
 // gatewayDNSMailbox is the narrow control-channel seam. It intentionally
@@ -71,6 +72,11 @@ type gatewayDNSMailbox interface {
 func NewAgentChannel(svc *nodes.Service, ca *agentca.CA, hub *nodepush.Hub, logger *slog.Logger) *AgentChannel {
 	return &AgentChannel{svc: svc, ca: ca, hub: hub, logger: logger, watchHold: 25 * time.Second}
 }
+
+// SetPolicyReportNotify attaches a nonblocking post-persistence convergence
+// hint. Configure it before serving requests. A successful report never grants
+// readiness: the notified worker still checks its scoped canonical evidence.
+func (a *AgentChannel) SetPolicyReportNotify(notify func()) { a.policyReportNotify = notify }
 
 // SetFlowIngester wires the S7.5.1 flow-event ingester. Optional: when nil, the
 // /agent/flow-events endpoint replies 503 (flow logging not configured) — enforcement and
@@ -291,6 +297,9 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		// that used to answer typed errors as bare text (no envelope, no request_id) is gone.
 		apierr.Write(w, r, err)
 		return
+	}
+	if a.policyReportNotify != nil {
+		a.policyReportNotify()
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

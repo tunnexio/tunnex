@@ -197,7 +197,7 @@ FROM devices d
 LEFT JOIN users u ON u.id = d.user_id
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
-WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind <> 'agent'
+WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind = 'human'
 ORDER BY d.created_at;
 
 -- name: ListPreparedAgentWireGuardPeersForNode :many
@@ -230,7 +230,7 @@ ORDER BY r.device_id;
 -- Grandfathered count when flipping device_approval off->on (best-effort blast radius,
 -- S7.3 D4 — existing active devices stay active, not retro-pended).
 SELECT count(*) FROM devices
-WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL AND kind <> 'agent';
+WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL AND kind = 'human';
 
 -- name: SetOrgDeviceApproval :one
 -- S7.3: flip the org device-approval gate. Enterprise-gated at the HTTP layer; the open
@@ -281,7 +281,7 @@ SELECT sqlc.embed(d), ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
 FROM devices d
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
-WHERE d.org_id = $1 AND d.user_id = $2 AND d.deleted_at IS NULL AND d.kind <> 'agent'
+WHERE d.org_id = $1 AND d.user_id = $2 AND d.deleted_at IS NULL AND d.kind = 'human'
 ORDER BY d.created_at;
 
 -- ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
@@ -298,7 +298,7 @@ SELECT sqlc.embed(d), ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
 FROM devices d
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
-WHERE d.org_id = $1 AND d.deleted_at IS NULL AND d.kind <> 'agent'
+WHERE d.org_id = $1 AND d.deleted_at IS NULL AND d.kind = 'human'
 ORDER BY d.created_at;
 
 -- name: CountDevicesForUserCap :one
@@ -436,7 +436,7 @@ WHERE org_id = $1
 --   `PublicKey = ` and make `wg syncconf` reject the ENTIRE config (one OpenVPN client bricking
 --   the WG fleet on a hub member). The OVPN device's /32 reaches the data plane via the compiled
 --   artifact + the OVPN roster (which now shares the identity gate), never this list.
-SELECT d.public_key, d.assigned_ip
+SELECT d.public_key, d.assigned_ip, d.kind
 FROM devices d
 JOIN users u ON u.id = d.user_id
 JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
@@ -444,6 +444,24 @@ WHERE d.node_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND d.public_key ~ '^[A-Za-z0-9+/]{43}=$'
   AND u.status = 'active' AND u.deleted_at IS NULL
+
+  -- Sandbox transport follows the same current, explicit admission gates as
+  -- projection. Stop/expiry/catalog withdrawal removes the physical peer too.
+  AND (d.kind <> 'sandbox' OR EXISTS (
+    SELECT 1 FROM sandboxes s
+    JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+    JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+    WHERE s.peer_id=d.id AND s.org_id=d.org_id AND s.creator_id=d.user_id
+      AND s.desired_state='started' AND s.observed_state IN ('creating','starting','ready') AND s.expires_at>now()
+      AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
+      AND COALESCE(mem.roles,ARRAY[mem.role]) && ARRAY['member','admin','owner']::text[]
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s.selected_skills) selection
+        LEFT JOIN sandbox_skill_revisions r ON r.id=(selection->>'revision_id')::uuid AND r.org_id=s.org_id AND r.enabled
+        LEFT JOIN sandbox_template_skills a ON a.org_id=s.org_id AND a.template_id=s.template_id AND a.revision_id=r.id
+        LEFT JOIN sandbox_custom_skills c ON c.id=r.custom_skill_id AND c.org_id=s.org_id AND c.owner_id=s.creator_id AND c.deleted_at IS NULL
+        WHERE r.id IS NULL OR (r.owner_id IS NULL AND a.revision_id IS NULL)
+          OR (r.owner_id IS NOT NULL AND (r.owner_id<>s.creator_id OR c.id IS NULL)))
+  ))
   AND mem.access_revoked_at IS NULL
 ORDER BY d.created_at;
 

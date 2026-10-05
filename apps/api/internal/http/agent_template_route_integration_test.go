@@ -42,7 +42,7 @@ func TestAgentTemplateRouteAuthorizationOptInAndRefetch(t *testing.T) {
 	})
 	fresh := *base
 	fresh.Path = "/" + databaseName
-	if err := db.MigrateTo(fresh.String(), 109); err != nil {
+	if err := db.Up(fresh.String()); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, fresh.String())

@@ -1,3 +1,4 @@
+import { DeploymentMetaProvider } from "../src/lib/deploymentMeta";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import {
   render,
@@ -67,7 +68,7 @@ function renderShell(intent: LayoutIntent) {
       <LayoutCapabilityProvider value={capabilityFor(intent)}>
         <AuthProvider>
           <OrgProvider>
-            <AppShell />
+            <DeploymentMetaProvider value={{ edition: "open", protocol_version: 1, sso_providers: [], sandbox_module_state: "enabled" }}><AppShell /></DeploymentMetaProvider>
           </OrgProvider>
         </AuthProvider>
       </LayoutCapabilityProvider>

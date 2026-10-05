@@ -294,6 +294,8 @@ type CreateInput struct {
 	// BootstrapToken is accepted only by the public managed-agent redemption path.
 	// It is never persisted; only its hash is looked up.
 	BootstrapToken string
+	// Sandbox bootstrap has a separate credential namespace and creates a distinct peer.
+	SandboxBootstrapToken string
 }
 
 // CreateResult is the created device plus, only for the server-generated flow,
@@ -456,6 +458,9 @@ func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.
 		if err != nil {
 			return err
 		}
+		if prior.Kind == "sandbox" {
+			return apierr.Conflict("sandbox_mode_required", "sandbox routing is governed by its approved scope")
+		}
 		if prior.Status != "active" && prior.Status != "pending" {
 			return apierr.Conflict("device_not_active", "only active or pending devices can change mode")
 		}
@@ -549,6 +554,8 @@ func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.
 // per-user advisory lock, so the cap cannot be raced past.
 func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, error) {
 	var bootstrapHash []byte
+	var sandboxHash []byte
+	var sandboxBinding *sqlc.GetSandboxBootstrapTokenRow
 	var runtimeCredential string
 	if in.BootstrapToken != "" {
 		if in.PublicKey == "" || !wgkey.Valid(in.PublicKey) {
@@ -565,6 +572,21 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 		}
 		in.ActorID = uuid.UUID(tok.IssuedBy.Bytes)
 		in.Name, in.Kind, in.Provisioning = tok.AgentName, "agent", "static"
+	}
+	if in.SandboxBootstrapToken != "" {
+		if in.BootstrapToken != "" || !wgkey.Valid(in.PublicKey) {
+			return CreateResult{}, apierr.BadRequest("invalid_sandbox_bootstrap", "sandbox bootstrap requires a client public key")
+		}
+		sandboxHash = hashBootstrapToken(in.SandboxBootstrapToken)
+		tok, err := s.q.GetSandboxBootstrapToken(ctx, sandboxHash)
+		if err != nil {
+			return CreateResult{}, apierr.New(401, "invalid_sandbox_bootstrap", "sandbox bootstrap refused")
+		}
+		sandboxBinding = &tok
+		in.OrgID, in.NodeID, in.OwnerID, in.ActorID = tok.OrgID, tok.GatewayNodeID, tok.CreatorID, tok.CreatorID
+		in.Name, in.Kind, in.Provisioning, in.FullTunnel = tok.Name, "sandbox", "static", false
+	} else if in.Kind == "sandbox" {
+		return CreateResult{}, apierr.BadRequest("invalid_sandbox_bootstrap", "sandbox enrollment requires its bootstrap credential")
 	}
 	// Bootstrap redemption derives the name from the issuer-bound token before
 	// reaching the common name validation. Ordinary creates retain the same
@@ -644,7 +666,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	//
 	// ⚠ This is the defect my own end-to-end test concealed: I added the destination route BY HAND to prove
 	// the policy leg, and in doing so supplied the very thing the product was failing to supply.
-	isStatic := in.Provisioning == "static" || in.Kind == "agent"
+	isStatic := in.Provisioning == "static" || in.Kind == "agent" || in.Kind == "sandbox"
 	var staticRanges []string
 	var staticHasDNS bool
 	if isStatic && s.exportEnrich != nil {
@@ -662,9 +684,11 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	// EnsureOrgIPv6Pool uses the pool for its query/insert; calling it while a
 	// size-1 transaction is holding that same pool deadlocks concurrent creates.
 	var poolErr error
-	ipv6Pool, poolErr = ipalloc.EnsureOrgIPv6Pool(ctx, s.pool, in.OrgID)
-	if poolErr != nil {
-		return CreateResult{}, apierr.Conflict("invalid_ipv6_pool", poolErr.Error())
+	if len(sandboxHash) == 0 {
+		ipv6Pool, poolErr = ipalloc.EnsureOrgIPv6Pool(ctx, s.pool, in.OrgID)
+		if poolErr != nil {
+			return CreateResult{}, apierr.Conflict("invalid_ipv6_pool", poolErr.Error())
+		}
 	}
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		if len(bootstrapHash) > 0 {
@@ -673,6 +697,15 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			}
 			if _, e := q.GetAgentBootstrapToken(ctx, bootstrapHash); e != nil {
 				return apierr.New(401, "invalid_bootstrap_token", "the bootstrap token is invalid, used, or expired")
+			}
+		}
+		if len(sandboxHash) > 0 {
+			if e := q.LockDeviceKey(ctx, "sandbox-bootstrap:"+fmt.Sprintf("%x", sandboxHash)); e != nil {
+				return e
+			}
+			tok, e := q.GetSandboxBootstrapToken(ctx, sandboxHash)
+			if e != nil || tok.SandboxID != sandboxBinding.SandboxID || tok.Generation != sandboxBinding.Generation {
+				return apierr.New(401, "invalid_sandbox_bootstrap", "sandbox bootstrap refused")
 			}
 		}
 		// Take the user AND org advisory locks (in sorted order -> no deadlock) so
@@ -746,7 +779,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			}
 		}
 		if !in.FullTunnel {
-			dualStack = ipv6Pool != ""
+			dualStack = ipv6Pool != "" && in.Kind != "sandbox"
 		}
 		// Per-user cap (0 = unlimited, per the org setting).
 		org, e := q.GetOrganizationByID(ctx, in.OrgID)
@@ -772,10 +805,10 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 		// downgrade-release seam by construction: an enterprise→open org's stored device_approval='on' stops
 		// trapping new devices the moment the edition can no longer manage it.
 		deviceStatus := "active"
-		if s.approvalEnforced && org.DeviceApproval == "on" {
+		if s.approvalEnforced && org.DeviceApproval == "on" && in.Kind != "sandbox" {
 			deviceStatus = "pending"
 		}
-		if org.MaxDevicesPerUser > 0 {
+		if org.MaxDevicesPerUser > 0 && in.Kind != "sandbox" {
 			// Counts active+pending (finding #1): a pending device reserves a pool /32 and
 			// is a real enrollment, so the cap must include it — else a user creates
 			// unbounded pending devices (cap bypass on approve + an org-pool DoS).
@@ -827,6 +860,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			// device is a HUMAN, which counts toward the per-user cap. Defaulting to 'agent' would exempt
 			// rows from the cap by accident.
 			Kind: func() string {
+				if in.Kind == "sandbox" {
+					return "sandbox"
+				}
 				if in.Kind == "agent" {
 					return "agent"
 				}
@@ -850,6 +886,23 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			return e
 		}
 		dev = created
+		if sandboxBinding != nil {
+			if _, e := q.BindSandboxPeer(ctx, sqlc.BindSandboxPeerParams{ID: sandboxBinding.SandboxID, OrgID: in.OrgID, Generation: sandboxBinding.Generation, PeerID: pgtype.UUID{Bytes: dev.ID, Valid: true}}); e != nil {
+				return apierr.New(401, "invalid_sandbox_bootstrap", "sandbox bootstrap refused")
+			}
+			raw := make([]byte, 32)
+			if _, e := rand.Read(raw); e != nil {
+				return e
+			}
+			runtimeCredential = "tnx_sandbox_runtime_" + base64.RawURLEncoding.EncodeToString(raw)
+			hash := sha256.Sum256([]byte(runtimeCredential))
+			if e := q.CreateSandboxRuntimeCredential(ctx, sqlc.CreateSandboxRuntimeCredentialParams{OrgID: in.OrgID, SandboxID: sandboxBinding.SandboxID, PeerID: dev.ID, TokenHash: hash[:]}); e != nil {
+				return e
+			}
+			if _, e := q.ConsumeSandboxBootstrapToken(ctx, sqlc.ConsumeSandboxBootstrapTokenParams{TokenHash: sandboxHash, OrgID: in.OrgID}); e != nil {
+				return apierr.New(401, "invalid_sandbox_bootstrap", "sandbox bootstrap refused")
+			}
+		}
 		if in.Kind == "agent" {
 			// The profile is created in the same transaction. The device row remains
 			// the lifecycle authority: pending means enrolled/awaiting approval.
@@ -924,7 +977,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	res := CreateResult{Device: dev, PrivateKeyOneTime: oneTimePriv, PendingApproval: dev.Status == "pending"}
 	// Only the server-generated flow can produce a complete config (it holds the
 	// one-time private key); the client-generated flow assembles its own.
-	if oneTimePriv != "" || len(bootstrapHash) > 0 {
+	if oneTimePriv != "" || len(bootstrapHash) > 0 || len(sandboxHash) > 0 {
 		// WF-A D-WFA-6: a NEW device on a hub-set member dials the ACTIVE HUB (the widening hosts it there),
 		// not its arbitrary assigned gateway — so the config points at the re-home target from the first
 		// handshake. derived=false / a resolver error → keep the assigned node's endpoint (spoke-device case,
@@ -938,7 +991,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 		allowed := allowedIPsFor(in.FullTunnel, dualStack, poolCIDR)
 		dns := dnsFor(in.FullTunnel)
 		ipv6Address := ""
-		if ipv6Pool != "" && (!in.FullTunnel || dualStack) {
+		if in.Kind != "sandbox" && ipv6Pool != "" && (!in.FullTunnel || dualStack) {
 			if v6, e := ipalloc.IPv6DeviceAddr(ipv6Pool, in.OrgID, assignedIP); e == nil {
 				ipv6Address = v6.String()
 			}
@@ -957,7 +1010,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 				}
 			}
 		}
+		mtu := clientMTU
+		// Only a verified single-use sandbox bootstrap selects the sandbox path MTU.
+		if sandboxBinding != nil {
+			mtu = sandboxMTU
+		}
 		res.Config = buildConfig(configParams{
+			mtu:          mtu,
 			address:      assignedIP,
 			ipv6Address:  ipv6Address,
 			privateKey:   oneTimePriv,
@@ -966,7 +1025,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			allowedIPs:   allowed,
 			dns:          dns,
 		})
-		if len(bootstrapHash) > 0 {
+		if len(bootstrapHash) > 0 || len(sandboxHash) > 0 {
 			res.RuntimeCredential = runtimeCredential
 			res.Config = strings.Replace(res.Config, "PrivateKey = \n", "PrivateKey = __TUNNEX_PRIVATE_KEY__\n", 1)
 		}

@@ -11,10 +11,33 @@ import (
 )
 
 // Load shares the same active subject and HA ownership projection between
-// routing and policy. Disabled reads need no later-schema tables.
-func Load(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, enabled bool) (*Graph, error) {
+// routing and policy. Without organization-wide routing, only explicit sandbox
+// terminal bindings can supply a transport graph.
+func Load(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, enabled bool, sandboxEnabled ...bool) (*Graph, error) {
+	var scoped *Graph
+	if len(sandboxEnabled) == 1 && sandboxEnabled[0] {
+		var err error
+		scoped, err = loadScopedSandboxTerminals(ctx, q, orgID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if !enabled {
-		return nil, nil
+		return scoped, nil
+	}
+	reserved, err := q.ListReservedSandboxRuntimeGateways(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if len(reserved) > 32 {
+		return nil, errors.New("dedicated sandbox gateway capacity exceeded")
+	}
+	reservedIDs := make([]uuid.UUID, 0, len(reserved))
+	for _, row := range reserved {
+		if row.SiteID.Valid {
+			return nil, errors.New("sandbox runtime gateway has site placement")
+		}
+		reservedIDs = append(reservedIDs, row.RuntimeGatewayID)
 	}
 	rows, err := q.ListCrossGatewayGateways(ctx, orgID)
 	if err != nil {
@@ -68,16 +91,50 @@ func Load(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, enabled bool) (
 			}
 		}
 	}
-	return Build(true, gateways, clients, members)
+	return BuildSandboxCompatibleGraph(gateways, clients, members, reservedIDs, scoped)
+}
+
+func loadScopedSandboxTerminals(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) (*Graph, error) {
+	rows, err := q.ListScopedSandboxTerminalRoutes(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	if len(rows) > 32 {
+		return nil, errors.New("scoped sandbox transport capacity exceeded")
+	}
+	gateways := []Gateway{}
+	routes := []SandboxTerminalRoute{}
+	for _, row := range rows {
+		gateways = append(gateways, Gateway{ID: row.TerminalGatewayID, PublicKey: row.TerminalPublicKey, Endpoint: row.TerminalGatewayEndpoint}, Gateway{ID: row.RuntimeGatewayID, PublicKey: row.RuntimePublicKey, Endpoint: row.RuntimeGatewayEndpoint})
+		routes = append(routes, SandboxTerminalRoute{TerminalGatewayID: row.TerminalGatewayID, RuntimeGatewayID: row.RuntimeGatewayID, TerminalAddress: row.TerminalAddress, SandboxAddress: row.SandboxAddress, TerminalGatewayEndpoint: row.TerminalGatewayEndpoint, RuntimeGatewayEndpoint: row.RuntimeGatewayEndpoint})
+	}
+	return BuildSandboxTerminalGraph(gateways, routes)
+}
+
+// HasScopedSandboxTerminals uses the same bounded authority projection as Load.
+// It lets site-less gateways include the explicit corridor without opting the
+// organization into the ordinary cross-gateway client graph.
+func HasScopedSandboxTerminals(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) (bool, error) {
+	rows, err := q.ListScopedSandboxTerminalRoutes(ctx, orgID)
+	return len(rows) > 0, err
 }
 
 func (g *Graph) NodeIDs() []uuid.UUID {
-	if g == nil || g.Relay == uuid.Nil {
+	if g == nil {
 		return nil
 	}
-	ids := []uuid.UUID{g.Relay}
-	for id := range g.gateways {
-		ids = append(ids, id)
+	ids := []uuid.UUID{}
+	if g.Relay != uuid.Nil {
+		ids = append(ids, g.Relay)
+		for id := range g.gateways {
+			ids = append(ids, id)
+		}
+	}
+	if g.sandboxTerminalGraph != nil {
+		ids = append(ids, g.sandboxTerminalGraph.NodeIDs()...)
 	}
 	return sortedIDs(ids...)
 }

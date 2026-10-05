@@ -1,0 +1,13 @@
+# Local sandbox enrollment evidence
+
+Decision paper: [enrollment decisions](S-sandbox-enrollment-decisions.md). This is a partial implementation milestone; public creation remains closed.
+
+Migration0167 introduces separate hashed sandbox bootstrap/runtime tables, immutable same-org peer binding, single pending bootstrap per generation and refusal to downgrade populated enrollment state. Existing managed-agent credential/profile tables are unchanged.
+
+The internal worker handoff issues a one-hour, generation-bound bootstrap only for a current authorized creator/admin and eligible sandbox/gateway. Redemption reuses devices.Create, client-generated WireGuard keys, allocator and configuration rendering; it derives organization/creator/gateway from the token, creates kind=sandbox directly, binds the peer and consumes the token atomically. Sandbox peers remain IPv4 split-tunnel; their creation no longer allocates an IPv6 pool. An uncertain handoff cannot issue a second token for the same generation. No public enrollment endpoint or secret handoff store is claimed.
+
+Sandbox runtime authentication accepts only its separate credential format/hash and rechecks current peer binding, active/unblocked peer, organization/template enablement, eligible verified creator membership, desired/observed lifecycle and expiry. Authentication is not a policy grant or Ready receipt. Raw bootstrap/runtime credentials never appear in ordinary sandbox inventory.
+
+Six real PostgreSQL integration tests pass under race detection in disposable databases on the task-owned local PostgreSQL instance. Enrollment test proves concurrent redemption creates exactly one sandbox peer and runtime credential, no agent profile, caller identity/full-tunnel spoofing fails, client private key stays local, bootstrap cannot authenticate runtime, and blocked peer/ineligible creator/desired stop immediately refuse runtime authentication. Stopped-generation and expired bootstrap tests prove refusal leaves no peer. Existing store tests cover authorization, quota/idempotency, binding, policy withdrawal and downgrade guards.
+
+Unit/race suites pass for sandboxes, devices, sandboxruntime, sandboxscope and policy. All four existing enterprise managed-agent bootstrap integration tests pass under race detection, including concurrency and quotas. Open and enterprise server builds pass. No pilot container, live account, policy, credential file or host firewall was operated. Actual private SSH, image qualification, provider release from quarantine, runtime polling/configuration acknowledgement, durable reconciler, cleanup, skills and latency benchmarking remain pending.
