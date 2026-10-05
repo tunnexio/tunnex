@@ -57,6 +57,11 @@ main wiring, machine installer, UI, distribution and the native qualification tr
   operations for its mapped workload. It cannot renew, probe, materialize, enroll
   or start. Cleanup authority ends at frozen certificate expiry or retirement.
   Offline execution remains bounded by the original local 900-second TTL.
+- Normal creation binds its canonical workload to the currently ready enrolled
+  runner within the existing organization transaction, before commit. It rechecks
+  the actual creator, owned terminal, current grant and qualification. A revoke
+  after admission therefore retains exact cleanup authority even before the first
+  runtime command; revocation before admission causes the creation to roll back.
 - Replacement is blocked by any retained sandbox in the organization, including
   old configuration profiles and instances awaiting first command authorization.
   Enrollment, workload binding and qualification evidence cannot be reassigned.

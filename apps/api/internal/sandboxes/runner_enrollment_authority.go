@@ -175,6 +175,66 @@ func (s *RunnerEnrollmentService) commandAuthorization(ctx context.Context, q re
 	}
 	return a, nil
 }
+
+// BindSandboxAdmission runs inside ordinary Create's existing organization
+// transaction and lock. It performs only durable authority reads/writes: no new
+// lock, provider call, or qualification-trial bypass. Mapping before commit lets
+// a concurrent runner withdrawal retire every accepted workload, including one
+// whose first runtime command has not yet been dispatched.
+func (s *RunnerEnrollmentService) BindSandboxAdmission(ctx context.Context, tx pgx.Tx, sb Sandbox) error {
+	if s == nil || tx == nil || s.config.ModuleState != "enabled" {
+		return ErrDisabled
+	}
+	if sb.Identity.ID == uuid.Nil || sb.Identity.OrgID != s.binding.OrgID || sb.DesiredState != "started" {
+		return ErrForbidden
+	}
+	r, err := scanRunnerEnrollment(tx.QueryRow(ctx, `SELECT `+runnerEnrollmentColumns+` FROM sandbox_runner_enrollments e
+ WHERE e.org_id=$1 AND e.consumed_at IS NOT NULL ORDER BY e.created_at DESC,e.id LIMIT 1 FOR UPDATE OF e`, s.binding.OrgID))
+	if err != nil {
+		return ErrDisabled
+	}
+	credential, err := s.credential(ctx, tx, r)
+	if err != nil || credential.CleanupOnly || r.view.LastSeenAt == nil || time.Since(*r.view.LastSeenAt) > RunnerHealthFreshness {
+		return ErrDisabled
+	}
+	scope, args := s.binding.eligibilityScope()
+	args = append([]any{sb.Identity.ID}, args...)
+	canonical, err := scanSandbox(tx.QueryRow(ctx, `SELECT `+sandboxColumns+` FROM sandboxes s WHERE s.id=$1 AND `+scope+` FOR UPDATE OF s`, args...))
+	if err != nil {
+		return ErrForbidden
+	}
+	a, err := s.commandAuthorization(ctx, tx, canonical)
+	if err != nil {
+		return err
+	}
+	requested, err := s.commandAuthorization(ctx, tx, sb)
+	if err != nil || !sameWorkload(a, requested) || a.Generation != requested.Generation || a.Desired != requested.Desired || !time.Now().Before(a.ExpiresAt) {
+		return ErrForbidden
+	}
+	eligible, err := sandboxEligible(ctx, tx, a.SandboxID)
+	if err != nil {
+		return err
+	}
+	qualified, err := s.isQualified(ctx, tx, r)
+	if err != nil {
+		return err
+	}
+	if !eligible || !qualified {
+		return ErrDisabled
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO sandbox_runner_workloads(sandbox_id,org_id,enrollment_id) VALUES($1,$2,$3) ON CONFLICT(sandbox_id) DO NOTHING`, a.SandboxID, a.OrgID, r.view.ID); err != nil {
+		return err
+	}
+	var mapped uuid.UUID
+	if err = tx.QueryRow(ctx, `SELECT enrollment_id FROM sandbox_runner_workloads WHERE sandbox_id=$1 AND org_id=$2`, a.SandboxID, a.OrgID).Scan(&mapped); err != nil {
+		return err
+	}
+	if mapped != r.view.ID {
+		return ErrForbidden
+	}
+	return nil
+}
+
 func (s *RunnerEnrollmentService) executionAllowed(ctx context.Context, q reservationReader, r runnerEnrollmentRecord, a RuntimeAuthorization) (bool, error) {
 	if !time.Now().Before(a.ExpiresAt) || r.view.LastSeenAt == nil || time.Since(*r.view.LastSeenAt) > RunnerHealthFreshness {
 		return false, nil
