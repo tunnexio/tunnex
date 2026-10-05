@@ -2435,6 +2435,88 @@ type SandboxRemoteTerminalRoute struct {
 	RuntimeGatewayEndpoint  string    `json:"runtime_gateway_endpoint"`
 }
 
+type SandboxRunnerEnrollment struct {
+	ID                   uuid.UUID          `json:"id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	IssuerID             uuid.UUID          `json:"issuer_id"`
+	ProfileID            uuid.UUID          `json:"profile_id"`
+	Name                 string             `json:"name"`
+	IdempotencyKey       uuid.UUID          `json:"idempotency_key"`
+	RequestHash          []byte             `json:"request_hash"`
+	BindingHash          []byte             `json:"binding_hash"`
+	TokenHash            []byte             `json:"token_hash"`
+	RunnerUri            string             `json:"runner_uri"`
+	CreatedAt            time.Time          `json:"created_at"`
+	ExpiresAt            time.Time          `json:"expires_at"`
+	ConsumedAt           pgtype.Timestamptz `json:"consumed_at"`
+	SpkiHash             []byte             `json:"spki_hash"`
+	ProbePublicKey       *string            `json:"probe_public_key"`
+	Certificate          *string            `json:"certificate"`
+	CertificateExpiresAt pgtype.Timestamptz `json:"certificate_expires_at"`
+	RevokedAt            pgtype.Timestamptz `json:"revoked_at"`
+	RevokeReason         *string            `json:"revoke_reason"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	ReadyAt              pgtype.Timestamptz `json:"ready_at"`
+}
+
+type SandboxRunnerQualificationEvent struct {
+	TrialID      uuid.UUID `json:"trial_id"`
+	Code         string    `json:"code"`
+	Generation   int64     `json:"generation"`
+	ObservedAt   time.Time `json:"observed_at"`
+	Evidence     []byte    `json:"evidence"`
+	EvidenceHash []byte    `json:"evidence_hash"`
+}
+
+type SandboxRunnerQualificationReport struct {
+	ID           uuid.UUID          `json:"id"`
+	OrgID        uuid.UUID          `json:"org_id"`
+	EnrollmentID uuid.UUID          `json:"enrollment_id"`
+	SpkiHash     []byte             `json:"spki_hash"`
+	BindingHash  []byte             `json:"binding_hash"`
+	ReportHash   []byte             `json:"report_hash"`
+	Report       []byte             `json:"report"`
+	CreatedAt    time.Time          `json:"created_at"`
+	Decision     string             `json:"decision"`
+	ReviewedBy   pgtype.UUID        `json:"reviewed_by"`
+	ReviewedAt   pgtype.Timestamptz `json:"reviewed_at"`
+	ReviewNote   *string            `json:"review_note"`
+}
+
+type SandboxRunnerQualificationTrial struct {
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	EnrollmentID       uuid.UUID          `json:"enrollment_id"`
+	SandboxID          uuid.UUID          `json:"sandbox_id"`
+	CreatorID          uuid.UUID          `json:"creator_id"`
+	TerminalDeviceID   uuid.UUID          `json:"terminal_device_id"`
+	ProfileID          uuid.UUID          `json:"profile_id"`
+	TemplateID         uuid.UUID          `json:"template_id"`
+	BindingHash        []byte             `json:"binding_hash"`
+	SpkiHash           []byte             `json:"spki_hash"`
+	SourceSha          string             `json:"source_sha"`
+	ImageDigest        string             `json:"image_digest"`
+	IdempotencyKey     uuid.UUID          `json:"idempotency_key"`
+	RequestHash        []byte             `json:"request_hash"`
+	CreatedAt          time.Time          `json:"created_at"`
+	ExpiresAt          time.Time          `json:"expires_at"`
+	Phase              string             `json:"phase"`
+	RuntimeID          *string            `json:"runtime_id"`
+	InitialReadyAt     pgtype.Timestamptz `json:"initial_ready_at"`
+	StoppedAt          pgtype.Timestamptz `json:"stopped_at"`
+	ResumeReadyAt      pgtype.Timestamptz `json:"resume_ready_at"`
+	RetiredAt          pgtype.Timestamptz `json:"retired_at"`
+	OfflineWitness     []byte             `json:"offline_witness"`
+	OfflineWitnessHash []byte             `json:"offline_witness_hash"`
+	FailureCode        *string            `json:"failure_code"`
+}
+
+type SandboxRunnerWorkload struct {
+	SandboxID    uuid.UUID `json:"sandbox_id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	EnrollmentID uuid.UUID `json:"enrollment_id"`
+}
+
 type SandboxRuntimeBinding struct {
 	SandboxID       uuid.UUID          `json:"sandbox_id"`
 	OrgID           uuid.UUID          `json:"org_id"`
