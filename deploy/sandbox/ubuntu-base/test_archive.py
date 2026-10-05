@@ -15,8 +15,9 @@ LOCK = "b" * 64
 
 
 def create_delivery(directory, *, source_label=SOURCE, user="1001:1001", missing_layer=False,
-                    unsafe_member=False):
+                    unsafe_member=False, bad_layer=False):
     metadata = {"architecture": "amd64", "os": "linux",
+                "rootfs": {"type": "layers", "diff_ids": ["sha256:" + delivery.sha256(b"public layer fixture")]},
                 "config": {"User": user, "WorkingDir": "/workspace", "Labels": {
                     "io.tunnex.sandbox.source": source_label,
                     "io.tunnex.sandbox.ubuntu-lock": LOCK}}}
@@ -25,7 +26,7 @@ def create_delivery(directory, *, source_label=SOURCE, user="1001:1001", missing
     files = {digest + ".json": config,
              "manifest.json": json.dumps([{"Config": digest + ".json", "Layers": ["layer/layer.tar"]}]).encode()}
     if not missing_layer:
-        files["layer/layer.tar"] = b"public layer fixture"
+        files["layer/layer.tar"] = b"altered layer" if bad_layer else b"public layer fixture"
     filename = "tunnex-sandbox-ubuntu26-linux-amd64.docker.tar"
     with tarfile.open(directory / filename, "w") as output:
         for name, raw in files.items():
@@ -40,7 +41,7 @@ def create_delivery(directory, *, source_label=SOURCE, user="1001:1001", missing
     descriptor = {"schema_version": 1, "source_sha": SOURCE, "os": "linux", "architecture": "amd64",
                   "dependency_lock_sha256": LOCK, "base_manifest_digest": "sha256:" + "c" * 64,
                   "archive": {"filename": filename, "sha256": delivery.sha256(raw), "bytes": len(raw)},
-                  "config_digest": "sha256:" + digest, "unpacked_image_bytes": len(raw),
+                  "config_digest": "sha256:" + digest, "unpacked_image_bytes": len(b"public layer fixture"),
                   "native_qualification": False, "services_started": False,
                   "packages_installed_at_launch": False}
     write_descriptor(directory, descriptor)
@@ -104,6 +105,20 @@ class ArchiveTests(unittest.TestCase):
                 create_delivery(root, **kwargs)
                 with self.assertRaises(delivery.InvalidInput):
                     archive.verify_delivery(root, SOURCE, "amd64", LOCK)
+
+    def test_layer_diff_pin_and_measurement_cannot_be_invented(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_delivery(root, bad_layer=True)
+            with self.assertRaises(delivery.InvalidInput):
+                archive.verify_delivery(root, SOURCE, "amd64", LOCK)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            descriptor = create_delivery(root)
+            descriptor["unpacked_image_bytes"] += 1
+            write_descriptor(root, descriptor)
+            with self.assertRaises(delivery.InvalidInput):
+                archive.verify_delivery(root, SOURCE, "amd64", LOCK)
 
     def test_extra_files_and_nonpublic_descriptor_fields_refuse(self):
         for mutation in (lambda root, data: (root / "operator-config").write_text("synthetic"),
