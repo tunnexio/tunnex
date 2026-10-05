@@ -54,6 +54,37 @@ job validates the release's source ledger and draft state before attachment and
 includes the public launcher and manifest in artifact provenance. A local
 fixture's generated URLs do not claim that its release exists or was published.
 
+## Bounded SCP roundtrip
+
+`scp_roundtrip.py` tests an already approved, running target after the PR exists.
+It creates no sandbox or account and starts no service. Target, remote user and
+an existing known-hosts file are explicit. An optional identity path is passed
+only to OpenSSH; the script never reads or copies a user's private key. OpenSSH
+uses strict host-key checking, that known-hosts file, public-key authentication
+and an empty client configuration; no password or host-key enrollment is offered.
+
+The default invocation prints a redacted plan without running SSH/SCP. Actual
+execution additionally requires `--execute --pr-number <existing-PR-number>`;
+the parent verifies the PR and target approval before running it. The recorded
+number is not a remote PR lookup. The payload is synthetic and bounded to 1 MiB.
+The test uploads it to its own `mktemp` directory under `/tmp`, verifies the
+remote SHA256, downloads it and compares bytes. Its `finally` cleanup removes
+only that exact payload and empty test directory, using no recursive deletion.
+An invalid remote path is refused and never used for cleanup. The JSON result
+contains hashes, byte count, operation exit codes and cleanup outcome, with no
+host, user, key/known-hosts path or raw command logs.
+
+```sh
+python3 -B deploy/sandbox/ci/scp_roundtrip.py \
+  --target <approved-running-target> --user <existing-user> \
+  --known-hosts <existing-pinned-known-hosts-file> \
+  --identity <existing-user-SSH-key-path>
+```
+
+Source fixtures mock all SSH/SCP commands. A mocked pass is not a live transfer
+proof. The retired manual pilot supplies no running target for this harness;
+restarting, enrolling or deploying a target needs separate authorization.
+
 Compilation is separate from native runtime qualification. Existing native
 sandbox evidence applies to its exact approved AMD64 image, provider and host
 configuration. An ARM64 binary build does not qualify ARM64 Podman, AppArmor,
