@@ -74,6 +74,8 @@ type RunnerEnrollmentConfig struct {
 	QualifiedRunnerSPKIHash   string
 	HostQualificationEvidence string
 	DistributionFile          string
+	WorkloadImageDelivery     *RunnerArtifact
+	WorkloadImageDeliveryFile string
 	// Root wiring supplies the current module state. The public config cannot
 	// opt the module in or change the immutable runtime binding.
 	ModuleState string `json:"-"`

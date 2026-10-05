@@ -61,6 +61,21 @@ main wiring, machine installer, UI, distribution and the native qualification tr
   or native qualification. Image descriptors and deployment/catalog setup remain
   separate explicitly reviewed inputs in parent integration.
 
+## Public image delivery follow-on
+
+`RunnerEnrollmentConfig.DistributionFile` names the bounded public distribution
+manifest. Its optional `workload_image_delivery` URL/hash is present exactly when
+`workload_images_built` is true; native qualification remains false. The separate
+`WorkloadImageDeliveryFile` names downloaded public descriptor bytes whose hash
+must match that manifest pin. `LoadRunnerWorkloadImageDeliveryConfig` verifies
+source, Linux AMD64, dependency/base/config digests, bounded archive metadata and
+the no-service/no-per-launch-install flags. It derives the release archive URL
+and fills URL/hash only for an already reviewed matching image config identity.
+It creates no template and cannot turn artifact production into host qualification.
+Deployment wiring loads distribution, then image delivery, then validates the
+complete immutable runner config. No Go source editing is required to consume
+these published artifacts.
+
 ## Validation and remaining integration
 
 Focused PostgreSQL and CSR race checks run in both API editions with disposable
