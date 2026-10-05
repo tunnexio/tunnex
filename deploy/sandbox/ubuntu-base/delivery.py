@@ -63,8 +63,12 @@ def sha256(raw):
 def package_filename(record):
     # APT's --no-download cache lookup uses the canonical archive basename.
     # The external cache remains content-addressed and verified separately.
-    name = urllib.parse.unquote(PurePosixPath(urllib.parse.urlsplit(record["url"]).path).name)
+    # Preserve the resolver's exact cache name: Debian version epochs appear
+    # here as %3a, while Ubuntu's pool URL omits the epoch.
+    name = record["cache_filename"]
     need(name.endswith(".deb") and "/" not in name and "\\" not in name
+         and name.startswith(record["name"] + "_")
+         and name.endswith("_" + record["architecture"] + ".deb")
          and re.fullmatch(r"[A-Za-z0-9_.+:~%-]{1,240}", name), "invalid package filename")
     return name
 
@@ -190,7 +194,7 @@ def validate_lock(lock):
     need(REQUIRED <= inventory_names, "essential dependencies absent from inventory")
     package_names = set()
     for record in lock["download_packages"]:
-        need(set(record) == {"name", "version", "architecture", "sha256", "size", "url", "path"},
+        need(set(record) == {"name", "version", "architecture", "sha256", "size", "url", "path", "cache_filename"},
              "unexpected public package fields")
         need(PACKAGE.fullmatch(record.get("name", "")) and record.get("architecture") in (arch, "all")
              and re.fullmatch(r"[A-Za-z0-9.+:~_-]{1,128}", record.get("version", ""))
@@ -319,7 +323,8 @@ apt-get $opts -o Acquire::ForceHash=SHA256 --no-install-recommends --print-uris 
         record = {"name": info["Package"], "version": info["Version"],
                   "architecture": info["Architecture"], "sha256": info["SHA256"],
                   "size": int(info["Size"]), "url": root + path,
-                  "path": "packages/" + info["SHA256"] + ".deb"}
+                  "path": "packages/" + info["SHA256"] + ".deb",
+                  "cache_filename": fields[1]}
         packages.append(record)
         # dpkg-query includes :arch only for Multi-Arch:same packages.
         binary_name = info["Package"] + (":" + arch if info.get("Multi-Arch") == "same" else "")
