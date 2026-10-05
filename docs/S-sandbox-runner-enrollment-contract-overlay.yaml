@@ -1,0 +1,654 @@
+{
+  "components": {
+    "schemas": {
+      "SandboxRunnerArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "url",
+          "sha256"
+        ]
+      },
+      "SandboxRunnerInstallImage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "config_digest": {
+            "type": "string"
+          },
+          "architecture": {
+            "type": "string",
+            "enum": [
+              "amd64"
+            ]
+          },
+          "qualification_evidence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "url",
+          "sha256",
+          "config_digest",
+          "architecture",
+          "qualification_evidence"
+        ]
+      },
+      "SandboxRunnerInstallTerminal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "runtime_endpoint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "endpoint",
+          "runtime_endpoint"
+        ]
+      },
+      "SandboxRunnerInstallGateway": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "container_id": {
+            "type": "string"
+          },
+          "image_digest": {
+            "type": "string"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/SandboxRunnerInstallTerminal"
+          }
+        },
+        "required": [
+          "node_id",
+          "container_id",
+          "image_digest",
+          "interface"
+        ]
+      },
+      "SandboxRunnerInstallController": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "url",
+          "server_name",
+          "uri",
+          "api_url"
+        ]
+      },
+      "SandboxRunnerInstallPlan": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "edition": {
+            "type": "string",
+            "enum": [
+              "open",
+              "enterprise"
+            ]
+          },
+          "source_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "bundle": {
+            "$ref": "#/components/schemas/SandboxRunnerArtifact"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "gateway": {
+            "$ref": "#/components/schemas/SandboxRunnerInstallGateway"
+          },
+          "controller": {
+            "$ref": "#/components/schemas/SandboxRunnerInstallController"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxRunnerInstallImage"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "edition",
+          "source_sha",
+          "bundle",
+          "org_id",
+          "gateway",
+          "controller",
+          "images"
+        ]
+      },
+      "SandboxRunnerEnrollmentProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "architecture": {
+            "type": "string",
+            "enum": [
+              "amd64"
+            ]
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocked_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bootstrap_script": {
+            "$ref": "#/components/schemas/SandboxRunnerArtifact"
+          },
+          "install": {
+            "$ref": "#/components/schemas/SandboxRunnerInstallPlan"
+          },
+          "host_os": {
+            "type": "string",
+            "enum": [
+              "ubuntu"
+            ]
+          },
+          "host_version": {
+            "type": "string",
+            "enum": [
+              "26.04"
+            ]
+          },
+          "terminal_gateway_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "architecture",
+          "prerequisites",
+          "blocked_reasons",
+          "bootstrap_script",
+          "install",
+          "host_os",
+          "host_version",
+          "terminal_gateway_id"
+        ]
+      },
+      "SandboxRunnerEnrollment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "awaiting_install",
+              "awaiting_connection",
+              "ready",
+              "offline",
+              "expired",
+              "revoked",
+              "pending_cleanup"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "certificate_expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "blocked_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "install_command": {
+            "type": "string"
+          },
+          "qualification": {
+            "$ref": "#/components/schemas/SandboxRunnerQualificationRecord"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "profile_id",
+          "state",
+          "created_at",
+          "expires_at",
+          "blocked_reasons",
+          "install_command"
+        ]
+      },
+      "SandboxRunnerEnrollmentList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxRunnerEnrollmentProfile"
+            }
+          },
+          "enrollments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxRunnerEnrollment"
+            }
+          },
+          "blocked_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "profiles",
+          "enrollments",
+          "blocked_reasons"
+        ]
+      },
+      "SandboxRunnerEnrollmentIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enrollment": {
+            "$ref": "#/components/schemas/SandboxRunnerEnrollment"
+          },
+          "bootstrap_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enrollment"
+        ]
+      },
+      "SandboxRunnerEnrollmentCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "profile_id",
+          "name",
+          "idempotency_key"
+        ]
+      },
+      "SandboxRunnerBootstrapRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bootstrap_token": {
+            "type": "string"
+          },
+          "certificate_request": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "probe_public_key": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "enrollment_id",
+          "bootstrap_token",
+          "certificate_request",
+          "probe_public_key"
+        ]
+      },
+      "SandboxRunnerBootstrapResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "certificate": {
+            "type": "string"
+          },
+          "runner_ca": {
+            "type": "string"
+          },
+          "api_ca": {
+            "type": "string"
+          },
+          "install": {
+            "$ref": "#/components/schemas/SandboxRunnerInstallPlan"
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "binding_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "enrollment_id",
+          "certificate",
+          "runner_ca",
+          "api_ca",
+          "install",
+          "profile_id",
+          "binding_sha256"
+        ]
+      },
+      "SandboxRunnerQualificationPlatform": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "os": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "architecture": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "os",
+          "version",
+          "architecture"
+        ]
+      },
+      "SandboxRunnerQualificationCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "host-capabilities",
+              "approved-image-load",
+              "bounded-provider-start-stop",
+              "offline-expiry-fence",
+              "private-network-connectivity"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "unrun"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "code",
+          "result",
+          "evidence"
+        ]
+      },
+      "SandboxRunnerQualificationReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "binding_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "source_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/SandboxRunnerQualificationPlatform"
+          },
+          "checks": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/SandboxRunnerQualificationCheck"
+            }
+          },
+          "image_config_digests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "version",
+          "enrollment_id",
+          "profile_id",
+          "binding_sha256",
+          "source_sha",
+          "platform",
+          "checks",
+          "image_config_digests",
+          "started_at",
+          "finished_at"
+        ]
+      },
+      "SandboxRunnerQualificationRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "report_sha256": {
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/SandboxRunnerQualificationReport"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "reviewed_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "review_note": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "runner_spki_sha256": {
+            "type": "string"
+          },
+          "approvable": {
+            "type": "boolean"
+          },
+          "blocked_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "report_sha256",
+          "report",
+          "decision",
+          "submitted_at",
+          "runner_spki_sha256",
+          "approvable",
+          "blocked_reasons"
+        ]
+      },
+      "SandboxRunnerQualificationReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_report_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "review_note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "expected_report_sha256",
+          "decision",
+          "review_note"
+        ]
+      }
+    }
+  }
+}
