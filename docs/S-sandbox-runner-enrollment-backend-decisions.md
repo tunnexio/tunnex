@@ -41,6 +41,11 @@ main wiring, machine installer, UI, distribution and the native qualification tr
   Evidence and completed review are immutable. A subsequent failed report removes
   qualification; a static reviewed SPKI preset preserves existing installations
   only while any newer report is compatible and successful.
+- Enrolled mode currently admits exactly one image profile because its native
+  trial exercises one exact image. Multiple user owners can reuse that runner
+  with their own canonical terminal identities after confirmed slot retirement.
+  Additional images require independent per-profile trials before admission;
+  legacy static bindings retain their separately qualified profile support.
 - The separately owned trial validator may admit only an exact durable admin
   qualification workload under normal ownership, terminal, policy, TTL and slot
   constraints. A nil hook grants no unqualified execution. There is no generic
