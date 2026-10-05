@@ -31,6 +31,18 @@ existing absolute900-second workload fence continues to apply during offline
 recovery. Private machine files stay under root-owned mode0700 enrollment
 staging; user SSH private keys are never involved in this enrollment.
 
+After activation the launcher rechecks the actual host platform, gateway and
+resource-controller structure and reads exact approved image IDs from the
+dedicated rootless store. It uploads at most16KiB of check metadata over the
+existing private controller connection using its local mutual-TLS identity,
+the pinned runner CA, DNS name and controller URI. Failed checks stay failed;
+the provider lifecycle, offline expiry and private network checks stay `unrun`
+until their separately authorized bounded qualification trial produces actual
+evidence. Metadata acceptance does not grant Ready or approve those checks.
+The verified launcher and root-owned public configuration are retained under
+the selected installation root for the dashboard's customer qualification
+command; no human private key or bootstrap token enters that configuration.
+
 This stdlib-only installer prepares the same bounded runtime on a supported
 Linux host without a cloud provider API, download, package installation or
 credential generation. All IDs, paths, service UID/subUIDs, org/gateway/image

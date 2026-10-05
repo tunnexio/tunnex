@@ -2,6 +2,7 @@
 """Enroll and install one scoped sandbox runner. Never install host dependencies."""
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import fcntl
 import getpass
 import hashlib
@@ -12,11 +13,13 @@ import os
 from pathlib import Path, PurePosixPath
 import platform
 import re
+import signal
 import ssl
 import stat
 import struct
 import subprocess
 import sys
+import time
 import tarfile
 import urllib.parse
 import urllib.request
@@ -31,6 +34,9 @@ ASSETS = {
     "deploy/sandbox/alpine/entrypoint.sh", "deploy/sandbox/alpine/build-image.sh",
     "deploy/sandbox/install/install.py", "deploy/sandbox/install/README.md",
     "deploy/sandbox/install/example.json", "deploy/sandbox/install/enroll.py",
+    "deploy/sandbox/ubuntu-base/delivery.py", "deploy/sandbox/ubuntu-base/archive.py",
+    "deploy/sandbox/ubuntu-base/Containerfile", "deploy/sandbox/ubuntu-base/public-inputs.json",
+    "deploy/sandbox/ubuntu-base/ubuntu26-amd64.lock.json", "deploy/sandbox/ubuntu-base/README.md",
 }
 COMMANDS = ("tunnex-sandbox-runtime", "tunnex-sandbox-ssh-probe", "tunnex-sandbox-runner-enroll")
 
@@ -111,6 +117,19 @@ def write_exact(path, raw, mode=0o600):
         stream.write(raw)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def write_latest(path, raw):
+    path = Path(path)
+    if path.exists() or path.is_symlink():
+        file_bytes(path, 32768)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".partial")
+    try:
+        write_exact(temporary, raw)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists() and not temporary.is_symlink():
+            temporary.unlink()
 
 
 def completed_installation(cfg, installer):
@@ -243,7 +262,7 @@ def select_layout(enrollment_id, host):
 
 
 def installer_config(bundle, options, staging, layout):
-    keys(bundle, ("enrollment_id", "certificate", "runner_ca", "api_ca", "install"))
+    keys(bundle, ("enrollment_id", "profile_id", "binding_sha256", "certificate", "runner_ca", "api_ca", "install"))
     need(bundle["enrollment_id"] == options.enrollment_id, "changed_enrollment_identity")
     plan = bundle["install"]
     keys(plan, ("version", "edition", "source_sha", "bundle", "org_id", "gateway", "controller", "images"))
@@ -356,16 +375,22 @@ def run_locked(options, staging):
         if marker.exists():
             completed_installation(cfg, installer)
             print("Existing completed installation retained. It does not prove connection or qualification.", flush=True)
-            return activation_ceremony(cfg, host)
+            result = activation_ceremony(cfg, host)
+            return submit_report(cfg, staging, executable, installer, host, result)
     elif not (staging / "layout.json").exists():
         layout = select_layout(options.enrollment_id, host)
         write_exact(staging / "layout.json", (json.dumps(layout, sort_keys=True) + "\n").encode())
     layout = strict_json(file_bytes(staging / "layout.json", 32768))
-    print("Generate private machine identities locally; paste the separate enrollment token at the hidden prompt.", flush=True)
-    token = secret_prompt("Enrollment token: ")
-    need(32 <= len(token) <= 4096 and not re.search(r"[\x00-\x20]", token), "invalid_bootstrap_token")
-    result = subprocess.run([str(executable), "--server=" + options.api_url, "--enrollment=" + options.enrollment_id,
-                             "--output=" + str(staging / "identity")], input=(token + "\n").encode(),
+    command = [str(executable), "--server=" + options.api_url, "--enrollment=" + options.enrollment_id, "--output=" + str(staging / "identity")]
+    if (staging / "identity/enrollment.json").exists():
+        print("Verify the original issued machine identity and exact public pins for this retained installation retry.", flush=True)
+        command.append("--verify-issued")
+        token = ""
+    else:
+        print("Generate private machine identities locally; paste the separate enrollment token at the hidden prompt.", flush=True)
+        token = secret_prompt("Enrollment token: ")
+        need(32 <= len(token) <= 4096 and not re.search(r"[\x00-\x20]", token), "invalid_bootstrap_token")
+    result = subprocess.run(command, input=(token + "\n").encode(),
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=45)
     token = ""
     if result.returncode != 0:
@@ -378,15 +403,365 @@ def run_locked(options, staging):
     cfg = installer_config(bundle, options, staging, layout)
     installer.validate(cfg)
     check_host(cfg, installer, host)
+    write_exact(config_path, (json.dumps(cfg, sort_keys=True) + "\n").encode())
+    # This actual mTLS metadata admission checks current enrollment authority
+    # before an issued identity continues installation after token redemption.
+    report = qualification_report(cfg, bundle, installer, host, {"installation": "installed-disabled"})
+    pending_report = staging / "qualification-preinstall.json"
+    write_latest(pending_report, (json.dumps(report, sort_keys=True) + "\n").encode())
+    current = subprocess.run([str(executable), "--qualification-report=" + str(pending_report), "--install-config=" + str(config_path), "--output=" + str(staging / "identity")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+    need(current.returncode == 0, "current_enrollment_authority_or_controller_unavailable_before_install")
     print("Host structure checked. Downloading exact approved images; this does not qualify a new host.", flush=True)
     for image, public in zip(cfg["images"], bundle["install"]["images"]):
         download(public["url"], image["sha256"], image["path"], 512 * MIB)
         installer.verify_image(image)
     verified = installer.bundle_payload(cfg)
-    write_exact(config_path, (json.dumps(cfg, sort_keys=True) + "\n").encode())
     print("Installing the verified bounded runner with stopped, disabled services.", flush=True)
     installer.install(cfg, verified, host)
-    return activation_ceremony(cfg, host)
+    result = activation_ceremony(cfg, host)
+    return submit_report(cfg, staging, executable, installer, host, result)
+
+
+def host_platform(host):
+    # os-release is public host metadata. Parse data without invoking a shell.
+    values = {}
+    for line in host.read("/etc/os-release").splitlines():
+        name, separator, value = line.partition("=")
+        if separator and name in ("ID", "VERSION_ID"):
+            value = value.strip().strip('"').strip("'")
+            need(re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value), "unsupported_os_release_metadata")
+            values[name] = value
+    need("ID" in values and "VERSION_ID" in values, "missing_actual_host_os_version")
+    return {"os": "linux", "version": values["ID"] + " " + values["VERSION_ID"], "architecture": "amd64"}
+
+
+def inspect_preloaded_images(cfg, host):
+    layout = cfg["installation"]
+    state, run = layout["state_root"], layout["run_root"]
+    environment = {"PATH": "/usr/sbin:/usr/bin:/bin", "HOME": state + "/worker/home", "XDG_RUNTIME_DIR": run + "/worker",
+                   "XDG_CONFIG_HOME": state + "/worker/config", "XDG_DATA_HOME": state + "/worker/data", "LC_ALL": "C"}
+    command = ["/usr/bin/podman", "--root", state + "/worker/storage", "--runroot", run + "/worker/storage",
+               "--storage-driver=overlay", "--cgroup-manager=cgroupfs", "--runtime=/usr/bin/runc"]
+    for image in cfg["images"]:
+        result = host.run(command + ["image", "inspect", "--format", "{{.Id}} {{.Architecture}} {{.Os}}", image["config_digest"]],
+                          env=environment, user=layout["uid"], group=layout["gid"], extra_groups=[]).strip()
+        expected = image["config_digest"][7:]
+        need(result in (f"{expected} amd64 linux", f"sha256:{expected} amd64 linux"), "approved_preloaded_image_not_observed")
+
+
+def qualification_report(cfg, bundle, installer, host, activation):
+    started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    need(str(uuid.UUID(bundle["profile_id"])) == bundle["profile_id"], "invalid_qualification_profile")
+    pin(bundle["binding_sha256"])
+    try:
+        installer.check(cfg, host, installed_report=True)
+        capabilities = {"code": "host-capabilities", "result": "passed",
+                        "evidence": "Actual current installer host/gateway/identity/cgroup structure checks passed; capabilities do not prove native lifecycle or network behavior."}
+    except (ValueError, OSError, subprocess.SubprocessError):
+        capabilities = {"code": "host-capabilities", "result": "failed", "evidence": "Current host structure or exact gateway prerequisites failed; inspect the retained installation and actual capabilities."}
+    image = {"code": "approved-image-load", "result": "unrun", "evidence": "Services are stopped; approved image preload has not been observed."}
+    if activation.get("installation") == "activation-requested":
+        try:
+            inspect_preloaded_images(cfg, host)
+            image = {"code": "approved-image-load", "result": "passed", "evidence": "Exact approved AMD64 config IDs were read from the dedicated rootless store after actor ExecStartPre."}
+        except (ValueError, OSError, subprocess.SubprocessError):
+            image = {"code": "approved-image-load", "result": "failed", "evidence": "Pinned rootless image inspection failed. Inspect the actor preload and local host prerequisites; no pull or fallback occurred."}
+    checks = [capabilities, image]
+    for code in ("bounded-provider-start-stop", "offline-expiry-fence", "private-network-connectivity"):
+        checks.append({"code": code, "result": "unrun", "evidence": "Requires the separate control-plane authorized bounded qualification trial and independent observation; installation does not satisfy this check."})
+    return {"version": 1, "enrollment_id": bundle["enrollment_id"], "profile_id": bundle["profile_id"],
+            "binding_sha256": bundle["binding_sha256"], "source_sha": cfg["source_sha"], "platform": host_platform(host),
+            "checks": checks, "image_config_digests": [image["config_digest"] for image in cfg["images"]],
+            "started_at": started, "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+
+
+def submit_report(cfg, staging, executable, installer, host, activation):
+    bundle = strict_json(file_bytes(staging / "identity/enrollment.json", 256 * 1024))
+    completed_installation(cfg, installer)
+    report = qualification_report(cfg, bundle, installer, host, activation)
+    raw = (json.dumps(report, sort_keys=True) + "\n").encode()
+    need(len(raw) <= 16 * 1024, "qualification_report_too_large")
+    path = staging / "qualification-report.json"
+    write_latest(path, raw)
+    result = subprocess.run([str(executable), "--qualification-report=" + str(path), "--install-config=" + str(staging / "operator.json"),
+                             "--output=" + str(staging / "identity")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+    print("Actual host/image check metadata " + ("accepted" if result.returncode == 0 else "retained locally; controller upload unavailable")
+          + ". Unrun native checks remain blocked pending a controlled trial and administrator review.", flush=True)
+    return dict(activation, qualification_report="accepted" if result.returncode == 0 else "upload-unavailable",
+                native_qualification=False, connected=False)
+
+
+def observed_time():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def timestamp(value):
+    need(isinstance(value, str), "invalid_trial_timestamp")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    need(parsed.tzinfo is not None, "invalid_trial_timestamp")
+    return parsed
+
+
+def owned_metadata(path, uid, maximum=32768):
+    info = Path(path).lstat()
+    need(stat.S_ISREG(info.st_mode) and info.st_uid == uid and not info.st_mode & 0o077
+         and 0 < info.st_size <= maximum, "trial_local_metadata_identity_mismatch")
+    with open(path, "rb") as stream:
+        current = os.fstat(stream.fileno())
+        need((info.st_dev, info.st_ino) == (current.st_dev, current.st_ino), "trial_local_metadata_changed")
+        raw = stream.read(maximum + 1)
+    need(len(raw) <= maximum, "trial_local_metadata_too_large")
+    return strict_json(raw)
+
+
+def podman_observation(cfg, sandbox_id, host):
+    need(str(uuid.UUID(sandbox_id)) == sandbox_id and uuid.UUID(sandbox_id).int != 0, "invalid_trial_sandbox_identity")
+    layout = cfg["installation"]
+    state, run = layout["state_root"], layout["run_root"]
+    environment = {"PATH": "/usr/sbin:/usr/bin:/bin", "HOME": state + "/worker/home", "XDG_RUNTIME_DIR": run + "/worker",
+                   "XDG_CONFIG_HOME": state + "/worker/config", "XDG_DATA_HOME": state + "/worker/data", "LC_ALL": "C"}
+    projection = '{"id":{{json .Id}},"image":{{json .Image}},"labels":{{json .Config.Labels}},"running":{{json .State.Running}},"pid":{{json .State.Pid}},"cgroup_parent":{{json .HostConfig.CgroupParent}}}'
+    command = ["/usr/bin/podman", "--root", state + "/worker/storage", "--runroot", run + "/worker/storage",
+               "--storage-driver=overlay", "--cgroup-manager=cgroupfs", "--runtime=/usr/bin/runc",
+               "inspect", "--type=container", "--format", projection, "tunnex-sandbox-" + sandbox_id]
+    return strict_json(host.run(command, env=environment, user=layout["uid"], group=layout["gid"], extra_groups=[]))
+
+
+def trial_scope(cfg, status):
+    return "/" + cfg["installation"]["unit_prefix"] + ".slice/" + cfg["installation"]["unit_prefix"] + "-actor.service/sandbox-" + status["sandbox_id"]
+
+
+def exact_trial_observation(cfg, status, host, *, running):
+    layout = cfg["installation"]
+    pin_record = owned_metadata(Path(layout["state_root"]) / "worker/persistent-control/api-binding.json", layout["uid"])
+    authorization, epoch, binding = pin_record.get("Authorization", {}), pin_record.get("Epoch", {}), pin_record.get("Binding", {})
+    need(pin_record.get("SandboxID") == status["sandbox_id"] and authorization.get("SandboxID") == status["sandbox_id"]
+         and authorization.get("Generation") == status["generation"] == 3 and authorization.get("Desired") == "started"
+         and timestamp(authorization.get("CreatedAt")) == timestamp(status["created_at"])
+         and timestamp(authorization.get("ExpiresAt")) == timestamp(status["expires_at"])
+         and epoch.get("RuntimeID") == status["runtime_id"] and pin_record.get("EpochGeneration") == 3
+         and not pin_record.get("Withdrawn", False), "trial_actor_pin_mismatch")
+    need(binding.get("Admission") == "organization" and binding.get("Mode") == "persistent"
+         and binding.get("OrgID") == cfg["org_id"] and binding.get("GatewayID") == cfg["gateway"]["node_id"]
+         and binding.get("MemoryMiB") == 128 and binding.get("CPUs") == 1 and binding.get("MaxTTLSeconds") == 900,
+         "trial_actor_binding_mismatch")
+    profile = authorization.get("Profile", {})
+    need(profile.get("PIDs") == 64 and profile.get("Architecture") == "amd64"
+         and any(image["template_id"] == authorization.get("TemplateID") and image["config_digest"] == profile.get("ConfigDigest") for image in cfg["images"]),
+         "trial_image_profile_mismatch")
+    lease = owned_metadata(Path(layout["state_root"]) / "worker/runner-protocol" / (status["sandbox_id"] + ".lease.json"), layout["uid"])
+    need(lease.get("sandbox_id") == status["sandbox_id"] and lease.get("generation") == 3
+         and timestamp(lease.get("created_at")) == timestamp(status["created_at"])
+         and timestamp(lease.get("expires_at")) == timestamp(status["expires_at"]), "trial_local_original_lease_mismatch")
+    observation = podman_observation(cfg, status["sandbox_id"], host)
+    keys(observation, ("id", "image", "labels", "running", "pid", "cgroup_parent"))
+    spec = {"Architecture": "amd64", "ID": status["sandbox_id"], "ImageDigest": profile["ConfigDigest"], "MemoryMiB": 128, "CPUs": 1, "PIDs": 64}
+    spec_sha = hashlib.sha256(json.dumps(spec, separators=(",", ":")).encode()).hexdigest()
+    scope = trial_scope(cfg, status)
+    need(observation["id"] == pin(status["runtime_id"]) and observation["image"].removeprefix("sha256:") == profile["ConfigDigest"][7:]
+         and observation["labels"].get("io.tunnex.sandbox") == status["sandbox_id"]
+         and observation["labels"].get("io.tunnex.sandbox.spec") == spec_sha and observation["cgroup_parent"] == scope,
+         "trial_provider_identity_mismatch")
+    need(observation["running"] is running, "trial_provider_still_running" if not running else "trial_provider_not_running")
+    if running:
+        need(type(observation["pid"]) is int and 0 < observation["pid"] < 2**31, "trial_provider_pid_invalid")
+        cgroups = host.read("/proc/" + str(observation["pid"]) + "/cgroup").splitlines()
+        need(any(line.startswith("0::" + scope + "/") for line in cgroups), "trial_provider_cgroup_placement_mismatch")
+    expected = {"memory.max": "134217728", "memory.swap.max": "0", "pids.max": "64", "cpu.max": "100000 100000"}
+    for name, value in expected.items():
+        need(host.read("/sys/fs/cgroup" + scope + "/" + name).strip() == value, "trial_actual_resource_caps_mismatch")
+    events = dict(line.split() for line in host.read("/sys/fs/cgroup" + scope + "/cgroup.events").splitlines())
+    need(events.get("populated") == ("1" if running else "0"), "trial_actual_cgroup_population_mismatch")
+    return observation
+
+
+def trial_command(cfg, staging, executable, trial_id, witness=None):
+    arguments = [str(executable), "--qualification-trial=" + trial_id, "--install-config=" + str(staging / "operator.json"),
+                 "--output=" + str(staging / "identity")]
+    if witness is not None:
+        arguments.append("--trial-witness=" + str(witness))
+    result = subprocess.run(arguments, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=45)
+    need(result.returncode == 0 and len(result.stdout) <= 16 * 1024, "qualification_trial_controller_unavailable")
+    return None if witness else strict_json(result.stdout)
+
+
+def validate_trial_view(status, bundle, cfg, trial_id):
+    keys(status, ("version", "enrollment_id", "profile_id", "binding_sha256", "source_sha", "trial_id", "sandbox_id", "runtime_id", "generation", "created_at", "expires_at", "phase"),
+         ("initial_ready_at", "stopped_at", "resume_ready_at", "retired_at", "offline_witness_sha256", "proof_sha256"))
+    need(status["version"] == 1 and status["trial_id"] == trial_id and status["enrollment_id"] == bundle["enrollment_id"]
+         and status["profile_id"] == bundle["profile_id"] and status["binding_sha256"] == bundle["binding_sha256"]
+         and status["source_sha"] == cfg["source_sha"], "qualification_trial_public_binding_mismatch")
+    need(str(uuid.UUID(status["sandbox_id"])) == status["sandbox_id"] and uuid.UUID(status["sandbox_id"]).int != 0,
+         "invalid_trial_sandbox_identity")
+    created, expires = timestamp(status["created_at"]), timestamp(status["expires_at"])
+    need(0 < (expires - created).total_seconds() <= 900, "trial_original_ttl_outside_cap")
+    return expires
+
+
+def service_state(host, unit):
+    return host.run(["/usr/bin/systemctl", "show", unit, "--property=ActiveState", "--value"]).strip()
+
+
+def observe_offline_expiry(cfg, status, host, *, now=lambda: datetime.now(timezone.utc), pause=time.sleep):
+    prefix = cfg["installation"]["unit_prefix"]
+    transport, actor, network = (prefix + suffix for suffix in ("-transport.service", "-actor.service", "-network.service"))
+    expires = timestamp(status["expires_at"])
+    need(status["phase"] == "awaiting_expiry" and status["generation"] == 3
+         and timestamp(status["initial_ready_at"]) <= timestamp(status["stopped_at"]) <= timestamp(status["resume_ready_at"]) < expires
+         and 15 <= (expires - now()).total_seconds() <= 900, "trial_not_safe_to_pause_transport")
+    exact_trial_observation(cfg, status, host, running=True)
+    need(service_state(host, transport) == "active" and service_state(host, actor) == "active" and service_state(host, network) == "active", "owned_trial_services_not_active")
+    stopped_at = None
+    try:
+        host.run(["/usr/bin/systemctl", "stop", transport])
+        need(service_state(host, transport) == "inactive" and service_state(host, actor) == "active" and service_state(host, network) == "active", "transport_pause_not_independent")
+        stopped_at = now().isoformat().replace("+00:00", "Z")
+        need(timestamp(stopped_at) < expires, "transport_pause_missed_original_deadline")
+        while now() <= expires + timedelta(seconds=90):
+            need(service_state(host, transport) == "inactive" and service_state(host, actor) == "active" and service_state(host, network) == "active", "trial_offline_service_independence_lost")
+            if now() >= expires:
+                try:
+                    observation = exact_trial_observation(cfg, status, host, running=False)
+                    receipt = owned_metadata(Path(cfg["installation"]["state_root"]) / "worker/runner-protocol" / (status["sandbox_id"] + ".expired.json"), cfg["installation"]["uid"])
+                    lease = receipt.get("lease", {})
+                    need(lease.get("sandbox_id") == status["sandbox_id"] and lease.get("generation") == 3
+                         and timestamp(lease.get("created_at")) == timestamp(status["created_at"])
+                         and timestamp(lease.get("expires_at")) == expires and timestamp(receipt.get("stopped_at")) >= expires,
+                         "trial_actor_expiry_receipt_mismatch")
+                    return {"version": 1, "trial_id": status["trial_id"], "sandbox_id": status["sandbox_id"], "runtime_id": status["runtime_id"], "generation": 3,
+                            "binding_sha256": status["binding_sha256"], "source_sha": status["source_sha"], "created_at": status["created_at"], "expires_at": status["expires_at"],
+                            "transport_stopped_at": stopped_at, "stopped_observed_at": now().isoformat().replace("+00:00", "Z"), "actor_expired_at": receipt["stopped_at"],
+                            "transport_resumed_at": "pending-finally", "image_digest": observation["image"] if observation["image"].startswith("sha256:") else "sha256:" + observation["image"],
+                            "memory_max_bytes": 134217728, "memory_swap_max_bytes": 0, "pids_max": 64, "cpu_quota_us": 100000, "cpu_period_us": 100000,
+                            "cgroup_populated": False, "observer_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+                except Refused as error:
+                    if str(error) not in ("trial_provider_still_running", "trial_actual_cgroup_population_mismatch"):
+                        raise
+                except FileNotFoundError:
+                    # The actor publishes its bounded receipt after stop; an
+                    # absent receipt is not successful proof.
+                    pass
+            pause(2)
+        raise Refused("trial_offline_expiry_not_observed_before_bounded_timeout")
+    finally:
+        # Restart only the exact owned transport even if observation fails.
+        host.run(["/usr/bin/systemctl", "start", transport])
+        need(service_state(host, transport) == "active", "owned_transport_restart_failed_requires_inspection")
+
+
+def completed_trial_report(cfg, bundle, installer, host, status, trial_id):
+    need(status.get("proof_sha256") and status.get("retired_at") and status.get("offline_witness_sha256"), "trial_complete_proof_not_observed")
+    pin(status["proof_sha256"])
+    pin(status["offline_witness_sha256"])
+    report = qualification_report(cfg, bundle, installer, host, {"installation": "activation-requested"})
+    for check in report["checks"][2:]:
+        check["result"] = "passed"
+        check["evidence"] = "Actual canonical qualification trial " + trial_id + " proof " + status["proof_sha256"] + "; lifecycle/network ACKs, exact local offline expiry witness and confirmed retirement. Runner SSH observations remain runner reported."
+    return report
+
+
+def finish_trial_report(cfg, bundle, installer, host, status, trial_id, staging, executable):
+    output = staging / ("qualification-complete-" + trial_id + ".json")
+    if output.exists() or output.is_symlink():
+        report = strict_json(file_bytes(output, 16 * 1024))
+        need(report.get("enrollment_id") == bundle["enrollment_id"] and report.get("profile_id") == bundle["profile_id"]
+             and report.get("binding_sha256") == bundle["binding_sha256"] and report.get("source_sha") == cfg["source_sha"], "retained_trial_report_binding_changed")
+    else:
+        report = completed_trial_report(cfg, bundle, installer, host, status, trial_id)
+        write_exact(output, (json.dumps(report, sort_keys=True) + "\n").encode())
+    result = subprocess.run([str(executable), "--qualification-report=" + str(output), "--install-config=" + str(staging / "operator.json"), "--output=" + str(staging / "identity")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+    need(result.returncode == 0, "native_report_upload_unavailable_retain_actual_witness")
+    return {"trial": "retired-with-proof", "native_qualification": False, "administrator_review_required": True}
+
+
+def qualification_interrupt(*_args):
+    raise InterruptedError("qualification interrupted")
+
+
+def retained_witness_matches(witness, status):
+    need(witness.get("version") == 1 and witness.get("generation") == 3 and witness.get("cgroup_populated") is False,
+         "retained_offline_witness_invalid")
+    for name in ("trial_id", "sandbox_id", "runtime_id", "binding_sha256", "source_sha", "created_at", "expires_at"):
+        need(witness.get(name) == status.get(name), "retained_offline_witness_binding_changed")
+
+
+def resume_interrupted_transport(cfg, staging, host, trial_id):
+    transport = cfg["installation"]["unit_prefix"] + "-transport.service"
+    if service_state(host, transport) != "inactive":
+        return
+    path = staging / ("qualification-pause-" + trial_id + ".json")
+    need(path.exists(), "owned_transport_inactive_requires_explicit_install_activation")
+    journal = strict_json(file_bytes(path, 32768))
+    need(journal.get("trial_id") == trial_id and journal.get("source_sha") == cfg["source_sha"], "qualification_recovery_journal_changed")
+    print("A previous authorized qualification pause left this installation's transport stopped. Recovery does not create native proof.", flush=True)
+    with open("/dev/tty", "r+") as terminal:
+        terminal.write("Type RESUME to restart only this installation's transport and allow bounded cleanup: ")
+        terminal.flush()
+        need(terminal.readline(32).strip() == "RESUME", "qualification_transport_recovery_not_confirmed")
+    host.run(["/usr/bin/systemctl", "start", transport])
+    need(service_state(host, transport) == "active", "qualification_transport_recovery_failed")
+
+
+def await_trial_retirement(cfg, bundle, installer, host, trial_id, staging, executable):
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        status = trial_command(cfg, staging, executable, trial_id)
+        validate_trial_view(status, bundle, cfg, trial_id)
+        if status.get("proof_sha256") and status.get("retired_at"):
+            return finish_trial_report(cfg, bundle, installer, host, status, trial_id, staging, executable)
+        time.sleep(2)
+    raise Refused("trial_cleanup_pending_no_complete_proof_retain_witness")
+
+
+def run_qualification(trial_id):
+    need(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() in ("x86_64", "amd64"), "explicit_linux_amd64_host_admin_required")
+    need(str(uuid.UUID(trial_id)) == trial_id and uuid.UUID(trial_id).int != 0, "invalid_qualification_trial_identity")
+    state = Path(__file__).absolute().parent
+    cfg = strict_json(file_bytes(state / "enrollment-config.json", 32768))
+    need(Path(cfg["installation"]["state_root"]) == state, "qualification_installed_state_root_mismatch")
+    enrollment_id = state.name
+    need(str(uuid.UUID(enrollment_id)) == enrollment_id, "qualification_requires_ui_enrolled_installation")
+    staging = private_directory(Path("/var/lib/tunnex-sandbox-enrollment") / enrollment_id)
+    spec = importlib.util.spec_from_file_location("tunnex_qualification_installer", state / "install.py")
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    installer.validate(cfg)
+    completed_installation(cfg, installer)
+    host = installer.Host()
+    executable = state / "bin/tunnex-sandbox-runner-enroll"
+    bundle = strict_json(file_bytes(staging / "identity/enrollment.json", 256 * 1024))
+    resume_interrupted_transport(cfg, staging, host, trial_id)
+    print("Qualification will pause only this installation's transport across the trial's original expiry. The actor/helper and hard expiry guard stay active.", flush=True)
+    with open("/dev/tty", "r+") as terminal:
+        terminal.write("Type QUALIFY to observe this exact owned trial; Enter cancels before any service change: ")
+        terminal.flush()
+        need(terminal.readline(32).strip() == "QUALIFY", "qualification_pause_not_confirmed")
+    status = trial_command(cfg, staging, executable, trial_id)
+    expires = validate_trial_view(status, bundle, cfg, trial_id)
+    if status.get("proof_sha256") and status.get("retired_at") and status.get("offline_witness_sha256"):
+        return finish_trial_report(cfg, bundle, installer, host, status, trial_id, staging, executable)
+    witness_path = staging / ("qualification-witness-" + trial_id + ".json")
+    if witness_path.exists() or witness_path.is_symlink():
+        retained_witness_matches(strict_json(file_bytes(witness_path, 16 * 1024)), status)
+        trial_command(cfg, staging, executable, trial_id, witness_path)
+        return await_trial_retirement(cfg, bundle, installer, host, trial_id, staging, executable)
+    while status["phase"] != "awaiting_expiry":
+        need(not status.get("retired_at") and datetime.now(timezone.utc) < expires and status["phase"] not in ("failed", "canceled", "revoked"), "trial_not_available_for_offline_observation")
+        print("Waiting for actual control-plane Ready, stop and resumed Ready observations.", flush=True)
+        time.sleep(2)
+        status = trial_command(cfg, staging, executable, trial_id)
+        validate_trial_view(status, bundle, cfg, trial_id)
+    previous = signal.signal(signal.SIGTERM, qualification_interrupt)
+    try:
+        write_exact(staging / ("qualification-pause-" + trial_id + ".json"), (json.dumps(status, sort_keys=True) + "\n").encode())
+        witness = observe_offline_expiry(cfg, status, host)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    witness["transport_resumed_at"] = observed_time()
+    path = staging / ("qualification-witness-" + trial_id + ".json")
+    write_exact(path, (json.dumps(witness, sort_keys=True) + "\n").encode())
+    trial_command(cfg, staging, executable, trial_id, path)
+    return await_trial_retirement(cfg, bundle, installer, host, trial_id, staging, executable)
 
 
 def activation_ceremony(cfg, host):
@@ -404,10 +779,16 @@ def activation_ceremony(cfg, host):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for flag in ("enrollment-id", "api-url", "bundle-url", "bundle-sha256", "source-sha", "edition"):
-        parser.add_argument("--" + flag, required=True)
+        parser.add_argument("--" + flag)
+    parser.add_argument("--qualification-trial-id")
     options = parser.parse_args()
     try:
-        print(json.dumps(run(options), sort_keys=True))
+        if options.qualification_trial_id:
+            need(not any(getattr(options, flag.replace("-", "_")) for flag in ("enrollment-id", "api-url", "bundle-url", "bundle-sha256", "source-sha", "edition")), "qualification_uses_only_installed_public_configuration")
+            print(json.dumps(run_qualification(options.qualification_trial_id), sort_keys=True))
+        else:
+            need(all(getattr(options, flag.replace("-", "_")) for flag in ("enrollment-id", "api-url", "bundle-url", "bundle-sha256", "source-sha", "edition")), "required_public_bootstrap_parameters_missing")
+            print(json.dumps(run(options), sort_keys=True))
     except Refused as error:
         print(str(error) + ": inspect the stated host prerequisite or public pin; retain private staging and retry the same enrollment before expiry. Revoke it in the UI to cancel. Partial installs require inspection.", file=sys.stderr)
         raise SystemExit(1)
