@@ -6655,6 +6655,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/sandbox-runner-enrollments/{enrollmentId}/qualification-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review exact native qualification evidence; approval cannot bypass unsupported or unverified checks */
+        post: operations["reviewSandboxRunnerQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/sandbox-runner-enrollments": {
         parameters: {
             query?: never;
@@ -7112,6 +7132,7 @@ export interface components {
             last_seen_at?: string;
             blocked_reasons: string[];
             install_command: string;
+            qualification?: components["schemas"]["SandboxRunnerQualificationRecord"];
         };
         SandboxRunnerEnrollmentList: {
             profiles: components["schemas"]["SandboxRunnerEnrollmentProfile"][];
@@ -7143,6 +7164,60 @@ export interface components {
             runner_ca: string;
             api_ca: string;
             install: components["schemas"]["SandboxRunnerInstallPlan"];
+            /** Format: uuid */
+            profile_id: string;
+            binding_sha256: string;
+        };
+        SandboxRunnerQualificationPlatform: {
+            os: string;
+            version: string;
+            architecture: string;
+        };
+        SandboxRunnerQualificationCheck: {
+            /** @enum {string} */
+            code: "host-capabilities" | "approved-image-load" | "bounded-provider-start-stop" | "offline-expiry-fence" | "private-network-connectivity";
+            /** @enum {string} */
+            result: "passed" | "failed" | "unrun";
+            evidence: string;
+        };
+        SandboxRunnerQualificationReport: {
+            /** @enum {integer} */
+            version: 1;
+            /** Format: uuid */
+            enrollment_id: string;
+            /** Format: uuid */
+            profile_id: string;
+            binding_sha256: string;
+            source_sha: string;
+            platform: components["schemas"]["SandboxRunnerQualificationPlatform"];
+            checks: components["schemas"]["SandboxRunnerQualificationCheck"][];
+            image_config_digests: string[];
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string;
+        };
+        SandboxRunnerQualificationRecord: {
+            report_sha256: string;
+            report: components["schemas"]["SandboxRunnerQualificationReport"];
+            /** @enum {string} */
+            decision: "pending" | "approved" | "rejected";
+            /** Format: uuid */
+            reviewed_by?: string;
+            /** Format: date-time */
+            reviewed_at?: string;
+            review_note?: string;
+            /** Format: date-time */
+            submitted_at: string;
+            runner_spki_sha256: string;
+            approvable: boolean;
+            blocked_reasons: string[];
+        };
+        SandboxRunnerQualificationReview: {
+            expected_report_sha256: string;
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            review_note: string;
         };
         SandboxSetupSettings: {
             enabled: boolean;
@@ -23258,6 +23333,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sandbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    reviewSandboxRunnerQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxRunnerQualificationReview"];
+            };
+        };
+        responses: {
+            /** @description Current nonsecret enrollment and reviewed qualification */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerEnrollment"];
                 };
             };
             default: components["responses"]["Error"];
