@@ -8518,6 +8518,7 @@ components:
         "architecture":
           "type": "string"
           "enum": ["amd64"]
+          "x-enum-varnames": ["SandboxRunnerInstallImageArchitectureAmd64"]
         "qualification_evidence":
           "type": "string"
       "required": ["template_id","url","sha256","config_digest","architecture","qualification_evidence"]
@@ -8574,6 +8575,7 @@ components:
         "edition":
           "type": "string"
           "enum": ["open","enterprise"]
+          "x-enum-varnames": ["SandboxRunnerInstallPlanEditionOpen","SandboxRunnerInstallPlanEditionEnterprise"]
         "source_sha":
           "type": "string"
           "pattern": "^[0-9a-f]{40}$"
@@ -8605,6 +8607,7 @@ components:
         "architecture":
           "type": "string"
           "enum": ["amd64"]
+          "x-enum-varnames": ["SandboxRunnerEnrollmentProfileArchitectureAmd64"]
         "prerequisites":
           "type": "array"
           "items":
@@ -8620,9 +8623,11 @@ components:
         "host_os":
           "type": "string"
           "enum": ["ubuntu"]
+          "x-enum-varnames": ["SandboxRunnerEnrollmentProfileHostOsUbuntu"]
         "host_version":
           "type": "string"
           "enum": ["26.04"]
+          "x-enum-varnames": ["SandboxRunnerEnrollmentProfileHostVersion2604"]
         "terminal_gateway_id":
           "type": "string"
           "format": "uuid"
@@ -8642,6 +8647,7 @@ components:
         "state":
           "type": "string"
           "enum": ["awaiting_install","awaiting_connection","ready","offline","expired","revoked","pending_cleanup"]
+          "x-enum-varnames": ["SandboxRunnerEnrollmentStateAwaitingInstall","SandboxRunnerEnrollmentStateAwaitingConnection","SandboxRunnerEnrollmentStateReady","SandboxRunnerEnrollmentStateOffline","SandboxRunnerEnrollmentStateExpired","SandboxRunnerEnrollmentStateRevoked","SandboxRunnerEnrollmentStatePendingCleanup"]
         "created_at":
           "type": "string"
           "format": "date-time"
@@ -8691,6 +8697,8 @@ components:
           "$ref": "#/components/schemas/SandboxRunnerEnrollment"
         "bootstrap_token":
           "type": "string"
+          "minLength": 32
+          "maxLength": 128
       "required": ["enrollment"]
     "SandboxRunnerEnrollmentCreate":
       "type": "object"
@@ -8765,9 +8773,11 @@ components:
         "code":
           "type": "string"
           "enum": ["host-capabilities","approved-image-load","bounded-provider-start-stop","offline-expiry-fence","private-network-connectivity"]
+          "x-enum-varnames": ["SandboxRunnerQualificationCheckCodeHostCapabilities","SandboxRunnerQualificationCheckCodeApprovedImageLoad","SandboxRunnerQualificationCheckCodeBoundedProviderStartStop","SandboxRunnerQualificationCheckCodeOfflineExpiryFence","SandboxRunnerQualificationCheckCodePrivateNetworkConnectivity"]
         "result":
           "type": "string"
           "enum": ["passed","failed","unrun"]
+          "x-enum-varnames": ["SandboxRunnerQualificationCheckResultPassed","SandboxRunnerQualificationCheckResultFailed","SandboxRunnerQualificationCheckResultUnrun"]
         "evidence":
           "type": "string"
           "maxLength": 1024
@@ -8820,6 +8830,7 @@ components:
         "decision":
           "type": "string"
           "enum": ["pending","approved","rejected"]
+          "x-enum-varnames": ["SandboxRunnerQualificationRecordDecisionPending","SandboxRunnerQualificationRecordDecisionApproved","SandboxRunnerQualificationRecordDecisionRejected"]
         "reviewed_by":
           "type": "string"
           "format": "uuid"
@@ -8850,6 +8861,7 @@ components:
         "decision":
           "type": "string"
           "enum": ["approve","reject"]
+          "x-enum-varnames": ["SandboxRunnerQualificationReviewDecisionApprove","SandboxRunnerQualificationReviewDecisionReject"]
         "review_note":
           "type": "string"
           "minLength": 1
@@ -8865,7 +8877,7 @@ components:
         "ssh_public_keys":
           "type": "array"
           "minItems": 1
-          "maxItems": 8
+          "maxItems": 1
           "items":
             "type": "string"
             "minLength": 1
@@ -8881,9 +8893,11 @@ components:
         "code":
           "type": "string"
           "enum": ["initial_ready","stopped","resume_ready","offline_expiry","retired"]
+          "x-enum-varnames": ["SandboxRunnerQualificationTrialPhaseCodeInitialReady","SandboxRunnerQualificationTrialPhaseCodeStopped","SandboxRunnerQualificationTrialPhaseCodeResumeReady","SandboxRunnerQualificationTrialPhaseCodeOfflineExpiry","SandboxRunnerQualificationTrialPhaseCodeRetired"]
         "state":
           "type": "string"
           "enum": ["pending","passed","failed"]
+          "x-enum-varnames": ["SandboxRunnerQualificationTrialPhaseStatePending","SandboxRunnerQualificationTrialPhaseStatePassed","SandboxRunnerQualificationTrialPhaseStateFailed"]
         "observed_at":
           "type": "string"
           "format": "date-time"
@@ -8913,6 +8927,7 @@ components:
         "state":
           "type": "string"
           "enum": ["pending","running","awaiting_expiry","cleanup_pending","complete","failed"]
+          "x-enum-varnames": ["SandboxRunnerQualificationTrialStatePending","SandboxRunnerQualificationTrialStateRunning","SandboxRunnerQualificationTrialStateAwaitingExpiry","SandboxRunnerQualificationTrialStateCleanupPending","SandboxRunnerQualificationTrialStateComplete","SandboxRunnerQualificationTrialStateFailed"]
         "phase":
           "type": "string"
           "maxLength": 80
