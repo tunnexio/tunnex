@@ -74,6 +74,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"github.com/tunnexio/tunnex/apps/api/internal/secrets"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
@@ -572,6 +573,8 @@ func main() {
 		}
 		// Qualified runtime/network adapters are intentionally absent until validated.
 		var apiSandboxOrchestrator *sandboxes.APIOrchestrator
+		var runnerEnrollment *sandboxes.RunnerEnrollmentService
+		var runnerQualification *sandboxes.RunnerQualificationService
 		var moduleClose func() error
 		sandboxAvailable := func() bool { return fixtureAvailable }
 		var sandboxWake func()
@@ -580,7 +583,36 @@ func main() {
 			if runtimeErr != nil {
 				return sandboxModule{}, runtimeErr
 			}
-			runtimeClient, runtimeErr := runtimeConfig.Client()
+			var runtimeClient *sandboxes.WorkerRPCClient
+			if runtimeConfig.Enrollment != nil {
+				enrollmentConfig := *runtimeConfig.Enrollment
+				enrollmentConfig.ModuleState = cfg.SandboxModuleState()
+				if enrollmentConfig.DistributionFile != "" {
+					enrollmentConfig, runtimeErr = sandboxes.LoadRunnerDistributionConfig(enrollmentConfig.DistributionFile, enrollmentConfig)
+				}
+				if runtimeErr == nil && enrollmentConfig.WorkloadImageDeliveryFile != "" {
+					enrollmentConfig, runtimeErr = sandboxes.LoadRunnerWorkloadImageDeliveryConfig(enrollmentConfig.WorkloadImageDeliveryFile, enrollmentConfig)
+				}
+				// All issuer paths are explicit CP deployment inputs. The machine receives
+				// only public CA/certificate material; no issuer key enters the API plan.
+				var issuer *sandboxrunner.Issuer
+				if runtimeErr == nil {
+					issuer, runtimeErr = sandboxes.LoadRemoteWorkerIssuer(*runtimeConfig.Remote)
+				}
+				if runtimeErr == nil {
+					runnerEnrollment, runtimeErr = sandboxes.NewRunnerEnrollmentService(sandboxStore, runtimeConfig.Binding, enrollmentConfig, issuer)
+				}
+				if runtimeErr == nil {
+					runnerQualification, runtimeErr = sandboxes.NewRunnerQualificationService(sandboxStore, runnerEnrollment, runtimeConfig.Binding)
+				}
+				if runtimeErr == nil {
+					runnerEnrollment.WithNativeProofVerifier(runnerQualification).WithQualificationTrialValidator(runnerQualification)
+					sandboxStore.WithRunnerAvailability(runnerEnrollment.RuntimeReady).WithRunnerAdmission(runnerEnrollment.BindSandboxAdmission)
+					runtimeClient, runtimeErr = runtimeConfig.EnrollmentClient(runnerQualification)
+				}
+			} else {
+				runtimeClient, runtimeErr = runtimeConfig.Client()
+			}
 			if runtimeErr == nil {
 				moduleClose = runtimeClient.Close
 			}
@@ -610,9 +642,12 @@ func main() {
 				return runtimeConfig.Binding.Validate() == nil && (runtimeConfig.Binding.Persistent() || time.Now().Before(runtimeConfig.Binding.ExpiresAt)) && runtimeClient.CheckBinding(checkCtx, runtimeConfig.Binding) == nil
 			}
 			sandboxWake = apiSandboxOrchestrator.Wake
+			if runnerQualification != nil {
+				runnerQualification.WithWake(sandboxWake)
+			}
 		}
 
-		m := sandboxModule{store: sandboxStore, available: sandboxAvailable, wake: sandboxWake, close: moduleClose}
+		m := sandboxModule{enrollment: runnerEnrollment, qualification: runnerQualification, store: sandboxStore, available: sandboxAvailable, wake: sandboxWake, close: moduleClose}
 		if apiSandboxOrchestrator != nil {
 			m.run = apiSandboxOrchestrator.Run
 		}
@@ -647,28 +682,30 @@ func main() {
 	defer appEvents.Close()
 	appAccessSvc.WithEventProducer(appEvents)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
-		AppDomains:               domainSettings,
-		Sandboxes:                sandboxDeps.Sandboxes,
-		SandboxModuleState:       sandboxDeps.SandboxModuleState,
-		SandboxProvisioningReady: sandboxDeps.SandboxProvisioningReady,
-		SandboxSkillsReady:       sandboxDeps.SandboxSkillsReady,
-		SandboxWake:              sandboxDeps.SandboxWake,
-		IPsecStatus:              ipsecStore,
-		IPsecRuntime:             ipsecStore,
-		IPsecEligibility:         ipsecStore,
-		IPsecConnections:         ipsecStore,
-		IPsecProviders:           ipsecStore,
-		IPsecSealer:              sealer,
-		IPsecSettings:            ipsec.NewSettingsStore(pool),
-		System:                   systemQueries,
-		AICredentials:            aiCredentials,
-		AIWorkloads:              aiWorkloads,
-		AIPolicies:               aiPolicies,
-		AIEngineInstalled:        cfg.AIBootstrapInstalled,
-		AIAllowPrivateHTTP:       cfg.AIAllowPrivateHTTP,
-		AITransport:              aitransport.New(pool),
-		AIAdapter:                aiAdapter,
-		AgentRuntimePool:         pool,
+		AppDomains:                 domainSettings,
+		Sandboxes:                  sandboxDeps.Sandboxes,
+		SandboxModuleState:         sandboxDeps.SandboxModuleState,
+		SandboxProvisioningReady:   sandboxDeps.SandboxProvisioningReady,
+		SandboxSkillsReady:         sandboxDeps.SandboxSkillsReady,
+		SandboxWake:                sandboxDeps.SandboxWake,
+		SandboxRunnerEnrollment:    sandboxDeps.SandboxRunnerEnrollment,
+		SandboxRunnerQualification: sandboxDeps.SandboxRunnerQualification,
+		IPsecStatus:                ipsecStore,
+		IPsecRuntime:               ipsecStore,
+		IPsecEligibility:           ipsecStore,
+		IPsecConnections:           ipsecStore,
+		IPsecProviders:             ipsecStore,
+		IPsecSealer:                sealer,
+		IPsecSettings:              ipsec.NewSettingsStore(pool),
+		System:                     systemQueries,
+		AICredentials:              aiCredentials,
+		AIWorkloads:                aiWorkloads,
+		AIPolicies:                 aiPolicies,
+		AIEngineInstalled:          cfg.AIBootstrapInstalled,
+		AIAllowPrivateHTTP:         cfg.AIAllowPrivateHTTP,
+		AITransport:                aitransport.New(pool),
+		AIAdapter:                  aiAdapter,
+		AgentRuntimePool:           pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
 		}),

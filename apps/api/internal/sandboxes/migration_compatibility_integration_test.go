@@ -36,7 +36,7 @@ func TestSandboxMigrationsPreserveOccupiedDevPredecessor(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT version,dirty FROM schema_migrations`).Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 195 || dirty {
+	if version != 197 || dirty {
 		t.Fatal(fmt.Sprintf("unexpected version %d dirty=%v", version, dirty))
 	}
 	if err := pool.QueryRow(ctx, `SELECT value FROM existing_predecessor_marker`).Scan(&marker); err != nil || marker != "preserved" {

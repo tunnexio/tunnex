@@ -9,12 +9,14 @@ import (
 )
 
 type sandboxModule struct {
-	state     string
-	store     *sandboxes.Store
-	available func() bool
-	wake      func()
-	run       func(context.Context, func(uuid.UUID, error)) error
-	close     func() error
+	state         string
+	store         *sandboxes.Store
+	enrollment    *sandboxes.RunnerEnrollmentService
+	qualification *sandboxes.RunnerQualificationService
+	available     func() bool
+	wake          func()
+	run           func(context.Context, func(uuid.UUID, error)) error
+	close         func() error
 }
 
 // configure is intentionally lazy: off cannot construct a worker, listener,
@@ -42,6 +44,12 @@ func initializeSandboxModule(c config.Config, retired func() error, configure fu
 }
 func (m sandboxModule) deps() apphttp.Deps {
 	d := apphttp.Deps{SandboxModuleState: m.state, SandboxProvisioningReady: m.available, SandboxSkillsReady: m.available, SandboxWake: m.wake}
+	if m.enrollment != nil {
+		d.SandboxRunnerEnrollment = m.enrollment
+	}
+	if m.qualification != nil {
+		d.SandboxRunnerQualification = m.qualification
+	}
 	if m.store != nil {
 		d.Sandboxes = m.store
 	}
