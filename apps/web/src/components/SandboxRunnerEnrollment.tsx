@@ -67,7 +67,7 @@ export function SandboxRunnerEnrollment({ orgId, canManage, onRunnerChange, onRe
     if (lastStates.current && result.data.enrollments.some(enrollment => (lastStates.current?.get(enrollment.id) === "ready") !== (enrollment.state === "ready"))) onChange.current?.();
     lastStates.current = states;
     setReadError(null); setData(result.data);
-    onConfirmation.current?.(true);
+    onConfirmation.current?.(result.data.enrollments.some(enrollment=>enrollment.state==="ready"));
   }, [orgId, canManage]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
