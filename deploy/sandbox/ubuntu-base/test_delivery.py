@@ -138,7 +138,7 @@ class BuildTests(unittest.TestCase):
                 self.assertIn("--pull=false", args)
                 context = Path(args[-1])
                 expected = {"Containerfile", "expected-inventory.tsv"} | {
-                    p["path"] for p in lock["download_packages"]}
+                    "packages/" + delivery.package_filename(p) for p in lock["download_packages"]}
                 self.assertEqual({str(path.relative_to(context)) for path in context.rglob("*") if path.is_file()}, expected)
                 self.assertIn("--no-download --no-install-recommends", (context / "Containerfile").read_text())
                 self.assertIn("exit 101", (context / "Containerfile").read_text())

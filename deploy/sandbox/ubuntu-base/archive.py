@@ -119,7 +119,7 @@ def assemble_context(lock, lock_raw, cache, source, context, go):
     for record in lock["metadata"] + lock["download_packages"]:
         delivery.verify(cache / record["path"], record)
     for record in lock["download_packages"]:
-        shutil.copyfile(cache / record["path"], context / "packages" / Path(record["path"]).name)
+        shutil.copyfile(cache / record["path"], context / "packages" / delivery.package_filename(record))
     base_recipe = committed("deploy/sandbox/ubuntu-base/Containerfile", source).decode()
     final_recipe = committed("deploy/sandbox/Containerfile", source).decode()
     delivery.need(final_recipe.count("FROM ${BASE_IMAGE}\n") == 1

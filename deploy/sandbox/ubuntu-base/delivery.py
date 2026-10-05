@@ -60,6 +60,15 @@ def sha256(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+def package_filename(record):
+    # APT's --no-download cache lookup uses the canonical archive basename.
+    # The external cache remains content-addressed and verified separately.
+    name = urllib.parse.unquote(PurePosixPath(urllib.parse.urlsplit(record["url"]).path).name)
+    need(name.endswith(".deb") and "/" not in name and "\\" not in name
+         and re.fullmatch(r"[A-Za-z0-9_.+:~%-]{1,240}", name), "invalid package filename")
+    return name
+
+
 def safe_relative(path):
     need(isinstance(path, str), "invalid input path")
     p = PurePosixPath(path)
@@ -190,6 +199,7 @@ def validate_lock(lock):
         need(record["name"] not in package_names and record["name"] in inventory_names,
              "duplicate package or package outside locked installed inventory")
         package_names.add(record["name"])
+        package_filename(record)
         row = next(row for row in inventory if row.split("\t")[0].split(":")[0] == record["name"])
         need(row.split("\t")[1:] == [record["version"], record["architecture"]],
              "package version differs from expected inventory")
@@ -348,7 +358,7 @@ def build_base(lock_path, cache, tag, engine):
         context = Path(directory)
         (context / "packages").mkdir()
         for record in lock["download_packages"]:
-            shutil.copyfile(cache / record["path"], context / "packages" / Path(record["path"]).name)
+            shutil.copyfile(cache / record["path"], context / "packages" / package_filename(record))
         shutil.copyfile(HERE / "Containerfile", context / "Containerfile")
         (context / "expected-inventory.tsv").write_text("\n".join(lock["installed_inventory"]) + "\n")
         run([engine, "build", "--pull=false" if engine == "docker" else "--pull=never",
