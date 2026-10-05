@@ -1533,8 +1533,8 @@ const (
 
 // Defines values for MetaEdition.
 const (
-	MetaEditionEnterprise MetaEdition = "enterprise"
-	MetaEditionOpen       MetaEdition = "open"
+	Enterprise MetaEdition = "enterprise"
+	Open       MetaEdition = "open"
 )
 
 // Defines values for MetaSandboxModuleState.
@@ -1744,8 +1744,8 @@ const (
 
 // Defines values for SandboxImageProfileArchitecture.
 const (
-	SandboxImageProfileArchitectureAmd64 SandboxImageProfileArchitecture = "amd64"
-	SandboxImageProfileArchitectureArm64 SandboxImageProfileArchitecture = "arm64"
+	Amd64 SandboxImageProfileArchitecture = "amd64"
+	Arm64 SandboxImageProfileArchitecture = "arm64"
 )
 
 // Defines values for SandboxImageProfileQualification.
@@ -1756,13 +1756,13 @@ const (
 
 // Defines values for SandboxRunnerEnrollmentState.
 const (
-	AwaitingConnection SandboxRunnerEnrollmentState = "awaiting_connection"
-	AwaitingInstall    SandboxRunnerEnrollmentState = "awaiting_install"
-	Expired            SandboxRunnerEnrollmentState = "expired"
-	Offline            SandboxRunnerEnrollmentState = "offline"
-	PendingCleanup     SandboxRunnerEnrollmentState = "pending_cleanup"
-	Ready              SandboxRunnerEnrollmentState = "ready"
-	Revoked            SandboxRunnerEnrollmentState = "revoked"
+	SandboxRunnerEnrollmentStateAwaitingConnection SandboxRunnerEnrollmentState = "awaiting_connection"
+	SandboxRunnerEnrollmentStateAwaitingInstall    SandboxRunnerEnrollmentState = "awaiting_install"
+	SandboxRunnerEnrollmentStateExpired            SandboxRunnerEnrollmentState = "expired"
+	SandboxRunnerEnrollmentStateOffline            SandboxRunnerEnrollmentState = "offline"
+	SandboxRunnerEnrollmentStatePendingCleanup     SandboxRunnerEnrollmentState = "pending_cleanup"
+	SandboxRunnerEnrollmentStateReady              SandboxRunnerEnrollmentState = "ready"
+	SandboxRunnerEnrollmentStateRevoked            SandboxRunnerEnrollmentState = "revoked"
 )
 
 // Defines values for SandboxRunnerEnrollmentProfileArchitecture.
@@ -1772,17 +1772,17 @@ const (
 
 // Defines values for SandboxRunnerEnrollmentProfileHostOs.
 const (
-	Ubuntu SandboxRunnerEnrollmentProfileHostOs = "ubuntu"
+	SandboxRunnerEnrollmentProfileHostOsUbuntu SandboxRunnerEnrollmentProfileHostOs = "ubuntu"
 )
 
 // Defines values for SandboxRunnerEnrollmentProfileHostVersion.
 const (
-	N2604 SandboxRunnerEnrollmentProfileHostVersion = "26.04"
+	SandboxRunnerEnrollmentProfileHostVersion2604 SandboxRunnerEnrollmentProfileHostVersion = "26.04"
 )
 
 // Defines values for SandboxRunnerInstallImageArchitecture.
 const (
-	Amd64 SandboxRunnerInstallImageArchitecture = "amd64"
+	SandboxRunnerInstallImageArchitectureAmd64 SandboxRunnerInstallImageArchitecture = "amd64"
 )
 
 // Defines values for SandboxRunnerInstallPlanEdition.
@@ -1798,11 +1798,11 @@ const (
 
 // Defines values for SandboxRunnerQualificationCheckCode.
 const (
-	ApprovedImageLoad          SandboxRunnerQualificationCheckCode = "approved-image-load"
-	BoundedProviderStartStop   SandboxRunnerQualificationCheckCode = "bounded-provider-start-stop"
-	HostCapabilities           SandboxRunnerQualificationCheckCode = "host-capabilities"
-	OfflineExpiryFence         SandboxRunnerQualificationCheckCode = "offline-expiry-fence"
-	PrivateNetworkConnectivity SandboxRunnerQualificationCheckCode = "private-network-connectivity"
+	SandboxRunnerQualificationCheckCodeApprovedImageLoad          SandboxRunnerQualificationCheckCode = "approved-image-load"
+	SandboxRunnerQualificationCheckCodeBoundedProviderStartStop   SandboxRunnerQualificationCheckCode = "bounded-provider-start-stop"
+	SandboxRunnerQualificationCheckCodeHostCapabilities           SandboxRunnerQualificationCheckCode = "host-capabilities"
+	SandboxRunnerQualificationCheckCodeOfflineExpiryFence         SandboxRunnerQualificationCheckCode = "offline-expiry-fence"
+	SandboxRunnerQualificationCheckCodePrivateNetworkConnectivity SandboxRunnerQualificationCheckCode = "private-network-connectivity"
 )
 
 // Defines values for SandboxRunnerQualificationCheckResult.
@@ -1826,8 +1826,8 @@ const (
 
 // Defines values for SandboxRunnerQualificationReviewDecision.
 const (
-	Approve SandboxRunnerQualificationReviewDecision = "approve"
-	Reject  SandboxRunnerQualificationReviewDecision = "reject"
+	SandboxRunnerQualificationReviewDecisionApprove SandboxRunnerQualificationReviewDecision = "approve"
+	SandboxRunnerQualificationReviewDecisionReject  SandboxRunnerQualificationReviewDecision = "reject"
 )
 
 // Defines values for SandboxRunnerQualificationTrialState.
@@ -1842,11 +1842,11 @@ const (
 
 // Defines values for SandboxRunnerQualificationTrialPhaseCode.
 const (
-	InitialReady  SandboxRunnerQualificationTrialPhaseCode = "initial_ready"
-	OfflineExpiry SandboxRunnerQualificationTrialPhaseCode = "offline_expiry"
-	ResumeReady   SandboxRunnerQualificationTrialPhaseCode = "resume_ready"
-	Retired       SandboxRunnerQualificationTrialPhaseCode = "retired"
-	Stopped       SandboxRunnerQualificationTrialPhaseCode = "stopped"
+	SandboxRunnerQualificationTrialPhaseCodeInitialReady  SandboxRunnerQualificationTrialPhaseCode = "initial_ready"
+	SandboxRunnerQualificationTrialPhaseCodeOfflineExpiry SandboxRunnerQualificationTrialPhaseCode = "offline_expiry"
+	SandboxRunnerQualificationTrialPhaseCodeResumeReady   SandboxRunnerQualificationTrialPhaseCode = "resume_ready"
+	SandboxRunnerQualificationTrialPhaseCodeRetired       SandboxRunnerQualificationTrialPhaseCode = "retired"
+	SandboxRunnerQualificationTrialPhaseCodeStopped       SandboxRunnerQualificationTrialPhaseCode = "stopped"
 )
 
 // Defines values for SandboxRunnerQualificationTrialPhaseState.
