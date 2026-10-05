@@ -5,7 +5,7 @@ export const sandboxBlockerMessages: Record<string,string> = {
  policy_not_enforcing: "Sandbox creation requires enforcing network policy mode.",
  permission_denied: "Your current role does not permit sandbox creation.",
  runtime_binding_unavailable: "The configured runtime does not admit this user or organization, or its admission window has ended.",
- runtime_not_ready: "No qualified runtime is currently connected. An operator must configure and verify the worker before activation.",
+ runtime_not_ready: "No qualified runtime is currently connected. An administrator can enroll a runner in Sandbox setup; its host must be verified before activation.",
  no_published_templates: "No runtime configurations have been published.",
  no_compatible_templates: "Published configurations do not match the configured runtime.",
  user_quota_reached: "Your active sandbox limit has been reached.",
