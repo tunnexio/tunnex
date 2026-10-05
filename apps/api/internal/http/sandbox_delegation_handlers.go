@@ -51,6 +51,19 @@ func authBeforeSandboxValidation(next http.Handler) http.Handler {
 			}
 			req = req.WithContext(ctx)
 		}
+		if orgSandbox && parts[5] == "sandbox-runner-enrollments" {
+			org, err := uuid.Parse(parts[4])
+			if err != nil || org == uuid.Nil {
+				apierr.Write(w, req, apierr.BadRequest("invalid_organization", "invalid organization"))
+				return
+			}
+			ctx, _, err := sandboxRunnerEnrollmentActor(req.Context(), org)
+			if err != nil {
+				apierr.Write(w, req, err)
+				return
+			}
+			req = req.WithContext(ctx)
+		}
 		next.ServeHTTP(w, req)
 	})
 }

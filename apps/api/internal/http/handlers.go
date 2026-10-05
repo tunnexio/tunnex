@@ -195,6 +195,8 @@ func requireVerifiedSessionUser(ctx context.Context) (*authctx.Principal, error)
 type apiServer struct {
 	sandboxModuleState       string
 	sandboxes                sandboxRepository
+	runnerEnrollment         sandboxRunnerEnrollmentRepository
+	runnerQualification      sandboxRunnerQualificationRepository
 	sandboxProvisioningReady func() bool
 	sandboxWake              func()
 	sandboxSkillsReady       func() bool
