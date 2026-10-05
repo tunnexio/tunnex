@@ -43,6 +43,7 @@ type nativeReport struct {
 }
 
 type reportConfiguration struct {
+	EnrollmentID   string          `json:"enrollment_id,omitempty"`
 	Version        int             `json:"version"`
 	Edition        string          `json:"edition"`
 	SourceSHA      string          `json:"source_sha"`

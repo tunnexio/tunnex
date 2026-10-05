@@ -1,5 +1,6 @@
 import copy
 from datetime import datetime, timedelta, timezone
+from email.message import Message
 import hashlib
 import importlib.util
 import io
@@ -12,6 +13,8 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+import urllib.request
+import urllib.response
 
 import test_install
 
@@ -30,6 +33,25 @@ class Response(io.BytesIO):
 
     def geturl(self):
         return self.url
+
+
+class SyntheticHTTPS(urllib.request.HTTPSHandler):
+    """Drive urllib's real HTTP302 handling without a socket or live artifact."""
+
+    def __init__(self, routes):
+        super().__init__()
+        self.routes = routes
+        self.requests = []
+
+    def https_open(self, request):
+        self.requests.append(request)
+        status, location, raw = self.routes[request.full_url]
+        headers = Message()
+        if location:
+            headers["Location"] = location
+        response = urllib.response.addinfourl(io.BytesIO(raw), headers, request.full_url, status)
+        response.msg = "OK" if status == 200 else "Found"
+        return response
 
 
 class EnrollmentTests(unittest.TestCase):
@@ -100,6 +122,81 @@ class EnrollmentTests(unittest.TestCase):
             self.assertFalse(destination.with_name("download.partial").exists())
         with self.assertRaises(enroll.Refused):
             enroll.NoRedirect().redirect_request(None, None, 302, None, None, "https://other.example.invalid")
+
+    def github_asset(self):
+        return ("https://github.com/tunnexio/tunnex/releases/download/v0.1.40/runner.tar.gz",
+                "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset?signature=public-cdn-fixture")
+
+    def synthetic_download(self, source, routes, pin=None, maximum=256):
+        handlers = []
+        class FixtureHTTPS(SyntheticHTTPS):
+            def __init__(self, **_kwargs):
+                super().__init__(routes)
+                handlers.append(self)
+        destination = self.root / "download"
+        with mock.patch.object(enroll.urllib.request, "HTTPSHandler", FixtureHTTPS):
+            enroll.download(source, pin or hashlib.sha256(b"synthetic public artifact").hexdigest(), destination, maximum)
+        return destination, handlers[0]
+
+    def test_public_github_302_download_keeps_exact_content_pin(self):
+        source, target = self.github_asset()
+        raw = b"synthetic public artifact"
+        destination, handler = self.synthetic_download(source, {source: (302, target, b""), target: (200, None, raw)})
+        self.assertEqual(destination.read_bytes(), raw)
+        self.assertEqual([request.full_url for request in handler.requests], [source, target])
+        self.assertTrue(all(request.get_method() == "GET" and request.data is None for request in handler.requests))
+        for request in handler.requests:
+            self.assertEqual(request.get_header("Accept"), "application/octet-stream")
+            for name in ("Authorization", "Cookie", "Proxy-authorization"):
+                self.assertIsNone(request.get_header(name))
+        destination.unlink()
+        for wrong_pin, maximum in (("f" * 64, 256), (hashlib.sha256(raw).hexdigest(), 4)):
+            with self.assertRaises(enroll.Refused):
+                self.synthetic_download(source, {source: (302, target, b""), target: (200, None, raw)}, wrong_pin, maximum)
+            self.assertFalse(destination.exists())
+            self.assertFalse(destination.with_name("download.partial").exists())
+
+    def test_public_asset_redirect_reconstructs_headerless_bodyless_get(self):
+        source, target = self.github_asset()
+        request = urllib.request.Request(source, headers={"Authorization": "synthetic-secret", "Cookie": "synthetic-cookie",
+                                                        "Proxy-Authorization": "synthetic-proxy-secret", "X-Other": "discard"})
+        forwarded = enroll.PublicAssetRedirect(source).redirect_request(request, None, 302, None, None, target)
+        self.assertEqual(forwarded.header_items(), [("Accept", "application/octet-stream")])
+        self.assertIsNone(forwarded.data)
+        for method, body in (("POST", b"synthetic-secret"), ("GET", b"synthetic-secret"), ("HEAD", None)):
+            with self.assertRaises(enroll.Refused):
+                enroll.PublicAssetRedirect(source).redirect_request(
+                    urllib.request.Request(source, data=body, method=method), None, 302, None, None, target)
+
+    def test_public_asset_redirect_refuses_other_origins_and_destinations(self):
+        source, target = self.github_asset()
+        rejected = (target.replace("https://", "http://"), target.replace("release-assets.githubusercontent.com", "evil.example.invalid"),
+                    target.replace("release-assets.githubusercontent.com", "release-assets.githubusercontent.com.evil.example.invalid"),
+                    target.replace("https://", "https://user:password@"), target + "#fragment",
+                    target.replace(".com/", ".com:444/"), target.replace("/github-production-release-asset/", "/arbitrary/"))
+        for changed in rejected:
+            with self.subTest(target=changed), self.assertRaises(enroll.Refused):
+                self.synthetic_download(source, {source: (302, changed, b"")})
+            self.assertFalse((self.root / "download").exists())
+            self.assertFalse((self.root / "download.partial").exists())
+        for changed in ("https://artifacts.example.invalid/public", source.replace("/download/", "/latest/"), source + "?token=synthetic"):
+            with self.subTest(source=changed), self.assertRaises(enroll.Refused):
+                self.synthetic_download(changed, {changed: (302, target, b"")})
+
+    def test_public_asset_redirect_chain_loop_and_bound(self):
+        source, target = self.github_asset()
+        second = target.replace("release-assets.githubusercontent.com", "objects.githubusercontent.com")
+        destination, handler = self.synthetic_download(
+            source, {source: (302, target, b""), target: (302, second, b""), second: (200, None, b"synthetic public artifact")})
+        self.assertEqual(len(handler.requests), 3)
+        destination.unlink()
+        for routes in ({source: (302, target, b""), target: (302, target, b"")},
+                       {source: (302, target, b""), target: (302, second, b""), second: (302, target + "&hop=3", b""),
+                        target + "&hop=3": (302, target + "&hop=4", b"")}):
+            with self.assertRaises(enroll.Refused):
+                self.synthetic_download(source, routes)
+            self.assertFalse(destination.exists())
+            self.assertFalse(destination.with_name("download.partial").exists())
 
     def test_unsafe_public_url_token_and_unknown_schema_refused(self):
         for url in ("http://artifacts.example.invalid/file", "https://user:secret@artifacts.example.invalid/file",
@@ -392,9 +489,21 @@ class EnrollmentTests(unittest.TestCase):
         status = {"proof_sha256": "a" * 64, "retired_at": "2026-10-05T12:00:00Z", "offline_witness_sha256": "b" * 64}
         report = enroll.completed_trial_report(cfg, bundle, test_install.install, host, status, "00000000-0000-4000-8000-000000000005")
         self.assertEqual([check["result"] for check in report["checks"]], ["passed"] * 5)
-        self.assertIn("Runner SSH observations remain runner reported", report["checks"][4]["evidence"])
+        self.assertEqual(report["checks"][4]["evidence"], "trial:00000000-0000-4000-8000-000000000005;proof_sha256:" + "a" * 64 + ";offline_witness_sha256:" + "b" * 64 + ";ssh_origin:runner")
         for key in ("proof_sha256", "retired_at", "offline_witness_sha256"):
             candidate = dict(status)
             del candidate[key]
             with self.assertRaises(enroll.Refused):
                 enroll.completed_trial_report(cfg, bundle, test_install.install, host, candidate, "00000000-0000-4000-8000-000000000005")
+
+    def test_retained_offline_witness_is_bound_and_can_recover_without_new_expiry(self):
+        cfg, _, status, _, _, _, _, _ = self.native_fixture()
+        witness = {name: status[name] for name in ("trial_id", "sandbox_id", "runtime_id", "binding_sha256", "source_sha", "created_at", "expires_at")}
+        witness.update(version=1, generation=3, cgroup_populated=False)
+        enroll.retained_witness_matches(witness, status)
+        for field in ("runtime_id", "expires_at", "binding_sha256"):
+            copy = dict(witness)
+            copy[field] = "different"
+            with self.assertRaises(enroll.Refused):
+                enroll.retained_witness_matches(copy, status)
+        self.assertEqual(cfg["enrollment_id"], self.options.enrollment_id)

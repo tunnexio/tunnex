@@ -8,6 +8,14 @@ prompt. The command never puts the token in arguments, an environment variable,
 a URL or a log. Initial bootstrap requires normal system-trusted HTTPS; install
 an organization's custom API trust through its normal host trust procedure first.
 
+Public artifact GETs follow at most three HTTPS redirects from a pinned
+`github.com/<owner>/<repo>/releases/download/<tag>/<asset>` URL to
+`release-assets.githubusercontent.com` or `objects.githubusercontent.com` release
+asset paths. Each hop uses a fresh GET with no authorization, cookies, proxy
+credentials or request body, and the final bytes must match the supplied hash
+and size cap. Other hosts, downgrade, loops and arbitrary origin redirects are
+refused. Bootstrap POSTs and private mutual-TLS requests never follow redirects.
+
 On the selected existing gateway host, the launcher verifies the full bundle
 before executing its packaged Go enrollment client. That client generates a
 TLS private key/CSR and a separate dedicated SSH probe key locally, receives only
@@ -27,13 +35,13 @@ from launcher output. Trusted native qualification remains a distinct gate.
 Re-running the exact command retains completed installation and private
 identity. Inspect a partial installation instead of deleting or adopting it;
 cancel/revoke the enrollment in the dashboard to withdraw its authority. The
-existing absolute900-second workload fence continues to apply during offline
-recovery. Private machine files stay under root-owned mode0700 enrollment
+existing absolute 900-second workload fence continues to apply during offline
+recovery. Private machine files stay under root-owned mode 0700 enrollment
 staging; user SSH private keys are never involved in this enrollment.
 
 After activation the launcher rechecks the actual host platform, gateway and
 resource-controller structure and reads exact approved image IDs from the
-dedicated rootless store. It uploads at most16KiB of check metadata over the
+dedicated rootless store. It uploads at most 16 KiB of check metadata over the
 existing private controller connection using its local mutual-TLS identity,
 the pinned runner CA, DNS name and controller URI. Failed checks stay failed;
 the provider lifecycle, offline expiry and private network checks stay `unrun`
@@ -42,6 +50,37 @@ evidence. Metadata acceptance does not grant Ready or approve those checks.
 The verified launcher and root-owned public configuration are retained under
 the selected installation root for the dashboard's customer qualification
 command; no human private key or bootstrap token enters that configuration.
+
+The dashboard's controlled qualification trial uses one retained slot and the
+same 128 MiB/1 CPU/64 PID/original 900-second limits. Select your own terminal and
+public SSH key in the dashboard, then copy its public qualification command:
+
+```sh
+sudo /usr/bin/python3 /usr/local/libexec/tunnex-sandbox/enrollments/<enrollment-uuid>/qualify.py --qualification-trial-id <trial-uuid>
+```
+
+The root-owned per-enrollment alias points at the actual configured installation
+root, so the dashboard does not guess host paths or identities. Its bytes enter
+the installation manifest; foreign alias paths are refused. `QUALIFY` is a
+separate terminal acknowledgment to observe that exact trial. The observer
+requires actual initial Ready, stop and resumed Ready at generation 3, checks the
+exact actor pin, lease, runtime ID, image/spec labels, cgroup placement and caps,
+then stops only that installation's transport. The actor, helper and original
+expiry guard continue. The observer requires the actual provider to stop,
+the workload cgroup to become unpopulated and the actor to publish its original
+expiry receipt. That receipt's timestamp is the actor's sampled sweep time,
+written after confirmed stop; it is not a physical completion timestamp.
+
+The observer restarts only the owned transport in `finally`, submits its bound
+mutual-TLS witness, and waits for the control plane to confirm network/file/
+credential retirement. Failed, unrun or cleanup-pending checks stay blocked.
+After an interrupted pause, `RESUME` explicitly restores only that transport;
+retained actual witnesses can retry upload without another pause or TTL change.
+Complete trial proof still requires human administrator review before creation
+opens. Canonical gateway acknowledgments are independently checked, while the
+runner's SSH observations remain runner reported. This repository session runs
+only synthetic fixtures; native customer qualification requires the separate
+authorized command on that host.
 
 This stdlib-only installer prepares the same bounded runtime on a supported
 Linux host without a cloud provider API, download, package installation or
