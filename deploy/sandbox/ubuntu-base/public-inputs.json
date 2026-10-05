@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "ubuntu_release": "26.04",
+  "suite": "resolute",
+  "snapshot": "20261001T000000Z",
+  "registry_source": "https://hub.docker.com/_/ubuntu",
+  "registry_index_digest": "sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7",
+  "base_images": {
+    "amd64": "docker.io/library/ubuntu@sha256:88a381d5b5eeb2b35d3ad70925a362c37ce569daf43ede89ff818ec20e4d3794",
+    "arm64": "docker.io/library/ubuntu@sha256:3ad1c71aa6b7e477f7aa91445a5442fbb163742849393b511661a88081c3d7a2"
+  },
+  "packages": [
+    "bash",
+    "coreutils",
+    "iproute2",
+    "nftables",
+    "openssh-server",
+    "passwd",
+    "python3",
+    "systemd-resolved",
+    "util-linux",
+    "wireguard-tools"
+  ]
+}

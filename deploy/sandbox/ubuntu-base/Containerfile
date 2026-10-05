@@ -1,0 +1,28 @@
+# Exact inputs are verified before this offline context is assembled.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG LOCK_SHA256
+LABEL io.tunnex.sandbox.ubuntu-lock=${LOCK_SHA256}
+USER 0
+COPY expected-inventory.tsv /opt/tunnex-expected-inventory.tsv
+# Read-only build-context mount prevents .deb files from surviving in a lower
+# image layer. Requires Docker BuildKit or Podman/Buildah RUN --mount support.
+RUN --mount=type=bind,source=packages,target=/opt/tunnex-packages,ro \
+    printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
+ && chmod 0755 /usr/sbin/policy-rc.d \
+ && DEBIAN_FRONTEND=noninteractive apt-get \
+    -o Dir::Etc::sourcelist=/dev/null -o Dir::Etc::sourceparts=- \
+    --no-download --no-install-recommends -y install /opt/tunnex-packages/*.deb \
+ && dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
+    | LC_ALL=C sort > /tmp/tunnex-actual-inventory.tsv \
+ && diff -u /opt/tunnex-expected-inventory.tsv /tmp/tunnex-actual-inventory.tsv \
+ && command -v wg && command -v wg-quick && command -v ip \
+ && command -v sshd && test -x /usr/lib/openssh/sftp-server \
+ && command -v python3 && python3 -c 'import json, pathlib, subprocess, socket, ssl' \
+ && command -v resolvconf && command -v setpriv && command -v nft \
+ && rm -f /etc/ssh/ssh_host_* /var/lib/systemd/random-seed \
+ && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    /var/log/apt/* /var/log/dpkg.log /tmp/tunnex-actual-inventory.tsv \
+ && mkdir -p /usr/local/share/tunnex \
+ && mv /opt/tunnex-expected-inventory.tsv /usr/local/share/tunnex/package-inventory.tsv
+# Package presence does not start systemd, DBus, resolved, WireGuard or SSH.
