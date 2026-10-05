@@ -58,6 +58,7 @@
     "sandbox:create",
     "sandbox:delegate_manage",
     "sandbox:manage",
+    "sandbox:runner_manage",
     "sandbox:template_manage",
     "sandbox:view",
     "site:manage"
@@ -168,6 +169,7 @@
     "sandbox:create",
     "sandbox:delegate_manage",
     "sandbox:manage",
+    "sandbox:runner_manage",
     "sandbox:template_manage",
     "sandbox:view",
     "site:manage"
