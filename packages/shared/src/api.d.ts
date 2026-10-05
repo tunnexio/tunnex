@@ -6655,6 +6655,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/sandbox-runner-enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read administrator-only runner profiles and nonsecret enrollment progress */
+        get: operations["listSandboxRunnerEnrollments"];
+        put?: never;
+        /** Create a scoped ten-minute runner bootstrap; secret appears only on first issuance */
+        post: operations["createSandboxRunnerEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-runner-enrollments/{enrollmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        /** Read confirmed enrollment progress without bootstrap secrets */
+        get: operations["getSandboxRunnerEnrollment"];
+        put?: never;
+        post?: never;
+        /** Cancel enrollment or revoke runner authority and request bounded retained-workload cleanup */
+        delete: operations["revokeSandboxRunnerEnrollment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sandbox-runners/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem a scoped bootstrap for machine-local CSR signing and pinned public installation configuration */
+        post: operations["bootstrapSandboxRunner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/sandbox-setup": {
         parameters: {
             query?: never;
@@ -6973,6 +7031,118 @@ export interface components {
              */
             terminal_gateway_id?: string;
             blocked_reasons: string[];
+        };
+        SandboxRunnerArtifact: {
+            /** Format: uri */
+            url: string;
+            sha256: string;
+        };
+        SandboxRunnerInstallImage: {
+            /** Format: uuid */
+            template_id: string;
+            /** Format: uri */
+            url: string;
+            sha256: string;
+            config_digest: string;
+            /** @enum {string} */
+            architecture: "amd64";
+            qualification_evidence: string;
+        };
+        SandboxRunnerInstallTerminal: {
+            /** Format: uuid */
+            node_id: string;
+            endpoint: string;
+            runtime_endpoint: string;
+        };
+        SandboxRunnerInstallGateway: {
+            /** Format: uuid */
+            node_id: string;
+            container_id: string;
+            image_digest: string;
+            interface: string;
+            terminal?: components["schemas"]["SandboxRunnerInstallTerminal"];
+        };
+        SandboxRunnerInstallController: {
+            /** Format: uri */
+            url: string;
+            server_name: string;
+            uri: string;
+            /** Format: uri */
+            api_url: string;
+        };
+        SandboxRunnerInstallPlan: {
+            /** @enum {integer} */
+            version: 1;
+            /** @enum {string} */
+            edition: "open" | "enterprise";
+            source_sha: string;
+            bundle: components["schemas"]["SandboxRunnerArtifact"];
+            /** Format: uuid */
+            org_id: string;
+            gateway: components["schemas"]["SandboxRunnerInstallGateway"];
+            controller: components["schemas"]["SandboxRunnerInstallController"];
+            images: components["schemas"]["SandboxRunnerInstallImage"][];
+        };
+        SandboxRunnerEnrollmentProfile: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            architecture: "amd64";
+            prerequisites: string[];
+            blocked_reasons: string[];
+            bootstrap_script: components["schemas"]["SandboxRunnerArtifact"];
+            install: components["schemas"]["SandboxRunnerInstallPlan"];
+        };
+        SandboxRunnerEnrollment: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            profile_id: string;
+            /** @enum {string} */
+            state: "awaiting_install" | "awaiting_connection" | "ready" | "offline" | "expired" | "revoked" | "pending_cleanup";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            certificate_expires_at?: string;
+            /** Format: date-time */
+            last_seen_at?: string;
+            blocked_reasons: string[];
+            install_command: string;
+        };
+        SandboxRunnerEnrollmentList: {
+            profiles: components["schemas"]["SandboxRunnerEnrollmentProfile"][];
+            enrollments: components["schemas"]["SandboxRunnerEnrollment"][];
+            blocked_reasons: string[];
+        };
+        SandboxRunnerEnrollmentIssue: {
+            enrollment: components["schemas"]["SandboxRunnerEnrollment"];
+            bootstrap_token?: string;
+        };
+        SandboxRunnerEnrollmentCreate: {
+            /** Format: uuid */
+            profile_id: string;
+            name: string;
+            /** Format: uuid */
+            idempotency_key: string;
+        };
+        SandboxRunnerBootstrapRequest: {
+            /** Format: uuid */
+            enrollment_id: string;
+            bootstrap_token: string;
+            certificate_request: string;
+            probe_public_key: string;
+        };
+        SandboxRunnerBootstrapResponse: {
+            /** Format: uuid */
+            enrollment_id: string;
+            certificate: string;
+            runner_ca: string;
+            api_ca: string;
+            install: components["schemas"]["SandboxRunnerInstallPlan"];
         };
         SandboxSetupSettings: {
             enabled: boolean;
@@ -23088,6 +23258,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sandbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSandboxRunnerEnrollments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read administrator-only runner profiles and nonsecret enrollment progress */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerEnrollmentList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createSandboxRunnerEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxRunnerEnrollmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Create a scoped ten-minute runner bootstrap; secret appears only on first issuance */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerEnrollmentIssue"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSandboxRunnerEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read confirmed enrollment progress without bootstrap secrets */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeSandboxRunnerEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancel enrollment or revoke runner authority and request bounded retained-workload cleanup */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    bootstrapSandboxRunner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxRunnerBootstrapRequest"];
+            };
+        };
+        responses: {
+            /** @description Redeem a scoped bootstrap for machine-local CSR signing and pinned public installation configuration */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerBootstrapResponse"];
                 };
             };
             default: components["responses"]["Error"];

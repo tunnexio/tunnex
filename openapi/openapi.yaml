@@ -7897,6 +7897,108 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Sandbox' }
         default: { $ref: '#/components/responses/Error' }
+  "/api/v1/organizations/{orgId}/sandbox-runner-enrollments":
+    "parameters": [{"name":"orgId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    "get":
+      "operationId": "listSandboxRunnerEnrollments"
+      "tags": ["sandboxes"]
+      "summary": "Read administrator-only runner profiles and nonsecret enrollment progress"
+      "security": [{"cookieAuth":[]},{"bearerAuth":[]}]
+      "responses":
+        "200":
+          "description": "Read administrator-only runner profiles and nonsecret enrollment progress"
+          "headers":
+            "X-Request-Id":
+              "$ref": "#/components/headers/RequestId"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SandboxRunnerEnrollmentList"
+        "default":
+          "$ref": "#/components/responses/Error"
+    "post":
+      "operationId": "createSandboxRunnerEnrollment"
+      "tags": ["sandboxes"]
+      "summary": "Create a scoped ten-minute runner bootstrap; secret appears only on first issuance"
+      "security": [{"cookieAuth":[]},{"bearerAuth":[]}]
+      "responses":
+        "201":
+          "description": "Create a scoped ten-minute runner bootstrap; secret appears only on first issuance"
+          "headers":
+            "X-Request-Id":
+              "$ref": "#/components/headers/RequestId"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SandboxRunnerEnrollmentIssue"
+        "default":
+          "$ref": "#/components/responses/Error"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SandboxRunnerEnrollmentCreate"
+  "/api/v1/organizations/{orgId}/sandbox-runner-enrollments/{enrollmentId}":
+    "parameters": [{"name":"orgId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"enrollmentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    "get":
+      "operationId": "getSandboxRunnerEnrollment"
+      "tags": ["sandboxes"]
+      "summary": "Read confirmed enrollment progress without bootstrap secrets"
+      "security": [{"cookieAuth":[]},{"bearerAuth":[]}]
+      "responses":
+        "200":
+          "description": "Read confirmed enrollment progress without bootstrap secrets"
+          "headers":
+            "X-Request-Id":
+              "$ref": "#/components/headers/RequestId"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SandboxRunnerEnrollment"
+        "default":
+          "$ref": "#/components/responses/Error"
+    "delete":
+      "operationId": "revokeSandboxRunnerEnrollment"
+      "tags": ["sandboxes"]
+      "summary": "Cancel enrollment or revoke runner authority and request bounded retained-workload cleanup"
+      "security": [{"cookieAuth":[]},{"bearerAuth":[]}]
+      "responses":
+        "200":
+          "description": "Cancel enrollment or revoke runner authority and request bounded retained-workload cleanup"
+          "headers":
+            "X-Request-Id":
+              "$ref": "#/components/headers/RequestId"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SandboxRunnerEnrollment"
+        "default":
+          "$ref": "#/components/responses/Error"
+  "/api/v1/sandbox-runners/bootstrap":
+    "post":
+      "operationId": "bootstrapSandboxRunner"
+      "tags": ["sandboxes"]
+      "summary": "Redeem a scoped bootstrap for machine-local CSR signing and pinned public installation configuration"
+      "security": []
+      "responses":
+        "200":
+          "description": "Redeem a scoped bootstrap for machine-local CSR signing and pinned public installation configuration"
+          "headers":
+            "X-Request-Id":
+              "$ref": "#/components/headers/RequestId"
+          "content":
+            "application/json":
+              "schema":
+                "$ref": "#/components/schemas/SandboxRunnerBootstrapResponse"
+        "default":
+          "$ref": "#/components/responses/Error"
+      "requestBody":
+        "required": true
+        "content":
+          "application/json":
+            "schema":
+              "$ref": "#/components/schemas/SandboxRunnerBootstrapRequest"
   /api/v1/organizations/{orgId}/sandbox-setup:
     parameters:
       - name: orgId
@@ -8319,6 +8421,246 @@ components:
         blocked_reasons:
           type: array
           items: { type: string }
+    "SandboxRunnerArtifact":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "url":
+          "type": "string"
+          "format": "uri"
+        "sha256":
+          "type": "string"
+          "pattern": "^[0-9a-f]{64}$"
+      "required": ["url","sha256"]
+    "SandboxRunnerInstallImage":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "template_id":
+          "type": "string"
+          "format": "uuid"
+        "url":
+          "type": "string"
+          "format": "uri"
+        "sha256":
+          "type": "string"
+        "config_digest":
+          "type": "string"
+        "architecture":
+          "type": "string"
+          "enum": ["amd64"]
+        "qualification_evidence":
+          "type": "string"
+      "required": ["template_id","url","sha256","config_digest","architecture","qualification_evidence"]
+    "SandboxRunnerInstallTerminal":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "node_id":
+          "type": "string"
+          "format": "uuid"
+        "endpoint":
+          "type": "string"
+        "runtime_endpoint":
+          "type": "string"
+      "required": ["node_id","endpoint","runtime_endpoint"]
+    "SandboxRunnerInstallGateway":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "node_id":
+          "type": "string"
+          "format": "uuid"
+        "container_id":
+          "type": "string"
+        "image_digest":
+          "type": "string"
+        "interface":
+          "type": "string"
+        "terminal":
+          "$ref": "#/components/schemas/SandboxRunnerInstallTerminal"
+      "required": ["node_id","container_id","image_digest","interface"]
+    "SandboxRunnerInstallController":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "url":
+          "type": "string"
+          "format": "uri"
+        "server_name":
+          "type": "string"
+        "uri":
+          "type": "string"
+        "api_url":
+          "type": "string"
+          "format": "uri"
+      "required": ["url","server_name","uri","api_url"]
+    "SandboxRunnerInstallPlan":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "version":
+          "type": "integer"
+          "enum": [1]
+        "edition":
+          "type": "string"
+          "enum": ["open","enterprise"]
+        "source_sha":
+          "type": "string"
+          "pattern": "^[0-9a-f]{40}$"
+        "bundle":
+          "$ref": "#/components/schemas/SandboxRunnerArtifact"
+        "org_id":
+          "type": "string"
+          "format": "uuid"
+        "gateway":
+          "$ref": "#/components/schemas/SandboxRunnerInstallGateway"
+        "controller":
+          "$ref": "#/components/schemas/SandboxRunnerInstallController"
+        "images":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/SandboxRunnerInstallImage"
+          "minItems": 1
+          "maxItems": 4
+      "required": ["version","edition","source_sha","bundle","org_id","gateway","controller","images"]
+    "SandboxRunnerEnrollmentProfile":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "name":
+          "type": "string"
+        "architecture":
+          "type": "string"
+          "enum": ["amd64"]
+        "prerequisites":
+          "type": "array"
+          "items":
+            "type": "string"
+        "blocked_reasons":
+          "type": "array"
+          "items":
+            "type": "string"
+        "bootstrap_script":
+          "$ref": "#/components/schemas/SandboxRunnerArtifact"
+        "install":
+          "$ref": "#/components/schemas/SandboxRunnerInstallPlan"
+      "required": ["id","name","architecture","prerequisites","blocked_reasons","bootstrap_script","install"]
+    "SandboxRunnerEnrollment":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "id":
+          "type": "string"
+          "format": "uuid"
+        "name":
+          "type": "string"
+        "profile_id":
+          "type": "string"
+          "format": "uuid"
+        "state":
+          "type": "string"
+          "enum": ["awaiting_install","awaiting_connection","ready","offline","expired","revoked","pending_cleanup"]
+        "created_at":
+          "type": "string"
+          "format": "date-time"
+        "expires_at":
+          "type": "string"
+          "format": "date-time"
+        "certificate_expires_at":
+          "type": "string"
+          "format": "date-time"
+        "last_seen_at":
+          "type": "string"
+          "format": "date-time"
+        "blocked_reasons":
+          "type": "array"
+          "items":
+            "type": "string"
+        "install_command":
+          "type": "string"
+      "required": ["id","name","profile_id","state","created_at","expires_at","blocked_reasons","install_command"]
+    "SandboxRunnerEnrollmentList":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "profiles":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/SandboxRunnerEnrollmentProfile"
+        "enrollments":
+          "type": "array"
+          "items":
+            "$ref": "#/components/schemas/SandboxRunnerEnrollment"
+          "maxItems": 20
+        "blocked_reasons":
+          "type": "array"
+          "items":
+            "type": "string"
+      "required": ["profiles","enrollments","blocked_reasons"]
+    "SandboxRunnerEnrollmentIssue":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "enrollment":
+          "$ref": "#/components/schemas/SandboxRunnerEnrollment"
+        "bootstrap_token":
+          "type": "string"
+          "minLength": 32
+          "maxLength": 128
+      "required": ["enrollment"]
+    "SandboxRunnerEnrollmentCreate":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "profile_id":
+          "type": "string"
+          "format": "uuid"
+        "name":
+          "type": "string"
+          "minLength": 1
+          "maxLength": 80
+        "idempotency_key":
+          "type": "string"
+          "format": "uuid"
+      "required": ["profile_id","name","idempotency_key"]
+    "SandboxRunnerBootstrapRequest":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "enrollment_id":
+          "type": "string"
+          "format": "uuid"
+        "bootstrap_token":
+          "type": "string"
+          "minLength": 32
+          "maxLength": 128
+        "certificate_request":
+          "type": "string"
+          "maxLength": 4096
+        "probe_public_key":
+          "type": "string"
+          "maxLength": 1024
+      "required": ["enrollment_id","bootstrap_token","certificate_request","probe_public_key"]
+    "SandboxRunnerBootstrapResponse":
+      "type": "object"
+      "additionalProperties": false
+      "properties":
+        "enrollment_id":
+          "type": "string"
+          "format": "uuid"
+        "certificate":
+          "type": "string"
+        "runner_ca":
+          "type": "string"
+        "api_ca":
+          "type": "string"
+        "install":
+          "$ref": "#/components/schemas/SandboxRunnerInstallPlan"
+      "required": ["enrollment_id","certificate","runner_ca","api_ca","install"]
     SandboxSetupSettings:
       type: object
       additionalProperties: false
