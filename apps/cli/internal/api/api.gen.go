@@ -1786,6 +1786,40 @@ const (
 	SandboxRunnerInstallPlanVersionN1 SandboxRunnerInstallPlanVersion = 1
 )
 
+// Defines values for SandboxRunnerQualificationCheckCode.
+const (
+	ApprovedImageLoad          SandboxRunnerQualificationCheckCode = "approved-image-load"
+	BoundedProviderStartStop   SandboxRunnerQualificationCheckCode = "bounded-provider-start-stop"
+	HostCapabilities           SandboxRunnerQualificationCheckCode = "host-capabilities"
+	OfflineExpiryFence         SandboxRunnerQualificationCheckCode = "offline-expiry-fence"
+	PrivateNetworkConnectivity SandboxRunnerQualificationCheckCode = "private-network-connectivity"
+)
+
+// Defines values for SandboxRunnerQualificationCheckResult.
+const (
+	SandboxRunnerQualificationCheckResultFailed SandboxRunnerQualificationCheckResult = "failed"
+	SandboxRunnerQualificationCheckResultPassed SandboxRunnerQualificationCheckResult = "passed"
+	SandboxRunnerQualificationCheckResultUnrun  SandboxRunnerQualificationCheckResult = "unrun"
+)
+
+// Defines values for SandboxRunnerQualificationRecordDecision.
+const (
+	SandboxRunnerQualificationRecordDecisionApproved SandboxRunnerQualificationRecordDecision = "approved"
+	SandboxRunnerQualificationRecordDecisionPending  SandboxRunnerQualificationRecordDecision = "pending"
+	SandboxRunnerQualificationRecordDecisionRejected SandboxRunnerQualificationRecordDecision = "rejected"
+)
+
+// Defines values for SandboxRunnerQualificationReportVersion.
+const (
+	N1 SandboxRunnerQualificationReportVersion = 1
+)
+
+// Defines values for SandboxRunnerQualificationReviewDecision.
+const (
+	Approve SandboxRunnerQualificationReviewDecision = "approve"
+	Reject  SandboxRunnerQualificationReviewDecision = "reject"
+)
+
 // Defines values for SandboxScopeProtocol.
 const (
 	SandboxScopeProtocolAny SandboxScopeProtocol = "any"
@@ -1819,8 +1853,8 @@ const (
 
 // Defines values for SiteSubnetStatus.
 const (
-	SiteSubnetStatusApproved SiteSubnetStatus = "approved"
-	SiteSubnetStatusPending  SiteSubnetStatus = "pending"
+	Approved SiteSubnetStatus = "approved"
+	Pending  SiteSubnetStatus = "pending"
 )
 
 // Defines values for SsoConfigViewProvider.
@@ -1887,11 +1921,11 @@ const (
 
 // Defines values for UpgradeStatusState.
 const (
-	Applying  UpgradeStatusState = "applying"
-	Available UpgradeStatusState = "available"
-	Failed    UpgradeStatusState = "failed"
-	Healthy   UpgradeStatusState = "healthy"
-	Requested UpgradeStatusState = "requested"
+	UpgradeStatusStateApplying  UpgradeStatusState = "applying"
+	UpgradeStatusStateAvailable UpgradeStatusState = "available"
+	UpgradeStatusStateFailed    UpgradeStatusState = "failed"
+	UpgradeStatusStateHealthy   UpgradeStatusState = "healthy"
+	UpgradeStatusStateRequested UpgradeStatusState = "requested"
 )
 
 // Defines values for UserGroupIdpProvider.
@@ -7129,25 +7163,28 @@ type SandboxRunnerBootstrapRequest struct {
 
 // SandboxRunnerBootstrapResponse defines model for SandboxRunnerBootstrapResponse.
 type SandboxRunnerBootstrapResponse struct {
-	ApiCa        string                   `json:"api_ca"`
-	Certificate  string                   `json:"certificate"`
-	EnrollmentId openapi_types.UUID       `json:"enrollment_id"`
-	Install      SandboxRunnerInstallPlan `json:"install"`
-	RunnerCa     string                   `json:"runner_ca"`
+	ApiCa         string                   `json:"api_ca"`
+	BindingSha256 string                   `json:"binding_sha256"`
+	Certificate   string                   `json:"certificate"`
+	EnrollmentId  openapi_types.UUID       `json:"enrollment_id"`
+	Install       SandboxRunnerInstallPlan `json:"install"`
+	ProfileId     openapi_types.UUID       `json:"profile_id"`
+	RunnerCa      string                   `json:"runner_ca"`
 }
 
 // SandboxRunnerEnrollment defines model for SandboxRunnerEnrollment.
 type SandboxRunnerEnrollment struct {
-	BlockedReasons       []string                     `json:"blocked_reasons"`
-	CertificateExpiresAt *time.Time                   `json:"certificate_expires_at,omitempty"`
-	CreatedAt            time.Time                    `json:"created_at"`
-	ExpiresAt            time.Time                    `json:"expires_at"`
-	Id                   openapi_types.UUID           `json:"id"`
-	InstallCommand       string                       `json:"install_command"`
-	LastSeenAt           *time.Time                   `json:"last_seen_at,omitempty"`
-	Name                 string                       `json:"name"`
-	ProfileId            openapi_types.UUID           `json:"profile_id"`
-	State                SandboxRunnerEnrollmentState `json:"state"`
+	BlockedReasons       []string                          `json:"blocked_reasons"`
+	CertificateExpiresAt *time.Time                        `json:"certificate_expires_at,omitempty"`
+	CreatedAt            time.Time                         `json:"created_at"`
+	ExpiresAt            time.Time                         `json:"expires_at"`
+	Id                   openapi_types.UUID                `json:"id"`
+	InstallCommand       string                            `json:"install_command"`
+	LastSeenAt           *time.Time                        `json:"last_seen_at,omitempty"`
+	Name                 string                            `json:"name"`
+	ProfileId            openapi_types.UUID                `json:"profile_id"`
+	Qualification        *SandboxRunnerQualificationRecord `json:"qualification,omitempty"`
+	State                SandboxRunnerEnrollmentState      `json:"state"`
 }
 
 // SandboxRunnerEnrollmentState defines model for SandboxRunnerEnrollment.State.
@@ -7241,6 +7278,70 @@ type SandboxRunnerInstallTerminal struct {
 	NodeId          openapi_types.UUID `json:"node_id"`
 	RuntimeEndpoint string             `json:"runtime_endpoint"`
 }
+
+// SandboxRunnerQualificationCheck defines model for SandboxRunnerQualificationCheck.
+type SandboxRunnerQualificationCheck struct {
+	Code     SandboxRunnerQualificationCheckCode   `json:"code"`
+	Evidence string                                `json:"evidence"`
+	Result   SandboxRunnerQualificationCheckResult `json:"result"`
+}
+
+// SandboxRunnerQualificationCheckCode defines model for SandboxRunnerQualificationCheck.Code.
+type SandboxRunnerQualificationCheckCode string
+
+// SandboxRunnerQualificationCheckResult defines model for SandboxRunnerQualificationCheck.Result.
+type SandboxRunnerQualificationCheckResult string
+
+// SandboxRunnerQualificationPlatform defines model for SandboxRunnerQualificationPlatform.
+type SandboxRunnerQualificationPlatform struct {
+	Architecture string `json:"architecture"`
+	Os           string `json:"os"`
+	Version      string `json:"version"`
+}
+
+// SandboxRunnerQualificationRecord defines model for SandboxRunnerQualificationRecord.
+type SandboxRunnerQualificationRecord struct {
+	Approvable       bool                                     `json:"approvable"`
+	BlockedReasons   []string                                 `json:"blocked_reasons"`
+	Decision         SandboxRunnerQualificationRecordDecision `json:"decision"`
+	Report           SandboxRunnerQualificationReport         `json:"report"`
+	ReportSha256     string                                   `json:"report_sha256"`
+	ReviewNote       *string                                  `json:"review_note,omitempty"`
+	ReviewedAt       *time.Time                               `json:"reviewed_at,omitempty"`
+	ReviewedBy       *openapi_types.UUID                      `json:"reviewed_by,omitempty"`
+	RunnerSpkiSha256 string                                   `json:"runner_spki_sha256"`
+	SubmittedAt      time.Time                                `json:"submitted_at"`
+}
+
+// SandboxRunnerQualificationRecordDecision defines model for SandboxRunnerQualificationRecord.Decision.
+type SandboxRunnerQualificationRecordDecision string
+
+// SandboxRunnerQualificationReport defines model for SandboxRunnerQualificationReport.
+type SandboxRunnerQualificationReport struct {
+	BindingSha256      string                                  `json:"binding_sha256"`
+	Checks             []SandboxRunnerQualificationCheck       `json:"checks"`
+	EnrollmentId       openapi_types.UUID                      `json:"enrollment_id"`
+	FinishedAt         time.Time                               `json:"finished_at"`
+	ImageConfigDigests []string                                `json:"image_config_digests"`
+	Platform           SandboxRunnerQualificationPlatform      `json:"platform"`
+	ProfileId          openapi_types.UUID                      `json:"profile_id"`
+	SourceSha          string                                  `json:"source_sha"`
+	StartedAt          time.Time                               `json:"started_at"`
+	Version            SandboxRunnerQualificationReportVersion `json:"version"`
+}
+
+// SandboxRunnerQualificationReportVersion defines model for SandboxRunnerQualificationReport.Version.
+type SandboxRunnerQualificationReportVersion int
+
+// SandboxRunnerQualificationReview defines model for SandboxRunnerQualificationReview.
+type SandboxRunnerQualificationReview struct {
+	Decision             SandboxRunnerQualificationReviewDecision `json:"decision"`
+	ExpectedReportSha256 string                                   `json:"expected_report_sha256"`
+	ReviewNote           string                                   `json:"review_note"`
+}
+
+// SandboxRunnerQualificationReviewDecision defines model for SandboxRunnerQualificationReview.Decision.
+type SandboxRunnerQualificationReviewDecision string
 
 // SandboxScope defines model for SandboxScope.
 type SandboxScope struct {
@@ -8786,6 +8887,9 @@ type IssueSandboxDelegationJSONRequestBody = SandboxDelegationCreate
 
 // CreateSandboxRunnerEnrollmentJSONRequestBody defines body for CreateSandboxRunnerEnrollment for application/json ContentType.
 type CreateSandboxRunnerEnrollmentJSONRequestBody = SandboxRunnerEnrollmentCreate
+
+// ReviewSandboxRunnerQualificationJSONRequestBody defines body for ReviewSandboxRunnerQualification for application/json ContentType.
+type ReviewSandboxRunnerQualificationJSONRequestBody = SandboxRunnerQualificationReview
 
 // UpdateSandboxSetupJSONRequestBody defines body for UpdateSandboxSetup for application/json ContentType.
 type UpdateSandboxSetupJSONRequestBody = SandboxSetupUpdate
@@ -10516,6 +10620,11 @@ type ClientInterface interface {
 
 	// GetSandboxRunnerEnrollment request
 	GetSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReviewSandboxRunnerQualificationWithBody request with any body
+	ReviewSandboxRunnerQualificationWithBody(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReviewSandboxRunnerQualification(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSandboxSetup request
 	GetSandboxSetup(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17575,6 +17684,30 @@ func (c *Client) RevokeSandboxRunnerEnrollment(ctx context.Context, orgId openap
 
 func (c *Client) GetSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxRunnerEnrollmentRequest(c.Server, orgId, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReviewSandboxRunnerQualificationWithBody(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReviewSandboxRunnerQualificationRequestWithBody(c.Server, orgId, enrollmentId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReviewSandboxRunnerQualification(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReviewSandboxRunnerQualificationRequest(c.Server, orgId, enrollmentId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -37357,6 +37490,60 @@ func NewGetSandboxRunnerEnrollmentRequest(server string, orgId openapi_types.UUI
 	return req, nil
 }
 
+// NewReviewSandboxRunnerQualificationRequest calls the generic ReviewSandboxRunnerQualification builder with application/json body
+func NewReviewSandboxRunnerQualificationRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReviewSandboxRunnerQualificationRequestWithBody(server, orgId, enrollmentId, "application/json", bodyReader)
+}
+
+// NewReviewSandboxRunnerQualificationRequestWithBody generates requests for ReviewSandboxRunnerQualification with any type of body
+func NewReviewSandboxRunnerQualificationRequestWithBody(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments/%s/qualification-review", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetSandboxSetupRequest generates requests for GetSandboxSetup
 func NewGetSandboxSetupRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -40802,6 +40989,11 @@ type ClientWithResponsesInterface interface {
 
 	// GetSandboxRunnerEnrollmentWithResponse request
 	GetSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxRunnerEnrollmentResponse, error)
+
+	// ReviewSandboxRunnerQualificationWithBodyWithResponse request with any body
+	ReviewSandboxRunnerQualificationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReviewSandboxRunnerQualificationResponse, error)
+
+	ReviewSandboxRunnerQualificationWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReviewSandboxRunnerQualificationResponse, error)
 
 	// GetSandboxSetupWithResponse request
 	GetSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxSetupResponse, error)
@@ -49854,6 +50046,29 @@ func (r GetSandboxRunnerEnrollmentResponse) StatusCode() int {
 	return 0
 }
 
+type ReviewSandboxRunnerQualificationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxRunnerEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReviewSandboxRunnerQualificationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReviewSandboxRunnerQualificationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetSandboxSetupResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -55818,6 +56033,23 @@ func (c *ClientWithResponses) GetSandboxRunnerEnrollmentWithResponse(ctx context
 		return nil, err
 	}
 	return ParseGetSandboxRunnerEnrollmentResponse(rsp)
+}
+
+// ReviewSandboxRunnerQualificationWithBodyWithResponse request with arbitrary body returning *ReviewSandboxRunnerQualificationResponse
+func (c *ClientWithResponses) ReviewSandboxRunnerQualificationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReviewSandboxRunnerQualificationResponse, error) {
+	rsp, err := c.ReviewSandboxRunnerQualificationWithBody(ctx, orgId, enrollmentId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReviewSandboxRunnerQualificationResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReviewSandboxRunnerQualificationWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReviewSandboxRunnerQualificationResponse, error) {
+	rsp, err := c.ReviewSandboxRunnerQualification(ctx, orgId, enrollmentId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReviewSandboxRunnerQualificationResponse(rsp)
 }
 
 // GetSandboxSetupWithResponse request returning *GetSandboxSetupResponse
@@ -68858,6 +69090,39 @@ func ParseGetSandboxRunnerEnrollmentResponse(rsp *http.Response) (*GetSandboxRun
 	}
 
 	response := &GetSandboxRunnerEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxRunnerEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReviewSandboxRunnerQualificationResponse parses an HTTP response from a ReviewSandboxRunnerQualificationWithResponse call
+func ParseReviewSandboxRunnerQualificationResponse(rsp *http.Response) (*ReviewSandboxRunnerQualificationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReviewSandboxRunnerQualificationResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
