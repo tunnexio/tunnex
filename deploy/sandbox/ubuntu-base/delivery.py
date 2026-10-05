@@ -69,13 +69,14 @@ def safe_relative(path):
 
 
 def public_url(url, snapshot):
+    need(isinstance(url, str), "invalid public input URL")
     parsed = urllib.parse.urlsplit(url)
     prefix = f"/ubuntu/{snapshot}/"
     need(parsed.scheme == "https" and parsed.hostname == "snapshot.ubuntu.com"
          and parsed.netloc == "snapshot.ubuntu.com" and parsed.path.startswith(prefix)
          and not parsed.query and not parsed.fragment and not parsed.username,
          "only the pinned official Ubuntu HTTPS snapshot is allowed")
-    safe_relative(parsed.path[len(prefix):])
+    safe_relative(urllib.parse.unquote(parsed.path[len(prefix):]))
     return url
 
 
@@ -115,12 +116,23 @@ def download(url, target, expected=None, maximum=128 * MIB):
     return result
 
 
-def validate_seed(seed, arch):
+def validate_seed(seed, arch, *, locked=False):
     need(isinstance(seed, dict), "input object required")
+    fields = {"version", "ubuntu_release", "suite", "snapshot", "registry_source",
+              "registry_index_digest", "base_images", "packages"}
+    if locked:
+        fields |= {"architecture", "metadata", "download_packages", "installed_inventory", "native_qualification"}
+    need(set(seed) == fields, "unexpected public input fields")
     need(seed.get("version") == 1 and seed.get("ubuntu_release") == "26.04"
          and seed.get("suite") == "resolute", "unsupported Ubuntu input version")
     need(arch in ("amd64", "arm64") and SNAPSHOT.fullmatch(seed.get("snapshot", "")),
          "unsupported architecture or snapshot")
+    index = seed.get("registry_index_digest", "")
+    need(seed.get("registry_source") == "https://hub.docker.com/_/ubuntu"
+         and isinstance(index, str) and index.startswith("sha256:") and DIGEST.fullmatch(index[7:]),
+         "official public registry source and index pin required")
+    need(isinstance(seed.get("base_images"), dict) and set(seed["base_images"]) == {"amd64", "arm64"},
+         "supported public base pins required")
     need(BASE.fullmatch(seed.get("base_images", {}).get(arch, "")), "mutable or invalid Ubuntu base")
     need(set(seed.get("packages", [])) == REQUIRED and len(seed["packages"]) == len(REQUIRED),
          "essential package set must match the supported image")
@@ -129,14 +141,15 @@ def validate_seed(seed, arch):
 def validate_lock(lock):
     need(isinstance(lock, dict), "lock object required")
     arch = lock.get("architecture")
-    validate_seed(lock, arch)
+    validate_seed(lock, arch, locked=True)
     need(isinstance(lock.get("metadata"), list) and len(lock["metadata"]) == 9,
          "all three signed pockets and both package components required")
     required_metadata = {"repository/dists/" + suite + "/" + path
                          for suite in ("resolute", "resolute-updates", "resolute-security")
                          for path in ("InRelease", f"main/binary-{arch}/Packages.xz",
                                       f"universe/binary-{arch}/Packages.xz")}
-    need({record.get("path") for record in lock["metadata"]} == required_metadata,
+    need(all(isinstance(record, dict) for record in lock["metadata"])
+         and {record.get("path") for record in lock["metadata"]} == required_metadata,
          "missing or unexpected signed metadata input")
     need(isinstance(lock.get("download_packages"), list) and 1 <= len(lock["download_packages"]) <= 256,
          "bounded complete package closure required")
@@ -151,6 +164,10 @@ def validate_lock(lock):
         need(path not in seen, "duplicate input path")
         seen.add(path)
         total += record["size"]
+    for record in lock["metadata"]:
+        need(set(record) == {"path", "url", "sha256", "size"}
+             and record["url"] == f"https://snapshot.ubuntu.com/ubuntu/{lock['snapshot']}/"
+             + record["path"][len("repository/"):], "metadata source/path mismatch")
     need(total <= MAX_INPUT_BYTES, "input closure exceeds build budget")
     inventory = lock.get("installed_inventory")
     need(isinstance(inventory, list) and 1 <= len(inventory) <= 512
@@ -164,6 +181,8 @@ def validate_lock(lock):
     need(REQUIRED <= inventory_names, "essential dependencies absent from inventory")
     package_names = set()
     for record in lock["download_packages"]:
+        need(set(record) == {"name", "version", "architecture", "sha256", "size", "url", "path"},
+             "unexpected public package fields")
         need(PACKAGE.fullmatch(record.get("name", "")) and record.get("architecture") in (arch, "all")
              and re.fullmatch(r"[A-Za-z0-9.+:~_-]{1,128}", record.get("version", ""))
              and record["path"] == "packages/" + record["sha256"] + ".deb",
@@ -210,7 +229,15 @@ def run(args, **kwargs):
     if args[0] in ("docker", "podman") and args[1] in ("pull", "build"):
         with tempfile.TemporaryDirectory(prefix="tunnex-public-registry-") as registry:
             auth = Path(registry, "config.json")
-            auth.write_text('{"auths":{}}\n')
+            config = {"auths": {}}
+            if args[0] == "docker" and args[1] == "build":
+                # Preserve packaged Docker Desktop BuildKit discovery while
+                # keeping registry credentials/helpers absent. This is a
+                # public application tool directory, never ~/.docker/config.
+                plugins = Path("/Applications/Docker.app/Contents/Resources/cli-plugins")
+                if plugins.is_dir():
+                    config["cliPluginsExtraDirs"] = [str(plugins)]
+            auth.write_text(json.dumps(config) + "\n")
             if args[0] == "docker":
                 args = [args[0], "--config", registry] + args[1:]
             else:
@@ -325,7 +352,8 @@ def build_base(lock_path, cache, tag, engine):
         shutil.copyfile(HERE / "Containerfile", context / "Containerfile")
         (context / "expected-inventory.tsv").write_text("\n".join(lock["installed_inventory"]) + "\n")
         run([engine, "build", "--pull=false" if engine == "docker" else "--pull=never",
-             "--network=none", "--platform=linux/" + arch, "--build-arg", "BASE_IMAGE=" + base,
+             "--network=none", "--file", str(context / "Containerfile"), "--platform=linux/" + arch,
+             "--build-arg", "BASE_IMAGE=" + base,
              "--build-arg", "LOCK_SHA256=" + sha256(Path(lock_path).read_bytes()),
              "--tag", tag, str(context)])
     images = json.loads(run([engine, "image", "inspect", tag], stdout=subprocess.PIPE).stdout)
@@ -372,7 +400,8 @@ def main():
             else:
                 result = build_base(args.lock, args.cache, args.tag or "", args.engine)
         print(json.dumps(result, sort_keys=True))
-    except (InvalidInput, OSError, subprocess.CalledProcessError, ValueError, KeyError) as error:
+    except (InvalidInput, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            ValueError, KeyError, TypeError) as error:
         parser.exit(1, "Ubuntu delivery failed: " + str(error) + "\n")
 
 

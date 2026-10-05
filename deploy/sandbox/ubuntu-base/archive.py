@@ -178,7 +178,8 @@ def build(lock_path, cache, output, engine, go):
         context = Path(directory)
         assemble_context(lock, lock_raw, cache, source, context, go)
         delivery.run([engine, "build", "--pull=false" if engine == "docker" else "--pull=never",
-                      "--network=none", "--platform=linux/" + arch, "--build-arg", "BASE_IMAGE=" + base,
+                      "--network=none", "--file", str(context / "Containerfile"), "--platform=linux/" + arch,
+                      "--build-arg", "BASE_IMAGE=" + base,
                       "--build-arg", "LOCK_SHA256=" + delivery.sha256(lock_raw), "--build-arg",
                       "SOURCE_SHA=" + source, "--tag", tag, str(context)])
     images = json.loads(command([engine, "image", "inspect", tag]))

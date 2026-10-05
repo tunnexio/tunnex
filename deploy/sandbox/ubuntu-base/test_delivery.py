@@ -86,6 +86,12 @@ class LockTests(unittest.TestCase):
             with self.assertRaises(delivery.InvalidInput):
                 delivery.read_json(path)
 
+    def test_nonpublic_fields_in_lock_are_refused(self):
+        lock = delivery.read_json(LOCK)
+        lock["operator_credential"] = "synthetic"
+        with self.assertRaises(delivery.InvalidInput):
+            delivery.validate_lock(lock)
+
     def test_cached_input_is_verified_without_network_and_bad_cache_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "input.deb"
@@ -166,7 +172,11 @@ class BuildTests(unittest.TestCase):
                         else:
                             self.assertEqual(args[:3], [engine, action, "--authfile"])
                             config = Path(args[3])
-                        self.assertEqual(json.loads(config.read_text()), {"auths": {}})
+                        data = json.loads(config.read_text())
+                        self.assertEqual(data["auths"], {})
+                        self.assertNotIn("credsStore", data)
+                        self.assertNotIn("credHelpers", data)
+                        self.assertTrue(set(data) <= {"auths", "cliPluginsExtraDirs"})
                         return subprocess.CompletedProcess(args, 0)
                     with patch("subprocess.run", side_effect=inspect):
                         delivery.run([engine, action, "public-input"])
