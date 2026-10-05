@@ -287,7 +287,7 @@ class EnrollmentTests(unittest.TestCase):
 
     def test_activation_requires_exact_admin_ack_and_does_not_claim_ready(self):
         calls = []
-        host = SimpleNamespace(run=lambda args: calls.append(args))
+        host = SimpleNamespace(run=lambda args: calls.append(args), read=lambda _path: 'ID=ubuntu\nVERSION_ID="26.04"\n')
         cfg = {"installation": {"unit_prefix": "syntheticrunner"}}
         for acknowledgment in ("", "activate", "yes"):
             with self.assertRaises(enroll.Refused):
@@ -344,7 +344,7 @@ class EnrollmentTests(unittest.TestCase):
     def test_current_host_and_loaded_image_report_does_not_claim_native_checks(self):
         cfg, bundle, host = self.report_fixture()
         report = enroll.qualification_report(cfg, bundle, test_install.install, host, {"installation": "activation-requested"})
-        self.assertEqual(report["platform"], {"os": "linux", "version": "ubuntu 26.04", "architecture": "amd64"})
+        self.assertEqual(report["platform"], {"os": "ubuntu", "version": "26.04", "architecture": "amd64"})
         self.assertEqual([check["result"] for check in report["checks"]], ["passed", "passed", "unrun", "unrun", "unrun"])
         self.assertEqual(report["image_config_digests"], [cfg["images"][0]["config_digest"]])
         self.assertFalse(any(action in call for call in host.calls for action in ("start", "kill", "run", "exec", "pull", "load")))
@@ -367,10 +367,40 @@ class EnrollmentTests(unittest.TestCase):
 
     def test_os_release_is_data_and_missing_platform_cannot_be_invented(self):
         host = SimpleNamespace(read=lambda _path: 'ID=debian\nVERSION_ID="13"\n')
-        self.assertEqual(enroll.host_platform(host)["version"], "debian 13")
+        self.assertEqual(enroll.host_platform(host), {"os": "debian", "version": "13", "architecture": "amd64"})
         for value in ('ID=ubuntu\n', 'ID="$(id)"\nVERSION_ID=26.04\n'):
             with self.assertRaises(enroll.Refused):
                 enroll.host_platform(SimpleNamespace(read=lambda _path: value))
+
+    def test_unsupported_host_refused_before_install_activation_or_trial(self):
+        cfg, bundle, _ = self.report_fixture()
+        trial_id = "00000000-0000-4000-8000-000000000005"
+        for metadata in ('ID=ubuntu\nVERSION_ID="24.04"\n', 'ID=debian\nVERSION_ID="13"\n'):
+            host = SimpleNamespace(read=lambda _path: metadata, run=mock.Mock())
+            installer = SimpleNamespace(check=mock.Mock(), TOOLS=())
+            with self.subTest(metadata=metadata), mock.patch.object(enroll.os, "geteuid", return_value=0), \
+                 mock.patch.object(enroll.platform, "system", return_value="Linux"), \
+                 mock.patch.object(enroll.platform, "machine", return_value="x86_64"), \
+                 mock.patch.object(Path, "read_text", return_value=metadata), \
+                 mock.patch.object(enroll, "private_directory") as private, \
+                 mock.patch.object(enroll, "download") as download, \
+                 mock.patch.object(enroll, "secret_prompt") as secret, \
+                 mock.patch("builtins.open") as opened:
+                for action in (lambda: enroll.run(self.options), lambda: enroll.check_host(cfg, installer, host),
+                               lambda: enroll.activate(cfg, host, "ACTIVATE"), lambda: enroll.activation_ceremony(cfg, host),
+                               lambda: enroll.run_qualification(trial_id)):
+                    with self.assertRaisesRegex(enroll.Refused, "supported_host_ubuntu_26_04_amd64_required"):
+                        action()
+                for untouched in (private, download, secret, opened, host.run, installer.check):
+                    untouched.assert_not_called()
+
+    def test_unsupported_host_report_keeps_actual_distribution_and_fails_capabilities(self):
+        cfg, bundle, host = self.report_fixture()
+        host.metadata["/etc/os-release"] = 'ID=debian\nVERSION_ID="13"\n'
+        report = enroll.qualification_report(cfg, bundle, test_install.install, host, {"installation": "installed-disabled"})
+        self.assertEqual(report["platform"], {"os": "debian", "version": "13", "architecture": "amd64"})
+        self.assertEqual([check["result"] for check in report["checks"]], ["failed", "unrun", "unrun", "unrun", "unrun"])
+        self.assertEqual(host.calls, [])
 
     def native_fixture(self):
         cfg, bundle, _ = self.report_fixture()
@@ -428,6 +458,8 @@ class EnrollmentTests(unittest.TestCase):
                                    "pid": 123 if running else 0, "cgroup_parent": scope})
             self.fail("unexpected native fixture command")
         def read(path):
+            if path == "/etc/os-release":
+                return 'ID=ubuntu\nVERSION_ID="26.04"\n'
             if path == "/proc/123/cgroup":
                 return "0::" + scope + "/libpod-fixture\n"
             values = {"memory.max": "268435456" if behavior["caps-changed"] else "134217728", "memory.swap.max": "0",
