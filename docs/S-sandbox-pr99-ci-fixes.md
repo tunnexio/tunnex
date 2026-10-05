@@ -43,3 +43,40 @@ worktrees, live services and qualification limits remain preserved.
 Native sandbox qualification, latency benchmarking, First-Ready-relative TTL
 and the post-PR SCP check retain their existing status. Live SCP requires an
 approved already-running target; stopped services must not be restarted.
+
+## Confirmed causes and corrections
+
+The original exact-head CI run `37307748915` failed the release contract,
+source-packaging tooling and both editions' `other` API shards. The effective
+repository rules require ten contexts; nine passed and the aggregate `gates`
+failed. The authenticated logs and local fixture evidence remain outside the
+publishable source tree.
+
+- `22760727` updates the stale three-dependency release assertion and adds a
+  semantic four-dependency assertion. Removing any required dependency fails
+  the new guard. Existing publication conditions are unchanged.
+- `6f7730fc` fixes Git's refusal of a runner-owned checkout mounted inside a
+  root-owned Docker container. Every exception is command-local and names the
+  explicit source directory. Dirty and staged source still fail before a
+  compiler runs. The actual `make test-sandbox-package` target passes on a
+  separately committed public-source fixture matching the corrected files.
+- `11e205f4` fixes the Linux actor recovery fixture's use of UID0. Root now runs
+  that fixture as a real UID/GID65534 subprocess. Production root refusal,
+  socket identity checks and all recovery/refusal assertions remain unchanged.
+- Latest-schema sandbox fixtures now clone a sealed package-owned migration
+  template into independently named databases. The previous suite replayed all
+  197 migrations for every fixture and cumulatively exceeded the existing
+  600-second package budget. Historical-version tests still migrate fresh
+  databases. Tests verify isolated schema/state, concurrent clone ownership,
+  source connection refusal and confirmed child/template teardown.
+- The API and e2e test containers install their required Python interpreter
+  before running tests. The pinned `golang:1.26.8-alpine` image lacks Python;
+  host-runner Python cannot satisfy the real machine-report producer assertion
+  inside that container. Both editions execute that assertion in the actual
+  pinned image with the prerequisite present. No workload image or launch
+  dependency changed.
+
+No production authorization, readiness, expiry, resource or capacity limit
+changes form part of these CI corrections. The existing ten-minute timeout and
+all required gate selections remain in place. Initial harness failures and
+later results are recorded separately in the validation record.

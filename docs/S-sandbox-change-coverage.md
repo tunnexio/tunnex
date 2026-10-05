@@ -167,3 +167,21 @@ behavior. Both editions execute the corrected proof, including retained-state
 refusal and transaction rollback. Final UI withdrawal fences are included at
 `0eb4c15`; the exact browser source and current runtime product files are
 recorded in the handoff manifests.
+
+## PR #99 correction scope
+
+The authorized CI repairs begin from published head `11d41654`. Release guard
+`22760727` requires the complete four-job asset dependency set; actor fixture
+`11e205f4` exercises Linux recovery under a real unprivileged identity; packaging
+`6f7730fc` adds only exact-directory, command-local Git checkout trust and
+negative source-refusal fixtures. Later test-source changes introduce sealed
+latest-schema PostgreSQL templates with independent child ownership and provide
+Python to API/e2e test containers for the real producer assertion. Historical
+migration fixtures, production policy/readiness/expiry behavior, API contracts,
+UI and workload dependencies are unchanged by this correction scope.
+
+These are intentional changes to the predecessor product/test/build inventory;
+the original unchanged-352-path manifest remains historical evidence for the
+initial candidate. The new correction manifest records each path changed from
+`11d41654` and the exact final source SHA. Final local and remote outcomes belong
+in the validation record and exact-head handoff, including retained failures.

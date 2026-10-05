@@ -126,3 +126,47 @@ blocked audit was enabled. Native physical host qualification, performance
 benchmarking and live SCP remain unrun. Exact-source artifact verification and
 required remote CI results accompany the final handoff rather than being
 inferred from local source tests.
+
+## PR #99 CI correction validation
+
+The first published head `11d41654ea12b7045830e25fc2a7d58abd069e74` failed CI
+run `37307748915`: release dependency contract, sandbox source packaging and
+both `other` API edition shards. Nine of the ten required contexts passed;
+aggregate `gates` failed. These outcomes remain retained failures. The
+[correction decisions](S-sandbox-pr99-ci-fixes.md) describe the bounded repairs.
+
+| Affected check | Local correction result |
+| --- | --- |
+| Release asset dependency contract | Six Ruby tests/39 assertions pass; separately removing each of the four required dependencies causes refusal. Signed update catalog contract passes. |
+| Packaging and image/SCP fixtures | 41 pass, including dirty/staged source refusal before compilation; 51 installer/enrollment fixtures pass. Actual `make test-sandbox-package` passes in 51.868 seconds on a committed public-source reproduction (`bed516ee7e054fc3306f61714631202b4935efff`) whose packaging files match the candidate. This reproduction is distinct from final-head artifact proof. |
+| Runtime actor socket recovery | Full package passes in both editions on Mac with race detection and on Linux as UID0 and UID65534. The root run exercises its real unprivileged child; there are no skipped recovery cases. Production socket/root checks are unchanged. |
+| PostgreSQL template fixture | Helper race suites pass in both editions, including isolation, concurrent clones, sealed source and confirmed teardown. Two intentional missing-endpoint probes skip before creating state. Historical fixture semantics remain unchanged. |
+| Real machine-report producer | Actual pinned `golang:1.26.8-alpine` image with `apk add --no-cache python3` executes the mandatory source producer assertion in both editions: 17.516/8.278 seconds including installation. This prerequisite belongs only to tests. |
+| Kernel peer credential boundary | Linux UID65534 runs pass in both editions, four records each, no failures/skips. |
+| Other contract checks | Public installer seven tests/72 assertions, native publication five tests/66 assertions, source-ref and upgrade fixtures pass. CI aggregate/API-runner contracts pass 69 tests. Static chart/Kubernetes contracts and 37 App Access fixtures pass. No real upgrade or deployment occurs. |
+| Affected static review | Independent correction review finds no actionable issue. `go vet` passes for the PostgreSQL helper and sandbox packages in both editions with Go 1.26.8 and offline modules. |
+
+The Linux sandbox binaries used for the full local suites are AMD64 binaries
+executed under emulation in cached Linux containers on this Mac. They provide
+source-test evidence, not native Ubuntu AMD64 sandbox qualification. The first
+full attempts had three harness failures because the working directory was the
+module root rather than the package directory. Their outcomes remain recorded.
+The corrected enterprise suite passes 342 test/subtest records in 130.144
+seconds against the unchanged 600-second limit. Its existing root-only kernel
+peer case is separately exercised successfully as UID65534 above.
+
+The first corrected open suite completes in 148.837 seconds with one synthetic
+canonical lifecycle Ready-CAS failure. Focused diagnostic executions preserve
+all readiness freshness limits and the seven-batch protocol; they do not turn
+the failed full run into a pass. Three focused AMD64 diagnostic executions and
+a native ARM64 synthetic execution pass without reproducing its exact cause;
+no lifecycle or production fence changes are justified. A fresh full open suite
+on the identical tested source, using the pinned Go image and actual Python
+prerequisite, passes in 132.924 seconds. The isolated earlier failure remains
+unexplained and retained; it is not attributed to emulation alone.
+
+No host is enrolled, activated or qualified by these checks. Exact final-head
+artifacts and remote required CI must match the pushed SHA; older artifacts and
+the committed reproduction above do not substitute for that proof. Native
+qualification, latency benchmarking, live SCP and First-Ready-relative TTL keep
+their previously documented status.
