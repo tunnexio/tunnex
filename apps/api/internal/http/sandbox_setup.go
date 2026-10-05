@@ -33,7 +33,8 @@ func (s apiServer) sandboxCreationStatus(v sandboxes.SetupStatus) api.SandboxCre
 	if !ready {
 		reasons = append(reasons, "runtime_not_ready")
 	}
-	return api.SandboxCreationStatus{CanAdmin: v.CanAdmin, CanManageCatalog: v.CanManageCatalog, RuntimeReady: ready, BlockedReasons: reasons, RequiresTerminalDevice: v.RequiresTerminalDevice, TerminalGatewayId: v.TerminalGatewayID}
+	enrollmentRequired := s.runnerEnrollment != nil
+	return api.SandboxCreationStatus{RunnerEnrollmentRequired: &enrollmentRequired, CanAdmin: v.CanAdmin, CanManageCatalog: v.CanManageCatalog, RuntimeReady: ready, BlockedReasons: reasons, RequiresTerminalDevice: v.RequiresTerminalDevice, TerminalGatewayId: v.TerminalGatewayID}
 }
 func sandboxTemplateResponse(t sandboxes.Template) api.SandboxTemplate {
 	skills := t.AllowedSkills
