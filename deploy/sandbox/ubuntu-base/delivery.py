@@ -357,6 +357,9 @@ def build_base(lock_path, cache, tag, engine):
     with tempfile.TemporaryDirectory(prefix="tunnex-ubuntu-base-") as directory:
         context = Path(directory)
         (context / "packages").mkdir()
+        # APT requires its partial directory even with --no-download. Prepare
+        # it in the read-only build context so APT need not mutate the mount.
+        (context / "packages/partial").mkdir()
         for record in lock["download_packages"]:
             shutil.copyfile(cache / record["path"], context / "packages" / package_filename(record))
         shutil.copyfile(HERE / "Containerfile", context / "Containerfile")
