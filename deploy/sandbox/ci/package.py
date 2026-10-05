@@ -13,11 +13,15 @@ import struct
 import subprocess
 import tarfile
 import tempfile
+from urllib.parse import quote
 
 
 ROOT = Path(__file__).resolve().parents[3]
 ARCHITECTURES = {"amd64": 62, "arm64": 183}
 API_COMMANDS = ("tunnex-sandbox-runtime", "tunnex-sandbox-ssh-probe", "tunnex-sandbox-runner-enroll")
+ENROLL_SOURCE = "deploy/sandbox/install/enroll.py"
+ENROLL_RELEASE_NAME = "Tunnex-Sandbox-Enroll.py"
+DISTRIBUTION_NAME = "Tunnex-Sandbox-Distribution.json"
 # Only public source recipes enter a bundle. Qualification units, host receipts,
 # operator configuration, private keys, and working directories are excluded.
 ASSETS = (
@@ -32,6 +36,7 @@ ASSETS = (
     "deploy/sandbox/install/install.py",
     "deploy/sandbox/install/README.md",
     "deploy/sandbox/install/example.json",
+    ENROLL_SOURCE,
 )
 
 
@@ -239,6 +244,52 @@ def verify_directory(directory, source):
     print("Both Linux architecture bundles match source, public inventory and checksums; build evidence only.")
 
 
+def distribution(directory, source, repository, tag, output):
+    # URLs identify the existing guarded release, never an invented hosted
+    # installer or an unpinned moving branch. No network or host command runs.
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9][A-Za-z0-9._-]{0,99}", repository):
+        raise ValueError("canonical release repository required")
+    if tag != f"tunnex-build-{source}" and not re.fullmatch(r"v[0-9][A-Za-z0-9._+-]{0,100}", tag):
+        raise ValueError("immutable source build or version release required")
+    verify_directory(directory, source)
+    base = f"https://github.com/{repository}/releases/download/{quote(tag, safe='')}"
+    bundles = {}
+    scripts = []
+    for arch in ARCHITECTURES:
+        name = f"tunnex-sandbox-linux-{arch}.tar.gz"
+        raw = (Path(directory) / arch / name).read_bytes()
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+            scripts.append(archive.extractfile(ENROLL_SOURCE).read())
+        bundles[arch] = {"url": f"{base}/{name}", "sha256": digest(raw)}
+    if scripts[0] != scripts[1]:
+        raise ValueError("architecture bundles disagree on committed enrollment script")
+    script = scripts[0]
+    manifest = {
+        "schema_version": 1,
+        "source_sha": source,
+        "repository": repository,
+        "release_tag": tag,
+        "os": "linux",
+        "api_editions": ["open", "enterprise"],
+        "bootstrap_script": {"url": f"{base}/{ENROLL_RELEASE_NAME}", "sha256": digest(script)},
+        "bundles": bundles,
+        "installer_architectures": ["amd64"],
+        "native_runtime_qualification": False,
+        "workload_images_built": False,
+    }
+    raw_manifest = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+    output = Path(output)
+    if not output.is_absolute() or ".." in output.parts or any(parent.is_symlink() for parent in (output, *output.parents)):
+        raise ValueError("new absolute distribution directory required")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.mkdir()
+    for name, raw in ((ENROLL_RELEASE_NAME, script), (DISTRIBUTION_NAME, raw_manifest)):
+        (output / name).write_bytes(raw)
+        (output / (name + ".sha256")).write_text(f"{digest(raw)}  {name}\n")
+    print(json.dumps({"source_sha": source, "distribution_manifest": DISTRIBUTION_NAME,
+                      "bootstrap_sha256": digest(script), "native_runtime_qualification": False}))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="action", required=True)
@@ -248,12 +299,20 @@ def main():
     verifier = actions.add_parser("verify")
     verifier.add_argument("--directory", required=True)
     verifier.add_argument("--source", required=True)
+    publisher = actions.add_parser("distribution")
+    publisher.add_argument("--directory", required=True)
+    publisher.add_argument("--source", required=True)
+    publisher.add_argument("--repository", required=True)
+    publisher.add_argument("--tag", required=True)
+    publisher.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
         if args.action == "build":
             build(args.arch, args.output)
-        else:
+        elif args.action == "verify":
             verify_directory(args.directory, args.source)
+        else:
+            distribution(args.directory, args.source, args.repository, args.tag, args.output)
     except (ValueError, OSError, subprocess.SubprocessError, tarfile.TarError):
         parser.exit(1, "sandbox source artifact packaging refused; no runtime was activated\n")
 

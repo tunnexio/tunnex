@@ -1758,17 +1758,28 @@ jobs:
           EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
           ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
           test "$ACTUAL" = "$EXPECTED"
+          python3 -B deploy/sandbox/ci/package.py distribution \
+            --directory sandbox-artifacts --source "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --output "$PWD/sandbox-distribution"
+          (cd sandbox-distribution && sha256sum -c Tunnex-Sandbox-Enroll.py.sha256 Tunnex-Sandbox-Distribution.json.sha256)
           gh release upload "$RELEASE_TAG" \
             sandbox-artifacts/amd64/tunnex-sandbox-linux-amd64.tar.gz \
             sandbox-artifacts/amd64/tunnex-sandbox-linux-amd64.tar.gz.sha256 \
             sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz \
-            sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz.sha256 --clobber
+            sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz.sha256 \
+            sandbox-distribution/Tunnex-Sandbox-Enroll.py \
+            sandbox-distribution/Tunnex-Sandbox-Enroll.py.sha256 \
+            sandbox-distribution/Tunnex-Sandbox-Distribution.json \
+            sandbox-distribution/Tunnex-Sandbox-Distribution.json.sha256 --clobber
       - name: Attest public sandbox source bundles
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
             sandbox-artifacts/amd64/tunnex-sandbox-linux-amd64.tar.gz
             sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz
+            sandbox-distribution/Tunnex-Sandbox-Enroll.py
+            sandbox-distribution/Tunnex-Sandbox-Distribution.json
       - name: Attach and verify managed-agent bootstrap verifier assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

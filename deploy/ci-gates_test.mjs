@@ -136,8 +136,16 @@ test('sandbox bundles reuse blocking tooling and existing guarded release public
   assert.match(attachment.run, /test "\$\(gh api .* --jq \.sha\)" = "\$GITHUB_SHA"/);
   assert.match(attachment.run, /--json isDraft --jq \.isDraft/);
   assert.match(attachment.run, /test "\$ACTUAL" = "\$EXPECTED"/);
+  assert.match(attachment.run, /package\.py distribution[\s\S]*--source "\$GITHUB_SHA"[\s\S]*--repository "\$GITHUB_REPOSITORY" --tag "\$RELEASE_TAG"/);
+  assert.match(attachment.run, /sha256sum -c Tunnex-Sandbox-Enroll\.py\.sha256 Tunnex-Sandbox-Distribution\.json\.sha256/);
   assert.equal((attachment.run.match(/sandbox-artifacts\/(?:amd64|arm64)\/tunnex-sandbox-linux-/g) ?? []).length, 4);
-  assert.ok(release.steps.some(step => step.name === 'Attest public sandbox source bundles'));
+  for (const filename of ['Tunnex-Sandbox-Enroll.py', 'Tunnex-Sandbox-Enroll.py.sha256', 'Tunnex-Sandbox-Distribution.json', 'Tunnex-Sandbox-Distribution.json.sha256']) {
+    assert.ok(attachment.run.includes(`sandbox-distribution/${filename}`));
+  }
+  const attestation = release.steps.find(step => step.name === 'Attest public sandbox source bundles');
+  assert.ok(attestation);
+  assert.ok(attestation.with['subject-path'].includes('sandbox-distribution/Tunnex-Sandbox-Enroll.py'));
+  assert.ok(attestation.with['subject-path'].includes('sandbox-distribution/Tunnex-Sandbox-Distribution.json'));
   const contracts = jobs.contracts.steps.find(step => step.name?.startsWith('Sandbox public packaging'));
   for (const directory of ['deploy/sandbox', 'deploy/sandbox/qualification', 'deploy/sandbox/ci', 'deploy/sandbox/install']) {
     assert.ok(contracts.run.includes(`unittest discover -s ${directory} -p 'test_*.py'`));

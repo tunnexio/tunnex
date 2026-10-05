@@ -44,6 +44,18 @@ class PackageTests(unittest.TestCase):
     def bundle(self, arch="amd64"):
         return package.make_bundle(payload(arch), SOURCE, arch, "go version go1.26.8 linux/amd64")
 
+    def write_architecture_bundles(self, root, mutate=None):
+        for arch in package.ARCHITECTURES:
+            parent = root / arch
+            parent.mkdir()
+            name = f"tunnex-sandbox-linux-{arch}.tar.gz"
+            files = payload(arch)
+            if mutate:
+                mutate(arch, files)
+            raw = package.make_bundle(files, SOURCE, arch, "fixture")
+            (parent / name).write_bytes(raw)
+            (parent / (name + ".sha256")).write_text(f"{package.digest(raw)}  {name}\n")
+
     def test_both_architectures_have_both_editions_and_no_qualification_claim(self):
         for arch in package.ARCHITECTURES:
             with self.subTest(arch=arch):
@@ -55,6 +67,89 @@ class PackageTests(unittest.TestCase):
 
     def test_archive_is_reproducible(self):
         self.assertEqual(self.bundle(), self.bundle())
+
+    def test_enrollment_distribution_pins_the_verified_bundle_bytes_and_actual_release_assets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            bundles = root / "bundles"
+            bundles.mkdir()
+            self.write_architecture_bundles(bundles)
+            outputs = [root / "one", root / "two"]
+            for output in outputs:
+                package.distribution(bundles, SOURCE, "tunnexio/tunnex", f"tunnex-build-{SOURCE}", output)
+            self.assertEqual({path.name for path in outputs[0].iterdir()}, {
+                package.ENROLL_RELEASE_NAME, package.ENROLL_RELEASE_NAME + ".sha256",
+                package.DISTRIBUTION_NAME, package.DISTRIBUTION_NAME + ".sha256",
+            })
+            for path in outputs[0].iterdir():
+                self.assertEqual(path.read_bytes(), (outputs[1] / path.name).read_bytes())
+            manifest = json.loads((outputs[0] / package.DISTRIBUTION_NAME).read_bytes())
+            base = f"https://github.com/tunnexio/tunnex/releases/download/tunnex-build-{SOURCE}"
+            self.assertEqual(manifest["source_sha"], SOURCE)
+            self.assertEqual(manifest["bootstrap_script"], {
+                "url": base + "/Tunnex-Sandbox-Enroll.py",
+                "sha256": package.digest(payload("amd64")[package.ENROLL_SOURCE]),
+            })
+            self.assertEqual((outputs[0] / package.ENROLL_RELEASE_NAME).read_bytes(), payload("amd64")[package.ENROLL_SOURCE])
+            for name in (package.ENROLL_RELEASE_NAME, package.DISTRIBUTION_NAME):
+                self.assertEqual((outputs[0] / (name + ".sha256")).read_text(),
+                                 f"{package.digest((outputs[0] / name).read_bytes())}  {name}\n")
+            for arch in package.ARCHITECTURES:
+                name = f"tunnex-sandbox-linux-{arch}.tar.gz"
+                self.assertEqual(manifest["bundles"][arch], {
+                    "url": base + "/" + name,
+                    "sha256": package.digest((bundles / arch / name).read_bytes()),
+                })
+            self.assertEqual(manifest["installer_architectures"], ["amd64"])
+            self.assertFalse(manifest["native_runtime_qualification"])
+            self.assertFalse(manifest["workload_images_built"])
+            self.assertNotIn("org_id", manifest)
+            self.assertNotIn("credentials", manifest)
+
+    def test_enrollment_distribution_refuses_mutable_or_foreign_release_names(self):
+        for repository, tag in (("https://github.com/tunnexio/tunnex", "v1.2.3"),
+                                ("tunnexio/tunnex/extra", "v1.2.3"),
+                                ("tunnexio/tunnex", "main"),
+                                ("tunnexio/tunnex", "latest"),
+                                ("tunnexio/tunnex", "v1.2.3/other"),
+                                ("tunnexio/tunnex", "v1.2.3?token=private"),
+                                ("tunnexio/tunnex", "tunnex-build-" + "b" * 40)):
+            with self.subTest(repository=repository, tag=tag), self.assertRaises(ValueError):
+                package.distribution("unused", SOURCE, repository, tag, Path("/unused"))
+
+    def test_enrollment_distribution_refuses_script_disagreement_and_existing_outputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            bundles = root / "bundles"
+            bundles.mkdir()
+            self.write_architecture_bundles(bundles, lambda arch, files: files.update(
+                {package.ENROLL_SOURCE: b"different public script\n"}) if arch == "arm64" else None)
+            with self.assertRaisesRegex(ValueError, "disagree"):
+                package.distribution(bundles, SOURCE, "tunnexio/tunnex", "v1.2.3", root / "output")
+            self.assertFalse((root / "output").exists())
+            for path in bundles.rglob("*"):
+                if path.is_file():
+                    path.unlink()
+            for arch in package.ARCHITECTURES:
+                (bundles / arch).rmdir()
+            self.write_architecture_bundles(bundles)
+            existing = root / "existing"
+            existing.mkdir()
+            retained = existing / "operator.txt"
+            retained.write_text("inert fixture")
+            with self.assertRaises(FileExistsError):
+                package.distribution(bundles, SOURCE, "tunnexio/tunnex", "v1.2.3", existing)
+            self.assertEqual(retained.read_text(), "inert fixture")
+
+    def test_enrollment_distribution_version_tag_is_url_encoded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            bundles = root / "bundles"
+            bundles.mkdir()
+            self.write_architecture_bundles(bundles)
+            package.distribution(bundles, SOURCE, "tunnexio/tunnex", "v1.2.3+build.4", root / "output")
+            manifest = json.loads((root / "output" / package.DISTRIBUTION_NAME).read_bytes())
+            self.assertIn("/v1.2.3%2Bbuild.4/", manifest["bootstrap_script"]["url"])
 
     def test_unsupported_architecture_and_fabricated_source_refused(self):
         for arch, source in (("darwin", SOURCE), ("amd64", "a" * 7), ("arm64", "G" * 40)):
