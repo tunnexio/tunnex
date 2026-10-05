@@ -37,6 +37,7 @@ ASSETS = {
     "deploy/sandbox/alpine/entrypoint.sh", "deploy/sandbox/alpine/build-image.sh",
     "deploy/sandbox/install/install.py", "deploy/sandbox/install/README.md",
     "deploy/sandbox/install/example.json",
+    "deploy/sandbox/install/enroll.py",
 }
 COMMANDS = ("tunnex-sandbox-runtime", "tunnex-sandbox-ssh-probe", "tunnex-sandbox-runner-enroll")
 
