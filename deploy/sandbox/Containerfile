@@ -1,0 +1,25 @@
+# The base must be an approved, preloaded Ubuntu image addressed by digest.
+# This layer never downloads/installs dependencies, and starts quarantined.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG SOURCE_SHA
+LABEL io.tunnex.sandbox.source=${SOURCE_SHA}
+USER 0
+RUN test "${#SOURCE_SHA}" = 40 \
+ && command -v wg \
+ && command -v wg-quick \
+ && command -v ip \
+ && command -v sshd \
+ && test -x /usr/lib/openssh/sftp-server \
+ && command -v python3 \
+ && command -v resolvconf \
+ && command -v setpriv \
+ && command -v nft \
+ && useradd --uid 1001 --home-dir /workspace --create-home --shell /bin/bash sandbox
+COPY runtime/tunnex-sandbox-bootstrap /usr/local/bin/tunnex-sandbox-bootstrap
+COPY sandbox-entrypoint.py /usr/local/lib/tunnex/sandbox-entrypoint.py
+USER 1001:1001
+WORKDIR /workspace
+# Qualified setup/coordinator owns enrollment, networking and sshd separately.
+# Starting this image alone cannot create a usable terminal or report Ready.
+CMD ["/usr/bin/python3", "/usr/local/lib/tunnex/sandbox-entrypoint.py"]

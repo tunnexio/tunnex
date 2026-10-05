@@ -1,0 +1,28 @@
+# SOURCE ONLY. Explicit split config must pin both roles to the dedicated UID.
+[Unit]
+Description=Tunnex restartable sandbox controller transport
+Requires=tunnex-sandbox-qual-actor.service
+After=tunnex-sandbox-qual-actor.service
+
+[Service]
+Type=simple
+User=tunnex-sandbox-qual
+Group=tunnex-sandbox-qual
+Slice=tnxsandboxqual.slice
+WorkingDirectory=/var/lib/tunnex-sandbox-qual/worker
+ExecStart=/var/lib/tunnex-sandbox-qual/bin/tunnex-sandbox-runtime --config=/var/lib/tunnex-sandbox-qual/worker/main-config.json --role=transport
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictNamespaces=yes
+ProtectControlGroups=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/tunnex-sandbox-qual/worker/runner-protocol
+Environment=GOMAXPROCS=1 GOMEMLIMIT=32MiB
+
+[Install]
+WantedBy=multi-user.target

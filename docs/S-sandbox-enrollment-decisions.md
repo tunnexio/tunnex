@@ -1,0 +1,11 @@
+# Sandbox enrollment and readiness decisions
+
+Paper before implementation; baseline f6d4945, local API/provider milestone a49025f. Public provisioning remains closed.
+
+- Reuse the existing devices.Create transaction, IP allocator, client-generated WireGuard keys, static configuration renderer, audit and gateway push primitives. Add a distinct sandbox bootstrap path that creates kind=sandbox directly and binds its peer in the same transaction. Never temporarily create an agent/human peer and retype it later.
+- Sandbox bootstrap and runtime credential tables are separate from agent tables. Bootstrap is single-use, at most one hour, sandbox/org/gateway/creator/generation bound, hashed at rest and unavailable after desired stop/delete, expiry, template disablement or creator removal. Runtime credential is separate and hashed, with uniform refusal. No raw credential in ordinary sandbox/API inventory or audit.
+- Issue bootstrap internally to a worker, not as a browser login protocol. Redemption derives identity fields from token storage, accepts only a valid public key and creates exactly one sandbox peer/runtime credential. Recheck sandbox authorization and token under the transaction lock. Races/used/expired tokens refuse without a second peer. Lost-response recovery must reconcile operation identity; no blind second token.
+- Sandbox peers are IPv4 split-tunnel in this slice; disable IPv6 allocation for these peers rather than exposing unqualified IPv6 paths. Do not alter existing full-tunnel DNS behavior for human/agent paths.
+- Ready requires exact current generation plus runtime ownership, current effective policy receipt on all enforcement nodes, active tunnel and authenticated private SSH healthcheck. Persist desired/observed generations separately. A successful enrollment or provider start is not Ready.
+- The rootless runtime currently creates quarantined network-none containers. Qualified privileged network setup, default-deny underlay rules and unprivileged workload separation must be implemented/tested before release from quarantine. The existing pilot is not modified and is not evidence for these new gates.
+- Internal test fixtures may generate disposable bootstrap credentials. No live bootstrap tokens, access grants or credential files are consulted or changed.

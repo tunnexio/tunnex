@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSandboxModuleState } from "../lib/deploymentMeta";
 import { NAV_DESTINATIONS } from "./AppShell";
 import { motionAllowed } from "../lib/motion";
 import { useMotionPreference } from "./MotionProvider";
@@ -37,13 +38,15 @@ export function CommandPalette() {
   const openerRef = useRef<Element | null>(null);
   const reduced = useMotionPreference();
 
+  const sandboxState = useSandboxModuleState();
   const results = useMemo(() => {
+    const destinations = NAV_DESTINATIONS.filter(item => item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining");
     const q = query.trim().toLowerCase();
-    if (!q) return NAV_DESTINATIONS;
-    return NAV_DESTINATIONS.filter(
+    if (!q) return destinations;
+    return destinations.filter(
       (d) => d.label.toLowerCase().includes(q) || d.to.includes(q),
     );
-  }, [query]);
+  }, [query, sandboxState]);
 
   useEffect(() => {
     let pendingG = false;

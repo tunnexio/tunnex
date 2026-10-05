@@ -535,9 +535,9 @@ const (
 
 // Defines values for AgentRuntimeStatusHealth.
 const (
-	Inconclusive AgentRuntimeStatusHealth = "inconclusive"
-	LastGood     AgentRuntimeStatusHealth = "last_good"
-	Ready        AgentRuntimeStatusHealth = "ready"
+	AgentRuntimeStatusHealthInconclusive AgentRuntimeStatusHealth = "inconclusive"
+	AgentRuntimeStatusHealthLastGood     AgentRuntimeStatusHealth = "last_good"
+	AgentRuntimeStatusHealthReady        AgentRuntimeStatusHealth = "ready"
 )
 
 // Defines values for AgentRuntimeStatusLastErrorCode.
@@ -1537,6 +1537,13 @@ const (
 	Open       MetaEdition = "open"
 )
 
+// Defines values for MetaSandboxModuleState.
+const (
+	Disabled MetaSandboxModuleState = "disabled"
+	Draining MetaSandboxModuleState = "draining"
+	Enabled  MetaSandboxModuleState = "enabled"
+)
+
 // Defines values for MetaSsoConnectionsProvider.
 const (
 	MetaSsoConnectionsProviderOidc MetaSsoConnectionsProvider = "oidc"
@@ -1690,6 +1697,68 @@ const (
 	RuntimeMCPToolApprovalPermitStateDenied   RuntimeMCPToolApprovalPermitState = "denied"
 	RuntimeMCPToolApprovalPermitStateExpired  RuntimeMCPToolApprovalPermitState = "expired"
 	RuntimeMCPToolApprovalPermitStatePending  RuntimeMCPToolApprovalPermitState = "pending"
+)
+
+// Defines values for SandboxDesiredState.
+const (
+	SandboxDesiredStateDeleted SandboxDesiredState = "deleted"
+	SandboxDesiredStateStarted SandboxDesiredState = "started"
+	SandboxDesiredStateStopped SandboxDesiredState = "stopped"
+)
+
+// Defines values for SandboxObservedState.
+const (
+	SandboxObservedStateCreating SandboxObservedState = "creating"
+	SandboxObservedStateDeleted  SandboxObservedState = "deleted"
+	SandboxObservedStateDeleting SandboxObservedState = "deleting"
+	SandboxObservedStateError    SandboxObservedState = "error"
+	SandboxObservedStateReady    SandboxObservedState = "ready"
+	SandboxObservedStateStarting SandboxObservedState = "starting"
+	SandboxObservedStateStopped  SandboxObservedState = "stopped"
+	SandboxObservedStateStopping SandboxObservedState = "stopping"
+)
+
+// Defines values for SandboxActionDesiredState.
+const (
+	SandboxActionDesiredStateDeleted SandboxActionDesiredState = "deleted"
+	SandboxActionDesiredStateStarted SandboxActionDesiredState = "started"
+	SandboxActionDesiredStateStopped SandboxActionDesiredState = "stopped"
+)
+
+// Defines values for SandboxBoundedRuntimeLimitsReservationState.
+const (
+	SandboxBoundedRuntimeLimitsReservationStateCompleted SandboxBoundedRuntimeLimitsReservationState = "completed"
+	SandboxBoundedRuntimeLimitsReservationStateInvalid   SandboxBoundedRuntimeLimitsReservationState = "invalid"
+	SandboxBoundedRuntimeLimitsReservationStatePending   SandboxBoundedRuntimeLimitsReservationState = "pending"
+)
+
+// Defines values for SandboxConnectionPort.
+const (
+	N22 SandboxConnectionPort = 22
+)
+
+// Defines values for SandboxConnectionUsername.
+const (
+	SandboxConnectionUsernameSandbox SandboxConnectionUsername = "sandbox"
+)
+
+// Defines values for SandboxImageProfileArchitecture.
+const (
+	Amd64 SandboxImageProfileArchitecture = "amd64"
+	Arm64 SandboxImageProfileArchitecture = "arm64"
+)
+
+// Defines values for SandboxImageProfileQualification.
+const (
+	Candidate       SandboxImageProfileQualification = "candidate"
+	NativeQualified SandboxImageProfileQualification = "native-qualified"
+)
+
+// Defines values for SandboxScopeProtocol.
+const (
+	SandboxScopeProtocolAny SandboxScopeProtocol = "any"
+	SandboxScopeProtocolTcp SandboxScopeProtocol = "tcp"
+	SandboxScopeProtocolUdp SandboxScopeProtocol = "udp"
 )
 
 // Defines values for ServerEmailSettingsSource.
@@ -1874,8 +1943,8 @@ const (
 
 // Defines values for TestAgentAccessParamsProtocol.
 const (
-	Tcp TestAgentAccessParamsProtocol = "tcp"
-	Udp TestAgentAccessParamsProtocol = "udp"
+	TestAgentAccessParamsProtocolTcp TestAgentAccessParamsProtocol = "tcp"
+	TestAgentAccessParamsProtocolUdp TestAgentAccessParamsProtocol = "udp"
 )
 
 // Defines values for ListAppAccessRequestsParamsScope.
@@ -6153,7 +6222,10 @@ type Meta struct {
 
 	// PublicBaseUrl S8.2c: the control plane's own CONFIGURED public base URL (APP_BASE_URL / install.sh's public address) — the AUTHORITATIVE answer to "where do gateways reach me", independent of how an admin happened to open the dashboard (a tunnel/alias/bare IP would bake the wrong URL into the emitted gateway install command). The gateway-enroll command derives TUNNEX_API_URL/TUNNEX_AGENT_URL from this, never from window.location. Empty when unset (the SPA then falls back to its own origin).
 	PublicBaseUrl *string `json:"public_base_url,omitempty"`
-	SetupComplete *bool   `json:"setup_complete,omitempty"`
+
+	// SandboxModuleState Deployment sandbox capability. Draining blocks creation while retained resources finish cleanup. Missing means disabled for new clients.
+	SandboxModuleState *MetaSandboxModuleState `json:"sandbox_module_state,omitempty"`
+	SetupComplete      *bool                   `json:"setup_complete,omitempty"`
 
 	// SmtpConfigured Whether this deployment can send email at all. ⛔ False means invitations, password resets and email verification cannot be delivered — and invitations are the only way anyone joins. The screens that send mail say so BEFORE the operator acts, rather than after a recipient does not receive something.
 	SmtpConfigured *bool `json:"smtp_configured,omitempty"`
@@ -6168,6 +6240,9 @@ type Meta struct {
 
 // MetaEdition defines model for Meta.Edition.
 type MetaEdition string
+
+// MetaSandboxModuleState Deployment sandbox capability. Draining blocks creation while retained resources finish cleanup. Missing means disabled for new clients.
+type MetaSandboxModuleState string
 
 // MetaSsoConnectionsProvider defines model for Meta.SsoConnections.Provider.
 type MetaSsoConnectionsProvider string
@@ -6797,6 +6872,320 @@ type RuntimeMCPToolPolicy struct {
 
 	// Version Zero means no usable policy and therefore deny all.
 	Version int64 `json:"version"`
+}
+
+// Sandbox defines model for Sandbox.
+type Sandbox struct {
+	// Connection Public-only current private SSH connection metadata. Omitted until current readiness and admission are valid.
+	Connection     *SandboxConnection      `json:"connection,omitempty"`
+	CreatedAt      time.Time               `json:"created_at"`
+	CreatorId      openapi_types.UUID      `json:"creator_id"`
+	DesiredState   SandboxDesiredState     `json:"desired_state"`
+	ExpiresAt      time.Time               `json:"expires_at"`
+	Generation     int64                   `json:"generation"`
+	Id             openapi_types.UUID      `json:"id"`
+	Name           string                  `json:"name"`
+	ObservedState  SandboxObservedState    `json:"observed_state"`
+	OrganizationId openapi_types.UUID      `json:"organization_id"`
+	RequestedScope []SandboxScope          `json:"requested_scope"`
+	SelectedSkills []SandboxSkillSelection `json:"selected_skills"`
+	TemplateId     openapi_types.UUID      `json:"template_id"`
+}
+
+// SandboxDesiredState defines model for Sandbox.DesiredState.
+type SandboxDesiredState string
+
+// SandboxObservedState defines model for Sandbox.ObservedState.
+type SandboxObservedState string
+
+// SandboxAction defines model for SandboxAction.
+type SandboxAction struct {
+	DesiredState SandboxActionDesiredState `json:"desired_state"`
+	Generation   int64                     `json:"generation"`
+}
+
+// SandboxActionDesiredState defines model for SandboxAction.DesiredState.
+type SandboxActionDesiredState string
+
+// SandboxBootstrapRequest defines model for SandboxBootstrapRequest.
+type SandboxBootstrapRequest struct {
+	BootstrapToken string `json:"bootstrap_token"`
+	PublicKey      string `json:"public_key"`
+}
+
+// SandboxBootstrapResponse defines model for SandboxBootstrapResponse.
+type SandboxBootstrapResponse struct {
+	Config            string             `json:"config"`
+	Generation        int64              `json:"generation"`
+	PeerId            openapi_types.UUID `json:"peer_id"`
+	RuntimeCredential string             `json:"runtime_credential"`
+	SandboxId         openapi_types.UUID `json:"sandbox_id"`
+}
+
+// SandboxBoundedRuntimeLimits Read-only limits of an operator-bound runtime. Historical reservations never become reusable workload capacity; stopped and unfinished cleanup records remain retained.
+type SandboxBoundedRuntimeLimits struct {
+	MaxRetained      int                                          `json:"max_retained"`
+	MaxWorkloads     int                                          `json:"max_workloads"`
+	ReservationId    *openapi_types.UUID                          `json:"reservation_id,omitempty"`
+	ReservationState *SandboxBoundedRuntimeLimitsReservationState `json:"reservation_state,omitempty"`
+	Retained         int64                                        `json:"retained"`
+	Workloads        int64                                        `json:"workloads"`
+}
+
+// SandboxBoundedRuntimeLimitsReservationState defines model for SandboxBoundedRuntimeLimits.ReservationState.
+type SandboxBoundedRuntimeLimitsReservationState string
+
+// SandboxCatalogEntry defines model for SandboxCatalogEntry.
+type SandboxCatalogEntry struct {
+	Enabled           bool            `json:"enabled"`
+	RuntimeCompatible bool            `json:"runtime_compatible"`
+	Template          SandboxTemplate `json:"template"`
+}
+
+// SandboxConnection Public-only current private SSH connection metadata. Omitted until current readiness and admission are valid.
+type SandboxConnection struct {
+	Address            string                    `json:"address"`
+	HostKeyFingerprint string                    `json:"host_key_fingerprint"`
+	HostPublicKey      string                    `json:"host_public_key"`
+	Port               SandboxConnectionPort     `json:"port"`
+	Username           SandboxConnectionUsername `json:"username"`
+}
+
+// SandboxConnectionPort defines model for SandboxConnection.Port.
+type SandboxConnectionPort int
+
+// SandboxConnectionUsername defines model for SandboxConnection.Username.
+type SandboxConnectionUsername string
+
+// SandboxCreate defines model for SandboxCreate.
+type SandboxCreate struct {
+	Name           string                   `json:"name"`
+	RequestedScope []SandboxScope           `json:"requested_scope"`
+	SelectedSkills *[]SandboxSkillSelection `json:"selected_skills,omitempty"`
+	SshPublicKeys  []string                 `json:"ssh_public_keys"`
+	TemplateId     openapi_types.UUID       `json:"template_id"`
+
+	// TerminalDeviceId Required for organization admission. Select the authenticated creator's active, healthy human terminal device on the configured terminal gateway. Legacy creator-bound deployments may omit it; an explicit value must match their binding.
+	TerminalDeviceId *openapi_types.UUID `json:"terminal_device_id,omitempty"`
+	TtlSeconds       int                 `json:"ttl_seconds"`
+}
+
+// SandboxCreationStatus defines model for SandboxCreationStatus.
+type SandboxCreationStatus struct {
+	BlockedReasons   []string `json:"blocked_reasons"`
+	CanAdmin         bool     `json:"can_admin"`
+	CanManageCatalog bool     `json:"can_manage_catalog"`
+
+	// RequiresTerminalDevice Organization admission requires an explicit owned terminal device for each new sandbox.
+	RequiresTerminalDevice bool `json:"requires_terminal_device"`
+	RuntimeReady           bool `json:"runtime_ready"`
+
+	// TerminalGatewayId Gateway on which the creator's selected human terminal device must be active.
+	TerminalGatewayId *openapi_types.UUID `json:"terminal_gateway_id,omitempty"`
+}
+
+// SandboxCustomSkill defines model for SandboxCustomSkill.
+type SandboxCustomSkill struct {
+	CreatedAt   time.Time          `json:"created_at"`
+	Deleted     bool               `json:"deleted"`
+	Description string             `json:"description"`
+	Digest      string             `json:"digest"`
+	Document    string             `json:"document"`
+	Generation  int64              `json:"generation"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	RevisionId  openapi_types.UUID `json:"revision_id"`
+}
+
+// SandboxCustomSkillCreate defines model for SandboxCustomSkillCreate.
+type SandboxCustomSkillCreate struct {
+	Document string `json:"document"`
+}
+
+// SandboxCustomSkillEdit defines model for SandboxCustomSkillEdit.
+type SandboxCustomSkillEdit struct {
+	Document   string `json:"document"`
+	Generation int64  `json:"generation"`
+}
+
+// SandboxCustomSkillList defines model for SandboxCustomSkillList.
+type SandboxCustomSkillList struct {
+	Items []SandboxCustomSkill `json:"items"`
+}
+
+// SandboxDelegation defines model for SandboxDelegation.
+type SandboxDelegation struct {
+	ExpiresAt        time.Time            `json:"expires_at"`
+	Id               *openapi_types.UUID  `json:"id,omitempty"`
+	MachineId        openapi_types.UUID   `json:"machine_id"`
+	MaxActive        int                  `json:"max_active"`
+	MaxTtlSeconds    int                  `json:"max_ttl_seconds"`
+	MaximumScope     []SandboxScope       `json:"maximum_scope"`
+	OrganizationId   *openapi_types.UUID  `json:"organization_id,omitempty"`
+	OwnerId          *openapi_types.UUID  `json:"owner_id,omitempty"`
+	SkillRevisionIds []openapi_types.UUID `json:"skill_revision_ids"`
+	TemplateId       openapi_types.UUID   `json:"template_id"`
+}
+
+// SandboxDelegationCreate defines model for SandboxDelegationCreate.
+type SandboxDelegationCreate struct {
+	ExpiresAt time.Time          `json:"expires_at"`
+	MachineId openapi_types.UUID `json:"machine_id"`
+
+	// MaxActive Further bounded by existing owner/org/runtime quota.
+	MaxActive        int                  `json:"max_active"`
+	MaxTtlSeconds    int                  `json:"max_ttl_seconds"`
+	MaximumScope     []SandboxScope       `json:"maximum_scope"`
+	SkillRevisionIds []openapi_types.UUID `json:"skill_revision_ids"`
+	TemplateId       openapi_types.UUID   `json:"template_id"`
+}
+
+// SandboxImageProfile defines model for SandboxImageProfile.
+type SandboxImageProfile struct {
+	Architecture                 SandboxImageProfileArchitecture  `json:"architecture"`
+	Compatibility                string                           `json:"compatibility"`
+	CompressedImageBytes         int64                            `json:"compressed_image_bytes"`
+	ConfigDigest                 string                           `json:"config_digest"`
+	Distro                       string                           `json:"distro"`
+	Emulated                     bool                             `json:"emulated"`
+	EvidenceContext              string                           `json:"evidence_context"`
+	ExcludedTools                []string                         `json:"excluded_tools"`
+	IdleMemoryBytes              int64                            `json:"idle_memory_bytes"`
+	ImageDigest                  string                           `json:"image_digest"`
+	IncludedTools                []string                         `json:"included_tools"`
+	MeasuredAt                   string                           `json:"measured_at"`
+	MeasurementMemoryCapBytes    int64                            `json:"measurement_memory_cap_bytes"`
+	MeasurementWorkspaceCapBytes int64                            `json:"measurement_workspace_cap_bytes"`
+	Name                         string                           `json:"name"`
+	Qualification                SandboxImageProfileQualification `json:"qualification"`
+	UnpackedImageBytes           int64                            `json:"unpacked_image_bytes"`
+}
+
+// SandboxImageProfileArchitecture defines model for SandboxImageProfile.Architecture.
+type SandboxImageProfileArchitecture string
+
+// SandboxImageProfileQualification defines model for SandboxImageProfile.Qualification.
+type SandboxImageProfileQualification string
+
+// SandboxList defines model for SandboxList.
+type SandboxList struct {
+	CreateAvailable bool                   `json:"create_available"`
+	CreationStatus  *SandboxCreationStatus `json:"creation_status,omitempty"`
+	Items           []Sandbox              `json:"items"`
+	NextCursor      *openapi_types.UUID    `json:"next_cursor,omitempty"`
+}
+
+// SandboxPublicationUpdate defines model for SandboxPublicationUpdate.
+type SandboxPublicationUpdate struct {
+	Enabled         bool `json:"enabled"`
+	ExpectedEnabled bool `json:"expected_enabled"`
+}
+
+// SandboxScope defines model for SandboxScope.
+type SandboxScope struct {
+	Cidr     string               `json:"cidr"`
+	PortHigh int                  `json:"port_high"`
+	PortLow  int                  `json:"port_low"`
+	Protocol SandboxScopeProtocol `json:"protocol"`
+}
+
+// SandboxScopeProtocol defines model for SandboxScope.Protocol.
+type SandboxScopeProtocol string
+
+// SandboxSetup defines model for SandboxSetup.
+type SandboxSetup struct {
+	CandidateProfiles *[]SandboxImageProfile `json:"candidate_profiles,omitempty"`
+	Catalog           []SandboxCatalogEntry  `json:"catalog"`
+	CreationStatus    SandboxCreationStatus  `json:"creation_status"`
+	PolicyMode        string                 `json:"policy_mode"`
+
+	// RuntimeLimits Read-only limits of an operator-bound runtime. Historical reservations never become reusable workload capacity; stopped and unfinished cleanup records remain retained.
+	RuntimeLimits *SandboxBoundedRuntimeLimits `json:"runtime_limits,omitempty"`
+	Settings      SandboxSetupSettings         `json:"settings"`
+}
+
+// SandboxSetupSettings defines model for SandboxSetupSettings.
+type SandboxSetupSettings struct {
+	Enabled    bool `json:"enabled"`
+	MaxPerUser int  `json:"max_per_user"`
+	MaxTotal   int  `json:"max_total"`
+}
+
+// SandboxSetupUpdate defines model for SandboxSetupUpdate.
+type SandboxSetupUpdate struct {
+	Expected SandboxSetupSettings `json:"expected"`
+	Settings SandboxSetupSettings `json:"settings"`
+}
+
+// SandboxSkill defines model for SandboxSkill.
+type SandboxSkill struct {
+	CustomSkillId *openapi_types.UUID `json:"custom_skill_id,omitempty"`
+	Description   string              `json:"description"`
+	Digest        string              `json:"digest"`
+	Fields        []SandboxSkillField `json:"fields"`
+	Id            openapi_types.UUID  `json:"id"`
+	Name          string              `json:"name"`
+	RequiredScope []SandboxScope      `json:"required_scope"`
+	UserOwned     bool                `json:"user_owned"`
+	Version       string              `json:"version"`
+}
+
+// SandboxSkillField defines model for SandboxSkillField.
+type SandboxSkillField struct {
+	Choices  []string `json:"choices"`
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Required bool     `json:"required"`
+}
+
+// SandboxSkillList defines model for SandboxSkillList.
+type SandboxSkillList struct {
+	ConfigurationAvailable bool           `json:"configuration_available"`
+	Items                  []SandboxSkill `json:"items"`
+}
+
+// SandboxSkillSelection defines model for SandboxSkillSelection.
+type SandboxSkillSelection struct {
+	Configuration map[string]string  `json:"configuration"`
+	RevisionId    openapi_types.UUID `json:"revision_id"`
+}
+
+// SandboxTemplate defines model for SandboxTemplate.
+type SandboxTemplate struct {
+	AllowedSkillRevisionIds []openapi_types.UUID `json:"allowed_skill_revision_ids"`
+	Id                      openapi_types.UUID   `json:"id"`
+	ImageDigest             string               `json:"image_digest"`
+	ImageProfile            *SandboxImageProfile `json:"image_profile,omitempty"`
+	MaxTtlSeconds           int                  `json:"max_ttl_seconds"`
+	MaximumScope            []SandboxScope       `json:"maximum_scope"`
+	MemoryMib               int                  `json:"memory_mib"`
+	Name                    string               `json:"name"`
+}
+
+// SandboxTemplateList defines model for SandboxTemplateList.
+type SandboxTemplateList struct {
+	CandidateProfiles *[]SandboxImageProfile `json:"candidate_profiles,omitempty"`
+	Items             []SandboxTemplate      `json:"items"`
+}
+
+// SavedSSHKey defines model for SavedSSHKey.
+type SavedSSHKey struct {
+	Fingerprint string             `json:"fingerprint"`
+	Id          openapi_types.UUID `json:"id"`
+	IsDefault   bool               `json:"is_default"`
+	Name        string             `json:"name"`
+	PublicKey   string             `json:"public_key"`
+}
+
+// SavedSSHKeyInput defines model for SavedSSHKeyInput.
+type SavedSSHKeyInput struct {
+	Name      string `json:"name"`
+	PublicKey string `json:"public_key"`
+}
+
+// SavedSSHKeyList defines model for SavedSSHKeyList.
+type SavedSSHKeyList struct {
+	Items []SavedSSHKey `json:"items"`
 }
 
 // ServerEmailSettings defines model for ServerEmailSettings.
@@ -7644,6 +8033,32 @@ type ListRoutedRangesParams struct {
 	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
 }
 
+// CreateCustomSandboxSkillParams defines parameters for CreateCustomSandboxSkill.
+type CreateCustomSandboxSkillParams struct {
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// DeleteCustomSandboxSkillParams defines parameters for DeleteCustomSandboxSkill.
+type DeleteCustomSandboxSkillParams struct {
+	Generation int64 `form:"generation" json:"generation"`
+}
+
+// UpdateSandboxDelegationSettingsJSONBody defines parameters for UpdateSandboxDelegationSettings.
+type UpdateSandboxDelegationSettingsJSONBody struct {
+	Enabled bool `json:"enabled"`
+}
+
+// ListSandboxesParams defines parameters for ListSandboxes.
+type ListSandboxesParams struct {
+	Cursor *openapi_types.UUID `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int                `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateSandboxParams defines parameters for CreateSandbox.
+type CreateSandboxParams struct {
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // AiAnthropicMessageJSONRequestBody defines body for AiAnthropicMessage for application/json ContentType.
 type AiAnthropicMessageJSONRequestBody = AIInferenceRequest
 
@@ -8193,6 +8608,33 @@ type UpdateResourceJSONRequestBody = ResourceRequest
 // RouteLANJSONRequestBody defines body for RouteLAN for application/json ContentType.
 type RouteLANJSONRequestBody = RouteLANRequest
 
+// PublishSandboxTemplateJSONRequestBody defines body for PublishSandboxTemplate for application/json ContentType.
+type PublishSandboxTemplateJSONRequestBody = SandboxPublicationUpdate
+
+// CreateCustomSandboxSkillJSONRequestBody defines body for CreateCustomSandboxSkill for application/json ContentType.
+type CreateCustomSandboxSkillJSONRequestBody = SandboxCustomSkillCreate
+
+// EditCustomSandboxSkillJSONRequestBody defines body for EditCustomSandboxSkill for application/json ContentType.
+type EditCustomSandboxSkillJSONRequestBody = SandboxCustomSkillEdit
+
+// UpdateSandboxDelegationSettingsJSONRequestBody defines body for UpdateSandboxDelegationSettings for application/json ContentType.
+type UpdateSandboxDelegationSettingsJSONRequestBody UpdateSandboxDelegationSettingsJSONBody
+
+// IssueSandboxDelegationJSONRequestBody defines body for IssueSandboxDelegation for application/json ContentType.
+type IssueSandboxDelegationJSONRequestBody = SandboxDelegationCreate
+
+// UpdateSandboxSetupJSONRequestBody defines body for UpdateSandboxSetup for application/json ContentType.
+type UpdateSandboxSetupJSONRequestBody = SandboxSetupUpdate
+
+// CreateSandboxJSONRequestBody defines body for CreateSandbox for application/json ContentType.
+type CreateSandboxJSONRequestBody = SandboxCreate
+
+// SandboxActionJSONRequestBody defines body for SandboxAction for application/json ContentType.
+type SandboxActionJSONRequestBody = SandboxAction
+
+// SaveSSHKeyJSONRequestBody defines body for SaveSSHKey for application/json ContentType.
+type SaveSSHKeyJSONRequestBody = SavedSSHKeyInput
+
 // RegisterSiteJSONRequestBody defines body for RegisterSite for application/json ContentType.
 type RegisterSiteJSONRequestBody = RegisterSiteRequest
 
@@ -8222,6 +8664,9 @@ type SetSsoConfigJSONRequestBody = SsoConfigRequest
 
 // SetZeroTrustModeJSONRequestBody defines body for SetZeroTrustMode for application/json ContentType.
 type SetZeroTrustModeJSONRequestBody = ZeroTrustMode
+
+// BootstrapSandboxJSONRequestBody defines body for BootstrapSandbox for application/json ContentType.
+type BootstrapSandboxJSONRequestBody = SandboxBootstrapRequest
 
 // EnrollWorkloadJSONRequestBody defines body for EnrollWorkload for application/json ContentType.
 type EnrollWorkloadJSONRequestBody = AIWorkloadEnrollInput
@@ -9854,6 +10299,87 @@ type ClientInterface interface {
 	// ListRoutedRanges request
 	ListRoutedRanges(ctx context.Context, orgId openapi_types.UUID, params *ListRoutedRangesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PublishSandboxTemplateWithBody request with any body
+	PublishSandboxTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PublishSandboxTemplate(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body PublishSandboxTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCustomSandboxSkills request
+	ListCustomSandboxSkills(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCustomSandboxSkillWithBody request with any body
+	CreateCustomSandboxSkillWithBody(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, body CreateCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteCustomSandboxSkill request
+	DeleteCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, params *DeleteCustomSandboxSkillParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCustomSandboxSkill request
+	GetCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EditCustomSandboxSkillWithBody request with any body
+	EditCustomSandboxSkillWithBody(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	EditCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, body EditCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSandboxDelegationSettingsWithBody request with any body
+	UpdateSandboxDelegationSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateSandboxDelegationSettings(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxDelegationSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueSandboxDelegationWithBody request with any body
+	IssueSandboxDelegationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	IssueSandboxDelegation(ctx context.Context, orgId openapi_types.UUID, body IssueSandboxDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeSandboxDelegation request
+	RevokeSandboxDelegation(ctx context.Context, orgId openapi_types.UUID, delegationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSandboxSetup request
+	GetSandboxSetup(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSandboxSetupWithBody request with any body
+	UpdateSandboxSetupWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateSandboxSetup(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSandboxSkills request
+	ListSandboxSkills(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSandboxTemplates request
+	ListSandboxTemplates(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSandboxes request
+	ListSandboxes(ctx context.Context, orgId openapi_types.UUID, params *ListSandboxesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSandboxWithBody request with any body
+	CreateSandboxWithBody(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateSandbox(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, body CreateSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSandbox request
+	GetSandbox(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SandboxActionWithBody request with any body
+	SandboxActionWithBody(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SandboxAction(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, body SandboxActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSavedSSHKeys request
+	ListSavedSSHKeys(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SaveSSHKeyWithBody request with any body
+	SaveSSHKeyWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SaveSSHKey(ctx context.Context, orgId openapi_types.UUID, body SaveSSHKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSavedSSHKey request
+	DeleteSavedSSHKey(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DefaultSavedSSHKey request
+	DefaultSavedSSHKey(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListPendingSiteSubnets request
 	ListPendingSiteSubnets(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -9945,6 +10471,11 @@ type ClientInterface interface {
 	SetZeroTrustModeWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetZeroTrustMode(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BootstrapSandboxWithBody request with any body
+	BootstrapSandboxWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BootstrapSandbox(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// EnrollWorkloadWithBody request with any body
 	EnrollWorkloadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16640,6 +17171,366 @@ func (c *Client) ListRoutedRanges(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) PublishSandboxTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishSandboxTemplateRequestWithBody(c.Server, orgId, templateId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PublishSandboxTemplate(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body PublishSandboxTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishSandboxTemplateRequest(c.Server, orgId, templateId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListCustomSandboxSkills(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCustomSandboxSkillsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateCustomSandboxSkillWithBody(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCustomSandboxSkillRequestWithBody(c.Server, orgId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, body CreateCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCustomSandboxSkillRequest(c.Server, orgId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, params *DeleteCustomSandboxSkillParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteCustomSandboxSkillRequest(c.Server, orgId, skillId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCustomSandboxSkillRequest(c.Server, orgId, skillId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) EditCustomSandboxSkillWithBody(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEditCustomSandboxSkillRequestWithBody(c.Server, orgId, skillId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) EditCustomSandboxSkill(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, body EditCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEditCustomSandboxSkillRequest(c.Server, orgId, skillId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSandboxDelegationSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSandboxDelegationSettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSandboxDelegationSettings(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxDelegationSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSandboxDelegationSettingsRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) IssueSandboxDelegationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueSandboxDelegationRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) IssueSandboxDelegation(ctx context.Context, orgId openapi_types.UUID, body IssueSandboxDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueSandboxDelegationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeSandboxDelegation(ctx context.Context, orgId openapi_types.UUID, delegationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeSandboxDelegationRequest(c.Server, orgId, delegationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSandboxSetup(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSandboxSetupRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSandboxSetupWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSandboxSetupRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateSandboxSetup(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSandboxSetupRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSandboxSkills(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSandboxSkillsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSandboxTemplates(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSandboxTemplatesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSandboxes(ctx context.Context, orgId openapi_types.UUID, params *ListSandboxesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSandboxesRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSandboxWithBody(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSandboxRequestWithBody(c.Server, orgId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSandbox(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, body CreateSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSandboxRequest(c.Server, orgId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSandbox(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSandboxRequest(c.Server, orgId, sandboxId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SandboxActionWithBody(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSandboxActionRequestWithBody(c.Server, orgId, sandboxId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SandboxAction(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, body SandboxActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSandboxActionRequest(c.Server, orgId, sandboxId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListSavedSSHKeys(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSavedSSHKeysRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SaveSSHKeyWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSaveSSHKeyRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SaveSSHKey(ctx context.Context, orgId openapi_types.UUID, body SaveSSHKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSaveSSHKeyRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteSavedSSHKey(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSavedSSHKeyRequest(c.Server, orgId, keyId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DefaultSavedSSHKey(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDefaultSavedSSHKeyRequest(c.Server, orgId, keyId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListPendingSiteSubnets(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPendingSiteSubnetsRequest(c.Server, orgId)
 	if err != nil {
@@ -17038,6 +17929,30 @@ func (c *Client) SetZeroTrustModeWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) SetZeroTrustMode(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetZeroTrustModeRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BootstrapSandboxWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBootstrapSandboxRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BootstrapSandbox(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBootstrapSandboxRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -35572,6 +36487,982 @@ func NewListRoutedRangesRequest(server string, orgId openapi_types.UUID, params 
 	return req, nil
 }
 
+// NewPublishSandboxTemplateRequest calls the generic PublishSandboxTemplate builder with application/json body
+func NewPublishSandboxTemplateRequest(server string, orgId openapi_types.UUID, templateId openapi_types.UUID, body PublishSandboxTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPublishSandboxTemplateRequestWithBody(server, orgId, templateId, "application/json", bodyReader)
+}
+
+// NewPublishSandboxTemplateRequestWithBody generates requests for PublishSandboxTemplate with any type of body
+func NewPublishSandboxTemplateRequestWithBody(server string, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "templateId", runtime.ParamLocationPath, templateId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-catalog/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListCustomSandboxSkillsRequest generates requests for ListCustomSandboxSkills
+func NewListCustomSandboxSkillsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-custom-skills", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateCustomSandboxSkillRequest calls the generic CreateCustomSandboxSkill builder with application/json body
+func NewCreateCustomSandboxSkillRequest(server string, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, body CreateCustomSandboxSkillJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCustomSandboxSkillRequestWithBody(server, orgId, params, "application/json", bodyReader)
+}
+
+// NewCreateCustomSandboxSkillRequestWithBody generates requests for CreateCustomSandboxSkill with any type of body
+func NewCreateCustomSandboxSkillRequestWithBody(server string, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-custom-skills", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "Idempotency-Key", runtime.ParamLocationHeader, params.IdempotencyKey)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Idempotency-Key", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteCustomSandboxSkillRequest generates requests for DeleteCustomSandboxSkill
+func NewDeleteCustomSandboxSkillRequest(server string, orgId openapi_types.UUID, skillId openapi_types.UUID, params *DeleteCustomSandboxSkillParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "skillId", runtime.ParamLocationPath, skillId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-custom-skills/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "generation", runtime.ParamLocationQuery, params.Generation); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCustomSandboxSkillRequest generates requests for GetCustomSandboxSkill
+func NewGetCustomSandboxSkillRequest(server string, orgId openapi_types.UUID, skillId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "skillId", runtime.ParamLocationPath, skillId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-custom-skills/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewEditCustomSandboxSkillRequest calls the generic EditCustomSandboxSkill builder with application/json body
+func NewEditCustomSandboxSkillRequest(server string, orgId openapi_types.UUID, skillId openapi_types.UUID, body EditCustomSandboxSkillJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewEditCustomSandboxSkillRequestWithBody(server, orgId, skillId, "application/json", bodyReader)
+}
+
+// NewEditCustomSandboxSkillRequestWithBody generates requests for EditCustomSandboxSkill with any type of body
+func NewEditCustomSandboxSkillRequestWithBody(server string, orgId openapi_types.UUID, skillId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "skillId", runtime.ParamLocationPath, skillId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-custom-skills/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateSandboxDelegationSettingsRequest calls the generic UpdateSandboxDelegationSettings builder with application/json body
+func NewUpdateSandboxDelegationSettingsRequest(server string, orgId openapi_types.UUID, body UpdateSandboxDelegationSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSandboxDelegationSettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateSandboxDelegationSettingsRequestWithBody generates requests for UpdateSandboxDelegationSettings with any type of body
+func NewUpdateSandboxDelegationSettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-delegation-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewIssueSandboxDelegationRequest calls the generic IssueSandboxDelegation builder with application/json body
+func NewIssueSandboxDelegationRequest(server string, orgId openapi_types.UUID, body IssueSandboxDelegationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewIssueSandboxDelegationRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewIssueSandboxDelegationRequestWithBody generates requests for IssueSandboxDelegation with any type of body
+func NewIssueSandboxDelegationRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-delegations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeSandboxDelegationRequest generates requests for RevokeSandboxDelegation
+func NewRevokeSandboxDelegationRequest(server string, orgId openapi_types.UUID, delegationId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "delegationId", runtime.ParamLocationPath, delegationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-delegations/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSandboxSetupRequest generates requests for GetSandboxSetup
+func NewGetSandboxSetupRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-setup", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSandboxSetupRequest calls the generic UpdateSandboxSetup builder with application/json body
+func NewUpdateSandboxSetupRequest(server string, orgId openapi_types.UUID, body UpdateSandboxSetupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSandboxSetupRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateSandboxSetupRequestWithBody generates requests for UpdateSandboxSetup with any type of body
+func NewUpdateSandboxSetupRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-setup", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSandboxSkillsRequest generates requests for ListSandboxSkills
+func NewListSandboxSkillsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-skills", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSandboxTemplatesRequest generates requests for ListSandboxTemplates
+func NewListSandboxTemplatesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-templates", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSandboxesRequest generates requests for ListSandboxes
+func NewListSandboxesRequest(server string, orgId openapi_types.UUID, params *ListSandboxesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandboxes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSandboxRequest calls the generic CreateSandbox builder with application/json body
+func NewCreateSandboxRequest(server string, orgId openapi_types.UUID, params *CreateSandboxParams, body CreateSandboxJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSandboxRequestWithBody(server, orgId, params, "application/json", bodyReader)
+}
+
+// NewCreateSandboxRequestWithBody generates requests for CreateSandbox with any type of body
+func NewCreateSandboxRequestWithBody(server string, orgId openapi_types.UUID, params *CreateSandboxParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandboxes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		var headerParam0 string
+
+		headerParam0, err = runtime.StyleParamWithLocation("simple", false, "Idempotency-Key", runtime.ParamLocationHeader, params.IdempotencyKey)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Idempotency-Key", headerParam0)
+
+	}
+
+	return req, nil
+}
+
+// NewGetSandboxRequest generates requests for GetSandbox
+func NewGetSandboxRequest(server string, orgId openapi_types.UUID, sandboxId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sandboxId", runtime.ParamLocationPath, sandboxId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandboxes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSandboxActionRequest calls the generic SandboxAction builder with application/json body
+func NewSandboxActionRequest(server string, orgId openapi_types.UUID, sandboxId openapi_types.UUID, body SandboxActionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSandboxActionRequestWithBody(server, orgId, sandboxId, "application/json", bodyReader)
+}
+
+// NewSandboxActionRequestWithBody generates requests for SandboxAction with any type of body
+func NewSandboxActionRequestWithBody(server string, orgId openapi_types.UUID, sandboxId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sandboxId", runtime.ParamLocationPath, sandboxId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandboxes/%s/actions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSavedSSHKeysRequest generates requests for ListSavedSSHKeys
+func NewListSavedSSHKeysRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/saved-ssh-keys", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSaveSSHKeyRequest calls the generic SaveSSHKey builder with application/json body
+func NewSaveSSHKeyRequest(server string, orgId openapi_types.UUID, body SaveSSHKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSaveSSHKeyRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSaveSSHKeyRequestWithBody generates requests for SaveSSHKey with any type of body
+func NewSaveSSHKeyRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/saved-ssh-keys", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSavedSSHKeyRequest generates requests for DeleteSavedSSHKey
+func NewDeleteSavedSSHKeyRequest(server string, orgId openapi_types.UUID, keyId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "keyId", runtime.ParamLocationPath, keyId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/saved-ssh-keys/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDefaultSavedSSHKeyRequest generates requests for DefaultSavedSSHKey
+func NewDefaultSavedSSHKeyRequest(server string, orgId openapi_types.UUID, keyId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "keyId", runtime.ParamLocationPath, keyId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/saved-ssh-keys/%s/default", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListPendingSiteSubnetsRequest generates requests for ListPendingSiteSubnets
 func NewListPendingSiteSubnetsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -36635,6 +38526,46 @@ func NewSetZeroTrustModeRequestWithBody(server string, orgId openapi_types.UUID,
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBootstrapSandboxRequest calls the generic BootstrapSandbox builder with application/json body
+func NewBootstrapSandboxRequest(server string, body BootstrapSandboxJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBootstrapSandboxRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBootstrapSandboxRequestWithBody generates requests for BootstrapSandbox with any type of body
+func NewBootstrapSandboxRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/sandbox/bootstrap")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -38348,6 +40279,87 @@ type ClientWithResponsesInterface interface {
 	// ListRoutedRangesWithResponse request
 	ListRoutedRangesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListRoutedRangesParams, reqEditors ...RequestEditorFn) (*ListRoutedRangesResponse, error)
 
+	// PublishSandboxTemplateWithBodyWithResponse request with any body
+	PublishSandboxTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishSandboxTemplateResponse, error)
+
+	PublishSandboxTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body PublishSandboxTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishSandboxTemplateResponse, error)
+
+	// ListCustomSandboxSkillsWithResponse request
+	ListCustomSandboxSkillsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListCustomSandboxSkillsResponse, error)
+
+	// CreateCustomSandboxSkillWithBodyWithResponse request with any body
+	CreateCustomSandboxSkillWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCustomSandboxSkillResponse, error)
+
+	CreateCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, body CreateCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCustomSandboxSkillResponse, error)
+
+	// DeleteCustomSandboxSkillWithResponse request
+	DeleteCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, params *DeleteCustomSandboxSkillParams, reqEditors ...RequestEditorFn) (*DeleteCustomSandboxSkillResponse, error)
+
+	// GetCustomSandboxSkillWithResponse request
+	GetCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCustomSandboxSkillResponse, error)
+
+	// EditCustomSandboxSkillWithBodyWithResponse request with any body
+	EditCustomSandboxSkillWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EditCustomSandboxSkillResponse, error)
+
+	EditCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, body EditCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*EditCustomSandboxSkillResponse, error)
+
+	// UpdateSandboxDelegationSettingsWithBodyWithResponse request with any body
+	UpdateSandboxDelegationSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSandboxDelegationSettingsResponse, error)
+
+	UpdateSandboxDelegationSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxDelegationSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSandboxDelegationSettingsResponse, error)
+
+	// IssueSandboxDelegationWithBodyWithResponse request with any body
+	IssueSandboxDelegationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueSandboxDelegationResponse, error)
+
+	IssueSandboxDelegationWithResponse(ctx context.Context, orgId openapi_types.UUID, body IssueSandboxDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueSandboxDelegationResponse, error)
+
+	// RevokeSandboxDelegationWithResponse request
+	RevokeSandboxDelegationWithResponse(ctx context.Context, orgId openapi_types.UUID, delegationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeSandboxDelegationResponse, error)
+
+	// GetSandboxSetupWithResponse request
+	GetSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxSetupResponse, error)
+
+	// UpdateSandboxSetupWithBodyWithResponse request with any body
+	UpdateSandboxSetupWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSandboxSetupResponse, error)
+
+	UpdateSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSandboxSetupResponse, error)
+
+	// ListSandboxSkillsWithResponse request
+	ListSandboxSkillsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSandboxSkillsResponse, error)
+
+	// ListSandboxTemplatesWithResponse request
+	ListSandboxTemplatesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSandboxTemplatesResponse, error)
+
+	// ListSandboxesWithResponse request
+	ListSandboxesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListSandboxesParams, reqEditors ...RequestEditorFn) (*ListSandboxesResponse, error)
+
+	// CreateSandboxWithBodyWithResponse request with any body
+	CreateSandboxWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSandboxResponse, error)
+
+	CreateSandboxWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, body CreateSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSandboxResponse, error)
+
+	// GetSandboxWithResponse request
+	GetSandboxWithResponse(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxResponse, error)
+
+	// SandboxActionWithBodyWithResponse request with any body
+	SandboxActionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SandboxActionResponse, error)
+
+	SandboxActionWithResponse(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, body SandboxActionJSONRequestBody, reqEditors ...RequestEditorFn) (*SandboxActionResponse, error)
+
+	// ListSavedSSHKeysWithResponse request
+	ListSavedSSHKeysWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSavedSSHKeysResponse, error)
+
+	// SaveSSHKeyWithBodyWithResponse request with any body
+	SaveSSHKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SaveSSHKeyResponse, error)
+
+	SaveSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, body SaveSSHKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*SaveSSHKeyResponse, error)
+
+	// DeleteSavedSSHKeyWithResponse request
+	DeleteSavedSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteSavedSSHKeyResponse, error)
+
+	// DefaultSavedSSHKeyWithResponse request
+	DefaultSavedSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DefaultSavedSSHKeyResponse, error)
+
 	// ListPendingSiteSubnetsWithResponse request
 	ListPendingSiteSubnetsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListPendingSiteSubnetsResponse, error)
 
@@ -38439,6 +40451,11 @@ type ClientWithResponsesInterface interface {
 	SetZeroTrustModeWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetZeroTrustModeResponse, error)
 
 	SetZeroTrustModeWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetZeroTrustModeResponse, error)
+
+	// BootstrapSandboxWithBodyWithResponse request with any body
+	BootstrapSandboxWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error)
+
+	BootstrapSandboxWithResponse(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error)
 
 	// EnrollWorkloadWithBodyWithResponse request with any body
 	EnrollWorkloadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnrollWorkloadResponse, error)
@@ -47049,6 +49066,484 @@ func (r ListRoutedRangesResponse) StatusCode() int {
 	return 0
 }
 
+type PublishSandboxTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxSetup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PublishSandboxTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PublishSandboxTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListCustomSandboxSkillsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxCustomSkillList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCustomSandboxSkillsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCustomSandboxSkillsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateCustomSandboxSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *SandboxCustomSkill
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCustomSandboxSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCustomSandboxSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteCustomSandboxSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteCustomSandboxSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteCustomSandboxSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetCustomSandboxSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxCustomSkill
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCustomSandboxSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCustomSandboxSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type EditCustomSandboxSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxCustomSkill
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r EditCustomSandboxSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EditCustomSandboxSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateSandboxDelegationSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSandboxDelegationSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSandboxDelegationSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type IssueSandboxDelegationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *SandboxDelegation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueSandboxDelegationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueSandboxDelegationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeSandboxDelegationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeSandboxDelegationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeSandboxDelegationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSandboxSetupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxSetup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSandboxSetupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSandboxSetupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateSandboxSetupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxSetup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSandboxSetupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSandboxSetupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSandboxSkillsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxSkillList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSandboxSkillsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSandboxSkillsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSandboxTemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxTemplateList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSandboxTemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSandboxTemplatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSandboxesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSandboxesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSandboxesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateSandboxResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *Sandbox
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSandboxResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSandboxResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSandboxResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Sandbox
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSandboxResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSandboxResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SandboxActionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *Sandbox
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SandboxActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SandboxActionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListSavedSSHKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SavedSSHKeyList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSavedSSHKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSavedSSHKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SaveSSHKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SavedSSHKey
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SaveSSHKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SaveSSHKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteSavedSSHKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSavedSSHKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSavedSSHKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DefaultSavedSSHKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DefaultSavedSSHKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DefaultSavedSSHKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListPendingSiteSubnetsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -47587,6 +50082,29 @@ func (r SetZeroTrustModeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetZeroTrustModeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type BootstrapSandboxResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxBootstrapResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r BootstrapSandboxResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BootstrapSandboxResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -52530,6 +55048,267 @@ func (c *ClientWithResponses) ListRoutedRangesWithResponse(ctx context.Context, 
 	return ParseListRoutedRangesResponse(rsp)
 }
 
+// PublishSandboxTemplateWithBodyWithResponse request with arbitrary body returning *PublishSandboxTemplateResponse
+func (c *ClientWithResponses) PublishSandboxTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishSandboxTemplateResponse, error) {
+	rsp, err := c.PublishSandboxTemplateWithBody(ctx, orgId, templateId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishSandboxTemplateResponse(rsp)
+}
+
+func (c *ClientWithResponses) PublishSandboxTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body PublishSandboxTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishSandboxTemplateResponse, error) {
+	rsp, err := c.PublishSandboxTemplate(ctx, orgId, templateId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishSandboxTemplateResponse(rsp)
+}
+
+// ListCustomSandboxSkillsWithResponse request returning *ListCustomSandboxSkillsResponse
+func (c *ClientWithResponses) ListCustomSandboxSkillsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListCustomSandboxSkillsResponse, error) {
+	rsp, err := c.ListCustomSandboxSkills(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCustomSandboxSkillsResponse(rsp)
+}
+
+// CreateCustomSandboxSkillWithBodyWithResponse request with arbitrary body returning *CreateCustomSandboxSkillResponse
+func (c *ClientWithResponses) CreateCustomSandboxSkillWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCustomSandboxSkillResponse, error) {
+	rsp, err := c.CreateCustomSandboxSkillWithBody(ctx, orgId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCustomSandboxSkillResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateCustomSandboxSkillParams, body CreateCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCustomSandboxSkillResponse, error) {
+	rsp, err := c.CreateCustomSandboxSkill(ctx, orgId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCustomSandboxSkillResponse(rsp)
+}
+
+// DeleteCustomSandboxSkillWithResponse request returning *DeleteCustomSandboxSkillResponse
+func (c *ClientWithResponses) DeleteCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, params *DeleteCustomSandboxSkillParams, reqEditors ...RequestEditorFn) (*DeleteCustomSandboxSkillResponse, error) {
+	rsp, err := c.DeleteCustomSandboxSkill(ctx, orgId, skillId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteCustomSandboxSkillResponse(rsp)
+}
+
+// GetCustomSandboxSkillWithResponse request returning *GetCustomSandboxSkillResponse
+func (c *ClientWithResponses) GetCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCustomSandboxSkillResponse, error) {
+	rsp, err := c.GetCustomSandboxSkill(ctx, orgId, skillId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCustomSandboxSkillResponse(rsp)
+}
+
+// EditCustomSandboxSkillWithBodyWithResponse request with arbitrary body returning *EditCustomSandboxSkillResponse
+func (c *ClientWithResponses) EditCustomSandboxSkillWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EditCustomSandboxSkillResponse, error) {
+	rsp, err := c.EditCustomSandboxSkillWithBody(ctx, orgId, skillId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEditCustomSandboxSkillResponse(rsp)
+}
+
+func (c *ClientWithResponses) EditCustomSandboxSkillWithResponse(ctx context.Context, orgId openapi_types.UUID, skillId openapi_types.UUID, body EditCustomSandboxSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*EditCustomSandboxSkillResponse, error) {
+	rsp, err := c.EditCustomSandboxSkill(ctx, orgId, skillId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEditCustomSandboxSkillResponse(rsp)
+}
+
+// UpdateSandboxDelegationSettingsWithBodyWithResponse request with arbitrary body returning *UpdateSandboxDelegationSettingsResponse
+func (c *ClientWithResponses) UpdateSandboxDelegationSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSandboxDelegationSettingsResponse, error) {
+	rsp, err := c.UpdateSandboxDelegationSettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSandboxDelegationSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateSandboxDelegationSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxDelegationSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSandboxDelegationSettingsResponse, error) {
+	rsp, err := c.UpdateSandboxDelegationSettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSandboxDelegationSettingsResponse(rsp)
+}
+
+// IssueSandboxDelegationWithBodyWithResponse request with arbitrary body returning *IssueSandboxDelegationResponse
+func (c *ClientWithResponses) IssueSandboxDelegationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueSandboxDelegationResponse, error) {
+	rsp, err := c.IssueSandboxDelegationWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueSandboxDelegationResponse(rsp)
+}
+
+func (c *ClientWithResponses) IssueSandboxDelegationWithResponse(ctx context.Context, orgId openapi_types.UUID, body IssueSandboxDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueSandboxDelegationResponse, error) {
+	rsp, err := c.IssueSandboxDelegation(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueSandboxDelegationResponse(rsp)
+}
+
+// RevokeSandboxDelegationWithResponse request returning *RevokeSandboxDelegationResponse
+func (c *ClientWithResponses) RevokeSandboxDelegationWithResponse(ctx context.Context, orgId openapi_types.UUID, delegationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeSandboxDelegationResponse, error) {
+	rsp, err := c.RevokeSandboxDelegation(ctx, orgId, delegationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeSandboxDelegationResponse(rsp)
+}
+
+// GetSandboxSetupWithResponse request returning *GetSandboxSetupResponse
+func (c *ClientWithResponses) GetSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxSetupResponse, error) {
+	rsp, err := c.GetSandboxSetup(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSandboxSetupResponse(rsp)
+}
+
+// UpdateSandboxSetupWithBodyWithResponse request with arbitrary body returning *UpdateSandboxSetupResponse
+func (c *ClientWithResponses) UpdateSandboxSetupWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSandboxSetupResponse, error) {
+	rsp, err := c.UpdateSandboxSetupWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSandboxSetupResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateSandboxSetupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSandboxSetupResponse, error) {
+	rsp, err := c.UpdateSandboxSetup(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSandboxSetupResponse(rsp)
+}
+
+// ListSandboxSkillsWithResponse request returning *ListSandboxSkillsResponse
+func (c *ClientWithResponses) ListSandboxSkillsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSandboxSkillsResponse, error) {
+	rsp, err := c.ListSandboxSkills(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSandboxSkillsResponse(rsp)
+}
+
+// ListSandboxTemplatesWithResponse request returning *ListSandboxTemplatesResponse
+func (c *ClientWithResponses) ListSandboxTemplatesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSandboxTemplatesResponse, error) {
+	rsp, err := c.ListSandboxTemplates(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSandboxTemplatesResponse(rsp)
+}
+
+// ListSandboxesWithResponse request returning *ListSandboxesResponse
+func (c *ClientWithResponses) ListSandboxesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListSandboxesParams, reqEditors ...RequestEditorFn) (*ListSandboxesResponse, error) {
+	rsp, err := c.ListSandboxes(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSandboxesResponse(rsp)
+}
+
+// CreateSandboxWithBodyWithResponse request with arbitrary body returning *CreateSandboxResponse
+func (c *ClientWithResponses) CreateSandboxWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSandboxResponse, error) {
+	rsp, err := c.CreateSandboxWithBody(ctx, orgId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSandboxResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateSandboxWithResponse(ctx context.Context, orgId openapi_types.UUID, params *CreateSandboxParams, body CreateSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSandboxResponse, error) {
+	rsp, err := c.CreateSandbox(ctx, orgId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSandboxResponse(rsp)
+}
+
+// GetSandboxWithResponse request returning *GetSandboxResponse
+func (c *ClientWithResponses) GetSandboxWithResponse(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxResponse, error) {
+	rsp, err := c.GetSandbox(ctx, orgId, sandboxId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSandboxResponse(rsp)
+}
+
+// SandboxActionWithBodyWithResponse request with arbitrary body returning *SandboxActionResponse
+func (c *ClientWithResponses) SandboxActionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SandboxActionResponse, error) {
+	rsp, err := c.SandboxActionWithBody(ctx, orgId, sandboxId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSandboxActionResponse(rsp)
+}
+
+func (c *ClientWithResponses) SandboxActionWithResponse(ctx context.Context, orgId openapi_types.UUID, sandboxId openapi_types.UUID, body SandboxActionJSONRequestBody, reqEditors ...RequestEditorFn) (*SandboxActionResponse, error) {
+	rsp, err := c.SandboxAction(ctx, orgId, sandboxId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSandboxActionResponse(rsp)
+}
+
+// ListSavedSSHKeysWithResponse request returning *ListSavedSSHKeysResponse
+func (c *ClientWithResponses) ListSavedSSHKeysWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSavedSSHKeysResponse, error) {
+	rsp, err := c.ListSavedSSHKeys(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSavedSSHKeysResponse(rsp)
+}
+
+// SaveSSHKeyWithBodyWithResponse request with arbitrary body returning *SaveSSHKeyResponse
+func (c *ClientWithResponses) SaveSSHKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SaveSSHKeyResponse, error) {
+	rsp, err := c.SaveSSHKeyWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSaveSSHKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) SaveSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, body SaveSSHKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*SaveSSHKeyResponse, error) {
+	rsp, err := c.SaveSSHKey(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSaveSSHKeyResponse(rsp)
+}
+
+// DeleteSavedSSHKeyWithResponse request returning *DeleteSavedSSHKeyResponse
+func (c *ClientWithResponses) DeleteSavedSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteSavedSSHKeyResponse, error) {
+	rsp, err := c.DeleteSavedSSHKey(ctx, orgId, keyId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSavedSSHKeyResponse(rsp)
+}
+
+// DefaultSavedSSHKeyWithResponse request returning *DefaultSavedSSHKeyResponse
+func (c *ClientWithResponses) DefaultSavedSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DefaultSavedSSHKeyResponse, error) {
+	rsp, err := c.DefaultSavedSSHKey(ctx, orgId, keyId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDefaultSavedSSHKeyResponse(rsp)
+}
+
 // ListPendingSiteSubnetsWithResponse request returning *ListPendingSiteSubnetsResponse
 func (c *ClientWithResponses) ListPendingSiteSubnetsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListPendingSiteSubnetsResponse, error) {
 	rsp, err := c.ListPendingSiteSubnets(ctx, orgId, reqEditors...)
@@ -52824,6 +55603,23 @@ func (c *ClientWithResponses) SetZeroTrustModeWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseSetZeroTrustModeResponse(rsp)
+}
+
+// BootstrapSandboxWithBodyWithResponse request with arbitrary body returning *BootstrapSandboxResponse
+func (c *ClientWithResponses) BootstrapSandboxWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error) {
+	rsp, err := c.BootstrapSandboxWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBootstrapSandboxResponse(rsp)
+}
+
+func (c *ClientWithResponses) BootstrapSandboxWithResponse(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error) {
+	rsp, err := c.BootstrapSandbox(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBootstrapSandboxResponse(rsp)
 }
 
 // EnrollWorkloadWithBodyWithResponse request with arbitrary body returning *EnrollWorkloadResponse
@@ -65010,6 +67806,664 @@ func ParseListRoutedRangesResponse(rsp *http.Response) (*ListRoutedRangesRespons
 	return response, nil
 }
 
+// ParsePublishSandboxTemplateResponse parses an HTTP response from a PublishSandboxTemplateWithResponse call
+func ParsePublishSandboxTemplateResponse(rsp *http.Response) (*PublishSandboxTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PublishSandboxTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxSetup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCustomSandboxSkillsResponse parses an HTTP response from a ListCustomSandboxSkillsWithResponse call
+func ParseListCustomSandboxSkillsResponse(rsp *http.Response) (*ListCustomSandboxSkillsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCustomSandboxSkillsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxCustomSkillList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateCustomSandboxSkillResponse parses an HTTP response from a CreateCustomSandboxSkillWithResponse call
+func ParseCreateCustomSandboxSkillResponse(rsp *http.Response) (*CreateCustomSandboxSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCustomSandboxSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SandboxCustomSkill
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteCustomSandboxSkillResponse parses an HTTP response from a DeleteCustomSandboxSkillWithResponse call
+func ParseDeleteCustomSandboxSkillResponse(rsp *http.Response) (*DeleteCustomSandboxSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteCustomSandboxSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCustomSandboxSkillResponse parses an HTTP response from a GetCustomSandboxSkillWithResponse call
+func ParseGetCustomSandboxSkillResponse(rsp *http.Response) (*GetCustomSandboxSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCustomSandboxSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxCustomSkill
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseEditCustomSandboxSkillResponse parses an HTTP response from a EditCustomSandboxSkillWithResponse call
+func ParseEditCustomSandboxSkillResponse(rsp *http.Response) (*EditCustomSandboxSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EditCustomSandboxSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxCustomSkill
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSandboxDelegationSettingsResponse parses an HTTP response from a UpdateSandboxDelegationSettingsWithResponse call
+func ParseUpdateSandboxDelegationSettingsResponse(rsp *http.Response) (*UpdateSandboxDelegationSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSandboxDelegationSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseIssueSandboxDelegationResponse parses an HTTP response from a IssueSandboxDelegationWithResponse call
+func ParseIssueSandboxDelegationResponse(rsp *http.Response) (*IssueSandboxDelegationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueSandboxDelegationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SandboxDelegation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeSandboxDelegationResponse parses an HTTP response from a RevokeSandboxDelegationWithResponse call
+func ParseRevokeSandboxDelegationResponse(rsp *http.Response) (*RevokeSandboxDelegationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeSandboxDelegationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSandboxSetupResponse parses an HTTP response from a GetSandboxSetupWithResponse call
+func ParseGetSandboxSetupResponse(rsp *http.Response) (*GetSandboxSetupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSandboxSetupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxSetup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSandboxSetupResponse parses an HTTP response from a UpdateSandboxSetupWithResponse call
+func ParseUpdateSandboxSetupResponse(rsp *http.Response) (*UpdateSandboxSetupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSandboxSetupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxSetup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSandboxSkillsResponse parses an HTTP response from a ListSandboxSkillsWithResponse call
+func ParseListSandboxSkillsResponse(rsp *http.Response) (*ListSandboxSkillsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSandboxSkillsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxSkillList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSandboxTemplatesResponse parses an HTTP response from a ListSandboxTemplatesWithResponse call
+func ParseListSandboxTemplatesResponse(rsp *http.Response) (*ListSandboxTemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSandboxTemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxTemplateList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSandboxesResponse parses an HTTP response from a ListSandboxesWithResponse call
+func ParseListSandboxesResponse(rsp *http.Response) (*ListSandboxesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSandboxesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSandboxResponse parses an HTTP response from a CreateSandboxWithResponse call
+func ParseCreateSandboxResponse(rsp *http.Response) (*CreateSandboxResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSandboxResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Sandbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSandboxResponse parses an HTTP response from a GetSandboxWithResponse call
+func ParseGetSandboxResponse(rsp *http.Response) (*GetSandboxResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSandboxResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Sandbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSandboxActionResponse parses an HTTP response from a SandboxActionWithResponse call
+func ParseSandboxActionResponse(rsp *http.Response) (*SandboxActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SandboxActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Sandbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSavedSSHKeysResponse parses an HTTP response from a ListSavedSSHKeysWithResponse call
+func ParseListSavedSSHKeysResponse(rsp *http.Response) (*ListSavedSSHKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSavedSSHKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedSSHKeyList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSaveSSHKeyResponse parses an HTTP response from a SaveSSHKeyWithResponse call
+func ParseSaveSSHKeyResponse(rsp *http.Response) (*SaveSSHKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SaveSSHKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedSSHKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSavedSSHKeyResponse parses an HTTP response from a DeleteSavedSSHKeyWithResponse call
+func ParseDeleteSavedSSHKeyResponse(rsp *http.Response) (*DeleteSavedSSHKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSavedSSHKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDefaultSavedSSHKeyResponse parses an HTTP response from a DefaultSavedSSHKeyWithResponse call
+func ParseDefaultSavedSSHKeyResponse(rsp *http.Response) (*DefaultSavedSSHKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DefaultSavedSSHKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListPendingSiteSubnetsResponse parses an HTTP response from a ListPendingSiteSubnetsWithResponse call
 func ParseListPendingSiteSubnetsResponse(rsp *http.Response) (*ListPendingSiteSubnetsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -65729,6 +69183,39 @@ func ParseSetZeroTrustModeResponse(rsp *http.Response) (*SetZeroTrustModeRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ZeroTrustMode
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBootstrapSandboxResponse parses an HTTP response from a BootstrapSandboxWithResponse call
+func ParseBootstrapSandboxResponse(rsp *http.Response) (*BootstrapSandboxResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BootstrapSandboxResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxBootstrapResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -1,0 +1,32 @@
+# SOURCE ONLY. Never install alongside an active legacy qualification worker.
+[Unit]
+Description=Tunnex retained sandbox provider and absolute lease guard
+Requires=tunnex-sandbox-qual-network.service var-lib-tunnex\x2dsandbox\x2dqual-workload\x2dassets.mount
+After=tunnex-sandbox-qual-network.service var-lib-tunnex\x2dsandbox\x2dqual-workload\x2dassets.mount
+
+[Service]
+Type=simple
+User=tunnex-sandbox-qual
+Group=tunnex-sandbox-qual
+Slice=tnxsandboxqual.slice
+WorkingDirectory=/var/lib/tunnex-sandbox-qual/worker
+ExecStart=/var/lib/tunnex-sandbox-qual/bin/tunnex-sandbox-runtime --config=/var/lib/tunnex-sandbox-qual/worker/main-config.json --role=actor
+Restart=on-failure
+RestartSec=2
+# Actor loss is fail closed. Restart does not promise payload retention.
+KillMode=control-group
+KillSignal=SIGKILL
+SendSIGKILL=yes
+Delegate=yes
+DelegateSubgroup=control
+RuntimeDirectory=tunnex-sandbox-qual/worker tunnex-sandbox-qual/api
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+UMask=0077
+Environment=GOMAXPROCS=1 GOMEMLIMIT=48MiB
+# Existing newuidmap/newgidmap helpers retain the legacy host requirements.
+# Workloads still enforce no-new-privileges and cap-drop=ALL independently.
+NoNewPrivileges=no
+
+[Install]
+WantedBy=multi-user.target

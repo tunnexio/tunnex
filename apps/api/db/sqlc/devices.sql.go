@@ -37,7 +37,7 @@ func (q *Queries) ApproveDevice(ctx context.Context, arg ApproveDeviceParams) (u
 
 const countActiveDevicesForOrg = `-- name: CountActiveDevicesForOrg :one
 SELECT count(*) FROM devices
-WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL AND kind <> 'agent'
+WHERE org_id = $1 AND status = 'active' AND deleted_at IS NULL AND kind = 'human'
 `
 
 // ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
@@ -704,7 +704,7 @@ func (q *Queries) ListActiveOVPNDevicesForNode(ctx context.Context, nodeID uuid.
 }
 
 const listActiveWireGuardPeersForNode = `-- name: ListActiveWireGuardPeersForNode :many
-SELECT d.public_key, d.assigned_ip
+SELECT d.public_key, d.assigned_ip, d.kind
 FROM devices d
 JOIN users u ON u.id = d.user_id
 JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
@@ -712,6 +712,24 @@ WHERE d.node_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND d.public_key ~ '^[A-Za-z0-9+/]{43}=$'
   AND u.status = 'active' AND u.deleted_at IS NULL
+
+  -- Sandbox transport follows the same current, explicit admission gates as
+  -- projection. Stop/expiry/catalog withdrawal removes the physical peer too.
+  AND (d.kind <> 'sandbox' OR EXISTS (
+    SELECT 1 FROM sandboxes s
+    JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+    JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+    WHERE s.peer_id=d.id AND s.org_id=d.org_id AND s.creator_id=d.user_id
+      AND s.desired_state='started' AND s.observed_state IN ('creating','starting','ready') AND s.expires_at>now()
+      AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
+      AND COALESCE(mem.roles,ARRAY[mem.role]) && ARRAY['member','admin','owner']::text[]
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s.selected_skills) selection
+        LEFT JOIN sandbox_skill_revisions r ON r.id=(selection->>'revision_id')::uuid AND r.org_id=s.org_id AND r.enabled
+        LEFT JOIN sandbox_template_skills a ON a.org_id=s.org_id AND a.template_id=s.template_id AND a.revision_id=r.id
+        LEFT JOIN sandbox_custom_skills c ON c.id=r.custom_skill_id AND c.org_id=s.org_id AND c.owner_id=s.creator_id AND c.deleted_at IS NULL
+        WHERE r.id IS NULL OR (r.owner_id IS NULL AND a.revision_id IS NULL)
+          OR (r.owner_id IS NOT NULL AND (r.owner_id<>s.creator_id OR c.id IS NULL)))
+  ))
   AND mem.access_revoked_at IS NULL
 ORDER BY d.created_at
 `
@@ -719,6 +737,7 @@ ORDER BY d.created_at
 type ListActiveWireGuardPeersForNodeRow struct {
 	PublicKey  string  `json:"public_key"`
 	AssignedIp *string `json:"assigned_ip"`
+	Kind       string  `json:"kind"`
 }
 
 // fetches the peers for its own node). TWO invariants own this query (both load-bearing):
@@ -763,7 +782,7 @@ func (q *Queries) ListActiveWireGuardPeersForNode(ctx context.Context, nodeID uu
 	items := []ListActiveWireGuardPeersForNodeRow{}
 	for rows.Next() {
 		var i ListActiveWireGuardPeersForNodeRow
-		if err := rows.Scan(&i.PublicKey, &i.AssignedIp); err != nil {
+		if err := rows.Scan(&i.PublicKey, &i.AssignedIp, &i.Kind); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -937,7 +956,7 @@ SELECT d.id, d.org_id, d.user_id, d.node_id, d.name, d.platform, d.public_key, d
 FROM devices d
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
-WHERE d.org_id = $1 AND d.deleted_at IS NULL AND d.kind <> 'agent'
+WHERE d.org_id = $1 AND d.deleted_at IS NULL AND d.kind = 'human'
 ORDER BY d.created_at
 `
 
@@ -1020,7 +1039,7 @@ SELECT d.id, d.org_id, d.user_id, d.node_id, d.name, d.platform, d.public_key, d
 FROM devices d
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
-WHERE d.org_id = $1 AND d.user_id = $2 AND d.deleted_at IS NULL AND d.kind <> 'agent'
+WHERE d.org_id = $1 AND d.user_id = $2 AND d.deleted_at IS NULL AND d.kind = 'human'
 ORDER BY d.created_at
 `
 
@@ -1243,7 +1262,7 @@ FROM devices d
 LEFT JOIN users u ON u.id = d.user_id
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
-WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind <> 'agent'
+WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind = 'human'
 ORDER BY d.created_at
 `
 
@@ -1694,7 +1713,7 @@ func (q *Queries) SetDeviceProvisioning(ctx context.Context, arg SetDeviceProvis
 const setOrgDeviceApproval = `-- name: SetOrgDeviceApproval :one
 UPDATE organizations SET device_approval = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled, sandboxes_enabled, max_sandboxes_per_user, max_sandboxes, sandbox_delegation_enabled
 `
 
 type SetOrgDeviceApprovalParams struct {
@@ -1729,6 +1748,10 @@ func (q *Queries) SetOrgDeviceApproval(ctx context.Context, arg SetOrgDeviceAppr
 		&i.AiGatewayEnabled,
 		&i.AiGatewayRevision,
 		&i.CrossGatewayClientsEnabled,
+		&i.SandboxesEnabled,
+		&i.MaxSandboxesPerUser,
+		&i.MaxSandboxes,
+		&i.SandboxDelegationEnabled,
 	)
 	return i, err
 }

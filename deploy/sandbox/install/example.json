@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "edition": "open",
+  "source_sha": "1111111111111111111111111111111111111111",
+  "bundle": {
+    "path": "/srv/tunnex-artifacts/tunnex-sandbox-linux-amd64.tar.gz",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "installation": {
+    "state_root": "/var/lib/tunnex-sandbox",
+    "run_root": "/run/tunnex-sandbox",
+    "service_user": "tunnex-sandbox",
+    "unit_prefix": "tunnexsandbox",
+    "uid": 2401,
+    "gid": 2401,
+    "subuid_start": 300000,
+    "subuid_count": 65536,
+    "workspace_mib": 256,
+    "storage_mib": 4096,
+    "io_device": "/dev/vda"
+  },
+  "org_id": "00000000-0000-4000-8000-000000000001",
+  "gateway": {
+    "node_id": "00000000-0000-4000-8000-000000000002",
+    "container_id": "2222222222222222222222222222222222222222222222222222222222222222",
+    "image_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "interface": "wg0"
+  },
+  "controller": {
+    "url": "https://controller.example.invalid:8444",
+    "server_name": "controller.example.invalid",
+    "uri": "spiffe://tunnex.example/sandbox-controller",
+    "api_url": "https://tunnex.example.invalid"
+  },
+  "probe_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB",
+  "credentials": {
+    "probe_key": "/srv/tunnex-identities/probe-key",
+    "api_ca": "/srv/tunnex-identities/api-ca.pem",
+    "runner_certificate": "/srv/tunnex-identities/runner-cert.pem",
+    "runner_key": "/srv/tunnex-identities/runner-key.pem",
+    "runner_ca": "/srv/tunnex-identities/runner-ca.pem"
+  },
+  "images": [
+    {
+      "template_id": "00000000-0000-4000-8000-000000000003",
+      "path": "/srv/tunnex-artifacts/minimal.docker.tar",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "config_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "architecture": "amd64",
+      "qualification_evidence": "REPLACE with the actual reviewed native qualification record for this immutable image"
+    }
+  ]
+}

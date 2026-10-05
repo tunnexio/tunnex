@@ -1,0 +1,29 @@
+# Official base pinned; package installs occur only at build time.
+FROM alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 AS minimal
+ARG SOURCE_SHA
+LABEL io.tunnex.sandbox.source=${SOURCE_SHA} io.tunnex.sandbox.profile="alpine-minimal-candidate"
+RUN apk add --no-cache bash ca-certificates coreutils iproute2 nftables openresolv openssh-server openssh-sftp-server setpriv wireguard-tools \
+ && addgroup -g 1001 sandbox \
+ && adduser -D -u 1001 -G sandbox -h /workspace -s /bin/bash sandbox \
+ && passwd -d sandbox \
+ && mkdir -p /usr/lib/openssh \
+ && ln -s /usr/lib/ssh/sftp-server /usr/lib/openssh/sftp-server \
+ && test -x /usr/lib/openssh/sftp-server \
+ && command -v setpriv && command -v wg-quick && command -v resolvconf
+COPY runtime/tunnex-sandbox-bootstrap /usr/local/bin/tunnex-sandbox-bootstrap
+COPY entrypoint.sh /usr/local/lib/tunnex/sandbox-entrypoint.sh
+USER 1001:1001
+WORKDIR /workspace
+CMD ["/bin/bash", "/usr/local/lib/tunnex/sandbox-entrypoint.sh"]
+
+FROM minimal AS python
+USER 0
+RUN apk add --no-cache python3
+LABEL io.tunnex.sandbox.profile="alpine-python-candidate"
+USER 1001:1001
+
+FROM minimal AS node
+USER 0
+RUN apk add --no-cache nodejs npm
+LABEL io.tunnex.sandbox.profile="alpine-node-candidate"
+USER 1001:1001

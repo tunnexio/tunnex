@@ -149,7 +149,14 @@ func deviceFQDNForwardsFromSnapshot(snapshot Snapshot, deviceID uuid.UUID, route
 }
 
 func ruleMatchesDevice(rule Rule, device Device, ownerGroups, agentGroups map[uuid.UUID]bool) bool {
+	// Sandbox creators are management associations, not legacy policy owners.
+	// Explicit sandbox projection is required before any grant can be emitted.
+	if device.Kind == "sandbox" {
+		return rule.SrcKind == "sandbox" && rule.sandboxProjected && rule.SrcDeviceID == device.ID
+	}
 	switch rule.SrcKind {
+	case "sandbox_terminal":
+		return rule.sandboxProjected && device.Kind == "human" && rule.SrcDeviceID == device.ID
 	case "agent_group":
 		return agentGroups[rule.SrcAgentGroupID]
 	case "agent":

@@ -1,0 +1,9 @@
+# Sandbox lifecycle delegation
+
+Locked: reuse existing owned machine bearer credentials, never human sessions or node certificates. Explicit organization opt-in defaults false. A human with current sandbox administration and create/manage permissions may issue an expiring grant for their own credential. Grant limits are immutable: one template, maximum 900 second TTL, bounded active quota, network tuples and skill revision IDs. Current runtime resource and human binding limits remain authoritative.
+
+Existing lifecycle routes and 202/generation semantics remain unchanged. Machine creation uses its accountable human owner; only sandboxes created through that credential's current grant may be read or acted upon. No owner inventory, catalogs, setup, custom skills or terminal identities are delegated. Revocation, credential ownership/revocation and owner membership are rechecked at use inside the transaction. Grant row locks serialize revocation with mutations. Audit names the machine and human owner separately. Human API grant management and CLI contract integration are parent-owned; source store methods expose grant issuance/revocation and opt-in without minting credentials.
+
+No deployment, credentials, policy grants, worker enrollment, cloud provisioning, push or live proof is authorized by this source change. Live activation requires separate approval of organization opt-in, existing credential choice and bounded grant. Tests are substitutes for live proof.
+
+Parent disposition: explicit revocation atomically audits desired deletion and generation advancement of grant-owned workloads; expiry, opt-out and lost credential/owner standing enqueue the same cleanup through existing reconciliation. Runtime credentials use effective-deny. Observed deletion still requires actual qualified withdrawal/provider removal. Offline runner revocation waits for connectivity; absolute local TTL remains enforced.

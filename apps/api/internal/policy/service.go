@@ -1065,7 +1065,7 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		return Snapshot{}, err
 	}
 	snap := Snapshot{Mode: settings.ZeroTrustMode, FQDNResourcesEnabled: settings.FqdnResourcesEnabled}
-	snap.CrossGatewayGraph, err = gatewaymesh.Load(ctx, q, orgID, settings.CrossGatewayClientsEnabled)
+	snap.CrossGatewayGraph, err = gatewaymesh.Load(ctx, q, orgID, settings.CrossGatewayClientsEnabled, settings.SandboxesEnabled)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -1169,6 +1169,20 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			ID: d.ID, UserID: d.UserID, NodeID: d.NodeID, AssignedIP: ip,
 			Kind: d.Kind, ConfigRevision: d.AgentConfigRevision,
 		})
+	}
+	// Disabled orgs already withdraw all projections; skip the empty query.
+	if settings.SandboxesEnabled {
+		projections, err := q.ListActiveSandboxProjections(ctx, orgID)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		for _, p := range projections {
+			projection := SandboxProjection{SandboxID: p.ID, DeviceID: fromPgUUID(p.PeerID), CreatorID: p.CreatorID, TerminalDeviceID: fromPgUUID(p.TerminalDeviceID), LocalTerminalGatewayID: fromPgUUID(p.LocalTerminalGatewayID), RemoteTerminalGatewayID: fromPgUUID(p.RemoteTerminalGatewayID), RemoteRuntimeGatewayID: fromPgUUID(p.RemoteRuntimeGatewayID)}
+			if json.Unmarshal(p.RequestedScope, &projection.Requested) != nil || json.Unmarshal(p.MaximumScope, &projection.TemplateCap) != nil {
+				continue
+			}
+			snap.Sandboxes = append(snap.Sandboxes, projection)
+		}
 	}
 	return snap, nil
 }

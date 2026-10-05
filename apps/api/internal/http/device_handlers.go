@@ -235,6 +235,9 @@ func (s apiServer) RevokeDevice(ctx context.Context, req api.RevokeDeviceRequest
 // target may still be their human device; a missing/foreign row returns the
 // same forbidden envelope as an existing unauthorized agent.
 func (s apiServer) authorizeDeviceLifecycleTarget(ctx context.Context, orgID, deviceID, userID uuid.UUID, role, verb string) (sqlc.Device, error) {
+	if target, err := s.devices.Get(ctx, orgID, deviceID); err == nil && target.Kind == "sandbox" {
+		return sqlc.Device{}, apierr.Conflict("sandbox_lifecycle_required", "manage this sandbox through the Sandboxes section")
+	}
 	if rbac.Can(role, rbac.PermAgentRevoke) {
 		return s.devices.Get(ctx, orgID, deviceID)
 	}

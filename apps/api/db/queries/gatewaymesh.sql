@@ -14,7 +14,7 @@ SELECT d.node_id, d.assigned_ip, d.transport
 FROM devices d
 JOIN users u ON u.id = d.user_id
 JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id
-WHERE d.org_id = $1 AND d.status = 'active' AND NOT d.health_blocked
+WHERE d.org_id = $1 AND d.kind IN ('human','agent') AND d.status = 'active' AND NOT d.health_blocked
   AND d.deleted_at IS NULL AND u.status = 'active' AND u.deleted_at IS NULL
   AND m.access_revoked_at IS NULL
   AND d.assigned_ip IS NOT NULL AND d.assigned_ip <> ''

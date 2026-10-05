@@ -54,6 +54,12 @@
     "org:view",
     "policy:manage",
     "policy:view",
+    "sandbox:admin",
+    "sandbox:create",
+    "sandbox:delegate_manage",
+    "sandbox:manage",
+    "sandbox:template_manage",
+    "sandbox:view",
     "site:manage"
   ],
   "agent": [
@@ -86,7 +92,10 @@
     "app_access:use",
     "connectivity:use",
     "member:list",
-    "org:view"
+    "org:view",
+    "sandbox:create",
+    "sandbox:manage",
+    "sandbox:view"
   ],
   "operator": [
     "agent:grant_access",
@@ -155,6 +164,12 @@
     "org:view",
     "policy:manage",
     "policy:view",
+    "sandbox:admin",
+    "sandbox:create",
+    "sandbox:delegate_manage",
+    "sandbox:manage",
+    "sandbox:template_manage",
+    "sandbox:view",
     "site:manage"
   ]
 }

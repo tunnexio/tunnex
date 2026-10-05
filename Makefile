@@ -303,8 +303,14 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# --cap-add=NET_ADMIN: the L11 nft-render-check (TestRenderedRulesetIsValidNft) runs `nft -c` which opens
 	# netlink to init its cache — needs NET_ADMIN even in check-only mode. Without the cap that one test SKIPS
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
+	# The sandbox helper contract reads deploy/sandbox; mount the repository so that proof is exercised.
+	# The actual Unix worker boundary must execute without root before the privileged nft/full suite.
 	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables iptables && go test -count=1 ./..."
+	  $(GO_IMAGE) sh -c 'apk add --no-cache git openvpn nftables iptables && \
+	    go test -c -o /tmp/sandboxnetwork.test ./internal/sandboxnetwork && \
+	    chmod 0755 /tmp/sandboxnetwork.test && \
+	    su -s /bin/sh nobody -c "/tmp/sandboxnetwork.test -test.run ^TestInactiveCleanupActualUnixBoundary$$ -test.v" && \
+	    go test -count=1 ./...'
 
 .PHONY: test-apptransport
 test-apptransport: ## Test shared App Access transport and origin policy
@@ -488,3 +494,12 @@ tidy: ## Tidy Go modules
 	cd apps/node && go mod tidy
 	cd packages/apptransport && go mod tidy
 	cd apps/app-proxy && go mod tidy
+
+.PHONY: test-sandbox-package
+test-sandbox-package: ## Compile public sandbox artifacts for both Linux architectures (not native qualification)
+	docker run --rm -v "$(PWD)":/repo -w /repo $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) sh -c 'apk add --no-cache git python3 && \
+	    python3 -B -m unittest discover -s deploy/sandbox/install -p "test_*.py" -v && \
+	    python3 -B deploy/sandbox/ci/package.py build --arch amd64 --output /repo/dist/sandbox/amd64 && \
+	    python3 -B deploy/sandbox/ci/package.py build --arch arm64 --output /repo/dist/sandbox/arm64 && \
+	    python3 -B deploy/sandbox/ci/package.py verify --directory /repo/dist/sandbox --source "$$(git rev-parse HEAD)"'

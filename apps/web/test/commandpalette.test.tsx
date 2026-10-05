@@ -1,3 +1,4 @@
+import { DeploymentMetaProvider } from "../src/lib/deploymentMeta";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   render,
@@ -22,7 +23,7 @@ const open = () => {
     <MemoryRouter>
       <OrgProvider>
         <MotionProvider value={true}>
-          <CommandPalette />
+          <DeploymentMetaProvider value={{ edition: "open", protocol_version: 1, sso_providers: [], sandbox_module_state: "enabled" }}><CommandPalette /></DeploymentMetaProvider>
         </MotionProvider>
       </OrgProvider>
     </MemoryRouter>,
@@ -47,7 +48,7 @@ describe("the palette is a named dialog with a combobox and a listbox", () => {
       <MemoryRouter>
         <OrgProvider>
           <MotionProvider value={true}>
-            <CommandPalette />
+            <DeploymentMetaProvider value={{ edition: "open", protocol_version: 1, sso_providers: [], sandbox_module_state: "enabled" }}><CommandPalette /></DeploymentMetaProvider>
           </MotionProvider>
         </OrgProvider>
       </MemoryRouter>,

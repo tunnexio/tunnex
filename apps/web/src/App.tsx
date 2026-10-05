@@ -10,6 +10,8 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { AuthLayout } from "./components/AuthLayout";
 import { MfaSettings } from "./components/MfaSettings";
 import { AppShell } from "./components/AppShell";
+import { DeploymentMetaProvider } from "./lib/deploymentMeta";
+import { SandboxModuleGate } from "./components/SandboxModuleGate";
 import { Loading } from "./components/ui";
 import { OrgProvider } from "./lib/useOrg";
 import { LicenceResourceProvider } from "./lib/licenceResource";
@@ -53,6 +55,12 @@ import AccessEvents from "./pages/AccessEvents";
 import AuditLog from "./pages/AuditLog";
 import AppAccessEvents from "./pages/AppAccessEvents";
 import Alerts from "./pages/Alerts";
+
+const SandboxesPage = lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxesPage })));
+const SandboxCreatePage = lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxCreatePage })));
+const SandboxDetailPage = lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxDetailPage })));
+const SandboxSetupPage = lazy(() => import("./pages/SandboxSetup").then(module => ({ default: module.SandboxSetupPage })));
+const SandboxCustomSkillsPage = lazy(() => import("./pages/SandboxCustomSkills"));
 
 const VisualGallery = import.meta.env.VITE_VISUAL_GALLERY === "1"
   ? lazy(() => import("./pages/VisualGallery"))
@@ -106,7 +114,7 @@ export default function App() {
 
 function ProductApp() {
   return (
-    <AuthProvider>
+    <AuthProvider><DeploymentMetaProvider>
       <Routes>
         <Route
           path="/login"
@@ -188,6 +196,14 @@ function ProductApp() {
             <Route path="/site-to-site" element={<SiteToSite />} />
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
+            <Route element={<SandboxModuleGate />}>
+              <Route path="/sandboxes" element={<Suspense fallback={<Loading />}><SandboxesPage /></Suspense>} />
+              <Route path="/sandboxes/setup" element={<Suspense fallback={<Loading />}><SandboxSetupPage /></Suspense>} />
+              <Route path="/sandboxes/new" element={<Suspense fallback={<Loading />}><SandboxCreatePage /></Suspense>} />
+              <Route path="/sandboxes/skills" element={<Suspense fallback={<Loading />}><SandboxCustomSkillsPage /></Suspense>} />
+              <Route path="/sandboxes/skills/:skillId" element={<Suspense fallback={<Loading />}><SandboxCustomSkillsPage /></Suspense>} />
+              <Route path="/sandboxes/:sandboxId" element={<Suspense fallback={<Loading />}><SandboxDetailPage /></Suspense>} />
+            </Route>
             <Route path="/agents" element={<AgentsIndex />} />
             <Route path="/mcp" element={<AgentsMCP />} />
             <Route path="/agents/mcp" element={<LegacyWorkspaceRedirect to="/mcp" />} />
@@ -229,7 +245,7 @@ function ProductApp() {
         {/* Default: the shell decides (RequireAuth bounces anon users to /login). */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-    </AuthProvider>
+    </DeploymentMetaProvider></AuthProvider>
   );
 }
 

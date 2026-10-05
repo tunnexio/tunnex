@@ -74,7 +74,7 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 		}
 	})
 	u.Path = "/" + name
-	if err := db.MigrateTo(u.String(), 161); err != nil {
+	if err := db.Up(u.String()); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, u.String())

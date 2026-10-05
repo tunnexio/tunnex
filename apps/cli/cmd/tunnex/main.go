@@ -38,6 +38,8 @@ Usage:
                                             connect an application with renewable workload authentication
   tunnex workload enroll|token|rotate|retire --config FILE
                                             enroll, obtain a token, rotate the key, or permanently retire
+  tunnex sandbox create|get|start|stop|delete
+                                            scoped lifecycle with existing machine bearer
   tunnex version                            print the exact CLI build version
 `)
 }
@@ -80,6 +82,8 @@ func main() {
 		} else {
 			err = cli.Login(ctx, s)
 		}
+	case "sandbox":
+		err = cli.SandboxLifecycle(ctx, os.Args[2:], os.Stdout)
 	case "ai":
 		err = cli.AI(ctx, os.Args[2:], os.Stdout)
 	case "workload":

@@ -59,40 +59,46 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
-	EmailSettings      emailSettingsRepository
-	IPsecRuntime       ipsecRuntimeRepository
-	IPsecStatus        ipsecStatusRepository
-	IPsecEligibility   ipsecEligibilityRepository
-	IPsecProviders     ipsecProviderRepository
-	IPsecSealer        *crypto.Sealer
-	IPsecConnections   ipsecConnectionRepository
-	IPsecSettings      ipsecSettingsRepository
-	AICredentials      *aigateway.Credentials
-	AIWorkloads        *aigateway.Workloads
-	AIPolicies         *aigateway.Policies
-	AIEngineInstalled  bool
-	AIAllowPrivateHTTP bool
-	AITransport        aiTransportRepository
-	TrustedProxies     []string
-	AIAdapter          *aigateway.Adapter
-	Connectivity       *connectivity.Store
-	System             *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
-	Orgs               *tenancy.Service
-	CliAuth            *cliauth.Service
-	Auth               *auth.Service
-	Members            *tenancy.MembershipService
-	Invites            *invites.Service
-	Nodes              *nodes.Service
-	AgentRuntimeOptIn  agentruntime.OptInFunc
-	AgentRuntimePool   *pgxpool.Pool // explicit transaction owner; nil refuses runtime authentication
-	AgentRuntimeNotify agentruntime.Notifier
-	AlertPublisher     alerts.Publisher
-	AlertConfig        *alerts.ConfigService
-	Devices            *devices.Service
-	Ovpn               *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
-	Sites              *sites.Service
-	K8s                *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity
-	Machine            *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
+	Sandboxes          sandboxRepository
+	SandboxModuleState string
+	// Remains nil until enrollment, policy acknowledgement and SSH readiness are qualified.
+	SandboxProvisioningReady func() bool
+	SandboxWake              func()
+	SandboxSkillsReady       func() bool
+	EmailSettings            emailSettingsRepository
+	IPsecRuntime             ipsecRuntimeRepository
+	IPsecStatus              ipsecStatusRepository
+	IPsecEligibility         ipsecEligibilityRepository
+	IPsecProviders           ipsecProviderRepository
+	IPsecSealer              *crypto.Sealer
+	IPsecConnections         ipsecConnectionRepository
+	IPsecSettings            ipsecSettingsRepository
+	AICredentials            *aigateway.Credentials
+	AIWorkloads              *aigateway.Workloads
+	AIPolicies               *aigateway.Policies
+	AIEngineInstalled        bool
+	AIAllowPrivateHTTP       bool
+	AITransport              aiTransportRepository
+	TrustedProxies           []string
+	AIAdapter                *aigateway.Adapter
+	Connectivity             *connectivity.Store
+	System                   *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
+	Orgs                     *tenancy.Service
+	CliAuth                  *cliauth.Service
+	Auth                     *auth.Service
+	Members                  *tenancy.MembershipService
+	Invites                  *invites.Service
+	Nodes                    *nodes.Service
+	AgentRuntimeOptIn        agentruntime.OptInFunc
+	AgentRuntimePool         *pgxpool.Pool // explicit transaction owner; nil refuses runtime authentication
+	AgentRuntimeNotify       agentruntime.Notifier
+	AlertPublisher           alerts.Publisher
+	AlertConfig              *alerts.ConfigService
+	Devices                  *devices.Service
+	Ovpn                     *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
+	Sites                    *sites.Service
+	K8s                      *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity
+	Machine                  *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
 	// Licence is the entitlement source. ⚠ Never nil in production; a nil manager would mean Community,
 	// which is the fail-open default rather than a failure.
 	Licence              *licence.Manager
@@ -291,6 +297,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(runtimeAuthMiddleware(agentRuntime))
 	r.Use(aiInferenceMiddleware(d.AIAdapter))
 	r.Use(authBeforeAgentValidation)
+	r.Use(authBeforeSandboxValidation)
 
 	// Validate every request against the spec; render failures as the envelope.
 	swagger, err := api.GetSwagger()
@@ -298,7 +305,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
-	srv := apiServer{appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	srv.connectivity = d.Connectivity
 	srv.appDomains = d.AppDomains
 	srv.aiTransport = d.AITransport

@@ -2627,6 +2627,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sandbox/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem a single-use sandbox bootstrap credential */
+        post: operations["bootstrapSandbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/bootstrap": {
         parameters: {
             query?: never;
@@ -6522,10 +6539,572 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/saved-ssh-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listSavedSSHKeys"];
+        put?: never;
+        post: operations["saveSSHKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/saved-ssh-keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteSavedSSHKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/saved-ssh-keys/{keyId}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["defaultSavedSSHKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Human owner inventory only; machine credentials cannot list the catalog. */
+        get: operations["listSandboxes"];
+        put?: never;
+        /** @description Create under current human authority or an explicit unexpired owned-machine delegation. Runtime opt-in, policy, skill and resource caps remain authoritative; stable idempotency keys preserve uncertain creation. */
+        post: operations["createSandbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandboxes/{sandboxId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sandboxId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Read an owned sandbox as a human, or a grant-created sandbox through its current owned-machine delegation. */
+        get: operations["getSandbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandboxes/{sandboxId}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sandboxId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Request a generation-bound lifecycle transition as a human, or through the current owned-machine delegation for its grant-created sandbox. Revocation and expiry request cleanup; physical cleanup remains pending. */
+        post: operations["sandboxAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSandboxSetup"];
+        put: operations["updateSandboxSetup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-catalog/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["publishSandboxTemplate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listSandboxTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listSandboxSkills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-custom-skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listCustomSandboxSkills"];
+        put?: never;
+        post: operations["createCustomSandboxSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-custom-skills/{skillId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getCustomSandboxSkill"];
+        put: operations["editCustomSandboxSkill"];
+        post?: never;
+        delete: operations["deleteCustomSandboxSkill"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-delegation-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Verified human owner/admin opt-in only. Does not enable a runtime or mint credentials. */
+        put: operations["updateSandboxDelegationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-delegations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verified human owner/admin grants bounded lifecycle authority to their existing owned machine credential. */
+        post: operations["issueSandboxDelegation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-delegations/{delegationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                delegationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Verified human owner/admin revocation atomically requests deletion of retained grant-created workloads; physical network/provider cleanup remains pending. Human cleanup remains authorized. */
+        delete: operations["revokeSandboxDelegation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SandboxDelegationCreate: {
+            /** Format: uuid */
+            machine_id: string;
+            /** Format: uuid */
+            template_id: string;
+            max_ttl_seconds: number;
+            /** @description Further bounded by existing owner/org/runtime quota. */
+            max_active: number;
+            maximum_scope: components["schemas"]["SandboxScope"][];
+            skill_revision_ids: string[];
+            /** Format: date-time */
+            expires_at: string;
+        };
+        SandboxDelegation: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly organization_id: string;
+            /** Format: uuid */
+            readonly owner_id: string;
+            /** Format: uuid */
+            machine_id: string;
+            /** Format: uuid */
+            template_id: string;
+            max_ttl_seconds: number;
+            max_active: number;
+            maximum_scope: components["schemas"]["SandboxScope"][];
+            skill_revision_ids: string[];
+            /** Format: date-time */
+            expires_at: string;
+        };
+        SavedSSHKeyInput: {
+            name: string;
+            public_key: string;
+        };
+        SavedSSHKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            public_key: string;
+            fingerprint: string;
+            is_default: boolean;
+        };
+        SavedSSHKeyList: {
+            items: components["schemas"]["SavedSSHKey"][];
+        };
+        SandboxScope: {
+            cidr: string;
+            /** @enum {string} */
+            protocol: "any" | "tcp" | "udp";
+            port_low: number;
+            port_high: number;
+        };
+        Sandbox: {
+            connection?: components["schemas"]["SandboxConnection"];
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organization_id: string;
+            /** Format: uuid */
+            creator_id: string;
+            /** Format: uuid */
+            template_id: string;
+            name: string;
+            selected_skills: components["schemas"]["SandboxSkillSelection"][];
+            requested_scope: components["schemas"]["SandboxScope"][];
+            /** @enum {string} */
+            desired_state: "started" | "stopped" | "deleted";
+            /** @enum {string} */
+            observed_state: "creating" | "starting" | "ready" | "stopping" | "stopped" | "deleting" | "deleted" | "error";
+            /** Format: int64 */
+            generation: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description Public-only current private SSH connection metadata. Omitted until current readiness and admission are valid. */
+        SandboxConnection: {
+            /** Format: ipv4 */
+            address: string;
+            /** @enum {string} */
+            username: "sandbox";
+            /** @enum {integer} */
+            port: 22;
+            host_public_key: string;
+            host_key_fingerprint: string;
+        };
+        SandboxCreate: {
+            /** Format: uuid */
+            template_id: string;
+            /**
+             * Format: uuid
+             * @description Required for organization admission. Select the authenticated creator's active, healthy human terminal device on the configured terminal gateway. Legacy creator-bound deployments may omit it; an explicit value must match their binding.
+             */
+            terminal_device_id?: string;
+            name: string;
+            ssh_public_keys: string[];
+            selected_skills?: components["schemas"]["SandboxSkillSelection"][];
+            requested_scope: components["schemas"]["SandboxScope"][];
+            ttl_seconds: number;
+        };
+        SandboxAction: {
+            /** Format: int64 */
+            generation: number;
+            /** @enum {string} */
+            desired_state: "started" | "stopped" | "deleted";
+        };
+        SandboxImageProfile: {
+            name: string;
+            distro: string;
+            /** @enum {string} */
+            architecture: "amd64" | "arm64";
+            image_digest: string;
+            config_digest: string;
+            /** Format: int64 */
+            compressed_image_bytes: number;
+            /** Format: int64 */
+            unpacked_image_bytes: number;
+            /** Format: int64 */
+            idle_memory_bytes: number;
+            evidence_context: string;
+            measured_at: string;
+            included_tools: string[];
+            excluded_tools: string[];
+            compatibility: string;
+            /** @enum {string} */
+            qualification: "candidate" | "native-qualified";
+            emulated: boolean;
+            /** Format: int64 */
+            measurement_memory_cap_bytes: number;
+            /** Format: int64 */
+            measurement_workspace_cap_bytes: number;
+        };
+        SandboxCreationStatus: {
+            can_admin: boolean;
+            can_manage_catalog: boolean;
+            runtime_ready: boolean;
+            /** @description Organization admission requires an explicit owned terminal device for each new sandbox. */
+            requires_terminal_device: boolean;
+            /**
+             * Format: uuid
+             * @description Gateway on which the creator's selected human terminal device must be active.
+             */
+            terminal_gateway_id?: string;
+            blocked_reasons: string[];
+        };
+        SandboxSetupSettings: {
+            enabled: boolean;
+            max_per_user: number;
+            max_total: number;
+        };
+        SandboxSetupUpdate: {
+            expected: components["schemas"]["SandboxSetupSettings"];
+            settings: components["schemas"]["SandboxSetupSettings"];
+        };
+        SandboxPublicationUpdate: {
+            expected_enabled: boolean;
+            enabled: boolean;
+        };
+        SandboxCatalogEntry: {
+            template: components["schemas"]["SandboxTemplate"];
+            enabled: boolean;
+            runtime_compatible: boolean;
+        };
+        SandboxSetup: {
+            runtime_limits?: components["schemas"]["SandboxBoundedRuntimeLimits"];
+            candidate_profiles?: components["schemas"]["SandboxImageProfile"][];
+            settings: components["schemas"]["SandboxSetupSettings"];
+            policy_mode: string;
+            creation_status: components["schemas"]["SandboxCreationStatus"];
+            catalog: components["schemas"]["SandboxCatalogEntry"][];
+        };
+        /** @description Read-only limits of an operator-bound runtime. Historical reservations never become reusable workload capacity; stopped and unfinished cleanup records remain retained. */
+        SandboxBoundedRuntimeLimits: {
+            max_retained: number;
+            max_workloads: number;
+            /** Format: int64 */
+            retained: number;
+            /** Format: int64 */
+            workloads: number;
+            /** Format: uuid */
+            reservation_id?: string;
+            /** @enum {string} */
+            reservation_state?: "pending" | "completed" | "invalid";
+        };
+        SandboxList: {
+            items: components["schemas"]["Sandbox"][];
+            /** Format: uuid */
+            next_cursor?: string;
+            create_available: boolean;
+            creation_status?: components["schemas"]["SandboxCreationStatus"];
+        };
+        SandboxTemplate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            image_digest: string;
+            image_profile?: components["schemas"]["SandboxImageProfile"];
+            allowed_skill_revision_ids: string[];
+            maximum_scope: components["schemas"]["SandboxScope"][];
+            memory_mib: number;
+            max_ttl_seconds: number;
+        };
+        SandboxTemplateList: {
+            candidate_profiles?: components["schemas"]["SandboxImageProfile"][];
+            items: components["schemas"]["SandboxTemplate"][];
+        };
+        SandboxBootstrapRequest: {
+            bootstrap_token: string;
+            public_key: string;
+        };
+        SandboxBootstrapResponse: {
+            /** Format: uuid */
+            sandbox_id: string;
+            /** Format: uuid */
+            peer_id: string;
+            /** Format: int64 */
+            generation: number;
+            config: string;
+            runtime_credential: string;
+        };
+        SandboxCustomSkill: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            revision_id: string;
+            /** Format: int64 */
+            generation: number;
+            name: string;
+            description: string;
+            digest: string;
+            document: string;
+            /** Format: date-time */
+            created_at: string;
+            deleted: boolean;
+        };
+        SandboxCustomSkillList: {
+            items: components["schemas"]["SandboxCustomSkill"][];
+        };
+        SandboxCustomSkillCreate: {
+            document: string;
+        };
+        SandboxCustomSkillEdit: {
+            document: string;
+            /** Format: int64 */
+            generation: number;
+        };
+        SandboxSkillSelection: {
+            /** Format: uuid */
+            revision_id: string;
+            configuration: {
+                [key: string]: string;
+            };
+        };
+        SandboxSkillField: {
+            key: string;
+            label: string;
+            required: boolean;
+            choices: string[];
+        };
+        SandboxSkill: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            version: string;
+            digest: string;
+            user_owned: boolean;
+            /** Format: uuid */
+            custom_skill_id?: string;
+            fields: components["schemas"]["SandboxSkillField"][];
+            required_scope: components["schemas"]["SandboxScope"][];
+        };
+        SandboxSkillList: {
+            items: components["schemas"]["SandboxSkill"][];
+            configuration_available: boolean;
+        };
         AppAccessPerson: {
             /** Format: uuid */
             id: string;
@@ -10904,6 +11483,11 @@ export interface components {
             recent_activity: components["schemas"]["ActivityEntry"][];
         };
         Meta: {
+            /**
+             * @description Deployment sandbox capability. Draining blocks creation while retained resources finish cleanup. Missing means disabled for new clients.
+             * @enum {string}
+             */
+            sandbox_module_state?: "disabled" | "enabled" | "draining";
             /** @enum {string} */
             edition: "open" | "enterprise";
             /** @description Whether this deployment can send email at all. ⛔ False means invitations, password resets and email verification cannot be delivered — and invitations are the only way anyone joins. The screens that send mail say so BEFORE the operator acts, rather than after a recipient does not receive something. */
@@ -15535,6 +16119,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentBootstrapTokenResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    bootstrapSandbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxBootstrapRequest"];
+            };
+        };
+        responses: {
+            /** @description Private bootstrap handoff shown exactly once; not readiness. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxBootstrapResponse"];
                 };
             };
             default: components["responses"]["Error"];
@@ -22274,6 +22884,549 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentAccessRequest"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSavedSSHKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved key response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSSHKeyList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    saveSSHKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedSSHKeyInput"];
+            };
+        };
+        responses: {
+            /** @description Saved key response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSSHKey"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteSavedSSHKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved key response. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    defaultSavedSSHKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved key response. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSandboxes: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox response. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createSandbox: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxCreate"];
+            };
+        };
+        responses: {
+            /** @description Sandbox response. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sandbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSandbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sandboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox response. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sandbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    sandboxAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sandboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxAction"];
+            };
+        };
+        responses: {
+            /** @description Sandbox response. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sandbox"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSandboxSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current setup; publication does not qualify a runtime. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxSetup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateSandboxSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxSetupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Current setup; publication does not qualify a runtime. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxSetup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    publishSandboxTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxPublicationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Current setup; publication does not qualify a runtime. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxSetup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSandboxTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox response. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxTemplateList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSandboxSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox response. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxSkillList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listCustomSandboxSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Only the current user's private skills. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxCustomSkillList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createCustomSandboxSkill: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxCustomSkillCreate"];
+            };
+        };
+        responses: {
+            /** @description Owner-private custom skill or exact replay. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxCustomSkill"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getCustomSandboxSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current exact owner-private revision. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxCustomSkill"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    editCustomSandboxSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxCustomSkillEdit"];
+            };
+        };
+        responses: {
+            /** @description New immutable revision; existing sandboxes retain their pinned revision. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxCustomSkill"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteCustomSandboxSkill: {
+        parameters: {
+            query: {
+                generation: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted tombstone or exact retry; revisions unavailable. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateSandboxDelegationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Organization opt-in updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    issueSandboxDelegation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxDelegationCreate"];
+            };
+        };
+        responses: {
+            /** @description Immutable grant; no credential secret is returned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxDelegation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeSandboxDelegation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                delegationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grant revoked; repeat revocation is harmless */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

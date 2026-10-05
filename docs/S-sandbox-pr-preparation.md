@@ -1,0 +1,13 @@
+# Sandbox PR preparation
+
+The local candidate reconciles all completed sandbox stories with upstream main `435b4d53900c768073a49dbcc72579567fcdc524`. No push, PR creation, deployment or live activation is performed by preparation.
+
+The integration source is `story/sandbox-pr-prep-20261005`: supervisor integration `2827c3a`, main/schema merge `162348a`, optional module `0b6cd41`, organization admission `f30c378`, configurable Linux runtime/installer `440034b`, and CI packaging `c3fd55e`. The source inventory and equivalent/superseded working snapshots are accounted for in [the coverage ledger](S-sandbox-change-coverage.md).
+
+The publishable candidate is assembled separately from upstream main on `story/sandbox-pr-candidate-20261005`. It retains every completed product source, regression test, generic qualification fixture, image recipe, public asset and contract. Host-specific operational walk scripts, raw receipts and operator notes remain unchanged in their original branches/worktrees. Sanitized historical summaries preserve actual results and limitations without carrying that operational history into the candidate.
+
+Published main owns App Access migrations0167–0180. The unmerged sandbox sequence is renumbered0181–0195 with unchanged migration bodies; current test references and generated bindings use the combined schema. Optional module introduces no migration. An existing development database with historical sandbox numbering is not an in-place upgrade fixture; it was not migrated by this preparation. Fresh combined test fixtures reach195 cleanly.
+
+The user subsequently authorized removing the fixed human/device restriction before PR preparation. [Current decisions](S-sandbox-portable-runtime-decisions.md) retain pinned organization/gateway/image/trust/resource limits and one shared workload slot while persisting each authenticated creator's verified terminal device. The offline installer accepts configurable operator identities and paths and leaves services disabled. Skills, saved public keys, direct terminal/local-agent connection and optional-module draining remain included. First-Ready-relative lifetime is unimplemented; original Create-relative absolute expiry remains.
+
+[Combined validation](S-sandbox-pr-validation.md) distinguishes passed, failed, skipped and unrun checks. New-host native qualification and an approved reproducible dependency-preloaded Ubuntu base/archive remain release prerequisites. Compilation and synthetic checks do not establish universal platform support or an instant-start guarantee.

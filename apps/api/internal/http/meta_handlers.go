@@ -136,8 +136,12 @@ func (s apiServer) GetMeta(ctx context.Context, _ api.GetMetaRequestObject) (api
 			upgrade.ReleaseNotesUrl = &st.ReleaseNotesURL
 		}
 	}
+	moduleState := api.MetaSandboxModuleState(s.sandboxModuleState)
+	if moduleState == "" {
+		moduleState = "disabled"
+	}
 	return api.GetMeta200JSONResponse{
-		Body:    api.Meta{Edition: api.MetaEdition(s.editionName()), SsoProviders: providers, SsoConnections: &connections, ProtocolVersion: policyspec.ProtocolVersion, PublicBaseUrl: &base, GatewayControlUrl: &gatewayURL, SetupComplete: &setup, NodeAgentImage: &img, SmtpConfigured: smtp, Upgrade: upgrade},
+		Body:    api.Meta{SandboxModuleState: &moduleState, Edition: api.MetaEdition(s.editionName()), SsoProviders: providers, SsoConnections: &connections, ProtocolVersion: policyspec.ProtocolVersion, PublicBaseUrl: &base, GatewayControlUrl: &gatewayURL, SetupComplete: &setup, NodeAgentImage: &img, SmtpConfigured: smtp, Upgrade: upgrade},
 		Headers: api.GetMeta200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }

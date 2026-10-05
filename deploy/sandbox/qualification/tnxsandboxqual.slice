@@ -1,0 +1,10 @@
+# SOURCE ONLY. Explicit operator activation requires separate native qualification.
+[Unit]
+Description=Tunnex retained actor and restartable transport aggregate
+
+[Slice]
+MemoryAccounting=yes
+MemoryMax=224M
+MemorySwapMax=0
+TasksAccounting=yes
+TasksMax=256

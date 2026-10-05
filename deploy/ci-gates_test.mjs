@@ -84,6 +84,7 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   assert.ok(jobs.api.steps.some(s => /API_TEST_SHARD=\$\{\{ matrix.shard \}\}/.test(s.run ?? '')));
   assert.equal(jobs.api.strategy['fail-fast'], false);
   assert.match(jobs.api.env.COMPOSE_PROJECT_NAME, /matrix.edition/);
+  assert.ok(jobs.tooling.strategy.matrix.target.includes('test-sandbox-package'));
   for (const name of ['api', 'app-access-integration', 'tooling']) {
     assert.equal(jobs[name].if, "needs.scope.outputs.go == 'true'");
   }
@@ -109,6 +110,43 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   const cacheAction = readFileSync('.github/actions/go-container-cache/action.yml', 'utf8');
   assert.equal((cacheAction.match(/inputs\.lane/g) ?? []).length, 2,
     'both exact key and restore prefix must isolate matrix cache writers');
+});
+
+test('sandbox bundles reuse blocking tooling and existing guarded release publication', () => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const { jobs } = JSON.parse(parsed.stdout);
+  const upload = jobs.tooling.steps.find(step => step.name?.startsWith('Retain public Linux sandbox'));
+  assert.ok(upload.if.includes("matrix.target == 'test-sandbox-package'"));
+  assert.ok(upload.if.includes("github.ref == 'refs/heads/main'"));
+  assert.ok(upload.if.includes("startsWith(github.ref, 'refs/tags/v')"));
+  assert.equal(upload.with.name, 'tunnex-linux-sandbox');
+  assert.equal(upload.with['if-no-files-found'], 'error');
+  assert.deepEqual(upload.with.path.trim().split('\n'), [
+    'dist/sandbox/amd64/tunnex-sandbox-linux-amd64.tar.gz',
+    'dist/sandbox/amd64/tunnex-sandbox-linux-amd64.tar.gz.sha256',
+    'dist/sandbox/arm64/tunnex-sandbox-linux-arm64.tar.gz',
+    'dist/sandbox/arm64/tunnex-sandbox-linux-arm64.tar.gz.sha256',
+  ]);
+  const release = jobs['release-assets'];
+  assert.ok(release.needs.includes('tooling'));
+  const attachment = release.steps.find(step => step.name?.startsWith('Attach verified public sandbox'));
+  assert.match(attachment.run, /package\.py verify .*--source "\$GITHUB_SHA"/);
+  assert.match(attachment.run, /test "\$\(gh api .* --jq \.sha\)" = "\$GITHUB_SHA"/);
+  assert.match(attachment.run, /--json isDraft --jq \.isDraft/);
+  assert.match(attachment.run, /test "\$ACTUAL" = "\$EXPECTED"/);
+  assert.equal((attachment.run.match(/sandbox-artifacts\/(?:amd64|arm64)\/tunnex-sandbox-linux-/g) ?? []).length, 4);
+  assert.ok(release.steps.some(step => step.name === 'Attest public sandbox source bundles'));
+  const contracts = jobs.contracts.steps.find(step => step.name?.startsWith('Sandbox public packaging'));
+  for (const directory of ['deploy/sandbox', 'deploy/sandbox/qualification', 'deploy/sandbox/ci', 'deploy/sandbox/install']) {
+    assert.ok(contracts.run.includes(`unittest discover -s ${directory} -p 'test_*.py'`));
+  }
+  const makefile = readFileSync('Makefile', 'utf8');
+  assert.match(makefile, /^test-sandbox-package:/m);
+  assert.match(makefile, /package\.py build --arch amd64/);
+  assert.match(makefile, /package\.py build --arch arm64/);
+  assert.match(makefile, /unittest discover -s deploy\/sandbox\/install/);
 });
 
 
@@ -187,6 +225,41 @@ test('API test runner edits select both edition test lanes', t => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(readFileSync(output, 'utf8'), /^go=true$/m);
   assert.match(readFileSync(output, 'utf8'), /^docs_only=false$/m);
+});
+
+test('sandbox recipe, package and installer assets select the blocking tooling lane', t => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const classify = JSON.parse(parsed.stdout).jobs.scope.steps.find(s => s.id === 'scope').run
+    .replaceAll('${{ github.event_name }}', 'pull_request')
+    .replaceAll('${{ github.event.pull_request.base.sha }}', 'fixture-base');
+  const dir = mkdtempSync(join(tmpdir(), 'sandbox-package-scope-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const file of ['deploy/sandbox/Containerfile', 'deploy/sandbox/ci/package.py', 'deploy/sandbox/install/example.json']) {
+    const output = join(dir, 'outputs');
+    const result = spawnSync('bash', ['-c', `git() {
+      [ "$1" != cat-file ] || return 0
+      case "$*" in *--diff-filter=D*) return 0;; esac
+      printf '%s\\n' ${file}
+    }
+` + classify], { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(output, 'utf8'), /^go=true$/m, file);
+    assert.match(readFileSync(output, 'utf8'), /^docs_only=false$/m, file);
+    writeFileSync(output, '');
+  }
+});
+
+test('node lane requires the unprivileged Unix fixture before root nft and full-suite checks', () => {
+  const makefile = readFileSync('Makefile', 'utf8');
+  const nodeRecipe = makefile.match(/^test-node:[\s\S]*?(?=^\.PHONY:|\Z)/m)?.[0];
+  assert.ok(nodeRecipe);
+  assert.match(nodeRecipe, /--cap-add=NET_ADMIN/);
+  assert.match(nodeRecipe, /go test -c -o \/tmp\/sandboxnetwork\.test \.\/internal\/sandboxnetwork &&/);
+  assert.match(nodeRecipe, /su -s \/bin\/sh nobody -c "\/tmp\/sandboxnetwork\.test -test\.run \^TestInactiveCleanupActualUnixBoundary\$\$ -test\.v" &&/);
+  assert.ok(nodeRecipe.indexOf('su -s /bin/sh nobody') < nodeRecipe.indexOf('go test -count=1 ./...'));
+  assert.doesNotMatch(nodeRecipe, /\|\| true|continue-on-error/);
 });
 
 test('App Access integration owns its services and cannot pass on skipped evidence', (t) => {

@@ -355,6 +355,9 @@ func (s *Service) ReportHealth(ctx context.Context, orgID, actorID, deviceID uui
 		// written for humans and is satisfied by an owner who is not the machine. Refused here rather than
 		// filtered downstream: the block must not be WRITABLE, because a stale `health_blocked = true` on an
 		// agent row would keep killing its tunnel long after any filter was added.
+		if dev.Kind == "sandbox" {
+			return apierr.New(422, "posture_not_applicable", "sandbox posture is managed by its runtime")
+		}
 		if dev.Kind == "agent" {
 			return apierr.New(422, "posture_not_applicable",
 				"this is an AI agent, not a user endpoint: it has no client to report posture and cannot be "+

@@ -1,3 +1,5 @@
+**SANDBOX SOURCE PR CANDIDATE (2026-10-05):** organization-scoped admission, immutable selected terminal identity, bounded policy/lifecycle/delegation, Skills, saved public keys, Setup/profile selection, optional-module draining, retained supervisor and prompt policy ACK are integrated with upstream main `435b4d5`. The configurable offline Linux installer and both-architecture artifact packaging are included; capacity remains one shared retained workload. [Coverage](docs/S-sandbox-change-coverage.md), [current decisions](docs/S-sandbox-portable-runtime-decisions.md), [validation](docs/S-sandbox-pr-validation.md) and [CI artifacts](docs/S-sandbox-ci-artifacts.md) describe the exact source and limits. Full combined checks are being finalized. New-host native qualification and an approved reproducible Ubuntu dependency base/archive remain release prerequisites. No push, PR creation or live activation is performed. First-Ready-relative TTL remains unimplemented. Older checkpoints below describe historical work.
+
 # Tunnex.io — Product Build Plan (Story-Driven)
 
 ## Context

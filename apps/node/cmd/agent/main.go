@@ -229,8 +229,8 @@ func main() {
 	// until the exact current pair lands. An explicit endpoint always wins. When
 	// the chart requests LoadBalancer discovery, readiness remains false until a
 	// valid Service ingress is observed and that generation is reported.
-	endpointKick := make(chan struct{}, 1)
-	endpointSource, kubernetesMode, endpointErr := configureEndpointSource(ctx, os.Getenv, &keyReported, endpointKick, logger)
+	reportKick := make(chan struct{}, 1)
+	endpointSource, kubernetesMode, endpointErr := configureEndpointSource(ctx, os.Getenv, &keyReported, reportKick, logger)
 	if endpointErr != nil {
 		logger.Error("k8s_endpoint_discovery_blocked", slog.String("error", endpointErr.Error()))
 	}
@@ -374,7 +374,7 @@ func main() {
 	r := reconcile.New(backend, wgPriv, wgPub, logger)
 	aiVPN := configureAIVPNRuntime(os.Getenv("TUNNEX_AI_VPN_AUTO"), wgBackend, wgIface, client, r.Healthy, func() {
 		select {
-		case endpointKick <- struct{}{}:
+		case reportKick <- struct{}{}:
 		default:
 		}
 	}, logger)
@@ -382,20 +382,22 @@ func main() {
 		go aiVPN.Run(ctx)
 		defer aiVPN.Close()
 	}
-	go reportKeyLoop(ctx, client, wgPub, endpointSource, endpointKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger)
+	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger)
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
 	r.SetForwardBlockedFn(egressMgr.ForwardBlocked)        // WF-4: Docker FORWARD DROP swallowing the forward → same signal
 	// Every desired-state fetch hands the compiled Zero Trust policy (nil = legacy
 	// mesh) to the egress manager and kicks an immediate forward-chain re-apply.
 	r.OnPolicy(func(p *nodepolicy.Compiled) {
-		egressMgr.SetPolicy(p)
-		dnsFwd.SetTable(dnsEntriesFrom(p))      // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
-		dnsFwd.SetK8sAnswers(k8sAnswersFrom(p)) // S10.3 A1: reprogram the K8s direct-answer set (nil policy → empty → answers nothing)
-		// ReconcileOnce itself runs on the serialized command lane. Apply policy
-		// substrates inline so revocation is complete before the desired-state
-		// command yields; endpoint/timer healing remains a producer below.
-		if err := reconcileEgress(ctx, egressMgr, &egressNAT, &egressIPv6); err != nil {
+		if err := reconcileWithPolicyReportWake(egressMgr, &egressNAT, &egressIPv6, reportKick, func() error {
+			egressMgr.SetPolicy(p)
+			dnsFwd.SetTable(dnsEntriesFrom(p))      // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
+			dnsFwd.SetK8sAnswers(k8sAnswersFrom(p)) // S10.3 A1: reprogram the K8s direct-answer set (nil policy → empty → answers nothing)
+			// ReconcileOnce itself runs on the serialized command lane. Apply policy
+			// substrates inline so revocation is complete before the desired-state
+			// command yields; endpoint/timer healing remains a producer below.
+			return reconcileEgress(ctx, egressMgr, &egressNAT, &egressIPv6)
+		}); err != nil {
 			logger.Warn("egress_policy_reconcile_degraded", slog.String("error", err.Error()))
 		}
 	})
@@ -618,7 +620,7 @@ func main() {
 		<-laneDone
 		return
 	}
-	go egressLoop(ctx, commandLane, egressMgr, &egressNAT, &egressIPv6, getdur("TUNNEX_AGENT_EGRESS_INTERVAL", 30*time.Second), policyKick)
+	go egressLoop(ctx, commandLane, egressMgr, &egressNAT, &egressIPv6, getdur("TUNNEX_AGENT_EGRESS_INTERVAL", 30*time.Second), policyKick, reportKick)
 	if kubernetesMode {
 		go k8sNetPrepLoop(ctx, k8sNetPrepPollInterval, func(loopCtx context.Context) error {
 			return commandLane.submitAndWait(loopCtx, "k8s_netprep_reconcile", func(commandCtx context.Context) error {
@@ -899,12 +901,11 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 }
 
 // reportKeyLoop reports the node's WG public key to the control plane, retrying
-// with backoff until it succeeds (then sets reported and returns). The report is
+// failures with backoff and publishing changed applied policy promptly. The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, endpointKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
-	const maxBackoff = 30 * time.Second
-	report := func() bool {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
+	report := func(reportCtx context.Context) bool {
 		endpoint := endpointSource()
 		if !endpoint.Reportable {
 			return false
@@ -934,16 +935,11 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 			FlowLogLastDeliveredAt:    flow.LastDeliveredAt,
 		}
 		ps.AIVPNHTTPReady, ps.AIVPNHTTPAddress = aiVPN.Status()
-		if applyErr != nil {
-			ps.Error = applyErr.Error()
-			if len(ps.Error) > 300 { // bound so a verbose nft error can't overflow the report body (finding #4)
-				ps.Error = ps.Error[:300]
-			}
-		}
+		ps.Error = boundedPolicyApplyError(applyErr)
 		if !failingSince.IsZero() {
 			ps.FailingSince = failingSince.UTC().Format(time.RFC3339)
 		}
-		if err := client.ReportInfo(ctx, pubKey, endpoint.Endpoint, egressNAT.Load(), egressIPv6.Load(), ps); err != nil {
+		if err := client.ReportInfo(reportCtx, pubKey, endpoint.Endpoint, egressNAT.Load(), egressIPv6.Load(), ps); err != nil {
 			logger.Warn("agent_report_key_failed", slog.String("error", err.Error()))
 			return false
 		}
@@ -956,42 +952,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 		}
 		return true
 	}
-	// Retry fast until the FIRST success (readiness is gated on it).
-	backoff := time.Second
-	for !report() {
-		timer := time.NewTimer(backoff)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-endpointKick:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			continue
-		case <-timer.C:
-		}
-		if backoff *= 2; backoff > maxBackoff {
-			backoff = maxBackoff
-		}
-	}
-	// Then re-report on an interval so a CHANGED egress_nat capability (host state can
-	// shift) propagates to the control plane — the decision was "report every reconcile".
-	t := time.NewTicker(every)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-endpointKick:
-			report()
-		case <-t.C:
-			report()
-		}
-	}
+	runReportLoop(ctx, reportKick, every, report)
 }
 
 // egressLoop reconciles the gateway egress NAT + the Zero Trust forward chain (the
@@ -1000,10 +961,12 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 // immediately on a policy kick (a pushed policy change must land within the <5s
 // revocation spec, not wait out the interval). A degraded reconcile (locked-down
 // host) sets egress_nat=false and logs, never crashing the agent.
-func egressLoop(ctx context.Context, lane *dataplaneCommandLane, mgr *egress.Manager, egressNAT, egressIPv6 *atomic.Bool, every time.Duration, kick <-chan struct{}) {
+func egressLoop(ctx context.Context, lane *dataplaneCommandLane, mgr *egress.Manager, egressNAT, egressIPv6 *atomic.Bool, every time.Duration, kick <-chan struct{}, reportKick chan<- struct{}) {
 	apply := func() bool {
 		_ = lane.submitAndWait(ctx, "egress_reconcile", func(commandCtx context.Context) error {
-			return reconcileEgress(commandCtx, mgr, egressNAT, egressIPv6)
+			return reconcileWithPolicyReportWake(mgr, egressNAT, egressIPv6, reportKick, func() error {
+				return reconcileEgress(commandCtx, mgr, egressNAT, egressIPv6)
+			})
 		})
 		return ctx.Err() == nil
 	}

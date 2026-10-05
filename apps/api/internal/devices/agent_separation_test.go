@@ -87,7 +87,7 @@ func TestHumanDeviceSurfacesExcludeAgents(t *testing.T) {
 		if end := strings.Index(q[1:], "\n-- name: "); end > 0 {
 			q = q[:end]
 		}
-		if !strings.Contains(q, "kind <> 'agent'") {
+		if !strings.Contains(q, "kind = 'human'") {
 			t.Fatalf("%s is an OPERATOR-FACING device surface and does not exclude agents — an AI agent "+
 				"would appear in a laptop roster it has no business in", name)
 		}

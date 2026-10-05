@@ -20,6 +20,11 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
+	"createsandbox":            `{"template_id":"00000000-0000-4000-8000-000000000001","name":"walk","requested_scope":[],"ttl_seconds":300,"ssh_public_keys":["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"]}`,
+	"sandboxaction":            `{"generation":1,"desired_state":"stopped"}`,
+	"createcustomsandboxskill": `{"document":"walk"}`,
+	"editcustomsandboxskill":   `{"document":"walk","generation":1}`,
+
 	"updateappaccessmanagement":   `{"expected_version":1,"catalog_visible":false,"app_admin_user_id":null}`,
 	"createappaccessrequest":      `{}`,
 	"decideappaccessrequest":      `{"expected_version":1,"decision":"approved","expires_at":null}`,
@@ -183,6 +188,7 @@ var walkBodies = map[string]string{
 // structurally valid so this walk measures authentication rather than the
 // generated parameter validator. Keep values inert and non-secret.
 var walkQueries = map[string]string{
+	"deletecustomsandboxskill":                "?generation=1",
 	"listappaccessgrantsubjects":              "?kind=user",
 	"archiveappaccessapplication":             "?expected_version=1",
 	"getipseceligibility":                     "?site_id=00000000-0000-4000-8000-000000000001&gateway_node_id=00000000-0000-4000-8000-000000000002",
@@ -224,6 +230,8 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{grantId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{revision}", "1")
 			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{sandboxId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{skillId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{provider}", "google")
 			reqPath = strings.ReplaceAll(reqPath, "{userId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{nodeId}", uuid.NewString())
@@ -267,6 +275,9 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			}
 			if strings.EqualFold(op.OperationID, "deleteIPsecConnection") || strings.EqualFold(op.OperationID, "setIPsecConnectionIntent") {
 				req.Header.Set("If-Match", `"1"`)
+			}
+			if strings.EqualFold(op.OperationID, "CreateSandbox") || strings.EqualFold(op.OperationID, "CreateCustomSandboxSkill") {
+				req.Header.Set("Idempotency-Key", "sessionless-walk")
 			}
 			resp, err := srv.Client().Do(req)
 			if err != nil {

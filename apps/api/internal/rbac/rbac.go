@@ -9,6 +9,12 @@ import "sort"
 type Permission string
 
 const (
+	PermSandboxView           Permission = "sandbox:view"
+	PermSandboxCreate         Permission = "sandbox:create"
+	PermSandboxManage         Permission = "sandbox:manage"
+	PermSandboxAdmin          Permission = "sandbox:admin"
+	PermSandboxDelegateManage Permission = "sandbox:delegate_manage"
+	PermSandboxTemplateManage Permission = "sandbox:template_manage"
 	// App Access administration never grants implicit application content access.
 	PermAppAccessView          Permission = "app_access:view"
 	PermAppAccessManage        Permission = "app_access:manage"
@@ -229,6 +235,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
 	RoleMember: {
+		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessUse:    true,
 		PermConnectivityUse: true,
 		PermAIModelUse:      true,
@@ -236,6 +243,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true,
+		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
 		PermAppAccessUse: true, PermAppAccessSessionManage: true, PermAppAccessEventView: true,
 		PermAIWorkloadView: true, PermAIWorkloadManage: true,
@@ -286,6 +295,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true,
+		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
 		PermAppAccessUse: true, PermAppAccessSessionManage: true, PermAppAccessEventView: true,
 		PermAIWorkloadView: true, PermAIWorkloadManage: true,
@@ -403,7 +414,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermSandboxView, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

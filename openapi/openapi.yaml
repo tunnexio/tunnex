@@ -2609,7 +2609,7 @@ paths:
           description: Repeatable lifecycle filter. Values are ORed.
           schema:
             type: array
-            items: { type: string, enum: [active, pending, suspended, revoked] }
+            items: { type: string, enum: [active, pending, suspended, revoked], x-enum-varnames: [ListAgentsParamsLifecycleActive, ListAgentsParamsLifecyclePending, ListAgentsParamsLifecycleSuspended, ListAgentsParamsLifecycleRevoked] }
           style: form
           explode: true
         - name: runtime
@@ -2704,6 +2704,26 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AgentBootstrapTokenResponse" }
         default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/sandbox/bootstrap:
+    post:
+      operationId: bootstrapSandbox
+      summary: Redeem a single-use sandbox bootstrap credential
+      security: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxBootstrapRequest' }
+      responses:
+        '200':
+          description: Private bootstrap handoff shown exactly once; not readiness.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxBootstrapResponse' }
+        default: { $ref: '#/components/responses/Error' }
 
   /api/v1/agent/bootstrap:
     post:
@@ -7707,6 +7727,411 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/saved-ssh-keys:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listSavedSSHKeys
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Saved key response.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavedSSHKeyList' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: saveSSHKey
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SavedSSHKeyInput' }
+      responses:
+        "200":
+          description: Saved key response.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavedSSHKey' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/saved-ssh-keys/{keyId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: deleteSavedSSHKey
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Saved key response.
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/saved-ssh-keys/{keyId}/default:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: defaultSavedSSHKey
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Saved key response.
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandboxes:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listSandboxes
+      description: Human owner inventory only; machine credentials cannot list the catalog.
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Sandbox response.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxList' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createSandbox
+      description: Create under current human authority or an explicit unexpired owned-machine delegation. Runtime opt-in, policy, skill and resource caps remain authoritative; stable idempotency keys preserve uncertain creation.
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxCreate' }
+      responses:
+        "202":
+          description: Sandbox response.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sandbox' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandboxes/{sandboxId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: sandboxId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getSandbox
+      description: Read an owned sandbox as a human, or a grant-created sandbox through its current owned-machine delegation.
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sandbox response.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sandbox' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandboxes/{sandboxId}/actions:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: sandboxId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: sandboxAction
+      description: Request a generation-bound lifecycle transition as a human, or through the current owned-machine delegation for its grant-created sandbox. Revocation and expiry request cleanup; physical cleanup remains pending.
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxAction' }
+      responses:
+        "202":
+          description: Sandbox response.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sandbox' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-setup:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getSandboxSetup
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current setup; publication does not qualify a runtime.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxSetup' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: updateSandboxSetup
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxSetupUpdate' }
+      responses:
+        "200":
+          description: Current setup; publication does not qualify a runtime.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxSetup' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-catalog/{templateId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: templateId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: publishSandboxTemplate
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxPublicationUpdate' }
+      responses:
+        "200":
+          description: Current setup; publication does not qualify a runtime.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxSetup' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-templates:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listSandboxTemplates
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sandbox response.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxTemplateList' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-skills:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listSandboxSkills
+      tags: [sandboxes]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sandbox response.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxSkillList' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/v1/organizations/{orgId}/sandbox-custom-skills:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listCustomSandboxSkills
+      tags: [sandboxes]
+      responses:
+        '200':
+          description: Only the current user's private skills.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxCustomSkillList' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createCustomSandboxSkill
+      tags: [sandboxes]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxCustomSkillCreate' }
+      responses:
+        '201':
+          description: Owner-private custom skill or exact replay.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxCustomSkill' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-custom-skills/{skillId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: skillId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getCustomSandboxSkill
+      tags: [sandboxes]
+      responses:
+        '200':
+          description: Current exact owner-private revision.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxCustomSkill' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: editCustomSandboxSkill
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxCustomSkillEdit' }
+      responses:
+        '200':
+          description: New immutable revision; existing sandboxes retain their pinned revision.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxCustomSkill' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteCustomSandboxSkill
+      tags: [sandboxes]
+      parameters:
+        - { name: generation, in: query, required: true, schema: { type: integer, format: int64, minimum: 1, maximum: 20 } }
+      responses:
+        '204':
+          description: Deleted tombstone or exact retry; revisions unavailable.
+          headers: { X-Request-Id: { $ref: '#/components/headers/RequestId' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/v1/organizations/{orgId}/sandbox-delegation-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateSandboxDelegationSettings
+      tags: [sandboxes]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      description: Verified human owner/admin opt-in only. Does not enable a runtime or mint credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties: { enabled: { type: boolean } }
+      responses:
+        '204': { description: Organization opt-in updated }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-delegations:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: issueSandboxDelegation
+      tags: [sandboxes]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      description: Verified human owner/admin grants bounded lifecycle authority to their existing owned machine credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxDelegationCreate' }
+      responses:
+        '201':
+          description: Immutable grant; no credential secret is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SandboxDelegation' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/sandbox-delegations/{delegationId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: delegationId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: revokeSandboxDelegation
+      tags: [sandboxes]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      description: Verified human owner/admin revocation atomically requests deletion of retained grant-created workloads; physical network/provider cleanup remains pending. Human cleanup remains authorized.
+      responses:
+        '204': { description: Grant revoked; repeat revocation is harmless }
+        default: { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     aiBearerAuth:
@@ -7736,6 +8161,350 @@ components:
       required: true
 
   schemas:
+    SandboxDelegationCreate:
+      type: object
+      additionalProperties: false
+      required: [machine_id, template_id, max_ttl_seconds, max_active, maximum_scope, skill_revision_ids, expires_at]
+      properties:
+        machine_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        max_ttl_seconds: { type: integer, minimum: 300, maximum: 900 }
+        max_active: { type: integer, minimum: 1, maximum: 2, description: Further bounded by existing owner/org/runtime quota. }
+        maximum_scope: { type: array, maxItems: 64, items: { $ref: '#/components/schemas/SandboxScope' } }
+        skill_revision_ids: { type: array, maxItems: 32, uniqueItems: true, items: { type: string, format: uuid } }
+        expires_at: { type: string, format: date-time }
+    SandboxDelegation:
+      type: object
+      required: [id, organization_id, owner_id, machine_id, template_id, max_ttl_seconds, max_active, maximum_scope, skill_revision_ids, expires_at]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        organization_id: { type: string, format: uuid, readOnly: true }
+        owner_id: { type: string, format: uuid, readOnly: true }
+        machine_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        max_ttl_seconds: { type: integer, minimum: 300, maximum: 900 }
+        max_active: { type: integer, minimum: 1, maximum: 2 }
+        maximum_scope: { type: array, items: { $ref: '#/components/schemas/SandboxScope' } }
+        skill_revision_ids: { type: array, items: { type: string, format: uuid } }
+        expires_at: { type: string, format: date-time }
+
+    SavedSSHKeyInput:
+      type: object
+      additionalProperties: false
+      required: [name, public_key]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        public_key: { type: string, minLength: 1, maxLength: 8192 }
+    SavedSSHKey:
+      type: object
+      required: [id, name, public_key, fingerprint, is_default]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        public_key: { type: string }
+        fingerprint: { type: string }
+        is_default: { type: boolean }
+    SavedSSHKeyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SavedSSHKey' }
+    SandboxScope:
+      type: object
+      additionalProperties: false
+      required: [cidr, protocol, port_low, port_high]
+      properties:
+        cidr: { type: string, minLength: 1, maxLength: 18 }
+        protocol: { type: string, enum: [any, tcp, udp] }
+        port_low: { type: integer, minimum: 0, maximum: 65535 }
+        port_high: { type: integer, minimum: 0, maximum: 65535 }
+    Sandbox:
+      type: object
+      additionalProperties: false
+      required: [id, organization_id, creator_id, template_id, name, requested_scope, selected_skills, desired_state, observed_state, generation, created_at, expires_at]
+      properties:
+        connection: { $ref: '#/components/schemas/SandboxConnection' }
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        creator_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        name: { type: string }
+        selected_skills:
+          type: array
+          maxItems: 16
+          items: { $ref: '#/components/schemas/SandboxSkillSelection' }
+        requested_scope:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxScope' }
+        desired_state: { type: string, enum: [started, stopped, deleted] }
+        observed_state: { type: string, enum: [creating, starting, ready, stopping, stopped, deleting, deleted, error] }
+        generation: { type: integer, format: int64, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+    SandboxConnection:
+      type: object
+      additionalProperties: false
+      description: Public-only current private SSH connection metadata. Omitted until current readiness and admission are valid.
+      required: [address, username, port, host_public_key, host_key_fingerprint]
+      properties:
+        address: { type: string, format: ipv4 }
+        username: { type: string, enum: [sandbox] }
+        port: { type: integer, enum: [22] }
+        host_public_key: { type: string, maxLength: 8192 }
+        host_key_fingerprint: { type: string, pattern: '^SHA256:' }
+    SandboxCreate:
+      type: object
+      additionalProperties: false
+      required: [template_id, name, requested_scope, ttl_seconds, ssh_public_keys]
+      properties:
+        template_id: { type: string, format: uuid }
+        terminal_device_id:
+          type: string
+          format: uuid
+          description: Required for organization admission. Select the authenticated creator's active, healthy human terminal device on the configured terminal gateway. Legacy creator-bound deployments may omit it; an explicit value must match their binding.
+        name: { type: string, minLength: 1, maxLength: 80 }
+        ssh_public_keys:
+          type: array
+          minItems: 1
+          maxItems: 7
+          items: { type: string, minLength: 32, maxLength: 8192 }
+        selected_skills:
+          type: array
+          maxItems: 16
+          items: { $ref: '#/components/schemas/SandboxSkillSelection' }
+        requested_scope:
+          type: array
+          maxItems: 64
+          items: { $ref: '#/components/schemas/SandboxScope' }
+        ttl_seconds: { type: integer, minimum: 300, maximum: 86400 }
+    SandboxAction:
+      type: object
+      additionalProperties: false
+      required: [generation, desired_state]
+      properties:
+        generation: { type: integer, format: int64, minimum: 1 }
+        desired_state: { type: string, enum: [started, stopped, deleted] }
+    SandboxImageProfile:
+      type: object
+      required: [name, distro, architecture, image_digest, config_digest, compressed_image_bytes, unpacked_image_bytes, idle_memory_bytes, evidence_context, measured_at, included_tools, excluded_tools, compatibility, qualification, emulated, measurement_memory_cap_bytes, measurement_workspace_cap_bytes]
+      properties:
+        name: { type: string }
+        distro: { type: string }
+        architecture: { type: string, enum: [amd64, arm64] }
+        image_digest: { type: string }
+        config_digest: { type: string }
+        compressed_image_bytes: { type: integer, format: int64, minimum: 0 }
+        unpacked_image_bytes: { type: integer, format: int64, minimum: 0 }
+        idle_memory_bytes: { type: integer, format: int64, minimum: 0 }
+        evidence_context: { type: string }
+        measured_at: { type: string }
+        included_tools: { type: array, items: { type: string } }
+        excluded_tools: { type: array, items: { type: string } }
+        compatibility: { type: string }
+        qualification: { type: string, enum: [candidate, native-qualified] }
+        emulated: { type: boolean }
+        measurement_memory_cap_bytes: { type: integer, format: int64, minimum: 0 }
+        measurement_workspace_cap_bytes: { type: integer, format: int64, minimum: 0 }
+    SandboxCreationStatus:
+      type: object
+      required: [can_admin, can_manage_catalog, runtime_ready, requires_terminal_device, blocked_reasons]
+      properties:
+        can_admin: { type: boolean }
+        can_manage_catalog: { type: boolean }
+        runtime_ready: { type: boolean }
+        requires_terminal_device: { type: boolean, description: Organization admission requires an explicit owned terminal device for each new sandbox. }
+        terminal_gateway_id: { type: string, format: uuid, description: Gateway on which the creator's selected human terminal device must be active. }
+        blocked_reasons:
+          type: array
+          items: { type: string }
+    SandboxSetupSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, max_per_user, max_total]
+      properties:
+        enabled: { type: boolean }
+        max_per_user: { type: integer, minimum: 1, maximum: 100 }
+        max_total: { type: integer, minimum: 1, maximum: 10000 }
+    SandboxSetupUpdate:
+      type: object
+      additionalProperties: false
+      required: [expected, settings]
+      properties:
+        expected: { $ref: '#/components/schemas/SandboxSetupSettings' }
+        settings: { $ref: '#/components/schemas/SandboxSetupSettings' }
+    SandboxPublicationUpdate:
+      type: object
+      additionalProperties: false
+      required: [expected_enabled, enabled]
+      properties:
+        expected_enabled: { type: boolean }
+        enabled: { type: boolean }
+    SandboxCatalogEntry:
+      type: object
+      required: [template, enabled, runtime_compatible]
+      properties:
+        template: { $ref: '#/components/schemas/SandboxTemplate' }
+        enabled: { type: boolean }
+        runtime_compatible: { type: boolean }
+    SandboxSetup:
+      type: object
+      required: [settings, policy_mode, creation_status, catalog]
+      properties:
+        runtime_limits: { $ref: '#/components/schemas/SandboxBoundedRuntimeLimits' }
+        candidate_profiles:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxImageProfile' }
+        settings: { $ref: '#/components/schemas/SandboxSetupSettings' }
+        policy_mode: { type: string }
+        creation_status: { $ref: '#/components/schemas/SandboxCreationStatus' }
+        catalog:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxCatalogEntry' }
+    SandboxBoundedRuntimeLimits:
+      type: object
+      description: Read-only limits of an operator-bound runtime. Historical reservations never become reusable workload capacity; stopped and unfinished cleanup records remain retained.
+      required: [max_retained, max_workloads, retained, workloads]
+      properties:
+        max_retained: { type: integer, minimum: 1, maximum: 2 }
+        max_workloads: { type: integer, minimum: 1, maximum: 1 }
+        retained: { type: integer, format: int64, minimum: 0 }
+        workloads: { type: integer, format: int64, minimum: 0 }
+        reservation_id: { type: string, format: uuid }
+        reservation_state: { type: string, enum: [pending, completed, invalid] }
+    SandboxList:
+      type: object
+      required: [items, create_available]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Sandbox' }
+        next_cursor: { type: string, format: uuid }
+        create_available: { type: boolean }
+        creation_status: { $ref: '#/components/schemas/SandboxCreationStatus' }
+    SandboxTemplate:
+      type: object
+      required: [id, name, image_digest, maximum_scope, memory_mib, max_ttl_seconds, allowed_skill_revision_ids]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        image_digest: { type: string }
+        image_profile: { $ref: '#/components/schemas/SandboxImageProfile' }
+        allowed_skill_revision_ids:
+          type: array
+          items: { type: string, format: uuid }
+        maximum_scope:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxScope' }
+        memory_mib: { type: integer }
+        max_ttl_seconds: { type: integer }
+    SandboxTemplateList:
+      type: object
+      required: [items]
+      properties:
+        candidate_profiles:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxImageProfile' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxTemplate' }
+    SandboxBootstrapRequest:
+      type: object
+      additionalProperties: false
+      required: [bootstrap_token, public_key]
+      properties:
+        bootstrap_token: { type: string, minLength: 65, maxLength: 65 }
+        public_key: { type: string, minLength: 44, maxLength: 44 }
+    SandboxBootstrapResponse:
+      type: object
+      additionalProperties: false
+      required: [sandbox_id, peer_id, generation, config, runtime_credential]
+      properties:
+        sandbox_id: { type: string, format: uuid }
+        peer_id: { type: string, format: uuid }
+        generation: { type: integer, format: int64, minimum: 1 }
+        config: { type: string }
+        runtime_credential: { type: string }
+    SandboxCustomSkill:
+      type: object
+      additionalProperties: false
+      required: [id, revision_id, generation, name, description, digest, document, created_at, deleted]
+      properties:
+        id: { type: string, format: uuid }
+        revision_id: { type: string, format: uuid }
+        generation: { type: integer, format: int64 }
+        name: { type: string }
+        description: { type: string }
+        digest: { type: string }
+        document: { type: string }
+        created_at: { type: string, format: date-time }
+        deleted: { type: boolean }
+    SandboxCustomSkillList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxCustomSkill' }
+    SandboxCustomSkillCreate:
+      type: object
+      additionalProperties: false
+      required: [document]
+      properties:
+        document: { type: string, minLength: 1, maxLength: 32768 }
+    SandboxCustomSkillEdit:
+      type: object
+      additionalProperties: false
+      required: [document, generation]
+      properties:
+        document: { type: string, minLength: 1, maxLength: 32768 }
+        generation: { type: integer, format: int64, minimum: 1, maximum: 20 }
+    SandboxSkillSelection:
+      type: object
+      additionalProperties: false
+      required: [revision_id, configuration]
+      properties:
+        revision_id: { type: string, format: uuid }
+        configuration:
+          type: object
+          maxProperties: 16
+          additionalProperties: { type: string, minLength: 1, maxLength: 80 }
+    SandboxSkillField:
+      type: object
+      required: [key, label, choices, required]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        required: { type: boolean }
+        choices:
+          type: array
+          items: { type: string }
+    SandboxSkill:
+      type: object
+      required: [id, name, description, version, digest, fields, required_scope, user_owned]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        version: { type: string }
+        digest: { type: string }
+        user_owned: { type: boolean }
+        custom_skill_id: { type: string, format: uuid }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxSkillField' }
+        required_scope:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxScope' }
+    SandboxSkillList:
+      type: object
+      required: [items, configuration_available]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SandboxSkill' }
+        configuration_available: { type: boolean }
     AppAccessPerson:
       type: object
       additionalProperties: false
@@ -12940,6 +13709,10 @@ components:
       required: [edition, sso_providers, protocol_version]
       additionalProperties: false
       properties:
+        sandbox_module_state:
+          type: string
+          enum: [disabled, enabled, draining]
+          description: Deployment sandbox capability. Draining blocks creation while retained resources finish cleanup. Missing means disabled for new clients.
         edition: { type: string, enum: [open, enterprise] }
         smtp_configured:
           type: boolean
