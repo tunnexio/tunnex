@@ -49,11 +49,13 @@ type bootstrapRequest struct {
 }
 
 type bootstrapBundle struct {
-	EnrollmentID string          `json:"enrollment_id"`
-	Certificate  string          `json:"certificate"`
-	RunnerCA     string          `json:"runner_ca"`
-	APICA        string          `json:"api_ca"`
-	Install      json.RawMessage `json:"install"`
+	EnrollmentID  string          `json:"enrollment_id"`
+	ProfileID     string          `json:"profile_id"`
+	BindingSHA256 string          `json:"binding_sha256"`
+	Certificate   string          `json:"certificate"`
+	RunnerCA      string          `json:"runner_ca"`
+	APICA         string          `json:"api_ca"`
+	Install       json.RawMessage `json:"install"`
 }
 
 func apiOrigin(server string) (string, error) {
@@ -226,6 +228,10 @@ func verifyBundle(bundle bootstrapBundle, identity localIdentity, now time.Time)
 	if bundle.EnrollmentID != identity.EnrollmentID || len(bytes.TrimSpace(bundle.Install)) == 0 || bytes.TrimSpace(bundle.Install)[0] != '{' || !json.Valid(bundle.Install) {
 		return errBootstrap
 	}
+	profile, err := uuid.Parse(bundle.ProfileID)
+	if err != nil || profile == uuid.Nil || profile.String() != bundle.ProfileID || !lowerHash(bundle.BindingSHA256, 64) {
+		return errBootstrap
+	}
 	certificate, err := tls.X509KeyPair([]byte(bundle.Certificate), identity.TLSKey)
 	if err != nil || len(certificate.Certificate) != 1 {
 		return errBootstrap
@@ -313,6 +319,31 @@ func onlineEnrollmentWithClient(server, enrollment, destination string, input io
 				return errIdentity
 			}
 		} else if _, err := root.Lstat(name); !os.IsNotExist(err) || privateWrite(root, name, content) != nil {
+			return errIdentity
+		}
+	}
+	return nil
+}
+
+func verifyIssuedIdentity(server, enrollment, destination string) error {
+	server, err := apiOrigin(server)
+	id, parseErr := uuid.Parse(enrollment)
+	if err != nil || parseErr != nil || id == uuid.Nil || id.String() != enrollment {
+		return errIdentity
+	}
+	root, identity, err := loadIdentity(destination, server, enrollment)
+	if err != nil {
+		return errIdentity
+	}
+	defer root.Close()
+	raw, err := privateRead(root, "enrollment.json")
+	var bundle bootstrapBundle
+	if err != nil || decodeStrict(raw, &bundle) != nil || verifyBundle(bundle, identity, time.Now()) != nil {
+		return errBootstrap
+	}
+	for name, expected := range map[string][]byte{"runner-key.pem": identity.TLSKey, "probe-key": identity.ProbeKey, "runner-cert.pem": []byte(bundle.Certificate), "runner-ca.pem": []byte(bundle.RunnerCA), "api-ca.pem": []byte(bundle.APICA)} {
+		actual, err := privateRead(root, name)
+		if err != nil || !bytes.Equal(actual, expected) {
 			return errIdentity
 		}
 	}

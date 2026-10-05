@@ -38,6 +38,9 @@ ASSETS = {
     "deploy/sandbox/install/install.py", "deploy/sandbox/install/README.md",
     "deploy/sandbox/install/example.json",
     "deploy/sandbox/install/enroll.py",
+    "deploy/sandbox/ubuntu-base/delivery.py", "deploy/sandbox/ubuntu-base/archive.py",
+    "deploy/sandbox/ubuntu-base/Containerfile", "deploy/sandbox/ubuntu-base/public-inputs.json",
+    "deploy/sandbox/ubuntu-base/ubuntu26-amd64.lock.json", "deploy/sandbox/ubuntu-base/README.md",
 }
 COMMANDS = ("tunnex-sandbox-runtime", "tunnex-sandbox-ssh-probe", "tunnex-sandbox-runner-enroll")
 
@@ -313,7 +316,7 @@ def subordinate_ranges(text, user, uid, reserved_start):
     return user in owners
 
 
-def check(cfg, host):
+def check(cfg, host, *, installed_report=False):
     need(host.identity() in (("Linux", "x86_64"), ("Linux", "amd64")), "Linux AMD64 native host required; ARM64 compile-only")
     for tool in TOOLS:
         info = host.stat(tool)
@@ -335,7 +338,7 @@ def check(cfg, host):
     need(host.stat(str(parent)).st_dev == io_device.st_rdev, "IO device must back the installation filesystem")
     identities(cfg, host)
     prefix = cfg["installation"]["unit_prefix"]
-    for unit in (prefix + "-actor.service", prefix + "-transport.service", prefix + "-network.service"):
+    for unit in (() if installed_report else (prefix + "-actor.service", prefix + "-transport.service", prefix + "-network.service")):
         # Installation never stops, replaces or adopts an active service.
         state = dict(line.split("=", 1) for line in host.run(["/usr/bin/systemctl", "show", unit, "--property=ActiveState,UnitFileState"]).splitlines())
         need(state.get("ActiveState") in ("inactive", "failed", "") and state.get("UnitFileState", "") in ("disabled", "", "not-found"), "owned service must be stopped and disabled")
@@ -482,6 +485,10 @@ def install(cfg, payload, host):
     for command, raw in binaries.items():
         public(state / "bin" / command, raw, 0o755)
     public(state / "install.py", payload["deploy/sandbox/install/install.py"])
+    public(state / "enroll.py", payload["deploy/sandbox/install/enroll.py"])
+    # Root-owned replay metadata contains public pins and local credential paths,
+    # never private key bodies. The installed qualification command uses it.
+    public(state / "enrollment-config.json", (json.dumps(cfg, sort_keys=True) + "\n").encode(), 0o600)
     copied_images = []
     for image in cfg["images"]:
         destination = state / "images" / (image["config_digest"][7:] + ".tar")

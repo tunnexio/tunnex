@@ -53,7 +53,7 @@ func signedBundle(t *testing.T, identity localIdentity) bootstrapBundle {
 		t.Fatal(err)
 	}
 	ca := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER}))
-	return bootstrapBundle{EnrollmentID: identity.EnrollmentID, Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), RunnerCA: ca, APICA: ca, Install: json.RawMessage(`{"version":1}`)}
+	return bootstrapBundle{EnrollmentID: identity.EnrollmentID, ProfileID: "00000000-0000-4000-8000-000000000003", BindingSHA256: strings.Repeat("a", 64), Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), RunnerCA: ca, APICA: ca, Install: json.RawMessage(`{"version":1}`)}
 }
 
 func TestMachineKeysGeneratedLocallyCSRHasNoRequestedAuthority(t *testing.T) {
@@ -291,5 +291,14 @@ func TestMachineBootstrapEndToEndPrivateFilesAndExactRecovery(t *testing.T) {
 	cert, _ := os.ReadFile(filepath.Join(destination, "runner-cert.pem"))
 	if _, err := tls.X509KeyPair(cert, private); err != nil {
 		t.Fatal("installed leaf does not match local private key")
+	}
+	if err := verifyIssuedIdentity(server.URL, id, destination); err != nil {
+		t.Fatal("original issued identity failed exact retry verification")
+	}
+	if err := os.WriteFile(filepath.Join(destination, "runner-cert.pem"), []byte("changed fixture certificate"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if verifyIssuedIdentity(server.URL, id, destination) == nil {
+		t.Fatal("changed retained identity accepted without new bootstrap")
 	}
 }
