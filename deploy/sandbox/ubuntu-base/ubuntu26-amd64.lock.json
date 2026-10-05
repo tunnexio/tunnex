@@ -7,6 +7,7 @@
   "download_packages": [
     {
       "architecture": "all",
+      "cache_filename": "adduser_3.153ubuntu1_all.deb",
       "name": "adduser",
       "path": "packages/78de3c5c3ec5657bcbdc10c2b2bcd9cedd78e6814182566f1522af422b26d3ce.deb",
       "sha256": "78de3c5c3ec5657bcbdc10c2b2bcd9cedd78e6814182566f1522af422b26d3ce",
@@ -16,6 +17,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "dbus_1.16.2-2ubuntu4_amd64.deb",
       "name": "dbus",
       "path": "packages/3e19a3e85d696b164a1a0e0419b919ceb19cd9d89b6fdbb0d1c4caa0f6e5e526.deb",
       "sha256": "3e19a3e85d696b164a1a0e0419b919ceb19cd9d89b6fdbb0d1c4caa0f6e5e526",
@@ -25,6 +27,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "dbus-bin_1.16.2-2ubuntu4_amd64.deb",
       "name": "dbus-bin",
       "path": "packages/9c191045a54eae56c583e4c29993ed75c521fbc18f312820387e0e8a514ab76a.deb",
       "sha256": "9c191045a54eae56c583e4c29993ed75c521fbc18f312820387e0e8a514ab76a",
@@ -34,6 +37,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "dbus-daemon_1.16.2-2ubuntu4_amd64.deb",
       "name": "dbus-daemon",
       "path": "packages/5e8b9f5527234cfb15f95f8449595e4118aa6a378f71b9472ba718c4e253508b.deb",
       "sha256": "5e8b9f5527234cfb15f95f8449595e4118aa6a378f71b9472ba718c4e253508b",
@@ -43,6 +47,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "dbus-session-bus-common_1.16.2-2ubuntu4_all.deb",
       "name": "dbus-session-bus-common",
       "path": "packages/c4debf213b12e178096ca1eb8c6afd6de74b425da998a7788c42252c1f99ef3d.deb",
       "sha256": "c4debf213b12e178096ca1eb8c6afd6de74b425da998a7788c42252c1f99ef3d",
@@ -52,6 +57,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "dbus-system-bus-common_1.16.2-2ubuntu4_all.deb",
       "name": "dbus-system-bus-common",
       "path": "packages/96a330e99f4d130d3aa1842881488f507d11ec46d897f410fe7afad14ed8c3a4.deb",
       "sha256": "96a330e99f4d130d3aa1842881488f507d11ec46d897f410fe7afad14ed8c3a4",
@@ -61,6 +67,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "iproute2_6.19.0-1ubuntu1.1_amd64.deb",
       "name": "iproute2",
       "path": "packages/05e53ae079adf844a11d1a531acd96b2b2021be130ac2f0bd49166bce3bd0f98.deb",
       "sha256": "05e53ae079adf844a11d1a531acd96b2b2021be130ac2f0bd49166bce3bd0f98",
@@ -70,6 +77,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libapparmor1_5.0.2-0ubuntu1~26.04.1_amd64.deb",
       "name": "libapparmor1",
       "path": "packages/50570ebe581bbfeead4403571b75ee275955c6bcbd1b4bf342228772549162b9.deb",
       "sha256": "50570ebe581bbfeead4403571b75ee275955c6bcbd1b4bf342228772549162b9",
@@ -79,6 +87,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libbpf1_1%3a1.6.3-1ubuntu1_amd64.deb",
       "name": "libbpf1",
       "path": "packages/ec7e4acb71b824e218da4d78496b44827d2a33100e7230732002d3459872e993.deb",
       "sha256": "ec7e4acb71b824e218da4d78496b44827d2a33100e7230732002d3459872e993",
@@ -88,6 +97,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libcap2_1%3a2.75-10ubuntu2_amd64.deb",
       "name": "libcap2",
       "path": "packages/150603a0792b1d22aa0bde0a26c27b413018c799284003e4b43cba587a5b3a18.deb",
       "sha256": "150603a0792b1d22aa0bde0a26c27b413018c799284003e4b43cba587a5b3a18",
@@ -97,6 +107,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libcap2-bin_1%3a2.75-10ubuntu2_amd64.deb",
       "name": "libcap2-bin",
       "path": "packages/d92a8f9affbd2277d191e65978ba2a194d00d00a04f52ee9d1bca2a2ba26697d.deb",
       "sha256": "d92a8f9affbd2277d191e65978ba2a194d00d00a04f52ee9d1bca2a2ba26697d",
@@ -106,6 +117,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libcbor0.10_0.10.2-2ubuntu3_amd64.deb",
       "name": "libcbor0.10",
       "path": "packages/97153fe6f78a737d08227e7df8b185ddb064e69febdea8993ebde37a97b2527f.deb",
       "sha256": "97153fe6f78a737d08227e7df8b185ddb064e69febdea8993ebde37a97b2527f",
@@ -115,6 +127,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libdbus-1-3_1.16.2-2ubuntu4_amd64.deb",
       "name": "libdbus-1-3",
       "path": "packages/af7be2be588d15a16c696ab43ba3e92bd5f9a6850e8780234059b02a67716e58.deb",
       "sha256": "af7be2be588d15a16c696ab43ba3e92bd5f9a6850e8780234059b02a67716e58",
@@ -124,6 +137,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libedit2_3.1-20251016-1_amd64.deb",
       "name": "libedit2",
       "path": "packages/22338fcbcaae99f67ca7b2e20d1730bc29d3c02bcd2414e457f99be96442ee29.deb",
       "sha256": "22338fcbcaae99f67ca7b2e20d1730bc29d3c02bcd2414e457f99be96442ee29",
@@ -133,6 +147,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libelf1t64_0.194-4_amd64.deb",
       "name": "libelf1t64",
       "path": "packages/c2feae172b14d2a8317348023c5e0b6572314c097a9f7b8225c62b0988cc8d92.deb",
       "sha256": "c2feae172b14d2a8317348023c5e0b6572314c097a9f7b8225c62b0988cc8d92",
@@ -142,6 +157,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libexpat1_2.7.4-1ubuntu0.2_amd64.deb",
       "name": "libexpat1",
       "path": "packages/0063e68d742facfd3c46d7d7df9eb0d85f13e0fc294908a4f138d45557607837.deb",
       "sha256": "0063e68d742facfd3c46d7d7df9eb0d85f13e0fc294908a4f138d45557607837",
@@ -151,6 +167,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libffi8_3.5.2-4_amd64.deb",
       "name": "libffi8",
       "path": "packages/4a7423124bbd459c0aa38b7389ec7802fa6899654767a95fc27de70967fedd48.deb",
       "sha256": "4a7423124bbd459c0aa38b7389ec7802fa6899654767a95fc27de70967fedd48",
@@ -160,6 +177,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libfido2-1_1.16.0-2build1_amd64.deb",
       "name": "libfido2-1",
       "path": "packages/e74f757c08a3c9827453de9986101b43ca1069de6be9b8a7eeb438943f73f11f.deb",
       "sha256": "e74f757c08a3c9827453de9986101b43ca1069de6be9b8a7eeb438943f73f11f",
@@ -169,6 +187,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libgssapi-krb5-2_1.22.1-2ubuntu4.1_amd64.deb",
       "name": "libgssapi-krb5-2",
       "path": "packages/d156dd940bff6dec8b6880cd0da4d515398d03d7b2e8b3163a935e701f80aa27.deb",
       "sha256": "d156dd940bff6dec8b6880cd0da4d515398d03d7b2e8b3163a935e701f80aa27",
@@ -178,6 +197,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libjansson4_2.14-2build4_amd64.deb",
       "name": "libjansson4",
       "path": "packages/1dc986ac3cf112384919d1a339a952e8a86bede9890a4489c016fdc266a036ca.deb",
       "sha256": "1dc986ac3cf112384919d1a339a952e8a86bede9890a4489c016fdc266a036ca",
@@ -187,6 +207,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libk5crypto3_1.22.1-2ubuntu4.1_amd64.deb",
       "name": "libk5crypto3",
       "path": "packages/8e99ef104a6bf49bea708747fdf4c28eb4fcebd6dba9e55ecfa919211eb5ab75.deb",
       "sha256": "8e99ef104a6bf49bea708747fdf4c28eb4fcebd6dba9e55ecfa919211eb5ab75",
@@ -196,6 +217,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libkeyutils1_1.6.3-6ubuntu3_amd64.deb",
       "name": "libkeyutils1",
       "path": "packages/ea7d3cc642ffe2459c35a85c894f80e92499b9eba13bdcb225e0aa751c0970be.deb",
       "sha256": "ea7d3cc642ffe2459c35a85c894f80e92499b9eba13bdcb225e0aa751c0970be",
@@ -205,6 +227,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libkrb5-3_1.22.1-2ubuntu4.1_amd64.deb",
       "name": "libkrb5-3",
       "path": "packages/54612a2019863c44d80218f40d40670c3684108f4b2a760aae644ab68457e239.deb",
       "sha256": "54612a2019863c44d80218f40d40670c3684108f4b2a760aae644ab68457e239",
@@ -214,6 +237,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libkrb5support0_1.22.1-2ubuntu4.1_amd64.deb",
       "name": "libkrb5support0",
       "path": "packages/127d735efece139dfb7109ac3709da7eb8923bef090c20a10dbaf4c4fa45001d.deb",
       "sha256": "127d735efece139dfb7109ac3709da7eb8923bef090c20a10dbaf4c4fa45001d",
@@ -223,6 +247,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libmnl0_1.0.5-3build1_amd64.deb",
       "name": "libmnl0",
       "path": "packages/ab5e2781b0e2a2155cf154c658a2e6cf419d95a28c3121aefb159df6453102e5.deb",
       "sha256": "ab5e2781b0e2a2155cf154c658a2e6cf419d95a28c3121aefb159df6453102e5",
@@ -232,6 +257,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libnftables1_1.1.6-1_amd64.deb",
       "name": "libnftables1",
       "path": "packages/0e5abb5719052d9f12aadf91a3f3d5192a2e85d035ee81d07c3055a0f79d8b8f.deb",
       "sha256": "0e5abb5719052d9f12aadf91a3f3d5192a2e85d035ee81d07c3055a0f79d8b8f",
@@ -241,6 +267,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libnftnl11_1.3.1-1_amd64.deb",
       "name": "libnftnl11",
       "path": "packages/a2f4d4a4ce3fac7e473c8de60a3d8948a58e9850cd8e2ced17263aa73dda7199.deb",
       "sha256": "a2f4d4a4ce3fac7e473c8de60a3d8948a58e9850cd8e2ced17263aa73dda7199",
@@ -250,6 +277,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libpython3-stdlib_3.14.3-0ubuntu2_amd64.deb",
       "name": "libpython3-stdlib",
       "path": "packages/75d0c4c28732f8e08d5da25a47676dbe923e4b15a8f7a77110ab370325889df5.deb",
       "sha256": "75d0c4c28732f8e08d5da25a47676dbe923e4b15a8f7a77110ab370325889df5",
@@ -259,6 +287,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libpython3.14-minimal_3.14.4-1ubuntu0.2_amd64.deb",
       "name": "libpython3.14-minimal",
       "path": "packages/fac6f0728cf9490a7a698e6b343e4140283e92355b060193c04f5770a666df8a.deb",
       "sha256": "fac6f0728cf9490a7a698e6b343e4140283e92355b060193c04f5770a666df8a",
@@ -268,6 +297,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libpython3.14-stdlib_3.14.4-1ubuntu0.2_amd64.deb",
       "name": "libpython3.14-stdlib",
       "path": "packages/3c267ef0f902f763c3615cbf28dd6fe91d2e4f603075d7f03db99f8d4eb66f46.deb",
       "sha256": "3c267ef0f902f763c3615cbf28dd6fe91d2e4f603075d7f03db99f8d4eb66f46",
@@ -277,6 +307,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libreadline8t64_8.3-4_amd64.deb",
       "name": "libreadline8t64",
       "path": "packages/260b3333e9f714252593b83fb31d2571097b64d337d0d7100aae7349029821fc.deb",
       "sha256": "260b3333e9f714252593b83fb31d2571097b64d337d0d7100aae7349029821fc",
@@ -286,6 +317,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libsqlite3-0_3.46.1-9ubuntu0.3_amd64.deb",
       "name": "libsqlite3-0",
       "path": "packages/ff4b5a1e7c028a4bcc30076e4d8197aad1a910df44f4dc8dcf253e9ee9a3a367.deb",
       "sha256": "ff4b5a1e7c028a4bcc30076e4d8197aad1a910df44f4dc8dcf253e9ee9a3a367",
@@ -295,6 +327,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libsystemd-shared_259.5-0ubuntu3.4_amd64.deb",
       "name": "libsystemd-shared",
       "path": "packages/9b30b1e96cc8b48f94a2df5c1cbee7690e16f727d71b40c458a64aabe15db35f.deb",
       "sha256": "9b30b1e96cc8b48f94a2df5c1cbee7690e16f727d71b40c458a64aabe15db35f",
@@ -304,6 +337,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libtext-charwidth-perl_0.04-11build4_amd64.deb",
       "name": "libtext-charwidth-perl",
       "path": "packages/55089bcbe8f6213d500900769f5161e35fb9e4147cf472b469a37e1d1e96a022.deb",
       "sha256": "55089bcbe8f6213d500900769f5161e35fb9e4147cf472b469a37e1d1e96a022",
@@ -313,6 +347,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "libtext-wrapi18n-perl_0.06-10_all.deb",
       "name": "libtext-wrapi18n-perl",
       "path": "packages/936619071dd5d81ff672b685af9ad20e1f524be2241cbd80556aedc376844a36.deb",
       "sha256": "936619071dd5d81ff672b685af9ad20e1f524be2241cbd80556aedc376844a36",
@@ -322,6 +357,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "libtirpc-common_1.3.7-0.1_all.deb",
       "name": "libtirpc-common",
       "path": "packages/debc1757cd9b13ec7837e6e76bd9aaf8ae0f622de0e45043e4f5c6e255375814.deb",
       "sha256": "debc1757cd9b13ec7837e6e76bd9aaf8ae0f622de0e45043e4f5c6e255375814",
@@ -331,6 +367,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libtirpc3t64_1.3.7-0.1_amd64.deb",
       "name": "libtirpc3t64",
       "path": "packages/a6c68bbbcbaf2941aee004e581289958c690d17b867be510940a82df2a5572c1.deb",
       "sha256": "a6c68bbbcbaf2941aee004e581289958c690d17b867be510940a82df2a5572c1",
@@ -340,6 +377,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libwrap0_7.6.q-36build2_amd64.deb",
       "name": "libwrap0",
       "path": "packages/a3784ca083c626c3ae41cdd32d4c5898554650dc77d2b54dbb1197a38198adf8.deb",
       "sha256": "a3784ca083c626c3ae41cdd32d4c5898554650dc77d2b54dbb1197a38198adf8",
@@ -349,6 +387,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "libxtables12_1.8.11-2ubuntu3_amd64.deb",
       "name": "libxtables12",
       "path": "packages/e21126e0544e3b795633fb5b06bb7f2b9a493ebc5ab07b007db0f7f68c0a0aed.deb",
       "sha256": "e21126e0544e3b795633fb5b06bb7f2b9a493ebc5ab07b007db0f7f68c0a0aed",
@@ -358,6 +397,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "media-types_14.0.0build1_all.deb",
       "name": "media-types",
       "path": "packages/f3412d08032210541d25c4e00fa492ce527af245ac9bec2e543d81a59b4426aa.deb",
       "sha256": "f3412d08032210541d25c4e00fa492ce527af245ac9bec2e543d81a59b4426aa",
@@ -367,6 +407,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "netbase_6.5build1_all.deb",
       "name": "netbase",
       "path": "packages/f008e39aada379d64166153d5e37ccc4f18b3e334babb9e32c4da9b4396ee733.deb",
       "sha256": "f008e39aada379d64166153d5e37ccc4f18b3e334babb9e32c4da9b4396ee733",
@@ -376,6 +417,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "nftables_1.1.6-1_amd64.deb",
       "name": "nftables",
       "path": "packages/fcdeae9ed9761550619d062f8ae87a2399c84ab87f4535bcb9ab0d3649aba59a.deb",
       "sha256": "fcdeae9ed9761550619d062f8ae87a2399c84ab87f4535bcb9ab0d3649aba59a",
@@ -385,6 +427,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "openssh-client_1%3a10.2p1-2ubuntu3.6_amd64.deb",
       "name": "openssh-client",
       "path": "packages/d47ae7d97b3751264f921cc3df09a70915e85ad980c94b99e651e21c36e3d987.deb",
       "sha256": "d47ae7d97b3751264f921cc3df09a70915e85ad980c94b99e651e21c36e3d987",
@@ -394,6 +437,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "openssh-server_1%3a10.2p1-2ubuntu3.6_amd64.deb",
       "name": "openssh-server",
       "path": "packages/108256262b0fb7bb8eddd92e87230f775c90eb321413e8789754b3509f7b55c6.deb",
       "sha256": "108256262b0fb7bb8eddd92e87230f775c90eb321413e8789754b3509f7b55c6",
@@ -403,6 +447,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "openssh-sftp-server_1%3a10.2p1-2ubuntu3.6_amd64.deb",
       "name": "openssh-sftp-server",
       "path": "packages/16bfb714d404ccbee3623d08f280a3671512ecbe9590565fac621c85bcee7766.deb",
       "sha256": "16bfb714d404ccbee3623d08f280a3671512ecbe9590565fac621c85bcee7766",
@@ -412,6 +457,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "python3_3.14.3-0ubuntu2_amd64.deb",
       "name": "python3",
       "path": "packages/1ff88ad587f9e52e9f333ab00ae0babea93ac5222fc6909039c4190affe1d574.deb",
       "sha256": "1ff88ad587f9e52e9f333ab00ae0babea93ac5222fc6909039c4190affe1d574",
@@ -421,6 +467,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "python3-minimal_3.14.3-0ubuntu2_amd64.deb",
       "name": "python3-minimal",
       "path": "packages/d5f37616b30209d8c10c4a705d7bf9558ca21e058fc2b2bd2ffcf37a74a42861.deb",
       "sha256": "d5f37616b30209d8c10c4a705d7bf9558ca21e058fc2b2bd2ffcf37a74a42861",
@@ -430,6 +477,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "python3.14_3.14.4-1ubuntu0.2_amd64.deb",
       "name": "python3.14",
       "path": "packages/780c308c47d8afcbb7d339f0023350e7cf60c1a37e9572a1f88774cc18f60526.deb",
       "sha256": "780c308c47d8afcbb7d339f0023350e7cf60c1a37e9572a1f88774cc18f60526",
@@ -439,6 +487,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "python3.14-minimal_3.14.4-1ubuntu0.2_amd64.deb",
       "name": "python3.14-minimal",
       "path": "packages/0a7ea8a52834f9b3de0f11758924f80f7a6ebcbb4b02a55ba4f457503569f55f.deb",
       "sha256": "0a7ea8a52834f9b3de0f11758924f80f7a6ebcbb4b02a55ba4f457503569f55f",
@@ -448,6 +497,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "readline-common_8.3-4_all.deb",
       "name": "readline-common",
       "path": "packages/53cdc5a963bbdda938f8996496a5e78bcf484e6e41a2ef2c0f8cf566808f71f5.deb",
       "sha256": "53cdc5a963bbdda938f8996496a5e78bcf484e6e41a2ef2c0f8cf566808f71f5",
@@ -457,6 +507,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "systemd_259.5-0ubuntu3.4_amd64.deb",
       "name": "systemd",
       "path": "packages/1b2eca56c5cfdbc1aca78591a68f94b7e1c996abd52095587069776b816b9dca.deb",
       "sha256": "1b2eca56c5cfdbc1aca78591a68f94b7e1c996abd52095587069776b816b9dca",
@@ -466,6 +517,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "systemd-resolved_259.5-0ubuntu3.4_amd64.deb",
       "name": "systemd-resolved",
       "path": "packages/99f133977b1d262c8344cd88acb10eaaa091e95370693aee162560476760cb9e.deb",
       "sha256": "99f133977b1d262c8344cd88acb10eaaa091e95370693aee162560476760cb9e",
@@ -475,6 +527,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "tzdata_2026c-0ubuntu0.26.04.1_all.deb",
       "name": "tzdata",
       "path": "packages/d1b10c964c53344b2b99d093bd437391460eec9a872961c2beb256d64a8c5bbf.deb",
       "sha256": "d1b10c964c53344b2b99d093bd437391460eec9a872961c2beb256d64a8c5bbf",
@@ -484,6 +537,7 @@
     },
     {
       "architecture": "all",
+      "cache_filename": "ucf_3.0052ubuntu1_all.deb",
       "name": "ucf",
       "path": "packages/42354d322fda598511b62288123e8b4b6daf6b7bbb268d68e8e7f88efa498305.deb",
       "sha256": "42354d322fda598511b62288123e8b4b6daf6b7bbb268d68e8e7f88efa498305",
@@ -493,6 +547,7 @@
     },
     {
       "architecture": "amd64",
+      "cache_filename": "wireguard-tools_1.0.20250521-1ubuntu1_amd64.deb",
       "name": "wireguard-tools",
       "path": "packages/e948f176ea0324252b7f07327becd1d5df14290ef4fafa392a9d41e96b0459c8.deb",
       "sha256": "e948f176ea0324252b7f07327becd1d5df14290ef4fafa392a9d41e96b0459c8",
