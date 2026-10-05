@@ -73,7 +73,7 @@ and a portable Linux installation path. Admission was implemented at `f30c378`:
 it follows the authorized organization/user policy and current lifecycle guards,
 rather than a fixed human/Mac identity; capacity remains one workload. Its
 creation UI includes explicit terminal selection. Portable installation and CI
-source are still being finalized at this ledger update. Historical qualification
+source are implemented at `440034b` and `c3fd55e`. Historical qualification
 evidence remains immutable in its original worktrees. The new source does not
 establish a new live deployment or wire qualification.
 
@@ -104,7 +104,8 @@ preparation validation record. They were not rerun by this inventory worker.
 
 The root relayed the following bounded worker results for `f30c378`; these are
 distinct checks, with no aggregate count inferred from potentially overlapping
-selection patterns. Final combined checks are pending.
+selection patterns. Final combined results are recorded in
+[the validation summary](S-sandbox-pr-validation.md).
 
 | Reported check | Result |
 | --- | --- |
@@ -114,12 +115,17 @@ selection patterns. Final combined checks are pending.
 | Final Ready CAS/binding-authority races and existing resume selection | Open passed; no additional both-edition result is inferred. |
 | Focused creation wizard and terminal picker | 28 tests passed: 25 wizard and three picker tests. |
 
-The full native API and full web follow-up were still in progress when these
-results were relayed. An earlier fixture initialized with an incorrect blank
-legacy binding is not a product failure or a pass on the final combined head.
-The final preparation validation record must report those full results and its
-exact source checkpoint separately.
+These narrow results preceded the full API/web follow-up. An earlier fixture
+initialized with an incorrect blank legacy binding is not a product failure or
+a pass on the final combined head. The final validation summary reports the
+completed suites, corrected migration-fixture rerun and remaining skips separately.
 
 Portable runtime placement and the offline installer are implemented at `440034b`; both-architecture packaging and required fixture coverage are implemented at `c3fd55e`. The historical fixture source-validation manifest is preserved outside publication; its executable fixture and regression tests remain included and run in CI. Final combined checks are recorded in S-sandbox-pr-validation.md.
 
-Final integration repair `691d56a` restores the pinned generated header and tests forward upgrade from published schema180 to195 without downgrading retained App Access authority. Original source/operational history remains on the integration branch; the separate candidate retains all352 product/test/build paths unchanged.
+Final integration repair `691d56a` restores the pinned generated header and tests forward upgrade from published schema180 to195 without downgrading retained App Access authority. Original source/operational history remains on the integration branch; the separate candidate retains all 352 product/test/build paths unchanged.
+
+Public image README correction `47a44ef` removes stale operator-only citations
+and makes current image-release prerequisites explicit. After that reviewed
+documentation change, all 352 product/test/build paths remain identical between
+the integration branch and publishable candidate. No executable source changed
+after the validation checkpoint.

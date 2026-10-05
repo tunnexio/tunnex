@@ -105,5 +105,12 @@ outside this implementation. The original Create-relative absolute TTL stays.
   for native activation. Bundles are 19,841,396 and 17,964,210 bytes respectively.
   A publication candidate with a different source SHA requires its own rebuild
   and verification; preparation evidence does not substitute for final provenance.
+- PASS: actual bundles rebuilt from clean publication content checkpoint
+  `4c8452e1dad6244d4d19ec11551299039cf41289`, with the same source/ELF/inventory
+  and inner/outer checksum verification. AMD64 is 19,841,380 bytes and ARM64
+  is 17,964,255 bytes. Full API ARM64 compilation passed in both editions; the
+  installer accepted AMD64 and refused ARM64 without activation. A later
+  documentation checkpoint must be rebuilt again before handoff; its bundle
+  manifest and accompanying verification record carry its exact source SHA.
 - Remote CI, complete workload-image builds and new portable native qualification
   were not run. The missing approved Ubuntu base/image input remains explicit.
