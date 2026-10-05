@@ -1770,6 +1770,16 @@ const (
 	SandboxRunnerEnrollmentProfileArchitectureAmd64 SandboxRunnerEnrollmentProfileArchitecture = "amd64"
 )
 
+// Defines values for SandboxRunnerEnrollmentProfileHostOs.
+const (
+	Ubuntu SandboxRunnerEnrollmentProfileHostOs = "ubuntu"
+)
+
+// Defines values for SandboxRunnerEnrollmentProfileHostVersion.
+const (
+	N2604 SandboxRunnerEnrollmentProfileHostVersion = "26.04"
+)
+
 // Defines values for SandboxRunnerInstallImageArchitecture.
 const (
 	Amd64 SandboxRunnerInstallImageArchitecture = "amd64"
@@ -1820,6 +1830,32 @@ const (
 	Reject  SandboxRunnerQualificationReviewDecision = "reject"
 )
 
+// Defines values for SandboxRunnerQualificationTrialState.
+const (
+	SandboxRunnerQualificationTrialStateAwaitingExpiry SandboxRunnerQualificationTrialState = "awaiting_expiry"
+	SandboxRunnerQualificationTrialStateCleanupPending SandboxRunnerQualificationTrialState = "cleanup_pending"
+	SandboxRunnerQualificationTrialStateComplete       SandboxRunnerQualificationTrialState = "complete"
+	SandboxRunnerQualificationTrialStateFailed         SandboxRunnerQualificationTrialState = "failed"
+	SandboxRunnerQualificationTrialStatePending        SandboxRunnerQualificationTrialState = "pending"
+	SandboxRunnerQualificationTrialStateRunning        SandboxRunnerQualificationTrialState = "running"
+)
+
+// Defines values for SandboxRunnerQualificationTrialPhaseCode.
+const (
+	InitialReady  SandboxRunnerQualificationTrialPhaseCode = "initial_ready"
+	OfflineExpiry SandboxRunnerQualificationTrialPhaseCode = "offline_expiry"
+	ResumeReady   SandboxRunnerQualificationTrialPhaseCode = "resume_ready"
+	Retired       SandboxRunnerQualificationTrialPhaseCode = "retired"
+	Stopped       SandboxRunnerQualificationTrialPhaseCode = "stopped"
+)
+
+// Defines values for SandboxRunnerQualificationTrialPhaseState.
+const (
+	SandboxRunnerQualificationTrialPhaseStateFailed  SandboxRunnerQualificationTrialPhaseState = "failed"
+	SandboxRunnerQualificationTrialPhaseStatePassed  SandboxRunnerQualificationTrialPhaseState = "passed"
+	SandboxRunnerQualificationTrialPhaseStatePending SandboxRunnerQualificationTrialPhaseState = "pending"
+)
+
 // Defines values for SandboxScopeProtocol.
 const (
 	SandboxScopeProtocolAny SandboxScopeProtocol = "any"
@@ -1853,8 +1889,8 @@ const (
 
 // Defines values for SiteSubnetStatus.
 const (
-	Approved SiteSubnetStatus = "approved"
-	Pending  SiteSubnetStatus = "pending"
+	SiteSubnetStatusApproved SiteSubnetStatus = "approved"
+	SiteSubnetStatusPending  SiteSubnetStatus = "pending"
 )
 
 // Defines values for SsoConfigViewProvider.
@@ -1921,11 +1957,11 @@ const (
 
 // Defines values for UpgradeStatusState.
 const (
-	UpgradeStatusStateApplying  UpgradeStatusState = "applying"
-	UpgradeStatusStateAvailable UpgradeStatusState = "available"
-	UpgradeStatusStateFailed    UpgradeStatusState = "failed"
-	UpgradeStatusStateHealthy   UpgradeStatusState = "healthy"
-	UpgradeStatusStateRequested UpgradeStatusState = "requested"
+	Applying  UpgradeStatusState = "applying"
+	Available UpgradeStatusState = "available"
+	Failed    UpgradeStatusState = "failed"
+	Healthy   UpgradeStatusState = "healthy"
+	Requested UpgradeStatusState = "requested"
 )
 
 // Defines values for UserGroupIdpProvider.
@@ -7184,6 +7220,7 @@ type SandboxRunnerEnrollment struct {
 	Name                 string                            `json:"name"`
 	ProfileId            openapi_types.UUID                `json:"profile_id"`
 	Qualification        *SandboxRunnerQualificationRecord `json:"qualification,omitempty"`
+	QualificationTrial   *SandboxRunnerQualificationTrial  `json:"qualification_trial,omitempty"`
 	State                SandboxRunnerEnrollmentState      `json:"state"`
 }
 
@@ -7212,17 +7249,26 @@ type SandboxRunnerEnrollmentList struct {
 
 // SandboxRunnerEnrollmentProfile defines model for SandboxRunnerEnrollmentProfile.
 type SandboxRunnerEnrollmentProfile struct {
-	Architecture    SandboxRunnerEnrollmentProfileArchitecture `json:"architecture"`
-	BlockedReasons  []string                                   `json:"blocked_reasons"`
-	BootstrapScript SandboxRunnerArtifact                      `json:"bootstrap_script"`
-	Id              openapi_types.UUID                         `json:"id"`
-	Install         SandboxRunnerInstallPlan                   `json:"install"`
-	Name            string                                     `json:"name"`
-	Prerequisites   []string                                   `json:"prerequisites"`
+	Architecture      SandboxRunnerEnrollmentProfileArchitecture `json:"architecture"`
+	BlockedReasons    []string                                   `json:"blocked_reasons"`
+	BootstrapScript   SandboxRunnerArtifact                      `json:"bootstrap_script"`
+	HostOs            SandboxRunnerEnrollmentProfileHostOs       `json:"host_os"`
+	HostVersion       SandboxRunnerEnrollmentProfileHostVersion  `json:"host_version"`
+	Id                openapi_types.UUID                         `json:"id"`
+	Install           SandboxRunnerInstallPlan                   `json:"install"`
+	Name              string                                     `json:"name"`
+	Prerequisites     []string                                   `json:"prerequisites"`
+	TerminalGatewayId openapi_types.UUID                         `json:"terminal_gateway_id"`
 }
 
 // SandboxRunnerEnrollmentProfileArchitecture defines model for SandboxRunnerEnrollmentProfile.Architecture.
 type SandboxRunnerEnrollmentProfileArchitecture string
+
+// SandboxRunnerEnrollmentProfileHostOs defines model for SandboxRunnerEnrollmentProfile.HostOs.
+type SandboxRunnerEnrollmentProfileHostOs string
+
+// SandboxRunnerEnrollmentProfileHostVersion defines model for SandboxRunnerEnrollmentProfile.HostVersion.
+type SandboxRunnerEnrollmentProfileHostVersion string
 
 // SandboxRunnerInstallController defines model for SandboxRunnerInstallController.
 type SandboxRunnerInstallController struct {
@@ -7342,6 +7388,54 @@ type SandboxRunnerQualificationReview struct {
 
 // SandboxRunnerQualificationReviewDecision defines model for SandboxRunnerQualificationReview.Decision.
 type SandboxRunnerQualificationReviewDecision string
+
+// SandboxRunnerQualificationTrial defines model for SandboxRunnerQualificationTrial.
+type SandboxRunnerQualificationTrial struct {
+	BlockedReasons []string `json:"blocked_reasons"`
+
+	// Connection Public-only current private SSH connection metadata. Omitted until current readiness and admission are valid.
+	Connection           *SandboxConnection                     `json:"connection,omitempty"`
+	CreatedAt            time.Time                              `json:"created_at"`
+	DesiredState         string                                 `json:"desired_state"`
+	EnrollmentId         openapi_types.UUID                     `json:"enrollment_id"`
+	ExpiresAt            time.Time                              `json:"expires_at"`
+	Generation           int64                                  `json:"generation"`
+	Id                   openapi_types.UUID                     `json:"id"`
+	ObservedState        string                                 `json:"observed_state"`
+	Phase                string                                 `json:"phase"`
+	Phases               []SandboxRunnerQualificationTrialPhase `json:"phases"`
+	ProfileId            openapi_types.UUID                     `json:"profile_id"`
+	QualificationCommand string                                 `json:"qualification_command"`
+	RetiredAt            *time.Time                             `json:"retired_at,omitempty"`
+	RuntimeId            *string                                `json:"runtime_id,omitempty"`
+	SandboxId            openapi_types.UUID                     `json:"sandbox_id"`
+	State                SandboxRunnerQualificationTrialState   `json:"state"`
+	TerminalDeviceId     openapi_types.UUID                     `json:"terminal_device_id"`
+}
+
+// SandboxRunnerQualificationTrialState defines model for SandboxRunnerQualificationTrial.State.
+type SandboxRunnerQualificationTrialState string
+
+// SandboxRunnerQualificationTrialCreate defines model for SandboxRunnerQualificationTrialCreate.
+type SandboxRunnerQualificationTrialCreate struct {
+	IdempotencyKey   openapi_types.UUID `json:"idempotency_key"`
+	SshPublicKeys    []string           `json:"ssh_public_keys"`
+	TerminalDeviceId openapi_types.UUID `json:"terminal_device_id"`
+}
+
+// SandboxRunnerQualificationTrialPhase defines model for SandboxRunnerQualificationTrialPhase.
+type SandboxRunnerQualificationTrialPhase struct {
+	Code           SandboxRunnerQualificationTrialPhaseCode  `json:"code"`
+	EvidenceSha256 *string                                   `json:"evidence_sha256,omitempty"`
+	ObservedAt     *time.Time                                `json:"observed_at,omitempty"`
+	State          SandboxRunnerQualificationTrialPhaseState `json:"state"`
+}
+
+// SandboxRunnerQualificationTrialPhaseCode defines model for SandboxRunnerQualificationTrialPhase.Code.
+type SandboxRunnerQualificationTrialPhaseCode string
+
+// SandboxRunnerQualificationTrialPhaseState defines model for SandboxRunnerQualificationTrialPhase.State.
+type SandboxRunnerQualificationTrialPhaseState string
 
 // SandboxScope defines model for SandboxScope.
 type SandboxScope struct {
@@ -8890,6 +8984,9 @@ type CreateSandboxRunnerEnrollmentJSONRequestBody = SandboxRunnerEnrollmentCreat
 
 // ReviewSandboxRunnerQualificationJSONRequestBody defines body for ReviewSandboxRunnerQualification for application/json ContentType.
 type ReviewSandboxRunnerQualificationJSONRequestBody = SandboxRunnerQualificationReview
+
+// StartSandboxRunnerQualificationTrialJSONRequestBody defines body for StartSandboxRunnerQualificationTrial for application/json ContentType.
+type StartSandboxRunnerQualificationTrialJSONRequestBody = SandboxRunnerQualificationTrialCreate
 
 // UpdateSandboxSetupJSONRequestBody defines body for UpdateSandboxSetup for application/json ContentType.
 type UpdateSandboxSetupJSONRequestBody = SandboxSetupUpdate
@@ -10625,6 +10722,14 @@ type ClientInterface interface {
 	ReviewSandboxRunnerQualificationWithBody(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ReviewSandboxRunnerQualification(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartSandboxRunnerQualificationTrialWithBody request with any body
+	StartSandboxRunnerQualificationTrialWithBody(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	StartSandboxRunnerQualificationTrial(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body StartSandboxRunnerQualificationTrialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSandboxRunnerQualificationTrial request
+	GetSandboxRunnerQualificationTrial(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, trialId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSandboxSetup request
 	GetSandboxSetup(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17708,6 +17813,42 @@ func (c *Client) ReviewSandboxRunnerQualificationWithBody(ctx context.Context, o
 
 func (c *Client) ReviewSandboxRunnerQualification(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReviewSandboxRunnerQualificationRequest(c.Server, orgId, enrollmentId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartSandboxRunnerQualificationTrialWithBody(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartSandboxRunnerQualificationTrialRequestWithBody(c.Server, orgId, enrollmentId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartSandboxRunnerQualificationTrial(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body StartSandboxRunnerQualificationTrialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartSandboxRunnerQualificationTrialRequest(c.Server, orgId, enrollmentId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSandboxRunnerQualificationTrial(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, trialId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSandboxRunnerQualificationTrialRequest(c.Server, orgId, enrollmentId, trialId)
 	if err != nil {
 		return nil, err
 	}
@@ -37544,6 +37685,108 @@ func NewReviewSandboxRunnerQualificationRequestWithBody(server string, orgId ope
 	return req, nil
 }
 
+// NewStartSandboxRunnerQualificationTrialRequest calls the generic StartSandboxRunnerQualificationTrial builder with application/json body
+func NewStartSandboxRunnerQualificationTrialRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body StartSandboxRunnerQualificationTrialJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartSandboxRunnerQualificationTrialRequestWithBody(server, orgId, enrollmentId, "application/json", bodyReader)
+}
+
+// NewStartSandboxRunnerQualificationTrialRequestWithBody generates requests for StartSandboxRunnerQualificationTrial with any type of body
+func NewStartSandboxRunnerQualificationTrialRequestWithBody(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments/%s/qualification-trials", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSandboxRunnerQualificationTrialRequest generates requests for GetSandboxRunnerQualificationTrial
+func NewGetSandboxRunnerQualificationTrialRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, trialId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "trialId", runtime.ParamLocationPath, trialId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments/%s/qualification-trials/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetSandboxSetupRequest generates requests for GetSandboxSetup
 func NewGetSandboxSetupRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -40994,6 +41237,14 @@ type ClientWithResponsesInterface interface {
 	ReviewSandboxRunnerQualificationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReviewSandboxRunnerQualificationResponse, error)
 
 	ReviewSandboxRunnerQualificationWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body ReviewSandboxRunnerQualificationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReviewSandboxRunnerQualificationResponse, error)
+
+	// StartSandboxRunnerQualificationTrialWithBodyWithResponse request with any body
+	StartSandboxRunnerQualificationTrialWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartSandboxRunnerQualificationTrialResponse, error)
+
+	StartSandboxRunnerQualificationTrialWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body StartSandboxRunnerQualificationTrialJSONRequestBody, reqEditors ...RequestEditorFn) (*StartSandboxRunnerQualificationTrialResponse, error)
+
+	// GetSandboxRunnerQualificationTrialWithResponse request
+	GetSandboxRunnerQualificationTrialWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, trialId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxRunnerQualificationTrialResponse, error)
 
 	// GetSandboxSetupWithResponse request
 	GetSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxSetupResponse, error)
@@ -50069,6 +50320,52 @@ func (r ReviewSandboxRunnerQualificationResponse) StatusCode() int {
 	return 0
 }
 
+type StartSandboxRunnerQualificationTrialResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *SandboxRunnerQualificationTrial
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r StartSandboxRunnerQualificationTrialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartSandboxRunnerQualificationTrialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSandboxRunnerQualificationTrialResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxRunnerQualificationTrial
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSandboxRunnerQualificationTrialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSandboxRunnerQualificationTrialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetSandboxSetupResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -56050,6 +56347,32 @@ func (c *ClientWithResponses) ReviewSandboxRunnerQualificationWithResponse(ctx c
 		return nil, err
 	}
 	return ParseReviewSandboxRunnerQualificationResponse(rsp)
+}
+
+// StartSandboxRunnerQualificationTrialWithBodyWithResponse request with arbitrary body returning *StartSandboxRunnerQualificationTrialResponse
+func (c *ClientWithResponses) StartSandboxRunnerQualificationTrialWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartSandboxRunnerQualificationTrialResponse, error) {
+	rsp, err := c.StartSandboxRunnerQualificationTrialWithBody(ctx, orgId, enrollmentId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartSandboxRunnerQualificationTrialResponse(rsp)
+}
+
+func (c *ClientWithResponses) StartSandboxRunnerQualificationTrialWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, body StartSandboxRunnerQualificationTrialJSONRequestBody, reqEditors ...RequestEditorFn) (*StartSandboxRunnerQualificationTrialResponse, error) {
+	rsp, err := c.StartSandboxRunnerQualificationTrial(ctx, orgId, enrollmentId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartSandboxRunnerQualificationTrialResponse(rsp)
+}
+
+// GetSandboxRunnerQualificationTrialWithResponse request returning *GetSandboxRunnerQualificationTrialResponse
+func (c *ClientWithResponses) GetSandboxRunnerQualificationTrialWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, trialId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxRunnerQualificationTrialResponse, error) {
+	rsp, err := c.GetSandboxRunnerQualificationTrial(ctx, orgId, enrollmentId, trialId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSandboxRunnerQualificationTrialResponse(rsp)
 }
 
 // GetSandboxSetupWithResponse request returning *GetSandboxSetupResponse
@@ -69130,6 +69453,72 @@ func ParseReviewSandboxRunnerQualificationResponse(rsp *http.Response) (*ReviewS
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SandboxRunnerEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartSandboxRunnerQualificationTrialResponse parses an HTTP response from a StartSandboxRunnerQualificationTrialWithResponse call
+func ParseStartSandboxRunnerQualificationTrialResponse(rsp *http.Response) (*StartSandboxRunnerQualificationTrialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartSandboxRunnerQualificationTrialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SandboxRunnerQualificationTrial
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSandboxRunnerQualificationTrialResponse parses an HTTP response from a GetSandboxRunnerQualificationTrialWithResponse call
+func ParseGetSandboxRunnerQualificationTrialResponse(rsp *http.Response) (*GetSandboxRunnerQualificationTrialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSandboxRunnerQualificationTrialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxRunnerQualificationTrial
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

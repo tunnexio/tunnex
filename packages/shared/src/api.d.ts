@@ -6675,6 +6675,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/sandbox-runner-enrollments/{enrollmentId}/qualification-trials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start one bounded qualification trial with the current administrator’s owned terminal and public SSH keys */
+        post: operations["startSandboxRunnerQualificationTrial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sandbox-runner-enrollments/{enrollmentId}/qualification-trials/{trialId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+                trialId: string;
+            };
+            cookie?: never;
+        };
+        /** Read confirmed qualification phases and original expiry without private credentials */
+        get: operations["getSandboxRunnerQualificationTrial"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/sandbox-runner-enrollments": {
         parameters: {
             query?: never;
@@ -7113,6 +7154,12 @@ export interface components {
             blocked_reasons: string[];
             bootstrap_script: components["schemas"]["SandboxRunnerArtifact"];
             install: components["schemas"]["SandboxRunnerInstallPlan"];
+            /** @enum {string} */
+            host_os: "ubuntu";
+            /** @enum {string} */
+            host_version: "26.04";
+            /** Format: uuid */
+            terminal_gateway_id: string;
         };
         SandboxRunnerEnrollment: {
             /** Format: uuid */
@@ -7133,6 +7180,7 @@ export interface components {
             blocked_reasons: string[];
             install_command: string;
             qualification?: components["schemas"]["SandboxRunnerQualificationRecord"];
+            qualification_trial?: components["schemas"]["SandboxRunnerQualificationTrial"];
         };
         SandboxRunnerEnrollmentList: {
             profiles: components["schemas"]["SandboxRunnerEnrollmentProfile"][];
@@ -7218,6 +7266,52 @@ export interface components {
             /** @enum {string} */
             decision: "approve" | "reject";
             review_note: string;
+        };
+        SandboxRunnerQualificationTrialCreate: {
+            /** Format: uuid */
+            terminal_device_id: string;
+            ssh_public_keys: string[];
+            /** Format: uuid */
+            idempotency_key: string;
+        };
+        SandboxRunnerQualificationTrialPhase: {
+            /** @enum {string} */
+            code: "initial_ready" | "stopped" | "resume_ready" | "offline_expiry" | "retired";
+            /** @enum {string} */
+            state: "pending" | "passed" | "failed";
+            /** Format: date-time */
+            observed_at?: string;
+            evidence_sha256?: string;
+        };
+        SandboxRunnerQualificationTrial: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            enrollment_id: string;
+            /** Format: uuid */
+            profile_id: string;
+            /** Format: uuid */
+            sandbox_id: string;
+            /** Format: uuid */
+            terminal_device_id: string;
+            /** @enum {string} */
+            state: "pending" | "running" | "awaiting_expiry" | "cleanup_pending" | "complete" | "failed";
+            phase: string;
+            observed_state: string;
+            desired_state: string;
+            /** Format: int64 */
+            generation: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            runtime_id?: string;
+            connection?: components["schemas"]["SandboxConnection"];
+            phases: components["schemas"]["SandboxRunnerQualificationTrialPhase"][];
+            blocked_reasons: string[];
+            qualification_command: string;
+            /** Format: date-time */
+            retired_at?: string;
         };
         SandboxSetupSettings: {
             enabled: boolean;
@@ -23362,6 +23456,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SandboxRunnerEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startSandboxRunnerQualificationTrial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxRunnerQualificationTrialCreate"];
+            };
+        };
+        responses: {
+            /** @description Start one bounded qualification trial with the current administrator’s owned terminal and public SSH keys */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerQualificationTrial"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSandboxRunnerQualificationTrial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+                trialId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read confirmed qualification phases and original expiry without private credentials */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunnerQualificationTrial"];
                 };
             };
             default: components["responses"]["Error"];
