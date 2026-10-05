@@ -223,6 +223,17 @@ func (s *Store) verifyTargetReadiness(ctx context.Context, id uuid.UUID, provide
 	if result.RowsAffected() != 1 {
 		return ErrConflict
 	}
+	trialCode := "initial_ready"
+	if start.sandbox.Revision != 1 {
+		trialCode = "resume_ready"
+	}
+	if err = recordRunnerTrialEvent(ctx, tx, id, trialCode, start.sandbox.Revision, map[string]any{
+		"target": target, "launched_at": launchedAt, "policy_before": before, "policy_after": after,
+		"network_observed_at": observation.ObservedAt, "gateway_handshake_at": handshake,
+		"gateway_reported_at": reportedAt, "terminal_probe": probeResult, "ssh_origin": "runner",
+	}); err != nil {
+		return err
+	}
 	if err = auditSandbox(ctx, tx, target.OrgID, current.sandbox.Identity.CreatorID, current.sandbox, "sandbox.ready"); err != nil {
 		return err
 	}

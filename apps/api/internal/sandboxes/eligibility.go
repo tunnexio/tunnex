@@ -12,13 +12,15 @@ import (
 // This expression uses the sandbox alias s. Eligibility permits execution, never
 // cleanup. A NULL terminal retains the legacy unpinned creator-human behavior.
 const sandboxEligibilitySQL = `EXISTS(SELECT 1 FROM organizations o
- JOIN sandbox_templates t ON t.org_id=o.id AND t.id=s.template_id AND t.enabled
+ JOIN sandbox_templates t ON t.org_id=o.id AND t.id=s.template_id
  JOIN memberships m ON m.org_id=o.id AND m.user_id=s.creator_id
  JOIN users u ON u.id=m.user_id
- WHERE o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+ WHERE o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing'
+ AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id))
  AND m.access_revoked_at IS NULL AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
  AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password)
  AND sandbox_delegation_valid(s.id)
+ AND sandbox_qualification_trial_authority(s.id)
  AND (s.terminal_device_id IS NULL OR EXISTS(SELECT 1 FROM devices terminal
  JOIN nodes n ON n.id=terminal.node_id AND n.org_id=terminal.org_id AND n.status='active' AND COALESCE(n.enrolled_kind,'gateway')='gateway'
  LEFT JOIN sandbox_remote_terminal_routes route ON route.sandbox_id=s.id AND route.org_id=s.org_id

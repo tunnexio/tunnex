@@ -190,6 +190,14 @@ func completeCleanup(ctx context.Context, conn *pgxpool.Conn, target Sandbox) er
 	if _, err = tx.Exec(ctx, `UPDATE sandboxes SET observed_state=$2 WHERE id=$1`, target.Identity.ID, state); err != nil {
 		return err
 	}
+	if state == StateStopped {
+		if err = recordRunnerTrialEvent(ctx, tx, target.Identity.ID, "stopped", target.Revision, map[string]any{
+			"sandbox_id": target.Identity.ID, "generation": target.Revision, "peer_id": target.PeerID,
+			"provider_stopped": true, "gateway_withdrawal_confirmed": target.PeerID != nil,
+		}); err != nil {
+			return err
+		}
+	}
 	if err = auditSandbox(ctx, tx, target.Identity.OrgID, target.Identity.CreatorID, target, "sandbox.cleanup_"+string(state)); err != nil {
 		return err
 	}

@@ -116,7 +116,7 @@ func prepareWorkspace(ctx context.Context, conn *pgxpool.Conn, target startTarge
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var raw []byte
 	var specHash string
-	if err = tx.QueryRow(ctx, `SELECT t.maximum_scope,r.spec_hash FROM sandbox_templates t JOIN sandbox_runtime_bindings r ON r.org_id=t.org_id JOIN sandboxes s ON s.id=r.sandbox_id AND s.template_id=t.id WHERE s.id=$1 AND s.generation=$2 AND s.desired_state='started' AND s.expires_at>now() AND t.enabled FOR SHARE OF s,t,r`, id, target.sandbox.Revision).Scan(&raw, &specHash); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT t.maximum_scope,r.spec_hash FROM sandbox_templates t JOIN sandbox_runtime_bindings r ON r.org_id=t.org_id JOIN sandboxes s ON s.id=r.sandbox_id AND s.template_id=t.id WHERE s.id=$1 AND s.generation=$2 AND s.desired_state='started' AND s.expires_at>now() AND (t.enabled OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id) FOR SHARE OF s,t,r`, id, target.sandbox.Revision).Scan(&raw, &specHash); err != nil {
 		return WorkspacePlan{}, err
 	}
 	var cap []Scope

@@ -219,6 +219,13 @@ func (c *WorkerRPCClient) SweepRunnerEnrollment(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (c *WorkerRPCClient) PumpQualificationTrials(ctx context.Context) error {
+	if pump, ok := c.enrollment.(interface{ PumpQualificationTrials(context.Context) error }); ok {
+		return pump.PumpQualificationTrials(ctx)
+	}
+	return nil
+}
 func (c *WorkerRPCClient) Create(ctx context.Context, s sandboxruntime.Spec) error {
 	_, err := c.call(ctx, workerRequest{Operation: "create", ID: s.ID, Spec: &s})
 	return err

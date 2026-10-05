@@ -33,10 +33,12 @@ implementing or testing this workflow.
   trial/source/binding identity. Rejected or incomplete witnesses cannot turn
   checklist booleans into qualification. Reports and native evidence require
   explicit human review before ordinary runner readiness.
-- Pending independent observation: existing private SSH readiness is probed by
-  the runner. A runner report alone is not an independent terminal-side SSH
-  proof. The final qualification verifier must record the chosen trusted proof
-  boundary; source fixtures are substitutes for native evidence.
+- Locked proof boundary: canonical policy acknowledgements, lifecycle and
+  confirmed retirement combine with the authenticated machine offline witness
+  and mandatory administrator review. Existing private SSH readiness is probed
+  by the runner and is explicitly recorded as runner-origin evidence. This is
+  not independent terminal-side SSH proof. Source fixtures do not establish
+  native qualification.
 - Deferred: additional profiles, ARM64 activation, capacity expansion, automatic
   approvals and performance claims beyond measured receipts.
 
@@ -46,3 +48,35 @@ states and generation, phase observations, original created/expiry times,
 blocked reasons and a public customer qualification command when its actual
 producer is available. Connection metadata is provided only while the existing
 canonical connection gates pass.
+
+Host enrollment is the administrator-managed host certificate, probe identity,
+trusted source/profile pins and qualification. Each ordinary workload retains
+its creating user's org membership, own terminal and permitted policy scope.
+The enrolled first target accepts one Ubuntu26.04 AMD64 image profile, one
+retained workload and original900-second lifetimes. Static legacy bindings keep
+their existing profiles. Additional images require their own qualified trial
+coverage; they cannot inherit this host's first-image proof.
+
+The source pump runs in the existing bounded orchestrator batch, never a second
+service. Successful Ready and Stopped transactions append immutable public
+receipts. Expiry and withdrawal request deletion; completion requires actual
+Deleted plus worker retirement and the authenticated local offline witness.
+The observer's bounded collection window is evidence collection time, not a TTL
+extension or an instant physical-stop guarantee. Actor receipt timestamps are
+sampled sweep times persisted only after confirmed provider stop.
+
+Ordinary Create has a pre-transaction availability check and a transaction
+admission hook that binds the current qualified enrollment to the immutable
+workload. This prevents a revoke between the initial check and commit from
+leaving an unmapped retained slot. Current per-command/generation authorization
+remains required. Trial admission has its separate grant/mapping in the same
+creation transaction and bypasses only ordinary runner readiness/catalog flags.
+
+Source validation includes disposable PostgreSQL grant/admission/immutability
+fixtures, composed source start-stop-resume and confirmed cancellation retirement
+with synthetic runtime/network/SSH adapters, strict mTLS private trial routes,
+and real Python completed-report producer bytes consumed by the exact-hash
+administrator review flow. Historical synthetic canonical receipts exercise the
+full expiry witness/proof contract without waiting900seconds. These fixtures do
+not establish native host qualification, independent terminal SSH observation,
+physical900-second stop timing, deployment compatibility or measured latency.

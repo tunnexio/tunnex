@@ -35,9 +35,25 @@ type Store struct {
 	policyNotify     func(context.Context, uuid.UUID)
 	qualificationOrg uuid.UUID
 	boundedRuntime   *BoundedRuntimeBinding
+	runnerAvailable  func(context.Context) bool
+	runnerAdmission  func(context.Context, pgx.Tx, Sandbox) error
 }
 
-func NewStore(pool *pgxpool.Pool) *Store                   { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+// Configure once before serving. Nil preserves the explicitly qualified legacy
+// binding. Availability is an admission signal, not command/role authority.
+func (s *Store) WithRunnerAvailability(available func(context.Context) bool) *Store {
+	s.runnerAvailable = available
+	return s
+}
+
+// Admission runs under Create's existing org lock after immutable bindings are
+// inserted. Failure rolls back the workload and its retained slot together.
+func (s *Store) WithRunnerAdmission(admit func(context.Context, pgx.Tx, Sandbox) error) *Store {
+	s.runnerAdmission = admit
+	return s
+}
 func (s *Store) WithQualificationOrg(org uuid.UUID) *Store { s.qualificationOrg = org; return s }
 func (s *Store) WithPolicyNotify(notify func(context.Context, uuid.UUID)) *Store {
 	s.policyNotify = notify
@@ -124,14 +140,25 @@ func scanSandbox(row pgx.Row) (Sandbox, error) {
 }
 
 func (s *Store) Create(ctx context.Context, org, actor uuid.UUID, in CreateInput) (Sandbox, bool, error) {
+	return s.create(ctx, org, actor, in, nil)
+}
+
+// Trial authority is an internal typed option, never a request context/header or
+// public create field. Its current grant is validated under the same org lock.
+func (s *Store) create(ctx context.Context, org, actor uuid.UUID, in CreateInput, trial *runnerTrialCreate) (Sandbox, bool, error) {
 	if s != nil && s.qualificationOrg != uuid.Nil && s.qualificationOrg != org {
 		return Sandbox{}, false, ErrDisabled
 	}
 	if s == nil || s.pool == nil {
 		return Sandbox{}, false, ErrDisabled
 	}
-	if err := s.boundedCreate(ctx, org, actor, in); err != nil {
-		return Sandbox{}, false, err
+	if trial == nil && s.runnerAvailable != nil && !s.runnerAvailable(ctx) {
+		return Sandbox{}, false, ErrDisabled
+	}
+	if trial == nil {
+		if err := s.boundedCreate(ctx, org, actor, in); err != nil {
+			return Sandbox{}, false, err
+		}
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	normalized, err := sandboxscope.NormalizeScope(in.Requested)
@@ -181,6 +208,14 @@ func (s *Store) Create(ctx context.Context, org, actor uuid.UUID, in CreateInput
 			return Sandbox{}, false, err
 		}
 	}
+	if trial != nil {
+		if d != nil {
+			return Sandbox{}, false, ErrForbidden
+		}
+		if err := trial.prepare(ctx, tx, s, org, actor, in); err != nil {
+			return Sandbox{}, false, err
+		}
+	}
 	var selectedTerminal uuid.UUID
 	if b := s.boundedRuntime; b != nil {
 		selectedTerminal, err = b.terminalDevice(in.TerminalDeviceID)
@@ -227,12 +262,12 @@ func (s *Store) Create(ctx context.Context, org, actor uuid.UUID, in CreateInput
 			return Sandbox{}, false, ErrQuota
 		}
 	}
-	if !enabled || mode != policy.ModeEnforcing {
+	if (!enabled && trial == nil) || mode != policy.ModeEnforcing {
 		return Sandbox{}, false, ErrDisabled
 	}
 	var capRaw []byte
 	var ttlMax int32
-	err = tx.QueryRow(ctx, `SELECT maximum_scope,max_ttl_seconds FROM sandbox_templates WHERE org_id=$1 AND id=$2 AND enabled FOR SHARE`, org, in.TemplateID).Scan(&capRaw, &ttlMax)
+	err = tx.QueryRow(ctx, `SELECT maximum_scope,max_ttl_seconds FROM sandbox_templates WHERE org_id=$1 AND id=$2 AND (enabled OR $3) FOR SHARE`, org, in.TemplateID, trial != nil).Scan(&capRaw, &ttlMax)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Sandbox{}, false, ErrDisabled
 	}
@@ -299,8 +334,15 @@ func (s *Store) Create(ctx context.Context, org, actor uuid.UUID, in CreateInput
 	raw, _ := json.Marshal(in.Requested)
 	skillsRaw, _ := json.Marshal(in.SelectedSkills)
 	keysRaw, _ := json.Marshal(in.SSHPublicKeys)
-	out, err := scanSandbox(tx.QueryRow(ctx, `INSERT INTO sandboxes(org_id,creator_id,template_id,name,requested_scope,idempotency_key,request_hash,expires_at,selected_skills,ssh_public_keys,terminal_device_id,local_terminal_gateway_id)
- VALUES($1,$2,$3,$4,$5,$6,$7,now()+make_interval(secs=>$8),$9,$10,$11,$12) RETURNING `+sandboxColumns, org, actor, in.TemplateID, in.Name, raw, in.IdempotencyKey, hash[:], in.TTLSeconds, skillsRaw, keysRaw, terminalDevice, localTerminalGateway))
+	var explicitID any
+	if trial != nil {
+		if err := trial.insert(ctx, tx, org, actor, selectedTerminal); err != nil {
+			return Sandbox{}, false, err
+		}
+		explicitID = trial.sandboxID
+	}
+	out, err := scanSandbox(tx.QueryRow(ctx, `INSERT INTO sandboxes(org_id,creator_id,template_id,name,requested_scope,idempotency_key,request_hash,expires_at,selected_skills,ssh_public_keys,terminal_device_id,local_terminal_gateway_id,id)
+ VALUES($1,$2,$3,$4,$5,$6,$7,now()+make_interval(secs=>$8),$9,$10,$11,$12,COALESCE($13,uuid_generate_v7())) RETURNING `+sandboxColumns, org, actor, in.TemplateID, in.Name, raw, in.IdempotencyKey, hash[:], in.TTLSeconds, skillsRaw, keysRaw, terminalDevice, localTerminalGateway, explicitID))
 	if err != nil {
 		return Sandbox{}, false, err
 	}
@@ -317,6 +359,19 @@ func (s *Store) Create(ctx context.Context, org, actor uuid.UUID, in CreateInput
 	}
 	if d != nil {
 		if _, err = tx.Exec(ctx, `INSERT INTO sandbox_delegated_instances(sandbox_id,delegation_id) VALUES ($1,$2)`, out.Identity.ID, d.ID); err != nil {
+			return Sandbox{}, false, err
+		}
+	}
+	if trial != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO sandbox_runner_workloads(sandbox_id,org_id,enrollment_id) VALUES($1,$2,$3)`, out.Identity.ID, org, trial.enrollmentID); err != nil {
+			return Sandbox{}, false, err
+		}
+		if err := runnerAudit(ctx, tx, org, actor, trial.trialID, "sandbox.runner_qualification_begin", map[string]any{"enrollment_id": trial.enrollmentID, "sandbox_id": out.Identity.ID, "template_id": out.TemplateVersionID}); err != nil {
+			return Sandbox{}, false, err
+		}
+	}
+	if trial == nil && s.runnerAdmission != nil {
+		if err := s.runnerAdmission(ctx, tx, out); err != nil {
 			return Sandbox{}, false, err
 		}
 	}
@@ -367,6 +422,9 @@ func (s *Store) Get(ctx context.Context, org, actor, id uuid.UUID) (Sandbox, err
 // SetDesired advances one CAS generation. Runtime observation is reconciler-only.
 // Stale clients cannot resurrect a deleted instance or cancel pending deletion.
 func (s *Store) SetDesired(ctx context.Context, org, actor, id uuid.UUID, generation int64, desired string) (Sandbox, error) {
+	if desired == "started" && s.runnerAvailable != nil && !s.runnerAvailable(ctx) {
+		return Sandbox{}, ErrDisabled
+	}
 	if desired == "started" && !s.CreationAvailable(org, actor) {
 		return Sandbox{}, ErrDisabled
 	}
@@ -407,14 +465,14 @@ func (s *Store) SetDesired(ctx context.Context, org, actor, id uuid.UUID, genera
 		}
 		var enabled bool
 		var mode string
-		if err = tx.QueryRow(ctx, `SELECT sandboxes_enabled,zero_trust_mode FROM organizations WHERE id=$1`, org).Scan(&enabled, &mode); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT sandboxes_enabled OR sandbox_qualification_trial_valid($2),zero_trust_mode FROM organizations WHERE id=$1`, org, id).Scan(&enabled, &mode); err != nil {
 			return Sandbox{}, err
 		}
 		if !enabled || mode != policy.ModeEnforcing {
 			return Sandbox{}, ErrDisabled
 		}
 		var capRaw []byte
-		if err = tx.QueryRow(ctx, `SELECT maximum_scope FROM sandbox_templates WHERE org_id=$1 AND id=$2 AND enabled FOR SHARE`, org, out.TemplateVersionID).Scan(&capRaw); errors.Is(err, pgx.ErrNoRows) {
+		if err = tx.QueryRow(ctx, `SELECT maximum_scope FROM sandbox_templates WHERE org_id=$1 AND id=$2 AND (enabled OR sandbox_qualification_trial_valid($3)) FOR SHARE`, org, out.TemplateVersionID, id).Scan(&capRaw); errors.Is(err, pgx.ErrNoRows) {
 			return Sandbox{}, ErrDisabled
 		} else if err != nil {
 			return Sandbox{}, err

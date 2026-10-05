@@ -111,6 +111,11 @@ func newRemoteWorkerRPCClient(c RemoteWorkerConfig, probe ssh.PublicKey, authori
 		broker.SubmitQualification = func(ctx context.Context, leaf *x509.Certificate, raw json.RawMessage) error {
 			return submitRunnerQualification(ctx, authority, leaf, raw)
 		}
+		if trials, ok := authority.(RunnerQualificationMachineAuthority); ok {
+			broker.QualificationTrial = func(ctx context.Context, leaf *x509.Certificate, id uuid.UUID, action string, raw json.RawMessage) (json.RawMessage, error) {
+				return runnerQualificationTrialRequest(ctx, trials, leaf, id, action, raw)
+			}
+		}
 	}
 	broker.Revoked = c.Revoked
 	listener, e := net.Listen("tcp", c.Listen)
@@ -120,6 +125,30 @@ func newRemoteWorkerRPCClient(c RemoteWorkerConfig, probe ssh.PublicKey, authori
 	server := &http.Server{Handler: broker, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 4096}
 	go func() { _ = server.Serve(tls.NewListener(listener, config)) }()
 	return &WorkerRPCClient{client: &http.Client{Transport: brokerTransport{broker}, Timeout: 25 * time.Second}, probe: probe, close: server.Close, enrollment: authority}, nil
+}
+
+func runnerQualificationTrialRequest(ctx context.Context, authority RunnerQualificationMachineAuthority, leaf *x509.Certificate, id uuid.UUID, action string, raw json.RawMessage) (json.RawMessage, error) {
+	if action == "status" && len(raw) == 0 {
+		v, err := authority.QualificationMachineView(ctx, leaf, id)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(v)
+	}
+	if action != "witness" || len(raw) > sandboxrunner.QualificationReportLimit {
+		return nil, sandboxrunner.ErrInvalid
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var witness RunnerQualificationOfflineWitness
+	if decoder.Decode(&witness) != nil || decoder.Decode(new(any)) != io.EOF || witness.Version != 1 || witness.TrialID != id {
+		return nil, sandboxrunner.ErrInvalid
+	}
+	err := authority.SubmitQualificationOfflineWitness(ctx, leaf, id, witness)
+	if errors.Is(err, ErrInvalid) {
+		return nil, sandboxrunner.ErrInvalid
+	}
+	return nil, err
 }
 
 func submitRunnerQualification(ctx context.Context, authority RunnerEnrollmentRuntimeAuthority, leaf *x509.Certificate, raw json.RawMessage) error {

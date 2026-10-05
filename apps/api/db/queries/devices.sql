@@ -449,8 +449,8 @@ WHERE d.node_id = $1
   -- projection. Stop/expiry/catalog withdrawal removes the physical peer too.
   AND (d.kind <> 'sandbox' OR EXISTS (
     SELECT 1 FROM sandboxes s
-    JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
-    JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+    JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
+    JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing' AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id)
     WHERE s.peer_id=d.id AND s.org_id=d.org_id AND s.creator_id=d.user_id
       AND s.desired_state='started' AND s.observed_state IN ('creating','starting','ready') AND s.expires_at>now()
       AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password

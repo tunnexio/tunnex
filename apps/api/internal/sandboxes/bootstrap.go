@@ -29,11 +29,13 @@ func (s *Store) IssueBootstrap(ctx context.Context, org, actor, id, gateway uuid
 	}
 	var generation int64
 	err = tx.QueryRow(ctx, `SELECT s.generation FROM sandboxes s
- JOIN organizations o ON o.id=s.org_id AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
- JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+ JOIN organizations o ON o.id=s.org_id AND o.zero_trust_mode='enforcing'
+ JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
  JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
  JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
  WHERE s.org_id=$1 AND s.id=$2 AND (s.creator_id=$3 OR $4) AND s.peer_id IS NULL
+ AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id))
+ AND sandbox_qualification_trial_authority(s.id)
  AND (s.local_terminal_gateway_id IS NULL OR s.local_terminal_gateway_id=$5)
  AND NOT EXISTS(SELECT 1 FROM sandbox_remote_terminal_routes r WHERE r.sandbox_id=s.id AND r.org_id=s.org_id AND r.runtime_gateway_id<>$5)
  AND s.desired_state='started' AND s.observed_state IN ('creating','starting') AND s.expires_at>now()
