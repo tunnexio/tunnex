@@ -296,6 +296,13 @@ func TestSandboxStorePostgresDowngradeRefusesState(t *testing.T) {
 		t.Fatal(e)
 	}
 	down = append(remoteRouteDown, down...)
+	for _, name := range []string{"0196_sandbox_runner_enrollments.down.sql", "0197_sandbox_runner_qualification_trials.down.sql"} {
+		extension, err := db.MigrationsFS.ReadFile("migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		down = append(extension, down...)
+	}
 	tx, err := f.pool.Begin(f.ctx)
 	if err != nil {
 		t.Fatal(err)
