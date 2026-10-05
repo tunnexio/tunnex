@@ -151,6 +151,57 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise Refused("artifact_redirect_refused")
 
 
+class PublicAssetRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow only public GitHub release GETs to its exact asset CDN hosts."""
+
+    CDN_HOSTS = {"release-assets.githubusercontent.com", "objects.githubusercontent.com"}
+    MAX_REDIRECTS = 3
+
+    def __init__(self, source_url):
+        super().__init__()
+        public_url(source_url)
+        self.source_url = source_url
+        self.current_url = source_url
+        self.visited = {source_url}
+        self.redirects = 0
+
+    def release_source(self):
+        source = urllib.parse.urlsplit(self.source_url)
+        return source.hostname == "github.com" and source.port in (None, 443) and re.fullmatch(
+            r"/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/releases/download/[^/]+/[^/]+", source.path)
+
+    def asset_target(self, value):
+        need(isinstance(value, str) and len(value) <= 8192 and not re.search(r"[\x00-\x20]", value),
+             "artifact_redirect_refused")
+        target = urllib.parse.urlsplit(value)
+        # GitHub supplies a short-lived signed CDN query for a public asset.
+        # It is accepted only at these exact hosts after the pinned release GET.
+        return target.scheme == "https" and target.hostname in self.CDN_HOSTS \
+            and target.port in (None, 443) and not target.username and not target.password \
+            and not target.fragment and re.fullmatch(
+                r"/github-production-release-asset(?:-[A-Za-z0-9]+)?/[^/]+/[^/]+", target.path)
+
+    def redirect_request(self, request, response, _code, _message, _headers, new_url):
+        try:
+            need(self.release_source() and request.full_url == self.current_url
+                 and request.get_method() == "GET" and request.data is None
+                 and self.redirects < self.MAX_REDIRECTS and new_url not in self.visited
+                 and self.asset_target(new_url), "artifact_redirect_refused")
+        except (ValueError, TypeError):
+            if response is not None:
+                response.close()
+            raise
+        self.redirects += 1
+        self.current_url = new_url
+        self.visited.add(new_url)
+        # Reconstruct a public GET instead of copying Authorization, Cookie,
+        # Proxy-Authorization, or any other caller headers or request body.
+        return urllib.request.Request(new_url, headers={"Accept": "application/octet-stream"}, method="GET")
+
+    def accepts_response(self, url):
+        return url == self.source_url or (self.redirects > 0 and url == self.current_url)
+
+
 def download(url, sha, path, maximum, opener=None):
     public_url(url)
     pin(sha)
@@ -159,7 +210,10 @@ def download(url, sha, path, maximum, opener=None):
         raw = file_bytes(path, maximum)
         need(hashlib.sha256(raw).hexdigest() == sha, "artifact_checksum_mismatch")
         return
-    opener = opener or urllib.request.build_opener(NoRedirect(), urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+    redirects = PublicAssetRedirect(url)
+    opener = opener or urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), redirects,
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()))
     request = urllib.request.Request(url, headers={"Accept": "application/octet-stream"})
     temporary = path.with_name(path.name + ".partial")
     need(not temporary.exists() and not temporary.is_symlink(), "partial_download_requires_inspection")
@@ -168,7 +222,7 @@ def download(url, sha, path, maximum, opener=None):
     try:
         with opener.open(request, timeout=60) as response, open(temporary, "xb") as output:
             os.fchmod(output.fileno(), 0o600)
-            need(response.status == 200 and response.geturl() == url, "artifact_download_refused")
+            need(response.status == 200 and redirects.accepts_response(response.geturl()), "artifact_download_refused")
             for block in iter(lambda: response.read(MIB), b""):
                 count += len(block)
                 need(count <= maximum, "artifact_download_too_large")
@@ -273,6 +327,7 @@ def installer_config(bundle, options, staging, layout):
     need(public_url(plan["controller"]["api_url"], True) == options.api_url, "changed_api_origin")
     identity = strict_json(file_bytes(staging / "identity" / "identity.json", 256 * 1024))
     cfg = dict(plan)
+    cfg["enrollment_id"] = bundle["enrollment_id"]
     cfg["bundle"] = {"path": str(staging / "bundle.tar.gz"), "sha256": options.bundle_sha256}
     cfg["installation"] = layout
     cfg["probe_public_key"] = identity["probe_public_key"]
@@ -656,11 +711,12 @@ def completed_trial_report(cfg, bundle, installer, host, status, trial_id):
     report = qualification_report(cfg, bundle, installer, host, {"installation": "activation-requested"})
     for check in report["checks"][2:]:
         check["result"] = "passed"
-        check["evidence"] = "Actual canonical qualification trial " + trial_id + " proof " + status["proof_sha256"] + "; lifecycle/network ACKs, exact local offline expiry witness and confirmed retirement. Runner SSH observations remain runner reported."
+        check["evidence"] = "trial:" + trial_id + ";proof_sha256:" + status["proof_sha256"] + ";offline_witness_sha256:" + status["offline_witness_sha256"] + ";ssh_origin:runner"
     return report
 
 
 def finish_trial_report(cfg, bundle, installer, host, status, trial_id, staging, executable):
+    print("Complete canonical trial proof observed. SSH observations originated on the runner; administrator review remains required.", flush=True)
     output = staging / ("qualification-complete-" + trial_id + ".json")
     if output.exists() or output.is_symlink():
         report = strict_json(file_bytes(output, 16 * 1024))
@@ -719,8 +775,8 @@ def run_qualification(trial_id):
     state = Path(__file__).absolute().parent
     cfg = strict_json(file_bytes(state / "enrollment-config.json", 32768))
     need(Path(cfg["installation"]["state_root"]) == state, "qualification_installed_state_root_mismatch")
-    enrollment_id = state.name
-    need(str(uuid.UUID(enrollment_id)) == enrollment_id, "qualification_requires_ui_enrolled_installation")
+    enrollment_id = cfg.get("enrollment_id", state.name)
+    need(str(uuid.UUID(enrollment_id)) == enrollment_id and uuid.UUID(enrollment_id).int != 0, "qualification_requires_ui_enrolled_installation")
     staging = private_directory(Path("/var/lib/tunnex-sandbox-enrollment") / enrollment_id)
     spec = importlib.util.spec_from_file_location("tunnex_qualification_installer", state / "install.py")
     installer = importlib.util.module_from_spec(spec)

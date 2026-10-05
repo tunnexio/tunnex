@@ -128,10 +128,12 @@ def https(value):
 
 def validate(cfg):
     keys(cfg, ("version", "edition", "source_sha", "bundle", "installation", "gateway", "controller",
-               "org_id", "probe_public_key", "credentials", "images"))
+               "org_id", "probe_public_key", "credentials", "images"), ("enrollment_id",))
     need(cfg["version"] == 1 and cfg["edition"] in ("open", "enterprise"), "unsupported schema or edition")
     need(isinstance(cfg["source_sha"], str) and re.fullmatch(r"[0-9a-f]{40}", cfg["source_sha"]), "source commit required")
     identifier(cfg["org_id"])
+    if "enrollment_id" in cfg:
+        identifier(cfg["enrollment_id"])
     public_probe(cfg["probe_public_key"])
     keys(cfg["bundle"], ("path", "sha256"))
     absolute(cfg["bundle"]["path"])
@@ -418,6 +420,34 @@ def private_input(path, uid):
     return raw
 
 
+def qualification_alias(cfg):
+    if "enrollment_id" not in cfg:
+        return None, None
+    enrollment = identifier(cfg["enrollment_id"])
+    path = Path("/usr/local/libexec/tunnex-sandbox/enrollments") / enrollment / "qualify.py"
+    target = absolute(cfg["installation"]["state_root"]) + "/enroll.py"
+    raw = ("#!/usr/bin/python3\nimport os\nimport sys\n"
+           "if len(sys.argv) != 3 or sys.argv[1] != '--qualification-trial-id':\n"
+           "    raise SystemExit('one public qualification trial UUID is required')\n"
+           "os.execv('/usr/bin/python3', ['/usr/bin/python3', " + json.dumps(target)
+           + ", *sys.argv[1:]])\n").encode()
+    return path, raw
+
+
+def alias_parent(path):
+    pending = []
+    current = Path(path)
+    while not current.exists() and not current.is_symlink():
+        pending.append(current)
+        current = current.parent
+    safe_parents(current)
+    for parent in reversed(pending):
+        try:
+            parent.mkdir(mode=0o755)
+        except FileExistsError:
+            safe_parents(parent)
+
+
 def install(cfg, payload, host):
     need(os.geteuid() == 0, "explicit root install required")
     result = check(cfg, host)
@@ -429,6 +459,7 @@ def install(cfg, payload, host):
     safe_parents(state.parent)
     safe_parents("/etc/systemd/system")
     config_hash = hashlib.sha256(json.dumps(cfg, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    alias, alias_raw = qualification_alias(cfg)
     marker = state / "installation.json"
     if state.exists():
         safe_parents(state)
@@ -438,6 +469,9 @@ def install(cfg, payload, host):
         for path, pin in manifest["files"].items():
             need(file_hash(path, 512 * MIB) == pin, "installed public artifact changed")
         return dict(result, installation="already-installed", native_qualification=False)
+    if alias is not None:
+        safe_parents(alias.parent)
+        need(not alias.parent.exists() and not alias.parent.is_symlink(), "foreign qualification enrollment alias refused")
     need(not Path(layout["run_root"]).exists() and not Path(layout["run_root"]).is_symlink(), "foreign runtime root refused")
     for unit in files:
         target = Path("/etc/systemd/system") / unit
@@ -515,6 +549,9 @@ def install(cfg, payload, host):
         host.run(["/usr/sbin/debugfs", "-w", "-R", "set_inode_field <2> mode 040700", str(path)])
     for unit, body in files.items():
         public(Path("/etc/systemd/system") / unit, body.encode())
+    if alias is not None:
+        alias_parent(alias.parent)
+        public(alias, alias_raw)
     public(marker, (json.dumps({"version": 1, "config_sha256": config_hash, "files": installed,
                                 "native_qualification": False}, sort_keys=True) + "\n").encode())
     host.run(["/usr/bin/systemctl", "daemon-reload"])

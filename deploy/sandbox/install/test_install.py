@@ -129,6 +129,24 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("1101", "".join(files.values()))
         self.assertNotIn("sandbox-qual", "".join(files.values()))
 
+    def test_ui_enrollment_qualification_alias_is_public_and_uses_actual_trusted_root(self):
+        cfg = copy.deepcopy(self.cfg)
+        cfg["enrollment_id"] = "00000000-0000-4000-8000-000000000009"
+        cfg["installation"]["state_root"] = "/srv/custom-runner"
+        install.validate(cfg)
+        path, raw = install.qualification_alias(cfg)
+        self.assertEqual(str(path), "/usr/local/libexec/tunnex-sandbox/enrollments/00000000-0000-4000-8000-000000000009/qualify.py")
+        self.assertIn(b"/srv/custom-runner/enroll.py", raw)
+        self.assertIn(b"--qualification-trial-id", raw)
+        self.assertNotIn(b"2401", raw)
+        self.assertNotIn(b"PRIVATE KEY", raw)
+        self.assertNotIn(b"shell", raw)
+        self.assertEqual(install.qualification_alias(self.cfg), (None, None))
+        for enrollment in ("../../other", "00000000-0000-0000-0000-000000000000"):
+            cfg["enrollment_id"] = enrollment
+            with self.assertRaises(ValueError):
+                install.qualification_alias(cfg)
+
     def test_public_artifact_verification(self):
         install.bundle_payload(self.cfg)
         install.verify_image(self.cfg["images"][0])
