@@ -502,7 +502,7 @@ test-sandbox-package: ## Compile public sandbox artifacts for both Linux archite
 	    python3 -B -m unittest discover -s deploy/sandbox/install -p "test_*.py" -v && \
 	    python3 -B deploy/sandbox/ci/package.py build --arch amd64 --output /repo/dist/sandbox/amd64 && \
 	    python3 -B deploy/sandbox/ci/package.py build --arch arm64 --output /repo/dist/sandbox/arm64 && \
-	    python3 -B deploy/sandbox/ci/package.py verify --directory /repo/dist/sandbox --source "$$(git rev-parse HEAD)"'
+	    python3 -B deploy/sandbox/ci/package.py verify --directory /repo/dist/sandbox --source "$$(git -c safe.directory=/repo rev-parse HEAD)"'
 
 .PHONY: test-sandbox-image
 test-sandbox-image: ## Build and verify the locked Ubuntu AMD64 workload archive (not native qualification)
