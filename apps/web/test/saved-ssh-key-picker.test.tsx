@@ -37,3 +37,13 @@ it("does not overwrite manual input entered while keys are loading", async () =>
  let resolve!: (value: unknown) => void; mocks.get.mockReturnValue(new Promise(r => { resolve = r; })); const change = vi.fn(); render(<SavedSSHKeyPicker orgId="org" value="" onChange={change} />);
  fireEvent.change(screen.getByLabelText("SSH public keys"), { target: { value: "ssh-rsa manual" } }); resolve({ data: { items: [key] } }); await screen.findByText("Laptop · Default"); expect(change).toHaveBeenLastCalledWith("ssh-rsa manual"); expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
 });
+it.each(["-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic-fixture-only\n-----END OPENSSH PRIVATE KEY-----", "ssh-ed25519 AAAA\nssh-rsa BBBB"])("refuses private files and multiple keys before a named-key request", async value => {
+ mocks.get.mockResolvedValue({ data: { items: [] } }); render(<SavedSSHKeyPicker orgId="org" value="" onChange={vi.fn()} />);
+ await waitFor(() => expect(screen.queryByRole("status")).toBeNull()); fireEvent.click(screen.getByText("Save a named key")); fireEvent.change(screen.getByLabelText("Key name"), { target: { value: "Laptop" } }); fireEvent.change(screen.getByLabelText("Public key to save"), { target: { value } }); fireEvent.click(screen.getByText("Save & select"));
+ expect(await screen.findByText(/Keep your private key on your computer/)).toBeTruthy(); expect(mocks.post).not.toHaveBeenCalled();
+});
+it("sends only one normalized public key when saving a named key", async () => {
+ mocks.get.mockResolvedValue({ data: { items: [] } }); mocks.post.mockResolvedValue({ data: key }); render(<SavedSSHKeyPicker orgId="org" value="" onChange={vi.fn()} />);
+ await waitFor(() => expect(screen.queryByRole("status")).toBeNull()); fireEvent.click(screen.getByText("Save a named key")); fireEvent.change(screen.getByLabelText("Key name"), { target: { value: "  Laptop  " } }); fireEvent.change(screen.getByLabelText("Public key to save"), { target: { value: "ssh-ed25519 AAAA local-comment" } }); fireEvent.click(screen.getByText("Save & select"));
+ await screen.findByText("Laptop · Default"); expect(mocks.post).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/saved-ssh-keys", { params: { path: { orgId: "org" } }, body: { name: "Laptop", public_key: "ssh-ed25519 AAAA" } });
+});
