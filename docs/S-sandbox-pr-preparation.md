@@ -2,7 +2,7 @@
 
 The local candidate reconciles all completed sandbox stories with upstream main `435b4d53900c768073a49dbcc72579567fcdc524`. No push, PR creation, deployment or live activation is performed by preparation.
 
-The integration source is `story/sandbox-pr-prep-20261005`: supervisor integration `2827c3a`, main/schema merge `162348a`, optional module `0b6cd41`, organization admission `f30c378`, configurable Linux runtime/installer `440034b`, and CI packaging `c3fd55e`. The source inventory and equivalent/superseded working snapshots are accounted for in [the coverage ledger](S-sandbox-change-coverage.md).
+The integration source is `story/sandbox-pr-prep-20261005`: supervisor integration `2827c3a`, main/schema merge `162348a`, optional module `0b6cd41`, organization admission `f30c378`, configurable Linux runtime/installer `440034b`, CI packaging `c3fd55e`, migration/generated-header repair `691d56a`, and public image documentation correction `47a44ef`. The source inventory and equivalent/superseded working snapshots are accounted for in [the coverage ledger](S-sandbox-change-coverage.md).
 
 The publishable candidate is assembled separately from upstream main on `story/sandbox-pr-candidate-20261005`. It retains every completed product source, regression test, generic qualification fixture, image recipe, public asset and contract. Host-specific operational walk scripts, raw receipts and operator notes remain unchanged in their original branches/worktrees. Sanitized historical summaries preserve actual results and limitations without carrying that operational history into the candidate.
 
