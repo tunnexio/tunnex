@@ -24,6 +24,12 @@ no separately maintained installer copy. The distribution manifest records
 the same source SHA, the actual repository/release tag and public HTTPS URLs
 and hashes for the launcher and both bundles. It contains no organization,
 gateway, controller, host placement or private credential configuration.
+When the separately verified Ubuntu image delivery is present, its
+`workload_image_delivery:{url,sha256}` points to the exact release descriptor
+bytes and `workload_images_built` is true. Without that pointer the flag is false.
+Internal binary bundle manifests keep their image-build flag false. Every
+distribution keeps `native_runtime_qualification` false; image delivery supplies
+an artifact pin for the reviewed catalog/qualification flow.
 
 The API's supported distribution loader selects the AMD64 bundle and supplies
 these public pins to the runner enrollment profile. The operator still supplies
@@ -54,12 +60,23 @@ configuration. An ARM64 binary build does not qualify ARM64 Podman, AppArmor,
 WireGuard, SSH, cgroup deadlines or cleanup. Bundle manifests therefore mark
 native runtime qualification false for both architectures.
 
-Workload images are **not built or published by this binary packaging lane**.
-The Ubuntu recipe needs an independently approved, preloaded base digest; CI
-does not invent one. Minimal/Python/Node Alpine recipes remain candidates until
-their exact final image and host placement pass native qualification. Recipes
-require their source checkout and build tools; package installs occur only at
-image build time. Launch never installs dependencies or downloads an image.
+The binary bundles include the six public Ubuntu producer/input/lock files.
+The required `test-sandbox-image` entry in the existing tooling matrix produces
+the AMD64 Ubuntu workload archive separately. It uses pinned Go 1.26.8 and a
+readonly build-time module cache, fetches the committed package closure and
+preloads the immutable official Ubuntu base with anonymous registry settings.
+Final image assembly uses no network or pull and includes only verified locked
+dependencies and committed source. Downloaded package archives are mounted
+during assembly so they do not add a retained image layer.
+
+The existing release job verifies the exact source, AMD64 platform, dependency
+lock, base/config digests, archive bytes, image labels, unprivileged user and
+checksums before attaching the archive, `workload-image.json` and `SHA256SUMS`
+and recording their provenance. These public artifacts start no service,
+register no template and supply no host qualification proof. ARM64 workload
+image production and hosting remain unqualified. Minimal/Python/Node Alpine
+recipes remain candidates until their exact image and host placement pass
+native qualification. Launch never installs dependencies or downloads an image.
 
 The included stdlib-only installer provides offline plan/check/install operations
 for the supported Linux prerequisites. It accepts explicit operator-selected

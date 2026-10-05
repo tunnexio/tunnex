@@ -503,3 +503,8 @@ test-sandbox-package: ## Compile public sandbox artifacts for both Linux archite
 	    python3 -B deploy/sandbox/ci/package.py build --arch amd64 --output /repo/dist/sandbox/amd64 && \
 	    python3 -B deploy/sandbox/ci/package.py build --arch arm64 --output /repo/dist/sandbox/arm64 && \
 	    python3 -B deploy/sandbox/ci/package.py verify --directory /repo/dist/sandbox --source "$$(git rev-parse HEAD)"'
+
+.PHONY: test-sandbox-image
+test-sandbox-image: ## Build and verify the locked Ubuntu AMD64 workload archive (not native qualification)
+	$(if $(GO_CACHE_DIR),env GOMODCACHE="$(GO_CACHE_DIR)/mod" GOCACHE="$(GO_CACHE_DIR)/build") python3 -B deploy/sandbox/ci/image.py build \
+	    --cache "$(PWD)/dist/sandbox-image/cache" --output "$(PWD)/dist/sandbox-image/amd64" --go go

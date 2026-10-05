@@ -5,6 +5,7 @@ import argparse
 import gzip
 import hashlib
 import io
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -37,6 +38,12 @@ ASSETS = (
     "deploy/sandbox/install/README.md",
     "deploy/sandbox/install/example.json",
     ENROLL_SOURCE,
+    "deploy/sandbox/ubuntu-base/delivery.py",
+    "deploy/sandbox/ubuntu-base/archive.py",
+    "deploy/sandbox/ubuntu-base/Containerfile",
+    "deploy/sandbox/ubuntu-base/public-inputs.json",
+    "deploy/sandbox/ubuntu-base/ubuntu26-amd64.lock.json",
+    "deploy/sandbox/ubuntu-base/README.md",
 )
 
 
@@ -244,7 +251,14 @@ def verify_directory(directory, source):
     print("Both Linux architecture bundles match source, public inventory and checksums; build evidence only.")
 
 
-def distribution(directory, source, repository, tag, output):
+def verify_image_delivery(directory, source):
+    spec = importlib.util.spec_from_file_location("sandbox_ci_image", Path(__file__).with_name("image.py"))
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+    return verifier.verify(Path(directory), source)
+
+
+def distribution(directory, source, repository, tag, output, image_directory=None):
     # URLs identify the existing guarded release, never an invented hosted
     # installer or an unpinned moving branch. No network or host command runs.
     if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9][A-Za-z0-9._-]{0,99}", repository):
@@ -277,6 +291,14 @@ def distribution(directory, source, repository, tag, output):
         "native_runtime_qualification": False,
         "workload_images_built": False,
     }
+    if image_directory is not None:
+        descriptor = verify_image_delivery(image_directory, source)
+        raw_descriptor = (Path(image_directory) / "workload-image.json").read_bytes()
+        if (json.loads(raw_descriptor) != descriptor or descriptor.get("source_sha") != source
+                or descriptor.get("architecture") != "amd64" or descriptor.get("native_qualification") is not False):
+            raise ValueError("verified workload descriptor changed or is not unqualified source-bound AMD64 delivery")
+        manifest["workload_image_delivery"] = {"url": f"{base}/workload-image.json", "sha256": digest(raw_descriptor)}
+        manifest["workload_images_built"] = True
     raw_manifest = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
     output = Path(output)
     if not output.is_absolute() or ".." in output.parts or any(parent.is_symlink() for parent in (output, *output.parents)):
@@ -305,6 +327,7 @@ def main():
     publisher.add_argument("--repository", required=True)
     publisher.add_argument("--tag", required=True)
     publisher.add_argument("--output", required=True)
+    publisher.add_argument("--image-directory")
     args = parser.parse_args()
     try:
         if args.action == "build":
@@ -312,7 +335,7 @@ def main():
         elif args.action == "verify":
             verify_directory(args.directory, args.source)
         else:
-            distribution(args.directory, args.source, args.repository, args.tag, args.output)
+            distribution(args.directory, args.source, args.repository, args.tag, args.output, args.image_directory)
     except (ValueError, OSError, subprocess.SubprocessError, tarfile.TarError):
         parser.exit(1, "sandbox source artifact packaging refused; no runtime was activated\n")
 

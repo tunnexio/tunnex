@@ -14,17 +14,29 @@ while preparing this change.
 | `api` / `make test-edition` | API, policy, sandbox lifecycle/admission/delegation, runtime libraries and all API commands | Full build in open and enterprise editions; package tests partitioned over isolated DB shards | Normal API image is built separately; fixture setup/legacy DB worker compile but are deliberately excluded from release bundles |
 | `tooling` / `test-node` | Gateway reconciliation/ACK reporting and namespace helper | The actual Unix worker boundary runs as `nobody` before the privileged Linux Go suite, including sandbox network ownership contracts | Normal node image contains the gateway agent and AI relay; the privileged sandbox namespace helper remains a separate artifact |
 | `tooling` / `test-cli` and `cli-release` | Normal CLI, managed-agent runtime, sandbox bootstrap/lifecycle client | Module build/vet/tests; CLI and managed-agent binaries cross-built for Linux AMD64/ARM64 | Existing CLI/managed-agent distribution remains unchanged; sandbox bootstrap is included in the sandbox bundle |
-| `tooling` / `test-sandbox-package` | Sandbox actor, private SSH probe, offline enrollment, namespace helper and bootstrap | Actor/probe/enrollment in both API editions, eight binaries per Linux architecture; full API module compile-only in both editions on ARM64; committed-source archive, readonly modules, pinned Go | Two public `tunnex-sandbox-linux-<arch>.tar.gz` bundles plus external checksums; strict public asset allowlist and internal source manifest/checksums |
-| `contracts` | SSH entrypoint, supervisor layout, image assembly, artifact integrity and portable installer | Python stdlib/synthetic fixtures; no provider, host, SSH, cloud or systemd action | No raw fixture/host logs or credentials uploaded |
+| `tooling` / `test-sandbox-package` | Sandbox actor, private SSH probe, offline/online enrollment, namespace helper and bootstrap | Actor/probe/enrollment in both API editions, eight binaries per Linux architecture; full API module compile-only in both editions on ARM64; committed-source archive, readonly modules, pinned Go | Two public `tunnex-sandbox-linux-<arch>.tar.gz` bundles plus external checksums; strict public asset allowlist and internal source manifest/checksums |
+| `tooling` / `test-sandbox-image` | Ubuntu AMD64 dependency producer and workload bootstrap | Pinned Go, committed signed-metadata/package lock, anonymous immutable base preload, offline final assembly; source/lock/base/config/layer/architecture verification | Exact Docker archive, `workload-image.json` and `SHA256SUMS`; delivery remains unqualified and enables no template |
+| `contracts` | SSH entrypoint, supervisor layout, image producer/assembly, artifact integrity and enrollment/portable installer | Python stdlib/synthetic fixtures, including actual archive-format verification without an engine; no provider, host, SSH, cloud or systemd action | No raw fixture/host logs or credentials uploaded |
 | `web` | Sandbox creation/Skills/Setup/saved-key/local connection/deployment gates plus App Access | TS types, Vitest and Vite build | Normal dashboard image; no mandatory hosted AI/MCP runtime introduced |
 | `node-native` / existing `publish` matrix | Normal API/node/web/migrate and other release services | Existing architecture/image/source-ledger checks | Existing signed release/image publication path; no sandbox image is silently substituted for a qualified template |
-| Existing `release-assets` | Public sandbox binary/installer/recipe bundles | Same-run artifact download, source/architecture/ELF/inventory/checksum verification, exact source-ledger/draft checks | Existing release job attaches only the two bundles and sidecars, then records artifact provenance; no installer or service executes |
+| Existing `release-assets` | Public sandbox binary/installer/recipe bundles, enrollment launcher/distribution and Ubuntu workload delivery | Same-run artifact download; source/architecture/ELF/inventory/lock/config/layer/checksum verification; exact source-ledger/draft checks | Existing release job attaches both bundles, exact launcher, public distribution, image archive/descriptor and checksums, then records artifact provenance; no installer or service executes |
 
-The new packaging matrix entry is already part of required `tooling` and `gates`.
-A package failure blocks the existing aggregate. It has no advisory/skip fallback.
-Sandbox asset edits select the Go/tooling lane. Main/tag retention uploads exactly
-four named public files; PR checks build them without publication. Bundle manifests
-declare `native_runtime_qualification=false` and `workload_images_built=false`.
+Both sandbox targets are required entries in the existing `tooling` matrix and
+`gates` aggregate. Failures have no advisory/skip fallback. Sandbox asset edits
+select the Go/tooling lane. Main/tag retention uploads exactly four named binary
+bundle files and three named image-delivery files; PR checks build them without
+publication. Binary bundle manifests declare `native_runtime_qualification=false`
+and `workload_images_built=false`.
+
+The public distribution stages the exact committed enrollment launcher from both
+verified bundles, refusing disagreement. Its HTTPS URLs identify the actual
+source-bound draft release. `workload_image_delivery:{url,sha256}` is present only
+when the exact separately verified descriptor is included;
+`workload_images_built` is true if and only if that pointer is present.
+`native_runtime_qualification` stays false. The API selects the supported AMD64
+bundle from these public pins while organization, gateway, controller, image and
+host authority remain explicitly reviewed configuration. Public artifacts carry
+no enrollment token; the launcher prompts for it locally.
 
 ## Public bundle inventory
 
@@ -32,41 +44,48 @@ For each architecture, actor/probe/enrollment binaries have distinct `open` and
 `enterprise` names. Helper and bootstrap are edition independent. Public assets
 are the Ubuntu final-layer recipe/entrypoint/build script, Alpine candidate
 recipes/entrypoint/build script, network-plan contract, packaging README, and
-portable `install.py`, installer README and `example.json`.
+portable `install.py`, `enroll.py`, installer README and `example.json`. The six
+Ubuntu producer assets are `delivery.py`, `archive.py`, `Containerfile`,
+`public-inputs.json`, `ubuntu26-amd64.lock.json` and their README.
 
 The example contains public placeholders, not an operator configuration. Existing
 fixed qualification units, host receipts, private keys, working directories,
 runtime credentials, private logs and credential files are not allowlisted.
 Bundling the offline enrollment executable does not execute it or mint keys.
 
-## Required workload image build path and exact remaining gap
+## Required workload image build path
 
-`deploy/sandbox/build-image.sh <approved-preloaded-Ubuntu-base@sha256:digest>
-<amd64|arm64> <tunnex-sandbox-tag>` is the existing offline Ubuntu final-layer
-path. It compiles the bootstrap from committed source, passes the exact source
-SHA into the label, and assembles a context containing only that binary and two
-public source files. Podman uses `--pull=never --network=none`. The base must
-already supply WG tools, ip/coreutils, OpenSSH/SFTP, Python stdlib, resolvconf,
-setpriv and nft. It is not a plain official Ubuntu base.
+`make test-sandbox-image` uses the tracked Ubuntu producer and AMD64 lock. Before
+final assembly it populates the pinned readonly Go module cache, verifies the
+locked signed Ubuntu metadata/package closure, and preloads the immutable public
+Ubuntu base using an empty registry-auth configuration. The final image build
+uses `--network=none` and Docker `--pull=false` (Podman producer support uses
+`--pull=never`). Readonly context mounts keep downloaded `.deb` archives out of
+retained image layers. There is no per-launch package installation or download.
 
-The repository does not currently provide the corresponding reproducible,
-dependency-preloaded Ubuntu **base producer/package lock and approved CI image
-input**. Historical qualification digests describe their exact historical images;
-they are not invented current release inputs. Consequently ordinary CI cannot
-honestly produce a new complete Ubuntu workload image from these tracked recipes
-alone. The image gate needs an approved immutable preloaded base/archive whose
-architecture, prerequisite inventory and checksum have been verified, followed
-by offline final-layer assembly and native runtime qualification before template
-registration. This is a concrete image release-readiness prerequisite, not a
-claim that binary packaging satisfies image delivery.
+The producer emits only
+`tunnex-sandbox-ubuntu26-linux-amd64.docker.tar`, `workload-image.json` and
+`SHA256SUMS`. The release guard matches the exact current source SHA and committed
+lock hash, checks the official base pin and archive bytes, verifies the actual
+config digest/platform/UID 1001/workspace/source labels, checks all uncompressed
+layer diff IDs and their measured byte total, and verifies exact inventory and
+checksums. Native qualification and services-started fields must remain false.
+The release retains and attests this bounded public delivery separately from
+binary bundles.
 
-`deploy/sandbox/alpine/Containerfile` separately builds Minimal/Python/Node
-candidate images from its pinned Alpine base. It is not an Ubuntu dependency
-layer and cannot satisfy the Ubuntu prerequisite. Its recipe uses build-time
-package installation; nothing installs or pulls per sandbox launch. Building a
-candidate image alone does not qualify the previously failed policy path or
-publish an enabled template. No Alpine substitution, new base choice or package
-version selection was made during this PR preparation.
+The tracked producer resolves the former missing preloaded-base/lock release
+prerequisite. Its actual local build/export evidence belongs to the producer's
+exact source checkpoint; the final integrated publication source still needs
+its own complete bundle and image build/verification. Image delivery alone does
+not qualify a new host or register an enabled template. Required native
+Podman/AppArmor/WireGuard/SSH/cgroup-expiry/cleanup proof remains scoped to the
+exact reviewed image/provider/host. ARM64 image production and activation remain
+unqualified.
+
+`deploy/sandbox/build-image.sh` retains its offline final-layer interface for an
+already approved/preloaded Ubuntu dependency base. Alpine Minimal/Python/Node
+recipes remain separate candidates and do not substitute for the Ubuntu image
+or its native policy/host qualification.
 
 ## Architecture and qualification boundaries
 
@@ -112,5 +131,21 @@ outside this implementation. The original Create-relative absolute TTL stays.
   installer accepted AMD64 and refused ARM64 without activation. A later
   documentation checkpoint must be rebuilt again before handoff; its bundle
   manifest and accompanying verification record carry its exact source SHA.
-- Remote CI, complete workload-image builds and new portable native qualification
-  were not run. The missing approved Ubuntu base/image input remains explicit.
+- PASS: complete public package fixtures (16), including interoperability with
+  the committed installer and enrollment launcher at
+  `2937b6768277dde2db68387d8ee60964d90a348c`: all 18 public assets match,
+  both accept AMD64 and refuse ARM64 activation. Enrollment distribution/source-pin
+  fixtures (5) are included in that suite, covering exact launcher
+  extraction, release URL encoding and verified unqualified image-descriptor pins;
+  image CI wiring/archive-format fixtures (5), including measured-layer refusal;
+  updated aggregate/release contracts (58) and `make -n test-sandbox-image`. These
+  fixtures use synthetic archives and committed producer source, not host activation.
+- PASS: the release guard independently verified the producer's actual three-file
+  delivery from `4fd7c533bab3f091633fdeca96d6bff21e273d7f`, including committed
+  lock/base/config/source identities, every layer diff ID and checksums. The
+  archive is 71,403,520 bytes and measured uncompressed layers are 195,198,976
+  bytes. Delivery retains false native qualification, services-started and
+  per-launch-installation fields. This source export is not a native runtime test.
+- The earlier binary checkpoints predate the expanded enrollment/Ubuntu producer
+  inventory. Final integrated source requires a fresh exact-SHA build and
+  verification. Remote CI and new portable native qualification were not run.
