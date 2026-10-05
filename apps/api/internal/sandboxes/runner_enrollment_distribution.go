@@ -22,6 +22,7 @@ type RunnerDistribution struct {
 	InstallerArchitectures     []string                  `json:"installer_architectures"`
 	NativeRuntimeQualification bool                      `json:"native_runtime_qualification"`
 	WorkloadImagesBuilt        bool                      `json:"workload_images_built"`
+	WorkloadImageDelivery      *RunnerArtifact           `json:"workload_image_delivery,omitempty"`
 }
 
 func uniqueRunnerJSON(decoder *json.Decoder) error {
@@ -98,6 +99,14 @@ func ApplyRunnerDistribution(raw []byte, c RunnerEnrollmentConfig) (RunnerEnroll
 	if !runnerHTTPS(manifest.BootstrapScript.URL, false) || !runnerHash.MatchString(manifest.BootstrapScript.SHA256) {
 		return c, ErrInvalid
 	}
+	if manifest.WorkloadImagesBuilt != (manifest.WorkloadImageDelivery != nil) {
+		return c, ErrInvalid
+	}
+	if a := manifest.WorkloadImageDelivery; a != nil {
+		if !runnerHTTPS(a.URL, false) || !runnerHash.MatchString(a.SHA256) {
+			return c, ErrInvalid
+		}
+	}
 	edition := false
 	for _, e := range manifest.APIEditions {
 		if e != "open" && e != "enterprise" {
@@ -114,6 +123,10 @@ func ApplyRunnerDistribution(raw []byte, c RunnerEnrollmentConfig) (RunnerEnroll
 	c.Profile.BootstrapScript = manifest.BootstrapScript
 	c.Profile.Install.Bundle = manifest.Bundles["amd64"]
 	c.Profile.Install.SourceSHA = manifest.SourceSHA
+	if manifest.WorkloadImageDelivery != nil {
+		delivery := *manifest.WorkloadImageDelivery
+		c.WorkloadImageDelivery = &delivery
+	}
 	return c, nil
 }
 func LoadRunnerDistributionConfig(path string, c RunnerEnrollmentConfig) (RunnerEnrollmentConfig, error) {
