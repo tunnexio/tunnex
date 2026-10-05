@@ -1,5 +1,7 @@
 # Offline Linux sandbox installer
 
+Prepare the control-plane public pins with the offline [profile generator](PROFILE.md). It derives consistent artifact/template configuration without Go edits or manual SQL; it grants no native qualification or activation.
+
 The dashboard's **Add sandbox runner** flow uses the same installer through
 the public, source-pinned `enroll.py` asset. Its generated command includes only
 the enrollment UUID, HTTPS API/artifact locations, edition and public hashes.
