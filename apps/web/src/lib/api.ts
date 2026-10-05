@@ -8,6 +8,8 @@ export const api = createTunnexClient("/");
 
 export type AuthUser = components["schemas"]["AuthUser"];
 export type Meta = components["schemas"]["Meta"];
+export type SandboxRunnerQualificationTrial = components['schemas']['SandboxRunnerQualificationTrial'];
+export type SandboxRunnerQualificationTrialCreate = components['schemas']['SandboxRunnerQualificationTrialCreate'];
 export type SandboxRunnerEnrollment = components["schemas"]["SandboxRunnerEnrollment"];
 export type SandboxRunnerEnrollmentProfile = components["schemas"]["SandboxRunnerEnrollmentProfile"];
 export type SandboxRunnerEnrollmentList = components["schemas"]["SandboxRunnerEnrollmentList"];
