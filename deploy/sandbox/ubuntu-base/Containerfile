@@ -10,8 +10,12 @@ COPY expected-inventory.tsv /opt/tunnex-expected-inventory.tsv
 RUN --mount=type=bind,source=packages,target=/opt/tunnex-packages,ro \
     printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
  && chmod 0755 /usr/sbin/policy-rc.d \
+ && mkdir -p /opt/tunnex-empty-sources \
+ && touch /opt/tunnex-empty.sources \
  && DEBIAN_FRONTEND=noninteractive apt-get \
-    -o Dir::Etc::sourcelist=/dev/null -o Dir::Etc::sourceparts=- \
+    -o Dir::Etc::sourcelist=/opt/tunnex-empty.sources \
+    -o Dir::Etc::sourceparts=/opt/tunnex-empty-sources \
+    -o Dir::Cache::archives=/opt/tunnex-packages -o Debug::NoLocking=true \
     --no-download --no-install-recommends -y install /opt/tunnex-packages/*.deb \
  && dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
     | LC_ALL=C sort > /tmp/tunnex-actual-inventory.tsv \
@@ -21,7 +25,8 @@ RUN --mount=type=bind,source=packages,target=/opt/tunnex-packages,ro \
  && command -v python3 && python3 -c 'import json, pathlib, subprocess, socket, ssl' \
  && command -v resolvconf && command -v setpriv && command -v nft \
  && rm -f /etc/ssh/ssh_host_* /var/lib/systemd/random-seed \
- && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+ && rm -rf /opt/tunnex-empty-sources /opt/tunnex-empty.sources \
+    /var/lib/apt/lists/* /var/cache/apt/archives/* \
     /var/log/apt/* /var/log/dpkg.log /tmp/tunnex-actual-inventory.tsv \
  && mkdir -p /usr/local/share/tunnex \
  && mv /opt/tunnex-expected-inventory.tsv /usr/local/share/tunnex/package-inventory.tsv
