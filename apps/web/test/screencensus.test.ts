@@ -66,7 +66,7 @@ const EXEMPT: Record<string, string> = {
 
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
-  "SandboxSetup.tsx": "test/sandbox-setup.test.tsx — permission/server failures, qualified activation gate, settings CAS wiring and catalog publication",
+  "SandboxSetup.tsx": "test/sandbox-setup.test.tsx and test/sandbox-runner-enrollment.test.tsx — admin enrollment, prerequisites, one-time token, observed readiness, qualification boundary, settings CAS and catalog publication",
   "Sandboxes.tsx": "test/sandboxes.test.tsx — authoritative availability, empty/error separation, wizard review-only creation, private-key rejection, request idempotency and expired connection suppression",
   "SandboxCustomSkills.tsx": "test/sandbox-custom-skills.test.tsx — private library search, failed/empty separation, local import validation, inert preview, draft cancellation and immutable revision/deletion semantics",
   "AppAccessCompanyApplications.tsx": "appaccesscatalog.test.tsx — display-only discovery, owner fallback, authoritative grant/MFA separation and failed catalog reads",
