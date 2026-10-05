@@ -11,13 +11,13 @@ import (
 func sandboxScopedFixture() ([]Gateway, []SandboxTerminalRoute) {
 	terminal, runtime, unrelated := uuid.New(), uuid.New(), uuid.New()
 	return []Gateway{
-		{ID: terminal, PublicKey: "terminal-key", Endpoint: "terminal.example:51820"},
-		{ID: runtime, PublicKey: "runtime-key", Endpoint: "198.51.100.20:51821"},
-		{ID: unrelated, PublicKey: "unrelated-key", Endpoint: "unrelated.example:51820"},
-	}, []SandboxTerminalRoute{{
-		TerminalGatewayID: terminal, RuntimeGatewayID: runtime,
-		TerminalAddress: "10.99.0.11", SandboxAddress: "10.99.0.12",
-	}}
+			{ID: terminal, PublicKey: "terminal-key", Endpoint: "terminal.example:51820"},
+			{ID: runtime, PublicKey: "runtime-key", Endpoint: "198.51.100.20:51821"},
+			{ID: unrelated, PublicKey: "unrelated-key", Endpoint: "unrelated.example:51820"},
+		}, []SandboxTerminalRoute{{
+			TerminalGatewayID: terminal, RuntimeGatewayID: runtime,
+			TerminalAddress: "10.99.0.11", SandboxAddress: "10.99.0.12",
+		}}
 }
 
 func TestSandboxTerminalGraphScopesBothDirections(t *testing.T) {
