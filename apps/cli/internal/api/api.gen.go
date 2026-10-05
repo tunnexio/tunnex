@@ -7080,7 +7080,10 @@ type SandboxCreationStatus struct {
 
 	// RequiresTerminalDevice Organization admission requires an explicit owned terminal device for each new sandbox.
 	RequiresTerminalDevice bool `json:"requires_terminal_device"`
-	RuntimeReady           bool `json:"runtime_ready"`
+
+	// RunnerEnrollmentRequired A configured enrollment runtime additionally requires fresh enrolled-runner confirmation.
+	RunnerEnrollmentRequired *bool `json:"runner_enrollment_required,omitempty"`
+	RuntimeReady             bool  `json:"runtime_ready"`
 
 	// TerminalGatewayId Gateway on which the creator's selected human terminal device must be active.
 	TerminalGatewayId *openapi_types.UUID `json:"terminal_gateway_id,omitempty"`

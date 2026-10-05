@@ -10,6 +10,19 @@ import (
 	"testing"
 )
 
+func TestSandboxCreationStatusEnrollmentRequirementPreservesLegacy(t *testing.T) {
+	server := apiServer{sandboxProvisioningReady: func() bool { return true }}
+	legacy := server.sandboxCreationStatus(sandboxes.SetupStatus{})
+	if legacy.RunnerEnrollmentRequired == nil || *legacy.RunnerEnrollmentRequired || !legacy.RuntimeReady {
+		t.Fatal("legacy qualified runtime acquired an enrollment requirement")
+	}
+	server.runnerEnrollment = &runnerEnrollmentStub{}
+	enrolled := server.sandboxCreationStatus(sandboxes.SetupStatus{})
+	if enrolled.RunnerEnrollmentRequired == nil || !*enrolled.RunnerEnrollmentRequired || !enrolled.RuntimeReady {
+		t.Fatal("configured enrolled runtime did not require fresh confirmation")
+	}
+}
+
 type setupStub struct {
 	sandboxStub
 	calls  int

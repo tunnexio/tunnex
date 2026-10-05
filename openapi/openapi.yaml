@@ -8485,6 +8485,7 @@ components:
         can_admin: { type: boolean }
         can_manage_catalog: { type: boolean }
         runtime_ready: { type: boolean }
+        runner_enrollment_required: { type: boolean, readOnly: true, description: A configured enrollment runtime additionally requires fresh enrolled-runner confirmation. }
         requires_terminal_device: { type: boolean, description: Organization admission requires an explicit owned terminal device for each new sandbox. }
         terminal_gateway_id: { type: string, format: uuid, description: Gateway on which the creator's selected human terminal device must be active. }
         blocked_reasons:

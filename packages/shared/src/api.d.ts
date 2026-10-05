@@ -7084,6 +7084,8 @@ export interface components {
             can_admin: boolean;
             can_manage_catalog: boolean;
             runtime_ready: boolean;
+            /** @description A configured enrollment runtime additionally requires fresh enrolled-runner confirmation. */
+            readonly runner_enrollment_required?: boolean;
             /** @description Organization admission requires an explicit owned terminal device for each new sandbox. */
             requires_terminal_device: boolean;
             /**
