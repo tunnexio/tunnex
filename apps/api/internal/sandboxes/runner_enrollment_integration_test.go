@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"golang.org/x/crypto/ssh"
@@ -374,6 +376,171 @@ func TestRunnerEnrollmentPostgresAuthorityLossAndExpiry(t *testing.T) {
 			var revoked bool
 			if err := f.pool.QueryRow(f.ctx, `SELECT revoked_at IS NOT NULL FROM sandbox_runner_enrollments WHERE id=$1`, issue.Enrollment.ID).Scan(&revoked); err != nil || !revoked {
 				t.Fatal("sweep retained lostgrant", err)
+			}
+		})
+	}
+}
+
+func TestRunnerEnrollmentPostgresTwoOwnersKeepCanonicalAuthorityAndPolicy(t *testing.T) {
+	f, b, devices, ctx, s := runnerEnrollmentFixture(t)
+	issue, _, leaf := issueRunner(t, f, ctx, s)
+	// This source-only fixture supplies qualification; it is not native evidence.
+	s.config.QualifiedRunnerSPKIHash = hex.EncodeToString(runnerKeyHash(leaf))
+	s.config.HostQualificationEvidence = "synthetic two-owner fixture; not native qualification"
+	credential, err := s.AuthorizeCertificate(f.ctx, leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RecordHealth(f.ctx, credential, b); err != nil {
+		t.Fatal(err)
+	}
+	command := func(a RuntimeAuthorization) error {
+		t.Helper()
+		raw, marshalErr := json.Marshal(workerRequest{Version: 1, Operation: "authorize", ID: a.SandboxID, Generation: a.Generation, Authorization: &a})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		return s.AuthorizeCommand(f.ctx, credential, raw)
+	}
+	for i, owner := range []uuid.UUID{f.user, f.other} {
+		other := f.other
+		if owner == f.other {
+			other = f.user
+		}
+		sb, _, createErr := f.store.Create(f.ctx, f.org, owner, organizationInput(f, b, devices[owner], "shared-owner-key"))
+		if createErr != nil {
+			t.Fatal("sequential owner admission", createErr)
+		}
+		a := RuntimeAuthorization{SandboxID: sb.Identity.ID, OrgID: f.org, CreatorID: owner, GatewayID: b.GatewayID, TerminalDeviceID: devices[owner], TemplateID: sb.TemplateVersionID, Profile: b.Profiles[0], Generation: sb.Revision, Desired: sb.DesiredState, CreatedAt: sb.CreatedAt, ExpiresAt: sb.ExpiresAt}
+		changed := a
+		changed.CreatorID = other
+		if err = command(changed); !errors.Is(err, ErrForbidden) {
+			t.Fatal("runner substituted the other owner or enrollment issuer", err)
+		}
+		changed = a
+		changed.TerminalDeviceID = devices[other]
+		if err = command(changed); !errors.Is(err, ErrForbidden) {
+			t.Fatal("runner substituted another owner's terminal", err)
+		}
+		if err = command(a); err != nil {
+			t.Fatal("canonical owner/terminal rejected", err)
+		}
+		var mapped, creator, issuer, terminal uuid.UUID
+		if err = f.pool.QueryRow(f.ctx, `SELECT w.enrollment_id,s.creator_id,e.issuer_id,s.terminal_device_id FROM sandbox_runner_workloads w JOIN sandboxes s ON s.id=w.sandbox_id AND s.org_id=w.org_id JOIN sandbox_runner_enrollments e ON e.id=w.enrollment_id AND e.org_id=w.org_id WHERE s.id=$1`, sb.Identity.ID).Scan(&mapped, &creator, &issuer, &terminal); err != nil || mapped != issue.Enrollment.ID || creator != owner || issuer != f.user || terminal != devices[owner] {
+			t.Fatal("enrollment issuer became workload authority", err)
+		}
+		if other == f.other {
+			if _, err = f.store.Get(f.ctx, f.org, other, sb.Identity.ID); !errors.Is(err, ErrNotFound) {
+				t.Fatal("unprivileged other owner read workload", err)
+			}
+			if _, err = f.store.SetDesired(f.ctx, f.org, other, sb.Identity.ID, sb.Revision, "stopped"); !errors.Is(err, ErrNotFound) {
+				t.Fatal("unprivileged other owner mutated workload", err)
+			}
+		} else {
+			// Existing administrator visibility does not transfer workload identity.
+			view, viewErr := f.store.Get(f.ctx, f.org, f.user, sb.Identity.ID)
+			if viewErr != nil || view.Identity.CreatorID != owner {
+				t.Fatal("administrative visibility transferred creator", viewErr)
+			}
+		}
+
+		// Bind actual sandbox subjects to the compiled policy. The issuer has a
+		// broad 10.1.0.0/16 user rule in newFixture; neither sandbox may inherit it.
+		peer, address := uuid.New(), []string{"10.99.0.4", "10.99.0.5"}[i]
+		tx, beginErr := f.pool.Begin(f.ctx)
+		if beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		if _, err = tx.Exec(f.ctx, `INSERT INTO devices(id,org_id,user_id,node_id,name,public_key,assigned_ip,kind) VALUES($1,$2,$3,$4,'two-owner sandbox',$5,$6,'sandbox')`, peer, f.org, owner, f.node, peer.String(), address); err == nil {
+			_, err = tx.Exec(f.ctx, `UPDATE sandboxes SET peer_id=$2 WHERE id=$1`, sb.Identity.ID, peer)
+		}
+		if err != nil {
+			_ = tx.Rollback(f.ctx)
+			t.Fatal(err)
+		}
+		if err = tx.Commit(f.ctx); err != nil {
+			t.Fatal(err)
+		}
+		snapshot, snapshotErr := policy.BuildSnapshotWithQueries(f.ctx, sqlc.New(f.pool), f.org)
+		if snapshotErr != nil {
+			t.Fatal(snapshotErr)
+		}
+		incoming := 0
+		for _, allow := range policy.Compile(snapshot)[f.node].Allow {
+			if allow.SrcIP == address {
+				t.Fatal("sandbox inherited an owner's broad outbound rule", allow)
+			}
+			if allow.DstCIDR == address+"/32" {
+				incoming++
+				if allow.SrcIP != []string{"10.99.0.2", "10.99.0.3"}[i] || allow.Protocol != "tcp" || allow.PortLow != 22 || allow.PortHigh != 22 {
+					t.Fatal("incoming SSH escaped the canonical owned terminal", allow)
+				}
+			}
+		}
+		if incoming != 1 {
+			t.Fatal("missing exact owned-terminal SSH grant", incoming)
+		}
+		if _, _, err = f.store.Create(f.ctx, f.org, other, organizationInput(f, b, devices[other], "shared-slot-denied")); !errors.Is(err, ErrQuota) {
+			t.Fatal("owners bypassed the one retained runner slot", err)
+		}
+		if owner == f.other {
+			devExec(t, f, `UPDATE memberships SET access_revoked_at=now() WHERE org_id=$1 AND user_id=$2`, f.org, owner)
+			if err = command(a); !errors.Is(err, ErrForbidden) {
+				t.Fatal("enrollment issuer's membership replaced revoked creator authority", err)
+			}
+			devExec(t, f, `UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2`, f.org, owner)
+			devExec(t, f, `UPDATE devices SET user_id=$2 WHERE id=$1`, devices[owner], f.user)
+			if err = command(a); !errors.Is(err, ErrForbidden) {
+				t.Fatal("enrolled credential ignored terminal reassignment", err)
+			}
+			devExec(t, f, `UPDATE devices SET user_id=$2 WHERE id=$1`, devices[owner], owner)
+			if err = command(a); err != nil {
+				t.Fatal("restored canonical authority rejected", err)
+			}
+		}
+		// Fixture tombstones model confirmed cleanup only, never physical proof.
+		devExec(t, f, `UPDATE devices SET deleted_at=now(),health_blocked=true WHERE id=$1`, peer)
+		devExec(t, f, `UPDATE sandboxes SET desired_state='deleted',observed_state='deleted' WHERE id=$1`, sb.Identity.ID)
+		if i == 0 {
+			if _, _, err = f.store.Create(f.ctx, f.org, other, organizationInput(f, b, devices[other], "shared-owner-key")); !errors.Is(err, ErrQuota) {
+				t.Fatal("unretired owner released the shared slot", err)
+			}
+		}
+		devExec(t, f, `UPDATE sandbox_runtime_bindings SET worker_retired_at=now() WHERE sandbox_id=$1`, sb.Identity.ID)
+	}
+}
+
+func TestRunnerEnrollmentPostgresRecentInventoryKeepsCurrentAndCleanupControls(t *testing.T) {
+	for _, state := range []string{"awaiting_connection", "pending_cleanup"} {
+		t.Run(state, func(t *testing.T) {
+			f, b, devices, ctx, s := runnerEnrollmentFixture(t)
+			issue, _, _ := issueRunner(t, f, ctx, s)
+			if state == "pending_cleanup" {
+				sb, _, err := f.store.Create(f.ctx, f.org, f.user, organizationInput(f, b, devices[f.user], "inventory-cleanup"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Synthetic bookkeeping represents a retained workload; no runner
+				// health, native readiness or physical cleanup is claimed here.
+				devExec(t, f, `INSERT INTO sandbox_runner_workloads(sandbox_id,org_id,enrollment_id) VALUES($1,$2,$3)`, sb.Identity.ID, f.org, issue.Enrollment.ID)
+				if _, err = s.Revoke(ctx, f.org, f.user, issue.Enrollment.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Newer closed history must not crowd out an older current grant.
+			devExec(t, f, `INSERT INTO sandbox_runner_enrollments(org_id,issuer_id,profile_id,name,idempotency_key,request_hash,binding_hash,token_hash,runner_uri,created_at,expires_at,revoked_at)
+ SELECT $1,$2,$3,'closed synthetic fixture',gen_random_uuid(),$4,$4,$4,$5,t,t+interval '10 minutes',clock_timestamp()
+ FROM (SELECT clock_timestamp()+n*interval '1 second' t FROM generate_series(1,101) n) history`, f.org, f.user, s.config.Profile.ID, s.bindingHash, s.config.RunnerURI)
+			list, err := s.List(ctx, f.org, f.user)
+			if err != nil || len(list.Enrollments) != 20 || list.Enrollments[0].ID != issue.Enrollment.ID || list.Enrollments[0].State != state {
+				t.Fatal("closed history disabled or hid current controls", err, len(list.Enrollments))
+			}
+			if s.RuntimeReady(f.ctx) || list.Enrollments[0].LastSeenAt != nil {
+				t.Fatal("inventory pretended an unobserved runner was ready")
+			}
+			var count int
+			if err = f.pool.QueryRow(f.ctx, `SELECT count(*) FROM sandbox_runner_enrollments WHERE org_id=$1`, f.org).Scan(&count); err != nil || count != 102 {
+				t.Fatal("inventory deleted closed history", err, count)
 			}
 		})
 	}
