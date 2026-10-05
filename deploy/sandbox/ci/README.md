@@ -5,7 +5,7 @@ tool in both API editions, plus the namespace helper and bootstrap client, for
 AMD64 and ARM64. The package target also compiles the entire API module in both
 editions for ARM64; existing API gates build/test both editions on AMD64.
 The bundles contain these binaries, explicitly listed public
-image recipes, the portable installer and its public configuration example,
+image recipes, the portable installer, the enrollment launcher and its public configuration example,
 a source/architecture manifest and checksums. No credentials, actual operator
 configuration, qualification receipts, fixed-host units or runtime state
 are included. CI never executes these binaries or starts a provider.
@@ -15,6 +15,38 @@ builds `dist/sandbox/{amd64,arm64}/tunnex-sandbox-linux-<arch>.tar.gz`. The norm
 main/tag release job publishes these bundles using the existing source-ledger
 guard and artifact provenance. Downloaded bundle checksums use bare filenames;
 the internal `SHA256SUMS` covers the manifest and every included file.
+
+The guarded release job also publishes `Tunnex-Sandbox-Enroll.py`, its bare-name
+SHA256 sidecar, and `Tunnex-Sandbox-Distribution.json` plus its SHA256 sidecar.
+The launcher is extracted from both verified architecture bundles; disagreement
+is refused. It is the exact committed `deploy/sandbox/install/enroll.py`, with
+no separately maintained installer copy. The distribution manifest records
+the same source SHA, the actual repository/release tag and public HTTPS URLs
+and hashes for the launcher and both bundles. It contains no organization,
+gateway, controller, host placement or private credential configuration.
+
+The API's supported distribution loader selects the AMD64 bundle and supplies
+these public pins to the runner enrollment profile. The operator still supplies
+the reviewed organization/gateway/controller/image authority and dedicated
+runtime identities. A browser cannot invent a source URL or enable a host from
+artifact metadata. The copied install command prompts for its one-time token;
+the token does not appear in the public manifest, shell arguments or URLs.
+ARM64 remains a compilation artifact and is refused by the installer.
+
+For local source-only fixture validation, distribution staging takes an existing
+verified bundle directory and a new absolute output directory:
+
+```sh
+python3 -B deploy/sandbox/ci/package.py distribution \
+  --directory /absolute/bundles --source "$SOURCE_SHA" \
+  --repository tunnexio/tunnex --tag "tunnex-build-$SOURCE_SHA" \
+  --output /absolute/new-distribution
+```
+
+Staging performs no download, enrollment or service operation. The real release
+job validates the release's source ledger and draft state before attachment and
+includes the public launcher and manifest in artifact provenance. A local
+fixture's generated URLs do not claim that its release exists or was published.
 
 Compilation is separate from native runtime qualification. Existing native
 sandbox evidence applies to its exact approved AMD64 image, provider and host
