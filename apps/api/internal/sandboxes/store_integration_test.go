@@ -12,7 +12,6 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
-	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 type fixture struct {
@@ -25,7 +24,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	ctx, pool := testpostgres.New(t)
+	ctx, pool := fixtureTemplate.New(t)
 	f := fixture{ctx, pool, NewStore(pool), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), publicTerminalKey(t)}
 	exec := func(q string, args ...any) {
 		t.Helper()

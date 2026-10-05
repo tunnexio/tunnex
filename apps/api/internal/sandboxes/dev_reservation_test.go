@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 	"github.com/tunnexio/tunnex/apps/api/internal/wgkey"
 )
 
@@ -74,7 +73,7 @@ func TestPersistentDevReservationBindingAndLegacyEffectsDenied(t *testing.T) {
 
 func newDevReservationFixture(t *testing.T) (fixture, BoundedRuntimeBinding, uuid.UUID) {
 	t.Helper()
-	ctx, pool := testpostgres.New(t)
+	ctx, pool := fixtureTemplate.New(t)
 	b := devReservationTestBinding()
 	f := fixture{ctx: ctx, pool: pool, store: NewStore(pool), org: b.OrgID, user: b.CreatorID, other: uuid.New(), template: b.Profiles[0].TemplateID, node: b.GatewayID, sshPublicKey: publicTerminalKey(t)}
 	exec := func(q string, args ...any) {

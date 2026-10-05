@@ -291,10 +291,12 @@ test-edition: ## One edition on its isolated CI database; test-editions remains 
 	@# guards fail here while passing locally; the alternative, skipping when the file is absent, would have
 	@# made them pass here while checking nothing, which is the worse failure (see the witness-liveness law).
 	@echo ">> $(TEST_EDITION) edition build and tests"
+	@# The sandbox interoperability test executes the real stdlib Python producer.
+	@# This interpreter is a test-container prerequisite, never a workload launch step.
 	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  -e TEST_EDITION="$(TEST_EDITION)" -e API_TEST_SHARD="$(API_TEST_SHARD)" \
-	  $(GO_IMAGE) sh /repo/deploy/test-api-edition.sh
+	  $(GO_IMAGE) sh -c 'apk add --no-cache python3 && sh /repo/deploy/test-api-edition.sh'
 
 .PHONY: test-node
 test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
@@ -470,7 +472,7 @@ e2e: ## One command: bring the stack up healthy, run API integration + Playwrigh
 	@# lifecycle_test.go's own comment has described this exact class since S8.5.
 	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
-	  $(GO_IMAGE) go test -p 1 ./...
+	  $(GO_IMAGE) sh -c 'apk add --no-cache python3 && go test -p 1 ./...'
 	@echo ">> Playwright browser e2e (SPA -> API correlation chain)"
 	docker run --rm --network $(NET) -v "$(PWD)/e2e":/e2e -w /e2e -e E2E_BASE_URL=http://nginx:8080 \
 	  $(PW_IMAGE) sh -c "npm ci --no-audit --no-fund && npx playwright test"
