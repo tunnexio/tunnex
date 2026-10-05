@@ -48,6 +48,11 @@ ASSETS = (
 
 
 def run(arguments, *, cwd=ROOT, env=None):
+    if arguments[0] == "git":
+        # CI mounts its runner-owned checkout into a root build container.
+        # Trust this explicitly selected source directory for this command;
+        # never change host/global Git config or trust unrelated repositories.
+        arguments = ["git", "-c", f"safe.directory={Path(cwd).resolve()}", *arguments[1:]]
     return subprocess.run(arguments, cwd=cwd, env=env, check=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           timeout=600).stdout

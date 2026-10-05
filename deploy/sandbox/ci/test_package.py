@@ -1,10 +1,13 @@
-"""Pure bundle integrity and publication guards; no host/provider/network calls."""
+"""Bundle integrity and publication guards; no provider/network calls."""
 
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -41,6 +44,53 @@ def rewrite_bundle(raw, change):
 
 
 class PackageTests(unittest.TestCase):
+    def test_git_trust_is_scoped_to_each_explicit_source_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            checkout = Path(temporary).resolve()
+            with patch.object(package.subprocess, "run") as command:
+                command.return_value.stdout = b"source identity\n"
+                self.assertEqual(package.run(["git", "rev-parse", "HEAD"], cwd=checkout), b"source identity\n")
+                self.assertEqual(command.call_args.args[0],
+                                 ["git", "-c", f"safe.directory={checkout}", "rev-parse", "HEAD"])
+                package.run(["go", "version"], cwd=checkout)
+                self.assertEqual(command.call_args.args[0], ["go", "version"])
+
+    def test_actual_dirty_or_staged_source_is_refused_before_output(self):
+        for staged in (False, True):
+            with self.subTest(staged=staged), tempfile.TemporaryDirectory() as temporary:
+                checkout = Path(temporary).resolve()
+                script = checkout / "deploy/sandbox/ci/package.py"
+                script.parent.mkdir(parents=True)
+                script.write_bytes(Path(package.__file__).read_bytes())
+                tracked = checkout / "tracked-source.txt"
+                tracked.write_text("committed source\n")
+                def git(*arguments):
+                    subprocess.run(["git", *arguments], cwd=checkout, check=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                git("init", "-q")
+                git("add", ".")
+                git("-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "source fixture")
+                git("rev-parse", "HEAD")
+                commands = checkout / "fixture-bin"
+                commands.mkdir()
+                go = commands / "go"
+                go.write_text('#!/bin/sh\n: > "$PACKAGING_GO_CALLED"\nexit 99\n')
+                go.chmod(0o755)
+                go_called = checkout / "go-called"
+                tracked.write_text("changed source\n")
+                if staged:
+                    git("add", "tracked-source.txt")
+                output = checkout / "artifacts/amd64"
+                result = subprocess.run([sys.executable, "-B", str(script), "build", "--arch", "amd64", "--output", str(output)],
+                                        cwd=checkout, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        env=dict(os.environ, PATH=str(commands) + os.pathsep + os.environ["PATH"],
+                                                 PACKAGING_GO_CALLED=str(go_called)))
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(b"source artifact packaging refused", result.stderr)
+                self.assertEqual(result.stdout, b"")
+                self.assertFalse(output.exists())
+                self.assertFalse(go_called.exists(), "dirty-source validation must run before Go")
+
     def bundle(self, arch="amd64"):
         return package.make_bundle(payload(arch), SOURCE, arch, "go version go1.26.8 linux/amd64")
 
