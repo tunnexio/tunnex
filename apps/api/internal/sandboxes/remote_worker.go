@@ -27,6 +27,20 @@ type RemoteWorkerConfig struct {
 	Listen, RunnerURI, CertificateFile, PrivateKeyFile, CAFile, CAKeyFile string
 	Revoked                                                               bool
 }
+
+// RunnerEnrollmentRuntimeAuthority supplies durable control-plane decisions.
+// The transport owns no database, grant issuer or native-qualification policy.
+type RunnerEnrollmentRuntimeAuthority interface {
+	AuthorizeCertificate(context.Context, *x509.Certificate) (RunnerCredential, error)
+	AuthorizeCommand(context.Context, RunnerCredential, json.RawMessage) error
+	CurrentCredential(context.Context) (RunnerCredential, error)
+	CurrentProbe(context.Context) (ssh.PublicKey, error)
+	RecordHealth(context.Context, RunnerCredential, BoundedRuntimeBinding) error
+	RuntimeReady(context.Context) bool
+	RenewCertificate(context.Context, *x509.Certificate) ([]byte, error)
+	Sweep(context.Context) error
+	SubmitQualification(context.Context, *x509.Certificate, RunnerQualificationReport) (RunnerQualificationRecord, error)
+}
 type brokerTransport struct{ broker *sandboxrunner.Broker }
 
 func (t brokerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -53,42 +67,51 @@ func (t brokerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(result)), Request: r}, nil
 }
 func NewRemoteWorkerRPCClient(c RemoteWorkerConfig, probe ssh.PublicKey) (*WorkerRPCClient, error) {
+	return newRemoteWorkerRPCClient(c, probe, nil)
+}
+
+func NewEnrolledRemoteWorkerRPCClient(c RemoteWorkerConfig, authority RunnerEnrollmentRuntimeAuthority) (*WorkerRPCClient, error) {
+	if authority == nil {
+		return nil, ErrInvalid
+	}
+	return newRemoteWorkerRPCClient(c, nil, authority)
+}
+
+func newRemoteWorkerRPCClient(c RemoteWorkerConfig, probe ssh.PublicKey, authority RunnerEnrollmentRuntimeAuthority) (*WorkerRPCClient, error) {
 	host, _, e := net.SplitHostPort(c.Listen)
 	ip := net.ParseIP(host)
-	if e != nil || ip == nil || !ip.IsPrivate() || probe == nil {
+	if e != nil || ip == nil || !ip.IsPrivate() || (probe == nil && authority == nil) {
 		return nil, ErrInvalid
 	}
 	broker, e := sandboxrunner.NewBroker(c.RunnerURI)
 	if e != nil {
 		return nil, ErrInvalid
 	}
-	cert, e := tls.LoadX509KeyPair(c.CertificateFile, c.PrivateKeyFile)
-	if e != nil {
-		return nil, ErrInvalid
-	}
-	raw, e := os.ReadFile(c.CAFile)
-	if e != nil {
-		return nil, ErrInvalid
-	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(raw) {
-		return nil, ErrInvalid
-	}
-	config, e := sandboxrunner.TLSConfig(cert, roots)
-	if e != nil {
-		return nil, ErrInvalid
-	}
-	caKey, e := os.ReadFile(c.CAKeyFile)
-	if e != nil {
-		return nil, ErrInvalid
-	}
-	issuer, e := sandboxrunner.NewIssuer(raw, caKey, cert, c.RunnerURI)
+	config, issuer, e := loadRemoteWorkerTLS(c)
 	if e != nil {
 		return nil, ErrInvalid
 	}
 	config.GetCertificate = issuer.GetCertificate
 	config.Certificates = nil
-	broker.Renew = issuer.RenewRunner
+	if authority == nil {
+		broker.Renew = issuer.RenewRunner
+	} else {
+		broker.Authorize = func(ctx context.Context, leaf *x509.Certificate) (bool, error) {
+			credential, err := authority.AuthorizeCertificate(ctx, leaf)
+			return credential.CleanupOnly, err
+		}
+		broker.AuthorizeCommand = func(ctx context.Context, leaf *x509.Certificate, payload json.RawMessage) error {
+			credential, err := authority.AuthorizeCertificate(ctx, leaf)
+			if err != nil {
+				return err
+			}
+			return authority.AuthorizeCommand(ctx, credential, payload)
+		}
+		broker.RenewAuthorized = authority.RenewCertificate
+		broker.SubmitQualification = func(ctx context.Context, leaf *x509.Certificate, raw json.RawMessage) error {
+			return submitRunnerQualification(ctx, authority, leaf, raw)
+		}
+	}
 	broker.Revoked = c.Revoked
 	listener, e := net.Listen("tcp", c.Listen)
 	if e != nil {
@@ -96,7 +119,57 @@ func NewRemoteWorkerRPCClient(c RemoteWorkerConfig, probe ssh.PublicKey) (*Worke
 	}
 	server := &http.Server{Handler: broker, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 4096}
 	go func() { _ = server.Serve(tls.NewListener(listener, config)) }()
-	return &WorkerRPCClient{client: &http.Client{Transport: brokerTransport{broker}, Timeout: 25 * time.Second}, probe: probe, close: server.Close}, nil
+	return &WorkerRPCClient{client: &http.Client{Transport: brokerTransport{broker}, Timeout: 25 * time.Second}, probe: probe, close: server.Close, enrollment: authority}, nil
+}
+
+func submitRunnerQualification(ctx context.Context, authority RunnerEnrollmentRuntimeAuthority, leaf *x509.Certificate, raw json.RawMessage) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var report RunnerQualificationReport
+	if len(raw) > sandboxrunner.QualificationReportLimit || decoder.Decode(&report) != nil || decoder.Decode(new(any)) != io.EOF || report.Version != 1 {
+		return sandboxrunner.ErrInvalid
+	}
+	_, err := authority.SubmitQualification(ctx, leaf, report)
+	if errors.Is(err, ErrInvalid) {
+		return sandboxrunner.ErrInvalid
+	}
+	return err
+}
+
+// LoadRemoteWorkerIssuer reads only the explicitly configured CP credential
+// files. Its scoped issuer can be supplied to the enrollment service; no CA or
+// endpoint private key crosses the browser/runtime public installation plan.
+func LoadRemoteWorkerIssuer(c RemoteWorkerConfig) (*sandboxrunner.Issuer, error) {
+	_, issuer, err := loadRemoteWorkerTLS(c)
+	return issuer, err
+}
+
+func loadRemoteWorkerTLS(c RemoteWorkerConfig) (*tls.Config, *sandboxrunner.Issuer, error) {
+	cert, err := tls.LoadX509KeyPair(c.CertificateFile, c.PrivateKeyFile)
+	if err != nil {
+		return nil, nil, ErrInvalid
+	}
+	raw, err := os.ReadFile(c.CAFile)
+	if err != nil {
+		return nil, nil, ErrInvalid
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(raw) {
+		return nil, nil, ErrInvalid
+	}
+	config, err := sandboxrunner.TLSConfig(cert, roots)
+	if err != nil {
+		return nil, nil, ErrInvalid
+	}
+	caKey, err := os.ReadFile(c.CAKeyFile)
+	if err != nil {
+		return nil, nil, ErrInvalid
+	}
+	issuer, err := sandboxrunner.NewIssuer(raw, caKey, cert, c.RunnerURI)
+	if err != nil {
+		return nil, nil, ErrInvalid
+	}
+	return config, issuer, nil
 }
 func (c *WorkerRPCClient) Close() error {
 	if c != nil && c.close != nil {

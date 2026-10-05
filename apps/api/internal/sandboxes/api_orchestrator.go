@@ -45,19 +45,28 @@ func (p PublicProbeIdentity) Sign(io.Reader, []byte) (*ssh.Signature, error) { r
 // with its existing sealer and exact node policy provider. Construction enables
 // no organization/template, mount, socket ACL, policy or live runtime.
 type APIOrchestrator struct {
-	store         *Store
-	binding       BoundedRuntimeBinding
-	worker        WorkerRuntime
-	initial       *InitialLaunchCoordinator
-	cleanup       *PrivateNetworkCleanup
-	wake          chan struct{}
-	retired       bool
-	initialCreate *CreateInput
+	store               *Store
+	binding             BoundedRuntimeBinding
+	worker              WorkerRuntime
+	initial             *InitialLaunchCoordinator
+	cleanup             *PrivateNetworkCleanup
+	wake                chan struct{}
+	retired             bool
+	initialCreate       *CreateInput
+	lastEnrollmentProbe time.Time
 }
 
 func NewAPIOrchestrator(store *Store, b BoundedRuntimeBinding, worker WorkerRuntime, policies canonicalPolicyReader, sealer handoffSealer) (*APIOrchestrator, error) {
-	if store == nil || store.pool == nil || b.Validate() != nil || worker == nil || worker.ProbePublicKey() == nil || policies == nil || sealer == nil {
+	if store == nil || store.pool == nil || b.Validate() != nil || worker == nil || policies == nil || sealer == nil {
 		return nil, ErrDisabled
+	}
+	if worker.ProbePublicKey() == nil {
+		// Only the explicit typed enrollment client may start disconnected. A
+		// generic/static worker must still supply its configured public identity.
+		client, ok := worker.(*WorkerRPCClient)
+		if !ok || client.enrollment == nil || !b.OrganizationScoped() {
+			return nil, ErrDisabled
+		}
 	}
 	if _, err := store.WithBoundedRuntime(b); err != nil {
 		return nil, err
@@ -108,6 +117,12 @@ func (o *APIOrchestrator) Run(ctx context.Context, report func(uuid.UUID, error)
 	}
 }
 func (o *APIOrchestrator) batch(ctx context.Context, report func(uuid.UUID, error)) error {
+	if sweeper, ok := o.worker.(interface{ SweepRunnerEnrollment(context.Context) error }); ok {
+		if err := sweeper.SweepRunnerEnrollment(ctx); err != nil {
+			return err
+		}
+	}
+	o.refreshEnrollmentHealth(ctx)
 	if o.binding.OrganizationScoped() {
 		if err := o.store.SweepEligibility(ctx, o.binding.OrgID, 2); err != nil {
 			return err
@@ -173,10 +188,24 @@ func (o *APIOrchestrator) batch(ctx context.Context, report func(uuid.UUID, erro
 				err = nil
 			}
 		} else if len(jobs) == 1 && o.binding.available(time.Now()) && ((j.generation == 1 && (j.state == "creating" || j.state == "starting")) || (j.generation > 1 && (j.state == "stopped" || j.state == "starting"))) {
-			if j.generation == 1 {
-				err = o.initial.Reconcile(work, j.id)
-			} else {
-				err = (&ResumeCoordinator{Initial: o.initial}).Reconcile(work, j.id)
+			err = nil
+			// A retained workload prevents enrollment identity replacement. Use a
+			// fresh authoritative immutable snapshot for this launch, rather than
+			// the probe that happened to exist when the API process was started.
+			if client, ok := o.worker.(*WorkerRPCClient); ok && client.enrollment != nil {
+				var probe ssh.PublicKey
+				probe, err = client.resolveProbe(work)
+				if err == nil {
+					o.initial.ProbeIdentity = PublicProbeIdentity{probe}
+				}
+			}
+			// Missing/revoked enrollment cannot materialize assets or launch.
+			if err == nil {
+				if j.generation == 1 {
+					err = o.initial.Reconcile(work, j.id)
+				} else {
+					err = (&ResumeCoordinator{Initial: o.initial}).Reconcile(work, j.id)
+				}
 			}
 		} else {
 			err = nil
@@ -187,6 +216,24 @@ func (o *APIOrchestrator) batch(ctx context.Context, report func(uuid.UUID, erro
 		}
 	}
 	return nil
+}
+
+// Refresh connectivity even while the organization has no workloads, so the
+// enrollment UI can observe a real worker reply. Offline/unqualified workers
+// remain unavailable, and their failed health attempt never prevents cleanup.
+func (o *APIOrchestrator) refreshEnrollmentHealth(ctx context.Context) {
+	client, ok := o.worker.(*WorkerRPCClient)
+	if !ok || client.enrollment == nil || time.Since(o.lastEnrollmentProbe) < 5*time.Second {
+		return
+	}
+	o.lastEnrollmentProbe = time.Now()
+	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	credential, err := client.enrollment.CurrentCredential(probeCtx)
+	if err != nil || credential.CleanupOnly {
+		return
+	}
+	_ = client.CheckBinding(probeCtx, o.binding)
 }
 
 func (o *APIOrchestrator) retire(ctx context.Context, id uuid.UUID) error {

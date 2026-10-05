@@ -99,6 +99,22 @@ func (c *Client) ExecuteOne(ctx context.Context, command Command, execute func(c
 	if command.ID == [16]byte{} || !command.Deadline.After(time.Now()) || time.Until(command.Deadline) > 30*time.Second || len(command.Payload) > PayloadLimit || !json.Valid(command.Payload) || execute == nil {
 		return Reply{}, ErrInvalid
 	}
+	c.certMu.Lock()
+	leaf := c.certificate.Leaf
+	c.certMu.Unlock()
+	// A command received just before certificate expiry must not gain a fresh
+	// execution deadline beyond that credential. Tests may use a store-only
+	// client; every NewClient production instance has a parsed leaf.
+	deadline := command.Deadline
+	if leaf != nil {
+		now := time.Now()
+		if now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
+			return Reply{}, ErrUnavailable
+		}
+		if leaf.NotAfter.Before(deadline) {
+			deadline = leaf.NotAfter
+		}
+	}
 	if err := c.pruneCommands(time.Now(), command.ID.String()+".command.json"); err != nil {
 		return Reply{}, err
 	}
@@ -121,7 +137,7 @@ func (c *Client) ExecuteOne(ctx context.Context, command Command, execute func(c
 	} else if e = c.Store.write(name, record); e != nil {
 		return Reply{}, e
 	}
-	effectCtx, cancel := context.WithDeadline(ctx, command.Deadline)
+	effectCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	payload, e := execute(effectCtx, command)
 	if e != nil {

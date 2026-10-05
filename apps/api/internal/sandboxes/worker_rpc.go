@@ -88,11 +88,12 @@ func workerError(code string) error {
 // one-time sandbox launch token crosses the private authenticated socket.
 // Protected enrollment/WG/host/probe keys remain worker-local.
 type WorkerRPCClient struct {
-	mu     sync.Mutex
-	grants map[uuid.UUID]int64
-	client *http.Client
-	probe  ssh.PublicKey
-	close  func() error
+	mu         sync.Mutex
+	grants     map[uuid.UUID]int64
+	client     *http.Client
+	probe      ssh.PublicKey
+	close      func() error
+	enrollment RunnerEnrollmentRuntimeAuthority
 }
 
 func NewWorkerRPCClient(socket string, workerUID uint32, probe ssh.PublicKey) (*WorkerRPCClient, error) {
@@ -155,13 +156,69 @@ func (c *WorkerRPCClient) call(ctx context.Context, in workerRequest) (workerRes
 	return out, workerError(out.Error)
 }
 func (c *WorkerRPCClient) CheckBinding(ctx context.Context, b BoundedRuntimeBinding) error {
-	out, err := c.call(ctx, workerRequest{Operation: "ping"})
-	if err != nil || out.Binding == nil || !bindingEqual(*out.Binding, b) || out.HostPublicKey != string(ssh.MarshalAuthorizedKey(c.probe)) {
+	probe, err := c.resolveProbe(ctx)
+	if err != nil || probe == nil {
 		return ErrDisabled
+	}
+	if c.enrollment != nil {
+		credential, err := c.enrollment.CurrentCredential(ctx)
+		if err != nil || credential.CleanupOnly || credential.ProbePublicKey != string(ssh.MarshalAuthorizedKey(probe)) {
+			return ErrDisabled
+		}
+	}
+	out, err := c.call(ctx, workerRequest{Operation: "ping"})
+	if err != nil || out.Binding == nil || !bindingEqual(*out.Binding, b) || out.HostPublicKey != string(ssh.MarshalAuthorizedKey(probe)) {
+		return ErrDisabled
+	}
+	if c.enrollment != nil {
+		credential, err := c.enrollment.CurrentCredential(ctx)
+		if err != nil || credential.CleanupOnly || credential.ProbePublicKey != out.HostPublicKey {
+			return ErrDisabled
+		}
+		// Readiness is a trusted control-plane decision. A host's health reply
+		// proves pinned connectivity, not native qualification or activation.
+		if err := c.enrollment.RecordHealth(ctx, credential, *out.Binding); err != nil || !c.enrollment.RuntimeReady(ctx) {
+			return ErrDisabled
+		}
 	}
 	return nil
 }
-func (c *WorkerRPCClient) ProbePublicKey() ssh.PublicKey { return c.probe }
+func (c *WorkerRPCClient) ProbePublicKey() ssh.PublicKey {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.probe
+}
+
+func (c *WorkerRPCClient) resolveProbe(ctx context.Context) (ssh.PublicKey, error) {
+	if c == nil {
+		return nil, ErrDisabled
+	}
+	if c.enrollment == nil {
+		return c.ProbePublicKey(), nil
+	}
+	probe, err := c.enrollment.CurrentProbe(ctx)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err != nil || probe == nil {
+		c.probe = nil
+		return nil, ErrDisabled
+	}
+	c.probe = probe
+	return probe, nil
+}
+
+func (c *WorkerRPCClient) SweepRunnerEnrollment(ctx context.Context) error {
+	if c == nil {
+		return ErrDisabled
+	}
+	if c.enrollment != nil {
+		return c.enrollment.Sweep(ctx)
+	}
+	return nil
+}
 func (c *WorkerRPCClient) Create(ctx context.Context, s sandboxruntime.Spec) error {
 	_, err := c.call(ctx, workerRequest{Operation: "create", ID: s.ID, Spec: &s})
 	return err
@@ -259,7 +316,8 @@ func (c *WorkerRPCClient) InspectPrivateNetwork(ctx context.Context, t PrivateNe
 	return *out.Network, nil
 }
 func (c *WorkerRPCClient) ProbePrivateTerminal(ctx context.Context, t PrivateNetworkTarget, host ssh.PublicKey, identity ssh.Signer) (sandboxruntime.SSHProbeResult, error) {
-	if host == nil || identity == nil || !bytes.Equal(identity.PublicKey().Marshal(), c.probe.Marshal()) {
+	probe, err := c.resolveProbe(ctx)
+	if err != nil || host == nil || identity == nil || identity.PublicKey() == nil || probe == nil || !bytes.Equal(identity.PublicKey().Marshal(), probe.Marshal()) {
 		return sandboxruntime.SSHProbeResult{}, ErrInvalid
 	}
 	out, err := c.call(ctx, workerRequest{Operation: "probe", ID: t.SandboxID, Target: &t, HostPublicKey: string(ssh.MarshalAuthorizedKey(host))})
