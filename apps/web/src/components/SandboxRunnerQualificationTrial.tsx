@@ -30,6 +30,7 @@ function stateLabel(trial: Trial, confirmed: boolean) {
   if (!confirmed) return "Trial status unconfirmed";
   if (trial.state === "complete") return trial.retired_at ? "Trial complete · retirement confirmed" : "Retirement unconfirmed";
   if (trial.state === "failed") return trial.retired_at ? "Trial failed · resources retired" : "Trial failed · cleanup pending";
+  if (trial.state === "pending" && (trial.observed_state === "ready" || trial.phase !== "initial_ready")) return "Native verification in progress";
   return ({ pending: "Trial queued", running: "Native verification in progress", awaiting_expiry: "Waiting for the original expiry", cleanup_pending: "Waiting for confirmed cleanup" } as Record<string, string>)[trial.state] ?? "Trial status unavailable";
 }
 
@@ -79,7 +80,7 @@ export function SandboxRunnerQualificationTrial({ orgId, enrollmentId, terminalG
   const reusable = !trial || (!!trial.retired_at && (trial.state === "complete" || trial.state === "failed"));
   const connected = recentlySeen(lastSeenAt);
   const canStart = fresh && connected && !!terminalGatewayId && enrollmentState === "awaiting_connection" && reusable;
-  const connectionCommand = fresh && (enrollmentState==="awaiting_connection"||enrollmentState==="ready") && trial?.connection && trial.desired_state === "started" && trial.observed_state === "ready" && (trial.state === "running" || trial.state === "awaiting_expiry") && Date.now() < Date.parse(trial.expires_at) ? sandboxConnectCommand(trial.connection) : null;
+  const connectionCommand = fresh && (enrollmentState==="awaiting_connection"||enrollmentState==="ready") && trial?.connection && trial.desired_state === "started" && trial.observed_state === "ready" && (trial.state === "pending" || trial.state === "running" || trial.state === "awaiting_expiry") && Date.now() < Date.parse(trial.expires_at) ? sandboxConnectCommand(trial.connection) : null;
   useEffect(() => { setCopied(false); setCopyFailed(false); }, [connectionCommand]);
   async function begin() {
     if (!canStart || !recentlySeen(lastSeenAt) || !terminal || !consent || inFlight.current) return;

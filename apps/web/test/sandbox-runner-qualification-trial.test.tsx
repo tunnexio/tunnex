@@ -101,9 +101,10 @@ it("recovers durable trial phases and copies the real public qualification comma
   expect(screen.queryByText(/Trial complete/)).toBeNull();
 });
 it("hides stale trial SSH instructions and phase claims after a failed status poll", async () => {
-  vi.useFakeTimers(); const ready = { ...trial, state: "running" as const, observed_state: "ready", connection };
+  vi.useFakeTimers(); const ready = { ...trial, state: "pending" as const, observed_state: "ready", connection };
   mocks.get.mockResolvedValueOnce({ data: ready }).mockRejectedValue(new Error("offline")); page({ initialTrial: ready });
   await act(async () => {}); expect(screen.getByRole("button", { name: "Copy trial SSH command" })).toBeTruthy();
+  expect(screen.getByText("Native verification in progress")).toBeTruthy();
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   expect(screen.getByText("Trial status unconfirmed")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Copy trial SSH command" })).toBeNull();
