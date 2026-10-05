@@ -137,6 +137,7 @@ class BuildTests(unittest.TestCase):
                 self.assertIn("--network=none", args)
                 self.assertIn("--pull=false", args)
                 context = Path(args[-1])
+                self.assertTrue((context / "packages/partial").is_dir())
                 expected = {"Containerfile", "expected-inventory.tsv"} | {
                     "packages/" + delivery.package_filename(p) for p in lock["download_packages"]}
                 self.assertEqual({str(path.relative_to(context)) for path in context.rglob("*") if path.is_file()}, expected)

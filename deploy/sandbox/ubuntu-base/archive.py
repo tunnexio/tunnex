@@ -115,6 +115,7 @@ def verify_delivery(directory, expected_source, expected_architecture, expected_
 def assemble_context(lock, lock_raw, cache, source, context, go):
     """Only allowlisted committed source, locked packages and compiled bootstrap."""
     (context / "packages").mkdir()
+    (context / "packages/partial").mkdir()
     (context / "runtime").mkdir()
     for record in lock["metadata"] + lock["download_packages"]:
         delivery.verify(cache / record["path"], record)
