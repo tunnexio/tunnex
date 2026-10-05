@@ -29,6 +29,12 @@ configured public enrollment profile. It downloads and verifies the approved
 image archives before invoking the real bounded installer. It does not install
 host packages or change AppArmor, routes or firewall policy.
 
+The first supported host profile is Ubuntu 26.04 on AMD64. The launcher checks
+the actual host's `/etc/os-release` before creating staging, redeeming a token,
+installing, activating or starting qualification. Reports keep the distribution
+ID and version in separate fields; the pinned Ubuntu workload image cannot
+substitute for the host's operating system. Other hosts remain refused.
+
 Installation writes stopped, disabled services. A separate terminal `ACTIVATE`
 acknowledgment starts the existing helper, actor and transport without enabling
 them for reboot. The dashboard obtains connection and readiness from the real

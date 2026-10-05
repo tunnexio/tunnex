@@ -358,6 +358,7 @@ def secret_prompt(prompt):
 
 def activate(cfg, host, confirmation):
     need(confirmation == "ACTIVATE", "activation_not_confirmed")
+    require_supported_host(host)
     prefix = cfg["installation"]["unit_prefix"]
     # Dependency ordering uses the existing bounded helper/actor/transport roles.
     # No enable, package installation, firewall change or per-workload unit.
@@ -367,6 +368,7 @@ def activate(cfg, host, confirmation):
 
 
 def check_host(cfg, installer, host):
+    require_supported_host(host)
     for tool in installer.TOOLS:
         try:
             host.stat(tool)
@@ -394,6 +396,7 @@ def check_host(cfg, installer, host):
 def run(options):
     need(os.geteuid() == 0, "explicit_host_admin_required")
     need(platform.system() == "Linux" and platform.machine() in ("x86_64", "amd64"), "linux_amd64_required_arm64_compile_only")
+    require_supported_host()
     options.api_url = public_url(options.api_url, True)
     public_url(options.bundle_url)
     pin(options.bundle_sha256)
@@ -423,6 +426,7 @@ def run_locked(options, staging):
     installer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(installer)
     host = installer.Host()
+    require_supported_host(host)
     config_path = staging / "operator.json"
     if config_path.exists():
         cfg = installer.validate(strict_json(file_bytes(config_path, 32768)))
@@ -477,17 +481,27 @@ def run_locked(options, staging):
     return submit_report(cfg, staging, executable, installer, host, result)
 
 
-def host_platform(host):
+def host_platform(host=None):
     # os-release is public host metadata. Parse data without invoking a shell.
     values = {}
-    for line in host.read("/etc/os-release").splitlines():
+    metadata = host.read("/etc/os-release") if host is not None else Path("/etc/os-release").read_text()
+    for line in metadata.splitlines():
         name, separator, value = line.partition("=")
         if separator and name in ("ID", "VERSION_ID"):
             value = value.strip().strip('"').strip("'")
             need(re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value), "unsupported_os_release_metadata")
             values[name] = value
     need("ID" in values and "VERSION_ID" in values, "missing_actual_host_os_version")
-    return {"os": "linux", "version": values["ID"] + " " + values["VERSION_ID"], "architecture": "amd64"}
+    return {"os": values["ID"], "version": values["VERSION_ID"], "architecture": "amd64"}
+
+
+def require_supported_host(host=None):
+    actual = host_platform(host)
+    # This first qualified host profile is explicit. Image OS is an independent
+    # pin and cannot supply missing or unsupported host operating-system data.
+    need(actual == {"os": "ubuntu", "version": "26.04", "architecture": "amd64"},
+         "supported_host_ubuntu_26_04_amd64_required")
+    return actual
 
 
 def inspect_preloaded_images(cfg, host):
@@ -509,6 +523,7 @@ def qualification_report(cfg, bundle, installer, host, activation):
     need(str(uuid.UUID(bundle["profile_id"])) == bundle["profile_id"], "invalid_qualification_profile")
     pin(bundle["binding_sha256"])
     try:
+        require_supported_host(host)
         installer.check(cfg, host, installed_report=True)
         capabilities = {"code": "host-capabilities", "result": "passed",
                         "evidence": "Actual current installer host/gateway/identity/cgroup structure checks passed; capabilities do not prove native lifecycle or network behavior."}
@@ -658,6 +673,7 @@ def service_state(host, unit):
 
 
 def observe_offline_expiry(cfg, status, host, *, now=lambda: datetime.now(timezone.utc), pause=time.sleep):
+    require_supported_host(host)
     prefix = cfg["installation"]["unit_prefix"]
     transport, actor, network = (prefix + suffix for suffix in ("-transport.service", "-actor.service", "-network.service"))
     expires = timestamp(status["expires_at"])
@@ -771,6 +787,7 @@ def await_trial_retirement(cfg, bundle, installer, host, trial_id, staging, exec
 
 def run_qualification(trial_id):
     need(os.geteuid() == 0 and platform.system() == "Linux" and platform.machine() in ("x86_64", "amd64"), "explicit_linux_amd64_host_admin_required")
+    require_supported_host()
     need(str(uuid.UUID(trial_id)) == trial_id and uuid.UUID(trial_id).int != 0, "invalid_qualification_trial_identity")
     state = Path(__file__).absolute().parent
     cfg = strict_json(file_bytes(state / "enrollment-config.json", 32768))
@@ -821,6 +838,7 @@ def run_qualification(trial_id):
 
 
 def activation_ceremony(cfg, host):
+    require_supported_host(host)
     print("Installation complete. Creation stays blocked until the API observes this runner and trusted native qualification.", flush=True)
     with open("/dev/tty", "r+") as terminal:
         terminal.write("Type ACTIVATE to start the bounded runner now (services remain disabled), or Enter to leave it stopped: ")
