@@ -82,6 +82,8 @@ export function SandboxRunnerEnrollment({ orgId, canManage, onRunnerChange, onRe
   const view = data?.enrollments.find(item => item.id === viewId);
   const viewProfile = data?.profiles.find(item => item.id === view?.profile_id);
   const confirmed = !readError;
+  const tokenInvalid=!!view&&(terminalStates.has(view.state)||view.state==="pending_cleanup");
+  useEffect(()=>{if(secret&&tokenInvalid){setSecret(null);setLostSecret(false);}},[secret,tokenInvalid]);
   function begin() {
     if (!canIssue) return;
     setProfileId(previous => data?.profiles.some(item => item.id === previous && !item.blocked_reasons.length) ? previous : eligibleProfiles.length === 1 ? eligibleProfiles[0].id : "");
@@ -134,8 +136,8 @@ export function SandboxRunnerEnrollment({ orgId, canManage, onRunnerChange, onRe
       {readError && <ErrorText>{readError} Refresh runner information before issuing a token.</ErrorText>}
       {data && <Reasons reasons={data.blocked_reasons} />}
     </Modal>}
-    {secret && view && <OneTimeSecretModal title="Save the runner enrollment token" secret={secret} copyLabel="Copy enrollment token" requireAck="I have saved this token for the machine's hidden terminal prompt." caption={<>Shown once. Expires <time dateTime={view.expires_at}>{new Date(view.expires_at).toLocaleString()}</time>. Paste it only when the installer asks. Keep it out of command arguments, URLs and logs.</>} onDismiss={() => setSecret(null)}><SandboxRunnerCommand command={view.install_command} /><Button type="button" variant="danger" className="mt-3" onClick={() => { setSecret(null); setLostSecret(true); setRevokeId(view.id); }}>Cancel enrollment</Button></OneTimeSecretModal>}
-    {view && !secret && !revokeId && <Modal title={`Runner: ${view.name}`} size="enrollment" onDismiss={() => { if (!pending) setViewId(null); }} actions={<><Button type="button" variant="ghost" disabled={reading || pending} onClick={() => void refresh()}>Refresh status</Button>{!terminalStates.has(view.state) && view.state !== "pending_cleanup" && <Button type="button" variant="danger" disabled={pending} onClick={() => { setRevokeId(view.id); setMutationError(null); }}>{view.state === "awaiting_install" ? "Cancel enrollment" : "Revoke runner"}</Button>}<Button type="button" variant="ghost" disabled={pending} onClick={() => setViewId(null)}>Close</Button></>}>
+    {secret && view && !tokenInvalid && <OneTimeSecretModal title="Save the runner enrollment token" secret={secret} copyLabel="Copy enrollment token" requireAck="I have saved this token for the machine's hidden terminal prompt." caption={<>Shown once. Expires <time dateTime={view.expires_at}>{new Date(view.expires_at).toLocaleString()}</time>. Paste it only when the installer asks. Keep it out of command arguments, URLs and logs.</>} onDismiss={() => setSecret(null)}><SandboxRunnerCommand command={view.install_command} /><Button type="button" variant="danger" className="mt-3" onClick={() => { setSecret(null); setLostSecret(true); setRevokeId(view.id); }}>Cancel enrollment</Button></OneTimeSecretModal>}
+    {view && (!secret || tokenInvalid) && !revokeId && <Modal title={`Runner: ${view.name}`} size="enrollment" onDismiss={() => { if (!pending) setViewId(null); }} actions={<><Button type="button" variant="ghost" disabled={reading || pending} onClick={() => void refresh()}>Refresh status</Button>{!terminalStates.has(view.state) && view.state !== "pending_cleanup" && <Button type="button" variant="danger" disabled={pending} onClick={() => { setRevokeId(view.id); setMutationError(null); }}>{view.state === "awaiting_install" ? "Cancel enrollment" : "Revoke runner"}</Button>}<Button type="button" variant="ghost" disabled={pending} onClick={() => setViewId(null)}>Close</Button></>}>
       <div className="sb-runner-fields"><p role="status" className="sb-runner-state">{enrollmentLabel(view, confirmed)}</p>{readError && <ErrorText>{readError} Refresh before relying on runner readiness.</ErrorText>}{lostSecret && <p className="sb-runner-token-note">This enrollment already exists. Its one-time token cannot be shown again. If you did not save it, cancel this enrollment and start a new one.</p>}<Reasons reasons={view.blocked_reasons} />
         {view.state === "awaiting_install" && <><p>The machine administrator runs this command on the approved gateway host, then pastes the separately saved token into the hidden terminal prompt.</p><SandboxRunnerCommand command={view.install_command} disabled={!confirmed} /><p className="sb-help">Token deadline: <time dateTime={view.expires_at}>{new Date(view.expires_at).toLocaleString()}</time>. Closing this screen does not cancel enrollment and never reveals the token again.</p></>}
         {(view.state === "awaiting_connection" || view.state === "offline") && <><p>{view.last_seen_at ? "The server has observed this runner. It will become Ready only after fresh authenticated health and reviewed host qualification are confirmed." : "The token was redeemed. Waiting for the installed runner's authenticated connection and qualification."}</p><p className="sb-help">For recovery, rerun the public command on the same machine. It reuses that enrollment's local identity. Do not move its private keys to another machine.</p><SandboxRunnerCommand command={view.install_command} disabled={!confirmed} /></>}
@@ -160,8 +162,8 @@ function RunnerQualification({ enrollment, orgId, confirmed, onReviewed }: { enr
   const [decision, setDecision] = useState<"approve" | "reject" | null>(null), [note, setNote] = useState(""), [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false), [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false), active = useRef(true);
-  const currentReport = useRef("");
-  currentReport.current = `${enrollment.id}:${qualification?.report_sha256 ?? ""}`;
+  const currentReview = useRef("");
+  currentReview.current = `${enrollment.id}:${enrollment.state}:${qualification?.report_sha256 ?? ""}:${qualification?.decision ?? ""}:${confirmed}`;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { setDecision(null); setNote(""); setAcknowledged(false); setError(null); }, [qualification?.report_sha256]);
   if (!qualification) return enrollment.state === "awaiting_connection" && enrollment.blocked_reasons.includes("native_qualification_required") ? <section className="sb-runner-qualification"><h3>Native qualification</h3><p>No qualification report has been submitted yet. Complete the installed machine's supported native qualification workflow, then refresh. Installation and connection alone do not qualify a host.</p></section> : null;
@@ -170,12 +172,12 @@ function RunnerQualification({ enrollment, orgId, confirmed, onReviewed }: { enr
   const canReject = current && qualification.decision === "pending";
   async function submit() {
     if (!qualification || !decision || inFlight.current || !acknowledged || note.trim().length < 10 || (decision === "approve" ? !canApprove : !canReject)) return;
-    const expectedIdentity = `${enrollment.id}:${qualification.report_sha256}`;
+    const expectedIdentity = currentReview.current;
     inFlight.current = true; setPending(true); setError(null);
     try {
       const result = await api.POST("/api/v1/organizations/{orgId}/sandbox-runner-enrollments/{enrollmentId}/qualification-review", { params: { path: { orgId, enrollmentId: enrollment.id } }, body: { expected_report_sha256: qualification.report_sha256, decision, review_note: note.trim() } });
       if (!active.current) return;
-      if (currentReport.current !== expectedIdentity) { setError("The report changed while review was pending. Review the current report before continuing."); return; }
+      if (currentReview.current !== expectedIdentity) { setError("Runner status or the report changed while review was pending. Refresh and review the current state before continuing."); return; }
       if (result.error || !result.data) { setError(apiErrorMessage(result.error, "Qualification review could not be confirmed. Refresh the current report before retrying.")); return; }
       onReviewed(result.data); setDecision(null); setAcknowledged(false); setNote("");
     } catch { if (active.current) setError("Qualification review could not be confirmed. Refresh the current report before retrying."); }
