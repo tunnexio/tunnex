@@ -59,8 +59,10 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
-	Sandboxes          sandboxRepository
-	SandboxModuleState string
+	Sandboxes                  sandboxRepository
+	SandboxRunnerEnrollment    sandboxRunnerEnrollmentRepository
+	SandboxRunnerQualification sandboxRunnerQualificationRepository
+	SandboxModuleState         string
 	// Remains nil until enrollment, policy acknowledgement and SSH readiness are qualified.
 	SandboxProvisioningReady func() bool
 	SandboxWake              func()
@@ -265,6 +267,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 
 	// CSRF protection for cookie-authenticated state changes.
 	r.Use(csrfGuard)
+	r.Use(runnerEnrollmentRequest)
 
 	// S8.6 #6 compat shim: oapi-codegen's strict server decodes a JSON body UNCONDITIONALLY even
 	// when the spec marks it optional (required: false) — a BODYLESS DELETE …/sites/{id}/bind (the
@@ -305,7 +308,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
-	srv := apiServer{appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{runnerQualification: d.SandboxRunnerQualification, runnerEnrollment: d.SandboxRunnerEnrollment, appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	srv.connectivity = d.Connectivity
 	srv.appDomains = d.AppDomains
 	srv.aiTransport = d.AITransport
