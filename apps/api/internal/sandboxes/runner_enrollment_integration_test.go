@@ -545,3 +545,72 @@ func TestRunnerEnrollmentPostgresRecentInventoryKeepsCurrentAndCleanupControls(t
 		})
 	}
 }
+
+func TestRunnerEnrollmentPostgresAdmissionMappingPrecedesFirstDispatch(t *testing.T) {
+	f, b, devices, ctx, s := runnerEnrollmentFixture(t)
+	issue, _, leaf := issueRunner(t, f, ctx, s)
+	sb, _, err := f.store.Create(f.ctx, f.org, f.other, organizationInput(f, b, devices[f.other], "admission-before-dispatch"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bind := func(candidate Sandbox) error {
+		t.Helper()
+		tx, beginErr := f.pool.Begin(f.ctx)
+		if beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		defer tx.Rollback(f.ctx)
+		if _, beginErr = s.orgLock(f.ctx, tx); beginErr != nil {
+			t.Fatal(beginErr)
+		}
+		if beginErr = s.BindSandboxAdmission(f.ctx, tx, candidate); beginErr != nil {
+			return beginErr
+		}
+		return tx.Commit(f.ctx)
+	}
+	if err = bind(sb); !errors.Is(err, ErrDisabled) {
+		t.Fatal("unqualified, unseen enrollment admitted a normal workload", err)
+	}
+	// This fixture tests durable admission fencing only; it supplies no actual
+	// native qualification or provider/network effect.
+	s.config.QualifiedRunnerSPKIHash = hex.EncodeToString(runnerKeyHash(leaf))
+	s.config.HostQualificationEvidence = "synthetic atomic admission fixture; not native qualification"
+	credential, err := s.AuthorizeCertificate(f.ctx, leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RecordHealth(f.ctx, credential, b); err != nil {
+		t.Fatal(err)
+	}
+	changed := sb
+	changed.Identity.CreatorID = f.user
+	if err = bind(changed); !errors.Is(err, ErrForbidden) {
+		t.Fatal("admission mapping substituted enrollment issuer for creator", err)
+	}
+	devExec(t, f, `UPDATE memberships SET access_revoked_at=now() WHERE org_id=$1 AND user_id=$2`, f.org, f.other)
+	if err = bind(sb); !errors.Is(err, ErrDisabled) {
+		t.Fatal("admission mapping ignored current creator membership", err)
+	}
+	devExec(t, f, `UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2`, f.org, f.other)
+	if err = bind(sb); err != nil {
+		t.Fatal("canonical normal admission mapping", err)
+	}
+	var mapped uuid.UUID
+	if err = f.pool.QueryRow(f.ctx, `SELECT enrollment_id FROM sandbox_runner_workloads WHERE sandbox_id=$1 AND org_id=$2`, sb.Identity.ID, f.org).Scan(&mapped); err != nil || mapped != issue.Enrollment.ID {
+		t.Fatal("accepted workload awaits first RPC before becoming revocable", err)
+	}
+	if _, err = s.Revoke(ctx, f.org, f.user, issue.Enrollment.ID); err != nil {
+		t.Fatal(err)
+	}
+	withdrawn, err := f.store.Get(f.ctx, f.org, f.other, sb.Identity.ID)
+	if err != nil || withdrawn.DesiredState != "deleted" || withdrawn.Revision != sb.Revision+1 || withdrawn.State == StateDeleted {
+		t.Fatal("pre-dispatch workload was not atomically withdrawn", err)
+	}
+	credential, err = s.AuthorizeCertificate(f.ctx, leaf)
+	if err != nil || !credential.CleanupOnly || credential.RetainedSandboxID == nil || *credential.RetainedSandboxID != sb.Identity.ID {
+		t.Fatal("pre-dispatch retained workload lost cleanup authority", err)
+	}
+	if err = bind(sb); !errors.Is(err, ErrDisabled) {
+		t.Fatal("revoked enrollment rebound ordinary admission", err)
+	}
+}
