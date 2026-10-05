@@ -45,6 +45,11 @@ func NewAtVersion(t testing.TB, version uint) (context.Context, *pgxpool.Pool) {
 func newWithMigration(t testing.TB, migrate func(string) error) (context.Context, *pgxpool.Pool) {
 	t.Helper()
 	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
+	return newDatabase(t, dsn, migrate, "")
+}
+
+func newDatabase(t testing.TB, dsn string, migrate func(string) error, template string) (context.Context, *pgxpool.Pool) {
+	t.Helper()
 	if dsn == "" {
 		t.Skip("set TUNNEX_TEST_DATABASE_URL to run disposable PostgreSQL integration tests")
 	}
@@ -84,12 +89,21 @@ func newWithMigration(t testing.TB, migrate func(string) error) (context.Context
 			t.Errorf("cleanup disposable PostgreSQL database %s: %v", name, err)
 		}
 	})
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
+	create := "CREATE DATABASE " + pgx.Identifier{name}.Sanitize()
+	if template != "" {
+		if !ownedNamePattern.MatchString(template) {
+			t.Fatal("refuse non-fixture PostgreSQL template")
+		}
+		create += " TEMPLATE " + pgx.Identifier{template}.Sanitize()
+	}
+	if _, err := admin.Exec(ctx, create); err != nil {
 		t.Fatalf("create disposable PostgreSQL database %s: %v", name, err)
 	}
 	created = true
-	if err := migrate(migrationURL); err != nil {
-		t.Fatalf("migrate disposable PostgreSQL database %s: %v", name, err)
+	if migrate != nil {
+		if err := migrate(migrationURL); err != nil {
+			t.Fatalf("migrate disposable PostgreSQL database %s: %v", name, err)
+		}
 	}
 	childConfig := adminConfig.Copy()
 	childConfig.ConnConfig.Database = name
