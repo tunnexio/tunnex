@@ -56,6 +56,20 @@ func LoadAPIWorkerConfig(path string) (APIWorkerConfig, error) {
 		if out.Remote == nil || !out.Binding.OrganizationScoped() || out.ProbePublicKey != "" || out.InitialCreate != nil || out.Enrollment.RunnerURI != out.Remote.RunnerURI {
 			return APIWorkerConfig{}, ErrInvalid
 		}
+		if out.Enrollment.DistributionFile != "" {
+			configured, err := LoadRunnerDistributionConfig(out.Enrollment.DistributionFile, *out.Enrollment)
+			if err != nil {
+				return APIWorkerConfig{}, ErrInvalid
+			}
+			out.Enrollment = &configured
+		}
+		if out.Enrollment.WorkloadImageDeliveryFile != "" {
+			configured, err := LoadRunnerWorkloadImageDeliveryConfig(out.Enrollment.WorkloadImageDeliveryFile, *out.Enrollment)
+			if err != nil {
+				return APIWorkerConfig{}, ErrInvalid
+			}
+			out.Enrollment = &configured
+		}
 	} else {
 		if _, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(out.ProbePublicKey)); err != nil || len(bytes.TrimSpace(rest)) != 0 {
 			return APIWorkerConfig{}, ErrInvalid

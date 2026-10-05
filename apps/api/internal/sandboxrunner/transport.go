@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ type Broker struct {
 	AuthorizeCommand    func(context.Context, *x509.Certificate, json.RawMessage) error
 	RenewAuthorized     func(context.Context, *x509.Certificate) ([]byte, error)
 	SubmitQualification func(context.Context, *x509.Certificate, json.RawMessage) error
+	QualificationTrial  func(context.Context, *x509.Certificate, uuid.UUID, string, json.RawMessage) (json.RawMessage, error)
 }
 
 func NewBroker(identity string) (*Broker, error) {
@@ -226,6 +228,51 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost || r.URL.RawQuery != "" {
 		http.Error(w, "invalid", 400)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/internal/sandbox-runners/v1/qualification-trials/") {
+		if cleanupOnly || b.Authorize == nil {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/internal/sandbox-runners/v1/qualification-trials/"), "/")
+		if len(parts) != 2 {
+			http.Error(w, "invalid", 400)
+			return
+		}
+		id, err := uuid.Parse(parts[0])
+		if err != nil || id == uuid.Nil || id.String() != parts[0] || (parts[1] != "status" && parts[1] != "witness") {
+			http.Error(w, "invalid", 400)
+			return
+		}
+		if b.QualificationTrial == nil {
+			http.NotFound(w, r)
+			return
+		}
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, QualificationReportLimit))
+		if err != nil || (parts[1] == "status" && len(raw) != 0) || (parts[1] == "witness" && (r.Header.Get("Content-Type") != "application/json" || len(raw) == 0 || !json.Valid(raw))) {
+			http.Error(w, "invalid", 400)
+			return
+		}
+		out, err := b.QualificationTrial(r.Context(), leaf, id, parts[1], raw)
+		if err != nil {
+			if errors.Is(err, ErrInvalid) {
+				http.Error(w, "invalid", 400)
+			} else {
+				http.Error(w, "unavailable", 503)
+			}
+			return
+		}
+		if parts[1] == "witness" {
+			w.WriteHeader(204)
+			return
+		}
+		if len(out) == 0 || len(out) > QualificationReportLimit || !json.Valid(out) {
+			http.Error(w, "unavailable", 503)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(out)
 		return
 	}
 	switch r.URL.Path {

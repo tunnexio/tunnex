@@ -123,6 +123,11 @@ func (o *APIOrchestrator) batch(ctx context.Context, report func(uuid.UUID, erro
 		}
 	}
 	o.refreshEnrollmentHealth(ctx)
+	if pump, ok := o.worker.(interface{ PumpQualificationTrials(context.Context) error }); ok {
+		if err := pump.PumpQualificationTrials(ctx); err != nil {
+			return err
+		}
+	}
 	if o.binding.OrganizationScoped() {
 		if err := o.store.SweepEligibility(ctx, o.binding.OrgID, 2); err != nil {
 			return err

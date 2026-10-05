@@ -4,8 +4,8 @@
 SELECT s.id, s.peer_id, s.creator_id, s.requested_scope, t.maximum_scope, s.terminal_device_id, s.local_terminal_gateway_id,r.terminal_gateway_id AS remote_terminal_gateway_id,r.runtime_gateway_id AS remote_runtime_gateway_id
 FROM sandboxes s
 LEFT JOIN sandbox_remote_terminal_routes r ON r.sandbox_id=s.id AND r.org_id=s.org_id
-JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
-JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
+JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
+JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing' AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id)
 JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
 JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
 JOIN devices d ON d.id=s.peer_id AND d.org_id=s.org_id AND d.user_id=s.creator_id AND d.kind='sandbox'
@@ -23,8 +23,8 @@ ORDER BY s.id;
 SELECT b.id,b.org_id,b.sandbox_id,b.gateway_node_id,b.generation,s.creator_id,s.name
 FROM sandbox_bootstrap_tokens b
 JOIN sandboxes s ON s.id=b.sandbox_id AND s.org_id=b.org_id
-JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
-JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
+JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing' AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id)
 JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
 JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
 JOIN nodes n ON n.id=b.gateway_node_id AND n.org_id=s.org_id AND n.status='active'

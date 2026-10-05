@@ -171,7 +171,7 @@ func (s *Store) prepareStart(ctx context.Context, conn *pgxpool.Conn, id uuid.UU
 		}
 		spec.PIDs = 64
 	}
-	err = tx.QueryRow(ctx, `SELECT t.image_digest,t.memory_mib,t.maximum_scope FROM sandbox_templates t JOIN organizations o ON o.id=t.org_id AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing' JOIN sandboxes s ON s.template_id=t.id AND s.org_id=t.org_id WHERE s.id=$1 AND s.expires_at>now() AND t.enabled FOR SHARE OF t,o`, id).Scan(&spec.ImageDigest, &spec.MemoryMiB, &raw)
+	err = tx.QueryRow(ctx, `SELECT t.image_digest,t.memory_mib,t.maximum_scope FROM sandbox_templates t JOIN organizations o ON o.id=t.org_id AND o.zero_trust_mode='enforcing' JOIN sandboxes s ON s.template_id=t.id AND s.org_id=t.org_id WHERE s.id=$1 AND s.expires_at>now() AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id) FOR SHARE OF t,o`, id).Scan(&spec.ImageDigest, &spec.MemoryMiB, &raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return startTarget{}, ErrDisabled
 	}

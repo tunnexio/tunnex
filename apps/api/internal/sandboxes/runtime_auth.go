@@ -39,11 +39,12 @@ func (s *Store) AuthenticateRuntime(ctx context.Context, credential string) (Run
  FROM sandbox_runtime_credentials c
  JOIN sandboxes s ON s.id=c.sandbox_id AND s.org_id=c.org_id AND s.peer_id=c.peer_id
  JOIN devices d ON d.id=c.peer_id AND d.org_id=s.org_id AND d.user_id=s.creator_id AND d.kind='sandbox'
- JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.sandboxes_enabled AND o.zero_trust_mode='enforcing'
- JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id AND t.enabled
+ JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing'
+ JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
  JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
  JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
  WHERE c.token_hash=$1 AND c.revoked_at IS NULL AND s.desired_state='started' AND (`+sandboxEligibilitySQL+`)
+ AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id))
  AND s.observed_state IN ('creating','starting','ready') AND s.expires_at>now()
  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s.selected_skills) selection
  LEFT JOIN sandbox_skill_revisions r ON r.id=(selection->>'revision_id')::uuid AND r.org_id=s.org_id AND r.enabled
