@@ -129,3 +129,41 @@ and makes current image-release prerequisites explicit. After that reviewed
 documentation change, all 352 product/test/build paths remain identical between
 the integration branch and publishable candidate. No executable source changed
 after the validation checkpoint.
+
+
+## Dashboard enrollment and expanded runner architecture
+
+The publishable candidate is `story/sandbox-pr-candidate-20261005`, based on
+upstream main `435b4d5`. Its initial content commit `4c8452e` preserves the 352
+product/test/build paths from executable integration `691d56a`; reviewed public
+documentation is separate. The additional agreed enrollment scope is additive:
+
+| Capability | Source mapping | Coverage |
+| --- | --- | --- |
+| Admin-only enrollment, idempotent hashed bootstrap, local-key CSR, current membership, revocation and cleanup-only authority | Backend `a761a22`, `68056c6`, `4aee60d`, `6d4d28a`; candidate `3668faa`, `e60cfce`, `7ce67dc`, `5d0f46d` | Integrated with database migration 0196, generated public contracts and real PostgreSQL tests. Enrollment qualifies one exact image, preserving one shared retained slot. |
+| Authenticated enrolled runtime, per-command identity/generation fences, immutable public probe and independent expiry | Runtime `ea81e31`; candidate `54f2d25` | Integrated into the existing provider/transport and reconciliation loop; no new cloud account or hosted agent. |
+| Bounded native qualification trial, canonical lifecycle evidence, exact offline witness, retirement and mandatory review | Runtime `ed2cac5`; candidate `fb2a2c5` | Integrated with migration 0197. Synthetic composed lifecycle and actual Python producer-to-service checks are distinct from native qualification. |
+| Atomic creation-to-runner assignment and server/module wiring | Backend `6d4d28a`, runtime `ed2cac5`; candidate `18254cb` | Existing organization transaction either records the current grant before commit or rolls creation back. Off remains inert; draining keeps cleanup authority. SQL outputs regenerated with pinned sqlc 1.31.1. |
+| Host installer, locally generated identity, public pinned download, exact Ubuntu 26.04 AMD64 refusal and offline qualifier | Machine `5c7c9cf`, `2937b67`, `1148ff2`, `c629bf7`; candidate `f598e66`, `6d9c9db`, `941e23d`, `49e4dc9` | Integrated machine source and fixtures. Tokens never become command arguments; private keys stay on the host. Public-only redirects are bounded; authenticated enrollment transport does not redirect. |
+| Dashboard enrollment, controlled trial, proof review, fresh Ready and legacy compatibility | UI `0b27b62`, `11b4d9b`, `3a67cc7`, `85300dd`, `3faaea4`, `69c9b97`; candidate `73d5e89`, `28c60a8`, `4efdaad`, `6d82e92`, `1d93550`, `0eb4c15` | Integrated with template/Skills/key/terminal creation and ordinary SSH/local-agent instructions preserved. Unit and browser outcomes belong in the final validation record. |
+| Reproducible minimal Ubuntu base and offline workload distribution | Producer `870ab67` through `4fd7c53`; candidate `4d58474` through `7d83e94` | Signed snapshot/package lock, exact archive descriptor and existing CI/release mapping. No per-launch package installation, workload systemd or DBus. Native proof is never inferred from build success. |
+| Fresh deployment profile without source edits or manual SQL | Profile `ba794b6`; candidate `6534236` | Offline public-pin generator and documentation retained. It creates no account, service, enrollment or qualification approval. |
+| Public bundles, distribution manifest, source verification and bounded SCP harness | Packaging `8dbdb06`, `a3195a2`, `a123855`; candidate `3b23f99`, `b7cc06b`, `9ca4633` | Existing artifact and CI paths cover the exact source. SCP uses an existing key path and pinned host keys; mock tests do not establish a live file transfer. |
+| Contract compatibility and architecture record | Candidate `f937659`, `f8fd039`, `ec5f0b0`, `f5fd2dd`, `39ffc81` | OpenAPI-first additive contracts, namespaced generated enum symbols, optional authoritative enrollment requirement, provider/transport separation and multi-user workload ownership. |
+
+The external final publication manifest records each changed product path and
+its exact blob/hash, the initial-source comparison and preserved exclusion
+inventory. Raw operator walks, private credential files and historical live host
+configuration remain excluded; their original worktrees were not rewritten.
+The final validation and artifact records distinguish source tests, native
+qualification, compile-only ARM64 and pending live SCP. No merge or deployment
+authorization is implied by source coverage.
+
+
+Final gate repairs are limited to scoped gateway-fixture formatting `b61f1eb`
+and downgrade-proof fixture dependencies `175e423`. The latter prepends the
+actual 0196/0197 down migrations; it changes no production migration or runtime
+behavior. Both editions execute the corrected proof, including retained-state
+refusal and transaction rollback. Final UI withdrawal fences are included at
+`0eb4c15`; the exact browser source and current runtime product files are
+recorded in the handoff manifests.
