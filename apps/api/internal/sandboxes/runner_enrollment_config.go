@@ -35,7 +35,10 @@ func runnerCA(raw string) (*x509.Certificate, error) {
 	return c, nil
 }
 func (c RunnerEnrollmentConfig) Validate(b BoundedRuntimeBinding) error {
-	if b.Validate() != nil || !b.OrganizationScoped() || !b.Persistent() || c.Profile.ID == [16]byte{} || len(strings.TrimSpace(c.Profile.Name)) == 0 || len(c.Profile.Name) > 80 || c.Profile.Architecture != "amd64" || c.Profile.HostOS != "ubuntu" || c.Profile.HostVersion != "26.04" {
+	// The current native trial proves one exact image. A successful trial must
+	// never grant execution for additional images that were not independently
+	// exercised. Static legacy bindings retain their separately qualified profiles.
+	if b.Validate() != nil || !b.OrganizationScoped() || !b.Persistent() || len(b.Profiles) != 1 || c.Profile.ID == [16]byte{} || len(strings.TrimSpace(c.Profile.Name)) == 0 || len(c.Profile.Name) > 80 || c.Profile.Architecture != "amd64" || c.Profile.HostOS != "ubuntu" || c.Profile.HostVersion != "26.04" {
 		return ErrInvalid
 	}
 	if _, err := sandboxrunner.NewBroker(c.RunnerURI); err != nil {
