@@ -184,7 +184,14 @@ func (s *RunnerEnrollmentService) List(ctx context.Context, org, actor uuid.UUID
 	p.BlockedReasons = append([]string{}, out.BlockedReasons...)
 	p.Prerequisites = append([]string{}, p.Prerequisites...)
 	out.Profiles = append(out.Profiles, p)
-	rows, err := tx.Query(ctx, `SELECT `+runnerEnrollmentColumns+` FROM sandbox_runner_enrollments e WHERE e.org_id=$1 ORDER BY e.created_at DESC,e.id LIMIT 101`, org)
+	// Keep current install/runner and retained cleanup controls visible ahead of
+	// bounded recent history. Closed attempts remain in the DB and audit log;
+	// accumulating them must never disable inventory or hide active retirement.
+	rows, err := tx.Query(ctx, `SELECT `+runnerEnrollmentColumns+` FROM sandbox_runner_enrollments e WHERE e.org_id=$1
+ ORDER BY ((e.revoked_at IS NULL AND ((e.consumed_at IS NULL AND e.expires_at>now())
+ OR (e.consumed_at IS NOT NULL AND e.certificate_expires_at>now())))
+ OR EXISTS(SELECT 1 FROM sandbox_runner_workloads w JOIN sandboxes s ON s.id=w.sandbox_id AND s.org_id=w.org_id
+ WHERE w.enrollment_id=e.id AND w.org_id=e.org_id AND `+runnerRetained+`)) DESC,e.created_at DESC,e.id LIMIT 20`, org)
 	if err != nil {
 		return out, err
 	}
@@ -201,9 +208,6 @@ func (s *RunnerEnrollmentService) List(ctx context.Context, org, actor uuid.UUID
 	rows.Close()
 	if err != nil {
 		return out, err
-	}
-	if len(records) > 100 {
-		return out, ErrQuota
 	}
 	for _, r := range records {
 		v, e := s.view(ctx, tx, r)
