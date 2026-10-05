@@ -36,6 +36,12 @@ class ReleaseDraftPermissionsTest < Minitest::Test
     refute step['continue-on-error']
   end
 
+  def test_release_assets_require_verified_tooling
+    assets = CI.fetch('jobs').fetch('release-assets')
+    assert_equal %w[publish publish-pullable cli-release tooling], assets.fetch('needs')
+    refute assets['continue-on-error']
+  end
+
   def run_guard(permission:, scenario:, ref: 'refs/heads/main')
     Dir.mktmpdir('tunnex-draft-permission-') do |dir|
       File.write(File.join(dir, 'gh'), <<~'SH')
