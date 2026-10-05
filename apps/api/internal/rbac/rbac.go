@@ -14,6 +14,7 @@ const (
 	PermSandboxManage         Permission = "sandbox:manage"
 	PermSandboxAdmin          Permission = "sandbox:admin"
 	PermSandboxDelegateManage Permission = "sandbox:delegate_manage"
+	PermSandboxRunnerManage   Permission = "sandbox:runner_manage"
 	PermSandboxTemplateManage Permission = "sandbox:template_manage"
 	// App Access administration never grants implicit application content access.
 	PermAppAccessView          Permission = "app_access:view"
@@ -243,7 +244,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
-		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true,
+		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
 		PermAppAccessUse: true, PermAppAccessSessionManage: true, PermAppAccessEventView: true,
@@ -295,7 +296,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
-		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true,
+		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
 		PermAppAccessUse: true, PermAppAccessSessionManage: true, PermAppAccessEventView: true,
