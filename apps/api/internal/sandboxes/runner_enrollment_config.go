@@ -124,7 +124,7 @@ func (s *RunnerEnrollmentService) installCommand(id string) string {
 	p := s.config.Profile
 	// Only public pins and UUIDs are present. The script prompts for the token;
 	// it must never be interpolated into a shell command or URL.
-	return fmt.Sprintf("d=$(mktemp -d) && curl --fail --silent --show-error --proto '=https' --tlsv1.2 %s -o \"$d/enroll.py\" && printf '%%s  %%s\\n' %s \"$d/enroll.py\" | sha256sum -c - && sudo python3 \"$d/enroll.py\" --enrollment-id %s --api-url %s --bundle-url %s --bundle-sha256 %s --source-sha %s --edition %s", shellRunnerValue(p.BootstrapScript.URL), shellRunnerValue(p.BootstrapScript.SHA256), shellRunnerValue(id), shellRunnerValue(p.Install.Controller.APIURL), shellRunnerValue(p.Install.Bundle.URL), shellRunnerValue(p.Install.Bundle.SHA256), shellRunnerValue(p.Install.SourceSHA), shellRunnerValue(p.Install.Edition))
+	return fmt.Sprintf("d=$(mktemp -d) && curl --fail --silent --show-error --location --max-redirs 3 --proto '=https' --proto-redir '=https' --tlsv1.2 %s -o \"$d/enroll.py\" && printf '%%s  %%s\\n' %s \"$d/enroll.py\" | sha256sum -c - && sudo python3 \"$d/enroll.py\" --enrollment-id %s --api-url %s --bundle-url %s --bundle-sha256 %s --source-sha %s --edition %s", shellRunnerValue(p.BootstrapScript.URL), shellRunnerValue(p.BootstrapScript.SHA256), shellRunnerValue(id), shellRunnerValue(p.Install.Controller.APIURL), shellRunnerValue(p.Install.Bundle.URL), shellRunnerValue(p.Install.Bundle.SHA256), shellRunnerValue(p.Install.SourceSHA), shellRunnerValue(p.Install.Edition))
 }
 func runnerKeyHash(c *x509.Certificate) []byte {
 	h := sha256.Sum256(c.RawSubjectPublicKeyInfo)
