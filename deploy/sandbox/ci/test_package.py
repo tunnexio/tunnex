@@ -151,6 +151,35 @@ class PackageTests(unittest.TestCase):
             manifest = json.loads((root / "output" / package.DISTRIBUTION_NAME).read_bytes())
             self.assertIn("/v1.2.3%2Bbuild.4/", manifest["bootstrap_script"]["url"])
 
+    def test_distribution_advertises_only_the_exact_verified_unqualified_image_descriptor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            bundles = root / "bundles"
+            bundles.mkdir()
+            self.write_architecture_bundles(bundles)
+            images = root / "images"
+            images.mkdir()
+            descriptor = {"source_sha": SOURCE, "architecture": "amd64", "native_qualification": False}
+            raw = (json.dumps(descriptor) + "\n").encode()
+            (images / "workload-image.json").write_bytes(raw)
+            with patch.object(package, "verify_image_delivery", return_value=descriptor) as verify:
+                package.distribution(bundles, SOURCE, "tunnexio/tunnex", "v1.2.3", root / "output", images)
+            verify.assert_called_once_with(images, SOURCE)
+            manifest = json.loads((root / "output" / package.DISTRIBUTION_NAME).read_bytes())
+            self.assertEqual(manifest["workload_image_delivery"], {
+                "url": "https://github.com/tunnexio/tunnex/releases/download/v1.2.3/workload-image.json",
+                "sha256": package.digest(raw),
+            })
+            self.assertTrue(manifest["workload_images_built"])
+            self.assertFalse(manifest["native_runtime_qualification"])
+            for changed in ({**descriptor, "native_qualification": True},
+                            {**descriptor, "source_sha": "b" * 40},
+                            {**descriptor, "architecture": "arm64"}):
+                (images / "workload-image.json").write_text(json.dumps(changed))
+                with patch.object(package, "verify_image_delivery", return_value=changed), self.assertRaises(ValueError):
+                    package.distribution(bundles, SOURCE, "tunnexio/tunnex", "v1.2.3", root / "refused", images)
+                self.assertFalse((root / "refused").exists())
+
     def test_unsupported_architecture_and_fabricated_source_refused(self):
         for arch, source in (("darwin", SOURCE), ("amd64", "a" * 7), ("arm64", "G" * 40)):
             with self.subTest(arch=arch, source=source), self.assertRaises(ValueError):
@@ -231,20 +260,29 @@ class PackageTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("portable_sandbox_install", package.ROOT / "deploy/sandbox/install/install.py")
         installer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(installer)
+        spec = importlib.util.spec_from_file_location("public_sandbox_enroll", package.ROOT / package.ENROLL_SOURCE)
+        enrollment = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(enrollment)
         self.assertEqual(set(package.ASSETS), installer.ASSETS)
+        self.assertEqual(set(package.ASSETS), enrollment.ASSETS)
         self.assertEqual(package.API_COMMANDS, installer.COMMANDS)
+        self.assertEqual(package.API_COMMANDS, enrollment.COMMANDS)
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "public.tar.gz"
             for arch in package.ARCHITECTURES:
                 raw = self.bundle(arch)
                 path.write_bytes(raw)
+                path.chmod(0o600)
                 cfg = {"source_sha": SOURCE, "bundle": {"path": str(path), "sha256": package.digest(raw)}}
                 if arch == "amd64":
                     accepted = installer.bundle_payload(cfg)
                     self.assertEqual(set(accepted), set(package.binary_names(arch)) | set(package.ASSETS) | {"manifest.json", "SHA256SUMS"})
+                    self.assertEqual(enrollment.verify_bundle(path, SOURCE, package.digest(raw)), accepted)
                 else:
                     with self.assertRaises(ValueError):
                         installer.bundle_payload(cfg)
+                    with self.assertRaises(ValueError):
+                        enrollment.verify_bundle(path, SOURCE, package.digest(raw))
 
     def test_build_uses_only_committed_source_and_readonly_cross_compile(self):
         for arch in package.ARCHITECTURES:

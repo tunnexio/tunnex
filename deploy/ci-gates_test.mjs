@@ -85,6 +85,7 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   assert.equal(jobs.api.strategy['fail-fast'], false);
   assert.match(jobs.api.env.COMPOSE_PROJECT_NAME, /matrix.edition/);
   assert.ok(jobs.tooling.strategy.matrix.target.includes('test-sandbox-package'));
+  assert.ok(jobs.tooling.strategy.matrix.target.includes('test-sandbox-image'));
   for (const name of ['api', 'app-access-integration', 'tooling']) {
     assert.equal(jobs[name].if, "needs.scope.outputs.go == 'true'");
   }
@@ -146,8 +147,14 @@ test('sandbox bundles reuse blocking tooling and existing guarded release public
   assert.ok(attestation);
   assert.ok(attestation.with['subject-path'].includes('sandbox-distribution/Tunnex-Sandbox-Enroll.py'));
   assert.ok(attestation.with['subject-path'].includes('sandbox-distribution/Tunnex-Sandbox-Distribution.json'));
+  assert.match(attachment.run, /image\.py verify --directory sandbox-image-artifacts --source "\$GITHUB_SHA"/);
+  for (const filename of ['tunnex-sandbox-ubuntu26-linux-amd64.docker.tar', 'workload-image.json', 'SHA256SUMS']) {
+    assert.ok(attachment.run.includes(`sandbox-image-artifacts/${filename}`));
+  }
+  assert.ok(attestation.with['subject-path'].includes('sandbox-image-artifacts/tunnex-sandbox-ubuntu26-linux-amd64.docker.tar'));
+  assert.ok(attestation.with['subject-path'].includes('sandbox-image-artifacts/workload-image.json'));
   const contracts = jobs.contracts.steps.find(step => step.name?.startsWith('Sandbox public packaging'));
-  for (const directory of ['deploy/sandbox', 'deploy/sandbox/qualification', 'deploy/sandbox/ci', 'deploy/sandbox/install']) {
+  for (const directory of ['deploy/sandbox', 'deploy/sandbox/qualification', 'deploy/sandbox/ci', 'deploy/sandbox/install', 'deploy/sandbox/ubuntu-base']) {
     assert.ok(contracts.run.includes(`unittest discover -s ${directory} -p 'test_*.py'`));
   }
   const makefile = readFileSync('Makefile', 'utf8');
@@ -155,6 +162,32 @@ test('sandbox bundles reuse blocking tooling and existing guarded release public
   assert.match(makefile, /package\.py build --arch amd64/);
   assert.match(makefile, /package\.py build --arch arm64/);
   assert.match(makefile, /unittest discover -s deploy\/sandbox\/install/);
+});
+
+test('Ubuntu image delivery is a required existing tooling target with exact public artifacts', () => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const { jobs } = JSON.parse(parsed.stdout);
+  const setup = jobs.tooling.steps.find(step => step.name?.startsWith('Set up pinned host Go'));
+  assert.equal(setup.if, "matrix.target == 'test-sandbox-image'");
+  assert.equal(setup.with['go-version'], '1.26.8');
+  const upload = jobs.tooling.steps.find(step => step.name?.startsWith('Retain public Ubuntu AMD64'));
+  assert.ok(upload.if.includes("matrix.target == 'test-sandbox-image'"));
+  assert.ok(upload.if.includes("github.ref == 'refs/heads/main'"));
+  assert.ok(upload.if.includes("startsWith(github.ref, 'refs/tags/v')"));
+  assert.equal(upload.with['if-no-files-found'], 'error');
+  assert.deepEqual(upload.with.path.trim().split('\n'), [
+    'dist/sandbox-image/amd64/tunnex-sandbox-ubuntu26-linux-amd64.docker.tar',
+    'dist/sandbox-image/amd64/workload-image.json',
+    'dist/sandbox-image/amd64/SHA256SUMS',
+  ]);
+  assert.ok(jobs['release-assets'].steps.some(step => /image\.py verify --directory sandbox-image-artifacts --source "\$GITHUB_SHA"/.test(step.run ?? '')));
+  const recipe = readFileSync('Makefile', 'utf8').split('test-sandbox-image:')[1];
+  assert.ok(recipe);
+  assert.match(recipe, /image\.py build/);
+  assert.match(recipe, /GOMODCACHE="\$\(GO_CACHE_DIR\)\/mod" GOCACHE="\$\(GO_CACHE_DIR\)\/build"/);
+  assert.doesNotMatch(recipe, /\|\| true|continue-on-error|systemctl|enroll\.py/);
 });
 
 
