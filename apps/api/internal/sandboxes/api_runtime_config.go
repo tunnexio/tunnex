@@ -19,6 +19,10 @@ type APIWorkerConfig struct {
 	ProbePublicKey string
 	InitialCreate  *CreateInput
 	Remote         *RemoteWorkerConfig
+	// Enrollment is explicitly opt-in and retains the configured organization,
+	// gateway, profiles and resource envelope. The public probe is learned only
+	// from the durable enrollment authority, never a health response.
+	Enrollment *RunnerEnrollmentConfig
 }
 
 func LoadAPIWorkerConfig(path string) (APIWorkerConfig, error) {
@@ -48,12 +52,21 @@ func LoadAPIWorkerConfig(path string) (APIWorkerConfig, error) {
 	if decoder.Decode(&out) != nil || decoder.Decode(new(any)) != io.EOF || out.Binding.Validate() != nil || (out.Remote == nil && (out.WorkerUID == 0 || out.Socket != "/run/tunnex-sandbox-worker/control.sock")) || (out.Remote != nil && (out.WorkerUID != 0 || out.Socket != "" || !out.Binding.Persistent())) {
 		return APIWorkerConfig{}, ErrInvalid
 	}
-	if _, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(out.ProbePublicKey)); err != nil || len(bytes.TrimSpace(rest)) != 0 {
-		return APIWorkerConfig{}, ErrInvalid
+	if out.Enrollment != nil {
+		if out.Remote == nil || !out.Binding.OrganizationScoped() || out.ProbePublicKey != "" || out.InitialCreate != nil || out.Enrollment.RunnerURI != out.Remote.RunnerURI {
+			return APIWorkerConfig{}, ErrInvalid
+		}
+	} else {
+		if _, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(out.ProbePublicKey)); err != nil || len(bytes.TrimSpace(rest)) != 0 {
+			return APIWorkerConfig{}, ErrInvalid
+		}
 	}
 	return out, nil
 }
 func (c APIWorkerConfig) Client() (*WorkerRPCClient, error) {
+	if c.Enrollment != nil {
+		return nil, ErrDisabled
+	}
 	key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(c.ProbePublicKey))
 	if err != nil {
 		return nil, ErrInvalid
@@ -62,4 +75,11 @@ func (c APIWorkerConfig) Client() (*WorkerRPCClient, error) {
 		return NewRemoteWorkerRPCClient(*c.Remote, key)
 	}
 	return NewWorkerRPCClient(c.Socket, c.WorkerUID, key)
+}
+
+func (c APIWorkerConfig) EnrollmentClient(authority RunnerEnrollmentRuntimeAuthority) (*WorkerRPCClient, error) {
+	if c.Enrollment == nil || c.Remote == nil || !c.Binding.OrganizationScoped() || c.ProbePublicKey != "" || c.InitialCreate != nil || c.Enrollment.RunnerURI != c.Remote.RunnerURI || authority == nil {
+		return nil, ErrInvalid
+	}
+	return NewEnrolledRemoteWorkerRPCClient(*c.Remote, authority)
 }

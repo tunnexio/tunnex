@@ -21,6 +21,7 @@ import (
 // documents plus their configurations fit without a separate transfer stack.
 // The broker holds one pending effect and one fixed read-only health probe.
 const PayloadLimit = 1 << 20
+const QualificationReportLimit = 16 << 10
 
 var ErrUnavailable = errors.New("runner unavailable")
 var ErrInvalid = errors.New("invalid runner message")
@@ -56,6 +57,15 @@ type Broker struct {
 	health    *pending
 	Revoked   bool
 	Renew     func(*x509.Certificate) ([]byte, error)
+	// Enrolled runners revalidate durable grant and certificate authority on
+	// every request, including an already established TLS connection. Nil keeps
+	// the explicitly pinned legacy runner identity unchanged.
+	Authorize func(context.Context, *x509.Certificate) (cleanupOnly bool, err error)
+	// Command authority is checked again when a command is polled or receipted.
+	// A revoked runner can receive only its exact retained workload's cleanup.
+	AuthorizeCommand    func(context.Context, *x509.Certificate, json.RawMessage) error
+	RenewAuthorized     func(context.Context, *x509.Certificate) ([]byte, error)
+	SubmitQualification func(context.Context, *x509.Certificate, json.RawMessage) error
 }
 
 func NewBroker(identity string) (*Broker, error) {
@@ -80,6 +90,30 @@ func authenticated(r *http.Request, identity string) bool {
 		return false
 	}
 	return leaf.URIs[0].String() == identity
+}
+
+func (b *Broker) authorize(r *http.Request) (*x509.Certificate, bool, error) {
+	if r.TLS == nil || r.TLS.Version < tls.VersionTLS13 || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.VerifiedChains[0]) == 0 || len(r.TLS.VerifiedChains[0][0].URIs) != 1 {
+		return nil, false, ErrUnavailable
+	}
+	leaf := r.TLS.VerifiedChains[0][0]
+	if leaf.URIs[0].String() != b.RunnerURI {
+		return nil, false, ErrUnavailable
+	}
+	if b.Authorize == nil {
+		if !authenticated(r, b.RunnerURI) {
+			return nil, false, ErrUnavailable
+		}
+		return leaf, false, nil
+	}
+	// TLS verifies time only during the handshake. Keep-alive requests must not
+	// extend the original certificate's authority or cleanup lifetime.
+	now := time.Now()
+	if now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
+		return nil, false, ErrUnavailable
+	}
+	cleanupOnly, err := b.Authorize(r.Context(), leaf)
+	return leaf, cleanupOnly, err
 }
 func (b *Broker) Call(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
 	return b.call(ctx, payload)
@@ -185,7 +219,8 @@ func (b *Broker) call(ctx context.Context, payload json.RawMessage) (json.RawMes
 }
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if b.Revoked || !authenticated(r, b.RunnerURI) {
+	leaf, cleanupOnly, authErr := b.authorize(r)
+	if b.Revoked || authErr != nil {
 		http.Error(w, "forbidden", 403)
 		return
 	}
@@ -194,13 +229,50 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/internal/sandbox-runners/v1/renew":
-		body, e := io.ReadAll(io.LimitReader(r.Body, 2))
-		if e != nil || len(body) != 0 || b.Renew == nil {
+	case "/internal/sandbox-runners/v1/qualification":
+		if cleanupOnly || b.Authorize == nil {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		if b.SubmitQualification == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
 			http.Error(w, "invalid", 400)
 			return
 		}
-		raw, e := b.Renew(r.TLS.VerifiedChains[0][0])
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, QualificationReportLimit))
+		if err != nil || len(raw) == 0 || !json.Valid(raw) {
+			http.Error(w, "invalid", 400)
+			return
+		}
+		if err := b.SubmitQualification(r.Context(), leaf, raw); err != nil {
+			if errors.Is(err, ErrInvalid) {
+				http.Error(w, "invalid", 400)
+			} else {
+				http.Error(w, "unavailable", 503)
+			}
+			return
+		}
+		// A stored report is not native proof, an approval or a readiness claim.
+		w.WriteHeader(204)
+	case "/internal/sandbox-runners/v1/renew":
+		if cleanupOnly {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		body, e := io.ReadAll(io.LimitReader(r.Body, 2))
+		if e != nil || len(body) != 0 || (b.Renew == nil && b.RenewAuthorized == nil) {
+			http.Error(w, "invalid", 400)
+			return
+		}
+		var raw []byte
+		if b.RenewAuthorized != nil {
+			raw, e = b.RenewAuthorized(r.Context(), leaf)
+		} else {
+			raw, e = b.Renew(leaf)
+		}
 		if e != nil || len(raw) > 8192 {
 			http.Error(w, "unavailable", 503)
 			return
@@ -209,24 +281,48 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(raw)
 
 	case "/internal/sandbox-runners/v1/poll", "/internal/sandbox-runners/v1/health/poll":
+		if cleanupOnly && r.URL.Path == "/internal/sandbox-runners/v1/health/poll" {
+			http.Error(w, "forbidden", 403)
+			return
+		}
 		body, e := io.ReadAll(io.LimitReader(r.Body, 2))
 		if e != nil || len(body) != 0 {
 			http.Error(w, "invalid", 400)
 			return
 		}
 		b.mu.Lock()
-		defer b.mu.Unlock()
 		p := b.pending
 		if r.URL.Path == "/internal/sandbox-runners/v1/health/poll" {
 			p = b.health
 		}
 		if p == nil || !p.command.Deadline.After(time.Now()) {
+			b.mu.Unlock()
+			w.WriteHeader(204)
+			return
+		}
+		command := p.command
+		b.mu.Unlock()
+		if (cleanupOnly && b.AuthorizeCommand == nil) || (b.AuthorizeCommand != nil && b.AuthorizeCommand(r.Context(), leaf, command.Payload) != nil) {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		current := b.pending
+		if r.URL.Path == "/internal/sandbox-runners/v1/health/poll" {
+			current = b.health
+		}
+		if current != p || !command.Deadline.After(time.Now()) {
 			w.WriteHeader(204)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(p.command)
+		_ = json.NewEncoder(w).Encode(command)
 	case "/internal/sandbox-runners/v1/reply", "/internal/sandbox-runners/v1/health/reply":
+		if cleanupOnly && r.URL.Path == "/internal/sandbox-runners/v1/health/reply" {
+			http.Error(w, "forbidden", 403)
+			return
+		}
 		if r.Header.Get("Content-Type") != "application/json" {
 			http.Error(w, "invalid", 400)
 			return
@@ -239,12 +335,28 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.mu.Lock()
-		defer b.mu.Unlock()
 		p := b.pending
 		if r.URL.Path == "/internal/sandbox-runners/v1/health/reply" {
 			p = b.health
 		}
 		if p == nil || reply.ID != p.command.ID || !p.command.Deadline.After(time.Now()) {
+			b.mu.Unlock()
+			http.Error(w, "conflict", 409)
+			return
+		}
+		command := p.command
+		b.mu.Unlock()
+		if (cleanupOnly && b.AuthorizeCommand == nil) || (b.AuthorizeCommand != nil && b.AuthorizeCommand(r.Context(), leaf, command.Payload) != nil) {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		current := b.pending
+		if r.URL.Path == "/internal/sandbox-runners/v1/health/reply" {
+			current = b.health
+		}
+		if current != p || !command.Deadline.After(time.Now()) {
 			http.Error(w, "conflict", 409)
 			return
 		}
