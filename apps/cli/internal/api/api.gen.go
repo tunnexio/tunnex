@@ -1279,7 +1279,7 @@ const (
 
 // Defines values for IPsecConnectionStatusRecoveryVersion.
 const (
-	N1 IPsecConnectionStatusRecoveryVersion = 1
+	IPsecConnectionStatusRecoveryVersionN1 IPsecConnectionStatusRecoveryVersion = 1
 )
 
 // Defines values for IPsecEligibilityReason.
@@ -1533,8 +1533,8 @@ const (
 
 // Defines values for MetaEdition.
 const (
-	Enterprise MetaEdition = "enterprise"
-	Open       MetaEdition = "open"
+	MetaEditionEnterprise MetaEdition = "enterprise"
+	MetaEditionOpen       MetaEdition = "open"
 )
 
 // Defines values for MetaSandboxModuleState.
@@ -1744,14 +1744,46 @@ const (
 
 // Defines values for SandboxImageProfileArchitecture.
 const (
-	Amd64 SandboxImageProfileArchitecture = "amd64"
-	Arm64 SandboxImageProfileArchitecture = "arm64"
+	SandboxImageProfileArchitectureAmd64 SandboxImageProfileArchitecture = "amd64"
+	SandboxImageProfileArchitectureArm64 SandboxImageProfileArchitecture = "arm64"
 )
 
 // Defines values for SandboxImageProfileQualification.
 const (
 	Candidate       SandboxImageProfileQualification = "candidate"
 	NativeQualified SandboxImageProfileQualification = "native-qualified"
+)
+
+// Defines values for SandboxRunnerEnrollmentState.
+const (
+	AwaitingConnection SandboxRunnerEnrollmentState = "awaiting_connection"
+	AwaitingInstall    SandboxRunnerEnrollmentState = "awaiting_install"
+	Expired            SandboxRunnerEnrollmentState = "expired"
+	Offline            SandboxRunnerEnrollmentState = "offline"
+	PendingCleanup     SandboxRunnerEnrollmentState = "pending_cleanup"
+	Ready              SandboxRunnerEnrollmentState = "ready"
+	Revoked            SandboxRunnerEnrollmentState = "revoked"
+)
+
+// Defines values for SandboxRunnerEnrollmentProfileArchitecture.
+const (
+	SandboxRunnerEnrollmentProfileArchitectureAmd64 SandboxRunnerEnrollmentProfileArchitecture = "amd64"
+)
+
+// Defines values for SandboxRunnerInstallImageArchitecture.
+const (
+	Amd64 SandboxRunnerInstallImageArchitecture = "amd64"
+)
+
+// Defines values for SandboxRunnerInstallPlanEdition.
+const (
+	SandboxRunnerInstallPlanEditionEnterprise SandboxRunnerInstallPlanEdition = "enterprise"
+	SandboxRunnerInstallPlanEditionOpen       SandboxRunnerInstallPlanEdition = "open"
+)
+
+// Defines values for SandboxRunnerInstallPlanVersion.
+const (
+	SandboxRunnerInstallPlanVersionN1 SandboxRunnerInstallPlanVersion = 1
 )
 
 // Defines values for SandboxScopeProtocol.
@@ -7081,6 +7113,135 @@ type SandboxPublicationUpdate struct {
 	ExpectedEnabled bool `json:"expected_enabled"`
 }
 
+// SandboxRunnerArtifact defines model for SandboxRunnerArtifact.
+type SandboxRunnerArtifact struct {
+	Sha256 string `json:"sha256"`
+	Url    string `json:"url"`
+}
+
+// SandboxRunnerBootstrapRequest defines model for SandboxRunnerBootstrapRequest.
+type SandboxRunnerBootstrapRequest struct {
+	BootstrapToken     string             `json:"bootstrap_token"`
+	CertificateRequest string             `json:"certificate_request"`
+	EnrollmentId       openapi_types.UUID `json:"enrollment_id"`
+	ProbePublicKey     string             `json:"probe_public_key"`
+}
+
+// SandboxRunnerBootstrapResponse defines model for SandboxRunnerBootstrapResponse.
+type SandboxRunnerBootstrapResponse struct {
+	ApiCa        string                   `json:"api_ca"`
+	Certificate  string                   `json:"certificate"`
+	EnrollmentId openapi_types.UUID       `json:"enrollment_id"`
+	Install      SandboxRunnerInstallPlan `json:"install"`
+	RunnerCa     string                   `json:"runner_ca"`
+}
+
+// SandboxRunnerEnrollment defines model for SandboxRunnerEnrollment.
+type SandboxRunnerEnrollment struct {
+	BlockedReasons       []string                     `json:"blocked_reasons"`
+	CertificateExpiresAt *time.Time                   `json:"certificate_expires_at,omitempty"`
+	CreatedAt            time.Time                    `json:"created_at"`
+	ExpiresAt            time.Time                    `json:"expires_at"`
+	Id                   openapi_types.UUID           `json:"id"`
+	InstallCommand       string                       `json:"install_command"`
+	LastSeenAt           *time.Time                   `json:"last_seen_at,omitempty"`
+	Name                 string                       `json:"name"`
+	ProfileId            openapi_types.UUID           `json:"profile_id"`
+	State                SandboxRunnerEnrollmentState `json:"state"`
+}
+
+// SandboxRunnerEnrollmentState defines model for SandboxRunnerEnrollment.State.
+type SandboxRunnerEnrollmentState string
+
+// SandboxRunnerEnrollmentCreate defines model for SandboxRunnerEnrollmentCreate.
+type SandboxRunnerEnrollmentCreate struct {
+	IdempotencyKey openapi_types.UUID `json:"idempotency_key"`
+	Name           string             `json:"name"`
+	ProfileId      openapi_types.UUID `json:"profile_id"`
+}
+
+// SandboxRunnerEnrollmentIssue defines model for SandboxRunnerEnrollmentIssue.
+type SandboxRunnerEnrollmentIssue struct {
+	BootstrapToken *string                 `json:"bootstrap_token,omitempty"`
+	Enrollment     SandboxRunnerEnrollment `json:"enrollment"`
+}
+
+// SandboxRunnerEnrollmentList defines model for SandboxRunnerEnrollmentList.
+type SandboxRunnerEnrollmentList struct {
+	BlockedReasons []string                         `json:"blocked_reasons"`
+	Enrollments    []SandboxRunnerEnrollment        `json:"enrollments"`
+	Profiles       []SandboxRunnerEnrollmentProfile `json:"profiles"`
+}
+
+// SandboxRunnerEnrollmentProfile defines model for SandboxRunnerEnrollmentProfile.
+type SandboxRunnerEnrollmentProfile struct {
+	Architecture    SandboxRunnerEnrollmentProfileArchitecture `json:"architecture"`
+	BlockedReasons  []string                                   `json:"blocked_reasons"`
+	BootstrapScript SandboxRunnerArtifact                      `json:"bootstrap_script"`
+	Id              openapi_types.UUID                         `json:"id"`
+	Install         SandboxRunnerInstallPlan                   `json:"install"`
+	Name            string                                     `json:"name"`
+	Prerequisites   []string                                   `json:"prerequisites"`
+}
+
+// SandboxRunnerEnrollmentProfileArchitecture defines model for SandboxRunnerEnrollmentProfile.Architecture.
+type SandboxRunnerEnrollmentProfileArchitecture string
+
+// SandboxRunnerInstallController defines model for SandboxRunnerInstallController.
+type SandboxRunnerInstallController struct {
+	ApiUrl     string `json:"api_url"`
+	ServerName string `json:"server_name"`
+	Uri        string `json:"uri"`
+	Url        string `json:"url"`
+}
+
+// SandboxRunnerInstallGateway defines model for SandboxRunnerInstallGateway.
+type SandboxRunnerInstallGateway struct {
+	ContainerId string                        `json:"container_id"`
+	ImageDigest string                        `json:"image_digest"`
+	Interface   string                        `json:"interface"`
+	NodeId      openapi_types.UUID            `json:"node_id"`
+	Terminal    *SandboxRunnerInstallTerminal `json:"terminal,omitempty"`
+}
+
+// SandboxRunnerInstallImage defines model for SandboxRunnerInstallImage.
+type SandboxRunnerInstallImage struct {
+	Architecture          SandboxRunnerInstallImageArchitecture `json:"architecture"`
+	ConfigDigest          string                                `json:"config_digest"`
+	QualificationEvidence string                                `json:"qualification_evidence"`
+	Sha256                string                                `json:"sha256"`
+	TemplateId            openapi_types.UUID                    `json:"template_id"`
+	Url                   string                                `json:"url"`
+}
+
+// SandboxRunnerInstallImageArchitecture defines model for SandboxRunnerInstallImage.Architecture.
+type SandboxRunnerInstallImageArchitecture string
+
+// SandboxRunnerInstallPlan defines model for SandboxRunnerInstallPlan.
+type SandboxRunnerInstallPlan struct {
+	Bundle     SandboxRunnerArtifact           `json:"bundle"`
+	Controller SandboxRunnerInstallController  `json:"controller"`
+	Edition    SandboxRunnerInstallPlanEdition `json:"edition"`
+	Gateway    SandboxRunnerInstallGateway     `json:"gateway"`
+	Images     []SandboxRunnerInstallImage     `json:"images"`
+	OrgId      openapi_types.UUID              `json:"org_id"`
+	SourceSha  string                          `json:"source_sha"`
+	Version    SandboxRunnerInstallPlanVersion `json:"version"`
+}
+
+// SandboxRunnerInstallPlanEdition defines model for SandboxRunnerInstallPlan.Edition.
+type SandboxRunnerInstallPlanEdition string
+
+// SandboxRunnerInstallPlanVersion defines model for SandboxRunnerInstallPlan.Version.
+type SandboxRunnerInstallPlanVersion int
+
+// SandboxRunnerInstallTerminal defines model for SandboxRunnerInstallTerminal.
+type SandboxRunnerInstallTerminal struct {
+	Endpoint        string             `json:"endpoint"`
+	NodeId          openapi_types.UUID `json:"node_id"`
+	RuntimeEndpoint string             `json:"runtime_endpoint"`
+}
+
 // SandboxScope defines model for SandboxScope.
 type SandboxScope struct {
 	Cidr     string               `json:"cidr"`
@@ -8623,6 +8784,9 @@ type UpdateSandboxDelegationSettingsJSONRequestBody UpdateSandboxDelegationSetti
 // IssueSandboxDelegationJSONRequestBody defines body for IssueSandboxDelegation for application/json ContentType.
 type IssueSandboxDelegationJSONRequestBody = SandboxDelegationCreate
 
+// CreateSandboxRunnerEnrollmentJSONRequestBody defines body for CreateSandboxRunnerEnrollment for application/json ContentType.
+type CreateSandboxRunnerEnrollmentJSONRequestBody = SandboxRunnerEnrollmentCreate
+
 // UpdateSandboxSetupJSONRequestBody defines body for UpdateSandboxSetup for application/json ContentType.
 type UpdateSandboxSetupJSONRequestBody = SandboxSetupUpdate
 
@@ -8664,6 +8828,9 @@ type SetSsoConfigJSONRequestBody = SsoConfigRequest
 
 // SetZeroTrustModeJSONRequestBody defines body for SetZeroTrustMode for application/json ContentType.
 type SetZeroTrustModeJSONRequestBody = ZeroTrustMode
+
+// BootstrapSandboxRunnerJSONRequestBody defines body for BootstrapSandboxRunner for application/json ContentType.
+type BootstrapSandboxRunnerJSONRequestBody = SandboxRunnerBootstrapRequest
 
 // BootstrapSandboxJSONRequestBody defines body for BootstrapSandbox for application/json ContentType.
 type BootstrapSandboxJSONRequestBody = SandboxBootstrapRequest
@@ -10336,6 +10503,20 @@ type ClientInterface interface {
 	// RevokeSandboxDelegation request
 	RevokeSandboxDelegation(ctx context.Context, orgId openapi_types.UUID, delegationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListSandboxRunnerEnrollments request
+	ListSandboxRunnerEnrollments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSandboxRunnerEnrollmentWithBody request with any body
+	CreateSandboxRunnerEnrollmentWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, body CreateSandboxRunnerEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeSandboxRunnerEnrollment request
+	RevokeSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSandboxRunnerEnrollment request
+	GetSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSandboxSetup request
 	GetSandboxSetup(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -10471,6 +10652,11 @@ type ClientInterface interface {
 	SetZeroTrustModeWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetZeroTrustMode(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BootstrapSandboxRunnerWithBody request with any body
+	BootstrapSandboxRunnerWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BootstrapSandboxRunner(ctx context.Context, body BootstrapSandboxRunnerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BootstrapSandboxWithBody request with any body
 	BootstrapSandboxWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17339,6 +17525,66 @@ func (c *Client) RevokeSandboxDelegation(ctx context.Context, orgId openapi_type
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListSandboxRunnerEnrollments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSandboxRunnerEnrollmentsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSandboxRunnerEnrollmentWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSandboxRunnerEnrollmentRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, body CreateSandboxRunnerEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSandboxRunnerEnrollmentRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeSandboxRunnerEnrollmentRequest(c.Server, orgId, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSandboxRunnerEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSandboxRunnerEnrollmentRequest(c.Server, orgId, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetSandboxSetup(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxSetupRequest(c.Server, orgId)
 	if err != nil {
@@ -17929,6 +18175,30 @@ func (c *Client) SetZeroTrustModeWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) SetZeroTrustMode(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetZeroTrustModeRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BootstrapSandboxRunnerWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBootstrapSandboxRunnerRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BootstrapSandboxRunner(ctx context.Context, body BootstrapSandboxRunnerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBootstrapSandboxRunnerRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -36924,6 +37194,169 @@ func NewRevokeSandboxDelegationRequest(server string, orgId openapi_types.UUID, 
 	return req, nil
 }
 
+// NewListSandboxRunnerEnrollmentsRequest generates requests for ListSandboxRunnerEnrollments
+func NewListSandboxRunnerEnrollmentsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSandboxRunnerEnrollmentRequest calls the generic CreateSandboxRunnerEnrollment builder with application/json body
+func NewCreateSandboxRunnerEnrollmentRequest(server string, orgId openapi_types.UUID, body CreateSandboxRunnerEnrollmentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSandboxRunnerEnrollmentRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateSandboxRunnerEnrollmentRequestWithBody generates requests for CreateSandboxRunnerEnrollment with any type of body
+func NewCreateSandboxRunnerEnrollmentRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeSandboxRunnerEnrollmentRequest generates requests for RevokeSandboxRunnerEnrollment
+func NewRevokeSandboxRunnerEnrollmentRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSandboxRunnerEnrollmentRequest generates requests for GetSandboxRunnerEnrollment
+func NewGetSandboxRunnerEnrollmentRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sandbox-runner-enrollments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetSandboxSetupRequest generates requests for GetSandboxSetup
 func NewGetSandboxSetupRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -38526,6 +38959,46 @@ func NewSetZeroTrustModeRequestWithBody(server string, orgId openapi_types.UUID,
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBootstrapSandboxRunnerRequest calls the generic BootstrapSandboxRunner builder with application/json body
+func NewBootstrapSandboxRunnerRequest(server string, body BootstrapSandboxRunnerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBootstrapSandboxRunnerRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBootstrapSandboxRunnerRequestWithBody generates requests for BootstrapSandboxRunner with any type of body
+func NewBootstrapSandboxRunnerRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/sandbox-runners/bootstrap")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -40316,6 +40789,20 @@ type ClientWithResponsesInterface interface {
 	// RevokeSandboxDelegationWithResponse request
 	RevokeSandboxDelegationWithResponse(ctx context.Context, orgId openapi_types.UUID, delegationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeSandboxDelegationResponse, error)
 
+	// ListSandboxRunnerEnrollmentsWithResponse request
+	ListSandboxRunnerEnrollmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSandboxRunnerEnrollmentsResponse, error)
+
+	// CreateSandboxRunnerEnrollmentWithBodyWithResponse request with any body
+	CreateSandboxRunnerEnrollmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSandboxRunnerEnrollmentResponse, error)
+
+	CreateSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateSandboxRunnerEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSandboxRunnerEnrollmentResponse, error)
+
+	// RevokeSandboxRunnerEnrollmentWithResponse request
+	RevokeSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeSandboxRunnerEnrollmentResponse, error)
+
+	// GetSandboxRunnerEnrollmentWithResponse request
+	GetSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxRunnerEnrollmentResponse, error)
+
 	// GetSandboxSetupWithResponse request
 	GetSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxSetupResponse, error)
 
@@ -40451,6 +40938,11 @@ type ClientWithResponsesInterface interface {
 	SetZeroTrustModeWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetZeroTrustModeResponse, error)
 
 	SetZeroTrustModeWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetZeroTrustModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetZeroTrustModeResponse, error)
+
+	// BootstrapSandboxRunnerWithBodyWithResponse request with any body
+	BootstrapSandboxRunnerWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapSandboxRunnerResponse, error)
+
+	BootstrapSandboxRunnerWithResponse(ctx context.Context, body BootstrapSandboxRunnerJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapSandboxRunnerResponse, error)
 
 	// BootstrapSandboxWithBodyWithResponse request with any body
 	BootstrapSandboxWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error)
@@ -49270,6 +49762,98 @@ func (r RevokeSandboxDelegationResponse) StatusCode() int {
 	return 0
 }
 
+type ListSandboxRunnerEnrollmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxRunnerEnrollmentList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSandboxRunnerEnrollmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSandboxRunnerEnrollmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateSandboxRunnerEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *SandboxRunnerEnrollmentIssue
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSandboxRunnerEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSandboxRunnerEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeSandboxRunnerEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxRunnerEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeSandboxRunnerEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeSandboxRunnerEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetSandboxRunnerEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxRunnerEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSandboxRunnerEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSandboxRunnerEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetSandboxSetupResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50082,6 +50666,29 @@ func (r SetZeroTrustModeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetZeroTrustModeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type BootstrapSandboxRunnerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SandboxRunnerBootstrapResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r BootstrapSandboxRunnerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BootstrapSandboxRunnerResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -55169,6 +55776,50 @@ func (c *ClientWithResponses) RevokeSandboxDelegationWithResponse(ctx context.Co
 	return ParseRevokeSandboxDelegationResponse(rsp)
 }
 
+// ListSandboxRunnerEnrollmentsWithResponse request returning *ListSandboxRunnerEnrollmentsResponse
+func (c *ClientWithResponses) ListSandboxRunnerEnrollmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSandboxRunnerEnrollmentsResponse, error) {
+	rsp, err := c.ListSandboxRunnerEnrollments(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSandboxRunnerEnrollmentsResponse(rsp)
+}
+
+// CreateSandboxRunnerEnrollmentWithBodyWithResponse request with arbitrary body returning *CreateSandboxRunnerEnrollmentResponse
+func (c *ClientWithResponses) CreateSandboxRunnerEnrollmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSandboxRunnerEnrollmentResponse, error) {
+	rsp, err := c.CreateSandboxRunnerEnrollmentWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSandboxRunnerEnrollmentResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateSandboxRunnerEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSandboxRunnerEnrollmentResponse, error) {
+	rsp, err := c.CreateSandboxRunnerEnrollment(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSandboxRunnerEnrollmentResponse(rsp)
+}
+
+// RevokeSandboxRunnerEnrollmentWithResponse request returning *RevokeSandboxRunnerEnrollmentResponse
+func (c *ClientWithResponses) RevokeSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeSandboxRunnerEnrollmentResponse, error) {
+	rsp, err := c.RevokeSandboxRunnerEnrollment(ctx, orgId, enrollmentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeSandboxRunnerEnrollmentResponse(rsp)
+}
+
+// GetSandboxRunnerEnrollmentWithResponse request returning *GetSandboxRunnerEnrollmentResponse
+func (c *ClientWithResponses) GetSandboxRunnerEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxRunnerEnrollmentResponse, error) {
+	rsp, err := c.GetSandboxRunnerEnrollment(ctx, orgId, enrollmentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSandboxRunnerEnrollmentResponse(rsp)
+}
+
 // GetSandboxSetupWithResponse request returning *GetSandboxSetupResponse
 func (c *ClientWithResponses) GetSandboxSetupWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetSandboxSetupResponse, error) {
 	rsp, err := c.GetSandboxSetup(ctx, orgId, reqEditors...)
@@ -55603,6 +56254,23 @@ func (c *ClientWithResponses) SetZeroTrustModeWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseSetZeroTrustModeResponse(rsp)
+}
+
+// BootstrapSandboxRunnerWithBodyWithResponse request with arbitrary body returning *BootstrapSandboxRunnerResponse
+func (c *ClientWithResponses) BootstrapSandboxRunnerWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapSandboxRunnerResponse, error) {
+	rsp, err := c.BootstrapSandboxRunnerWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBootstrapSandboxRunnerResponse(rsp)
+}
+
+func (c *ClientWithResponses) BootstrapSandboxRunnerWithResponse(ctx context.Context, body BootstrapSandboxRunnerJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapSandboxRunnerResponse, error) {
+	rsp, err := c.BootstrapSandboxRunner(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBootstrapSandboxRunnerResponse(rsp)
 }
 
 // BootstrapSandboxWithBodyWithResponse request with arbitrary body returning *BootstrapSandboxResponse
@@ -68082,6 +68750,138 @@ func ParseRevokeSandboxDelegationResponse(rsp *http.Response) (*RevokeSandboxDel
 	return response, nil
 }
 
+// ParseListSandboxRunnerEnrollmentsResponse parses an HTTP response from a ListSandboxRunnerEnrollmentsWithResponse call
+func ParseListSandboxRunnerEnrollmentsResponse(rsp *http.Response) (*ListSandboxRunnerEnrollmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSandboxRunnerEnrollmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxRunnerEnrollmentList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSandboxRunnerEnrollmentResponse parses an HTTP response from a CreateSandboxRunnerEnrollmentWithResponse call
+func ParseCreateSandboxRunnerEnrollmentResponse(rsp *http.Response) (*CreateSandboxRunnerEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSandboxRunnerEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SandboxRunnerEnrollmentIssue
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeSandboxRunnerEnrollmentResponse parses an HTTP response from a RevokeSandboxRunnerEnrollmentWithResponse call
+func ParseRevokeSandboxRunnerEnrollmentResponse(rsp *http.Response) (*RevokeSandboxRunnerEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeSandboxRunnerEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxRunnerEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSandboxRunnerEnrollmentResponse parses an HTTP response from a GetSandboxRunnerEnrollmentWithResponse call
+func ParseGetSandboxRunnerEnrollmentResponse(rsp *http.Response) (*GetSandboxRunnerEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSandboxRunnerEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxRunnerEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetSandboxSetupResponse parses an HTTP response from a GetSandboxSetupWithResponse call
 func ParseGetSandboxSetupResponse(rsp *http.Response) (*GetSandboxSetupResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -69183,6 +69983,39 @@ func ParseSetZeroTrustModeResponse(rsp *http.Response) (*SetZeroTrustModeRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ZeroTrustMode
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBootstrapSandboxRunnerResponse parses an HTTP response from a BootstrapSandboxRunnerWithResponse call
+func ParseBootstrapSandboxRunnerResponse(rsp *http.Response) (*BootstrapSandboxRunnerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BootstrapSandboxRunnerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SandboxRunnerBootstrapResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
