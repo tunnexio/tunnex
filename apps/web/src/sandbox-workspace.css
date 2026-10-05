@@ -457,6 +457,8 @@
  .sb-dialog-footer { padding:13px 18px; }
 }
 @media(prefers-reduced-motion:reduce) { .sb-workspace *, .sb-dialog * { transition:none!important; animation:none!important; } }
+[role="dialog"]:has(> .sb-runner-command) { min-width:0; }
+[role="dialog"]:has(> .sb-runner-command) > div:last-child { flex-wrap:wrap; gap:8px; }
 .sb-console-surface .sb-workflow-note > details { margin-left:auto; font-size:9px; }
 .sb-workflow-note > details > summary { cursor:pointer; color:#8795ab; }
 .sb-workflow-note > details[open] { flex-basis:100%; }
