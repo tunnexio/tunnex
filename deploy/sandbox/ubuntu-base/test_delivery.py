@@ -114,6 +114,8 @@ class LockTests(unittest.TestCase):
             link.symlink_to(target)
             with self.assertRaises(delivery.InvalidInput):
                 delivery.verify(link, dict(size=7, sha256=delivery.sha256(b"fixture")))
+            with self.assertRaises(delivery.InvalidInput):
+                delivery.read_json(link)
 
 
 class BuildTests(unittest.TestCase):

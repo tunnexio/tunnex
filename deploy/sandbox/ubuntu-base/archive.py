@@ -2,6 +2,8 @@
 """Build a source-pinned offline Ubuntu workload image and public archive descriptor."""
 
 import argparse
+import gzip
+import hashlib
 import io
 import json
 import os
@@ -47,7 +49,8 @@ def inspect_archive(path, expected_config, arch):
         delivery.need(config is not None and config.isfile() and config.size <= 2 * delivery.MIB,
                       "bounded config metadata required")
         raw = archive.extractfile(config).read()
-        delivery.need("sha256:" + delivery.sha256(raw) == expected_config, "image config differs from output pin")
+        config_digest = "sha256:" + delivery.sha256(raw)
+        delivery.need(expected_config is None or config_digest == expected_config, "image config differs from output pin")
         metadata = json.loads(raw, object_pairs_hook=delivery.unique_object)
         delivery.need(metadata.get("architecture") == arch and metadata.get("os") == "linux",
                       "image archive architecture mismatch")
@@ -58,7 +61,25 @@ def inspect_archive(path, expected_config, arch):
         delivery.need(isinstance(layers, list) and layers and len(layers) <= 64
                       and all(name in entries and entries[name].isfile() for name in layers),
                       "missing image layers")
-    return metadata
+        rootfs = metadata.get("rootfs", {})
+        diff_ids = rootfs.get("diff_ids", [])
+        delivery.need(rootfs.get("type") == "layers" and len(diff_ids) == len(layers),
+                      "image layer identity inventory mismatch")
+        unpacked_bytes = 0
+        for name, expected_diff in zip(layers, diff_ids):
+            delivery.need(isinstance(expected_diff, str) and expected_diff.startswith("sha256:")
+                          and delivery.DIGEST.fullmatch(expected_diff[7:]), "invalid rootfs layer pin")
+            compressed = archive.extractfile(entries[name])
+            magic = compressed.read(2)
+            compressed.seek(0)
+            content = gzip.GzipFile(fileobj=compressed) if magic == b"\x1f\x8b" else compressed
+            digest = hashlib.sha256()
+            while block := content.read(delivery.MIB):
+                digest.update(block)
+                unpacked_bytes += len(block)
+                delivery.need(unpacked_bytes <= 512 * delivery.MIB, "unpacked image exceeds delivery limit")
+            delivery.need("sha256:" + digest.hexdigest() == expected_diff, "image layer differs from config pin")
+    return metadata, config_digest, unpacked_bytes
 
 
 def committed(path, source):
@@ -97,14 +118,15 @@ def verify_delivery(directory, expected_source, expected_architecture, expected_
     delivery.need(delivery.DIGEST.fullmatch(record.get("sha256", "")) and type(record.get("bytes")) is int
                   and 0 < record["bytes"] <= 512 * delivery.MIB, "invalid image archive identity")
     delivery.verify(archive, dict(size=record["bytes"], sha256=record["sha256"]))
-    metadata = inspect_archive(archive, config, expected_architecture)
+    metadata, _, unpacked_bytes = inspect_archive(archive, config, expected_architecture)
     labels = metadata.get("config", {}).get("Labels", {})
     delivery.need(labels.get("io.tunnex.sandbox.source") == expected_source
                   and labels.get("io.tunnex.sandbox.ubuntu-lock") == expected_lock_sha256,
                   "image labels differ from source/lock provenance")
     delivery.need(type(descriptor.get("unpacked_image_bytes")) is int
-                  and 0 < descriptor["unpacked_image_bytes"] <= 512 * delivery.MIB, "invalid measured image size")
-    expected_sums = "".join(delivery.sha256((directory / name).read_bytes()) + "  " + name + "\n"
+                  and descriptor["unpacked_image_bytes"] == unpacked_bytes and unpacked_bytes > 0,
+                  "unpacked image measurement differs from verified layers")
+    expected_sums = "".join(delivery.file_sha256(directory / name) + "  " + name + "\n"
                             for name in (filename, "workload-image.json"))
     sums = directory / "SHA256SUMS"
     delivery.regular(sums)
@@ -186,24 +208,24 @@ def build(lock_path, cache, output, engine, go):
     images = json.loads(command([engine, "image", "inspect", tag]))
     delivery.need(len(images) == 1 and images[0].get("Architecture") == arch
                   and images[0].get("Os") == "linux", "built image platform mismatch")
-    config_digest = images[0]["Id"]
-    delivery.need(config_digest.startswith("sha256:") and delivery.DIGEST.fullmatch(config_digest[7:]),
-                  "invalid output config identity")
     archive = output / f"tunnex-sandbox-ubuntu26-linux-{arch}.docker.tar"
     command([engine, "save", "--output", str(archive), tag])
-    inspect_archive(archive, config_digest, arch)
+    # Docker's containerd image store reports an OCI index as .Id and compressed
+    # bytes as .Size; Podman's provider needs the archive's true config digest.
+    # Measure/verify every uncompressed layer against that config's diff_ids.
+    _, config_digest, unpacked_bytes = inspect_archive(archive, None, arch)
     descriptor = {"schema_version": 1, "source_sha": source, "os": "linux", "architecture": arch,
                   "dependency_lock_sha256": delivery.sha256(lock_raw),
                   "base_manifest_digest": base.split("@", 1)[1],
-                  "archive": {"filename": archive.name, "sha256": delivery.sha256(archive.read_bytes()),
+                  "archive": {"filename": archive.name, "sha256": delivery.file_sha256(archive),
                               "bytes": archive.stat().st_size},
-                  "config_digest": config_digest, "unpacked_image_bytes": images[0]["Size"],
+                  "config_digest": config_digest, "unpacked_image_bytes": unpacked_bytes,
                   "native_qualification": False, "services_started": False,
                   "packages_installed_at_launch": False}
     delivery.write_json(output / "workload-image.json", descriptor)
     with open(output / "SHA256SUMS", "x") as sums:
         for path in (archive, output / "workload-image.json"):
-            sums.write(delivery.sha256(path.read_bytes()) + "  " + path.name + "\n")
+            sums.write(delivery.file_sha256(path) + "  " + path.name + "\n")
     return descriptor
 
 

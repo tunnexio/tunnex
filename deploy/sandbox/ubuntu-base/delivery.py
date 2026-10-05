@@ -45,8 +45,10 @@ def unique_object(pairs):
 
 
 def read_json(path):
-    raw = Path(path).read_bytes()
-    need(len(raw) <= 4 * MIB, "oversized JSON input")
+    path = Path(path)
+    regular(path)
+    need(path.stat().st_size <= 4 * MIB, "oversized JSON input")
+    raw = path.read_bytes()
     return json.loads(raw, object_pairs_hook=unique_object)
 
 
@@ -58,6 +60,15 @@ def write_json(path, value):
 
 def sha256(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def file_sha256(path):
+    regular(path)
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        while block := source.read(MIB):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def package_filename(record):
@@ -99,7 +110,7 @@ def regular(path):
 
 def verify(path, record):
     regular(path)
-    need(path.stat().st_size == record["size"] and sha256(path.read_bytes()) == record["sha256"],
+    need(path.stat().st_size == record["size"] and file_sha256(path) == record["sha256"],
          "input size or checksum mismatch: " + path.name)
 
 
@@ -146,7 +157,8 @@ def validate_seed(seed, arch, *, locked=False):
          "official public registry source and index pin required")
     need(isinstance(seed.get("base_images"), dict) and set(seed["base_images"]) == {"amd64", "arm64"},
          "supported public base pins required")
-    need(BASE.fullmatch(seed.get("base_images", {}).get(arch, "")), "mutable or invalid Ubuntu base")
+    need(all(isinstance(value, str) and BASE.fullmatch(value) for value in seed["base_images"].values()),
+         "mutable or invalid Ubuntu base")
     need(set(seed.get("packages", [])) == REQUIRED and len(seed["packages"]) == len(REQUIRED),
          "essential package set must match the supported image")
 
