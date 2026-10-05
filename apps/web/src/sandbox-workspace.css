@@ -341,7 +341,7 @@
 .sb-runner-checks { width:100%; font-size:11px; margin:14px 0; table-layout:fixed; }
 .sb-runner-checks th,.sb-runner-checks td { border-bottom:1px solid #353949; padding:8px 6px; text-align:left; overflow-wrap:anywhere; }
 .sb-runner-checks th:first-child { width:26%; }
-.sb-runner-checks th:nth-child(2) { width:16%; }
+.sb-runner-checks th:nth-child(2),.sb-runner-checks td:nth-child(2) { width:64px; white-space:nowrap; }
 .sb-runner-checks td[data-result=passed] { color:#a5d7bf; }
 .sb-runner-checks td[data-result=failed] { color:#f099a5; }
 .sb-runner-checks td[data-result=unrun] { color:#baa285; }

@@ -110,6 +110,22 @@ it("copies a public command and a separately shown token without URL, browser-st
   expect(progress.getByRole("status").textContent).toBe("Waiting for installation");
   expect(progress.queryByRole("link", { name: /Review Sandbox setup/ })).toBeNull();
 });
+async function issueWithFakeTimers(){
+  page();await act(async()=>{});fireEvent.click(screen.getByRole("button",{name:"Add sandbox runner"}));
+  fireEvent.change(screen.getByLabelText("Runner name"),{target:{value:"Team runner"}});fireEvent.click(screen.getByRole("button",{name:"Review enrollment"}));fireEvent.click(screen.getByRole("checkbox"));
+  await act(async()=>{fireEvent.click(screen.getByRole("button",{name:"Issue enrollment token"}));});
+  expect(screen.getByRole("dialog",{name:"Save the runner enrollment token"})).toBeTruthy();
+}
+it.each(["expired","revoked","pending_cleanup"])("discards the unacknowledged token after authoritative polling reports %s",async(state)=>{
+  vi.useFakeTimers();await issueWithFakeTimers();mocks.get.mockResolvedValue({data:{...list,enrollments:[{...enrollment,state}]}});
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(screen.queryByRole("dialog",{name:"Save the runner enrollment token"})).toBeNull();expect(screen.queryByText("synthetic-one-time-token")).toBeNull();expect(screen.queryByRole("button",{name:"Copy enrollment token"})).toBeNull();
+  expect(screen.getByRole("dialog",{name:"Runner: Team runner"})).toBeTruthy();expect(screen.queryByRole("link",{name:/Review Sandbox setup/})).toBeNull();
+});
+it("keeps a live one-time token through an uncertain read without claiming authoritative expiry",async()=>{
+  vi.useFakeTimers();await issueWithFakeTimers();mocks.get.mockRejectedValue(new Error("uncertain status"));await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(screen.getByRole("dialog",{name:"Save the runner enrollment token"})).toBeTruthy();expect(screen.getByText("synthetic-one-time-token")).toBeTruthy();expect(screen.queryByText("Expired",{exact:true})).toBeNull();
+});
 it("retries an unconfirmed issuance with the same idempotency key and handles a metadata-only replay", async () => {
   mocks.post.mockRejectedValueOnce(new Error("lost response")).mockResolvedValueOnce({ data: { enrollment } }); page();
   const modal = await review(); fireEvent.click(modal.getByRole("checkbox")); fireEvent.click(modal.getByRole("button", { name: "Issue enrollment token" }));
@@ -304,4 +320,12 @@ it("does not overwrite a fresh replacement report with a late response to the ol
   expect(screen.getByText(/report changed while review was pending/)).toBeTruthy();
   expect(screen.queryByText("Report approved")).toBeNull();
   expect(screen.getByText(replacement.qualification.report_sha256)).toBeTruthy();
+});
+it.each(["revoked","pending_cleanup"])("keeps fresh %s metadata when a late approval response has the same report SHA",async(state)=>{
+  const connected={...enrollment,state:"awaiting_connection",qualification};mocks.get.mockResolvedValue({data:{...list,enrollments:[connected]}});page();fireEvent.click(await screen.findByRole("button",{name:"View Team runner"}));
+  fireEvent.click(screen.getByRole("button",{name:"Review approval"}));fireEvent.change(screen.getByLabelText("Qualification review note"),{target:{value:"Reviewed exact machine and native trial evidence."}});fireEvent.click(screen.getByRole("checkbox"));
+  let resolve!:(value:unknown)=>void;mocks.post.mockReturnValue(new Promise(done=>{resolve=done}));fireEvent.click(screen.getByRole("button",{name:"Approve qualified runner"}));
+  mocks.get.mockResolvedValue({data:{...list,enrollments:[{...connected,state}]}});await waitFor(()=>expect((screen.getByRole("button",{name:"Refresh status"}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole("button",{name:"Refresh status"}));
+  await screen.findByText(state==="revoked"?"Revoked":"Access withdrawn · cleanup pending",{selector:"[role=status]"});await act(async()=>resolve({data:{...connected,state:"ready",qualification:{...qualification,decision:"approved"}}}));
+  expect(screen.getByText(/Runner status or the report changed while review was pending/)).toBeTruthy();expect(screen.getByRole("status").textContent).toBe(state==="revoked"?"Revoked":"Access withdrawn · cleanup pending");expect(screen.queryByRole("link",{name:/Review Sandbox setup/})).toBeNull();expect(screen.queryByText("Report approved")).toBeNull();
 });
