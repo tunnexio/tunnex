@@ -20,7 +20,9 @@ func TestRunnerEnrollmentMigrationPreservesPublishedAuthority(t *testing.T) {
 		t.Fatal("fixture endpoint")
 	}
 	u.Path = "/" + pool.Config().ConnConfig.Database
-	if err = db.Up(u.String()); err != nil {
+	// Test only this owned migration pair even when later dependent trial
+	// migrations are present in the combined checkout.
+	if err = db.MigrateTo(u.String(), 196); err != nil {
 		t.Fatal(err)
 	}
 	var present bool
