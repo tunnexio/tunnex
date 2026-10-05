@@ -1,4 +1,4 @@
-// Offline operator enrollment. Does not connect to AWS, CP or any workload.
+// Runner enrollment. Online bootstrap keeps all private identity on the machine.
 package main
 
 import (
@@ -15,9 +15,22 @@ func main() {
 	dns := flag.String("controller-dns", "", "controller certificate DNS name")
 	controller := flag.String("controller-uri", "", "exact controller URI identity")
 	runner := flag.String("runner-uri", "", "exact runner URI identity")
+	server := flag.String("server", "", "HTTPS API origin for machine bootstrap")
+	enrollment := flag.String("enrollment", "", "scoped enrollment UUID; bootstrap token is read only from stdin")
 	flag.Parse()
 	if flag.NArg() != 0 || !filepath.IsAbs(*destination) || filepath.Clean(*destination) != *destination {
 		fail()
+	}
+	if *server != "" || *enrollment != "" {
+		if *dns != "" || *controller != "" || *runner != "" {
+			fail()
+		}
+		if err := onlineEnrollment(*server, *enrollment, *destination, os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		fmt.Println("Machine identity issued locally. Installation and activation require explicit host administrator consent.")
+		return
 	}
 	bundle, e := sandboxrunner.Enroll(*dns, *controller, *runner, time.Now().UTC())
 	if e != nil {
