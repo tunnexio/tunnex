@@ -348,6 +348,18 @@
 .sb-runner-review-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .sb-runner-review-form { margin-top:14px; }
 .sb-runner-review-form textarea { width:100%; border:1px solid #353949; border-radius:6px; background:#10141d; padding:9px; font-size:12px; }
+.sb-runner-trial { border-top:1px solid #353949; padding-top:16px; }
+.sb-runner-trial h3,.sb-runner-trial h4 { font-weight:600; margin-bottom:7px; }
+.sb-runner-trial-form { margin-top:15px; }
+.sb-runner-trial-form h4:focus { outline:none; }
+.sb-runner-trial-progress { display:grid; gap:12px; margin-top:18px; }
+.sb-runner-trial-phases { border:1px solid #353949; border-radius:8px; padding:3px 12px; }
+.sb-runner-trial-phases > li { display:flex; justify-content:space-between; flex-wrap:wrap; gap:7px; padding:9px 0; border-bottom:1px solid #353949; font-size:11px; }
+.sb-runner-trial-phases > li:last-child { border-bottom:0; }
+.sb-runner-trial-phases > li > span:last-child { color:#969eae; }
+.sb-runner-trial-phases > li[data-state=passed] > span:last-child { color:#a5d7bf; }
+.sb-runner-trial-phases > li[data-state=failed] > span:last-child { color:#f099a5; }
+.sb-runner-trial-connection pre { overflow-wrap:anywhere; white-space:pre-wrap; }
 .sb-catalog-measurement { grid-column:1/-1; font-size:10px; color:#9ba8bd; }
 .sb-catalog-measurement summary { cursor:pointer; }
 .sb-detail-grid { gap:0; border:1px solid #303542; border-radius:9px; background:#141720; overflow:hidden; }

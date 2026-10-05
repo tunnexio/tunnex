@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorMessage } from "../lib/api";
+import { sandboxPublicKeys } from "../lib/sandboxPublicKeys";
 import { Input } from "./ui";
 import { Button } from "./ui/button";
 
@@ -30,8 +31,11 @@ export function SavedSSHKeyPicker({ orgId, value, onChange }: { orgId: string; v
   return () => { active = false; };
  }, [orgId]);
  async function save() {
-  if (busy) return; setBusy(true); setError("");
-  try { const result = await api.POST("/api/v1/organizations/{orgId}/saved-ssh-keys", { params: { path: { orgId } }, body: { name: name.trim(), public_key: publicKey } });
+  if (busy) return;
+  const parsed = sandboxPublicKeys(publicKey);
+  if (!parsed.keys || parsed.keys.length !== 1) { setError("Paste one valid SSH public key from a .pub file. Keep your private key on your computer."); return; }
+  setBusy(true); setError("");
+  try { const result = await api.POST("/api/v1/organizations/{orgId}/saved-ssh-keys", { params: { path: { orgId } }, body: { name: name.trim(), public_key: parsed.keys[0] } });
    if (!result.data) { setError(apiErrorMessage(result.error, "Key could not be saved. It may already be saved.")); return; }
    const items = [...keys, result.data]; const ids = [...selected, result.data.id]; setKeys(items); setSelected(ids); publish(items, ids, manual); setAdding(false); setName(""); setPublicKey("");
   } catch { setError("Key could not be saved."); } finally { setBusy(false); }

@@ -6,6 +6,7 @@ import { useOrg } from "../lib/useOrg";
 import * as Dialog from "@radix-ui/react-dialog";
 import { SandboxHeader, RuntimeMark, RuntimeSpecs, SandboxStatus, WorkflowNote, isConnectable, remainingLifetime } from "../components/SandboxChrome";
 import { sandboxConnectCommand } from "../lib/sandboxConnection";
+import { sandboxPublicKeys } from "../lib/sandboxPublicKeys";
 import { SandboxBlockedReasons } from "../components/SandboxAvailability";
 import { Logo } from "../brand";
 import { Button, ErrorText, Field, Input, Loading, Select } from "../components/ui";
@@ -139,11 +140,9 @@ function Create({ orgId, inventory }: { orgId: string; inventory: Inventory }) {
   setTTL(Math.min(60, Math.floor((selected?.max_ttl_seconds ?? 3600) / 60)));
  }
  function validatedKeys() {
-  const lines = sshKeys.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  if (!lines.length || lines.length > 7 || lines.some(line => line.length > 8192 || !/^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))\s+[A-Za-z0-9+/]+={0,2}(?:\s+.*)?$/.test(line))) { setError("Paste valid SSH public keys from your .pub files, one per line."); return null; }
-  const publicKeys = lines.map(line => line.split(/\s+/).slice(0, 2).join(" ")).sort();
-  if (new Set(publicKeys).size !== publicKeys.length) { setError("Each SSH public key must be different."); return null; }
-  return publicKeys;
+  const result = sandboxPublicKeys(sshKeys);
+  if (result.error) { setError(result.error); return null; }
+  return result.keys;
  }
  async function submit(event: FormEvent) {
   event.preventDefault(); if (creationInFlight.current || !inventory.available || !template || !name.trim()) return;
