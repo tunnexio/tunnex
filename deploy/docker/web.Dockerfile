@@ -3,7 +3,9 @@
 
 # Ship editor clients from the exact control-plane source, independently of
 # package-manager release lag. Downloads remain behind the CP HTTPS authority.
-FROM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS editor-client
+# Cross-compile this same client set once on the build host, rather than
+# repeating it under QEMU for each nginx runtime architecture.
+FROM --platform=$BUILDPLATFORM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS editor-client
 WORKDIR /src/apps/cli
 COPY apps/cli/ ./
 ARG VERSION=dev
@@ -13,7 +15,9 @@ RUN mkdir -p /editor-client && for os in darwin linux; do for arch in amd64 arm6
     sha256sum /editor-client/tunnex-$os-$arch | cut -d ' ' -f 1 > /editor-client/tunnex-$os-$arch.sha256; \
     done; done
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
+# The SPA is static output shared by both runtime architectures. Keep Node,
+# TypeScript and Vite native too; only the final nginx image is target-specific.
+FROM --platform=$BUILDPLATFORM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 RUN corepack enable
 
