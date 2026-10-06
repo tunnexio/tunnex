@@ -39,6 +39,20 @@ class NativeImagePublicationTest < Minitest::Test
     assert_includes build.fetch('cache-to'), 'timeout=2m,ignore-error=true'
   end
 
+  def test_web_builds_shared_assets_natively_and_retains_both_runtime_platforms
+    dockerfile = File.read(File.join(ROOT, 'deploy/docker/web.Dockerfile'))
+    # The shared frontend and cross-compiled client set must not be rebuilt by
+    # emulated target toolchains; nginx still follows the requested platform.
+    assert_match(/^FROM --platform=\$BUILDPLATFORM golang:.* AS editor-client$/, dockerfile)
+    assert_match(/^FROM --platform=\$BUILDPLATFORM node:.* AS build$/, dockerfile)
+    assert_match(/^FROM nginxinc\/nginx-unprivileged:/, dockerfile)
+    assert_includes dockerfile, 'CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build'
+    assert_includes dockerfile, 'for os in darwin linux; do for arch in amd64 arm64; do'
+    assert_includes dockerfile, 'COPY --from=editor-client /editor-client /usr/share/nginx/html/editor-client'
+    build = CI.fetch('jobs').fetch('publish').fetch('steps').find { |s| s['id'] == 'build' }.fetch('with')
+    assert_equal 'linux/amd64,linux/arm64', build.fetch('platforms')
+  end
+
   def run_merge(scenario)
     Dir.mktmpdir do |d|
       digests = File.join(d, 'digests'); Dir.mkdir(digests)
