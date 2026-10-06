@@ -36,7 +36,7 @@ function show(applications = [app("a1", "Payroll"), app("a2", "Billing")], permi
 function rowAction(name: string, action: string) { return within(screen.getByRole("group", { name: `Actions for ${name}` })).getByRole("button", { name: action }); }
 function bulkAction(action: string) { return within(document.querySelector(".tnx-table-selection") as HTMLElement).getByRole("button", { name: action }); }
 
-describe("App Access inventory actions", () => {
+describe("Applications inventory actions", () => {
   it("uses the shared table, selects the current page, and names the full disable confirmation", async () => {
     show();
     const table = screen.getByRole("table", { name: "Applications" });

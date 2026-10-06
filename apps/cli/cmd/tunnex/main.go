@@ -25,6 +25,8 @@ func usage() {
 	fmt.Fprint(os.Stderr, `tunnex — self-hosted VPN & Zero Trust
 
 Usage:
+  tunnex editor --server HTTPS_URL --org UUID --target UUID --account USER [--ca PEM]
+                                            approve and open VS Code Remote SSH
   tunnex login  [--server URL] [--device]   sign in (browser; --device for browserless hosts)
   tunnex logout                             revoke the credential and forget it locally
   tunnex device create --name NAME [--full-tunnel]
@@ -67,6 +69,20 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
+	case "editor":
+		fs := flag.NewFlagSet("editor", flag.ExitOnError)
+		server := fs.String("server", os.Getenv("TUNNEX_SERVER"), "HTTPS control plane")
+		org := fs.String("org", "", "organization UUID")
+		target := fs.String("target", "", "registered server UUID")
+		account := fs.String("account", "", "granted Linux account")
+		ca := fs.String("ca", "", "additional trusted control-plane CA PEM")
+		_ = fs.Parse(os.Args[2:])
+		err = cli.Editor(ctx, cli.EditorOptions{Server: *server, Org: *org, Target: *target, Account: *account, CA: *ca})
+	case "editor-proxy":
+		fs := flag.NewFlagSet("editor-proxy", flag.ExitOnError)
+		connection := fs.String("connection", "", "private editor connection file")
+		_ = fs.Parse(os.Args[2:])
+		err = cli.EditorProxy(ctx, *connection)
 	case "login":
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", os.Getenv("TUNNEX_SERVER"), "Tunnex server base URL (or TUNNEX_SERVER)")

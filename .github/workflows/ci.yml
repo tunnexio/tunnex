@@ -65,7 +65,7 @@ jobs:
                 # api / cli / node / operator builds — only its ABSENCE can, which DELETED covers.
                 GO_RELEVANT=$(printf '%s\n' "$CHANGED" \
                   | grep -vxF 'apps/api/cmd/seed-fixtures/fixtures.sql' \
-                  | grep -E '(^deploy/test-api-edition\.sh$|^deploy/sandbox/|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/|apps/api/internal/sandboxes/image_profiles\.json$)' || true)
+                  | grep -E '(^deploy/test-api-edition\.sh$|^deploy/sandbox/|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|packages/apptransport/bootstrap/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/|apps/api/internal/sandboxes/image_profiles\.json$)' || true)
                 DELETED_GO=$(printf '%s\n' "$DELETED" | grep -E '.' || true)
                 if [ -z "$(printf '%s' "$GO_RELEVANT$DELETED_GO" | tr -d '[:space:]')" ]; then
                   RUN_GO=false
@@ -451,6 +451,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @tunnex/web typecheck
+          python3 tests/editor-bootstrap/test_bootstrap.py
           pnpm --filter @tunnex/web test
           pnpm --filter @tunnex/web build
       # Always compile E2E specs, as in the original blocking gate.

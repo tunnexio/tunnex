@@ -297,7 +297,7 @@ export default function Settings() {
           </SettingGroup>
         )}
         {serverAdmin && active === "app-access-domains" && state.status === "authed" && (
-          <SettingGroup id="app-access-domains" title="App Access domains" tabpanel>
+          <SettingGroup id="app-access-domains" title="Applications domains" tabpanel>
             <AppAccessDomainsSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
@@ -1785,7 +1785,7 @@ const RAIL: ReadonlyArray<{
   },
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
-  { id: "app-access-domains", label: "App Access domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
+  { id: "app-access-domains", label: "Applications domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,

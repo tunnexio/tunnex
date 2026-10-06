@@ -1042,3 +1042,16 @@ cmp -s "$TMP/ai-partial.env" "$TMP/ai-https/.env" || fail 'partial credential re
 cmp -s "$TMP/ai-before.yml" "$TMP/ai-https/tunnex.yml" || fail 'partial credential refusal changed the deployment'
 
 printf 'install host bootstrap contract: PASS\n'
+
+# Browser SSH uses the existing installer and preserves its explicit opt-in.
+grep -qx 'TUNNEX_SERVER_ACCESS_ENABLED=false' "$TMP/ai-http/.env" || fail 'Browser SSH must default off'
+(TUNNEX_SERVER_ACCESS_ENABLED=true run_ai_install "$TMP/sa-enabled" http://192.0.2.10) >"$TMP/sa-enabled-output"
+grep -qx 'TUNNEX_SERVER_ACCESS_ENABLED=true' "$TMP/sa-enabled/.env" || fail 'Browser SSH opt-in was not persisted'
+printf '%s\n' 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings' 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true' >>"$TMP/sa-enabled/.env"
+cp "$TMP/sa-enabled/.env" "$TMP/sa-enabled-before.env"
+run_ai_install "$TMP/sa-enabled" http://192.0.2.10 >"$TMP/sa-rerun-output"
+cmp -s "$TMP/sa-enabled-before.env" "$TMP/sa-enabled/.env" || fail 'rerun changed Browser SSH opt-in or durable keys'
+if (TUNNEX_SERVER_ACCESS_ENABLED=automatic run_ai_install "$TMP/sa-invalid" http://192.0.2.10) >"$TMP/sa-invalid-output" 2>&1; then
+ fail 'invalid Browser SSH opt-in accepted'
+fi
+printf 'Browser SSH installer default-off, opt-in and preservation: PASS\n'

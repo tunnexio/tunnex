@@ -61,6 +61,12 @@
     "sandbox:runner_manage",
     "sandbox:template_manage",
     "sandbox:view",
+    "server_access:grant",
+    "server_access:manage",
+    "server_access:replay",
+    "server_access:session_manage",
+    "server_access:use",
+    "server_access:view",
     "site:manage"
   ],
   "agent": [
@@ -96,7 +102,9 @@
     "org:view",
     "sandbox:create",
     "sandbox:manage",
-    "sandbox:view"
+    "sandbox:view",
+    "server_access:replay",
+    "server_access:use"
   ],
   "operator": [
     "agent:grant_access",
@@ -172,6 +180,12 @@
     "sandbox:runner_manage",
     "sandbox:template_manage",
     "sandbox:view",
+    "server_access:grant",
+    "server_access:manage",
+    "server_access:replay",
+    "server_access:session_manage",
+    "server_access:use",
+    "server_access:view",
     "site:manage"
   ]
 }

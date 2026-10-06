@@ -2593,6 +2593,150 @@ type SavedSshKey struct {
 	IsDefault   bool      `json:"is_default"`
 }
 
+type ServerAccessEditorConnection struct {
+	OrgID             uuid.UUID          `json:"org_id"`
+	SessionID         uuid.UUID          `json:"session_id"`
+	CodeHash          []byte             `json:"code_hash"`
+	Challenge         string             `json:"challenge"`
+	ClientPublicKey   string             `json:"client_public_key"`
+	HostPrivateSealed []byte             `json:"host_private_sealed"`
+	HostPublicKey     string             `json:"host_public_key"`
+	TokenHash         []byte             `json:"token_hash"`
+	ExchangedAt       pgtype.Timestamptz `json:"exchanged_at"`
+}
+
+type ServerAccessEnrollment struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	ServerID  uuid.UUID `json:"server_id"`
+	GatewayID uuid.UUID `json:"gateway_id"`
+	State     string    `json:"state"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Payload   []byte    `json:"payload"`
+}
+
+type ServerAccessGatewayRuntime struct {
+	OrgID                 uuid.UUID `json:"org_id"`
+	GatewayID             uuid.UUID `json:"gateway_id"`
+	CertSerial            string    `json:"cert_serial"`
+	ProtocolVersion       int32     `json:"protocol_version"`
+	ObservedAt            time.Time `json:"observed_at"`
+	EditorProtocolVersion int32     `json:"editor_protocol_version"`
+}
+
+type ServerAccessGrant struct {
+	ID        uuid.UUID   `json:"id"`
+	OrgID     uuid.UUID   `json:"org_id"`
+	ServerID  uuid.UUID   `json:"server_id"`
+	Account   string      `json:"account"`
+	UserID    pgtype.UUID `json:"user_id"`
+	GroupID   pgtype.UUID `json:"group_id"`
+	StartsAt  time.Time   `json:"starts_at"`
+	ExpiresAt time.Time   `json:"expires_at"`
+	Enabled   bool        `json:"enabled"`
+	CreatedBy uuid.UUID   `json:"created_by"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+type ServerAccessRecording struct {
+	OrgID                   uuid.UUID          `json:"org_id"`
+	SessionID               uuid.UUID          `json:"session_id"`
+	Status                  string             `json:"status"`
+	KeySealed               []byte             `json:"key_sealed"`
+	MaxPayloadBytes         int32              `json:"max_payload_bytes"`
+	MaxOrgBytes             int32              `json:"max_org_bytes"`
+	NextSeq                 int32              `json:"next_seq"`
+	PayloadBytes            int32              `json:"payload_bytes"`
+	CreatedAt               time.Time          `json:"created_at"`
+	ExpiresAt               time.Time          `json:"expires_at"`
+	StorageSealed           []byte             `json:"storage_sealed"`
+	StorageCleanupSeq       int32              `json:"storage_cleanup_seq"`
+	StorageRetryAfter       pgtype.Timestamptz `json:"storage_retry_after"`
+	ArchiveStorageSealed    []byte             `json:"archive_storage_sealed"`
+	ArchiveStatus           string             `json:"archive_status"`
+	ArchiveNextSeq          int32              `json:"archive_next_seq"`
+	ArchiveManifestVerified bool               `json:"archive_manifest_verified"`
+	ArchiveIncomplete       bool               `json:"archive_incomplete"`
+	ArchiveRequestedAt      pgtype.Timestamptz `json:"archive_requested_at"`
+	ArchivedAt              pgtype.Timestamptz `json:"archived_at"`
+	ArchiveRetryAfter       pgtype.Timestamptz `json:"archive_retry_after"`
+	ArchiveError            string             `json:"archive_error"`
+	ArchiveDigest           []byte             `json:"archive_digest"`
+}
+
+type ServerAccessRecordingChunk struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	SessionID  uuid.UUID `json:"session_id"`
+	Seq        int32     `json:"seq"`
+	Ciphertext []byte    `json:"ciphertext"`
+}
+
+type ServerAccessServer struct {
+	ID                     uuid.UUID          `json:"id"`
+	OrgID                  uuid.UUID          `json:"org_id"`
+	GatewayID              uuid.UUID          `json:"gateway_id"`
+	Name                   string             `json:"name"`
+	PrivateIp              netip.Addr         `json:"private_ip"`
+	SshPort                int32              `json:"ssh_port"`
+	HostFingerprint        string             `json:"host_fingerprint"`
+	Accounts               []string           `json:"accounts"`
+	Revision               int64              `json:"revision"`
+	Enabled                bool               `json:"enabled"`
+	RecordingEnabled       bool               `json:"recording_enabled"`
+	IdleTimeoutSeconds     int32              `json:"idle_timeout_seconds"`
+	MaxSessionSeconds      int32              `json:"max_session_seconds"`
+	ReadyAccounts          []string           `json:"ready_accounts"`
+	LastError              string             `json:"last_error"`
+	CheckedAt              pgtype.Timestamptz `json:"checked_at"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
+	RemovedAt              pgtype.Timestamptz `json:"removed_at"`
+	Os                     string             `json:"os"`
+	RdpDomain              string             `json:"rdp_domain"`
+	ClipboardPolicy        string             `json:"clipboard_policy"`
+	DeveloperAccessEnabled bool               `json:"developer_access_enabled"`
+}
+
+type ServerAccessSession struct {
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	ServerID         uuid.UUID          `json:"server_id"`
+	GatewayID        uuid.UUID          `json:"gateway_id"`
+	UserID           uuid.UUID          `json:"user_id"`
+	ParentSealed     []byte             `json:"parent_sealed"`
+	ParentHash       []byte             `json:"parent_hash"`
+	ParentEpoch      int64              `json:"parent_epoch"`
+	GrantID          pgtype.UUID        `json:"grant_id"`
+	Account          string             `json:"account"`
+	Revision         int64              `json:"revision"`
+	GatewaySerial    string             `json:"gateway_serial"`
+	Kind             string             `json:"kind"`
+	Status           string             `json:"status"`
+	Reason           string             `json:"reason"`
+	ExpiresAt        time.Time          `json:"expires_at"`
+	IdleDeadline     time.Time          `json:"idle_deadline"`
+	BrowserClaimedAt pgtype.Timestamptz `json:"browser_claimed_at"`
+	PublicKeyHash    []byte             `json:"public_key_hash"`
+	RecordingEnabled bool               `json:"recording_enabled"`
+	CreatedAt        time.Time          `json:"created_at"`
+	EndedAt          pgtype.Timestamptz `json:"ended_at"`
+}
+
+type ServerAccessSetting struct {
+	OrgID                    uuid.UUID `json:"org_id"`
+	Enabled                  bool      `json:"enabled"`
+	CaPrivateSealed          []byte    `json:"ca_private_sealed"`
+	CaPublic                 string    `json:"ca_public"`
+	UpdatedAt                time.Time `json:"updated_at"`
+	RecordingRetentionDays   int32     `json:"recording_retention_days"`
+	RecordingMaxSessionBytes int32     `json:"recording_max_session_bytes"`
+	RecordingMaxOrgBytes     int32     `json:"recording_max_org_bytes"`
+	MfaFreshnessSeconds      int32     `json:"mfa_freshness_seconds"`
+	RecordingStorageSealed   []byte    `json:"recording_storage_sealed"`
+	ArchiveStorageSealed     []byte    `json:"archive_storage_sealed"`
+	ArchiveEnabled           bool      `json:"archive_enabled"`
+}
+
 type ServerAiTransportSetting struct {
 	Singleton bool      `json:"singleton"`
 	AllowHttp bool      `json:"allow_http"`

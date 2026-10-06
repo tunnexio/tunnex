@@ -8303,6 +8303,430 @@ paths:
       responses:
         '204': { description: Grant revoked; repeat revocation is harmless }
         default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/server-access:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getServerAccessWorkspace
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: getServerAccessWorkspace
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessWorkspace'}}}
+        default: {$ref: "#/components/responses/Error"}
+    put:
+      operationId: updateServerAccessSettings
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Explicitly opt this organization in or out of the local terminal capability
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessSettingsInput'}}}
+      responses:
+        "200":
+          description: Current opt-in state
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessResult'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/recording-storage:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getServerAccessRecordingStorage
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: getServerAccessRecordingStorage
+      responses:
+        '200': {description: Safe destination configuration, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingStorage'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      operationId: updateServerAccessRecordingStorage
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: updateServerAccessRecordingStorage
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingStorageInput'}}}}
+      responses:
+        '200': {description: Safe destination configuration, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingStorage'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/recording-storage/test:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: testServerAccessRecordingStorage
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Verify write read and deletion of an owned storage probe
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingStorageInput'}}}}
+      responses:
+        '200': {description: Storage probe succeeded, content: {application/json: {schema: {type: object, required: [ok], properties: {ok: {type: boolean}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/recording-archive:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getServerAccessRecordingArchive
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Read safe optional S3 recording archive configuration
+      responses:
+        '200': {description: Safe archive configuration without secrets, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingArchive'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      operationId: updateServerAccessRecordingArchive
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Configure optional S3 archiving after PostgreSQL recording retention
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingArchiveInput'}}}}
+      responses:
+        '200': {description: Safe archive configuration without secrets, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingArchive'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/recording-archive/test:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: testServerAccessRecordingArchive
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Test S3 archive write read and deletion without saving configuration
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingArchiveInput'}}}}
+      responses:
+        '200': {description: Archive probe succeeded, content: {application/json: {schema: {type: object, required: [ok], properties: {ok: {type: boolean}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/servers:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: createServerAccessServer
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: createServerAccessServer
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessServerInput'}}}
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessServer'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/servers/{serverId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: serverId, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      operationId: updateServerAccessServer
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: updateServerAccessServer
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessServerInput'}}}
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessServer'}}}
+        default: {$ref: "#/components/responses/Error"}
+    delete:
+      operationId: removeServerAccessServer
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Retire server enrollment and revoke its access while preserving evidence
+      responses:
+        "200":
+          description: Server removed
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessResult'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/servers/{serverId}/enrollment:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: serverId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getCurrentServerAccessEnrollment
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: Latest enrollment for this administrator and server
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServerAccessEnrollment'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: prepareServerAccessEnrollment
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ServerAccessEnrollmentInput'}
+      responses:
+        '200':
+          description: Temporary setup job prepared
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServerAccessEnrollment'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/enrollments/{enrollmentId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - in: path
+        name: enrollmentId
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getServerAccessEnrollment
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: Current setup status
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServerAccessEnrollment'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: startServerAccessEnrollment
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: Start authorized gateway setup
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServerAccessEnrollment'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: cancelServerAccessEnrollment
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: Setup cancelled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServerAccessEnrollment'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/servers/{serverId}/check:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: serverId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: checkServerAccessServer
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: checkServerAccessServer
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessConnectInput'}}}
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessSession'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/trust:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getServerAccessTrust
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: getServerAccessTrust
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessTrust'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/grants:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: createServerAccessGrant
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: createServerAccessGrant
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessGrantInput'}}}
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessGrant'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/grants/{grantId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: grantId, in: path, required: true, schema: {type: string, format: uuid}}
+    delete:
+      operationId: revokeServerAccessGrant
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: revokeServerAccessGrant
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessResult'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/sessions:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: createServerAccessSession
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: createServerAccessSession
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessConnectInput'}}}
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessSession'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/sessions/{sessionId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    delete:
+      operationId: endServerAccessSession
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: endServerAccessSession
+      responses:
+        "200":
+          description: Current server access result
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessResult'}}}
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getServerAccessRecording
+      parameters:
+        - {name: metadata_only, in: query, schema: {type: boolean, default: false}}
+      security: [{cookieAuth: []}]
+      tags: [server-access]
+      summary: Read an authorized bounded encrypted recording
+      responses:
+        '200':
+          description: Recording state and integrity-checked output/resize events
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecording'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/recording-import:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: importServerAccessRecordingPackage
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Decrypt an authorized self-contained recording package without original database rows
+      description: Explicit import uploads a bounded installation-key encrypted v2 package. Current same-organization human replay permission and authenticated original-owner or session-management authority are required. Imported events are not trusted original audit provenance and are not persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [package]
+              properties:
+                package: {type: string, format: byte, maxLength: 44739244}
+      responses:
+        '200': {description: Authorized verified imported recording events, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecording'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording/export-s3:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: exportServerAccessRecordingS3
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Request an idempotent bounded S3 recording export
+      description: PostgreSQL payload remains usable until the encrypted archive, final manifest and self-contained v2 package are verified. Download recording-v2.tunnex-recording from S3 and import into the same installation even after original database rows are removed. Failed jobs retain the source and retry with visible safe error state.
+      responses:
+        '202': {description: Current archive job state, content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecordingExport'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording/download:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: downloadServerAccessRecording
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: Download authorized integrity-checked recording events as JSON
+      responses:
+        '200':
+          description: Bounded recording download
+          headers:
+            Content-Disposition: {schema: {type: string}, description: Attachment filename for the authorized lossless JSON recording}
+            Cache-Control: {schema: {type: string}, description: no-store}
+          content: {application/json: {schema: {$ref: '#/components/schemas/ServerAccessRecording'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/terminal:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: connectServerAccessTerminal
+      tags: [server-access]
+      security: [{cookieAuth: []}]
+      summary: connectServerAccessTerminal
+      responses:
+        "101":
+          description: WebSocket upgrade with bounded terminal input, resize and output frames
+        default: {$ref: "#/components/responses/Error"}
+  /api/v1/organizations/{orgId}/server-access/sessions/editor:
+    post:
+      operationId: authorizeServerAccessEditor
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ServerAccessEditorInput' }
+      responses:
+        '200':
+          description: One-time browser authorization code, bound to the local editor key and PKCE.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerAccessEditorApproval' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/server-access/editor/exchange:
+    post:
+      operationId: exchangeServerAccessEditor
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ServerAccessEditorExchangeInput' }
+      responses:
+        '200':
+          description: Single-connection editor capability. No general CLI authority.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerAccessEditorConnection' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/server-access/editor/{sessionId}:
+    get:
+      operationId: connectServerAccessEditor
+      security: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '101': { description: Bounded SSH websocket; capability required in Authorization header. }
+        default: { $ref: '#/components/responses/Error' }
+
 components:
   securitySchemes:
     aiBearerAuth:
@@ -8332,6 +8756,111 @@ components:
       required: true
 
   schemas:
+    ServerAccessRecordingArchive:
+      type: object
+      additionalProperties: false
+      required: [enabled, credentials_configured]
+      properties:
+        enabled: {type: boolean, description: Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection}
+        endpoint: {type: string, maxLength: 2048}
+        bucket: {type: string, maxLength: 255}
+        region: {type: string, maxLength: 64}
+        prefix: {type: string, maxLength: 512}
+        access_key_id: {type: string, maxLength: 256}
+        credentials_configured: {type: boolean}
+    ServerAccessRecordingArchiveInput:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      description: Secrets are write-only. Omitted secrets preserve saved credentials only for the same destination. The enabled flag controls only automatic archiving at retention expiry. Disabling preserves the saved S3 connection for manual export and does not cancel existing jobs or redirect snapshots.
+      properties:
+        enabled: {type: boolean, description: Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection}
+        endpoint: {type: string, maxLength: 2048}
+        bucket: {type: string, maxLength: 255}
+        region: {type: string, maxLength: 64}
+        prefix: {type: string, maxLength: 512}
+        access_key_id: {type: string, maxLength: 256}
+        secret_access_key: {type: string, maxLength: 1024, writeOnly: true}
+    ServerAccessRecordingExport:
+      type: object
+      additionalProperties: false
+      required: [session_id, status, archived_events, total_events]
+      properties:
+        session_id: {type: string, format: uuid}
+        status: {type: string, enum: [none, pending, uploading, available, failed], x-enum-varnames: [ServerArchiveNone, ServerArchivePending, ServerArchiveUploading, ServerArchiveAvailable, ServerArchiveFailed]}
+        package_key: {type: string, description: S3 object key of the self-contained installation-encrypted v2 recording package}
+        archived_events: {type: integer, minimum: 0, maximum: 4096}
+        total_events: {type: integer, minimum: 0, maximum: 4096}
+        error: {type: string, description: Safe error code without provider response or credentials}
+        archived_at: {type: string, format: date-time}
+    ServerAccessRecordingStorage:
+      type: object
+      additionalProperties: false
+      required: [kind, credentials_configured]
+      properties:
+        kind: {type: string, enum: [postgres, filesystem, s3, azure, gcs], x-enum-varnames: [ServerStoragePostgres, ServerStorageFilesystem, ServerStorageS3, ServerStorageAzure, ServerStorageGCS]}
+        path: {type: string, maxLength: 1024}
+        endpoint: {type: string, maxLength: 2048}
+        bucket: {type: string, maxLength: 255}
+        region: {type: string, maxLength: 64}
+        prefix: {type: string, maxLength: 512}
+        access_key_id: {type: string, maxLength: 256}
+        account_name: {type: string, maxLength: 64}
+        credentials_configured: {type: boolean}
+    ServerAccessRecordingStorageInput:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [postgres, filesystem, s3, azure, gcs], x-enum-varnames: [ServerStorageInputPostgres, ServerStorageInputFilesystem, ServerStorageInputS3, ServerStorageInputAzure, ServerStorageInputGCS]}
+        path: {type: string, maxLength: 1024}
+        endpoint: {type: string, maxLength: 2048}
+        bucket: {type: string, maxLength: 255}
+        region: {type: string, maxLength: 64}
+        prefix: {type: string, maxLength: 512}
+        access_key_id: {type: string, maxLength: 256}
+        account_name: {type: string, maxLength: 64}
+        secret_access_key: {type: string, maxLength: 1024, writeOnly: true}
+        account_key: {type: string, maxLength: 1024, writeOnly: true}
+    ServerAccessSettingsInput: {type: object, additionalProperties: false, required: [enabled], properties: {enabled: {type: boolean}, mfa_freshness_seconds: {type: integer, minimum: 60, maximum: 900}, recording_retention_days: {type: integer, minimum: 1, maximum: 3650, default: 30}, recording_max_session_bytes: {type: integer, minimum: 65536, maximum: 16777216}, recording_max_org_bytes: {type: integer, minimum: 65536, maximum: 1073741824}}}
+    ServerAccessEnrollmentInput: {"type": "object", "additionalProperties": false, "required": ["management_account", "management_port", "management_fingerprint", "accounts"], "properties": {"management_account": {"type": "string", "pattern": "^[a-z_][a-z0-9_-]{0,31}$"}, "management_port": {"type": "integer", "minimum": 1, "maximum": 65535}, "management_fingerprint": {"type": "string", "pattern": "^SHA256:[A-Za-z0-9+/]{43}$"}, "accounts": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z_][a-z0-9_-]{0,31}$"}, "description": "Empty discovers all eligible Linux login users; otherwise a selected set"}}}
+    ServerAccessEnrollment: {"type": "object", "additionalProperties": false, "required": ["id", "server_id", "state", "expires_at", "authorization_command", "message"], "properties": {"id": {"type": "string", "format": "uuid"}, "server_id": {"type": "string", "format": "uuid"}, "state": {"type": "string", "enum": ["preparing", "awaiting_authorization", "queued", "running", "succeeded", "failed", "cancelled", "expired"], "x-enum-varnames": ["ServerAccessEnrollmentPreparing", "ServerAccessEnrollmentAwaitingAuthorization", "ServerAccessEnrollmentQueued", "ServerAccessEnrollmentRunning", "ServerAccessEnrollmentSucceeded", "ServerAccessEnrollmentFailed", "ServerAccessEnrollmentCancelled", "ServerAccessEnrollmentExpired"]}, "expires_at": {"type": "string", "format": "date-time"}, "authorization_command": {"type": "string"}, "message": {"type": "string"}}}
+    ServerAccessServerInput: {"type": "object", "additionalProperties": false, "required": ["name", "private_ip", "ssh_port", "gateway_id", "host_fingerprint", "accounts", "enabled", "recording_enabled", "revision", "idle_timeout_seconds", "max_session_seconds"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}, "private_ip": {"type": "string", "maxLength": 64}, "ssh_port": {"type": "integer", "minimum": 1, "maximum": 65535}, "gateway_id": {"type": "string", "format": "uuid"}, "host_fingerprint": {"type": "string", "maxLength": 100}, "accounts": {"type": "array", "minItems": 0, "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 32}}, "enabled": {"type": "boolean"}, "recording_enabled": {"type": "boolean"}, "revision": {"type": "integer", "format": "int64"}, "idle_timeout_seconds": {"type": "integer", "minimum": 60, "maximum": 900}, "max_session_seconds": {"type": "integer", "minimum": 60, "maximum": 3600}, "os": {"type": "string", "enum": ["linux", "windows"]}, "rdp_domain": {"type": "string", "maxLength": 100}, "clipboard_policy": {"type": "string", "enum": ["off", "paste", "copy", "both"]}, "developer_access_enabled": {"type": "boolean"}}}
+    ServerAccessServer: {"type": "object", "additionalProperties": false, "required": ["id", "name", "gateway_id", "accounts", "revision", "enabled", "recording_enabled", "ready_accounts", "idle_timeout_seconds", "max_session_seconds"], "properties": {"id": {"type": "string", "format": "uuid"}, "name": {"type": "string"}, "gateway_id": {"type": "string", "format": "uuid"}, "accounts": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 32}}, "revision": {"type": "integer", "format": "int64"}, "enabled": {"type": "boolean"}, "recording_enabled": {"type": "boolean"}, "ready_accounts": {"type": "array", "items": {"type": "string"}}, "private_ip": {"type": "string"}, "ssh_port": {"type": "integer"}, "host_fingerprint": {"type": "string"}, "last_error": {"type": "string"}, "idle_timeout_seconds": {"type": "integer"}, "max_session_seconds": {"type": "integer"}, "os": {"type": "string", "enum": ["linux", "windows"]}, "rdp_domain": {"type": "string", "maxLength": 100}, "clipboard_policy": {"type": "string", "enum": ["off", "paste", "copy", "both"]}, "developer_access_enabled": {"type": "boolean"}}}
+    ServerAccessGrantInput: {"type": "object", "additionalProperties": false, "required": ["server_id", "account", "starts_at", "expires_at"], "properties": {"server_id": {"type": "string", "format": "uuid"}, "account": {"type": "string"}, "user_id": {"type": "string", "format": "uuid"}, "group_id": {"type": "string", "format": "uuid"}, "starts_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"}}}
+    ServerAccessGrant: {"type": "object", "additionalProperties": false, "required": ["id", "server_id", "account", "starts_at", "expires_at", "enabled"], "properties": {"id": {"type": "string", "format": "uuid"}, "server_id": {"type": "string", "format": "uuid"}, "account": {"type": "string"}, "user_id": {"type": "string", "format": "uuid"}, "group_id": {"type": "string", "format": "uuid"}, "starts_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"}, "enabled": {"type": "boolean"}}}
+    ServerAccessEditorInput: {"type": "object", "additionalProperties": false, "required": ["server_id", "account", "public_key", "code_challenge"], "properties": {"server_id": {"type": "string", "format": "uuid"}, "account": {"type": "string", "maxLength": 32}, "public_key": {"type": "string", "maxLength": 4096}, "code_challenge": {"type": "string", "minLength": 43, "maxLength": 43}}}
+    ServerAccessEditorApproval: {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}}}
+    ServerAccessEditorExchangeInput: {"type": "object", "additionalProperties": false, "required": ["code", "code_verifier"], "properties": {"code": {"type": "string", "maxLength": 128}, "code_verifier": {"type": "string", "minLength": 43, "maxLength": 128}}}
+    ServerAccessEditorConnection: {"type": "object", "required": ["session_id", "token", "host_public_key", "account", "expires_at"], "properties": {"session_id": {"type": "string", "format": "uuid"}, "token": {"type": "string"}, "host_public_key": {"type": "string"}, "account": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}}}
+    ServerAccessConnectInput: {"type": "object", "additionalProperties": false, "required": ["server_id", "account"], "properties": {"server_id": {"type": "string", "format": "uuid"}, "account": {"type": "string", "maxLength": 32}}}
+    ServerAccessSession: {"type": "object", "additionalProperties": false, "required": ["id", "server_id", "account", "status", "reason", "expires_at", "user_id", "recording_enabled", "kind"], "properties": {"id": {"type": "string", "format": "uuid"}, "server_id": {"type": "string", "format": "uuid"}, "account": {"type": "string"}, "status": {"type": "string"}, "reason": {"type": "string"}, "expires_at": {"type": "string", "format": "date-time"}, "user_id": {"type": "string", "format": "uuid"}, "recording_enabled": {"type": "boolean"}, "kind": {"type": "string"}, "archive_status": {"type": "string"}, "archive_error": {"type": "string"}, "archive_retry_at": {"type": "string", "format": "date-time"}}}
+    ServerAccessWorkspace: {"type": "object", "additionalProperties": false, "required": ["enabled", "can_manage", "can_grant", "can_manage_sessions", "servers", "grants", "sessions", "limitations", "recording_retention_days", "recording_max_session_bytes", "recording_max_org_bytes", "mfa_freshness_seconds"], "properties": {"enabled": {"type": "boolean"}, "can_manage": {"type": "boolean"}, "can_grant": {"type": "boolean"}, "can_manage_sessions": {"type": "boolean"}, "servers": {"type": "array", "items": {"$ref": "#/components/schemas/ServerAccessServer"}}, "grants": {"type": "array", "items": {"$ref": "#/components/schemas/ServerAccessGrant"}}, "sessions": {"type": "array", "items": {"$ref": "#/components/schemas/ServerAccessSession"}}, "limitations": {"type": "array", "items": {"type": "string"}}, "recording_retention_days": {"type": "integer"}, "recording_max_session_bytes": {"type": "integer"}, "recording_max_org_bytes": {"type": "integer"}, "mfa_freshness_seconds": {"type": "integer"}}}
+    ServerAccessTrust: {"type": "object", "additionalProperties": false, "required": ["public_key", "principal_prefix", "instructions"], "properties": {"ca_fingerprint": {"type": "string", "description": "SHA256 fingerprint of the installation public SSH CA"}, "public_key": {"type": "string"}, "principal_prefix": {"type": "string"}, "instructions": {"type": "array", "items": {"type": "string"}}}}
+    ServerAccessRecordingEvent:
+      type: object
+      additionalProperties: false
+      required: [seq, millis, type, data, rows, cols]
+      properties:
+        seq: {type: integer}
+        millis: {type: integer, format: int64}
+        type: {type: string, enum: [output, resize], x-enum-varnames: [ServerRecordingOutput, ServerRecordingResize]}
+        data: {type: string, format: byte}
+        rows: {type: integer}
+        cols: {type: integer}
+    ServerAccessRecording:
+      type: object
+      additionalProperties: false
+      required: [session_id, status, expires_at, events]
+      properties:
+        session_id: {type: string, format: uuid}
+        status: {type: string, enum: [disabled, capturing, available, incomplete, failed, expired, archived], x-enum-varnames: [ServerRecordingDisabled, ServerRecordingCapturing, ServerRecordingAvailable, ServerRecordingIncomplete, ServerRecordingFailed, ServerRecordingExpired, ServerRecordingArchived]}
+        expires_at: {type: string, format: date-time}
+        events: {type: array, maxItems: 4096, items: {$ref: '#/components/schemas/ServerAccessRecordingEvent'}}
+        archive_status: {type: string, description: Archive job state none pending uploading available or failed}
+        archive_error: {type: string, description: Safe archive error code}
+        archive_retry_at: {type: string, format: date-time}
+    ServerAccessResult: {"type": "object", "additionalProperties": false, "required": ["status"], "properties": {"status": {"type": "string"}}}
     SandboxDelegationCreate:
       type: object
       additionalProperties: false

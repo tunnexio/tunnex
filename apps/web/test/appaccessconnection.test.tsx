@@ -23,14 +23,14 @@ it("requires a fresh supported connector and saved input before requesting a che
   expect(screen.getByRole("button", { name: "Check saved connection" })).toHaveProperty("disabled", true);
   fixture.status = "supported";
   fireEvent.click(screen.getByRole("button", { name: "Refresh gateway status" }));
-  await screen.findByText(/supports App Access connection checks/);
+  await screen.findByText(/supports Applications connection checks/);
   view.rerender(<AppAccessConnection {...props} dirty />);
   expect(screen.getByRole("button", { name: "Check saved connection" })).toHaveProperty("disabled", true);
   expect(api.POST).not.toHaveBeenCalled();
 });
 it("uses the exact saved version, polls its request and labels success as origin connectivity", async () => {
   render(<AppAccessConnection {...props} />);
-  await screen.findByText(/supports App Access connection checks/);
+  await screen.findByText(/supports Applications connection checks/);
   fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
   await screen.findByText("Connection check is pending.");
   expect(fixture.requests[0]).toEqual({ params: { path: { orgId: "org-1", appId: "app-1" } }, body: { expected_version: 7 } });
@@ -40,7 +40,7 @@ it("uses the exact saved version, polls its request and labels success as origin
 it("retains a stale check refusal without pretending an origin result exists", async () => {
   fixture.stale = true;
   render(<AppAccessConnection {...props} />);
-  await screen.findByText(/supports App Access connection checks/);
+  await screen.findByText(/supports Applications connection checks/);
   fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("saved application changed"));
   expect(screen.queryByText("Origin connection succeeded.")).toBeNull();
@@ -48,14 +48,14 @@ it("retains a stale check refusal without pretending an origin result exists", a
 it("shows redacted TLS failure after gateway check completion", async () => {
   fixture.result = "failed";
   render(<AppAccessConnection {...props} />);
-  await screen.findByText(/supports App Access connection checks/);
+  await screen.findByText(/supports Applications connection checks/);
   fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
   expect(await screen.findByText(/Origin TLS verification failed/, {}, { timeout: 3000 })).toBeTruthy();
   expect(screen.getByText("TLS: failed")).toBeTruthy();
 });
 it("lets retained configuration inspect capability after entitlement loss without initiating checks", async () => {
   render(<AppAccessConnection {...props} canCheck={false} />);
-  await screen.findByText(/supports App Access connection checks/);
+  await screen.findByText(/supports Applications connection checks/);
   expect(screen.queryByRole("button", { name: "Check saved connection" })).toBeNull();
   await waitFor(() => expect(api.POST).not.toHaveBeenCalled());
 });
@@ -63,7 +63,7 @@ it("lets retained configuration inspect capability after entitlement loss withou
 it("keeps the saved revision distinct from the mutable application version", async () => {
   const onCheck = vi.fn();
   render(<AppAccessConnection {...props} version={8} revision={7} onCheck={onCheck} />);
-  await screen.findByText(/supports App Access connection checks/);
+  await screen.findByText(/supports Applications connection checks/);
   fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
   await screen.findByText("Origin connection succeeded.", {}, { timeout: 3000 });
   expect(fixture.requests[0]).toEqual({ params: { path: { orgId: "org-1", appId: "app-1" } }, body: { expected_version: 8 } });

@@ -33,6 +33,7 @@ import { badgeText, gatewayBadgeText, type NavCounts } from "../lib/navcounts";
 // precedent, D5), so a non-enterprise org sees the entry and a clear explanation rather than a dead link.
 export const NAV_GROUPS: Array<{
   group: string;
+  icon?: IconName;
   items: Array<{ to: string; label: string; icon: IconName }>;
 }> = [
   {
@@ -70,14 +71,21 @@ export const NAV_GROUPS: Array<{
   {
     group: "ACCESS",
     items: [
-      { to: "/app-access", label: "App Access", icon: "boxes" },
       { to: "/access", label: "Access Policies", icon: "shield" },
       { to: "/devices", label: "Devices", icon: "laptop" },
       { to: "/users", label: "Users & Groups", icon: "users" },
     ],
   },
   {
-    group: "OBSERVE",
+    group: "Tunnex Shield",
+ icon: "shield-check",
+ items: [
+   { to: "/app-access", label: "Applications", icon: "app-grid" },
+   { to: "/browser-access/terminal", label: "Servers", icon: "server" },
+ ],
+ },
+ {
+ group: "OBSERVE",
     items: [
       { to: "/alerts", label: "Alerts", icon: "bell" },
       {
@@ -143,7 +151,8 @@ function NavGroups({
           {/* ⛔ HEADERS GO, DESTINATIONS STAY. A rail that dropped a destination would make it
               unreachable rather than compact — the collapse is a presentation, never a filter. */}
           {g.group && shows.sectionHeaders && (
-            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+            <p className="flex items-center gap-2 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+              {g.icon && <Icon name={g.icon} className="h-3.5 w-3.5" />}
               {g.group}
             </p>
           )}

@@ -1,0 +1,1 @@
+ALTER TABLE server_access_servers DROP CONSTRAINT server_access_clipboard_windows, DROP COLUMN clipboard_policy;

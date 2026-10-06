@@ -1,0 +1,1 @@
+ALTER TABLE server_access_recordings DROP COLUMN storage_retry_after;

@@ -48,8 +48,8 @@ function FeatureToggle({ orgId, canEdit }: { orgId: string; canEdit: boolean }) 
       if (!mounted.current) return;
       if (result.error || !result.data) {
         setError(["version_conflict", "stale_version"].includes(apiErrorCode(result.error) ?? "")
-          ? "App Access settings changed. Reload the setting before trying again."
-          : apiErrorMessage(result.error, "Could not update App Access. Reload to check its current state."));
+          ? "Applications settings changed. Reload the setting before trying again."
+          : apiErrorMessage(result.error, "Could not update Applications. Reload to check its current state."));
       } else setSettings(result.data);
     } catch {
       if (mounted.current) setError("Could not reach the API. Reload to check the current setting.");
@@ -61,15 +61,15 @@ function FeatureToggle({ orgId, canEdit }: { orgId: string; canEdit: boolean }) 
   const enableBlocked = settings && !settings.enabled &&
     (!settings.entitlement_available || !settings.domain_ready);
   return <div>
-    <SettingRow label="App Access"
+    <SettingRow label="Applications"
       description="Open private web apps in a browser. Turning this off blocks access; saved apps and grants stay."
       error={error}>
-      {settings ? <Switch label="App Access" checked={settings.enabled}
+      {settings ? <Switch label="Applications" checked={settings.enabled}
         disabled={!canEdit || busy || !!error || !!enableBlocked} onChange={next => void toggle(next)} />
-        : error ? <span className="text-sm text-ink-secondary">Unavailable</span> : <Loading size="inline" label="Loading App Access…" />}
+        : error ? <span className="text-sm text-ink-secondary">Unavailable</span> : <Loading size="inline" label="Loading Applications…" />}
     </SettingRow>
-    {settings && !settings.entitlement_available && <p className="text-sm text-ink-secondary">An eligible licence is required to enable App Access.</p>}
-    {settings && !settings.domain_ready && <p className="text-sm text-ink-secondary">Configure App Access domains before enabling it.</p>}
-    {error && <Button variant="ghost" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Reload App Access setting</Button>}
+    {settings && !settings.entitlement_available && <p className="text-sm text-ink-secondary">An eligible licence is required to enable Applications.</p>}
+    {settings && !settings.domain_ready && <p className="text-sm text-ink-secondary">Configure Applications domains before enabling it.</p>}
+    {error && <Button variant="ghost" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Reload Applications setting</Button>}
   </div>;
 }

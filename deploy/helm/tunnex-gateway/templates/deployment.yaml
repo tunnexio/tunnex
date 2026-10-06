@@ -155,6 +155,8 @@ spec:
             - name: TUNNEX_NODE_NAME
               value: {{ .Values.nodeName | quote }}
             {{- end }}
+            - name: TUNNEX_SERVER_ACCESS_ENABLED
+              value: {{ .Values.serverAccess.enabled | quote }}
             - name: TUNNEX_API_URL
               value: {{ required "controlPlane.apiURL is required (the CP the gateway fetches desired state from)" .Values.controlPlane.apiURL | quote }}
             - name: TUNNEX_AGENT_URL

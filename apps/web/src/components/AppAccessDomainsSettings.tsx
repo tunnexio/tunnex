@@ -29,7 +29,7 @@ export function AppAccessDomainsSettings({ canEdit }: { canEdit: boolean }) {
     setBusy("load"); setError(null); setResult(null);
     void api.GET(endpoint).then(({ data, error }) => {
       if (!current) return;
-      if (error || !data) setError(apiErrorMessage(error, "Could not load App Access domains."));
+      if (error || !data) setError(apiErrorMessage(error, "Could not load Applications domains."));
       else {
         setSaved(data); setPortal(data.portal_url); setBase(data.app_base_domain);
         setNeedsReload(false);
@@ -52,10 +52,10 @@ export function AppAccessDomainsSettings({ canEdit }: { canEdit: boolean }) {
         if (apiErrorCode(response.error) === "app_domains_changed") {
           setNeedsReload(true);
           setError("These settings changed on the server. Your edits are still shown. Reload saved settings before saving again; reloading will replace your edits.");
-        } else setError(apiErrorMessage(response.error, "Could not save App Access domains."));
+        } else setError(apiErrorMessage(response.error, "Could not save Applications domains."));
       } else {
         setSaved(response.data); setPortal(response.data.portal_url); setBase(response.data.app_base_domain);
-        setResult("App Access domains saved. New application addresses use this domain. Existing application hostnames are preserved.");
+        setResult("Applications domains saved. New application addresses use this domain. Existing application hostnames are preserved.");
       }
     } catch {
       if (alive.current) {
@@ -68,7 +68,7 @@ export function AppAccessDomainsSettings({ canEdit }: { canEdit: boolean }) {
     }
   }
 
-  if (!saved && busy === "load") return <Loading label="Loading App Access domains…" />;
+  if (!saved && busy === "load") return <Loading label="Loading Applications domains…" />;
   if (!saved) return <div className="space-y-3"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry domain settings</Button></div>;
   const disabled = !canEdit || busy !== null;
   const previewBase = base.trim().toLowerCase();
@@ -93,7 +93,7 @@ export function AppAccessDomainsSettings({ canEdit }: { canEdit: boolean }) {
       </div>
       <div className="space-y-2 text-sm text-ink-secondary">
         <p className="font-medium text-ink-heading">One-time DNS and HTTPS setup</p>
-        <p>Your organization manages DNS and TLS. Point the portal hostname to your control plane and wildcard application DNS to your App Access proxy. Configure TLS certificates covering the portal and wildcard application hostnames on their HTTPS listeners. Saving here does not create DNS records or issue certificates.</p>
+        <p>Your organization manages DNS and TLS. Point the portal hostname to your control plane and wildcard application DNS to your Applications proxy. Configure TLS certificates covering the portal and wildcard application hostnames on their HTTPS listeners. Saving here does not create DNS records or issue certificates.</p>
         <p>When changing the portal URL, update the registered redirect URLs in your SSO identity providers to match the new portal before users sign in. Tunnex does not update those registrations automatically.</p>
         <p>Saved settings apply to new application addresses. Existing application hostnames stay unchanged; keep their DNS and TLS coverage available.</p>
         <p>Saved configuration: {saved.configuration_ready ? "format accepted" : "configuration incomplete"}. DNS, certificates and reachability have not been checked here.</p>

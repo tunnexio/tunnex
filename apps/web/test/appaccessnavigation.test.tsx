@@ -13,7 +13,7 @@ const link = () => screen.queryByRole("link", { name: /^Manage access/ });
 function mount(orgId = "org", path = "/app-access/my-applications") { return render(<MemoryRouter initialEntries={[path]}><AppAccessMemberTabs orgId={orgId} /></MemoryRouter>); }
 beforeEach(() => { get.mockReset(); });
 afterEach(cleanup);
-describe("App Access workspace navigation authority", () => {
+describe("Applications workspace navigation authority", () => {
   it("hides Manage access and configuration from an unassigned ordinary member", async () => {
     get.mockResolvedValue(managed());
     mount();

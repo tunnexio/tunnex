@@ -1,0 +1,12 @@
+# Fresh owned volume, no CP/database credentials or host port.
+services:
+  recording-volume-probe:
+    image: tunnex-sa-volume:local
+    environment:
+      TMPDIR: /var/lib/tunnex/recordings
+    volumes:
+      - ./.runtime/bin:/binaries:ro
+      - qualification-recordings:/var/lib/tunnex/recordings
+    command: [sh, -ec, 'test "$(id -u)" = 10001; test "$(stat -c %u /var/lib/tunnex/recordings)" = 10001; test "$(stat -c %a /var/lib/tunnex/recordings)" = 700; /binaries/nonroot-recording-tests -test.v -test.run "^TestFilesystemRecordingStorageDurabilityIsolationAndSymlinks$$"']
+volumes:
+  qualification-recordings:

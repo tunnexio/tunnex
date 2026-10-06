@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/tunnexio/tunnex/apps/api/internal/serveraccess"
 	"io"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,7 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
+	serverAccess               *serveraccess.Service
 	appAccessDispatch          *appAccessDispatchState
 	appAccessBroker            *appAccessBroker
 	appAccess                  appAccessGatewayPort
@@ -151,6 +153,11 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Get("/agent/ipsec/connections/{connectionId}/cleanup", a.ipsecCleanup)
 	r.Post("/agent/ipsec/connections/{connectionId}/acknowledgements", a.ipsecAcknowledgement)
 	r.Post("/agent/ipsec/connections/{connectionId}/permit-lease", a.ipsecPermitLease)
+	r.Get("/agent/server-access/enrollments", a.enrollmentAgent)
+	r.Post("/agent/server-access/enrollments/{enrollmentId}", a.enrollmentAgent)
+	r.Get("/agent/server-access/desired-state", a.terminalAgent)
+	r.Post("/agent/server-access/sessions/{sessionId}/{operation}", a.terminalAgent)
+	r.MethodFunc("CONNECT", "/agent/server-access/sessions/{sessionId}/{operation}", a.terminalAgent)
 	r.Get("/agent/desired-state", a.desiredState)
 	r.Get("/agent/app-access/desired-state", a.appAccessDesired)
 	r.Get("/agent/app-access/browser-desired-state", a.appAccessBrowserDesired)

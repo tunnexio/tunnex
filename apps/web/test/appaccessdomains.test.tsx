@@ -20,7 +20,7 @@ const edit = () => {
 beforeEach(() => { vi.resetAllMocks(); api.GET.mockResolvedValue(settings()); });
 afterEach(cleanup);
 
-describe("server App Access domain settings", () => {
+describe("server Applications domain settings", () => {
   it("loads environment values without claiming DNS or TLS readiness", async () => {
     show(); await load();
     expect(portal().value).toBe("https://console.example.net"); expect(base().value).toBe("apps.example.org");

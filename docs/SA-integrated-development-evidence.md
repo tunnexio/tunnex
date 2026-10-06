@@ -1,0 +1,141 @@
+# Integrated Browser SSH development evidence
+
+Date: 2026-10-05. Local Community development, explicit human approval. No commit, push, PR, cloud provisioning or deployment.
+
+## Implementation and current preview
+
+Worktree: `/Users/pawangupta/.codex/worktrees/main-app-access-compare/tunnex`, branch `feature/browser-access`, base `435b4d53900c768073a49dbcc72579567fcdc524`. Original `/Users/pawangupta/tunnex` was preserved. Preview: `http://127.0.0.1:15195/browser-access/terminal` (local only). Existing App Access remains at its original route/location.
+
+The administrator registers existing Linux accounts, pins a host fingerprint, explicitly tests certificate authentication and grants users/groups bounded account access. Registration/edit includes recording ON/OFF and idle/max duration. Terminal reuses App Access/shared workspace tabs, tables, modal/form primitives, the generated API client and common authentication/session infrastructure. Archive settings extend the existing recording storage form and adapter/sealer/test path. Members connect after normal password/MFA or fresh step-up. Admin permission does not implicitly confer a Linux account grant.
+
+Ordinary Observer Audit Log records configuration, grants, decisions, session lifecycle and recording reads without terminal payload. A session evidence dialog opens the corresponding protected replay. Replay provides ordered output/resize, play/pause/restart/keyboard seek, UTF-8 and accessible xterm rendering. Single redemption is protected against React StrictMode duplicate setup. Replay rechecks current access every five seconds and clears content when authority is lost.
+
+All new recordings now use encrypted PostgreSQL, the default and recommended store. Retention defaults to 30 days with admin increases up to 3650 days. Optional S3 archival is separate from the legacy filesystem/S3/Azure/GCS compatibility configuration. Manual Export can use a saved S3 connection while automatic archival is OFF. Manual Download returns the authorized output/timing/resize recording JSON. Credentials are write-only and sealed, destination snapshots are tenant-bound, and historical replay/cleanup retain the original destination. Encrypted chunk persistence completes before terminal forwarding. Quotas charge encrypted bytes, including resize/JSON/base64/GCM overhead; a separate 4096-event bound remains. Retention advances a durable deletion cursor and cools down failed destinations so other targets proceed.
+
+## Measured local behavior
+
+These are individual local measurements, not percentile/performance guarantees. Early authority probes precede the final storage expansion; earlier direct-storage probes preceded the final archive expansion; final lifecycle probes ran on the artifact hashes below.
+
+| Probe | Observed result |
+|---|---|
+| Real browser SSH | Existing fixture account UID1000; PTY shell, UTF-8 héllo and stty resize 22×106; no end-user SSH client/VPN. |
+| Recording ON/OFF snapshot | Active ON session kept recording after server toggle OFF; next OFF session created no manifest/chunks. |
+| Own grant revocation | Remote fixture user processes closed in 0.651 s. |
+| Group removal | Active session ended grant_revoked in 0.453 s. |
+| Parent logout | Active session ended in 0.496 s. |
+| Input-idle expiry | Continuous output did not refresh idle: idle_timeout after 60.151 s. |
+| Maximum session expiry | Genuine input every15 s did not extend max: session_expired after119.214 s from PTY ready. |
+| MFA freshness60 s | Genuine input every10 s: closure59.885 s; new admission403 mfa_required; default900 s restored. |
+| API stalled renewal | Pausing only owned API closed remote PTY in2.388 s; finally unpaused. |
+| Redis stalled renewal | Pausing only owned Redis closed remote PTY in2.563 s; finally unpaused. |
+| Final encrypted64KiB quota | Closed0.080 s;46496 bytes forwarded; incomplete replay; no post-quota sentinel forwarded. |
+| Final external recorder outage | Paused only owned S3 emulator: closed1.023 s; no uncaptured sentinel forwarded; finally unpaused. |
+| Shared Linux account | Two distinct Tunnex actors used fixture; foreign replay/revoke403; ending admin session preserved member output; temporary admin grant revoked. |
+| Readiness negative cases | Real SSH wrong host pin, unreachable port, nonexistent Linux account safely rejected; valid configuration restored and readiness passed. |
+| WebSocket isolation | Actual wrong Origin/actor, same actor different parent, second redemption and ended redemption403; first legitimate channel remained usable. |
+| Final storage E2E | Real SSH encrypted capture and replay through filesystem, Moto S3, real Azurite Azure Blob, and GCS XML-compatible local fixture; switching destinations preserved prior recordings. |
+| Replay authorization | Current DB roles, active user/email/password walls, auth epoch and durable logout checked; stale admin principal denied in owned fixture. |
+| Integrity/retention | Tampered/truncated chunks and tenant confusion denied; expired key/chunks removed while audit retained; failed external delete retained keys/config and resumed cursor. |
+| Resize-only quota | Owned Linux fixture: ciphertext sum equals charged payload bytes; 64KiB reached before1000 resize events;4096-event bound enforced. |
+| Retention fairness | Failed oldest external target receives durable30 s retry cooldown while later PG target cleans up. |
+| Filesystem race protection | Anchored openat/O_NOFOLLOW operations; root and tenant replacement stress tests pass5 repeated race runs; actual Linux filesystem fixture passes. |
+| Signed SSO/IdP MFA | Production signed callback and real browser SSH/UTF-8/UID1000/22×152 PASS; absent/stale/future MFA rejected for terminal; wrong nonce/audience/signature unauthenticated. |
+| Enrolled identity isolation | Real issued mTLS: wrong gateway403, foreign org404, wrong purpose403; normally revoked certificates401. |
+| Sustained local capacity | 16 real recorded PTYs,4 actors, at least45 s,9 executed output rounds each. Startup median0.993 s/max1.034 s. Per-user fifth/gateway seventeenth denied;12 concurrent requests admitted exactly4. |
+| Slow consumer | Shipping proxy, unread128MiB foreground output with capture disabled to isolate backpressure: closed2.625 s, terminal_closed. Finite local measurement only. |
+| Responsive/keyboard | Chromium390×844 Servers, registration dialog and Settings fit page;768×1024 Settings fit; modal Tab moves to first input, Escape closes and restores trigger focus. Viewport reset. |
+| Native CA cutover | Separate target rejects old still-valid cert after public trust replacement, accepts newCA with realPTY40×120; explicit negative auth checks. |
+| Synthetic recovery | Fresh synthetic185 source→encrypted archive→fresh restore; offline epoch fence blocks surviving old parents; six Server Access envelopes atomically rewrap with unchanged signer/replay/ciphertext. |
+| Packaging/version | Existing installer opt-in/preservation, Compose/Helm gates, both exact shipping proxies actualWS; basegateway refuses terminal, currentrestore works; baseAPI refuses future185 on empty schema-only target. |
+| Observer/UI | Actual browser Audit Log→session evidence→protected replay; saved S3 connection test/save while auto OFF, archived replay of UTF-8/41×99, idempotent Export and explicit Manual Download click; revised settings/replay screenshots visually inspected. |
+
+## Verification and artifacts
+
+- Final full web verify under exact supported Node24.21.0:163 files,2066 passed and2 expected failures; typecheck and production build passed (79.43 s suite; build4.66 s). Replay network-error polling now also invalidates queued writes before clearing; dedicated denial/network regressions pass. Existing jsdom canvas, Rollup annotation and bundle-size warnings remain.
+- API HTTP race suite passed88.658 s; RBAC race passed. Final affected Server Access race suite passed2.538 s after replacing an in-progress stress-test orchestration failure; all fixed tests passed. Node control/runtime and terminal-wire race checks and actual Linux binary builds passed during development.
+- Final complete affected API race checks after archive changes: Community serveraccess2.933 s/http85.745 s; enterprise-tag serveraccess2.794 s/http88.326 s. Opt-in integration fixtures run separately on owned Linux topology. Packaging/proxy changes received an independent read-only review with no actionable findings.
+- Owned PostgreSQL/Redis Linux fixture tests: durability, external filesystem storage and encrypted resize quota passed at schema185. No other database/session was adopted.
+- Migration182/183 down/up were qualified on owned schema copies. Storage migrations185 down→184 down→184 up→185 up passed on empty schema-only `sa185_qualification`; all three expected storage columns returned. Original fixture remained185,false. Rollback184 refuses to orphan configured/snapshotted external storage.
+- Primitive SSH/recorder probes include actual isolated64KiB tmpfs ENOSPC, bounded lease stall, host/certificate/account checks, output/resize and disabled capture.
+- S3 adapter tests verify a published AWS SigV4 vector. Azure tests independently verify canonical HMAC and real Azurite. GCS uses documented AWS4 interoperability ([Google signatures](https://docs.cloud.google.com/storage/docs/authentication/signatures), [HMAC keys](https://docs.cloud.google.com/storage/docs/authentication/hmackeys)). All providers have authenticated httptest roundtrips, redirect refusal, bounded responses, error redaction and cancellation tests.
+
+Final Linux API SHA256: `9e578a2060ff095043c621616e7ef4eca382d14661fd7ba4df88ba672d05e268`.
+Final Linux gateway SHA256: `8c0e60f6d81632b30cf4c1ccfb0f2b177a024f636cea028e052ff99dd71cfe8b`.
+
+Owned emulator image digests: Moto `sha256:91fd602a21f49cf9eb82fdf474015a3c131d40104c8297ea6a2ca920708ae32c`; Azurite `sha256:830430c1da1a2d537e08f3e6764dd1f5ae00cf0346bcaf625b968ec3f0971fd5`. MinIO registry pulls were refused; the S3/GCS service probe uses Moto, not a claimed MinIO/live-cloud test. Moto state is ephemeral on emulator restart; the local emulator does not qualify provider durability.
+
+Sanitized measured proof JSON and screenshots live under `/private/tmp/tunnex-sa0-spike/`; no passwords, MFA seeds, recovery codes, session cookies, cloud keys or CA private keys are in this evidence. Owned binaries/runtime/build/source hashes live in ignored `tests/server-access-local/.runtime/`. Public CA material alone was exported to the SSH fixture.
+
+## Acceptance boundaries
+
+SA-0 technical feasibility/contracts accepted under the explicit human choices. SA-1 through SA-7 have working integrated local implementation and the evidence above, including actual shell and external storage adapters. SA-9 local password/MFA walkthrough, Observer/replay, shared account and fail-closed qualification have concrete evidence. Local signed SSO, enrolled identity, operations/recovery and packaging now also have concrete proof. Human production acceptance and release remain separate.
+
+The earlier authorized local SA-8/SA-9 gates above passed; the expanded PostgreSQL-first archival lifecycle is now qualified below. see [identity](SA-identity-qualification.md), [browser](SA-browser-qualification.md), [recovery](SA-recovery-qualification.md) and [packaging](SA-packaging-qualification.md) for exact scope. Remaining environment-specific acceptance: customer-cloud IAM/endpoints/durability and external-object recovery; EFS/EBS mounting/kernel stalls/resource budgets; physical devices, Firefox/Safari and actual screen readers; longer/multi-gateway/global128 capacity and production percentiles; installation-wide master migration; actual customer-host/Kubernetes upgrades and production disaster recovery/RPO/RTO. HA/resume and background-process termination are not implemented guarantees. No cloud provisioning or mount management is implemented.
+
+Keep historical storage credentials valid until their recording snapshots expire; revoking old provider keys can block historical replay and retention. There is no automatic migration/re-encryption of existing destinations. Initial unshipped POC manifests used raw-output accounting; new capture charges ciphertext bytes. No claim of a migration of legacy production recordings.
+
+Current local policy: recording ON for the one owned server; PostgreSQL selected; retention30 days,4MiB/session,64MiB/org,MFA900 s,server idle60 s/max120 s. Temporary outage/config tests restore those settings. Original admin/member fixture accounts remain available. Capacity actors were logged out/deactivated and their memberships/grants revoked. Three inert identity-test organizations and revoked nodes retain immutable audit evidence; no audit trigger was bypassed. No destructive baseline cleanup occurred.
+
+## Final PostgreSQL-first archive acceptance
+
+The serving owned fixture was upgraded from185 to186 with no active terminals. All27 encrypted emulator objects were preserved privately before network-namespace recreation, then restored with exact SHA256 verification. Historical filesystem/S3/Azure/GCS replay remained functional after upgrade. No existing expiry or sealed destination snapshot changed.
+
+`/private/tmp/sa-archive-http-proof.py` ran actual SSH through the final API and ordinary authenticated HTTP paths. Its sanitized result is `/private/tmp/tunnex-sa0-spike/archive-http-evidence.json`. New captures have NULL primary storage snapshots and encrypted PostgreSQL payloads. Admin retention60 applied to a new admission while old expiry/provider hashes remained unchanged;30 was restored. Real capture/replay/download preserved UTF-8 output, event timing and resize41×99. Download has exact attachment filename and Cache-Control:no-store. A foreign ordinary member could neither export nor download the administrator's session.
+
+Manual export with automatic archival OFF and a saved connection reached available, retained PostgreSQL bytes/quota through retention, and repeated export preserved the same object-key set. At expiry, pausing only the owned S3 emulator caused visible failed/retry metadata while retaining PostgreSQL ciphertext and key. Unpausing and advancing only that new fixture's retry timestamp completed readback verification, released PostgreSQL ciphertext/quota, and produced an identical authorized archived download. A separate automatic-ON recording archived at expiry and replayed identically. A separate automatic-OFF unexported recording expired with ciphertext/key removed and metadata retained; Download refused unavailable content. All temporary grants were revoked.
+
+The complete encrypted S3 manifest includes tenant/session binding, wrapped DEK, chunk count/digest and incomplete marker. Independent review found and resolved loss of the incomplete warning after PG release: the flag is now durable in186 and returned by metadata polling; full replay authenticates it in the manifest. Native tests refuse tampered count/key/digest/manifest. The final synthetic Moto lifecycle passed0.13 s, schema186 synthetic recovery fences5.14 s and six-envelope migration0.08 s. See recovery evidence for the explicit external-manifest/master-rotation boundary.
+
+Final186 transactional temporary-table qualification passed down/up, old7-day explicit policy/expiry/destination preservation, new30-day default/autoOFF/incompletefalse,3650-day policy bounds and rollback refusal for expanded policies or archive jobs. The serving schema stayed186,false.
+
+The browser Settings form tested and saved the S3 connection with the automatic switch OFF and blank write-only secret. Session replay displayed archived status and S3 availability, then rendered `ARCHIVE_MANUAL_OK héllo` and41×99. Explicit Manual Download and repeated Export were clicked through the shared client. The HTTP attachment's complete event content was independently verified; browser download-file custody was not inspected. Screenshots `sa-archive-settings-final.png` and `sa-archive-replay-final.png` are private local evidence.
+
+Final local policy: PostgreSQL,30-day retention, recording ON,4MiB/session64MiB/org,MFA900 s,idle60 s/max120 s; saved owned S3 connection with automatic archival OFF. No active terminals. Production capacity, cloud IAM/provider durability, external-object disaster recovery and installation-wide master rotation remain outside these local acceptance claims. Master rotation must also rewrap archived S3 manifests and their embedded wrapped DEKs; database-envelope migration alone is insufficient.
+
+## Encrypted package import acceptance
+
+New S3 exports also publish a self-contained encrypted `recording-v2.tunnex-recording` package. Current human authorization and installation master custody remain mandatory; import does not require the original session, recording index or saved destination, and does not restore trusted original audit provenance. Historical version-1 chunk/manifest replay remains supported without destructive migration.
+
+A file was downloaded directly from owned local Moto S3 and matched the exported encrypted bytes. After the synthetic original rows had been deleted, the normal signed-in browser file chooser, explicit Decrypt package for replay confirmation and shared terminal player successfully replayed its incomplete output. A tampered package returned `recording_package_invalid`; a 32 MiB plus one byte file was rejected by the browser before upload. Streaming HTTP tests reject an oversized chunked import with 413, preserve the ordinary 128 KiB route limit and reject unauthenticated imports before reading the body. Both actual shipping Docker and rendered Helm proxies passed nginx configuration checks and forwarded 2 MiB import requests to API authentication (401).
+
+Final focused API race gates passed for open and enterprise tags: serveraccess plus HTTP, including package integrity, current owner/manager/tenant/logout authority and bounded transport. Final web suite: 165 files, 2077 passing tests and two expected failures; typecheck and production build passed with pinned Node 24.21.0. Packaging qualification and diff whitespace checks passed. The serving owned API/gateway were refreshed after confirming zero active terminals. All 70 encrypted emulator objects were restored and hash verified; local preview 15195 and API 18183 are healthy. No commits, pushes or cloud mutations were made during local qualification.
+
+The final browser fixture additionally reproduced split UTF-8 `€`, resize40×120 and source event timings125/126/127ms after actual S3 export and deletion of its original rows. Its fresh synthetic S3/native proof passed0.22s. Independent final import review found no concrete blockers.
+
+## Member terminal visibility update
+
+The requested member interface now exposes only granted servers and the live terminal. Sessions, recording import/replay and session audit links require workspace session-management permission. A direct member `?view=sessions` URL falls back to My servers; administrator session review remains available. This is a UI visibility change; existing recording API authorization remains unchanged. Focused browser-terminal/qualification regressions passed10 tests and the complete typed production web build passed. The current source and rebuilt web payload are transferred together to the owned cloud test CP; API/gateway binaries and active terminal services are preserved.
+
+## Account SSH readiness guidance
+
+Administrator account cards explain that grants do not configure target SSH, offer per-account setup instructions, distinguish once-per-listener CA trust from per-Linux-account principals, and show actionable authentication failures from the latest account check. Members receive an administrator-check waiting status without privileged setup details. Account-list edits still invalidate readiness; no safety gate is bypassed. Focused regressions passed13 tests and the typed production web build passed. The owned private target listener now also allows the user-requested Ubuntu account with its exact server/account principal; the shared public CA was reused and ordinary Ubuntu SSH connection qualification passed. Management SSH and existing grants were preserved.
+
+### Reusable target setup and user-requested clean state
+
+Added administrator-only download/generated commands and a root-managed Ubuntu/systemd helper with init, account-only add-account, status and helper-owned removal. Init verifies the public CA fingerprint, existing non-root login account and free dedicated port; account additions preserve CA/host keys and reject server mismatch/conflicting principals. Management SSH, MFA, bounded grants and independently pinned host fingerprints remain required. Six focused helper safety tests, twelve browser terminal UI tests and typed Vite production build passed (direct installed tools; pnpm launcher refused installed Node engine version). On the owned private target, actual gateway certificate authentication for ubuntu passed; account addition/repetition and wrong identity/root/bad CA rejection were verified. The final target state is disabled with empty ready_accounts; dedicated listener/trust/principal files removed; management SSH port22 and Linux accounts remain. Reviewed helper installed in /usr/local/sbin; public CA input remains in /home/ubuntu/ca.pub. Legacy setup backup retained root-only at /root/tunnex-browser-ssh-before-helper. Existing Tunnex registrations, grants, audit/recording history remain. Final web assets deployed to the owned CP without API/gateway restart. No commit or push.
+
+### Server unregistration
+
+Added a tenant-scoped admin-only DELETE server endpoint and explicit UI confirmation. Migration187 adds removed_at; the transaction permanently retires the identity, disables its grants, clears readiness, ends active sessions and preserves historical server/session/recording rows. Capturing recordings become incomplete/failed rather than remaining stuck. Server lookup/edit/catalog exclude removed identities, session/grant admission share-locks protect against concurrent retirement. Retries are idempotent and foreign IDs return not-found. Rollback refuses to drop tombstones when any retired identity exists. Member catalogs refresh every3seconds. This unregisters the CP record and does not remotely uninstall target SSH. Existing target SSH was already removed at the user's request. Focused Go authority/serveraccess/recording tests and thirteen UI tests plus typed production build passed.
+
+Live test CP verification: migration187 applied cleanly; the original enrollment was removed using the native admin confirmation. Admin catalog became empty and the already-open member catalog automatically became empty. Member DELETE returned403, nonexistent ID404, old-ID Check/grant404, repeated admin removal200. All grants disabled. Database retained11 recording rows and21 session rows before/after removal; one removal audit entry. Target management SSH and Linux users remain. Re-enrollment must use the newly generated server UUID, not the retired UUID in earlier commands. API prior binary retained on the owned host. No commit/push.
+
+### Two-command SSH bootstrap and eligible account discovery
+
+Added server-specific downloadable Python bootstrap bundles embedding the authenticated public CA/fingerprint and registered org/server/IP/port. New UI registration starts disabled with pending host trust and dedicated2222 port; real host fingerprint import and SSH checks remain mandatory. Bootstrap verifies target IP and existing binding, discovers login users from UID_MIN/allowed-shell policy (excluding root/system/nobody/non-login), configures an all-user or selected set, installs the reusable helper and prints public result JSON for admin paste/import/review. Additive sync preserves existing CA/host keys/accounts; server limit16 is checked before mutation. No tokens/passwords/private keys/MFA seeds or access grants are installed. Result parsing rejects wrong tenant/server/port, malformed fingerprints, unsafe account names, duplicates and oversized input. Admin Save uses existing revision/authorization checks; members have no bootstrap controls.
+
+Proof:10 focused Python safety tests,17 UI/utility tests, affected Go serveraccess/http authority/recording tests and typed production build passed. Final API/web deployed to owned CP, with no active terminals at restart. Native all-user bootstrap discovered fixture+ubuntu on the already-configured target, preserved SHA256:QtFO7l+n/3QQqA2kmlRhuxvqsf5gNUC8kADtRcnxrJM, and kept both management and dedicated listeners active. Selected repeat sync passed; a batch containing root was rejected with identical config checksum. Native browser download/paste/review/Save plus normal MFA and real gateway SSH checks passed for both accounts. No fixture grant was created; member catalog did not expose fixture. New discovered accounts still require explicit bounded administrator grants. Reviewed source is uncommitted; no push/PR.
+
+### Gateway-assisted enrollment qualification — 2026-10-05
+
+Implemented durable enrollment jobs, browser-only administrator APIs, purpose-specific mTLS gateway polling, memory-only job keys, forced digest-checked root launcher authorization and automatic account/host-result save. Registration now permits a disabled pending-discovery server, with zero accounts and an unverified placeholder fingerprint; that state cannot enable access. Existing manual bootstrap remains available.
+
+Validation: complete `apps/api/internal/serveraccess` and `apps/api/internal/http` packages passed; gateway `serveraccess`/`control` race tests passed; 20 focused web tests, TypeScript compilation and production build passed; 13 Python helper/authorization safety tests passed. Reviewed the actual deployed browser UI, registered only name/IP/gateway, ran the displayed authorization command on the disposable target and started setup through the UI. Gateway configured Ubuntu 26.04, discovered `ubuntu`, saved browser host fingerprint and its real SSH check passed automatically. No grants were created. Management SSH stayed available. Target verification found zero temporary enrollment key entries, no job launchers and no enrollment sudoers rules after execution.
+
+Real negative paths: member preparation and job read returned 403; wrong pinned management host identity failed before installer delivery without changing server revision/host configuration; cancellation returned cancelled. Database migrated to version 188, clean. API and gateway deployed binaries matched locally built SHA256 values. Source manifest verified 3712 current files with zero mismatches (before this appended evidence note).
+
+The original owned test instance `i-0b084edae9076a5d7` / `172.31.48.152` was terminated at the user's request. Its registration and the validation registration were retired, preserving history. Replacement `i-0cf94f76eea7491e8` / `172.31.48.24` has no public IP, encrypted disk and IMDSv2 required. Cloud-init installs no packages and runs no startup commands; it supplies management SSH access only. Verified cloud-init done and no Tunnex root directory, helper, service unit or enrollment authorization directory. The replacement is intentionally unregistered/unconfigured for customer testing.
+
+Scoped management port 22 ingress from gateway SG `sg-04968e3abd8157121` into test target SG `sg-07f3eb733ec6196f2` was explicitly approved by the user after automatic approval review rejected the initial combined deploy/firewall operation. No public port-22 ingress was added. User approval also covered updated test API/gateway deployment and restart. No commits or pushes were made.
+
+Limits: native target qualification is Ubuntu 26.04; other accepted Linux distributions have OS/dependency preflight but not equivalent native proof. Enforcing SELinux, non-systemd OS, Windows/macOS are refused. At most 16 Linux accounts; large check batches can hit existing admission limits and remaining checks must be retried. Gateway restart discards authorization keys and requires a fresh job. SSM/IAM onboarding is not implemented. Existing HTTP test deployment is scoped; production delivery requires authenticated HTTPS.

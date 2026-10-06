@@ -45,6 +45,7 @@ services:
     environment:
       TUNNEX_ENV: production
       TUNNEX_LOG_LEVEL: ${TUNNEX_LOG_LEVEL:-info}
+      TUNNEX_SERVER_ACCESS_ENABLED: ${TUNNEX_SERVER_ACCESS_ENABLED:-false}
       TUNNEX_API_ADDR: ":8080"
       TUNNEX_SECRETS_DIR: /var/lib/tunnex/secrets
       TUNNEX_AUTO_MIGRATE: "true" # the API migrates on boot — no separate migrate step for the customer
@@ -102,6 +103,7 @@ services:
       TUNNEX_HOST_UPGRADE_STATUS_PATH: /var/lib/tunnex/upgrade/status/status
     volumes:
       - ${TUNNEX_DATABASE_TLS_SOURCE:-tunnex_database_tls}:/etc/tunnex/database-tls:ro
+      - server_access_recordings:/var/lib/tunnex/recordings
       - tunnex_secrets:/var/lib/tunnex/secrets # master key / JWT / session — auto-generated on first boot (S0.3)
       - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?set by AI bootstrap}:/etc/tunnex/ai-custom-policy.json:ro
       - ./release.json:/var/lib/tunnex/release.json:ro
@@ -337,6 +339,7 @@ services:
     image: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
     environment:
+      TUNNEX_SERVER_ACCESS_ENABLED: ${TUNNEX_SERVER_ACCESS_ENABLED:-false}
       TUNNEX_API_URL: http://api:8080
       TUNNEX_AGENT_URL: https://api:8443
       TUNNEX_AGENT_SERVERNAME: tunnex-control
@@ -376,6 +379,9 @@ volumes:
   tunnex_database_tls:
   postgres_data:
   redis_data:
+  server_access_recordings:
+    name: ${TUNNEX_SERVER_ACCESS_RECORDING_VOLUME:-${COMPOSE_PROJECT_NAME:-tunnex}_server_access_recordings}
+    external: ${TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL:-false}
   tunnex_secrets:
   tunnex_node_state:
   caddy_data:

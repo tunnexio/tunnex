@@ -22,6 +22,8 @@ import type { SVGProps } from "react";
 export type IconName = keyof typeof ICON_PATHS;
 
 export const ICON_PATHS = {
+  "app-grid": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  "shield-check": '<path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/>',
   "alert-triangle":
     '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 20h16a2 2 0 0 0 1.73-2z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   "arrow-right-left":

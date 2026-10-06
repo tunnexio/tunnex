@@ -1,0 +1,1 @@
+ALTER TABLE server_access_settings DROP COLUMN mfa_freshness_seconds;

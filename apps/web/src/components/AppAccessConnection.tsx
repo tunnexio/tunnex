@@ -6,10 +6,10 @@ import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 type Check = components["schemas"]["AppAccessCheck"];
 type Runtime = components["schemas"]["AppAccessGatewayRuntime"];
 const gatewayLabels: Record<Runtime["status"], string> = {
-  unknown: "App Access capability has not been reported.",
-  unsupported: "This gateway does not support the required App Access connector version.",
-  unavailable: "The gateway's App Access report is no longer current.",
-  supported: "The gateway supports App Access connection checks.",
+  unknown: "Applications capability has not been reported.",
+  unsupported: "This gateway does not support the required Applications connector version.",
+  unavailable: "The gateway's Applications report is no longer current.",
+  supported: "The gateway supports Applications connection checks.",
 };
 const failures: Record<Check["error_code"], string> = {
   "": "",
@@ -20,7 +20,7 @@ const failures: Record<Check["error_code"], string> = {
   http_failed: "The origin did not complete a bounded HTTP response.",
   deadline_exceeded: "The connection check timed out.",
   assignment_changed: "The saved application changed during this check.",
-  feature_withdrawn: "App Access was turned off or became unavailable during this check.",
+  feature_withdrawn: "Applications was turned off or became unavailable during this check.",
   connector_failed: "The connector could not complete this check.",
 };
 
