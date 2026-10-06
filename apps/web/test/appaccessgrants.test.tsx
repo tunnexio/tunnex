@@ -14,7 +14,7 @@ beforeEach(() => { Object.assign(state, { entitled: true, accessAllowed: false, 
 afterEach(cleanup);
 function show(local = true, permitted = true, path = "/app-access/access?app_id=a1") { return render(<MemoryRouter initialEntries={[path]}><AppAccessAccess orgId="o1" appId={local ? "a1" : undefined} permitted={permitted} canViewEvents canViewAudit /></MemoryRouter>); }
 async function ready() { await screen.findByRole("table", { name: "Access grants" }); }
-describe("App Access explicit grants", () => {
+describe("Applications explicit grants", () => {
  it("links exact grant audit history after lapse and hides it without grant permission", async () => {
   state.entitled = false; const view = show(); await ready();
   const link = screen.getByRole("link", { name: "Grant change audits for Alice" });

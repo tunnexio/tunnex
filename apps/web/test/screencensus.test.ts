@@ -72,6 +72,8 @@ const COVERED: Record<string, string> = {
   "AppAccessCompanyApplications.tsx": "appaccesscatalog.test.tsx — display-only discovery, owner fallback, authoritative grant/MFA separation and failed catalog reads",
   "AppAccessRequests.tsx": "appaccesscatalog.test.tsx — retained self history, atomic versioned decisions and failed request reads",
   "AppAccessManagedApplications.tsx": "appaccesscatalog.test.tsx — scoped owner projection/grants, ownership loss and failed reads without admin topology",
+  "EditorAuth.tsx": "editorauth.test.tsx - explicit consent, scoped account, inline MFA and callback rejection",
+  "BrowserTerminal.tsx": "browserterminal.test.tsx - member topology isolation, MFA refusal, recording refusal and failed workspace reads",
   "AppAccess.tsx": "appaccesswiring.test.tsx + appaccessmfa.test.tsx — role-aware landing, member topology refusal, draft API binding, stale-save preservation, immediate MFA policy confirmation and read-failure separation",
   "AppAccessAccess.tsx": "appaccessgrants.test.tsx: permissions, stale input, grant impact and effective access",
   "AppAccessMyApplications.tsx": "appaccessmyapps.test.tsx + appaccessmfa.test.tsx: own catalog/session binding, fresh MFA reuse, enrollment acknowledgment, verification-gated nonce retry, invalid handoff and authoritative sign-out failure",
@@ -115,7 +117,7 @@ const COVERED: Record<string, string> = {
   "AppAccessEvents.tsx":
     "test/appaccessevents.test.tsx — independent app-event endpoint, exact tenant/filter keyset paging, invalid filter refusal, unavailable telemetry and read failure remain honest",
   "Settings.tsx":
-    "test/settingswiring.test.tsx — the control reflects the ORG's opt-in state, not a default (misconfigure, stays in settings) + edition gating both directions (destination: license) + failed org load surfaced, no defaults offered + CP-admin-only App Access domains deep link, including no-org access",
+    "test/settingswiring.test.tsx — the control reflects the ORG's opt-in state, not a default (misconfigure, stays in settings) + edition gating both directions (destination: license) + failed org load surfaced, no defaults offered + CP-admin-only Applications domains deep link, including no-org access",
 };
 
 // PENDING — accounted for, NOT yet covered. This list is the BACKLOG STATED OUT LOUD, and it exists because a
@@ -202,7 +204,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(29);
+    expect(Object.keys(COVERED).length).toBe(31);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -222,7 +224,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 41 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(41);
+  it("the ledger is a snapshot of today — 43 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(43);
   });
 });

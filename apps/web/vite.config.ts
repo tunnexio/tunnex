@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 // Vite's string target shorthand sets changeOrigin=true. Preserve the browser's
 // authority (including its port) so dev and preview match production CSRF checks.
-const localAPI = () => ({ target: process.env.TUNNEX_DEV_API ?? "http://localhost:8080", changeOrigin: false });
+const localAPI = () => ({ target: process.env.TUNNEX_DEV_API ?? "http://localhost:8080", changeOrigin: false, ws: true });
 
 // The dashboard is served as a static bundle by nginx in compose.
 export default defineConfig({

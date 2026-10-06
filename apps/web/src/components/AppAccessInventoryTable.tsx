@@ -53,7 +53,7 @@ export default function AppAccessInventoryTable({ orgId, applications, manage, g
   const unavailableDelete = (app: Application) => readErrors[app.id] ? "Could not read withdrawal status. Refresh applications." : deleteReason(app, publications[app.id]);
   return <>
     <DataTable caption="Applications" failed={false} filterable={false} pageSize={0} rows={applications} rowKey={app => app.id} rowLabel={app => app.draft.name} empty={empty} rowActions={[
-      ...(grant ? [{ key: "grant", label: "Grant access", unavailable: () => canGrant ? null : "Grants require an eligible license, App Access enabled and a configured domain.", run: (apps: Application[]) => setDialog({ action: "grant", applications: apps }) }] : []),
+      ...(grant ? [{ key: "grant", label: "Grant access", unavailable: () => canGrant ? null : "Grants require an eligible license, Applications enabled and a configured domain.", run: (apps: Application[]) => setDialog({ action: "grant", applications: apps }) }] : []),
       ...(manage ? [
         { key: "disable", label: "Disable", run: (apps: Application[]) => setDialog({ action: "disable", applications: apps }) },
         { key: "delete", label: "Delete", danger: true, unavailable: unavailableDelete, run: (apps: Application[]) => setDialog({ action: "delete", applications: apps }) },
@@ -140,7 +140,7 @@ function InventoryGrantDialog({ orgId, applications, onClose }: { orgId: string;
     ]).then(([settings, members, groups]) => {
       if (!alive.current) return;
       if (!settings.ok || !members.ok || !groups.ok) { setError(!settings.ok ? settings.error : !members.ok ? members.error : !groups.ok ? groups.error : "Could not load grant subjects."); return; }
-      if (!settings.data.entitlement_available || !settings.data.enabled || !settings.data.domain_ready) { setError("Grants require an eligible license, App Access enabled and a configured domain. Close and refresh applications."); return; }
+      if (!settings.data.entitlement_available || !settings.data.enabled || !settings.data.domain_ready) { setError("Grants require an eligible license, Applications enabled and a configured domain. Close and refresh applications."); return; }
       setOptions([
         ...members.data.filter(member => member.status === "active").map(member => ({ value: `user:${member.user_id}`, kind: "user", tag: "USER", label: member.name || member.email, detail: member.email, section: "People" })),
         ...groups.data.map(group => ({ value: `group:${group.id}`, kind: "group", tag: "GROUP", label: group.name, detail: `${group.member_count} members`, section: "Groups" })),

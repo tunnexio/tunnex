@@ -385,6 +385,16 @@
           "pattern": "^$|^https://[^/\\s?#]+/?$"
         }
       }
+    },
+    "serverAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
     }
   },
   "required": [

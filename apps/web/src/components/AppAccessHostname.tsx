@@ -23,6 +23,6 @@ export default function AppAccessHostname({ value, domain, original, onChange }:
       <div className="flex min-w-0 flex-wrap items-end gap-2"><div className="min-w-0 flex-1"><Field label="Application subdomain"><Input required disabled={!domain} maxLength={253} pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?" title="Use one label of 1–63 letters, numbers or hyphens; start and end with a letter or number." placeholder="payroll" value={appHostnamePrefix(value, domain)} onChange={event => onChange(appHostnameFromInput(event.target.value, domain))} aria-describedby={descriptionId} /></Field></div><span className="min-h-9 break-all py-2 text-sm text-ink-secondary">{domain ? `.${domain}` : "Domain not configured"}</span></div>
       {value && !validAppHostname(value, domain) && <p role="alert" className="text-sm text-danger">Enter one subdomain label, such as payroll. Use 1–63 letters, numbers or hyphens.</p>}
     </>}
-    <p id={descriptionId} className="break-all text-sm text-ink-secondary">{!domain ? "An operator must configure the App Access domain before choosing an address." : validAppHostname(value, domain) ? `Application address: https://${value}` : "The configured App Access domain is added automatically."}</p>
+    <p id={descriptionId} className="break-all text-sm text-ink-secondary">{!domain ? "An operator must configure the Applications domain before choosing an address." : validAppHostname(value, domain) ? `Application address: https://${value}` : "The configured Applications domain is added automatically."}</p>
   </div>;
 }

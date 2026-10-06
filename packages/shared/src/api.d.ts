@@ -6942,10 +6942,715 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/server-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** getServerAccessWorkspace */
+        get: operations["getServerAccessWorkspace"];
+        /** Explicitly opt this organization in or out of the local terminal capability */
+        put: operations["updateServerAccessSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/recording-storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** getServerAccessRecordingStorage */
+        get: operations["getServerAccessRecordingStorage"];
+        /** updateServerAccessRecordingStorage */
+        put: operations["updateServerAccessRecordingStorage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/recording-storage/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify write read and deletion of an owned storage probe */
+        post: operations["testServerAccessRecordingStorage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/recording-archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read safe optional S3 recording archive configuration */
+        get: operations["getServerAccessRecordingArchive"];
+        /** Configure optional S3 archiving after PostgreSQL recording retention */
+        put: operations["updateServerAccessRecordingArchive"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/recording-archive/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test S3 archive write read and deletion without saving configuration */
+        post: operations["testServerAccessRecordingArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** createServerAccessServer */
+        post: operations["createServerAccessServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/servers/{serverId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** updateServerAccessServer */
+        put: operations["updateServerAccessServer"];
+        post?: never;
+        /** Retire server enrollment and revoke its access while preserving evidence */
+        delete: operations["removeServerAccessServer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/servers/{serverId}/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getCurrentServerAccessEnrollment"];
+        put?: never;
+        post: operations["prepareServerAccessEnrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/enrollments/{enrollmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getServerAccessEnrollment"];
+        put?: never;
+        post: operations["startServerAccessEnrollment"];
+        delete: operations["cancelServerAccessEnrollment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/servers/{serverId}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** checkServerAccessServer */
+        post: operations["checkServerAccessServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/trust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** getServerAccessTrust */
+        get: operations["getServerAccessTrust"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** createServerAccessGrant */
+        post: operations["createServerAccessGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/grants/{grantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** revokeServerAccessGrant */
+        delete: operations["revokeServerAccessGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** createServerAccessSession */
+        post: operations["createServerAccessSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** endServerAccessSession */
+        delete: operations["endServerAccessSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an authorized bounded encrypted recording */
+        get: operations["getServerAccessRecording"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/recording-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decrypt an authorized self-contained recording package without original database rows
+         * @description Explicit import uploads a bounded installation-key encrypted v2 package. Current same-organization human replay permission and authenticated original-owner or session-management authority are required. Imported events are not trusted original audit provenance and are not persisted.
+         */
+        post: operations["importServerAccessRecordingPackage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording/export-s3": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request an idempotent bounded S3 recording export
+         * @description PostgreSQL payload remains usable until the encrypted archive, final manifest and self-contained v2 package are verified. Download recording-v2.tunnex-recording from S3 and import into the same installation even after original database rows are removed. Failed jobs retain the source and retry with visible safe error state.
+         */
+        post: operations["exportServerAccessRecordingS3"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /** Download authorized integrity-checked recording events as JSON */
+        get: operations["downloadServerAccessRecording"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /** connectServerAccessTerminal */
+        get: operations["connectServerAccessTerminal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/server-access/sessions/editor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["authorizeServerAccessEditor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server-access/editor/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["exchangeServerAccessEditor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server-access/editor/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["connectServerAccessEditor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ServerAccessRecordingArchive: {
+            /** @description Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection */
+            enabled: boolean;
+            endpoint?: string;
+            bucket?: string;
+            region?: string;
+            prefix?: string;
+            access_key_id?: string;
+            credentials_configured: boolean;
+        };
+        /** @description Secrets are write-only. Omitted secrets preserve saved credentials only for the same destination. The enabled flag controls only automatic archiving at retention expiry. Disabling preserves the saved S3 connection for manual export and does not cancel existing jobs or redirect snapshots. */
+        ServerAccessRecordingArchiveInput: {
+            /** @description Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection */
+            enabled: boolean;
+            endpoint?: string;
+            bucket?: string;
+            region?: string;
+            prefix?: string;
+            access_key_id?: string;
+            secret_access_key?: string;
+        };
+        ServerAccessRecordingExport: {
+            /** Format: uuid */
+            session_id: string;
+            /** @enum {string} */
+            status: "none" | "pending" | "uploading" | "available" | "failed";
+            /** @description S3 object key of the self-contained installation-encrypted v2 recording package */
+            package_key?: string;
+            archived_events: number;
+            total_events: number;
+            /** @description Safe error code without provider response or credentials */
+            error?: string;
+            /** Format: date-time */
+            archived_at?: string;
+        };
+        ServerAccessRecordingStorage: {
+            /** @enum {string} */
+            kind: "postgres" | "filesystem" | "s3" | "azure" | "gcs";
+            path?: string;
+            endpoint?: string;
+            bucket?: string;
+            region?: string;
+            prefix?: string;
+            access_key_id?: string;
+            account_name?: string;
+            credentials_configured: boolean;
+        };
+        ServerAccessRecordingStorageInput: {
+            /** @enum {string} */
+            kind: "postgres" | "filesystem" | "s3" | "azure" | "gcs";
+            path?: string;
+            endpoint?: string;
+            bucket?: string;
+            region?: string;
+            prefix?: string;
+            access_key_id?: string;
+            account_name?: string;
+            secret_access_key?: string;
+            account_key?: string;
+        };
+        ServerAccessSettingsInput: {
+            enabled: boolean;
+            mfa_freshness_seconds?: number;
+            /** @default 30 */
+            recording_retention_days: number;
+            recording_max_session_bytes?: number;
+            recording_max_org_bytes?: number;
+        };
+        ServerAccessEnrollmentInput: {
+            management_account: string;
+            management_port: number;
+            management_fingerprint: string;
+            /** @description Empty discovers all eligible Linux login users; otherwise a selected set */
+            accounts: string[];
+        };
+        ServerAccessEnrollment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            server_id: string;
+            /** @enum {string} */
+            state: "preparing" | "awaiting_authorization" | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
+            /** Format: date-time */
+            expires_at: string;
+            authorization_command: string;
+            message: string;
+        };
+        ServerAccessServerInput: {
+            name: string;
+            private_ip: string;
+            ssh_port: number;
+            /** Format: uuid */
+            gateway_id: string;
+            host_fingerprint: string;
+            accounts: string[];
+            enabled: boolean;
+            recording_enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            idle_timeout_seconds: number;
+            max_session_seconds: number;
+            /** @enum {string} */
+            os?: "linux" | "windows";
+            rdp_domain?: string;
+            /** @enum {string} */
+            clipboard_policy?: "off" | "paste" | "copy" | "both";
+            developer_access_enabled?: boolean;
+        };
+        ServerAccessServer: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            gateway_id: string;
+            accounts: string[];
+            /** Format: int64 */
+            revision: number;
+            enabled: boolean;
+            recording_enabled: boolean;
+            ready_accounts: string[];
+            private_ip?: string;
+            ssh_port?: number;
+            host_fingerprint?: string;
+            last_error?: string;
+            idle_timeout_seconds: number;
+            max_session_seconds: number;
+            /** @enum {string} */
+            os?: "linux" | "windows";
+            rdp_domain?: string;
+            /** @enum {string} */
+            clipboard_policy?: "off" | "paste" | "copy" | "both";
+            developer_access_enabled?: boolean;
+        };
+        ServerAccessGrantInput: {
+            /** Format: uuid */
+            server_id: string;
+            account: string;
+            /** Format: uuid */
+            user_id?: string;
+            /** Format: uuid */
+            group_id?: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ServerAccessGrant: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            server_id: string;
+            account: string;
+            /** Format: uuid */
+            user_id?: string;
+            /** Format: uuid */
+            group_id?: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            enabled: boolean;
+        };
+        ServerAccessEditorInput: {
+            /** Format: uuid */
+            server_id: string;
+            account: string;
+            public_key: string;
+            code_challenge: string;
+        };
+        ServerAccessEditorApproval: {
+            code: string;
+        };
+        ServerAccessEditorExchangeInput: {
+            code: string;
+            code_verifier: string;
+        };
+        ServerAccessEditorConnection: {
+            /** Format: uuid */
+            session_id: string;
+            token: string;
+            host_public_key: string;
+            account: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ServerAccessConnectInput: {
+            /** Format: uuid */
+            server_id: string;
+            account: string;
+        };
+        ServerAccessSession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            server_id: string;
+            account: string;
+            status: string;
+            reason: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            user_id: string;
+            recording_enabled: boolean;
+            kind: string;
+            archive_status?: string;
+            archive_error?: string;
+            /** Format: date-time */
+            archive_retry_at?: string;
+        };
+        ServerAccessWorkspace: {
+            enabled: boolean;
+            can_manage: boolean;
+            can_grant: boolean;
+            can_manage_sessions: boolean;
+            servers: components["schemas"]["ServerAccessServer"][];
+            grants: components["schemas"]["ServerAccessGrant"][];
+            sessions: components["schemas"]["ServerAccessSession"][];
+            limitations: string[];
+            recording_retention_days: number;
+            recording_max_session_bytes: number;
+            recording_max_org_bytes: number;
+            mfa_freshness_seconds: number;
+        };
+        ServerAccessTrust: {
+            /** @description SHA256 fingerprint of the installation public SSH CA */
+            ca_fingerprint?: string;
+            public_key: string;
+            principal_prefix: string;
+            instructions: string[];
+        };
+        ServerAccessRecordingEvent: {
+            seq: number;
+            /** Format: int64 */
+            millis: number;
+            /** @enum {string} */
+            type: "output" | "resize";
+            /** Format: byte */
+            data: string;
+            rows: number;
+            cols: number;
+        };
+        ServerAccessRecording: {
+            /** Format: uuid */
+            session_id: string;
+            /** @enum {string} */
+            status: "disabled" | "capturing" | "available" | "incomplete" | "failed" | "expired" | "archived";
+            /** Format: date-time */
+            expires_at: string;
+            events: components["schemas"]["ServerAccessRecordingEvent"][];
+            /** @description Archive job state none pending uploading available or failed */
+            archive_status?: string;
+            /** @description Safe archive error code */
+            archive_error?: string;
+            /** Format: date-time */
+            archive_retry_at?: string;
+        };
+        ServerAccessResult: {
+            status: string;
+        };
         SandboxDelegationCreate: {
             /** Format: uuid */
             machine_id: string;
@@ -23976,6 +24681,773 @@ export interface operations {
         responses: {
             /** @description Grant revoked; repeat revocation is harmless */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessWorkspace"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerAccessSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Current opt-in state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessRecordingStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe destination configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecordingStorage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerAccessRecordingStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessRecordingStorageInput"];
+            };
+        };
+        responses: {
+            /** @description Safe destination configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecordingStorage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testServerAccessRecordingStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessRecordingStorageInput"];
+            };
+        };
+        responses: {
+            /** @description Storage probe succeeded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessRecordingArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe archive configuration without secrets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecordingArchive"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerAccessRecordingArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessRecordingArchiveInput"];
+            };
+        };
+        responses: {
+            /** @description Safe archive configuration without secrets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecordingArchive"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testServerAccessRecordingArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessRecordingArchiveInput"];
+            };
+        };
+        responses: {
+            /** @description Archive probe succeeded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createServerAccessServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessServerInput"];
+            };
+        };
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessServer"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerAccessServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessServerInput"];
+            };
+        };
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessServer"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeServerAccessServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getCurrentServerAccessEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest enrollment for this administrator and server */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    prepareServerAccessEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessEnrollmentInput"];
+            };
+        };
+        responses: {
+            /** @description Temporary setup job prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current setup status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startServerAccessEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Start authorized gateway setup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelServerAccessEnrollment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                enrollmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEnrollment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    checkServerAccessServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessConnectInput"];
+            };
+        };
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessSession"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessTrust: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessTrust"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createServerAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeServerAccessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                grantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createServerAccessSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessConnectInput"];
+            };
+        };
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessSession"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    endServerAccessSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server access result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessRecording: {
+        parameters: {
+            query?: {
+                metadata_only?: boolean;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recording state and integrity-checked output/resize events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecording"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    importServerAccessRecordingPackage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: byte */
+                    package: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Authorized verified imported recording events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecording"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exportServerAccessRecordingS3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current archive job state */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecordingExport"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    downloadServerAccessRecording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded recording download */
+            200: {
+                headers: {
+                    /** @description Attachment filename for the authorized lossless JSON recording */
+                    "Content-Disposition"?: string;
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessRecording"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    connectServerAccessTerminal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket upgrade with bounded terminal input, resize and output frames */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    authorizeServerAccessEditor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessEditorInput"];
+            };
+        };
+        responses: {
+            /** @description One-time browser authorization code, bound to the local editor key and PKCE. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEditorApproval"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeServerAccessEditor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessEditorExchangeInput"];
+            };
+        };
+        responses: {
+            /** @description Single-connection editor capability. No general CLI authority. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessEditorConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    connectServerAccessEditor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded SSH websocket; capability required in Authorization header. */
+            101: {
                 headers: {
                     [name: string]: unknown;
                 };

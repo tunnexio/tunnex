@@ -76,6 +76,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"github.com/tunnexio/tunnex/apps/api/internal/secrets"
+	"github.com/tunnexio/tunnex/apps/api/internal/serveraccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
@@ -671,6 +672,11 @@ func main() {
 		consoleHost = u.Hostname()
 	}
 	domainSettings := appdomains.New(pool, appdomains.Config{PortalURL: cfg.AppBaseURL, AppBaseDomain: cfg.AppAccessBaseDomain})
+	terminalSvc := serveraccess.New(pool, sessions, sealer, os.Getenv("TUNNEX_SERVER_ACCESS_ENABLED") == "true")
+	if err := terminalSvc.Boot(context.Background()); err != nil {
+		logger.Error("terminal_boot_failed")
+		os.Exit(1)
+	}
 	appAccessSvc := appaccess.NewService(pool, appaccess.Config{AppBaseDomain: cfg.AppAccessBaseDomain, ConsoleURL: cfg.AppBaseURL, ConsoleHosts: []string{consoleHost}}).WithDomainProvider(domainSettings).WithSessionAuthority(sessions, appaccess.NewAppSessionStore(sessions.Client()), sealer, func(ctx context.Context, user uuid.UUID) (bool, error) {
 		if !apphttp.NewMfaEnforceEdition() {
 			return false, nil
@@ -733,6 +739,7 @@ func main() {
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
+		ServerAccess:          terminalSvc,
 		AppAccess:             appAccessSvc,
 		FQDNResources:         fqdnresources.New(pool),
 		FQDNSettingNotify:     fqdnInvalidator,
@@ -777,6 +784,7 @@ func main() {
 
 	// mTLS agent control channel (separate listener; client certs verified vs CA).
 	agentCh := apphttp.NewAgentChannel(nodeSvc, agentCA, pushHub, logger)
+	agentCh.SetServerAccess(terminalSvc)
 	agentCh.SetPolicyReportNotify(module.wake)
 	agentCh.SetAppAccessConnector(appAccessSvc, licenceMgr)
 	defer agentCh.CloseAppAccessConnector()
@@ -816,6 +824,7 @@ func main() {
 	// every acquired connection is released. Cancel-then-close is therefore the required order, and getting
 	// it backwards deadlocks shutdown — found by a test that hung on exactly that.
 	electorCtx, stopElector := context.WithCancel(context.Background())
+	go terminalSvc.Run(electorCtx)
 	if module.run != nil {
 		go func() {
 			err := module.run(electorCtx, func(id uuid.UUID, failure error) {
@@ -1342,6 +1351,7 @@ func main() {
 		logger.Info("api_shutting_down", slog.String("signal", sig.String()))
 	}
 
+	terminalSvc.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = agentSrv.Shutdown(ctx)

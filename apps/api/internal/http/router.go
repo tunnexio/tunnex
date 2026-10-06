@@ -6,6 +6,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"github.com/tunnexio/tunnex/apps/api/internal/serveraccess"
 	"io"
 	"log/slog"
 	"net/http"
@@ -113,6 +114,7 @@ type Deps struct {
 	SSO                  ssoPort    // nil => open build (SSO endpoints return edition_required)
 	Policy               policyPort // nil => open build (policy endpoints return edition_required)
 	AppAccess            appAccessPort
+	ServerAccess         *serveraccess.Service
 	AppDomains           appDomainsRepository
 	FQDNResources        *fqdnresources.Service
 	FQDNSettingNotify    fqdnSettingNotifier
@@ -203,9 +205,9 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
-			if strings.Contains(req.URL.Path, "/connectivity-sessions") || strings.Contains(req.URL.Path, "/connectivity-profile") || strings.Contains(req.URL.Path, "/app-access/") {
+			if strings.Contains(req.URL.Path, "/connectivity-sessions") || strings.Contains(req.URL.Path, "/connectivity-profile") || strings.Contains(req.URL.Path, "/app-access/") || strings.Contains(req.URL.Path, "/server-access") {
 				// Bound escaped JSON before the OpenAPI/body decoder allocates it.
-				req.Body = http.MaxBytesReader(w, req.Body, 128*1024)
+				req.Body = http.MaxBytesReader(w, req.Body, terminalMetadataBodyLimit(req))
 			}
 			next.ServeHTTP(w, req)
 		})
@@ -308,7 +310,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
-	srv := apiServer{runnerQualification: d.SandboxRunnerQualification, runnerEnrollment: d.SandboxRunnerEnrollment, appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{serverAccess: d.ServerAccess, runnerQualification: d.SandboxRunnerQualification, runnerEnrollment: d.SandboxRunnerEnrollment, appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	srv.connectivity = d.Connectivity
 	srv.appDomains = d.AppDomains
 	srv.aiTransport = d.AITransport
@@ -321,6 +323,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	}
 	r.Use(gate)
 
+	r.Use(srv.terminalRequestGuard)
 	r.Use(aiUserInferenceMiddleware(d.AIAdapter, d.AIPolicies))
 	r.Use(validateIPsecRuntimeIntent)
 	r.Use(validateIPsecEligibilityRequest)
@@ -330,7 +333,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(validateIPsecConnectionHeaders)
 	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
 		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, req *http.Request, opts oapimw.ErrorHandlerOpts) {
-			if appAccessBodyLimitError(w, req, err) {
+			if appAccessBodyLimitError(w, req, err) || serverAccessBodyLimitError(w, req, err) {
 				return
 			}
 			message := "AI provider request is invalid"
@@ -363,7 +366,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		// Both hooks render typed *apierr.Error (and anything else) as the envelope.
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
-			if appAccessBodyLimitError(w, r, err) {
+			if appAccessBodyLimitError(w, r, err) || serverAccessBodyLimitError(w, r, err) {
 				return
 			}
 			// The numeric validator uses floating-point bounds. Strict decode
@@ -404,9 +407,13 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}})
 
+	r.Get("/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/terminal", srv.terminalWebsocket)
+	r.Get("/api/v1/server-access/editor/{sessionId}", srv.editorWebsocket)
 	return r, nil
 }
 
+// Terminal websocket upgrades use independent authorization leases and idle/absolute
+// session watchdogs; only the exact purpose route escapes the generic timer.
 // requestTimeout preserves the API-wide deadline while leaving the managed
 // runtime poll to its own OpenAPI-bounded wait_seconds timer. The poll contract
 // permits a 60-second hold (the shipped client uses 30 seconds), so wrapping it
@@ -420,6 +427,10 @@ func requestTimeout(timeout, runtimePollTimeout time.Duration) func(http.Handler
 		timed := middleware.Timeout(timeout)(next)
 		pollTimed := middleware.Timeout(runtimePollTimeout)(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isTerminalUpgradeRequest(r) || isEditorUpgradeRequest(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if r.URL.Path == "/api/v1/agent/runtime/poll" {
 				pollTimed.ServeHTTP(w, r)
 				return

@@ -1,0 +1,15 @@
+# Empty schema-only rollback target. No baseline user data or keys are copied.
+services:
+  mixed-api:
+    image: alpine:3.23
+    command: [/binaries/tunnex-api-base]
+    environment:
+      TUNNEX_ENV: development
+      TUNNEX_AUTO_MIGRATE: 'true'
+      DATABASE_URL: postgres://aa0:${AA0_DB_PASSWORD}@postgres:5432/sa_mixed_version_185?sslmode=disable
+      REDIS_URL: redis://redis:6379/4
+      TUNNEX_SECRETS_DIR: /mixed-state
+      TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: 'false'
+      TUNNEX_AI_VPN_AUTO: 'false'
+      APP_BASE_URL: http://mixed-api:8080
+    volumes: [./.runtime/bin:/binaries:ro, ./.runtime/mixed-cp-state:/mixed-state]

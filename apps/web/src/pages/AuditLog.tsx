@@ -24,6 +24,7 @@ import {
   PageHeader,
 } from "../components/ui";
 
+import { TerminalReplay } from "../components/TerminalReplay";
 import "../network-workspaces.css";
 import "../audit-workspace.css";
 
@@ -76,6 +77,7 @@ export default function AuditLog() {
   const { state: authState } = useAuth();
   const [org, setOrg] = useState<Org | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [replay,setReplay]=useState<string>();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   // `filters` is the editing state; `applied` is the set that produced the current
   // list — "Load more" must page with `applied`, never mid-edit `filters`, or the
@@ -463,12 +465,14 @@ export default function AuditLog() {
       </div>
       </section>
 
+      {org&&replay&&<TerminalReplay orgId={org.id} sessionId={replay} onClose={()=>setReplay(undefined)}/>}
       {selected && (() => {
         const actor = resolveActor(selected, members);
         const details = Object.entries(selected.details ?? {});
         return (
           <Modal title="Audit evidence" size="wide" showClose onDismiss={() => setSelected(null)}>
             <div className="flex flex-col gap-5">
+{selected.target_type==="server_access"&&selected.target_id&&["server_access.session_started","server_access.session_ended"].includes(selected.action)&&<Button onClick={()=>{setReplay(selected.target_id!);setSelected(null)}}>Review session recording</Button>}
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line-row pb-4">
                 <div>
                   <div className="text-lg font-semibold text-white">{actionLabel(selected.action)}</div>

@@ -1,0 +1,3 @@
+DROP TABLE server_access_recording_chunks;
+DROP TABLE server_access_recordings;
+ALTER TABLE server_access_settings DROP COLUMN recording_max_org_bytes, DROP COLUMN recording_max_session_bytes, DROP COLUMN recording_retention_days;

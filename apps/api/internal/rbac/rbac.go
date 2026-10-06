@@ -9,13 +9,19 @@ import "sort"
 type Permission string
 
 const (
-	PermSandboxView           Permission = "sandbox:view"
-	PermSandboxCreate         Permission = "sandbox:create"
-	PermSandboxManage         Permission = "sandbox:manage"
-	PermSandboxAdmin          Permission = "sandbox:admin"
-	PermSandboxDelegateManage Permission = "sandbox:delegate_manage"
-	PermSandboxRunnerManage   Permission = "sandbox:runner_manage"
-	PermSandboxTemplateManage Permission = "sandbox:template_manage"
+	PermServerAccessReplay        Permission = "server_access:replay"
+	PermServerAccessView          Permission = "server_access:view"
+	PermServerAccessManage        Permission = "server_access:manage"
+	PermServerAccessGrant         Permission = "server_access:grant"
+	PermServerAccessUse           Permission = "server_access:use"
+	PermServerAccessSessionManage Permission = "server_access:session_manage"
+	PermSandboxView               Permission = "sandbox:view"
+	PermSandboxCreate             Permission = "sandbox:create"
+	PermSandboxManage             Permission = "sandbox:manage"
+	PermSandboxAdmin              Permission = "sandbox:admin"
+	PermSandboxDelegateManage     Permission = "sandbox:delegate_manage"
+	PermSandboxRunnerManage       Permission = "sandbox:runner_manage"
+	PermSandboxTemplateManage     Permission = "sandbox:template_manage"
 	// App Access administration never grants implicit application content access.
 	PermAppAccessView          Permission = "app_access:view"
 	PermAppAccessManage        Permission = "app_access:manage"
@@ -236,14 +242,15 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
 	RoleMember: {
+		PermAppAccessUse: true, PermServerAccessUse: true, PermServerAccessReplay: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
-		PermAppAccessUse:    true,
 		PermConnectivityUse: true,
 		PermAIModelUse:      true,
 		PermOrgView:         true,
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
 		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
@@ -296,6 +303,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
 		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermAppAccessView: true, PermAppAccessManage: true, PermAppAccessGrant: true,
@@ -415,7 +423,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermSandboxView, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

@@ -46,6 +46,8 @@ import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
 import AccessKubernetesScopes from "./pages/AccessKubernetesScopes";
 import Access from "./pages/Access";
 import AppAccess from "./pages/AppAccess";
+import BrowserTerminal from "./pages/BrowserTerminal";
+import EditorAuth from "./pages/EditorAuth";
 import { AppAccessLaunch } from "./pages/AppAccessMyApplications";
 import Users from "./pages/Users";
 import { LegacyWorkspaceRedirect } from "./components/LegacyWorkspaceRedirect";
@@ -164,6 +166,7 @@ function ProductApp() {
           {/* S5.1 CLI auth: the browser consent leg (`tunnex login`) and the
               device-code approval page. Authenticated but org-independent. */}
           <Route path="/cli-auth" element={<CliAuth />} />
+          <Route path="/editor-auth" element={<EditorAuth />} />
           <Route path="/cli-device" element={<CliDevice />} />
           {/* S7.5.5 D8: a MFA-enforcement-gated user (org requires 2FA, none set up) is routed here
               by RequireAuth — enrollment only, until they confirm a TOTP. Org-independent. */}
@@ -215,6 +218,7 @@ function ProductApp() {
             <Route path="/agents/groups" element={<AccessGroups scope="agents" />} />
             <Route path="/agents/policies" element={<AgentsPolicyTemplates />} />
             <Route path="/agents/:agentId" element={<AgentDetail />} />
+            <Route path="/browser-access/terminal" element={<BrowserTerminal />} />
             <Route path="/app-access" element={<AppAccess />} />
             <Route path="/app-access/access" element={<AppAccess />} />
             <Route path="/app-access/applications" element={<AppAccess />} />

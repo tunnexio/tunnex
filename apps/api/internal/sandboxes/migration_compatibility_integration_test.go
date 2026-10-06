@@ -27,7 +27,8 @@ func TestSandboxMigrationsPreserveOccupiedDevPredecessor(t *testing.T) {
 	if _, err := pool.Exec(ctx, `CREATE TABLE existing_predecessor_marker(value text PRIMARY KEY); INSERT INTO existing_predecessor_marker VALUES('preserved')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Up(migrationURL); err != nil {
+	// Qualify the sandbox migration range, not unrelated later migrations.
+	if err := db.MigrateTo(migrationURL, 197); err != nil {
 		t.Fatal(err)
 	}
 	var version int

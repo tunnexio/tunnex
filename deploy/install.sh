@@ -834,6 +834,10 @@ fi
 ADDR="$(public_base_url_host "$BASE_URL")"
 select_tls_mode
 
+# New installations keep Browser SSH disabled unless explicitly selected.
+SERVER_ACCESS_ENABLED=${TUNNEX_SERVER_ACCESS_ENABLED:-false}
+case "$SERVER_ACCESS_ENABLED" in true|false) ;; *) die 'TUNNEX_SERVER_ACCESS_ENABLED must be true or false.' ;; esac
+
 # HTTPS remains the AI default. This policy is an explicit operator decision;
 # an address alone does not prove that public access is blocked.
 AI_ALLOW_PRIVATE_HTTP=${TUNNEX_AI_ALLOW_PRIVATE_HTTP:-}
@@ -1424,6 +1428,7 @@ TUNNEX_RELEASE_UPDATE_CHECK=${TUNNEX_RELEASE_UPDATE_CHECK:-true}
 TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)
 COMPOSE_PROJECT_NAME=${INSTALL_COMPOSE_PROJECT}
 TUNNEX_LOG_LEVEL=info
+TUNNEX_SERVER_ACCESS_ENABLED=${SERVER_ACCESS_ENABLED}
 APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
 TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}

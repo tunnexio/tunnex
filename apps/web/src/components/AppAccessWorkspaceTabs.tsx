@@ -10,7 +10,7 @@ type Capabilities = {
 /** Shared navigation projection; callers supply existing authorized capabilities. */
 export default function AppAccessWorkspaceTabs({ viewApplications, manageGrants, manageAssigned = false, pending = 0 }: Capabilities) {
   const administrative = viewApplications || manageGrants;
-  return <WorkspaceTabs label="App Access" items={administrative ? [
+  return <WorkspaceTabs label="Applications" items={administrative ? [
     ...(viewApplications ? [{ href: "/app-access/applications", label: "Applications" }] : []),
     ...(manageGrants ? [{ href: "/app-access/access", label: "Access" }, { href: "/app-access/requests", label: "Requests" }] : []),
     { href: "/app-access/my-applications", label: "My Applications" },

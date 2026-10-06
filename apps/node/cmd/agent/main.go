@@ -37,6 +37,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
 	"github.com/tunnexio/tunnex/apps/node/internal/relay"
+	"github.com/tunnexio/tunnex/apps/node/internal/serveraccess"
 	"github.com/tunnexio/tunnex/packages/apptransport/originpolicy"
 )
 
@@ -188,6 +189,10 @@ func main() {
 	if err != nil {
 		logger.Error("agent_client_failed", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+	if os.Getenv("TUNNEX_SERVER_ACCESS_ENABLED") == "true" {
+		go serveraccess.Run(ctx, client)
+		go serveraccess.RunEnrollment(ctx, client)
 	}
 	appClient, appErr := client.NewAppAccessClient(os.Getenv("TUNNEX_APP_ACCESS_CONTROL_URL"))
 	if appErr != nil {

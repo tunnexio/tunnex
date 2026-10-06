@@ -1062,10 +1062,10 @@ const (
 
 // Defines values for DeviceHealthReportPlatform.
 const (
-	Linux   DeviceHealthReportPlatform = "linux"
-	Macos   DeviceHealthReportPlatform = "macos"
-	Other   DeviceHealthReportPlatform = "other"
-	Windows DeviceHealthReportPlatform = "windows"
+	DeviceHealthReportPlatformLinux   DeviceHealthReportPlatform = "linux"
+	DeviceHealthReportPlatformMacos   DeviceHealthReportPlatform = "macos"
+	DeviceHealthReportPlatformOther   DeviceHealthReportPlatform = "other"
+	DeviceHealthReportPlatformWindows DeviceHealthReportPlatform = "windows"
 )
 
 // Defines values for DeviceHealthResultFailedChecksKind.
@@ -1861,6 +1861,90 @@ const (
 	SandboxScopeProtocolAny SandboxScopeProtocol = "any"
 	SandboxScopeProtocolTcp SandboxScopeProtocol = "tcp"
 	SandboxScopeProtocolUdp SandboxScopeProtocol = "udp"
+)
+
+// Defines values for ServerAccessEnrollmentState.
+const (
+	ServerAccessEnrollmentAwaitingAuthorization ServerAccessEnrollmentState = "awaiting_authorization"
+	ServerAccessEnrollmentCancelled             ServerAccessEnrollmentState = "cancelled"
+	ServerAccessEnrollmentExpired               ServerAccessEnrollmentState = "expired"
+	ServerAccessEnrollmentFailed                ServerAccessEnrollmentState = "failed"
+	ServerAccessEnrollmentPreparing             ServerAccessEnrollmentState = "preparing"
+	ServerAccessEnrollmentQueued                ServerAccessEnrollmentState = "queued"
+	ServerAccessEnrollmentRunning               ServerAccessEnrollmentState = "running"
+	ServerAccessEnrollmentSucceeded             ServerAccessEnrollmentState = "succeeded"
+)
+
+// Defines values for ServerAccessRecordingStatus.
+const (
+	ServerRecordingArchived   ServerAccessRecordingStatus = "archived"
+	ServerRecordingAvailable  ServerAccessRecordingStatus = "available"
+	ServerRecordingCapturing  ServerAccessRecordingStatus = "capturing"
+	ServerRecordingDisabled   ServerAccessRecordingStatus = "disabled"
+	ServerRecordingExpired    ServerAccessRecordingStatus = "expired"
+	ServerRecordingFailed     ServerAccessRecordingStatus = "failed"
+	ServerRecordingIncomplete ServerAccessRecordingStatus = "incomplete"
+)
+
+// Defines values for ServerAccessRecordingEventType.
+const (
+	ServerRecordingOutput ServerAccessRecordingEventType = "output"
+	ServerRecordingResize ServerAccessRecordingEventType = "resize"
+)
+
+// Defines values for ServerAccessRecordingExportStatus.
+const (
+	ServerArchiveAvailable ServerAccessRecordingExportStatus = "available"
+	ServerArchiveFailed    ServerAccessRecordingExportStatus = "failed"
+	ServerArchiveNone      ServerAccessRecordingExportStatus = "none"
+	ServerArchivePending   ServerAccessRecordingExportStatus = "pending"
+	ServerArchiveUploading ServerAccessRecordingExportStatus = "uploading"
+)
+
+// Defines values for ServerAccessRecordingStorageKind.
+const (
+	ServerStorageAzure      ServerAccessRecordingStorageKind = "azure"
+	ServerStorageFilesystem ServerAccessRecordingStorageKind = "filesystem"
+	ServerStorageGCS        ServerAccessRecordingStorageKind = "gcs"
+	ServerStoragePostgres   ServerAccessRecordingStorageKind = "postgres"
+	ServerStorageS3         ServerAccessRecordingStorageKind = "s3"
+)
+
+// Defines values for ServerAccessRecordingStorageInputKind.
+const (
+	ServerStorageInputAzure      ServerAccessRecordingStorageInputKind = "azure"
+	ServerStorageInputFilesystem ServerAccessRecordingStorageInputKind = "filesystem"
+	ServerStorageInputGCS        ServerAccessRecordingStorageInputKind = "gcs"
+	ServerStorageInputPostgres   ServerAccessRecordingStorageInputKind = "postgres"
+	ServerStorageInputS3         ServerAccessRecordingStorageInputKind = "s3"
+)
+
+// Defines values for ServerAccessServerClipboardPolicy.
+const (
+	ServerAccessServerClipboardPolicyBoth  ServerAccessServerClipboardPolicy = "both"
+	ServerAccessServerClipboardPolicyCopy  ServerAccessServerClipboardPolicy = "copy"
+	ServerAccessServerClipboardPolicyOff   ServerAccessServerClipboardPolicy = "off"
+	ServerAccessServerClipboardPolicyPaste ServerAccessServerClipboardPolicy = "paste"
+)
+
+// Defines values for ServerAccessServerOs.
+const (
+	ServerAccessServerOsLinux   ServerAccessServerOs = "linux"
+	ServerAccessServerOsWindows ServerAccessServerOs = "windows"
+)
+
+// Defines values for ServerAccessServerInputClipboardPolicy.
+const (
+	ServerAccessServerInputClipboardPolicyBoth  ServerAccessServerInputClipboardPolicy = "both"
+	ServerAccessServerInputClipboardPolicyCopy  ServerAccessServerInputClipboardPolicy = "copy"
+	ServerAccessServerInputClipboardPolicyOff   ServerAccessServerInputClipboardPolicy = "off"
+	ServerAccessServerInputClipboardPolicyPaste ServerAccessServerInputClipboardPolicy = "paste"
+)
+
+// Defines values for ServerAccessServerInputOs.
+const (
+	Linux   ServerAccessServerInputOs = "linux"
+	Windows ServerAccessServerInputOs = "windows"
 )
 
 // Defines values for ServerEmailSettingsSource.
@@ -7547,6 +7631,299 @@ type SavedSSHKeyList struct {
 	Items []SavedSSHKey `json:"items"`
 }
 
+// ServerAccessConnectInput defines model for ServerAccessConnectInput.
+type ServerAccessConnectInput struct {
+	Account  string             `json:"account"`
+	ServerId openapi_types.UUID `json:"server_id"`
+}
+
+// ServerAccessEditorApproval defines model for ServerAccessEditorApproval.
+type ServerAccessEditorApproval struct {
+	Code string `json:"code"`
+}
+
+// ServerAccessEditorConnection defines model for ServerAccessEditorConnection.
+type ServerAccessEditorConnection struct {
+	Account       string             `json:"account"`
+	ExpiresAt     time.Time          `json:"expires_at"`
+	HostPublicKey string             `json:"host_public_key"`
+	SessionId     openapi_types.UUID `json:"session_id"`
+	Token         string             `json:"token"`
+}
+
+// ServerAccessEditorExchangeInput defines model for ServerAccessEditorExchangeInput.
+type ServerAccessEditorExchangeInput struct {
+	Code         string `json:"code"`
+	CodeVerifier string `json:"code_verifier"`
+}
+
+// ServerAccessEditorInput defines model for ServerAccessEditorInput.
+type ServerAccessEditorInput struct {
+	Account       string             `json:"account"`
+	CodeChallenge string             `json:"code_challenge"`
+	PublicKey     string             `json:"public_key"`
+	ServerId      openapi_types.UUID `json:"server_id"`
+}
+
+// ServerAccessEnrollment defines model for ServerAccessEnrollment.
+type ServerAccessEnrollment struct {
+	AuthorizationCommand string                      `json:"authorization_command"`
+	ExpiresAt            time.Time                   `json:"expires_at"`
+	Id                   openapi_types.UUID          `json:"id"`
+	Message              string                      `json:"message"`
+	ServerId             openapi_types.UUID          `json:"server_id"`
+	State                ServerAccessEnrollmentState `json:"state"`
+}
+
+// ServerAccessEnrollmentState defines model for ServerAccessEnrollment.State.
+type ServerAccessEnrollmentState string
+
+// ServerAccessEnrollmentInput defines model for ServerAccessEnrollmentInput.
+type ServerAccessEnrollmentInput struct {
+	// Accounts Empty discovers all eligible Linux login users; otherwise a selected set
+	Accounts              []string `json:"accounts"`
+	ManagementAccount     string   `json:"management_account"`
+	ManagementFingerprint string   `json:"management_fingerprint"`
+	ManagementPort        int      `json:"management_port"`
+}
+
+// ServerAccessGrant defines model for ServerAccessGrant.
+type ServerAccessGrant struct {
+	Account   string              `json:"account"`
+	Enabled   bool                `json:"enabled"`
+	ExpiresAt time.Time           `json:"expires_at"`
+	GroupId   *openapi_types.UUID `json:"group_id,omitempty"`
+	Id        openapi_types.UUID  `json:"id"`
+	ServerId  openapi_types.UUID  `json:"server_id"`
+	StartsAt  time.Time           `json:"starts_at"`
+	UserId    *openapi_types.UUID `json:"user_id,omitempty"`
+}
+
+// ServerAccessGrantInput defines model for ServerAccessGrantInput.
+type ServerAccessGrantInput struct {
+	Account   string              `json:"account"`
+	ExpiresAt time.Time           `json:"expires_at"`
+	GroupId   *openapi_types.UUID `json:"group_id,omitempty"`
+	ServerId  openapi_types.UUID  `json:"server_id"`
+	StartsAt  time.Time           `json:"starts_at"`
+	UserId    *openapi_types.UUID `json:"user_id,omitempty"`
+}
+
+// ServerAccessRecording defines model for ServerAccessRecording.
+type ServerAccessRecording struct {
+	// ArchiveError Safe archive error code
+	ArchiveError   *string    `json:"archive_error,omitempty"`
+	ArchiveRetryAt *time.Time `json:"archive_retry_at,omitempty"`
+
+	// ArchiveStatus Archive job state none pending uploading available or failed
+	ArchiveStatus *string                      `json:"archive_status,omitempty"`
+	Events        []ServerAccessRecordingEvent `json:"events"`
+	ExpiresAt     time.Time                    `json:"expires_at"`
+	SessionId     openapi_types.UUID           `json:"session_id"`
+	Status        ServerAccessRecordingStatus  `json:"status"`
+}
+
+// ServerAccessRecordingStatus defines model for ServerAccessRecording.Status.
+type ServerAccessRecordingStatus string
+
+// ServerAccessRecordingArchive defines model for ServerAccessRecordingArchive.
+type ServerAccessRecordingArchive struct {
+	AccessKeyId           *string `json:"access_key_id,omitempty"`
+	Bucket                *string `json:"bucket,omitempty"`
+	CredentialsConfigured bool    `json:"credentials_configured"`
+
+	// Enabled Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection
+	Enabled  bool    `json:"enabled"`
+	Endpoint *string `json:"endpoint,omitempty"`
+	Prefix   *string `json:"prefix,omitempty"`
+	Region   *string `json:"region,omitempty"`
+}
+
+// ServerAccessRecordingArchiveInput Secrets are write-only. Omitted secrets preserve saved credentials only for the same destination. The enabled flag controls only automatic archiving at retention expiry. Disabling preserves the saved S3 connection for manual export and does not cancel existing jobs or redirect snapshots.
+type ServerAccessRecordingArchiveInput struct {
+	AccessKeyId *string `json:"access_key_id,omitempty"`
+	Bucket      *string `json:"bucket,omitempty"`
+
+	// Enabled Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection
+	Enabled         bool    `json:"enabled"`
+	Endpoint        *string `json:"endpoint,omitempty"`
+	Prefix          *string `json:"prefix,omitempty"`
+	Region          *string `json:"region,omitempty"`
+	SecretAccessKey *string `json:"secret_access_key,omitempty"`
+}
+
+// ServerAccessRecordingEvent defines model for ServerAccessRecordingEvent.
+type ServerAccessRecordingEvent struct {
+	Cols   int                            `json:"cols"`
+	Data   []byte                         `json:"data"`
+	Millis int64                          `json:"millis"`
+	Rows   int                            `json:"rows"`
+	Seq    int                            `json:"seq"`
+	Type   ServerAccessRecordingEventType `json:"type"`
+}
+
+// ServerAccessRecordingEventType defines model for ServerAccessRecordingEvent.Type.
+type ServerAccessRecordingEventType string
+
+// ServerAccessRecordingExport defines model for ServerAccessRecordingExport.
+type ServerAccessRecordingExport struct {
+	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
+	ArchivedEvents int        `json:"archived_events"`
+
+	// Error Safe error code without provider response or credentials
+	Error *string `json:"error,omitempty"`
+
+	// PackageKey S3 object key of the self-contained installation-encrypted v2 recording package
+	PackageKey  *string                           `json:"package_key,omitempty"`
+	SessionId   openapi_types.UUID                `json:"session_id"`
+	Status      ServerAccessRecordingExportStatus `json:"status"`
+	TotalEvents int                               `json:"total_events"`
+}
+
+// ServerAccessRecordingExportStatus defines model for ServerAccessRecordingExport.Status.
+type ServerAccessRecordingExportStatus string
+
+// ServerAccessRecordingStorage defines model for ServerAccessRecordingStorage.
+type ServerAccessRecordingStorage struct {
+	AccessKeyId           *string                          `json:"access_key_id,omitempty"`
+	AccountName           *string                          `json:"account_name,omitempty"`
+	Bucket                *string                          `json:"bucket,omitempty"`
+	CredentialsConfigured bool                             `json:"credentials_configured"`
+	Endpoint              *string                          `json:"endpoint,omitempty"`
+	Kind                  ServerAccessRecordingStorageKind `json:"kind"`
+	Path                  *string                          `json:"path,omitempty"`
+	Prefix                *string                          `json:"prefix,omitempty"`
+	Region                *string                          `json:"region,omitempty"`
+}
+
+// ServerAccessRecordingStorageKind defines model for ServerAccessRecordingStorage.Kind.
+type ServerAccessRecordingStorageKind string
+
+// ServerAccessRecordingStorageInput defines model for ServerAccessRecordingStorageInput.
+type ServerAccessRecordingStorageInput struct {
+	AccessKeyId     *string                               `json:"access_key_id,omitempty"`
+	AccountKey      *string                               `json:"account_key,omitempty"`
+	AccountName     *string                               `json:"account_name,omitempty"`
+	Bucket          *string                               `json:"bucket,omitempty"`
+	Endpoint        *string                               `json:"endpoint,omitempty"`
+	Kind            ServerAccessRecordingStorageInputKind `json:"kind"`
+	Path            *string                               `json:"path,omitempty"`
+	Prefix          *string                               `json:"prefix,omitempty"`
+	Region          *string                               `json:"region,omitempty"`
+	SecretAccessKey *string                               `json:"secret_access_key,omitempty"`
+}
+
+// ServerAccessRecordingStorageInputKind defines model for ServerAccessRecordingStorageInput.Kind.
+type ServerAccessRecordingStorageInputKind string
+
+// ServerAccessResult defines model for ServerAccessResult.
+type ServerAccessResult struct {
+	Status string `json:"status"`
+}
+
+// ServerAccessServer defines model for ServerAccessServer.
+type ServerAccessServer struct {
+	Accounts               []string                           `json:"accounts"`
+	ClipboardPolicy        *ServerAccessServerClipboardPolicy `json:"clipboard_policy,omitempty"`
+	DeveloperAccessEnabled *bool                              `json:"developer_access_enabled,omitempty"`
+	Enabled                bool                               `json:"enabled"`
+	GatewayId              openapi_types.UUID                 `json:"gateway_id"`
+	HostFingerprint        *string                            `json:"host_fingerprint,omitempty"`
+	Id                     openapi_types.UUID                 `json:"id"`
+	IdleTimeoutSeconds     int                                `json:"idle_timeout_seconds"`
+	LastError              *string                            `json:"last_error,omitempty"`
+	MaxSessionSeconds      int                                `json:"max_session_seconds"`
+	Name                   string                             `json:"name"`
+	Os                     *ServerAccessServerOs              `json:"os,omitempty"`
+	PrivateIp              *string                            `json:"private_ip,omitempty"`
+	RdpDomain              *string                            `json:"rdp_domain,omitempty"`
+	ReadyAccounts          []string                           `json:"ready_accounts"`
+	RecordingEnabled       bool                               `json:"recording_enabled"`
+	Revision               int64                              `json:"revision"`
+	SshPort                *int                               `json:"ssh_port,omitempty"`
+}
+
+// ServerAccessServerClipboardPolicy defines model for ServerAccessServer.ClipboardPolicy.
+type ServerAccessServerClipboardPolicy string
+
+// ServerAccessServerOs defines model for ServerAccessServer.Os.
+type ServerAccessServerOs string
+
+// ServerAccessServerInput defines model for ServerAccessServerInput.
+type ServerAccessServerInput struct {
+	Accounts               []string                                `json:"accounts"`
+	ClipboardPolicy        *ServerAccessServerInputClipboardPolicy `json:"clipboard_policy,omitempty"`
+	DeveloperAccessEnabled *bool                                   `json:"developer_access_enabled,omitempty"`
+	Enabled                bool                                    `json:"enabled"`
+	GatewayId              openapi_types.UUID                      `json:"gateway_id"`
+	HostFingerprint        string                                  `json:"host_fingerprint"`
+	IdleTimeoutSeconds     int                                     `json:"idle_timeout_seconds"`
+	MaxSessionSeconds      int                                     `json:"max_session_seconds"`
+	Name                   string                                  `json:"name"`
+	Os                     *ServerAccessServerInputOs              `json:"os,omitempty"`
+	PrivateIp              string                                  `json:"private_ip"`
+	RdpDomain              *string                                 `json:"rdp_domain,omitempty"`
+	RecordingEnabled       bool                                    `json:"recording_enabled"`
+	Revision               int64                                   `json:"revision"`
+	SshPort                int                                     `json:"ssh_port"`
+}
+
+// ServerAccessServerInputClipboardPolicy defines model for ServerAccessServerInput.ClipboardPolicy.
+type ServerAccessServerInputClipboardPolicy string
+
+// ServerAccessServerInputOs defines model for ServerAccessServerInput.Os.
+type ServerAccessServerInputOs string
+
+// ServerAccessSession defines model for ServerAccessSession.
+type ServerAccessSession struct {
+	Account          string             `json:"account"`
+	ArchiveError     *string            `json:"archive_error,omitempty"`
+	ArchiveRetryAt   *time.Time         `json:"archive_retry_at,omitempty"`
+	ArchiveStatus    *string            `json:"archive_status,omitempty"`
+	ExpiresAt        time.Time          `json:"expires_at"`
+	Id               openapi_types.UUID `json:"id"`
+	Kind             string             `json:"kind"`
+	Reason           string             `json:"reason"`
+	RecordingEnabled bool               `json:"recording_enabled"`
+	ServerId         openapi_types.UUID `json:"server_id"`
+	Status           string             `json:"status"`
+	UserId           openapi_types.UUID `json:"user_id"`
+}
+
+// ServerAccessSettingsInput defines model for ServerAccessSettingsInput.
+type ServerAccessSettingsInput struct {
+	Enabled                  bool `json:"enabled"`
+	MfaFreshnessSeconds      *int `json:"mfa_freshness_seconds,omitempty"`
+	RecordingMaxOrgBytes     *int `json:"recording_max_org_bytes,omitempty"`
+	RecordingMaxSessionBytes *int `json:"recording_max_session_bytes,omitempty"`
+	RecordingRetentionDays   *int `json:"recording_retention_days,omitempty"`
+}
+
+// ServerAccessTrust defines model for ServerAccessTrust.
+type ServerAccessTrust struct {
+	// CaFingerprint SHA256 fingerprint of the installation public SSH CA
+	CaFingerprint   *string  `json:"ca_fingerprint,omitempty"`
+	Instructions    []string `json:"instructions"`
+	PrincipalPrefix string   `json:"principal_prefix"`
+	PublicKey       string   `json:"public_key"`
+}
+
+// ServerAccessWorkspace defines model for ServerAccessWorkspace.
+type ServerAccessWorkspace struct {
+	CanGrant                 bool                  `json:"can_grant"`
+	CanManage                bool                  `json:"can_manage"`
+	CanManageSessions        bool                  `json:"can_manage_sessions"`
+	Enabled                  bool                  `json:"enabled"`
+	Grants                   []ServerAccessGrant   `json:"grants"`
+	Limitations              []string              `json:"limitations"`
+	MfaFreshnessSeconds      int                   `json:"mfa_freshness_seconds"`
+	RecordingMaxOrgBytes     int                   `json:"recording_max_org_bytes"`
+	RecordingMaxSessionBytes int                   `json:"recording_max_session_bytes"`
+	RecordingRetentionDays   int                   `json:"recording_retention_days"`
+	Servers                  []ServerAccessServer  `json:"servers"`
+	Sessions                 []ServerAccessSession `json:"sessions"`
+}
+
 // ServerEmailSettings defines model for ServerEmailSettings.
 type ServerEmailSettings struct {
 	Enabled            bool                      `json:"enabled"`
@@ -8418,6 +8795,16 @@ type CreateSandboxParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// ImportServerAccessRecordingPackageJSONBody defines parameters for ImportServerAccessRecordingPackage.
+type ImportServerAccessRecordingPackageJSONBody struct {
+	Package []byte `json:"package"`
+}
+
+// GetServerAccessRecordingParams defines parameters for GetServerAccessRecording.
+type GetServerAccessRecordingParams struct {
+	MetadataOnly *bool `form:"metadata_only,omitempty" json:"metadata_only,omitempty"`
+}
+
 // AiAnthropicMessageJSONRequestBody defines body for AiAnthropicMessage for application/json ContentType.
 type AiAnthropicMessageJSONRequestBody = AIInferenceRequest
 
@@ -9003,6 +9390,45 @@ type SandboxActionJSONRequestBody = SandboxAction
 // SaveSSHKeyJSONRequestBody defines body for SaveSSHKey for application/json ContentType.
 type SaveSSHKeyJSONRequestBody = SavedSSHKeyInput
 
+// UpdateServerAccessSettingsJSONRequestBody defines body for UpdateServerAccessSettings for application/json ContentType.
+type UpdateServerAccessSettingsJSONRequestBody = ServerAccessSettingsInput
+
+// CreateServerAccessGrantJSONRequestBody defines body for CreateServerAccessGrant for application/json ContentType.
+type CreateServerAccessGrantJSONRequestBody = ServerAccessGrantInput
+
+// UpdateServerAccessRecordingArchiveJSONRequestBody defines body for UpdateServerAccessRecordingArchive for application/json ContentType.
+type UpdateServerAccessRecordingArchiveJSONRequestBody = ServerAccessRecordingArchiveInput
+
+// TestServerAccessRecordingArchiveJSONRequestBody defines body for TestServerAccessRecordingArchive for application/json ContentType.
+type TestServerAccessRecordingArchiveJSONRequestBody = ServerAccessRecordingArchiveInput
+
+// ImportServerAccessRecordingPackageJSONRequestBody defines body for ImportServerAccessRecordingPackage for application/json ContentType.
+type ImportServerAccessRecordingPackageJSONRequestBody ImportServerAccessRecordingPackageJSONBody
+
+// UpdateServerAccessRecordingStorageJSONRequestBody defines body for UpdateServerAccessRecordingStorage for application/json ContentType.
+type UpdateServerAccessRecordingStorageJSONRequestBody = ServerAccessRecordingStorageInput
+
+// TestServerAccessRecordingStorageJSONRequestBody defines body for TestServerAccessRecordingStorage for application/json ContentType.
+type TestServerAccessRecordingStorageJSONRequestBody = ServerAccessRecordingStorageInput
+
+// CreateServerAccessServerJSONRequestBody defines body for CreateServerAccessServer for application/json ContentType.
+type CreateServerAccessServerJSONRequestBody = ServerAccessServerInput
+
+// UpdateServerAccessServerJSONRequestBody defines body for UpdateServerAccessServer for application/json ContentType.
+type UpdateServerAccessServerJSONRequestBody = ServerAccessServerInput
+
+// CheckServerAccessServerJSONRequestBody defines body for CheckServerAccessServer for application/json ContentType.
+type CheckServerAccessServerJSONRequestBody = ServerAccessConnectInput
+
+// PrepareServerAccessEnrollmentJSONRequestBody defines body for PrepareServerAccessEnrollment for application/json ContentType.
+type PrepareServerAccessEnrollmentJSONRequestBody = ServerAccessEnrollmentInput
+
+// CreateServerAccessSessionJSONRequestBody defines body for CreateServerAccessSession for application/json ContentType.
+type CreateServerAccessSessionJSONRequestBody = ServerAccessConnectInput
+
+// AuthorizeServerAccessEditorJSONRequestBody defines body for AuthorizeServerAccessEditor for application/json ContentType.
+type AuthorizeServerAccessEditorJSONRequestBody = ServerAccessEditorInput
+
 // RegisterSiteJSONRequestBody defines body for RegisterSite for application/json ContentType.
 type RegisterSiteJSONRequestBody = RegisterSiteRequest
 
@@ -9038,6 +9464,9 @@ type BootstrapSandboxRunnerJSONRequestBody = SandboxRunnerBootstrapRequest
 
 // BootstrapSandboxJSONRequestBody defines body for BootstrapSandbox for application/json ContentType.
 type BootstrapSandboxJSONRequestBody = SandboxBootstrapRequest
+
+// ExchangeServerAccessEditorJSONRequestBody defines body for ExchangeServerAccessEditor for application/json ContentType.
+type ExchangeServerAccessEditorJSONRequestBody = ServerAccessEditorExchangeInput
 
 // EnrollWorkloadJSONRequestBody defines body for EnrollWorkload for application/json ContentType.
 type EnrollWorkloadJSONRequestBody = AIWorkloadEnrollInput
@@ -10778,6 +11207,116 @@ type ClientInterface interface {
 	// DefaultSavedSSHKey request
 	DefaultSavedSSHKey(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetServerAccessWorkspace request
+	GetServerAccessWorkspace(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateServerAccessSettingsWithBody request with any body
+	UpdateServerAccessSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateServerAccessSettings(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelServerAccessEnrollment request
+	CancelServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerAccessEnrollment request
+	GetServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartServerAccessEnrollment request
+	StartServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServerAccessGrantWithBody request with any body
+	CreateServerAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateServerAccessGrant(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeServerAccessGrant request
+	RevokeServerAccessGrant(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerAccessRecordingArchive request
+	GetServerAccessRecordingArchive(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateServerAccessRecordingArchiveWithBody request with any body
+	UpdateServerAccessRecordingArchiveWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateServerAccessRecordingArchive(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestServerAccessRecordingArchiveWithBody request with any body
+	TestServerAccessRecordingArchiveWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestServerAccessRecordingArchive(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ImportServerAccessRecordingPackageWithBody request with any body
+	ImportServerAccessRecordingPackageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ImportServerAccessRecordingPackage(ctx context.Context, orgId openapi_types.UUID, body ImportServerAccessRecordingPackageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerAccessRecordingStorage request
+	GetServerAccessRecordingStorage(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateServerAccessRecordingStorageWithBody request with any body
+	UpdateServerAccessRecordingStorageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateServerAccessRecordingStorage(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestServerAccessRecordingStorageWithBody request with any body
+	TestServerAccessRecordingStorageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestServerAccessRecordingStorage(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServerAccessServerWithBody request with any body
+	CreateServerAccessServerWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateServerAccessServer(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveServerAccessServer request
+	RemoveServerAccessServer(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateServerAccessServerWithBody request with any body
+	UpdateServerAccessServerWithBody(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateServerAccessServer(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body UpdateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckServerAccessServerWithBody request with any body
+	CheckServerAccessServerWithBody(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CheckServerAccessServer(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body CheckServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCurrentServerAccessEnrollment request
+	GetCurrentServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PrepareServerAccessEnrollmentWithBody request with any body
+	PrepareServerAccessEnrollmentWithBody(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PrepareServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body PrepareServerAccessEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServerAccessSessionWithBody request with any body
+	CreateServerAccessSessionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateServerAccessSession(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthorizeServerAccessEditorWithBody request with any body
+	AuthorizeServerAccessEditorWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AuthorizeServerAccessEditor(ctx context.Context, orgId openapi_types.UUID, body AuthorizeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// EndServerAccessSession request
+	EndServerAccessSession(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerAccessRecording request
+	GetServerAccessRecording(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, params *GetServerAccessRecordingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DownloadServerAccessRecording request
+	DownloadServerAccessRecording(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportServerAccessRecordingS3 request
+	ExportServerAccessRecordingS3(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConnectServerAccessTerminal request
+	ConnectServerAccessTerminal(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerAccessTrust request
+	GetServerAccessTrust(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListPendingSiteSubnets request
 	ListPendingSiteSubnets(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -10879,6 +11418,14 @@ type ClientInterface interface {
 	BootstrapSandboxWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	BootstrapSandbox(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExchangeServerAccessEditorWithBody request with any body
+	ExchangeServerAccessEditorWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ExchangeServerAccessEditor(ctx context.Context, body ExchangeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConnectServerAccessEditor request
+	ConnectServerAccessEditor(ctx context.Context, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// EnrollWorkloadWithBody request with any body
 	EnrollWorkloadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -18054,6 +18601,498 @@ func (c *Client) DefaultSavedSSHKey(ctx context.Context, orgId openapi_types.UUI
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetServerAccessWorkspace(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessWorkspaceRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessSettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessSettings(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessSettingsRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelServerAccessEnrollmentRequest(c.Server, orgId, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessEnrollmentRequest(c.Server, orgId, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartServerAccessEnrollmentRequest(c.Server, orgId, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateServerAccessGrantWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServerAccessGrantRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateServerAccessGrant(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServerAccessGrantRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeServerAccessGrant(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeServerAccessGrantRequest(c.Server, orgId, grantId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerAccessRecordingArchive(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessRecordingArchiveRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessRecordingArchiveWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessRecordingArchiveRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessRecordingArchive(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessRecordingArchiveRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestServerAccessRecordingArchiveWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestServerAccessRecordingArchiveRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestServerAccessRecordingArchive(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestServerAccessRecordingArchiveRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ImportServerAccessRecordingPackageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportServerAccessRecordingPackageRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ImportServerAccessRecordingPackage(ctx context.Context, orgId openapi_types.UUID, body ImportServerAccessRecordingPackageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportServerAccessRecordingPackageRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerAccessRecordingStorage(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessRecordingStorageRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessRecordingStorageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessRecordingStorageRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessRecordingStorage(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessRecordingStorageRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestServerAccessRecordingStorageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestServerAccessRecordingStorageRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestServerAccessRecordingStorage(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestServerAccessRecordingStorageRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateServerAccessServerWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServerAccessServerRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateServerAccessServer(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServerAccessServerRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveServerAccessServer(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveServerAccessServerRequest(c.Server, orgId, serverId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessServerWithBody(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessServerRequestWithBody(c.Server, orgId, serverId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessServer(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body UpdateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessServerRequest(c.Server, orgId, serverId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CheckServerAccessServerWithBody(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckServerAccessServerRequestWithBody(c.Server, orgId, serverId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CheckServerAccessServer(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body CheckServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckServerAccessServerRequest(c.Server, orgId, serverId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetCurrentServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCurrentServerAccessEnrollmentRequest(c.Server, orgId, serverId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrepareServerAccessEnrollmentWithBody(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareServerAccessEnrollmentRequestWithBody(c.Server, orgId, serverId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrepareServerAccessEnrollment(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body PrepareServerAccessEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareServerAccessEnrollmentRequest(c.Server, orgId, serverId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateServerAccessSessionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServerAccessSessionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateServerAccessSession(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServerAccessSessionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthorizeServerAccessEditorWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthorizeServerAccessEditorRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthorizeServerAccessEditor(ctx context.Context, orgId openapi_types.UUID, body AuthorizeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthorizeServerAccessEditorRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) EndServerAccessSession(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewEndServerAccessSessionRequest(c.Server, orgId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerAccessRecording(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, params *GetServerAccessRecordingParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessRecordingRequest(c.Server, orgId, sessionId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DownloadServerAccessRecording(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadServerAccessRecordingRequest(c.Server, orgId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExportServerAccessRecordingS3(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportServerAccessRecordingS3Request(c.Server, orgId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConnectServerAccessTerminal(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConnectServerAccessTerminalRequest(c.Server, orgId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerAccessTrust(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessTrustRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListPendingSiteSubnets(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPendingSiteSubnetsRequest(c.Server, orgId)
 	if err != nil {
@@ -18500,6 +19539,42 @@ func (c *Client) BootstrapSandboxWithBody(ctx context.Context, contentType strin
 
 func (c *Client) BootstrapSandbox(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBootstrapSandboxRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExchangeServerAccessEditorWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeServerAccessEditorRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExchangeServerAccessEditor(ctx context.Context, body ExchangeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeServerAccessEditorRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConnectServerAccessEditor(ctx context.Context, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConnectServerAccessEditorRequest(c.Server, sessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -38329,6 +39404,1247 @@ func NewDefaultSavedSSHKeyRequest(server string, orgId openapi_types.UUID, keyId
 	return req, nil
 }
 
+// NewGetServerAccessWorkspaceRequest generates requests for GetServerAccessWorkspace
+func NewGetServerAccessWorkspaceRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateServerAccessSettingsRequest calls the generic UpdateServerAccessSettings builder with application/json body
+func NewUpdateServerAccessSettingsRequest(server string, orgId openapi_types.UUID, body UpdateServerAccessSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateServerAccessSettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateServerAccessSettingsRequestWithBody generates requests for UpdateServerAccessSettings with any type of body
+func NewUpdateServerAccessSettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCancelServerAccessEnrollmentRequest generates requests for CancelServerAccessEnrollment
+func NewCancelServerAccessEnrollmentRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/enrollments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetServerAccessEnrollmentRequest generates requests for GetServerAccessEnrollment
+func NewGetServerAccessEnrollmentRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/enrollments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStartServerAccessEnrollmentRequest generates requests for StartServerAccessEnrollment
+func NewStartServerAccessEnrollmentRequest(server string, orgId openapi_types.UUID, enrollmentId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "enrollmentId", runtime.ParamLocationPath, enrollmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/enrollments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateServerAccessGrantRequest calls the generic CreateServerAccessGrant builder with application/json body
+func NewCreateServerAccessGrantRequest(server string, orgId openapi_types.UUID, body CreateServerAccessGrantJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServerAccessGrantRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateServerAccessGrantRequestWithBody generates requests for CreateServerAccessGrant with any type of body
+func NewCreateServerAccessGrantRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/grants", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeServerAccessGrantRequest generates requests for RevokeServerAccessGrant
+func NewRevokeServerAccessGrantRequest(server string, orgId openapi_types.UUID, grantId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "grantId", runtime.ParamLocationPath, grantId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/grants/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetServerAccessRecordingArchiveRequest generates requests for GetServerAccessRecordingArchive
+func NewGetServerAccessRecordingArchiveRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-archive", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateServerAccessRecordingArchiveRequest calls the generic UpdateServerAccessRecordingArchive builder with application/json body
+func NewUpdateServerAccessRecordingArchiveRequest(server string, orgId openapi_types.UUID, body UpdateServerAccessRecordingArchiveJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateServerAccessRecordingArchiveRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateServerAccessRecordingArchiveRequestWithBody generates requests for UpdateServerAccessRecordingArchive with any type of body
+func NewUpdateServerAccessRecordingArchiveRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-archive", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestServerAccessRecordingArchiveRequest calls the generic TestServerAccessRecordingArchive builder with application/json body
+func NewTestServerAccessRecordingArchiveRequest(server string, orgId openapi_types.UUID, body TestServerAccessRecordingArchiveJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestServerAccessRecordingArchiveRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewTestServerAccessRecordingArchiveRequestWithBody generates requests for TestServerAccessRecordingArchive with any type of body
+func NewTestServerAccessRecordingArchiveRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-archive/test", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewImportServerAccessRecordingPackageRequest calls the generic ImportServerAccessRecordingPackage builder with application/json body
+func NewImportServerAccessRecordingPackageRequest(server string, orgId openapi_types.UUID, body ImportServerAccessRecordingPackageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewImportServerAccessRecordingPackageRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewImportServerAccessRecordingPackageRequestWithBody generates requests for ImportServerAccessRecordingPackage with any type of body
+func NewImportServerAccessRecordingPackageRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-import", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetServerAccessRecordingStorageRequest generates requests for GetServerAccessRecordingStorage
+func NewGetServerAccessRecordingStorageRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-storage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateServerAccessRecordingStorageRequest calls the generic UpdateServerAccessRecordingStorage builder with application/json body
+func NewUpdateServerAccessRecordingStorageRequest(server string, orgId openapi_types.UUID, body UpdateServerAccessRecordingStorageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateServerAccessRecordingStorageRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateServerAccessRecordingStorageRequestWithBody generates requests for UpdateServerAccessRecordingStorage with any type of body
+func NewUpdateServerAccessRecordingStorageRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-storage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestServerAccessRecordingStorageRequest calls the generic TestServerAccessRecordingStorage builder with application/json body
+func NewTestServerAccessRecordingStorageRequest(server string, orgId openapi_types.UUID, body TestServerAccessRecordingStorageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestServerAccessRecordingStorageRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewTestServerAccessRecordingStorageRequestWithBody generates requests for TestServerAccessRecordingStorage with any type of body
+func NewTestServerAccessRecordingStorageRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/recording-storage/test", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateServerAccessServerRequest calls the generic CreateServerAccessServer builder with application/json body
+func NewCreateServerAccessServerRequest(server string, orgId openapi_types.UUID, body CreateServerAccessServerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServerAccessServerRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateServerAccessServerRequestWithBody generates requests for CreateServerAccessServer with any type of body
+func NewCreateServerAccessServerRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/servers", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveServerAccessServerRequest generates requests for RemoveServerAccessServer
+func NewRemoveServerAccessServerRequest(server string, orgId openapi_types.UUID, serverId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "serverId", runtime.ParamLocationPath, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/servers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateServerAccessServerRequest calls the generic UpdateServerAccessServer builder with application/json body
+func NewUpdateServerAccessServerRequest(server string, orgId openapi_types.UUID, serverId openapi_types.UUID, body UpdateServerAccessServerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateServerAccessServerRequestWithBody(server, orgId, serverId, "application/json", bodyReader)
+}
+
+// NewUpdateServerAccessServerRequestWithBody generates requests for UpdateServerAccessServer with any type of body
+func NewUpdateServerAccessServerRequestWithBody(server string, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "serverId", runtime.ParamLocationPath, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/servers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckServerAccessServerRequest calls the generic CheckServerAccessServer builder with application/json body
+func NewCheckServerAccessServerRequest(server string, orgId openapi_types.UUID, serverId openapi_types.UUID, body CheckServerAccessServerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCheckServerAccessServerRequestWithBody(server, orgId, serverId, "application/json", bodyReader)
+}
+
+// NewCheckServerAccessServerRequestWithBody generates requests for CheckServerAccessServer with any type of body
+func NewCheckServerAccessServerRequestWithBody(server string, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "serverId", runtime.ParamLocationPath, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/servers/%s/check", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCurrentServerAccessEnrollmentRequest generates requests for GetCurrentServerAccessEnrollment
+func NewGetCurrentServerAccessEnrollmentRequest(server string, orgId openapi_types.UUID, serverId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "serverId", runtime.ParamLocationPath, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/servers/%s/enrollment", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPrepareServerAccessEnrollmentRequest calls the generic PrepareServerAccessEnrollment builder with application/json body
+func NewPrepareServerAccessEnrollmentRequest(server string, orgId openapi_types.UUID, serverId openapi_types.UUID, body PrepareServerAccessEnrollmentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPrepareServerAccessEnrollmentRequestWithBody(server, orgId, serverId, "application/json", bodyReader)
+}
+
+// NewPrepareServerAccessEnrollmentRequestWithBody generates requests for PrepareServerAccessEnrollment with any type of body
+func NewPrepareServerAccessEnrollmentRequestWithBody(server string, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "serverId", runtime.ParamLocationPath, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/servers/%s/enrollment", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateServerAccessSessionRequest calls the generic CreateServerAccessSession builder with application/json body
+func NewCreateServerAccessSessionRequest(server string, orgId openapi_types.UUID, body CreateServerAccessSessionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServerAccessSessionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateServerAccessSessionRequestWithBody generates requests for CreateServerAccessSession with any type of body
+func NewCreateServerAccessSessionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAuthorizeServerAccessEditorRequest calls the generic AuthorizeServerAccessEditor builder with application/json body
+func NewAuthorizeServerAccessEditorRequest(server string, orgId openapi_types.UUID, body AuthorizeServerAccessEditorJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAuthorizeServerAccessEditorRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewAuthorizeServerAccessEditorRequestWithBody generates requests for AuthorizeServerAccessEditor with any type of body
+func NewAuthorizeServerAccessEditorRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions/editor", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewEndServerAccessSessionRequest generates requests for EndServerAccessSession
+func NewEndServerAccessSessionRequest(server string, orgId openapi_types.UUID, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetServerAccessRecordingRequest generates requests for GetServerAccessRecording
+func NewGetServerAccessRecordingRequest(server string, orgId openapi_types.UUID, sessionId openapi_types.UUID, params *GetServerAccessRecordingParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions/%s/recording", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.MetadataOnly != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "metadata_only", runtime.ParamLocationQuery, *params.MetadataOnly); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDownloadServerAccessRecordingRequest generates requests for DownloadServerAccessRecording
+func NewDownloadServerAccessRecordingRequest(server string, orgId openapi_types.UUID, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions/%s/recording/download", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExportServerAccessRecordingS3Request generates requests for ExportServerAccessRecordingS3
+func NewExportServerAccessRecordingS3Request(server string, orgId openapi_types.UUID, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions/%s/recording/export-s3", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewConnectServerAccessTerminalRequest generates requests for ConnectServerAccessTerminal
+func NewConnectServerAccessTerminalRequest(server string, orgId openapi_types.UUID, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/sessions/%s/terminal", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetServerAccessTrustRequest generates requests for GetServerAccessTrust
+func NewGetServerAccessTrustRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/server-access/trust", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListPendingSiteSubnetsRequest generates requests for ListPendingSiteSubnets
 func NewListPendingSiteSubnetsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -39477,6 +41793,80 @@ func NewBootstrapSandboxRequestWithBody(server string, contentType string, body 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewExchangeServerAccessEditorRequest calls the generic ExchangeServerAccessEditor builder with application/json body
+func NewExchangeServerAccessEditorRequest(server string, body ExchangeServerAccessEditorJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExchangeServerAccessEditorRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewExchangeServerAccessEditorRequestWithBody generates requests for ExchangeServerAccessEditor with any type of body
+func NewExchangeServerAccessEditorRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/server-access/editor/exchange")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewConnectServerAccessEditorRequest generates requests for ConnectServerAccessEditor
+func NewConnectServerAccessEditorRequest(server string, sessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/server-access/editor/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -41293,6 +43683,116 @@ type ClientWithResponsesInterface interface {
 	// DefaultSavedSSHKeyWithResponse request
 	DefaultSavedSSHKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DefaultSavedSSHKeyResponse, error)
 
+	// GetServerAccessWorkspaceWithResponse request
+	GetServerAccessWorkspaceWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessWorkspaceResponse, error)
+
+	// UpdateServerAccessSettingsWithBodyWithResponse request with any body
+	UpdateServerAccessSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessSettingsResponse, error)
+
+	UpdateServerAccessSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessSettingsResponse, error)
+
+	// CancelServerAccessEnrollmentWithResponse request
+	CancelServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CancelServerAccessEnrollmentResponse, error)
+
+	// GetServerAccessEnrollmentWithResponse request
+	GetServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessEnrollmentResponse, error)
+
+	// StartServerAccessEnrollmentWithResponse request
+	StartServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*StartServerAccessEnrollmentResponse, error)
+
+	// CreateServerAccessGrantWithBodyWithResponse request with any body
+	CreateServerAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServerAccessGrantResponse, error)
+
+	CreateServerAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerAccessGrantResponse, error)
+
+	// RevokeServerAccessGrantWithResponse request
+	RevokeServerAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeServerAccessGrantResponse, error)
+
+	// GetServerAccessRecordingArchiveWithResponse request
+	GetServerAccessRecordingArchiveWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessRecordingArchiveResponse, error)
+
+	// UpdateServerAccessRecordingArchiveWithBodyWithResponse request with any body
+	UpdateServerAccessRecordingArchiveWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingArchiveResponse, error)
+
+	UpdateServerAccessRecordingArchiveWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingArchiveResponse, error)
+
+	// TestServerAccessRecordingArchiveWithBodyWithResponse request with any body
+	TestServerAccessRecordingArchiveWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingArchiveResponse, error)
+
+	TestServerAccessRecordingArchiveWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingArchiveResponse, error)
+
+	// ImportServerAccessRecordingPackageWithBodyWithResponse request with any body
+	ImportServerAccessRecordingPackageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportServerAccessRecordingPackageResponse, error)
+
+	ImportServerAccessRecordingPackageWithResponse(ctx context.Context, orgId openapi_types.UUID, body ImportServerAccessRecordingPackageJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportServerAccessRecordingPackageResponse, error)
+
+	// GetServerAccessRecordingStorageWithResponse request
+	GetServerAccessRecordingStorageWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessRecordingStorageResponse, error)
+
+	// UpdateServerAccessRecordingStorageWithBodyWithResponse request with any body
+	UpdateServerAccessRecordingStorageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingStorageResponse, error)
+
+	UpdateServerAccessRecordingStorageWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingStorageResponse, error)
+
+	// TestServerAccessRecordingStorageWithBodyWithResponse request with any body
+	TestServerAccessRecordingStorageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingStorageResponse, error)
+
+	TestServerAccessRecordingStorageWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingStorageResponse, error)
+
+	// CreateServerAccessServerWithBodyWithResponse request with any body
+	CreateServerAccessServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServerAccessServerResponse, error)
+
+	CreateServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerAccessServerResponse, error)
+
+	// RemoveServerAccessServerWithResponse request
+	RemoveServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveServerAccessServerResponse, error)
+
+	// UpdateServerAccessServerWithBodyWithResponse request with any body
+	UpdateServerAccessServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessServerResponse, error)
+
+	UpdateServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body UpdateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessServerResponse, error)
+
+	// CheckServerAccessServerWithBodyWithResponse request with any body
+	CheckServerAccessServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckServerAccessServerResponse, error)
+
+	CheckServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body CheckServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckServerAccessServerResponse, error)
+
+	// GetCurrentServerAccessEnrollmentWithResponse request
+	GetCurrentServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCurrentServerAccessEnrollmentResponse, error)
+
+	// PrepareServerAccessEnrollmentWithBodyWithResponse request with any body
+	PrepareServerAccessEnrollmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareServerAccessEnrollmentResponse, error)
+
+	PrepareServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body PrepareServerAccessEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareServerAccessEnrollmentResponse, error)
+
+	// CreateServerAccessSessionWithBodyWithResponse request with any body
+	CreateServerAccessSessionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServerAccessSessionResponse, error)
+
+	CreateServerAccessSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerAccessSessionResponse, error)
+
+	// AuthorizeServerAccessEditorWithBodyWithResponse request with any body
+	AuthorizeServerAccessEditorWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthorizeServerAccessEditorResponse, error)
+
+	AuthorizeServerAccessEditorWithResponse(ctx context.Context, orgId openapi_types.UUID, body AuthorizeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthorizeServerAccessEditorResponse, error)
+
+	// EndServerAccessSessionWithResponse request
+	EndServerAccessSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*EndServerAccessSessionResponse, error)
+
+	// GetServerAccessRecordingWithResponse request
+	GetServerAccessRecordingWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, params *GetServerAccessRecordingParams, reqEditors ...RequestEditorFn) (*GetServerAccessRecordingResponse, error)
+
+	// DownloadServerAccessRecordingWithResponse request
+	DownloadServerAccessRecordingWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DownloadServerAccessRecordingResponse, error)
+
+	// ExportServerAccessRecordingS3WithResponse request
+	ExportServerAccessRecordingS3WithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ExportServerAccessRecordingS3Response, error)
+
+	// ConnectServerAccessTerminalWithResponse request
+	ConnectServerAccessTerminalWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ConnectServerAccessTerminalResponse, error)
+
+	// GetServerAccessTrustWithResponse request
+	GetServerAccessTrustWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessTrustResponse, error)
+
 	// ListPendingSiteSubnetsWithResponse request
 	ListPendingSiteSubnetsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListPendingSiteSubnetsResponse, error)
 
@@ -41394,6 +43894,14 @@ type ClientWithResponsesInterface interface {
 	BootstrapSandboxWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error)
 
 	BootstrapSandboxWithResponse(ctx context.Context, body BootstrapSandboxJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapSandboxResponse, error)
+
+	// ExchangeServerAccessEditorWithBodyWithResponse request with any body
+	ExchangeServerAccessEditorWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeServerAccessEditorResponse, error)
+
+	ExchangeServerAccessEditorWithResponse(ctx context.Context, body ExchangeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeServerAccessEditorResponse, error)
+
+	// ConnectServerAccessEditorWithResponse request
+	ConnectServerAccessEditorWithResponse(ctx context.Context, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ConnectServerAccessEditorResponse, error)
 
 	// EnrollWorkloadWithBodyWithResponse request with any body
 	EnrollWorkloadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnrollWorkloadResponse, error)
@@ -50643,6 +53151,653 @@ func (r DefaultSavedSSHKeyResponse) StatusCode() int {
 	return 0
 }
 
+type GetServerAccessWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessWorkspace
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateServerAccessSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateServerAccessSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateServerAccessSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelServerAccessEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelServerAccessEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelServerAccessEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerAccessEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StartServerAccessEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r StartServerAccessEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartServerAccessEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateServerAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessGrant
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServerAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServerAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeServerAccessGrantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeServerAccessGrantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeServerAccessGrantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerAccessRecordingArchiveResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecordingArchive
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessRecordingArchiveResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessRecordingArchiveResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateServerAccessRecordingArchiveResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecordingArchive
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateServerAccessRecordingArchiveResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateServerAccessRecordingArchiveResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestServerAccessRecordingArchiveResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Ok bool `json:"ok"`
+	}
+	JSONDefault *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestServerAccessRecordingArchiveResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestServerAccessRecordingArchiveResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ImportServerAccessRecordingPackageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecording
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ImportServerAccessRecordingPackageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ImportServerAccessRecordingPackageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerAccessRecordingStorageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecordingStorage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessRecordingStorageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessRecordingStorageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateServerAccessRecordingStorageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecordingStorage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateServerAccessRecordingStorageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateServerAccessRecordingStorageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestServerAccessRecordingStorageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Ok bool `json:"ok"`
+	}
+	JSONDefault *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestServerAccessRecordingStorageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestServerAccessRecordingStorageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateServerAccessServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessServer
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServerAccessServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServerAccessServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveServerAccessServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveServerAccessServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveServerAccessServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateServerAccessServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessServer
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateServerAccessServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateServerAccessServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CheckServerAccessServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessSession
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckServerAccessServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckServerAccessServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetCurrentServerAccessEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCurrentServerAccessEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCurrentServerAccessEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PrepareServerAccessEnrollmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEnrollment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PrepareServerAccessEnrollmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PrepareServerAccessEnrollmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateServerAccessSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessSession
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServerAccessSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServerAccessSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AuthorizeServerAccessEditorResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEditorApproval
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthorizeServerAccessEditorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthorizeServerAccessEditorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type EndServerAccessSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r EndServerAccessSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r EndServerAccessSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerAccessRecordingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecording
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessRecordingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessRecordingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DownloadServerAccessRecordingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessRecording
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadServerAccessRecordingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadServerAccessRecordingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ExportServerAccessRecordingS3Response struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *ServerAccessRecordingExport
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportServerAccessRecordingS3Response) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportServerAccessRecordingS3Response) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConnectServerAccessTerminalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConnectServerAccessTerminalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConnectServerAccessTerminalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerAccessTrustResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessTrust
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessTrustResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessTrustResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListPendingSiteSubnetsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -51227,6 +54382,51 @@ func (r BootstrapSandboxResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r BootstrapSandboxResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ExchangeServerAccessEditorResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessEditorConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ExchangeServerAccessEditorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExchangeServerAccessEditorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConnectServerAccessEditorResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConnectServerAccessEditorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConnectServerAccessEditorResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -56518,6 +59718,362 @@ func (c *ClientWithResponses) DefaultSavedSSHKeyWithResponse(ctx context.Context
 	return ParseDefaultSavedSSHKeyResponse(rsp)
 }
 
+// GetServerAccessWorkspaceWithResponse request returning *GetServerAccessWorkspaceResponse
+func (c *ClientWithResponses) GetServerAccessWorkspaceWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessWorkspaceResponse, error) {
+	rsp, err := c.GetServerAccessWorkspace(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessWorkspaceResponse(rsp)
+}
+
+// UpdateServerAccessSettingsWithBodyWithResponse request with arbitrary body returning *UpdateServerAccessSettingsResponse
+func (c *ClientWithResponses) UpdateServerAccessSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessSettingsResponse, error) {
+	rsp, err := c.UpdateServerAccessSettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateServerAccessSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessSettingsResponse, error) {
+	rsp, err := c.UpdateServerAccessSettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessSettingsResponse(rsp)
+}
+
+// CancelServerAccessEnrollmentWithResponse request returning *CancelServerAccessEnrollmentResponse
+func (c *ClientWithResponses) CancelServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CancelServerAccessEnrollmentResponse, error) {
+	rsp, err := c.CancelServerAccessEnrollment(ctx, orgId, enrollmentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelServerAccessEnrollmentResponse(rsp)
+}
+
+// GetServerAccessEnrollmentWithResponse request returning *GetServerAccessEnrollmentResponse
+func (c *ClientWithResponses) GetServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessEnrollmentResponse, error) {
+	rsp, err := c.GetServerAccessEnrollment(ctx, orgId, enrollmentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessEnrollmentResponse(rsp)
+}
+
+// StartServerAccessEnrollmentWithResponse request returning *StartServerAccessEnrollmentResponse
+func (c *ClientWithResponses) StartServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, enrollmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*StartServerAccessEnrollmentResponse, error) {
+	rsp, err := c.StartServerAccessEnrollment(ctx, orgId, enrollmentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartServerAccessEnrollmentResponse(rsp)
+}
+
+// CreateServerAccessGrantWithBodyWithResponse request with arbitrary body returning *CreateServerAccessGrantResponse
+func (c *ClientWithResponses) CreateServerAccessGrantWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServerAccessGrantResponse, error) {
+	rsp, err := c.CreateServerAccessGrantWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServerAccessGrantResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateServerAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerAccessGrantResponse, error) {
+	rsp, err := c.CreateServerAccessGrant(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServerAccessGrantResponse(rsp)
+}
+
+// RevokeServerAccessGrantWithResponse request returning *RevokeServerAccessGrantResponse
+func (c *ClientWithResponses) RevokeServerAccessGrantWithResponse(ctx context.Context, orgId openapi_types.UUID, grantId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeServerAccessGrantResponse, error) {
+	rsp, err := c.RevokeServerAccessGrant(ctx, orgId, grantId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeServerAccessGrantResponse(rsp)
+}
+
+// GetServerAccessRecordingArchiveWithResponse request returning *GetServerAccessRecordingArchiveResponse
+func (c *ClientWithResponses) GetServerAccessRecordingArchiveWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessRecordingArchiveResponse, error) {
+	rsp, err := c.GetServerAccessRecordingArchive(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessRecordingArchiveResponse(rsp)
+}
+
+// UpdateServerAccessRecordingArchiveWithBodyWithResponse request with arbitrary body returning *UpdateServerAccessRecordingArchiveResponse
+func (c *ClientWithResponses) UpdateServerAccessRecordingArchiveWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingArchiveResponse, error) {
+	rsp, err := c.UpdateServerAccessRecordingArchiveWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessRecordingArchiveResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateServerAccessRecordingArchiveWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingArchiveResponse, error) {
+	rsp, err := c.UpdateServerAccessRecordingArchive(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessRecordingArchiveResponse(rsp)
+}
+
+// TestServerAccessRecordingArchiveWithBodyWithResponse request with arbitrary body returning *TestServerAccessRecordingArchiveResponse
+func (c *ClientWithResponses) TestServerAccessRecordingArchiveWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingArchiveResponse, error) {
+	rsp, err := c.TestServerAccessRecordingArchiveWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestServerAccessRecordingArchiveResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestServerAccessRecordingArchiveWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingArchiveJSONRequestBody, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingArchiveResponse, error) {
+	rsp, err := c.TestServerAccessRecordingArchive(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestServerAccessRecordingArchiveResponse(rsp)
+}
+
+// ImportServerAccessRecordingPackageWithBodyWithResponse request with arbitrary body returning *ImportServerAccessRecordingPackageResponse
+func (c *ClientWithResponses) ImportServerAccessRecordingPackageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportServerAccessRecordingPackageResponse, error) {
+	rsp, err := c.ImportServerAccessRecordingPackageWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportServerAccessRecordingPackageResponse(rsp)
+}
+
+func (c *ClientWithResponses) ImportServerAccessRecordingPackageWithResponse(ctx context.Context, orgId openapi_types.UUID, body ImportServerAccessRecordingPackageJSONRequestBody, reqEditors ...RequestEditorFn) (*ImportServerAccessRecordingPackageResponse, error) {
+	rsp, err := c.ImportServerAccessRecordingPackage(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportServerAccessRecordingPackageResponse(rsp)
+}
+
+// GetServerAccessRecordingStorageWithResponse request returning *GetServerAccessRecordingStorageResponse
+func (c *ClientWithResponses) GetServerAccessRecordingStorageWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessRecordingStorageResponse, error) {
+	rsp, err := c.GetServerAccessRecordingStorage(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessRecordingStorageResponse(rsp)
+}
+
+// UpdateServerAccessRecordingStorageWithBodyWithResponse request with arbitrary body returning *UpdateServerAccessRecordingStorageResponse
+func (c *ClientWithResponses) UpdateServerAccessRecordingStorageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingStorageResponse, error) {
+	rsp, err := c.UpdateServerAccessRecordingStorageWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessRecordingStorageResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateServerAccessRecordingStorageWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessRecordingStorageResponse, error) {
+	rsp, err := c.UpdateServerAccessRecordingStorage(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessRecordingStorageResponse(rsp)
+}
+
+// TestServerAccessRecordingStorageWithBodyWithResponse request with arbitrary body returning *TestServerAccessRecordingStorageResponse
+func (c *ClientWithResponses) TestServerAccessRecordingStorageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingStorageResponse, error) {
+	rsp, err := c.TestServerAccessRecordingStorageWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestServerAccessRecordingStorageResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestServerAccessRecordingStorageWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestServerAccessRecordingStorageJSONRequestBody, reqEditors ...RequestEditorFn) (*TestServerAccessRecordingStorageResponse, error) {
+	rsp, err := c.TestServerAccessRecordingStorage(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestServerAccessRecordingStorageResponse(rsp)
+}
+
+// CreateServerAccessServerWithBodyWithResponse request with arbitrary body returning *CreateServerAccessServerResponse
+func (c *ClientWithResponses) CreateServerAccessServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServerAccessServerResponse, error) {
+	rsp, err := c.CreateServerAccessServerWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServerAccessServerResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerAccessServerResponse, error) {
+	rsp, err := c.CreateServerAccessServer(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServerAccessServerResponse(rsp)
+}
+
+// RemoveServerAccessServerWithResponse request returning *RemoveServerAccessServerResponse
+func (c *ClientWithResponses) RemoveServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveServerAccessServerResponse, error) {
+	rsp, err := c.RemoveServerAccessServer(ctx, orgId, serverId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveServerAccessServerResponse(rsp)
+}
+
+// UpdateServerAccessServerWithBodyWithResponse request with arbitrary body returning *UpdateServerAccessServerResponse
+func (c *ClientWithResponses) UpdateServerAccessServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessServerResponse, error) {
+	rsp, err := c.UpdateServerAccessServerWithBody(ctx, orgId, serverId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessServerResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body UpdateServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessServerResponse, error) {
+	rsp, err := c.UpdateServerAccessServer(ctx, orgId, serverId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessServerResponse(rsp)
+}
+
+// CheckServerAccessServerWithBodyWithResponse request with arbitrary body returning *CheckServerAccessServerResponse
+func (c *ClientWithResponses) CheckServerAccessServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CheckServerAccessServerResponse, error) {
+	rsp, err := c.CheckServerAccessServerWithBody(ctx, orgId, serverId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckServerAccessServerResponse(rsp)
+}
+
+func (c *ClientWithResponses) CheckServerAccessServerWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body CheckServerAccessServerJSONRequestBody, reqEditors ...RequestEditorFn) (*CheckServerAccessServerResponse, error) {
+	rsp, err := c.CheckServerAccessServer(ctx, orgId, serverId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckServerAccessServerResponse(rsp)
+}
+
+// GetCurrentServerAccessEnrollmentWithResponse request returning *GetCurrentServerAccessEnrollmentResponse
+func (c *ClientWithResponses) GetCurrentServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCurrentServerAccessEnrollmentResponse, error) {
+	rsp, err := c.GetCurrentServerAccessEnrollment(ctx, orgId, serverId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCurrentServerAccessEnrollmentResponse(rsp)
+}
+
+// PrepareServerAccessEnrollmentWithBodyWithResponse request with arbitrary body returning *PrepareServerAccessEnrollmentResponse
+func (c *ClientWithResponses) PrepareServerAccessEnrollmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareServerAccessEnrollmentResponse, error) {
+	rsp, err := c.PrepareServerAccessEnrollmentWithBody(ctx, orgId, serverId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareServerAccessEnrollmentResponse(rsp)
+}
+
+func (c *ClientWithResponses) PrepareServerAccessEnrollmentWithResponse(ctx context.Context, orgId openapi_types.UUID, serverId openapi_types.UUID, body PrepareServerAccessEnrollmentJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareServerAccessEnrollmentResponse, error) {
+	rsp, err := c.PrepareServerAccessEnrollment(ctx, orgId, serverId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareServerAccessEnrollmentResponse(rsp)
+}
+
+// CreateServerAccessSessionWithBodyWithResponse request with arbitrary body returning *CreateServerAccessSessionResponse
+func (c *ClientWithResponses) CreateServerAccessSessionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServerAccessSessionResponse, error) {
+	rsp, err := c.CreateServerAccessSessionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServerAccessSessionResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateServerAccessSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateServerAccessSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerAccessSessionResponse, error) {
+	rsp, err := c.CreateServerAccessSession(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServerAccessSessionResponse(rsp)
+}
+
+// AuthorizeServerAccessEditorWithBodyWithResponse request with arbitrary body returning *AuthorizeServerAccessEditorResponse
+func (c *ClientWithResponses) AuthorizeServerAccessEditorWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthorizeServerAccessEditorResponse, error) {
+	rsp, err := c.AuthorizeServerAccessEditorWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthorizeServerAccessEditorResponse(rsp)
+}
+
+func (c *ClientWithResponses) AuthorizeServerAccessEditorWithResponse(ctx context.Context, orgId openapi_types.UUID, body AuthorizeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthorizeServerAccessEditorResponse, error) {
+	rsp, err := c.AuthorizeServerAccessEditor(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthorizeServerAccessEditorResponse(rsp)
+}
+
+// EndServerAccessSessionWithResponse request returning *EndServerAccessSessionResponse
+func (c *ClientWithResponses) EndServerAccessSessionWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*EndServerAccessSessionResponse, error) {
+	rsp, err := c.EndServerAccessSession(ctx, orgId, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseEndServerAccessSessionResponse(rsp)
+}
+
+// GetServerAccessRecordingWithResponse request returning *GetServerAccessRecordingResponse
+func (c *ClientWithResponses) GetServerAccessRecordingWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, params *GetServerAccessRecordingParams, reqEditors ...RequestEditorFn) (*GetServerAccessRecordingResponse, error) {
+	rsp, err := c.GetServerAccessRecording(ctx, orgId, sessionId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessRecordingResponse(rsp)
+}
+
+// DownloadServerAccessRecordingWithResponse request returning *DownloadServerAccessRecordingResponse
+func (c *ClientWithResponses) DownloadServerAccessRecordingWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DownloadServerAccessRecordingResponse, error) {
+	rsp, err := c.DownloadServerAccessRecording(ctx, orgId, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadServerAccessRecordingResponse(rsp)
+}
+
+// ExportServerAccessRecordingS3WithResponse request returning *ExportServerAccessRecordingS3Response
+func (c *ClientWithResponses) ExportServerAccessRecordingS3WithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ExportServerAccessRecordingS3Response, error) {
+	rsp, err := c.ExportServerAccessRecordingS3(ctx, orgId, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportServerAccessRecordingS3Response(rsp)
+}
+
+// ConnectServerAccessTerminalWithResponse request returning *ConnectServerAccessTerminalResponse
+func (c *ClientWithResponses) ConnectServerAccessTerminalWithResponse(ctx context.Context, orgId openapi_types.UUID, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ConnectServerAccessTerminalResponse, error) {
+	rsp, err := c.ConnectServerAccessTerminal(ctx, orgId, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConnectServerAccessTerminalResponse(rsp)
+}
+
+// GetServerAccessTrustWithResponse request returning *GetServerAccessTrustResponse
+func (c *ClientWithResponses) GetServerAccessTrustWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetServerAccessTrustResponse, error) {
+	rsp, err := c.GetServerAccessTrust(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessTrustResponse(rsp)
+}
+
 // ListPendingSiteSubnetsWithResponse request returning *ListPendingSiteSubnetsResponse
 func (c *ClientWithResponses) ListPendingSiteSubnetsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListPendingSiteSubnetsResponse, error) {
 	rsp, err := c.ListPendingSiteSubnets(ctx, orgId, reqEditors...)
@@ -56846,6 +60402,32 @@ func (c *ClientWithResponses) BootstrapSandboxWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseBootstrapSandboxResponse(rsp)
+}
+
+// ExchangeServerAccessEditorWithBodyWithResponse request with arbitrary body returning *ExchangeServerAccessEditorResponse
+func (c *ClientWithResponses) ExchangeServerAccessEditorWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeServerAccessEditorResponse, error) {
+	rsp, err := c.ExchangeServerAccessEditorWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeServerAccessEditorResponse(rsp)
+}
+
+func (c *ClientWithResponses) ExchangeServerAccessEditorWithResponse(ctx context.Context, body ExchangeServerAccessEditorJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeServerAccessEditorResponse, error) {
+	rsp, err := c.ExchangeServerAccessEditor(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeServerAccessEditorResponse(rsp)
+}
+
+// ConnectServerAccessEditorWithResponse request returning *ConnectServerAccessEditorResponse
+func (c *ClientWithResponses) ConnectServerAccessEditorWithResponse(ctx context.Context, sessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ConnectServerAccessEditorResponse, error) {
+	rsp, err := c.ConnectServerAccessEditor(ctx, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConnectServerAccessEditorResponse(rsp)
 }
 
 // EnrollWorkloadWithBodyWithResponse request with arbitrary body returning *EnrollWorkloadResponse
@@ -69921,6 +73503,927 @@ func ParseDefaultSavedSSHKeyResponse(rsp *http.Response) (*DefaultSavedSSHKeyRes
 	return response, nil
 }
 
+// ParseGetServerAccessWorkspaceResponse parses an HTTP response from a GetServerAccessWorkspaceWithResponse call
+func ParseGetServerAccessWorkspaceResponse(rsp *http.Response) (*GetServerAccessWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessWorkspace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateServerAccessSettingsResponse parses an HTTP response from a UpdateServerAccessSettingsWithResponse call
+func ParseUpdateServerAccessSettingsResponse(rsp *http.Response) (*UpdateServerAccessSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateServerAccessSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelServerAccessEnrollmentResponse parses an HTTP response from a CancelServerAccessEnrollmentWithResponse call
+func ParseCancelServerAccessEnrollmentResponse(rsp *http.Response) (*CancelServerAccessEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelServerAccessEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerAccessEnrollmentResponse parses an HTTP response from a GetServerAccessEnrollmentWithResponse call
+func ParseGetServerAccessEnrollmentResponse(rsp *http.Response) (*GetServerAccessEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartServerAccessEnrollmentResponse parses an HTTP response from a StartServerAccessEnrollmentWithResponse call
+func ParseStartServerAccessEnrollmentResponse(rsp *http.Response) (*StartServerAccessEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartServerAccessEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateServerAccessGrantResponse parses an HTTP response from a CreateServerAccessGrantWithResponse call
+func ParseCreateServerAccessGrantResponse(rsp *http.Response) (*CreateServerAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServerAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessGrant
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeServerAccessGrantResponse parses an HTTP response from a RevokeServerAccessGrantWithResponse call
+func ParseRevokeServerAccessGrantResponse(rsp *http.Response) (*RevokeServerAccessGrantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeServerAccessGrantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerAccessRecordingArchiveResponse parses an HTTP response from a GetServerAccessRecordingArchiveWithResponse call
+func ParseGetServerAccessRecordingArchiveResponse(rsp *http.Response) (*GetServerAccessRecordingArchiveResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessRecordingArchiveResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecordingArchive
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateServerAccessRecordingArchiveResponse parses an HTTP response from a UpdateServerAccessRecordingArchiveWithResponse call
+func ParseUpdateServerAccessRecordingArchiveResponse(rsp *http.Response) (*UpdateServerAccessRecordingArchiveResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateServerAccessRecordingArchiveResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecordingArchive
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestServerAccessRecordingArchiveResponse parses an HTTP response from a TestServerAccessRecordingArchiveWithResponse call
+func ParseTestServerAccessRecordingArchiveResponse(rsp *http.Response) (*TestServerAccessRecordingArchiveResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestServerAccessRecordingArchiveResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Ok bool `json:"ok"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseImportServerAccessRecordingPackageResponse parses an HTTP response from a ImportServerAccessRecordingPackageWithResponse call
+func ParseImportServerAccessRecordingPackageResponse(rsp *http.Response) (*ImportServerAccessRecordingPackageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ImportServerAccessRecordingPackageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecording
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerAccessRecordingStorageResponse parses an HTTP response from a GetServerAccessRecordingStorageWithResponse call
+func ParseGetServerAccessRecordingStorageResponse(rsp *http.Response) (*GetServerAccessRecordingStorageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessRecordingStorageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecordingStorage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateServerAccessRecordingStorageResponse parses an HTTP response from a UpdateServerAccessRecordingStorageWithResponse call
+func ParseUpdateServerAccessRecordingStorageResponse(rsp *http.Response) (*UpdateServerAccessRecordingStorageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateServerAccessRecordingStorageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecordingStorage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestServerAccessRecordingStorageResponse parses an HTTP response from a TestServerAccessRecordingStorageWithResponse call
+func ParseTestServerAccessRecordingStorageResponse(rsp *http.Response) (*TestServerAccessRecordingStorageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestServerAccessRecordingStorageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Ok bool `json:"ok"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateServerAccessServerResponse parses an HTTP response from a CreateServerAccessServerWithResponse call
+func ParseCreateServerAccessServerResponse(rsp *http.Response) (*CreateServerAccessServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServerAccessServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessServer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveServerAccessServerResponse parses an HTTP response from a RemoveServerAccessServerWithResponse call
+func ParseRemoveServerAccessServerResponse(rsp *http.Response) (*RemoveServerAccessServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveServerAccessServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateServerAccessServerResponse parses an HTTP response from a UpdateServerAccessServerWithResponse call
+func ParseUpdateServerAccessServerResponse(rsp *http.Response) (*UpdateServerAccessServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateServerAccessServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessServer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckServerAccessServerResponse parses an HTTP response from a CheckServerAccessServerWithResponse call
+func ParseCheckServerAccessServerResponse(rsp *http.Response) (*CheckServerAccessServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckServerAccessServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCurrentServerAccessEnrollmentResponse parses an HTTP response from a GetCurrentServerAccessEnrollmentWithResponse call
+func ParseGetCurrentServerAccessEnrollmentResponse(rsp *http.Response) (*GetCurrentServerAccessEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCurrentServerAccessEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePrepareServerAccessEnrollmentResponse parses an HTTP response from a PrepareServerAccessEnrollmentWithResponse call
+func ParsePrepareServerAccessEnrollmentResponse(rsp *http.Response) (*PrepareServerAccessEnrollmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PrepareServerAccessEnrollmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEnrollment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateServerAccessSessionResponse parses an HTTP response from a CreateServerAccessSessionWithResponse call
+func ParseCreateServerAccessSessionResponse(rsp *http.Response) (*CreateServerAccessSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServerAccessSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessSession
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAuthorizeServerAccessEditorResponse parses an HTTP response from a AuthorizeServerAccessEditorWithResponse call
+func ParseAuthorizeServerAccessEditorResponse(rsp *http.Response) (*AuthorizeServerAccessEditorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthorizeServerAccessEditorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEditorApproval
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseEndServerAccessSessionResponse parses an HTTP response from a EndServerAccessSessionWithResponse call
+func ParseEndServerAccessSessionResponse(rsp *http.Response) (*EndServerAccessSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &EndServerAccessSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerAccessRecordingResponse parses an HTTP response from a GetServerAccessRecordingWithResponse call
+func ParseGetServerAccessRecordingResponse(rsp *http.Response) (*GetServerAccessRecordingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessRecordingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecording
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDownloadServerAccessRecordingResponse parses an HTTP response from a DownloadServerAccessRecordingWithResponse call
+func ParseDownloadServerAccessRecordingResponse(rsp *http.Response) (*DownloadServerAccessRecordingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadServerAccessRecordingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessRecording
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExportServerAccessRecordingS3Response parses an HTTP response from a ExportServerAccessRecordingS3WithResponse call
+func ParseExportServerAccessRecordingS3Response(rsp *http.Response) (*ExportServerAccessRecordingS3Response, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportServerAccessRecordingS3Response{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest ServerAccessRecordingExport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConnectServerAccessTerminalResponse parses an HTTP response from a ConnectServerAccessTerminalWithResponse call
+func ParseConnectServerAccessTerminalResponse(rsp *http.Response) (*ConnectServerAccessTerminalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConnectServerAccessTerminalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerAccessTrustResponse parses an HTTP response from a GetServerAccessTrustWithResponse call
+func ParseGetServerAccessTrustResponse(rsp *http.Response) (*GetServerAccessTrustResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessTrustResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessTrust
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListPendingSiteSubnetsResponse parses an HTTP response from a ListPendingSiteSubnetsWithResponse call
 func ParseListPendingSiteSubnetsResponse(rsp *http.Response) (*ListPendingSiteSubnetsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -70711,6 +75214,65 @@ func ParseBootstrapSandboxResponse(rsp *http.Response) (*BootstrapSandboxRespons
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExchangeServerAccessEditorResponse parses an HTTP response from a ExchangeServerAccessEditorWithResponse call
+func ParseExchangeServerAccessEditorResponse(rsp *http.Response) (*ExchangeServerAccessEditorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExchangeServerAccessEditorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessEditorConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConnectServerAccessEditorResponse parses an HTTP response from a ConnectServerAccessEditorWithResponse call
+func ParseConnectServerAccessEditorResponse(rsp *http.Response) (*ConnectServerAccessEditorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConnectServerAccessEditorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

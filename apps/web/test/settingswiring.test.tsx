@@ -874,25 +874,25 @@ describe("Settings — server AI transport permission", () => {
 });
 
 
-describe("Settings — server App Access domain permission", () => {
+describe("Settings — server Applications domain permission", () => {
   beforeEach(() => { vi.mocked(api.GET).mockClear(); });
   it("hides shared domains and does not fetch them for an organization owner", async () => {
     window.history.replaceState({}, "", "/settings?section=app-access-domains");
     withAuth(<Settings />);
     await screen.findByRole("tab", { name: "Organization" });
-    expect(screen.queryByRole("tab", { name: "App Access domains" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Applications domains" })).toBeNull();
     expect(screen.queryByLabelText("Portal URL")).toBeNull();
     const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
     expect(reads.some(([path]) => path === "/api/v1/admin/app-access/domains")).toBe(false);
   });
 
-  it("opens the App Access domains deep link for a server administrator", async () => {
+  it("opens the Applications domains deep link for a server administrator", async () => {
     serverAdmin = true;
     window.history.replaceState({}, "", "/settings?section=app-access-domains");
     withAuth(<Settings />);
     await screen.findByLabelText("Portal URL");
     expect(screen.getByRole("tabpanel").id).toBe("app-access-domains");
-    expect(screen.getByRole("tab", { name: "App Access domains" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Applications domains" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("keeps server-wide domains available without an organization", async () => {
@@ -907,14 +907,14 @@ describe("Settings — server App Access domain permission", () => {
   });
 });
 
-describe("Settings — App Access belongs under Features", () => {
+describe("Settings — Applications belongs under Features", () => {
   beforeEach(() => { vi.mocked(api.GET).mockClear(); vi.mocked(api.PATCH).mockClear(); });
 
-  it("opens the Features deep link and persists explicit App Access opt-in for a verified active administrator", async () => {
+  it("opens the Features deep link and persists explicit Applications opt-in for a verified active administrator", async () => {
     currentRole = "admin"; currentRoles = ["admin", "member"];
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
-    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    const toggle = await screen.findByRole("switch", { name: "Applications" });
     expect(screen.getByRole("tabpanel").id).toBe("features");
     expect(screen.getByRole("tab", { name: "Features" }).getAttribute("aria-selected")).toBe("true");
     expect(toggle.getAttribute("aria-checked")).toBe("false");
@@ -926,38 +926,38 @@ describe("Settings — App Access belongs under Features", () => {
     });
     await openSection(/^Organization$/);
     await openSection(/^Features$/);
-    expect((await screen.findByRole("switch", { name: "App Access" })).getAttribute("aria-checked")).toBe("true");
+    expect((await screen.findByRole("switch", { name: "Applications" })).getAttribute("aria-checked")).toBe("true");
     expect(api.PATCH).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps App Access read-only for an unverified administrator", async () => {
+  it("keeps Applications read-only for an unverified administrator", async () => {
     currentRole = "admin"; emailVerified = false;
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
-    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    const toggle = await screen.findByRole("switch", { name: "Applications" });
     expect(toggle).toHaveProperty("disabled", true);
     fireEvent.click(toggle);
     expect(api.PATCH).not.toHaveBeenCalled();
   });
 
-  it("does not load App Access controls for an inactive administrator membership", async () => {
+  it("does not load Applications controls for an inactive administrator membership", async () => {
     currentRole = "admin"; membershipStatus = "deactivated";
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
     await screen.findByRole("switch", { name: "OpenVPN" });
-    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Applications" })).toBeNull();
     const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
     expect(reads.some(([path]) => path === "/api/v1/organizations/{orgId}/app-access/settings")).toBe(false);
     expect(api.PATCH).not.toHaveBeenCalled();
   });
 
-  it("does not turn an ordinary member's server-admin flag into organization App Access authority", async () => {
+  it("does not turn an ordinary member's server-admin flag into organization Applications authority", async () => {
     currentRole = "member"; serverAdmin = true;
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
     await screen.findByRole("tab", { name: "Email delivery" });
     expect(screen.queryByRole("tab", { name: "Features" })).toBeNull();
-    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Applications" })).toBeNull();
     const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
     expect(reads.some(([path]) => path === "/api/v1/organizations/{orgId}/app-access/settings")).toBe(false);
     expect(api.PATCH).not.toHaveBeenCalled();

@@ -32,13 +32,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -tags "$TUNNEX_BUILD_TAGS" -trimpath -ldfl
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tunnex-ai-egress ./cmd/ai-egress
 
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
-RUN apk add --no-cache ca-certificates wget postgresql16-client postgresql17-client postgresql18-client && adduser -D -u 10001 tunnex
+RUN apk add --no-cache ca-certificates wget postgresql16-client postgresql17-client postgresql18-client \
+    'pcre2>=10.49-r0' && adduser -D -u 10001 tunnex
 # Pre-own the secrets mountpoint as uid 10001 so the named volume inherits uid-10001 on first
 # init and the non-root process can write 0600 files.
 RUN mkdir -p /var/lib/tunnex/secrets \
-    && mkdir -p /var/lib/tunnex/app-restore \
+    && mkdir -p /var/lib/tunnex/app-restore /var/lib/tunnex/recordings \
     && chown -R 10001:10001 /var/lib/tunnex \
-    && chmod 700 /var/lib/tunnex/secrets /var/lib/tunnex/app-restore
+    && chmod 700 /var/lib/tunnex/secrets /var/lib/tunnex/app-restore /var/lib/tunnex/recordings
 USER tunnex
 COPY --from=build /out/tunnex-ai-egress /usr/local/bin/tunnex-ai-egress
 COPY --from=build /out/tunnex-api /usr/local/bin/tunnex-api

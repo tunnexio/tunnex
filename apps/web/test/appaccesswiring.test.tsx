@@ -40,7 +40,7 @@ vi.mock("../src/lib/api", async () => {
 afterEach(cleanup);
 beforeEach(() => { Object.assign(data, { roles: ["admin"], serverAdmin: false, verified: true, appAdmin: false, baseDomain: "apps.example", iconData: "", savedHostname: "payroll.apps.example", listFail: false, listState: "unpublished", listEmpty: false, membershipFail: false, entitled: true, enabled: true, stale: false, conflict: "", revoked: false, existingPolicy: false, archived: false, requests: [], patches: [] }); vi.clearAllMocks(); window.localStorage.clear(); window.sessionStorage.clear(); });
 function show(path: string) { return render(<MemoryRouter initialEntries={[path]}><AuthProvider><OrgProvider><Routes><Route path="/app-access" element={<AppAccess />} /><Route path="/app-access/applications" element={<AppAccess />} /><Route path="/app-access/applications/new" element={<AppAccess />} /><Route path="/app-access/applications/:appId" element={<AppAccess />} /><Route path="/app-access/access" element={<AppAccess />} /><Route path="/app-access/my-applications" element={<AppAccess />} /><Route path="/app-access/requests" element={<AppAccess />} /><Route path="/app-access/my-requests" element={<AppAccess />} /></Routes></OrgProvider></AuthProvider></MemoryRouter>); }
-describe("App Access draft workspace", () => {
+describe("Applications draft workspace", () => {
   it("lands an admin on actual drafts without publishing or opening controls", async () => { show("/app-access"); expect(await screen.findByRole("link", { name: "Payroll" })).toBeTruthy(); expect(screen.getByText(/Draft · Browser traffic is not published/)).toBeTruthy(); expect(screen.queryByRole("button", { name: /publish|open application/i })).toBeNull(); expect(screen.queryByText(/enabled for this organization/)).toBeNull(); });
   it("uses permission unions rather than the legacy first role", async () => { data.roles = ["member", "admin"]; show("/app-access"); expect(await screen.findByRole("link", { name: "Payroll" })).toBeTruthy(); });
   it("loads a member's own catalog without reading administrative configuration", async () => { data.roles = ["member"]; show("/app-access"); expect(await screen.findByText(/No published applications are granted/)).toBeTruthy(); expect(data.requests.some(path => path.endsWith("/my-apps"))).toBe(true); expect(data.requests.some(path => path.endsWith("/applications") || path.endsWith("/settings"))).toBe(false); });
@@ -59,7 +59,7 @@ describe("App Access draft workspace", () => {
   });
   it("bounds URL supplied search and page offsets", async () => { show(`/app-access/applications?q=${"a".repeat(150)}&page=999999`); await screen.findByRole("link", { name: "Payroll" }); expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/applications", { params: { path: { orgId: "org-1" }, query: { search: "a".repeat(100), limit: 20, offset: 10000 } } }); });
   it("off organizations cannot save through a direct new-draft link", async () => { data.enabled = false; show("/app-access/applications/new"); await screen.findByLabelText("Application name"); expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull(); });
-  it("keeps ineligible configuration inspectable without edit controls", async () => { data.entitled = false; show("/app-access/applications/app-1"); expect(await screen.findByLabelText("Application name")).toHaveProperty("value", "Payroll"); expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull(); expect(screen.getByText(/App Access requires an eligible license/)).toBeTruthy(); });
+  it("keeps ineligible configuration inspectable without edit controls", async () => { data.entitled = false; show("/app-access/applications/app-1"); expect(await screen.findByLabelText("Application name")).toHaveProperty("value", "Payroll"); expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull(); expect(screen.getByText(/Applications requires an eligible license/)).toBeTruthy(); });
   it("sends only generated draft input and expected version, preserving stale-save edits", async () => { data.stale = true; show("/app-access/applications/app-1"); const name = await screen.findByLabelText("Application name"); fireEvent.change(name, { target: { value: "Payroll revised" } }); fireEvent.click(screen.getByRole("button", { name: "Save draft" })); expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("changed since you opened")); expect(name).toHaveProperty("value", "Payroll revised"); expect(data.patches[0]).toMatchObject({ body: { ...draft, name: "Payroll revised", expected_version: 7 } }); const options = data.patches[0] as { body: Record<string, unknown> }; expect(options.body.revision).toBeUndefined(); expect(options.body.digest).toBeUndefined(); expect(window.sessionStorage.getItem("tunnex.appAccessDraft:u1:org-1:app-1")).toContain("Payroll revised"); });
   it("preserves hostname collision errors instead of calling them stale saves", async () => { data.conflict = "hostname_taken"; show("/app-access/applications/app-1"); fireEvent.change(await screen.findByLabelText("Application name"), { target: { value: "Edited payroll" } }); fireEvent.click(screen.getByRole("button", { name: "Save draft" })); expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Hostname is already registered"); expect(screen.getByLabelText("Application name")).toHaveProperty("value", "Edited payroll"); });
   it("retains a revoked assignment honestly while offering only active replacements", async () => { data.revoked = true; show("/app-access/applications/app-1"); const picker = await screen.findByLabelText("Gateway connector"); expect(picker).toHaveProperty("value", "gateway-1"); expect(screen.getByRole("option", { name: /Office gateway.*Revoked/ })).toHaveProperty("disabled", true); expect(screen.queryByRole("option", { name: /Other revoked gateway/ })).toBeNull(); fireEvent.change(screen.getByLabelText("Application name"), { target: { value: "Reassigned payroll" } }); expect(screen.getByRole("button", { name: "Save draft" })).toHaveProperty("disabled", true); fireEvent.change(picker, { target: { value: "gateway-2" } }); expect(screen.getByRole("button", { name: "Save draft" })).toHaveProperty("disabled", false); });
@@ -133,8 +133,8 @@ it("retains archived configuration as read-only history on a direct link", async
 it("keeps one workspace title, named inventory columns and active section navigation", async () => {
   show("/app-access/applications");
   await screen.findByRole("link", { name: "Payroll" });
-  expect(screen.getAllByRole("heading", { level: 1 }).map(node => node.textContent)).toEqual(["App Access"]);
-  const sections = screen.getByRole("navigation", { name: "App Access" });
+  expect(screen.getAllByRole("heading", { level: 1 }).map(node => node.textContent)).toEqual(["Applications"]);
+  const sections = screen.getByRole("navigation", { name: "Applications" });
   expect(within(sections).getByRole("link", { name: "Applications" }).getAttribute("aria-current")).toBe("page");
   const table = screen.getByRole("table", { name: "Applications" });
   expect(within(table).getByRole("columnheader", { name: "Application" })).toBeTruthy();
@@ -147,13 +147,13 @@ it("marks the inventory tab for application subroutes and separates identity fro
   await screen.findByLabelText("Application name");
   expect(screen.getByRole("heading", { name: "Application identity" })).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Origin connection" })).toBeTruthy();
-  const sections = screen.getByRole("navigation", { name: "App Access" });
+  const sections = screen.getByRole("navigation", { name: "Applications" });
   expect(within(sections).getByRole("link", { name: "Applications" }).getAttribute("aria-current")).toBe("page");
   expect(screen.getByRole("button", { name: "Save draft" })).toHaveProperty("disabled", true);
   expect(api.PATCH).not.toHaveBeenCalled();
 });
 
-it("uses only the configured App Access suffix and sends a full hostname to the API", async () => {
+it("uses only the configured Applications suffix and sends a full hostname to the API", async () => {
   data.baseDomain = "private.customer.test";
   show("/app-access/applications/new");
   fireEvent.change(await screen.findByLabelText("Application name"), { target: { value: "Payroll" } });
@@ -184,7 +184,7 @@ it("makes a missing domain explicit and preserves existing multi-label hostnames
   data.baseDomain = "";
   const empty = show("/app-access/applications/new");
   expect(await screen.findByLabelText("Application subdomain")).toHaveProperty("disabled", true);
-  expect(screen.getByText(/An operator must configure the App Access domain/)).toBeTruthy();
+  expect(screen.getByText(/An operator must configure the Applications domain/)).toBeTruthy();
   empty.unmount(); data.baseDomain = "apps.example"; data.savedHostname = "old.payroll.apps.example";
   show("/app-access/applications/app-1");
   fireEvent.change(await screen.findByLabelText("Application name"), { target: { value: "Renamed payroll" } });
@@ -232,7 +232,7 @@ it("clears inventory selection when search, publication filter or server page ch
   expect(api.POST).not.toHaveBeenCalled();
 });
 
-describe("App Access navigation entry regression", () => {
+describe("Applications navigation entry regression", () => {
   it("returns a control-panel application administrator from My access to Applications and Add application", async () => {
     data.serverAdmin = true;
     show("/app-access/my-applications");
@@ -264,7 +264,7 @@ describe("App Access navigation entry regression", () => {
   });
 });
 
-describe("App Access feature setting", () => {
+describe("Applications feature setting", () => {
   function feature(orgId = "org-1", permitted = true, canEdit = true) {
     return <AppAccessFeatureSettings orgId={orgId} permitted={permitted} canEdit={canEdit} />;
   }
@@ -275,15 +275,15 @@ describe("App Access feature setting", () => {
     await screen.findByRole("link", { name: "Payroll" });
     expect(screen.queryByRole("link", { name: "Add application" })).toBeNull();
     expect(screen.getByRole("link", { name: "Open feature settings" }).getAttribute("href")).toBe("/settings?section=features");
-    expect(screen.queryByRole("button", { name: /Enable App Access|Turn off App Access/ })).toBeNull();
-    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Enable Applications|Turn off Applications/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Applications" })).toBeNull();
     expect(api.PATCH).not.toHaveBeenCalled();
   });
 
   it("requires explicit opt-in and preserves stale settings until authoritative reload", async () => {
     data.enabled = false; data.stale = true;
     render(feature());
-    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    const toggle = await screen.findByRole("switch", { name: "Applications" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(api.PATCH).not.toHaveBeenCalled();
     fireEvent.click(toggle);
@@ -294,15 +294,15 @@ describe("App Access feature setting", () => {
     fireEvent.click(toggle);
     expect(api.PATCH).toHaveBeenCalledTimes(1);
     data.stale = false; data.enabled = true;
-    fireEvent.click(screen.getByRole("button", { name: "Reload App Access setting" }));
-    await waitFor(() => expect(screen.getByRole("switch", { name: "App Access" }).getAttribute("aria-checked")).toBe("true"));
-    expect(screen.getByRole("switch", { name: "App Access" })).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: "Reload Applications setting" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Applications" }).getAttribute("aria-checked")).toBe("true"));
+    expect(screen.getByRole("switch", { name: "Applications" })).toHaveProperty("disabled", false);
   });
 
   it("permits turning off persisted access after entitlement and domain loss", async () => {
     data.entitled = false; data.baseDomain = "";
     render(feature());
-    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    const toggle = await screen.findByRole("switch", { name: "Applications" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(toggle).toHaveProperty("disabled", false);
     fireEvent.click(toggle);
@@ -314,9 +314,9 @@ describe("App Access feature setting", () => {
   it("preserves app-domain setting conflicts instead of claiming another edit", async () => {
     data.enabled = false; data.conflict = "app_domain_unavailable";
     render(feature());
-    fireEvent.click(await screen.findByRole("switch", { name: "App Access" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Applications" }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Configure the application domain first");
-    expect(screen.getByRole("switch", { name: "App Access" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("switch", { name: "Applications" })).toHaveProperty("disabled", true);
   });
 
   it("does not read the feature without view permission and cannot write read-only settings", async () => {
@@ -324,7 +324,7 @@ describe("App Access feature setting", () => {
     expect(api.GET).not.toHaveBeenCalled();
     expect(api.PATCH).not.toHaveBeenCalled();
     view.rerender(feature("org-1", true, false));
-    const toggle = await screen.findByRole("switch", { name: "App Access" });
+    const toggle = await screen.findByRole("switch", { name: "Applications" });
     expect(toggle).toHaveProperty("disabled", true);
     fireEvent.click(toggle);
     expect(api.PATCH).not.toHaveBeenCalled();
@@ -334,10 +334,10 @@ describe("App Access feature setting", () => {
     vi.mocked(api.GET).mockResolvedValueOnce({ error: { error: { message: "Settings unavailable" } } } as never);
     render(feature());
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Settings unavailable");
-    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Applications" })).toBeNull();
     expect(api.PATCH).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Reload App Access setting" }));
-    expect((await screen.findByRole("switch", { name: "App Access" })).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Reload Applications setting" }));
+    expect((await screen.findByRole("switch", { name: "Applications" })).getAttribute("aria-checked")).toBe("true");
   });
 
   it("ignores a previous organization's late update and saves only the new setting version", async () => {
@@ -348,20 +348,20 @@ describe("App Access feature setting", () => {
       return { data: { enabled: false, version: 3, entitlement_available: true, base_domain: "apps.example", domain_ready: true } } as never;
     });
     const view = render(feature());
-    fireEvent.click(await screen.findByRole("switch", { name: "App Access" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Applications" }));
     vi.mocked(api.GET).mockResolvedValueOnce({ data: { enabled: false, version: 9, entitlement_available: true, base_domain: "apps.example", domain_ready: true } } as never);
     view.rerender(feature("org-2"));
-    await waitFor(() => expect(screen.getByRole("switch", { name: "App Access" }).getAttribute("aria-checked")).toBe("false"));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Applications" }).getAttribute("aria-checked")).toBe("false"));
     finishOld();
     await pending;
-    fireEvent.click(screen.getByRole("switch", { name: "App Access" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Applications" }));
     await waitFor(() => expect(api.PATCH).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/settings", {
       params: { path: { orgId: "org-2" } }, body: { enabled: true, expected_version: 9 },
     }));
   });
 });
 
-describe("stable administration navigation across App Access routes", () => {
+describe("stable administration navigation across Applications routes", () => {
   it.each([true, false])("keeps the same administration tabs and selected route with cp_admin=%s", async serverAdmin => {
     data.serverAdmin = serverAdmin; data.roles = ["member", "admin"];
     show("/app-access/applications");
@@ -370,7 +370,7 @@ describe("stable administration navigation across App Access routes", () => {
       const destination = await screen.findByRole("link", { name: selected });
       fireEvent.click(destination);
       await waitFor(() => {
-        const navigation = screen.getByRole("navigation", { name: "App Access" });
+        const navigation = screen.getByRole("navigation", { name: "Applications" });
         expect(within(navigation).getAllByRole("link").map(link => link.textContent)).toEqual(labels);
         expect(within(navigation).getByRole("link", { name: selected }).getAttribute("aria-current")).toBe("page");
       });
@@ -389,7 +389,7 @@ describe("stable administration navigation across App Access routes", () => {
   });
 });
 
-describe("concise App Access inventory availability", () => {
+describe("concise Applications inventory availability", () => {
   it("removes the whole enabled banner and feature link without changing enabled actions", async () => {
     data.serverAdmin = true; show("/app-access/applications");
     expect(await screen.findByRole("link", { name: "Add application" })).toBeTruthy();
@@ -400,7 +400,7 @@ describe("concise App Access inventory availability", () => {
   });
   it("shows a concise disabled message to an org administrator without the CP-only shortcut", async () => {
     data.enabled = false; data.serverAdmin = false; show("/app-access/applications");
-    expect(await screen.findByText("App Access is disabled.")).toBeTruthy();
+    expect(await screen.findByText("Applications is disabled.")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Open feature settings" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Add application" })).toBeNull();
     expect(screen.queryByText(/Connection and routing changes|Saved icons update immediately/)).toBeNull();
@@ -414,7 +414,7 @@ describe("concise App Access inventory availability", () => {
   });
   it("keeps the disabled shortcut hidden until the CP admin has the existing verified edit authority", async () => {
     data.enabled = false; data.serverAdmin = true; data.verified = false; show("/app-access/applications");
-    expect(await screen.findByText("App Access is disabled.")).toBeTruthy();
+    expect(await screen.findByText("Applications is disabled.")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Open feature settings" })).toBeNull();
     expect(api.PATCH).not.toHaveBeenCalled();
   });

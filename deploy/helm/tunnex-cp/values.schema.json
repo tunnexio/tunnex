@@ -501,6 +501,26 @@
           }
         }
       }
+    },
+    "serverAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "recordingVolume": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingClaim": {
+              "type": "string",
+              "maxLength": 253
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [

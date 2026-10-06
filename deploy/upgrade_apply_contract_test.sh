@@ -16,6 +16,9 @@ TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
 TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
 POSTGRES_USER=tunnex
 POSTGRES_DB=tunnex
+TUNNEX_SERVER_ACCESS_ENABLED=true
+TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings
+TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true
 ENV
 printf '%s\n' '{"fixture":"signed catalog for stdin transfer"}' >"$TMP/catalog.json"
 
@@ -541,4 +544,7 @@ grep -Fq 'start bifrost' "$TMP/ai-upgrade.log"
 ! grep -Fq 'up -d' "$TMP/ai-upgrade.log"
 cmp -s "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
 
+grep -qx 'TUNNEX_SERVER_ACCESS_ENABLED=true' "$TMP/tunnex/.env"
+grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings' "$TMP/tunnex/.env"
+grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true' "$TMP/tunnex/.env"
 echo 'upgrade apply contract passed'

@@ -1,4 +1,7 @@
 {{- include "tunnex-cp.appAccessGuard" . -}}
+{{- if and .Values.serverAccess.enabled (ne (int .Values.api.replicas) 1) -}}
+{{- fail "serverAccess currently requires exactly one API replica; terminal HA is not supported" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,7 +36,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
-        {{- if or .Values.database.tls.existingSecret .Values.appAccess.enabled }}
+        {{- if or .Values.database.tls.existingSecret .Values.appAccess.enabled (and .Values.serverAccess.enabled .Values.serverAccess.recordingVolume.existingClaim) }}
         fsGroup: 10001
         fsGroupChangePolicy: OnRootMismatch
         {{- end }}
@@ -50,6 +53,8 @@ spec:
             - {name: app-authority, containerPort: 8445}
             {{- end }}
           env:
+            - name: TUNNEX_SERVER_ACCESS_ENABLED
+              value: {{ .Values.serverAccess.enabled | quote }}
             - name: TUNNEX_ENV
               value: {{ .Values.env | quote }}
             - name: TUNNEX_LOG_LEVEL
@@ -140,6 +145,10 @@ spec:
               value: {{ required "redis.url or redis.urlSecret is required (external Redis — this chart runs no bundled Redis)" .Values.redis.url | quote }}
             {{- end }}
           volumeMounts:
+            {{- if and .Values.serverAccess.enabled .Values.serverAccess.recordingVolume.existingClaim }}
+            - name: terminal-recordings
+              mountPath: /var/lib/tunnex/recordings
+            {{- end }}
             {{- if .Values.appAccess.enabled }}
             - {name: app-restore, mountPath: /var/lib/tunnex/app-restore, subPath: app-restore, readOnly: true}
             {{- end }}
@@ -208,6 +217,11 @@ spec:
             limits: {memory: 128Mi}
         {{- end }}
       volumes:
+        {{- if and .Values.serverAccess.enabled .Values.serverAccess.recordingVolume.existingClaim }}
+        - name: terminal-recordings
+          persistentVolumeClaim:
+            claimName: {{ .Values.serverAccess.recordingVolume.existingClaim | quote }}
+        {{- end }}
         {{- if .Values.appAccess.enabled }}
         - name: app-restore
           persistentVolumeClaim: {claimName: {{ .Values.appAccess.restore.existingClaim | quote }}}

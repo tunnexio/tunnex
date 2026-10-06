@@ -1,6 +1,18 @@
 # Tunnex web SPA — build with Node, serve static files with nginx (non-root).
 # Build context is the repo root.
 
+# Ship editor clients from the exact control-plane source, independently of
+# package-manager release lag. Downloads remain behind the CP HTTPS authority.
+FROM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS editor-client
+WORKDIR /src/apps/cli
+COPY apps/cli/ ./
+ARG VERSION=dev
+RUN mkdir -p /editor-client && for os in darwin linux; do for arch in amd64 arm64; do \
+    CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -mod=readonly -trimpath -buildvcs=false \
+    -ldflags="-s -w -X main.version=${VERSION}" -o /editor-client/tunnex-$os-$arch ./cmd/tunnex && \
+    sha256sum /editor-client/tunnex-$os-$arch | cut -d ' ' -f 1 > /editor-client/tunnex-$os-$arch.sha256; \
+    done; done
+
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 RUN corepack enable
@@ -29,6 +41,7 @@ RUN pnpm --filter @tunnex/web build
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
 COPY deploy/nginx/spa.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+COPY --from=editor-client /editor-client /usr/share/nginx/html/editor-client
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
   CMD wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1

@@ -20,8 +20,8 @@ type MySessions = components["schemas"]["AppAccessMySessions"];
 const pageSize = 20;
 const availabilityText: Record<MyApps["availability"], string> = {
   available: "Only published applications granted to you appear here.",
-  feature_disabled: "App Access is off for this organization.",
-  feature_unavailable: "App Access requires an eligible license.",
+  feature_disabled: "Applications is off for this organization.",
+  feature_unavailable: "Applications requires an eligible license.",
   domain_unavailable: "Application access setup is not complete. Contact your administrator.",
   parent_unavailable: "Sign in again to open applications with this login.",
 };

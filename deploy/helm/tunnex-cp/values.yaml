@@ -247,3 +247,10 @@ appAccess:
     resources:
       requests: {cpu: 100m, memory: 128Mi}
       limits: {cpu: "1", memory: 512Mi}
+
+# Community browser SSH remains an explicit default-off installation capability.
+serverAccess:
+  enabled: false
+  # Existing dedicated PVC only; storage provisioning is outside this chart.
+  recordingVolume:
+    existingClaim: ""

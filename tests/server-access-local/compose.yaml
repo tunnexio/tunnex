@@ -1,0 +1,123 @@
+name: tunnex-sa0-browser-1005
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aa0
+      POSTGRES_PASSWORD: ${AA0_DB_PASSWORD:?run prepare.sh}
+      POSTGRES_DB: aa0
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U aa0 -d aa0]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api:
+    image: alpine:3.23
+    command: [/binaries/tunnex-api]
+    environment:
+      TUNNEX_ENV: development
+      TUNNEX_SERVER_ACCESS_ENABLED: 'true'
+      TUNNEX_SERVER_ACCESS_STORAGE_ALLOW_INSECURE: 'true'
+      DATABASE_URL: postgres://aa0:${AA0_DB_PASSWORD}@postgres:5432/aa0?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      TUNNEX_AUTO_MIGRATE: 'true'
+      TUNNEX_SECRETS_DIR: /state
+      TUNNEX_ADMIN_EMAIL: admin@sa0.local
+      TUNNEX_BOOTSTRAP_ORG_NAME: SA-0 local qualification
+      TUNNEX_BOOTSTRAP_GATEWAY_NAME: sa0-gateway
+      TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256: ${AA0_JOIN_HASH}
+      TUNNEX_AI_VPN_AUTO: 'false'
+      TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: 'false'
+      APP_BASE_URL: http://localhost:18183
+      TUNNEX_APP_ACCESS_BASE_DOMAIN: apps.fixture.test
+      TUNNEX_APP_ACCESS_RESTORE_MARKER: /owned-app-restore/app-access.pending.json
+      TUNNEX_GATEWAY_CONTROL_URL: https://api:8443
+    volumes: [./.runtime/bin:/binaries:ro, api_state:/state, ./.runtime/app-restore:/owned-app-restore:ro, ./.runtime/recording-volume:/owned-recordings]
+    ports: [127.0.0.1:18183:8080, 127.0.0.1:18546:8443, 127.0.0.1:18333:9000, 127.0.0.1:18334:10000]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8080/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  recording-s3:
+    image: motoserver/moto@sha256:91fd602a21f49cf9eb82fdf474015a3c131d40104c8297ea6a2ca920708ae32c
+    network_mode: service:api
+    environment: {MOTO_PORT: '9000'}
+    depends_on: {api: {condition: service_healthy}}
+  recording-azure:
+    image: mcr.microsoft.com/azure-storage/azurite@sha256:830430c1da1a2d537e08f3e6764dd1f5ae00cf0346bcaf625b968ec3f0971fd5
+    network_mode: service:api
+    command: [azurite-blob, --blobHost, 0.0.0.0, --blobPort, '10000', --skipApiVersionCheck, --location, /data]
+    environment:
+      AZURITE_ACCOUNTS: ${SA_RECORDING_AZURITE_ACCOUNT:?owned fixture credentials required}
+    volumes: [./.runtime/azurite:/data]
+    depends_on: {api: {condition: service_healthy}}
+  gateway:
+    image: tunnex-sa0-tools:local
+    entrypoint: [/bin/sh, -ec]
+    command: ["ip link show wg0 >/dev/null 2>&1 || ip link add wg0 type wireguard; ip address replace 100.100.0.1/24 dev wg0; ip link set wg0 up; exec /binaries/tunnex-node"]
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: 1
+    environment:
+      TUNNEX_SERVER_ACCESS_ENABLED: 'true'
+      TUNNEX_API_URL: http://api:8080
+      TUNNEX_AGENT_URL: https://api:8443
+      TUNNEX_AGENT_SERVERNAME: tunnex-control
+      TUNNEX_JOIN_TOKEN: ${AA0_JOIN_TOKEN}
+      TUNNEX_NODE_NAME: sa0-gateway
+      TUNNEX_NODE_STATE_DIR: /state
+      TUNNEX_WG_BACKEND: wgctrl
+      TUNNEX_AI_VPN_AUTO: 'false'
+      TUNNEX_FLOWLOG_GROUP: '0'
+    volumes: [./.runtime/bin:/binaries:ro, gateway_state:/state, ./.runtime/ssh-client:/ssh-fixture:ro]
+    ports: [127.0.0.1:19193:9091]
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:9091/readyz]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    depends_on:
+      api: {condition: service_healthy}
+  ssh-target:
+    image: tunnex-sa0-tools:local
+    entrypoint: [/bin/sh, /fixture/start-target.sh]
+    volumes: [./start-target.sh:/fixture/start-target.sh:ro, ./.runtime/ssh-public:/ssh-fixture:ro, ssh_state:/ssh-state]
+    healthcheck:
+      test: [CMD-SHELL, "pgrep -f '[s]shd.*listener' >/dev/null && /usr/sbin/sshd -t -f /ssh-state/sshd.conf"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  outbound-broker:
+    image: tunnex-sa0-tools:local
+    entrypoint: [python3, /fixture/outbound-broker-probe.py]
+    volumes: [./outbound-broker-probe.py:/fixture/outbound-broker-probe.py:ro, ./.runtime/broker:/broker:ro]
+    profiles: [spike]
+
+volumes:
+  postgres_data:
+    name: tunnex-sa0-browser-1005_postgres_data
+  redis_data:
+    name: tunnex-sa0-browser-1005_redis_data
+  api_state:
+    name: tunnex-sa0-browser-1005_api_state
+  gateway_state:
+    name: tunnex-sa0-browser-1005_gateway_state
+  ssh_state:
+    name: tunnex-sa0-browser-1005_ssh_state
+networks:
+  default:
+    name: tunnex-sa0-browser-1005_default

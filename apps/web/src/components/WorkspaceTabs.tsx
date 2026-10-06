@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 
-export function WorkspaceTabs({ label, items }: {
+export function WorkspaceTabs({ label, items, activeHref }: {
   label: string;
+  activeHref?:string;
   items: readonly { href: string; label: string }[];
 }) {
   const { pathname } = useLocation();
@@ -9,7 +10,7 @@ export function WorkspaceTabs({ label, items }: {
     .find((item) => pathname === item.href || pathname.startsWith(item.href + "/"));
   return <nav aria-label={label} className="workspace-tabs">
     {items.map((item) => <Link key={item.href} to={item.href}
-      aria-current={active?.href === item.href ? "page" : undefined}>{item.label}</Link>)}
+      aria-current={(activeHref??active?.href) === item.href ? "page" : undefined}>{item.label}</Link>)}
   </nav>;
 }
 

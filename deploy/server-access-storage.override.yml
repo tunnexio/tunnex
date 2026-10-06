@@ -1,0 +1,10 @@
+# Optional dedicated recording mount; the host directory must already exist.
+# This does not mount/provision EFS/EBS or create cloud buckets.
+services:
+  api:
+    volumes:
+      - type: bind
+        source: ${TUNNEX_SERVER_ACCESS_RECORDING_SOURCE:?pre-mounted recording directory required}
+        target: /var/lib/tunnex/recordings
+        bind:
+          create_host_path: false

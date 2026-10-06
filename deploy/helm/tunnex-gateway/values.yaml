@@ -195,3 +195,7 @@ reportInterval: "5s"
 appAccess:
   enabled: false
   proxyURL: ""
+
+# Community browser SSH remains an explicit default-off installation capability.
+serverAccess:
+  enabled: false
