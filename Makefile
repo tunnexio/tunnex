@@ -290,7 +290,7 @@ TEST_EDITION ?= open
 API_TEST_SHARD ?= all
 test-edition: ## One edition on its isolated CI database; test-editions remains the local full gate
 	@case "$(TEST_EDITION)" in open|enterprise) ;; *) echo "invalid TEST_EDITION" >&2; exit 1 ;; esac
-	@case "$(API_TEST_SHARD)" in all|db|ipsec|nodes|other) ;; *) echo "invalid API_TEST_SHARD" >&2; exit 1 ;; esac
+	@case "$(API_TEST_SHARD)" in all|db|ipsec|nodes|beam|http|other) ;; *) echo "invalid API_TEST_SHARD" >&2; exit 1 ;; esac
 	$(COMPOSE) up -d --wait postgres
 	@# The REPO ROOT is mounted, not just apps/api (S11). Several guards deliberately read files OUTSIDE the
 	@# module — the api Dockerfile (TestEveryOperatorToolShipsInTheImage), openapi.yaml and the web health

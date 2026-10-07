@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 const root = 'github.com/tunnexio/tunnex/apps/api';
-const packages = ['db', 'db/sqlc', 'internal/ipsec', 'internal/nodes', 'internal/http', 'internal/new-feature', 'cmd/api'].map(p => `${root}/${p}`);
+const packages = ['db', 'db/sqlc', 'internal/ipsec', 'internal/nodes', 'internal/beam', 'internal/beam/fixture', 'internal/beamreadiness', 'internal/http', 'internal/http/fixture', 'internal/httpfixture', 'internal/new-feature', 'cmd/api'].map(p => `${root}/${p}`);
 function run(t, shard, edition = 'open', fail = '', list = packages) {
   const dir = mkdtempSync(join(tmpdir(), 'api-shard-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -25,14 +25,22 @@ if [ "$1" = list ]; then printf '%s\\n' "$PACKAGES"; fi
 for (const edition of ['open', 'enterprise']) {
   test(`${edition}: shards cover every package exactly once, including future packages`, t => {
     const seen = [];
-    for (const shard of ['db', 'ipsec', 'nodes', 'other']) {
+    for (const shard of ['db', 'ipsec', 'nodes', 'beam', 'http', 'other']) {
       const r = run(t, shard, edition);
       assert.equal(r.status, 0, r.stderr);
       const tags = edition === 'enterprise' ? ' -tags enterprise' : '';
       assert.equal(r.calls[0], `build${tags} ./...`);
       assert.equal(r.calls[1], `list${tags} ./...`);
       assert.ok(r.calls[2].startsWith(`test -count=1 -p 1${tags} `));
-      seen.push(...r.calls[2].split(' ').filter(s => s.startsWith(root)));
+      const selected = r.calls[2].split(' ').filter(s => s.startsWith(root));
+      if (shard === 'beam' || shard === 'http') {
+        assert.deepEqual(selected, packages.filter(p => p === `${root}/internal/${shard}` || p.startsWith(`${root}/internal/${shard}/`)));
+      }
+      if (shard === 'other') {
+        assert.ok(selected.includes(`${root}/internal/beamreadiness`));
+        assert.ok(selected.includes(`${root}/internal/httpfixture`));
+      }
+      seen.push(...selected);
     }
     assert.deepEqual(seen.sort(), [...packages].sort());
     assert.equal(new Set(seen).size, packages.length);
@@ -52,6 +60,8 @@ test('refuses unknown edition or shard before running Go', t => {
   }
 });
 test('empty or renamed dedicated shard cannot silently pass', t => {
-  const r = run(t, 'ipsec', 'open', '', [`${root}/internal/new-ipsec`]);
-  assert.notEqual(r.status, 0); assert.equal(r.calls.length, 2);
+  for (const shard of ['ipsec', 'beam', 'http']) {
+    const r = run(t, shard, 'open', '', [`${root}/internal/new-${shard}`]);
+    assert.notEqual(r.status, 0); assert.equal(r.calls.length, 2);
+  }
 });
