@@ -25,6 +25,7 @@ type Handler struct {
 	Authority            Authority
 	Broker               *apptransport.Broker
 	Readiness            *ReadinessWorker
+	beam                 bool
 	mu                   sync.Mutex
 	counts               map[string]int
 	callbacks            chan struct{}
@@ -34,6 +35,32 @@ type Handler struct {
 
 func NewHandler(base string, a Authority, b *apptransport.Broker) *Handler {
 	return &Handler{BaseDomain: base, Authority: a, Broker: b, counts: map[string]int{}, callbacks: make(chan struct{}, 128), terminationCallbacks: make(chan struct{}, 128)}
+}
+
+// NewBeamHandler retains the tested HTTP/stream authority enforcement while
+// selecting Beam's separate route audience and reserved launch namespace.
+func NewBeamHandler(base string, a Authority, b *apptransport.Broker) *Handler {
+	h := NewHandler(base, a, b)
+	h.beam = true
+	return h
+}
+func (h *Handler) purpose() string {
+	if h.beam {
+		return "beam_proxy"
+	}
+	return "browser_proxy"
+}
+func (h *Handler) reservedPrefix() string {
+	if h.beam {
+		return "/_beam"
+	}
+	return "/__tunnex_app"
+}
+func (h *Handler) bodyLimit() int64 {
+	if h.beam {
+		return 16 << 20
+	}
+	return 64 << 20
 }
 
 type connectionContextKey struct{}
@@ -51,6 +78,10 @@ func (h *Handler) reserve(b Binding, token string) func() {
 	hash := sha256.Sum256([]byte(token))
 	keys := []string{"global", "app:" + b.OrgID + ":" + b.AppID, "gateway:" + b.OrgID + ":" + b.GatewayID, "session:" + hex.EncodeToString(hash[:])}
 	limits := []int{256, 32, 128, 16}
+	if h.beam {
+		keys = append(keys, "org:"+b.OrgID)
+		limits = append(limits, 64)
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for i, k := range keys {
@@ -78,23 +109,30 @@ func validDecision(d Decision, start time.Time) bool {
 }
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(15 * time.Second))
+	if h.beam && r.ContentLength > h.bodyLimit() {
+		// Reject from headers without draining an unfinished upload. This is a
+		// single-use response and must not hold a browser connection for its body.
+		w.Header().Set("Connection", "close")
+		http.Error(w, "Beam uploads are limited to 16 MiB.", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
 		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Second))
 	}
 	host, e := authorityHost(r.Host, h.BaseDomain, h.Authority)
 	target, e2 := apptransport.RelativeTarget(r.URL)
-	reserved := strings.HasPrefix(r.URL.Path, "/__tunnex_app")
+	reserved := strings.HasPrefix(r.URL.Path, h.reservedPrefix())
 	if reserved && !r.URL.IsAbs() && r.URL.Host == "" && r.URL.Opaque == "" && r.URL.Fragment == "" {
 		target = r.URL.RequestURI()
 		e2 = nil
 	}
-	if e != nil || e2 != nil || r.TLS == nil || len(r.Header.Values("Host")) != 0 || r.Method == "CONNECT" || r.Method == "TRACE" || len(r.Header) > 100 || r.ContentLength < 0 || r.ContentLength > 64<<20 || len(r.TransferEncoding) > 0 {
-		deny(w)
+	if e != nil || e2 != nil || r.TLS == nil || len(r.Header.Values("Host")) != 0 || r.Method == "CONNECT" || r.Method == "TRACE" || len(r.Header) > 100 || r.ContentLength < 0 || r.ContentLength > h.bodyLimit() || len(r.TransferEncoding) > 0 {
+		h.deny(w)
 		return
 	}
 	for _, name := range []string{"Authorization", "Proxy-Authorization", "Sec-Fetch-Mode", "Sec-Fetch-Dest", "Sec-Fetch-User"} {
 		if len(r.Header.Values(name)) > 1 {
-			deny(w)
+			h.deny(w)
 			return
 		}
 	}
@@ -107,24 +145,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if bytes > 32<<10 || fields > 100 {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	for _, c := range r.Method {
 		if c < 'A' || c > 'Z' {
-			deny(w)
+			h.deny(w)
 			return
 		}
 	}
 	upgrade := r.Header.Get("Upgrade")
 	if upgrade != "" && (!strings.EqualFold(upgrade, "websocket") || len(r.Header.Values("Upgrade")) != 1 || r.Method != "GET") {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	websocket := upgrade != ""
 	safe := r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS"
 	if (websocket || !safe) && !apptransport.SameOrigin(r, host, websocket) {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	if reserved {
@@ -137,22 +175,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	token, e := apptransport.AppToken(r)
 	if e != nil {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	select {
 	case h.callbacks <- struct{}{}:
 	default:
 		h.metrics.authoritySaturated.Add(1)
-		deny(w)
+		h.deny(w)
 		return
 	}
 	admissionCtx, admissionCancel := context.WithTimeout(r.Context(), 2*time.Second)
 	route, e := h.Authority.Lookup(admissionCtx, host)
-	if e != nil || route.Binding.Hostname != host || route.Binding.Purpose != "browser_proxy" || route.Binding.AuthorityVersion < 1 || !Binding(route.Binding).Valid() || admissionCtx.Err() != nil {
+	if e != nil || route.Binding.Hostname != host || !Binding(route.Binding).validPurpose(h.purpose()) || admissionCtx.Err() != nil {
 		admissionCancel()
 		<-h.callbacks
-		deny(w)
+		h.deny(w)
 		return
 	}
 	if token == "" {
@@ -161,7 +199,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if h.hasConsole() && safe && !websocket && (r.Method == "GET" || r.Method == "HEAD") {
 			h.restart(w, r, target)
 		} else {
-			deny(w)
+			h.deny(w)
 		}
 		return
 	}
@@ -169,7 +207,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if release == nil {
 		admissionCancel()
 		<-h.callbacks
-		deny(w)
+		h.deny(w)
 		return
 	}
 	defer release()
@@ -183,7 +221,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.restart(w, r, target)
 			return
 		}
-		deny(w)
+		h.deny(w)
 		return
 	}
 	if limit := start.Add(4 * time.Second); decision.ExpiresAt.After(limit) {
@@ -193,17 +231,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	writer := newStreamWriter(w, r)
 	defer writer.finish()
-	timer := time.AfterFunc(time.Until(decision.ExpiresAt), func() { cancel(); writer.close() })
+	timer := time.AfterFunc(time.Until(decision.ExpiresAt), func() {
+		if h.beam {
+			h.metrics.authorityLeaseExpired.Add(1)
+		}
+		cancel()
+		writer.close()
+	})
 	defer timer.Stop()
 	go h.renew(ctx, cancel, writer, timer, Binding(route.Binding), decision)
 	origin, e := url.Parse(route.OriginURL)
 	if e != nil {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	r = r.WithContext(ctx)
 	if r.ContentLength > 0 {
-		r.Body = http.MaxBytesReader(writer, &deadlineBody{ReadCloser: r.Body, owner: writer, idle: 15 * time.Second}, 64<<20)
+		r.Body = http.MaxBytesReader(writer, &deadlineBody{ReadCloser: r.Body, owner: writer, idle: 15 * time.Second}, h.bodyLimit())
 	}
 	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, MaxResponseHeaderBytes: 32 << 10, ResponseHeaderTimeout: 30 * time.Second, DialContext: func(c context.Context, _, _ string) (net.Conn, error) {
 		return h.dialConnector(c, Binding(route.Binding))
@@ -226,7 +270,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		base.RawPath = r.URL.RawPath
 		base.RawQuery = r.URL.RawQuery
 		return apptransport.RewriteResponse(response, &base, host)
-	}, ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) { deny(w) }}
+	}, ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) { h.deny(w) }}
 	reverse.ServeHTTP(writer, r)
 	writer.mu.Lock()
 	expired := writer.closed
@@ -259,6 +303,9 @@ func (h *Handler) renew(ctx context.Context, cancel context.CancelFunc, w *strea
 			stop()
 			<-h.callbacks
 			if e != nil || ended != nil || ctx.Err() != nil || time.Now().After(d.ExpiresAt) || next.StreamID != d.StreamID || !validDecision(next, start) || !timer.Stop() {
+				if h.beam && ctx.Err() == nil {
+					h.metrics.authorityLeaseFailures.Add(1)
+				}
 				cancel()
 				w.close()
 				return

@@ -198,7 +198,7 @@ SHARED_NM_VOL := $(GATE_CACHE_PREFIX)-shared-nm
 WEB_NM_VOL := $(GATE_CACHE_PREFIX)-web-nm
 
 .PHONY: generate
-generate: generate-go generate-ts generate-rbac generate-tokens sqlc ## Regenerate all code from openapi/openapi.yaml
+generate: generate-go generate-ts generate-beam generate-rbac generate-tokens sqlc ## Regenerate all code from openapi/openapi.yaml
 
 .PHONY: generate-tokens
 generate-tokens: ## S14.1: emit the design-token artifacts from packages/shared/src/tokens.ts (the ONE authored form)
@@ -238,10 +238,18 @@ generate-ts: ## Generate the TypeScript API types from the spec
 	docker run --rm -v "$(PWD)":/repo -w /repo/packages/shared $(NODE_IMAGE) \
 	  npx --yes openapi-typescript@$(OPENAPI_TS_VERSION) ../../openapi/openapi.yaml -o src/api.d.ts
 
+.PHONY: generate-beam
+generate-beam: ## Generate the separate opt-in Beam console and native publisher contract
+	docker run --rm -v "$(PWD)":/repo -w /repo/packages/shared $(NODE_IMAGE) \
+	  npx --yes openapi-typescript@$(OPENAPI_TS_VERSION) ../../apps/api/openapi/beam.openapi.yaml -o ../../apps/web/src/lib/beam-api.d.ts
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) \
+	  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
+	  -config beam-oapi-codegen.yaml ../api/openapi/beam.openapi.yaml
+
 .PHONY: generate-check
 generate-check: generate ## Fail if generated code is out of date (CI drift guard)
 	@git diff --exit-code -- \
-	  apps/api/internal/api apps/cli/internal/api packages/apptransport/authoritywire apps/api/db/sqlc packages/shared/src/api.d.ts apps/web/src/lib/rbac-policy.json \
+	  apps/api/internal/api apps/cli/internal/api apps/cli/internal/beamapi packages/apptransport/authoritywire apps/api/db/sqlc packages/shared/src/api.d.ts apps/web/src/lib/beam-api.d.ts apps/web/src/lib/rbac-policy.json \
 	  packages/shared/generated \
 	  || { echo ""; echo "ERROR: generated code is stale. Run 'make generate' and commit the result."; exit 1; }
 	@echo "generated code is up to date."
@@ -361,7 +369,7 @@ test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate c
 	# never COMPILES it, so a generated-code defect (an openapi schema name colliding with an oapi-codegen
 	# response-wrapper type) shipped to main and sat there undetected. A shipped module with no gate is the
 	# extreme case of the degraded-signal class this epic repays; build+vet+test closes it.
-	docker run --rm -v "$(PWD)/apps/cli":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
 	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go vet ./... && go test -count=1 ./..."
 
 .PHONY: seed

@@ -1,0 +1,4582 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Tunnex Beam console and native publisher contract",
+    "version": "1.0.0",
+    "description": "Opt-in Beam browser management and human-authenticated native desktop/CLI publication. Native credentials and connector material are absent from browser projections. Strict bounded decoding and current source authority apply."
+  },
+  "security": [
+    {
+      "BrowserSession": []
+    }
+  ],
+  "paths": {
+    "/api/v1/organizations/{orgId}/beam/policy": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ]
+      },
+      "put": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamPolicyInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/audience": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamAudience"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        {
+          "name": "state",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "active",
+              "paused",
+              "stopped",
+              "expired",
+              "revoked"
+            ]
+          }
+        },
+        {
+          "name": "connectivity",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "origin_unavailable"
+            ]
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShareList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "history"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createBeamShare",
+        "security": [
+          {
+            "CliBearer": []
+          }
+        ],
+        "description": "Requires a current human publishing credential and existing organization Beam authority. No browser/session or machine-token substitution.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-owned result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shared": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        {
+          "name": "state",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "active",
+              "paused",
+              "stopped",
+              "expired",
+              "revoked"
+            ]
+          }
+        },
+        {
+          "name": "connectivity",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "origin_unavailable"
+            ]
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShareList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/actions": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamActionInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/grants": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamGrantsInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/launch": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamLaunch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamLaunchInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/events": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        {
+          "name": "action",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        {
+          "name": "outcome",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 30
+          }
+        },
+        {
+          "name": "share_id",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamEventList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/beam/readiness": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Measured installation evidence, independent of operator assertion. Does not change serving authority.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamReadiness"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamReadinessInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Measured installation evidence, independent of operator assertion. Does not change serving authority.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamReadiness"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/beam/settings": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Versioned installation serving configuration. Portal is read-only. Saves invalidate measured evidence and end active shares on changed authority.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamDomainSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamDomainSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Versioned installation serving configuration. Portal is read-only. Saves invalidate measured evidence and end active shares on changed authority.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamDomainSettings"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/policy/impact": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamPolicyImpact"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamPolicyInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/grants/impact": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamGrantsImpact"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamGrantsInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/events": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        {
+          "name": "q",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        {
+          "name": "action",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        {
+          "name": "outcome",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "maxLength": 30
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamEventList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/diagnostics": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamDiagnostics"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Current server-owned projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BrowserSession": []
+          },
+          {
+            "CliBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/connector": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "issueBeamConnector",
+        "security": [
+          {
+            "CliBearer": []
+          }
+        ],
+        "description": "Requires a current human publishing credential and existing organization Beam authority. No browser/session or machine-token substitution.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamConnectorInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-owned result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamConnector"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/heartbeat": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "heartbeatBeamShare",
+        "security": [
+          {
+            "CliBearer": []
+          }
+        ],
+        "description": "Requires a current human publishing credential and existing organization Beam authority. No browser/session or machine-token substitution.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamHeartbeatInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-owned result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded Beam error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/projects": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamProjectPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        ]
+      },
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamProject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamProjectInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/projects/{id}": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamProject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamProject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamProjectInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/projects/{id}/sessions": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamShareList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "history"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/feedback": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamFeedbackPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        ]
+      },
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamFeedback"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BeamFeedbackInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/shares/{id}/feedback/{feedbackId}/screenshot": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "feedbackId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Authorized sanitized screenshot; no-store",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{orgId}/beam/notifications": {
+      "parameters": [
+        {
+          "name": "orgId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Current authorized projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamNotificationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeamError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BrowserSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "tunnex_session"
+      },
+      "CliBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Current human CLI credential from the standard Tunnex PKCE or device-code login; machine/agent credentials are refused."
+      }
+    },
+    "schemas": {
+      "BeamError": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "BeamGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "subject_kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group"
+            ]
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "subject_kind",
+          "subject_id"
+        ]
+      },
+      "BeamPolicyInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "publisher_group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "reviewer_user_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "reviewer_group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "max_duration_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400
+          },
+          "max_shares": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "require_mfa": {
+            "type": "boolean"
+          },
+          "confirm_end_active_shares": {
+            "type": "boolean",
+            "default": false
+          },
+          "open_for_all_users": {
+            "type": "boolean",
+            "description": "Enable organization-wide self-service publishing and reviewer selection. Omission preserves the saved mode for older clients."
+          }
+        },
+        "required": [
+          "expected_version",
+          "enabled",
+          "publisher_group_ids",
+          "reviewer_user_ids",
+          "reviewer_group_ids",
+          "max_duration_seconds",
+          "max_shares",
+          "require_mfa"
+        ]
+      },
+      "BeamPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "publisher_group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "reviewer_user_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "reviewer_group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "max_duration_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400
+          },
+          "max_shares": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "require_mfa": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "base_domain": {
+            "type": "string"
+          },
+          "domain_ready": {
+            "type": "boolean"
+          },
+          "can_publish": {
+            "type": "boolean"
+          },
+          "can_manage_policy": {
+            "type": "boolean"
+          },
+          "protocol_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_client_version": {
+            "type": "string"
+          },
+          "open_for_all_users": {
+            "type": "boolean",
+            "description": "Every eligible organization member may publish and choose any organization user or group as a reviewer. Explicit share grants remain required."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "enabled",
+          "publisher_group_ids",
+          "reviewer_user_ids",
+          "reviewer_group_ids",
+          "max_duration_seconds",
+          "max_shares",
+          "require_mfa",
+          "version",
+          "base_domain",
+          "domain_ready",
+          "can_publish",
+          "can_manage_policy",
+          "protocol_version",
+          "min_client_version",
+          "capabilities"
+        ]
+      },
+      "BeamTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "address": {
+            "type": "string",
+            "enum": [
+              "127.0.0.1",
+              "::1"
+            ],
+            "x-enum-varnames": [
+              "IPv4Loopback",
+              "IPv6Loopback"
+            ]
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "ca_pem": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "routes": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/BeamTargetRoute"
+            }
+          }
+        },
+        "required": [
+          "protocol",
+          "address",
+          "port"
+        ]
+      },
+      "BeamShare": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "publisher_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "active",
+              "paused",
+              "stopped",
+              "expired",
+              "revoked"
+            ]
+          },
+          "connectivity": {
+            "type": "string",
+            "enum": [
+              "online",
+              "reconnecting",
+              "offline",
+              "origin_unavailable"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "authority_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "can_open": {
+            "type": "boolean"
+          },
+          "can_manage": {
+            "type": "boolean"
+          },
+          "target": {
+            "$ref": "#/components/schemas/BeamTarget"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamGrant"
+            }
+          },
+          "publisher_name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "org_id",
+          "publisher_id",
+          "name",
+          "hostname",
+          "url",
+          "state",
+          "connectivity",
+          "version",
+          "authority_version",
+          "expires_at",
+          "created_at",
+          "can_open",
+          "can_manage"
+        ]
+      },
+      "BeamShareList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamShare"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/BeamQuota"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "server_time"
+        ]
+      },
+      "BeamAudience": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "email"
+              ]
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "users",
+          "groups"
+        ]
+      },
+      "BeamActionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "pause",
+              "resume",
+              "stop",
+              "extend"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "expected_version",
+          "action"
+        ]
+      },
+      "BeamGrantsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamGrant"
+            }
+          },
+          "confirm_reviewer_removal": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "expected_version",
+          "grants"
+        ]
+      },
+      "BeamLaunchInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "nonce_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "relative_target": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "nonce_hash",
+          "relative_target"
+        ]
+      },
+      "BeamLaunch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "redirect_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "redirect_url",
+          "expires_at"
+        ]
+      },
+      "BeamEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "share_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "share_id",
+          "action",
+          "outcome",
+          "reason",
+          "actor_id",
+          "created_at"
+        ]
+      },
+      "BeamEventList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamEvent"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "server_time"
+        ]
+      },
+      "BeamReadinessCheck": {
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "detail"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "BeamReadiness": {
+        "type": "object",
+        "required": [
+          "base_domain",
+          "proxy_url",
+          "portal_url",
+          "configuration_version",
+          "operator_asserted",
+          "checked_at",
+          "expires_at",
+          "passed",
+          "checks",
+          "settings_version"
+        ],
+        "properties": {
+          "base_domain": {
+            "type": "string"
+          },
+          "proxy_url": {
+            "type": "string"
+          },
+          "portal_url": {
+            "type": "string"
+          },
+          "configuration_version": {
+            "type": "string"
+          },
+          "operator_asserted": {
+            "type": "boolean"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamReadinessCheck"
+            }
+          },
+          "settings_version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "BeamReadinessInput": {
+        "type": "object",
+        "required": [
+          "expected_configuration_version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "expected_configuration_version": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "BeamDomainSettings": {
+        "type": "object",
+        "required": [
+          "version",
+          "source",
+          "operator_enabled",
+          "base_domain",
+          "proxy_url",
+          "portal_url",
+          "affected_active_shares",
+          "authority_ready"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "environment",
+              "database"
+            ]
+          },
+          "operator_enabled": {
+            "type": "boolean"
+          },
+          "base_domain": {
+            "type": "string"
+          },
+          "proxy_url": {
+            "type": "string"
+          },
+          "portal_url": {
+            "type": "string"
+          },
+          "affected_active_shares": {
+            "type": "integer"
+          },
+          "authority_ready": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BeamDomainSettingsInput": {
+        "type": "object",
+        "required": [
+          "expected_version",
+          "operator_enabled",
+          "base_domain",
+          "proxy_url",
+          "confirm_end_active_shares"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operator_enabled": {
+            "type": "boolean"
+          },
+          "base_domain": {
+            "type": "string",
+            "maxLength": 218
+          },
+          "proxy_url": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "confirm_end_active_shares": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BeamPolicyImpact": {
+        "type": "object",
+        "required": [
+          "policy_version",
+          "active_share_count",
+          "affected_share_count",
+          "affected_reviewer_session_count",
+          "requires_confirmation"
+        ],
+        "properties": {
+          "policy_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active_share_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "affected_share_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "affected_reviewer_session_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requires_confirmation": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BeamGrantsImpact": {
+        "type": "object",
+        "required": [
+          "share_version",
+          "removed_grant_count",
+          "affected_reviewer_count",
+          "affected_reviewer_session_count",
+          "requires_confirmation"
+        ],
+        "properties": {
+          "share_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removed_grant_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "affected_reviewer_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "affected_reviewer_session_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requires_confirmation": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BeamDiagnostics": {
+        "type": "object",
+        "required": [
+          "share_id",
+          "hostname",
+          "state",
+          "connectivity",
+          "version",
+          "authority_version",
+          "generation",
+          "expires_at",
+          "domain_ready",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "active",
+              "paused",
+              "stopped",
+              "expired",
+              "revoked"
+            ]
+          },
+          "connectivity": {
+            "type": "string",
+            "enum": [
+              "online",
+              "reconnecting",
+              "offline",
+              "origin_unavailable"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "authority_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "share_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain_ready": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "waiting",
+              "denied",
+              "ended"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "domain_unavailable",
+              "publisher_authority_unavailable",
+              "connector_offline",
+              "share_paused",
+              "share_ended",
+              "ready"
+            ]
+          }
+        }
+      },
+      "BeamQuota": {
+        "type": "object",
+        "required": [
+          "active_shares",
+          "max_shares"
+        ],
+        "properties": {
+          "active_shares": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_shares": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "description": "Authoritative current-publisher slots in use, independent of list search, filters or pagination. Shared inventory omits this owner projection."
+      },
+      "BeamCreateInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "target": {
+            "$ref": "#/components/schemas/BeamTarget"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400
+          },
+          "grants": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/BeamGrant"
+            }
+          },
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "name",
+          "target",
+          "duration_seconds",
+          "grants",
+          "idempotency_key"
+        ],
+        "description": "Server preserves its explicit initial publisher grant; CLI additionally requires an explicit reviewer selection."
+      },
+      "BeamConnectorInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "csr_pem": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "capabilities": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        },
+        "required": [
+          "expected_version",
+          "csr_pem"
+        ]
+      },
+      "BeamBinding": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "app_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "gateway_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "authority_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "hostname": {
+            "type": "string",
+            "maxLength": 253
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "beam_proxy"
+            ]
+          }
+        },
+        "required": [
+          "org_id",
+          "app_id",
+          "gateway_id",
+          "generation",
+          "revision",
+          "authority_version",
+          "digest",
+          "hostname",
+          "purpose"
+        ]
+      },
+      "BeamConnector": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/BeamBinding"
+          },
+          "share_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "proxy_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "proxy_server_name": {
+            "type": "string",
+            "enum": [
+              "tunnex-beam-proxy"
+            ]
+          },
+          "ca_pem": {
+            "type": "string"
+          },
+          "certificate_pem": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "certificate_expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "binding",
+          "share_version",
+          "proxy_url",
+          "proxy_server_name",
+          "ca_pem",
+          "certificate_pem",
+          "expires_at",
+          "certificate_expires_at"
+        ]
+      },
+      "BeamHeartbeatInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "origin_ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generation",
+          "origin_ready"
+        ]
+      },
+      "BeamLocalTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "address": {
+            "type": "string",
+            "enum": [
+              "127.0.0.1",
+              "::1"
+            ],
+            "x-enum-varnames": [
+              "IPv4Loopback",
+              "IPv6Loopback"
+            ]
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "ca_pem": {
+            "type": "string",
+            "maxLength": 16384
+          }
+        },
+        "required": [
+          "protocol",
+          "address",
+          "port"
+        ]
+      },
+      "BeamTargetRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path_prefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "target": {
+            "$ref": "#/components/schemas/BeamLocalTarget"
+          }
+        },
+        "required": [
+          "path_prefix",
+          "target"
+        ]
+      },
+      "BeamProject": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "target": {
+            "$ref": "#/components/schemas/BeamTarget"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400
+          },
+          "grants": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/BeamGrant"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "org_id",
+          "owner_id",
+          "name",
+          "target",
+          "duration_seconds",
+          "grants",
+          "version",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "BeamProjectInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "target": {
+            "$ref": "#/components/schemas/BeamTarget"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400
+          },
+          "grants": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/BeamGrant"
+            }
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "target",
+          "duration_seconds",
+          "grants"
+        ]
+      },
+      "BeamFeedback": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "share_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "comment",
+              "approved",
+              "changes_requested"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "screenshot_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "share_id",
+          "author_id",
+          "author_name",
+          "body",
+          "status",
+          "created_at"
+        ]
+      },
+      "BeamFeedbackInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "comment",
+              "approved",
+              "changes_requested"
+            ]
+          },
+          "screenshot_base64": {
+            "type": "string",
+            "maxLength": 349528,
+            "description": "Raw PNG/JPEG base64, no data URL. Input at most 256 KiB, 2048px maximum each dimension, 4 million pixels. Reencoded to bounded PNG with metadata discarded."
+          }
+        },
+        "required": [
+          "body",
+          "status"
+        ]
+      },
+      "BeamNotification": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "preview_ready",
+              "expiring",
+              "feedback"
+            ]
+          },
+          "share_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "share_id",
+          "title",
+          "created_at"
+        ]
+      },
+      "BeamProjectPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamProject"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "server_time"
+        ]
+      },
+      "BeamFeedbackPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamFeedback"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "server_time"
+        ]
+      },
+      "BeamNotificationPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeamNotification"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "server_time"
+        ]
+      }
+    }
+  }
+}

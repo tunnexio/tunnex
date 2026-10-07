@@ -66,6 +66,14 @@ func NewBrowserBroker(authorize Authorize) *Broker {
 	b.purpose = "browser_proxy"
 	return b
 }
+
+// NewBeamBroker has its own pool, route and authority audience. A Beam connector
+// can never enter an enrolled gateway's App Access channel pool.
+func NewBeamBroker(authorize Authorize) *Broker {
+	b := NewBroker(authorize)
+	b.purpose = "beam_proxy"
+	return b
+}
 func (b *Broker) signal() { close(b.notify); b.notify = make(chan struct{}) }
 func (c *channel) Close() error {
 	var e error
@@ -109,12 +117,29 @@ func (b *Broker) Accept(w http.ResponseWriter, r *http.Request, binding Binding,
 	}
 	b.mu.Lock()
 	idle := b.pending[binding]
+	share, organization := 0, 0
+	if b.purpose == "beam_proxy" {
+		for pending, count := range b.pending {
+			if pending.OrgID == binding.OrgID {
+				organization += count
+				if pending.AppID == binding.AppID {
+					share += count
+				}
+			}
+		}
+	}
 	for c := range b.connections {
 		if c.binding == binding && !c.claimed && !c.closed {
 			idle++
 		}
+		if b.purpose == "beam_proxy" && !c.closed && c.binding.OrgID == binding.OrgID {
+			organization++
+			if c.binding.AppID == binding.AppID {
+				share++
+			}
+		}
 	}
-	if b.closed || len(b.connections)+b.pendingCount >= 128 || idle >= 2 {
+	if b.closed || len(b.connections)+b.pendingCount >= 128 || idle >= 2 || (b.purpose == "beam_proxy" && (share >= 34 || organization >= 64)) {
 		if !b.closed {
 			b.admissionSaturated.Add(1)
 		}
@@ -340,7 +365,7 @@ func BindingHeaders(h http.Header, b Binding) {
 	h.Set("X-App-Digest", b.Digest)
 	h.Set("X-App-Generation", b.Generation)
 	h.Set("X-App-Purpose", b.Purpose)
-	if b.Purpose == "browser_proxy" {
+	if b.Purpose == "browser_proxy" || b.Purpose == "beam_proxy" {
 		h.Set("X-App-Org-ID", b.OrgID)
 		h.Set("X-App-Gateway-ID", b.GatewayID)
 		h.Set("X-App-Hostname", b.Hostname)
@@ -386,13 +411,16 @@ func (b *Broker) authorizeBound(ctx context.Context, binding Binding, serial str
 }
 
 func (b *Broker) channelPath() string {
+	if b.purpose == "beam_proxy" {
+		return "/beam/channel"
+	}
 	if b.purpose == "browser_proxy" {
 		return "/app-access/channel"
 	}
 	return "/agent/app-access/channel"
 }
 func (b *Broker) maxLease() time.Duration {
-	if b.purpose == "browser_proxy" {
+	if b.purpose == "browser_proxy" || b.purpose == "beam_proxy" {
 		return 4 * time.Second
 	}
 	return 5 * time.Second

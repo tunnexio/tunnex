@@ -3753,7 +3753,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** The org's Zero Trust access/flow events — keyset-paginated (enterprise, read-only) */
+        /** The org's access events — keyset-paginated and read-only */
         get: operations["listAccessEvents"];
         put?: never;
         post?: never;
@@ -12359,12 +12359,12 @@ export interface components {
             created_at: string;
             /**
              * Format: int64
-             * @description Per-org monotonic sequence (tamper-evidence / gap detection).
+             * @description Per-org network flow sequence (tamper-evidence / gap detection). Zero for Beam evidence, which has no network sequence.
              */
             seq: number;
             /**
              * Format: date-time
-             * @description Agent-clock flow observation time (NOT the pagination clock).
+             * @description Agent-clock flow observation time. For Beam, the control-plane admission evidence timestamp equals created_at.
              */
             occurred_at: string;
             /** @enum {string} */
@@ -12385,7 +12385,7 @@ export interface components {
             src_device_id?: string;
             /**
              * Format: uuid
-             * @description Source device owner resolved and persisted at ingest. It is neither current-ownership data nor proof that the human initiated the traffic.
+             * @description For network events, source device owner persisted at ingest, not proof of human initiation. For Beam, the reviewer identity authenticated at admission.
              */
             src_user_id?: string;
             /**
@@ -12393,13 +12393,17 @@ export interface components {
              * @enum {string}
              */
             src_kind?: "human" | "agent";
+            /** @description Network source address; empty for Beam, which records no IP attribution. */
             src_ip: string;
+            /** @description Network destination address; empty for Beam. */
             dst_ip: string;
             /** Format: uuid */
             dst_resource_id?: string;
             /** Format: uuid */
             dst_group_id?: string;
+            /** @description Observed network protocol; empty for Beam evidence. */
             protocol: string;
+            beam?: components["schemas"]["BeamAccessEvidence"];
             dst_port?: number;
             /** @description >1 for a per-source deny aggregate (port-scan collapse); N for a gap marker. */
             deny_count?: number;
@@ -12418,6 +12422,14 @@ export interface components {
             src_config_revision?: number;
             /** @enum {string} */
             decision_reason?: "matched_grant" | "no_matching_grant" | "grant_revoked" | "events_dropped";
+        };
+        BeamAccessEvidence: {
+            /** Format: uuid */
+            share_id: string;
+            /** @enum {string} */
+            action: "beam.access.allowed" | "beam.access.denied";
+            /** @description Fixed control-plane admission reason. Contains no request paths, headers, tokens or origin target. */
+            reason: string;
         };
         AccessLogHealth: {
             /** Format: date-time */
@@ -18911,13 +18923,17 @@ export interface operations {
     listAccessEvents: {
         parameters: {
             query?: {
+                /** @description Network flow evidence retains its enterprise gate. Beam projects retained human browser admission evidence under beam.audit.view; it follows Audit Log retention. */
+                source?: "network" | "beam";
+                /** @description Exact historical Beam share ID. Requires source=beam; does not require the share to remain live. */
+                share_id?: string;
                 /** @description Only deny/deny_aggregate/terminated/gap events (the security feed). */
                 denies_only?: boolean;
                 /** @description Only events attributed to this verified agent device. Mutually exclusive with src_device_id and src_user_id. */
                 src_agent_id?: string;
                 /** @description Only events carrying this verified source device ID, for either a human or agent device. Mutually exclusive with the other source identity filters. */
                 src_device_id?: string;
-                /** @description Only events carrying this device-owner ID as resolved and persisted at ingest. This does not assert that the human initiated the traffic. Mutually exclusive with the other source identity filters. */
+                /** @description For network, only the device-owner ID persisted at ingest, without asserting human initiation. For Beam, the authenticated reviewer ID. Mutually exclusive with the other source identity filters. */
                 src_user_id?: string;
                 cursor_ts?: string;
                 cursor_id?: string;
@@ -18931,7 +18947,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description A page of access events, newest first. Fewer than `limit` means the last page. Open build → 403 edition_required. */
+            /** @description A page of access events, newest first. Fewer than `limit` means the last page. Network source in the open build returns 403 edition_required. Beam source requires a current human browser session and Beam audit permission. */
             200: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];

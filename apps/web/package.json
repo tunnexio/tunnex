@@ -10,7 +10,9 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "tsc --noEmit && vitest run && vite build"
+    "verify": "pnpm check:beam && tsc --noEmit && vitest run && vite build",
+    "generate:beam": "pnpm --filter @tunnex/shared exec openapi-typescript ../../apps/api/openapi/beam.openapi.yaml -o ../../apps/web/src/lib/beam-api.d.ts",
+    "check:beam": "pnpm --filter @tunnex/shared exec openapi-typescript ../../apps/api/openapi/beam.openapi.yaml -o ../../apps/web/src/lib/beam-api.d.ts --check"
   },
   "dependencies": {
     "@ai-sdk/react": "^3",

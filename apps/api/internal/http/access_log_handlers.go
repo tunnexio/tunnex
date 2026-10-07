@@ -55,11 +55,20 @@ var maxUUID = uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
 // ListAccessEvents implements GET /organizations/{orgId}/access-events. authorize() first
 // (keeps the 401-walk honest), then the edition gate, then a keyset page.
 func (s apiServer) ListAccessEvents(ctx context.Context, req api.ListAccessEventsRequestObject) (api.ListAccessEventsResponseObject, error) {
+	if req.Params.Source != nil && *req.Params.Source == api.Beam {
+		return s.listBeamAccessEvents(ctx, req)
+	}
 	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyView); err != nil {
 		return nil, err
 	}
 	if s.accessLog == nil {
 		return nil, editionRequired()
+	}
+	if req.Params.Source != nil && *req.Params.Source != api.Network {
+		return nil, apierr.BadRequest("invalid_access_event_source", "Unknown access-event source")
+	}
+	if req.Params.ShareId != nil {
+		return nil, apierr.BadRequest("invalid_access_event_source", "share_id requires the Beam source")
 	}
 	deniesOnly := req.Params.DeniesOnly != nil && *req.Params.DeniesOnly
 	cursorTS := time.Now().Add(24 * time.Hour) // first page: a far-future cursor

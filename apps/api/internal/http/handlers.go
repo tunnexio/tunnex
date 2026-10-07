@@ -238,6 +238,7 @@ type apiServer struct {
 	sso                ssoPort    // nil in the open build
 	policy             policyPort // nil in the open build (Zero Trust, S7.1)
 	appAccess          appAccessPort
+	beam               beamAccessEventPort
 	serverAccess       *serveraccess.Service
 	fqdnResources      *fqdnresources.Service
 	// fqdnSettingNotify wakes active nodes only after an FQDN enforcement

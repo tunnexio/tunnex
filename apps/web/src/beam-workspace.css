@@ -1,0 +1,27 @@
+.beam-workspace { min-width:0; width:100%; max-width:1440px; margin-inline:auto; overflow-wrap:anywhere; }
+.beam-workspace :focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
+.beam-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; padding:1.25rem; border:1px solid var(--tnx-border); border-radius:.75rem; background:linear-gradient(125deg,rgba(16,185,129,.07),transparent 70%); }
+.beam-intro p { max-width:48rem; }
+.beam-share-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr)); gap:1rem; }
+.beam-share { min-width:0; display:flex; flex-direction:column; gap:1rem; }
+.beam-share-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem; }
+.beam-share-heading h2 { font-size:1rem; font-weight:600; overflow-wrap:anywhere; }
+.beam-status { font-size:.75rem; padding:.25rem .5rem; border:1px solid currentColor; border-radius:999px; white-space:nowrap; }
+.beam-status-live { color:var(--tnx-ok); }
+.beam-url { font-family:var(--font-mono,monospace); font-size:.75rem; overflow-wrap:anywhere; }
+.beam-meta { display:grid; gap:.4rem; font-size:.8125rem; }
+.beam-meta div { display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.beam-meta dt { color:var(--tnx-text-secondary); }
+.beam-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:auto; }
+.beam-picker { display:grid; gap:.5rem; max-height:16rem; overflow:auto; padding:.5rem; border:1px solid var(--tnx-border); border-radius:.5rem; }
+.beam-picker label { display:flex; align-items:center; gap:.6rem; font-size:.875rem; }
+.beam-detail-grid { display:grid; gap:1.25rem; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); }
+.beam-event-table { width:100%; text-align:left; font-size:.8125rem; }
+.beam-event-table th,.beam-event-table td { padding:.75rem; border-bottom:1px solid var(--tnx-border); overflow-wrap:anywhere; }
+@media(max-width:900px) { .beam-detail-grid { grid-template-columns:1fr; } }
+
+.beam-review-launch { max-width:680px; margin:3rem auto; padding:1.5rem; }
+
+.beam-policy-settings { min-width:0; overflow-wrap:anywhere; }
+.beam-picker label > span { min-width:0; overflow-wrap:anywhere; }
+.beam-picker input[type=checkbox] { flex:none; }

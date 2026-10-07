@@ -1,0 +1,6 @@
+import type { BeamAudience, BeamGrant } from "../lib/beam";
+
+export function AudiencePicker({ audience, grants, onChange, disabled }: { audience: BeamAudience; grants: BeamGrant[]; onChange: (grants: BeamGrant[]) => void; disabled: boolean }) {
+  const choices = [...audience.users.map(user => ({ kind: "user" as const, id: user.id, label: user.name || user.email, detail: user.email })), ...audience.groups.map(group => ({ kind: "group" as const, id: group.id, label: group.name, detail: "Group" }))];
+  return <div className="beam-picker" role="group" aria-label="Permitted reviewers">{!choices.length && <p className="text-sm">No reviewer choices are currently permitted.</p>}{choices.map(choice => { const selected = grants.some(grant => grant.subject_kind === choice.kind && grant.subject_id === choice.id); return <label key={`${choice.kind}:${choice.id}`}><input type="checkbox" disabled={disabled} checked={selected} onChange={event => onChange(event.target.checked ? [...grants, { subject_kind: choice.kind, subject_id: choice.id }] : grants.filter(grant => grant.subject_kind !== choice.kind || grant.subject_id !== choice.id))} /><span>{choice.label}<span className="block text-xs text-ink-secondary">{choice.detail}</span></span></label>; })}</div>;
+}

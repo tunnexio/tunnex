@@ -42,6 +42,8 @@ func (h *latencyHistogram) write(w io.Writer, name string) {
 }
 
 type measurements struct {
+	authorityLeaseFailures  atomic.Uint64
+	authorityLeaseExpired   atomic.Uint64
 	connectorDialFailures   atomic.Uint64
 	upstreamFailures        atomic.Uint64
 	admissionSaturated      atomic.Uint64
@@ -56,6 +58,17 @@ type measurements struct {
 }
 
 func (m *measurements) write(w io.Writer) {
+	m.writePrefix(w, "tunnex_app_proxy")
+}
+func (m *measurements) writePrefix(w io.Writer, prefix string) {
+	if prefix == "tunnex_beam_proxy" {
+		for _, counter := range []struct {
+			name  string
+			value uint64
+		}{{"authority_lease_failures_total", m.authorityLeaseFailures.Load()}, {"authority_lease_expired_total", m.authorityLeaseExpired.Load()}} {
+			fmt.Fprintf(w, "# TYPE %s_%s counter\n%s_%s %d\n", prefix, counter.name, prefix, counter.name, counter.value)
+		}
+	}
 	for _, counter := range []struct {
 		name  string
 		value uint64
@@ -70,10 +83,10 @@ func (m *measurements) write(w io.Writer) {
 		{"termination_notifications_failed_total", m.terminationFailed.Load()},
 		{"termination_notifications_accepted_total", m.terminationAccepted.Load()},
 	} {
-		fmt.Fprintf(w, "# TYPE tunnex_app_proxy_%s counter\ntunnex_app_proxy_%s %d\n", counter.name, counter.name, counter.value)
+		fmt.Fprintf(w, "# TYPE %s_%s counter\n%s_%s %d\n", prefix, counter.name, prefix, counter.name, counter.value)
 	}
-	m.upstreamHeaders.write(w, "tunnex_app_proxy_upstream_response_header_seconds")
-	m.originHeaders.write(w, "tunnex_app_proxy_gateway_origin_response_header_seconds")
+	m.upstreamHeaders.write(w, prefix+"_upstream_response_header_seconds")
+	m.originHeaders.write(w, prefix+"_gateway_origin_response_header_seconds")
 }
 
 type observedTransport struct {

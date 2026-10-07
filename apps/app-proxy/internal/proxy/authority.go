@@ -45,6 +45,7 @@ type Client struct {
 	base       string
 	credential string
 	http       *http.Client
+	beam       bool
 }
 
 func NewClient(endpoint, credential string, config *tls.Config) (*Client, error) {
@@ -56,7 +57,17 @@ func NewClient(endpoint, credential string, config *tls.Config) (*Client, error)
 	tlsConfig.MinVersion = tls.VersionTLS13
 	tlsConfig.NextProtos = []string{"http/1.1"}
 	transport := &http.Transport{Proxy: nil, TLSClientConfig: tlsConfig, MaxConnsPerHost: 128, MaxIdleConnsPerHost: 16, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 2 * time.Second, ResponseHeaderTimeout: 2 * time.Second, MaxResponseHeaderBytes: 16 << 10}
-	return &Client{strings.TrimSuffix(endpoint, "/"), credential, &http.Client{Transport: transport, Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrDenied }}}, nil
+	return &Client{base: strings.TrimSuffix(endpoint, "/"), credential: credential, http: &http.Client{Transport: transport, Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrDenied }}}, nil
+}
+
+// NewBeamClient uses the same bounded authenticated authority transport, with a
+// separate CP namespace. The caller cannot select a namespace per request.
+func NewBeamClient(endpoint, credential string, config *tls.Config) (*Client, error) {
+	c, err := NewClient(endpoint, credential, config)
+	if err == nil {
+		c.beam = true
+	}
+	return c, err
 }
 func (c *Client) call(ctx context.Context, path string, input, output any) error {
 	var payload bytes.Buffer
@@ -66,7 +77,24 @@ func (c *Client) call(ctx context.Context, path string, input, output any) error
 	if e != nil || payload.Len() > 64<<10 {
 		return ErrDenied
 	}
-	request, e := http.NewRequestWithContext(ctx, "POST", c.base+"/internal/app-access/"+path, bytes.NewReader(payload.Bytes()))
+	namespace := "/internal/app-access/"
+	if c.beam {
+		namespace = "/internal/beam/"
+		switch path {
+		case "route-lookup":
+			path = "resolve"
+		case "channel-authorize":
+			path = "connector"
+		case "leases/renew":
+			path = "renew"
+		case "pending-launch":
+			path = "pending"
+		case "stream-terminated":
+			path = "terminated"
+			output = new(struct{})
+		}
+	}
+	request, e := http.NewRequestWithContext(ctx, "POST", c.base+namespace+path, bytes.NewReader(payload.Bytes()))
 	if e != nil {
 		return ErrDenied
 	}
@@ -85,7 +113,7 @@ func (c *Client) call(ctx context.Context, path string, input, output any) error
 			payload, e := io.ReadAll(io.LimitReader(response.Body, 4097))
 			if e == nil && len(payload) <= 4096 {
 				var failure authoritywire.AppProxyError
-				if json.Unmarshal(payload, &failure) == nil && failure.Error.Code == "app_session_invalid" {
+				if json.Unmarshal(payload, &failure) == nil && (failure.Error.Code == "app_session_invalid" || (c.beam && failure.Error.Code == "beam_session_invalid")) {
 					return ErrAppSession
 				}
 			}
@@ -132,6 +160,9 @@ func (c *Client) Channel(ctx context.Context, b Binding, serial string) (time.Ti
 }
 
 func (b Binding) Valid() bool {
+	return b.validPurpose("browser_proxy")
+}
+func (b Binding) validPurpose(purpose string) bool {
 	for _, id := range []string{b.OrgID, b.AppID, b.GatewayID, b.Generation} {
 		if len(id) != 36 || id == "00000000-0000-0000-0000-000000000000" {
 			return false
@@ -154,7 +185,7 @@ func (b Binding) Valid() bool {
 			return false
 		}
 	}
-	return b.Purpose == "browser_proxy" && b.Revision > 0 && b.AuthorityVersion > 0 && b.Hostname != ""
+	return string(b.Purpose) == purpose && b.Revision > 0 && b.AuthorityVersion > 0 && b.Hostname != ""
 }
 
 func (c *Client) Redeem(ctx context.Context, input RedeemInput) (RedeemResult, error) {

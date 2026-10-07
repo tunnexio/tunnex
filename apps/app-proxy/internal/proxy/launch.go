@@ -25,6 +25,12 @@ func secret32(value string) bool {
 	raw, e := base64.RawURLEncoding.Strict().DecodeString(value)
 	return e == nil && len(raw) == 32
 }
+func (h *Handler) redeemCodeValid(value string) bool {
+	if h.beam {
+		return strings.HasPrefix(value, "tnxbc_") && secret32(strings.TrimPrefix(value, "tnxbc_"))
+	}
+	return secret32(value)
+}
 func navigationTarget(value string) (string, error) {
 	if len(value) > 8192 || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.HasPrefix(value, "/\\") {
 		return "", apptransport.ErrRequest
@@ -33,7 +39,7 @@ func navigationTarget(value string) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	if strings.HasPrefix(u.Path, "/__tunnex_app") {
+	if strings.HasPrefix(u.Path, "/__tunnex_app") || strings.HasPrefix(u.Path, "/_beam") {
 		return "", apptransport.ErrRequest
 	}
 	return apptransport.RelativeTarget(u)
@@ -56,7 +62,7 @@ func (w *Handler) loginRoute(ctx context.Context, host string) (Route, error) {
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	route, e := w.Authority.Lookup(bounded, host)
-	if e != nil || bounded.Err() != nil || !Binding(route.Binding).Valid() || route.Binding.Hostname != host {
+	if e != nil || bounded.Err() != nil || !Binding(route.Binding).validPurpose(w.purpose()) || route.Binding.Hostname != host {
 		return Route{}, ErrDenied
 	}
 	return route, nil
@@ -64,43 +70,44 @@ func (w *Handler) loginRoute(ctx context.Context, host string) (Route, error) {
 
 // launch owns the reserved namespace: none of these requests reach an origin.
 func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
-	if (r.URL.Path != StartPath && r.URL.Path != RedeemPath) || r.Header.Get("Upgrade") != "" || !h.hasConsole() || r.Method != "GET" || r.URL.RawPath != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 || len(r.URL.RequestURI()) > 32<<10 {
-		deny(w)
+	startPath, redeemPath := h.launchPaths()
+	if (r.URL.Path != startPath && r.URL.Path != redeemPath) || r.Header.Get("Upgrade") != "" || !h.hasConsole() || r.Method != "GET" || r.URL.RawPath != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 || len(r.URL.RequestURI()) > 32<<10 {
+		h.deny(w)
 		return
 	}
 	if _, e := apptransport.AppToken(r); e != nil {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	console, e := h.launchConsole(r.Context())
 	if e != nil {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	route, e := h.loginRoute(r.Context(), host)
 	if e != nil {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	query, e := url.ParseQuery(r.URL.RawQuery)
 	if e != nil || len(query) > 1 {
-		deny(w)
+		h.deny(w)
 		return
 	}
 	switch r.URL.Path {
-	case StartPath:
+	case startPath:
 		target := "/"
 		if len(query) != 0 {
 			values, ok := query["target"]
 			if !ok || len(values) != 1 {
-				deny(w)
+				h.deny(w)
 				return
 			}
 			target = values[0]
 		}
 		target, e = navigationTarget(target)
 		if e != nil {
-			deny(w)
+			h.deny(w)
 			return
 		}
 		nonce := make([]byte, 32)
@@ -109,7 +116,7 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
 			source = rand.Reader
 		}
 		if _, e = io.ReadFull(source, nonce); e != nil {
-			deny(w)
+			h.deny(w)
 			return
 		}
 		cookieNonce := base64.RawURLEncoding.EncodeToString(nonce)
@@ -118,7 +125,7 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
 		case h.callbacks <- struct{}{}:
 		default:
 			h.metrics.authoritySaturated.Add(1)
-			deny(w)
+			h.deny(w)
 			return
 		}
 		started := time.Now()
@@ -130,7 +137,7 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
 		now := time.Now()
 		expires := pending.ExpiresAt
 		if err != nil || ended != nil || !expires.After(now) || expires.After(now.Add(10*time.Minute)) {
-			deny(w)
+			h.deny(w)
 			return
 		}
 		if limit := started.Add(10 * time.Minute); expires.After(limit) {
@@ -139,25 +146,29 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
 		destination := *console
 		destination.Path = "/app-access/launch"
 		destination.RawQuery = url.Values{"orgId": {route.Binding.OrgID}, "appId": {route.Binding.AppID}, "nonce_hash": {hex.EncodeToString(hash[:])}, "target": {target}}.Encode()
+		if h.beam {
+			destination.Path = "/beam/launch"
+			destination.RawQuery = url.Values{"orgId": {route.Binding.OrgID}, "shareId": {route.Binding.AppID}, "nonce_hash": {hex.EncodeToString(hash[:])}, "target": {target}}.Encode()
+		}
 		redirectHeaders(w)
 		http.SetCookie(w, &http.Cookie{Name: apptransport.AppNonceCookie, Value: cookieNonce, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(time.Until(expires).Seconds()), Expires: expires})
 		http.Redirect(w, r, destination.String(), http.StatusSeeOther)
-	case RedeemPath:
+	case redeemPath:
 		codes, ok := query["code"]
-		if !ok || len(codes) != 1 || !secret32(codes[0]) {
-			deny(w)
+		if !ok || len(codes) != 1 || !h.redeemCodeValid(codes[0]) {
+			h.deny(w)
 			return
 		}
 		nonce, e := r.Cookie(apptransport.AppNonceCookie)
 		if e != nil || !secret32(nonce.Value) {
-			deny(w)
+			h.deny(w)
 			return
 		}
 		select {
 		case h.callbacks <- struct{}{}:
 		default:
 			h.metrics.authoritySaturated.Add(1)
-			deny(w)
+			h.deny(w)
 			return
 		}
 		bounded, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -169,7 +180,7 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
 		expires := result.ExpiresAt
 		cookie := &http.Cookie{Name: apptransport.AppSessionCookie, Value: result.AppSessionToken, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: int(time.Until(expires).Seconds())}
 		if e != nil || ended != nil || e2 != nil || len(cookie.Value) < 32 || len(cookie.Value) > 256 || cookie.Valid() != nil || !expires.After(time.Now()) || expires.After(time.Now().Add(8*time.Hour)) {
-			deny(w)
+			h.deny(w)
 			return
 		}
 		redirectHeaders(w)
@@ -177,10 +188,18 @@ func (h *Handler) launch(w http.ResponseWriter, r *http.Request, host string) {
 		http.SetCookie(w, &http.Cookie{Name: apptransport.AppNonceCookie, Value: "", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
 		http.Redirect(w, r, target, http.StatusSeeOther)
 	default:
-		deny(w)
+		h.deny(w)
 	}
 }
 func (h *Handler) restart(w http.ResponseWriter, r *http.Request, target string) {
 	redirectHeaders(w)
-	http.Redirect(w, r, StartPath+"?"+url.Values{"target": {target}}.Encode(), http.StatusSeeOther)
+	startPath, _ := h.launchPaths()
+	http.Redirect(w, r, startPath+"?"+url.Values{"target": {target}}.Encode(), http.StatusSeeOther)
+}
+
+func (h *Handler) launchPaths() (string, string) {
+	if h.beam {
+		return "/_beam/start", "/_beam/redeem"
+	}
+	return StartPath, RedeemPath
 }

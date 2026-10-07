@@ -1,5 +1,7 @@
 import { CrossGatewaySettings } from "../components/CrossGatewaySettings";
 import { AITransportSettings } from "../components/AITransportSettings";
+import { BeamPolicySettings } from "../components/BeamPolicySettings";
+import { BeamDomainReadinessSettings } from "../components/BeamDomainReadinessSettings";
 import { AppAccessDomainsSettings } from "../components/AppAccessDomainsSettings";
 import { AppAccessFeatureSettings } from "../components/AppAccessFeatureSettings";
 import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
@@ -299,6 +301,16 @@ export default function Settings() {
         {serverAdmin && active === "app-access-domains" && state.status === "authed" && (
           <SettingGroup id="app-access-domains" title="Applications domains" tabpanel>
             <AppAccessDomainsSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
+          </SettingGroup>
+        )}
+        {serverAdmin && active === "beam-serving" && state.status === "authed" && (
+          <SettingGroup id="beam-serving" title="Beam serving setup" tabpanel>
+            <BeamDomainReadinessSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
+          </SettingGroup>
+        )}
+        {org && active === "beam" && (
+          <SettingGroup id="beam" title="Tunnex Beam" tabpanel>
+            <BeamPolicySettings key={org.id} orgId={org.id} canEdit={emailVerified} canOperate={serverAdmin} />
           </SettingGroup>
         )}
         {org && isAdmin && active === "organization" && (
@@ -1783,9 +1795,11 @@ const RAIL: ReadonlyArray<{
     label: "Licence & plan",
     hint: "Manage your licence and subscription.",
   },
+  { id: "beam", needsOrg: true, label: "Tunnex Beam", hint: "Delegate local app sharing and bound reviewer access.", requiredPermission: "beam:policy_manage" },
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "app-access-domains", label: "Applications domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
+  { id: "beam-serving", label: "Beam serving setup", hint: "Measure installation DNS and TLS readiness. Only server administrators can run checks.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,

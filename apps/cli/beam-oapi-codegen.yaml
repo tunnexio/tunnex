@@ -1,0 +1,7 @@
+# Beam has an isolated opt-in contract; publisher and console models stay in sync.
+package: beamapi
+output: internal/beamapi/models.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true

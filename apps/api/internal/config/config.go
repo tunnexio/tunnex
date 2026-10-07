@@ -19,7 +19,7 @@ import (
 // App authority requires an externally retained restore fence. Legacy control
 // planes that have not configured App Access retain their empty-marker default.
 func (c Config) ValidateAppAccessRestoreMarker() error {
-	if c.AppAccessRestoreMarker == "" && c.AppAccessBaseDomain == "" && c.AppProxyAuthorityAddr == "" {
+	if c.AppAccessRestoreMarker == "" && c.AppAccessBaseDomain == "" && c.AppProxyAuthorityAddr == "" && c.BeamBaseDomain == "" && c.BeamProxyURL == "" {
 		return nil
 	}
 	if !filepath.IsAbs(c.AppAccessRestoreMarker) {
@@ -70,7 +70,12 @@ type Config struct {
 	// AppAccessBaseDomain is the initial app domain until server-wide settings are saved.
 	// It can be the portal hostname or an independent site. Empty leaves initial
 	// App Access readiness false without disrupting existing services.
-	AppAccessBaseDomain string
+	BeamBaseDomain       string
+	BeamProxyURL         string
+	BeamDomainReady      bool
+	BeamDevAllowLoopback bool
+	BeamDevPublicCAFile  string
+	AppAccessBaseDomain  string
 	// AppAccessRestoreMarker fences startup during an operator-controlled restore.
 	AppAccessRestoreMarker string
 	// AppProxyAuthorityAddr enables the dedicated direct TLS authority listener; empty disables it.
@@ -213,6 +218,11 @@ func Load() Config {
 		ExternalDatabase:            getenv("TUNNEX_DATABASE_URL", "") != "",
 		ExternalRedis:               getenv("TUNNEX_REDIS_URL", "") != "",
 		AutoMigrate:                 getbool("TUNNEX_AUTO_MIGRATE", true),
+		BeamBaseDomain:              getenv("TUNNEX_BEAM_BASE_DOMAIN", ""),
+		BeamProxyURL:                getenv("TUNNEX_BEAM_PROXY_URL", ""),
+		BeamDomainReady:             getenv("TUNNEX_BEAM_DOMAIN_READY", "false") == "true",
+		BeamDevAllowLoopback:        getenv("TUNNEX_BEAM_DEV_ALLOW_LOOPBACK", "false") == "true",
+		BeamDevPublicCAFile:         getenv("TUNNEX_BEAM_DEV_PUBLIC_CA_FILE", ""),
 		AppAccessBaseDomain:         getenv("TUNNEX_APP_ACCESS_BASE_DOMAIN", ""),
 		AppAccessRestoreMarker:      getenv("TUNNEX_APP_ACCESS_RESTORE_MARKER", ""),
 		AppProxyAuthorityAddr:       getenv("TUNNEX_APP_PROXY_AUTHORITY_ADDR", ""),

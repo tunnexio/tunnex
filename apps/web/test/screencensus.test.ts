@@ -66,6 +66,7 @@ const EXEMPT: Record<string, string> = {
 
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
+  "Beam.tsx": "beam.test.tsx — tenant-scoped shared/owner inventory, failed/empty separation, revisioned lifecycle confirmation, denied reviewer launch and stale organization responses",
   "SandboxSetup.tsx": "test/sandbox-setup.test.tsx, test/sandbox-runner-enrollment.test.tsx and test/sandbox-runner-qualification-trial.test.tsx — admin enrollment, prerequisites, one-time token, observed readiness, bounded native trial, exact-report review, settings CAS and catalog publication",
   "Sandboxes.tsx": "test/sandboxes.test.tsx — authoritative availability, empty/error separation, wizard review-only creation, private-key rejection, request idempotency and expired connection suppression",
   "SandboxCustomSkills.tsx": "test/sandbox-custom-skills.test.tsx — private library search, failed/empty separation, local import validation, inert preview, draft cancellation and immutable revision/deletion semantics",
@@ -204,7 +205,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(31);
+    expect(Object.keys(COVERED).length).toBe(32);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -225,6 +226,6 @@ describe("screen census", () => {
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
   it("the ledger is a snapshot of today — 43 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(43);
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(44);
   });
 });

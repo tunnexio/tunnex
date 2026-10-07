@@ -10,6 +10,7 @@ require (
 	github.com/gofrs/flock v0.13.1
 	github.com/google/uuid v1.5.0
 	github.com/oapi-codegen/runtime v1.1.1
+	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.57.0
 )
@@ -18,3 +19,5 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )
+
+replace github.com/tunnexio/tunnex/packages/apptransport => ../../packages/apptransport

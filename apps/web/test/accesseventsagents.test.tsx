@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -163,7 +164,7 @@ afterEach(() => {
 
 describe("released access-event identity attribution", () => {
   it("filters server-side, renders applied facts, and clears them synchronously on org switch", async () => {
-    const view = render(<AccessEvents />);
+    const view = render(<MemoryRouter><AccessEvents /></MemoryRouter>);
     const attributedSource = "build-agent (current agent name) · recorded person Alice · alice@example.com (current member label) · 10.99.0.9";
     expect(await screen.findByText(attributedSource)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Source identity"), {
@@ -180,7 +181,7 @@ describe("released access-event identity attribution", () => {
     expect(screen.getByText(/device-owner accountability at ingest/i)).toBeTruthy();
 
     currentOrg = { id: "org-b", name: "Organization B" };
-    view.rerender(<AccessEvents />);
+    view.rerender(<MemoryRouter><AccessEvents /></MemoryRouter>);
     expect(screen.queryByText(attributedSource)).toBeNull();
     expect(screen.queryByText("Gateway not recorded · applied policy v7 · abcdef123456")).toBeNull();
     await waitFor(() => {
@@ -199,7 +200,7 @@ describe("released access-event identity attribution", () => {
   });
 
   it("groups current people, human devices, and AI agents and maps each to one server filter", async () => {
-    const view = render(<AccessEvents />);
+    const view = render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByRole("option", {
       name: "Alice · alice@example.com (current member label) · user-a",
@@ -271,7 +272,7 @@ describe("released access-event identity attribution", () => {
       status: "active",
     }];
 
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByRole("option", {
       name: "deploy-agent (current agent name) · agent-b",
@@ -287,7 +288,7 @@ describe("released access-event identity attribution", () => {
 
   it("filters by an explicit historical UUID even when it is absent from rosters and the first page", async () => {
     const historicalID = "019fc421-4a5b-7c6d-8e9f-0123456789ab";
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     await screen.findByLabelText("Historical identity UUID");
     fireEvent.change(screen.getByLabelText("Historical identity type"), {
@@ -316,7 +317,7 @@ describe("released access-event identity attribution", () => {
   });
 
   it("connects an invalid historical UUID to a visible validation message", async () => {
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     const input = await screen.findByLabelText("Historical identity UUID");
     fireEvent.change(input, { target: { value: "not-a-uuid" } });
@@ -329,7 +330,7 @@ describe("released access-event identity attribution", () => {
   });
 
   it("describes filtered zero results without claiming the global retained feed is empty", async () => {
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
     await screen.findByText(
       "build-agent (current agent name) · recorded person Alice · alice@example.com (current member label) · 10.99.0.9",
     );
@@ -345,7 +346,7 @@ describe("released access-event identity attribution", () => {
   });
 
   it("keeps focused filters mounted and clears stale results when a filtered query fails", async () => {
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
     const attributedSource = "build-agent (current agent name) · recorded person Alice · alice@example.com (current member label) · 10.99.0.9";
     await screen.findByText(attributedSource);
 
@@ -397,7 +398,7 @@ describe("released access-event identity attribution", () => {
       protocol: "tcp",
     }];
 
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByText(
       "device device-d (current name unavailable) · recorded person user-del (current member unavailable) · 10.99.0.30",
@@ -422,7 +423,7 @@ describe("released access-event identity attribution", () => {
       protocol: "tcp",
     }];
 
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByText("10.99.0.20")).toBeTruthy();
     expect(screen.queryByText(
@@ -433,14 +434,14 @@ describe("released access-event identity attribution", () => {
   it("keeps organization loading distinct from having no organization", async () => {
     currentOrg = null;
     orgLoading = true;
-    const view = render(<AccessEvents />);
+    const view = render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(screen.getByRole("status").textContent).toMatch(/loading access events/i);
     expect(screen.queryByText(/not a member of any organization/i)).toBeNull();
 
     orgLoading = false;
     currentOrg = { id: "org-a", name: "Organization A" };
-    view.rerender(<AccessEvents />);
+    view.rerender(<MemoryRouter><AccessEvents /></MemoryRouter>);
     expect(await screen.findByText(
       "build-agent (current agent name) · recorded person Alice · alice@example.com (current member label) · 10.99.0.9",
     )).toBeTruthy();
@@ -448,7 +449,7 @@ describe("released access-event identity attribution", () => {
 
   it("turns a rejected event request into a retryable failure, never an empty feed", async () => {
     eventMode = "reject";
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByText(/could not reach the api/i)).toBeTruthy();
     expect(screen.queryByText(/no access events/i)).toBeNull();
@@ -477,7 +478,7 @@ describe("released access-event identity attribution", () => {
         },
       ],
     };
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByText("edge-off")).toBeTruthy();
     expect(screen.getByText("Disabled")).toBeTruthy();
@@ -492,7 +493,7 @@ describe("released access-event identity attribution", () => {
   it("labels a genuinely empty feed as uncertain when collector health rejects", async () => {
     eventRows = [];
     healthMode = "reject";
-    render(<AccessEvents />);
+    render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     expect(await screen.findByText(/gateway collector status is unavailable/i)).toBeTruthy();
     expect(screen.getByText(/could not reach the api/i)).toBeTruthy();
