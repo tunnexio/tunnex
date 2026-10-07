@@ -6,14 +6,23 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
 	"os"
 	"time"
+
+	"github.com/tunnexio/tunnex/apps/node/internal/sandboxproduct"
 )
 
 func main() {
+	// TODO(sandbox-reentry): see docs/S-sandbox-shelved-main-reentry.md.
+	// Refuse before parsing addresses, dialing or consuming stream input.
+	if !sandboxproduct.Available {
+		fmt.Fprintln(os.Stderr, sandboxproduct.ErrShelved)
+		os.Exit(1)
+	}
 	source := flag.String("source", "", "fixture client IPv4 address")
 	target := flag.String("target", "", "fixture sandbox IPv4 address")
 	flag.Parse()

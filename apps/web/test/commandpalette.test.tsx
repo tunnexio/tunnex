@@ -60,6 +60,12 @@ describe("the palette is a named dialog with a combobox and a listbox", () => {
 });
 
 describe("⛔ THE PALETTE MAY RANK AND FILTER — IT MAY NEVER BE THE ONLY ROUTE", () => {
+  it("omits shelved Sandboxes despite enabled metadata while preserving shared destinations", () => {
+    open();
+    expect(screen.queryByRole("option", { name: "Sandboxes", hidden: true })).toBeNull();
+    for (const name of ["AI Agents", "Applications", "Servers", "Gateways", "Site-to-site"])
+      expect(screen.getByRole("option", { name })).toBeTruthy();
+  });
   it("its unfiltered destination set is EXACTLY the nav's", () => {
     // S14.2's rule, applied one surface over. A destination reachable only by typing is hidden from everyone
     // who does not already know it exists. Reading NAV_DESTINATIONS rather than a second list is what makes

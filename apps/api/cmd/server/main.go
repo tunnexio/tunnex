@@ -74,6 +74,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"github.com/tunnexio/tunnex/apps/api/internal/secrets"
 	"github.com/tunnexio/tunnex/apps/api/internal/serveraccess"
@@ -89,7 +90,7 @@ func main() {
 
 	logger := applog.New(cfg.LogLevel)
 	slog.SetDefault(logger)
-	if cfg.ValidateAPITLS() != nil || cfg.ValidateSandboxFixture() != nil || cfg.ValidateSandboxRuntime() != nil || cfg.ValidateSandboxModule() != nil {
+	if cfg.ValidateAPITLS() != nil || validateSandboxProductConfiguration(cfg) != nil {
 		logger.Error("api_tls_configuration_invalid")
 		os.Exit(1)
 	}
@@ -317,7 +318,7 @@ func main() {
 	// S7.2: wire the Zero Trust policy source for the desired state (nil in the open
 	// build -> no policy field -> agents keep the legacy mesh).
 	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool, licenceMgr))
-	if cfg.SandboxFixtureOrgID != "" {
+	if !sandboxproduct.Shelved && cfg.SandboxFixtureOrgID != "" {
 		nodeSvc.UseSandboxQualificationTransport()
 	}
 	nodes.LogPolicyHealthTuning(logger) // S7.4b: assumed R + derived T (operator discoverability)
@@ -562,7 +563,7 @@ func main() {
 		logger.Error("relay_issuance_configuration_invalid", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	module, err := initializeSandboxModule(cfg, func() error {
+	module, err := initializeSandboxProduct(cfg, func() error {
 		checkCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return sandboxes.CheckModuleRetired(checkCtx, pool)

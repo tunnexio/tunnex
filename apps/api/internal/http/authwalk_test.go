@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
 
@@ -286,9 +287,13 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			rb, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 
-			if resp.StatusCode != http.StatusUnauthorized {
-				t.Errorf("%s %s (op %s): sessionless status = %d, want 401 — body: %s",
-					method, path, op.OperationID, resp.StatusCode, string(rb))
+			want := http.StatusUnauthorized
+			if sandboxproduct.Shelved && isSandboxProductPath(reqPath) {
+				want = http.StatusNotFound
+			}
+			if resp.StatusCode != want {
+				t.Errorf("%s %s (op %s): sessionless status = %d, want %d — body: %s",
+					method, path, op.OperationID, resp.StatusCode, want, string(rb))
 			}
 			checked++
 		}
@@ -296,5 +301,5 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 	if checked == 0 {
 		t.Fatal("no gated operations checked — walk is vacuous")
 	}
-	t.Logf("verified %d gated operations reject sessionless requests with 401", checked)
+	t.Logf("verified %d gated operations reject sessionless requests; shelved routes remain 404", checked)
 }

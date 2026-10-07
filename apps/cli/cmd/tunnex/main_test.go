@@ -2,8 +2,23 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
+
+func TestOrdinaryHelpOmitsShelvedSandbox(t *testing.T) {
+	var out bytes.Buffer
+	writeUsage(&out)
+	help := out.String()
+	if strings.Contains(help, "sandbox") {
+		t.Fatalf("ordinary help exposes shelved sandbox: %s", help)
+	}
+	for _, command := range []string{"editor", "login", "logout", "device create", "up | down", "k8s", "ai models", "workload run", "version"} {
+		if !strings.Contains(help, "tunnex "+command) {
+			t.Errorf("ordinary help lost %q", command)
+		}
+	}
+}
 
 func TestBuildVersionLineIsOnlyBuildVersion(t *testing.T) {
 	previous := version

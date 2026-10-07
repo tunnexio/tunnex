@@ -144,6 +144,15 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     ).toBeTruthy();
   });
 
+  it.each(["triage", "compose", "operate", "wide", "max"] as const)("[%s] omits shelved sandbox navigation and retains shared products", async intent => {
+    renderShell(intent);
+    if (intent === "triage") fireEvent.click(screen.getByRole("button", { name: /menu/i }));
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(nav.querySelector('a[href^="/sandboxes"]')).toBeNull();
+    for (const href of ["/agents", "/app-access", "/browser-access/terminal", "/gateways", "/sites"])
+      expect(nav.querySelector(`a[href="${href}"]`)).not.toBeNull();
+  });
+
   it("[compose] the account menu escapes the collapsed rail at a readable width", async () => {
     renderShell("compose");
     const trigger = await screen.findByRole("button", { name: /signed in as/i });

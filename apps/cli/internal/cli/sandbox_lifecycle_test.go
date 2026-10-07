@@ -54,12 +54,12 @@ func TestSandboxLifecycleStableIntentAndNoHumanCredentials(t *testing.T) {
 		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"` + id.String() + `","organization_id":"` + org.String() + `","generation":8}`)), Request: r}, nil
 	})
 	for _, args := range [][]string{{"create", "--org", org.String(), "--request", input, "--idempotency-key", "stable"}, {"get", "--org", org.String(), "--id", id.String()}, {"stop", "--org", org.String(), "--id", id.String(), "--generation", "7"}} {
-		if err := SandboxLifecycle(context.Background(), args, io.Discard); err != nil {
+		if err := sandboxLifecycle(context.Background(), args, io.Discard); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("TUNNEX_MACHINE_TOKEN", "tnx_human")
-	if err := SandboxLifecycle(context.Background(), []string{"get", "--org", org.String(), "--id", id.String()}, io.Discard); err == nil || calls != 3 {
+	if err := sandboxLifecycle(context.Background(), []string{"get", "--org", org.String(), "--id", id.String()}, io.Discard); err == nil || calls != 3 {
 		t.Fatal("human credential accepted")
 	}
 }
