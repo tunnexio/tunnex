@@ -110,7 +110,8 @@ checkpoints remain local; obtain that handoff deliberately before any restart.
 ## Validation ledger
 
 Decision record `39e90b7e` was committed before implementation. The final PLAN
-pointer names the completed content checkpoint.
+pointer names content checkpoint `af23c13fe986e81867393e46b0e28b0762862842`;
+the subsequent checkpoint commit changes documentation only.
 
 Passed locally:
 
