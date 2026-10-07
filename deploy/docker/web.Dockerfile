@@ -8,6 +8,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS editor-client
 WORKDIR /src/apps/cli
 COPY apps/cli/ ./
+COPY packages/apptransport/ /src/packages/apptransport/
 ARG VERSION=dev
 RUN mkdir -p /editor-client && for os in darwin linux; do for arch in amd64 arm64; do \
     CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -mod=readonly -trimpath -buildvcs=false \

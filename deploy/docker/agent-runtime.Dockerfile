@@ -4,6 +4,7 @@ ARG TUNNEX_VERSION=dev
 WORKDIR /src
 COPY apps/cli/go.mod apps/cli/go.sum ./apps/cli/
 COPY apps/cli ./apps/cli
+COPY packages/apptransport ./packages/apptransport
 WORKDIR /src/apps/cli
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${TUNNEX_VERSION}" -o /out/tunnex-agent-runtime ./cmd/tunnex-agent-runtime
 

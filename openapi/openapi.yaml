@@ -4260,22 +4260,24 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: listAccessEvents
-      summary: The org's Zero Trust access/flow events — keyset-paginated (enterprise, read-only)
+      summary: The org's access events — keyset-paginated and read-only
       tags: [organizations]
       parameters:
+        - { name: source, in: query, required: false, schema: { type: string, enum: [network, beam], default: network }, description: "Network flow evidence retains its enterprise gate. Beam projects retained human browser admission evidence under beam.audit.view; it follows Audit Log retention." }
+        - { name: share_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Exact historical Beam share ID. Requires source=beam; does not require the share to remain live." }
         - { name: denies_only, in: query, required: false, schema: { type: boolean, default: false }, description: Only deny/deny_aggregate/terminated/gap events (the security feed). }
         # Source identity filters are mutually exclusive. They match immutable event-row
         # attribution and never require the identity to remain in the live roster.
         - { name: src_agent_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Only events attributed to this verified agent device. Mutually exclusive with src_device_id and src_user_id." }
         - { name: src_device_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Only events carrying this verified source device ID, for either a human or agent device. Mutually exclusive with the other source identity filters." }
-        - { name: src_user_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Only events carrying this device-owner ID as resolved and persisted at ingest. This does not assert that the human initiated the traffic. Mutually exclusive with the other source identity filters." }
+        - { name: src_user_id, in: query, required: false, schema: { type: string, format: uuid }, description: "For network, only the device-owner ID persisted at ingest, without asserting human initiation. For Beam, the authenticated reviewer ID. Mutually exclusive with the other source identity filters." }
         # Keyset cursor: pass the last entry's created_at + id to fetch the next page.
         - { name: cursor_ts, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: cursor_id, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
       responses:
         "200":
-          description: A page of access events, newest first. Fewer than `limit` means the last page. Open build → 403 edition_required.
+          description: A page of access events, newest first. Fewer than `limit` means the last page. Network source in the open build returns 403 edition_required. Beam source requires a current human browser session and Beam audit permission.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content:
             application/json:
@@ -14731,8 +14733,8 @@ components:
         # created_at (ingest time) + id are the KEYSET CURSOR — pass the last entry's pair
         # as cursor_ts + cursor_id for the next page.
         created_at: { type: string, format: date-time }
-        seq: { type: integer, format: int64, description: Per-org monotonic sequence (tamper-evidence / gap detection). }
-        occurred_at: { type: string, format: date-time, description: Agent-clock flow observation time (NOT the pagination clock). }
+        seq: { type: integer, format: int64, description: "Per-org network flow sequence (tamper-evidence / gap detection). Zero for Beam evidence, which has no network sequence." }
+        occurred_at: { type: string, format: date-time, description: "Agent-clock flow observation time. For Beam, the control-plane admission evidence timestamp equals created_at." }
         decision: { type: string, enum: [allow, deny, deny_aggregate, terminated, gap] }
         # Attribution is stamped from the successfully applied gateway artifact and
         # verified against the org-scoped device row; never inferred from src_ip.
@@ -14740,13 +14742,14 @@ components:
         node_id: { type: string, format: uuid }
         src_agent_id: { type: string, format: uuid, description: Present only when the verified source device kind is agent. }
         src_device_id: { type: string, format: uuid, description: Verified source device ID captured from the applied gateway artifact and preserved on the event. It may no longer resolve in the live device roster. }
-        src_user_id: { type: string, format: uuid, description: Source device owner resolved and persisted at ingest. It is neither current-ownership data nor proof that the human initiated the traffic. }
+        src_user_id: { type: string, format: uuid, description: "For network events, source device owner persisted at ingest, not proof of human initiation. For Beam, the reviewer identity authenticated at admission." }
         src_kind: { type: string, enum: [human, agent], description: Verified device kind persisted with the event. }
-        src_ip: { type: string }
-        dst_ip: { type: string }
+        src_ip: { type: string, description: "Network source address; empty for Beam, which records no IP attribution." }
+        dst_ip: { type: string, description: "Network destination address; empty for Beam." }
         dst_resource_id: { type: string, format: uuid }
         dst_group_id: { type: string, format: uuid }
-        protocol: { type: string }
+        protocol: { type: string, description: "Observed network protocol; empty for Beam evidence." }
+        beam: { $ref: "#/components/schemas/BeamAccessEvidence" }
         dst_port: { type: integer }
         deny_count: { type: integer, description: ">1 for a per-source deny aggregate (port-scan collapse); N for a gap marker." }
         window_end: { type: string, format: date-time, description: deny_aggregate window end. }
@@ -14754,6 +14757,15 @@ components:
         policy_version: { type: integer, minimum: 1 }
         src_config_revision: { type: integer, format: int64, minimum: 0, description: Applied managed-agent configuration revision at observation time. }
         decision_reason: { type: string, enum: [matched_grant, no_matching_grant, grant_revoked, events_dropped] }
+
+    BeamAccessEvidence:
+      type: object
+      additionalProperties: false
+      required: [share_id, action, reason]
+      properties:
+        share_id: { type: string, format: uuid }
+        action: { type: string, enum: [beam.access.allowed, beam.access.denied] }
+        reason: { type: string, description: "Fixed control-plane admission reason. Contains no request paths, headers, tokens or origin target." }
 
     AccessLogHealth:
       type: object

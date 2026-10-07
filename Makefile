@@ -198,7 +198,7 @@ SHARED_NM_VOL := $(GATE_CACHE_PREFIX)-shared-nm
 WEB_NM_VOL := $(GATE_CACHE_PREFIX)-web-nm
 
 .PHONY: generate
-generate: generate-go generate-ts generate-rbac generate-tokens sqlc ## Regenerate all code from openapi/openapi.yaml
+generate: generate-go generate-ts generate-beam generate-rbac generate-tokens sqlc ## Regenerate all code from openapi/openapi.yaml
 
 .PHONY: generate-tokens
 generate-tokens: ## S14.1: emit the design-token artifacts from packages/shared/src/tokens.ts (the ONE authored form)
@@ -238,10 +238,18 @@ generate-ts: ## Generate the TypeScript API types from the spec
 	docker run --rm -v "$(PWD)":/repo -w /repo/packages/shared $(NODE_IMAGE) \
 	  npx --yes openapi-typescript@$(OPENAPI_TS_VERSION) ../../openapi/openapi.yaml -o src/api.d.ts
 
+.PHONY: generate-beam
+generate-beam: ## Generate the separate opt-in Beam console and native publisher contract
+	docker run --rm -v "$(PWD)":/repo -w /repo/packages/shared $(NODE_IMAGE) \
+	  npx --yes openapi-typescript@$(OPENAPI_TS_VERSION) ../../apps/api/openapi/beam.openapi.yaml -o ../../apps/web/src/lib/beam-api.d.ts
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) \
+	  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
+	  -config beam-oapi-codegen.yaml ../api/openapi/beam.openapi.yaml
+
 .PHONY: generate-check
 generate-check: generate ## Fail if generated code is out of date (CI drift guard)
 	@git diff --exit-code -- \
-	  apps/api/internal/api apps/cli/internal/api packages/apptransport/authoritywire apps/api/db/sqlc packages/shared/src/api.d.ts apps/web/src/lib/rbac-policy.json \
+	  apps/api/internal/api apps/cli/internal/api apps/cli/internal/beamapi packages/apptransport/authoritywire apps/api/db/sqlc packages/shared/src/api.d.ts apps/web/src/lib/beam-api.d.ts apps/web/src/lib/rbac-policy.json \
 	  packages/shared/generated \
 	  || { echo ""; echo "ERROR: generated code is stale. Run 'make generate' and commit the result."; exit 1; }
 	@echo "generated code is up to date."
@@ -282,7 +290,7 @@ TEST_EDITION ?= open
 API_TEST_SHARD ?= all
 test-edition: ## One edition on its isolated CI database; test-editions remains the local full gate
 	@case "$(TEST_EDITION)" in open|enterprise) ;; *) echo "invalid TEST_EDITION" >&2; exit 1 ;; esac
-	@case "$(API_TEST_SHARD)" in all|db|ipsec|nodes|other) ;; *) echo "invalid API_TEST_SHARD" >&2; exit 1 ;; esac
+	@case "$(API_TEST_SHARD)" in all|db|ipsec|nodes|beam|http|other) ;; *) echo "invalid API_TEST_SHARD" >&2; exit 1 ;; esac
 	$(COMPOSE) up -d --wait postgres
 	@# The REPO ROOT is mounted, not just apps/api (S11). Several guards deliberately read files OUTSIDE the
 	@# module — the api Dockerfile (TestEveryOperatorToolShipsInTheImage), openapi.yaml and the web health
@@ -352,6 +360,8 @@ web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 24 LTS —
 	  $(NODE_IMAGE) sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
 	    pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build'
 
+# A bind-mounted checkout can be owned by a different UID or use a host-only
+# worktree gitdir. CI compilation does not stamp Git metadata; releases embed a version.
 .PHONY: test-cli
 test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate coverage at all)
 	# S11-2: apps/cli was built by NO CI job — `generate-check` detects DRIFT in its generated client but

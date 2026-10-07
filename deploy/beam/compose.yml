@@ -1,0 +1,72 @@
+# Explicit Beam override. Do not include this file in the default installation.
+# Public and connector listeners need distinct bind IPs when both use port 443.
+services:
+  api:
+    environment:
+      TUNNEX_BEAM_BASE_DOMAIN: ${TUNNEX_BEAM_BASE_DOMAIN:?Set the reviewed Beam base domain}
+      TUNNEX_BEAM_PROXY_URL: ${TUNNEX_BEAM_PROXY_URL:?Set the desktop-reachable HTTPS connector URL}
+      TUNNEX_BEAM_DOMAIN_READY: ${TUNNEX_BEAM_DOMAIN_READY:-false}
+      TUNNEX_APP_PROXY_AUTHORITY_ADDR: ':8445'
+      TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
+    volumes:
+      - app_restore:/var/lib/tunnex/app-restore:ro
+    depends_on:
+      beam-restore-init: {condition: service_completed_successfully}
+
+  beam-restore-init:
+    image: ${TUNNEX_BEAM_PROXY_IMAGE:?Select the locally verified Beam proxy image digest}
+    profiles: [beam]
+    entrypoint: [/bin/sh, -ec]
+    command: ['chown 10001:10001 /restore; chmod 0700 /restore']
+    user: '0:0'
+    network_mode: none
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    volumes: [app_restore:/restore]
+
+  beam-proxy:
+    image: ${TUNNEX_BEAM_PROXY_IMAGE:?Select the locally verified Beam proxy image digest}
+    profiles: [beam]
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      TUNNEX_BEAM_PROXY_PUBLIC_ADDR: ':8443'
+      TUNNEX_BEAM_PROXY_CONNECTOR_ADDR: ':8444'
+      TUNNEX_BEAM_PROXY_ADMIN_ADDR: '127.0.0.1:9093'
+      TUNNEX_BEAM_PROXY_BASE_DOMAIN: ${TUNNEX_BEAM_BASE_DOMAIN:?Set the reviewed Beam base domain}
+      TUNNEX_BEAM_PROXY_CONSOLE_BASE_URL: ${APP_BASE_URL:?Set the HTTPS console URL}
+      TUNNEX_BEAM_PROXY_AUTHORITY_URL: https://api:8445
+      TUNNEX_BEAM_PROXY_AUTHORITY_SERVER_NAME: tunnex-app-authority
+      TUNNEX_BEAM_PROXY_AUTHORITY_CA_FILE: /etc/tunnex/beam/agent-ca.pem
+      TUNNEX_BEAM_PROXY_CONNECTOR_CA_FILE: /etc/tunnex/beam/agent-ca.pem
+      TUNNEX_BEAM_PROXY_TLS_CERT_FILE: /etc/tunnex/beam/public-cert.pem
+      TUNNEX_BEAM_PROXY_TLS_KEY_FILE: /etc/tunnex/beam/public-key.pem
+      TUNNEX_BEAM_PROXY_CONNECTOR_TLS_CERT_FILE: /etc/tunnex/beam/gateway-cert.pem
+      TUNNEX_BEAM_PROXY_CONNECTOR_TLS_KEY_FILE: /etc/tunnex/beam/gateway-key.pem
+      TUNNEX_BEAM_PROXY_CREDENTIAL_FILE: /etc/tunnex/beam/authority.token
+      TUNNEX_BEAM_PROXY_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
+    volumes:
+      - ${TUNNEX_BEAM_PROXY_SECRETS_DIR:?Set the privately provisioned Beam TLS and credential directory}:/etc/tunnex/beam:ro
+      - app_restore:/var/lib/tunnex/app-restore:ro
+    ports:
+      - '${TUNNEX_BEAM_PUBLIC_BIND_IP:?Set the browser listener bind IP}:443:8443'
+      - '${TUNNEX_BEAM_CONNECTOR_BIND_IP:?Set a distinct connector listener bind IP}:443:8444'
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9093/readyz]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    depends_on:
+      api: {condition: service_healthy}
+
+volumes:
+  app_restore:

@@ -57,11 +57,11 @@ export function setApiOrigin(origin: string | null): void {
  * presence-only (a cross-site form cannot set custom headers), so sending it
  * on every mutation is always correct and never leaks anything.
  */
-export function createTunnexClient(baseUrl = "/"): TunnexClient {
+export function createTunnexClient<TPaths extends {} = paths>(baseUrl = "/"): Client<TPaths> {
   // API responses may carry secrets and must always reach the current origin.
   // Bypass cached permanent redirects left by an earlier HTTP-to-HTTPS setup:
   // following one silently changes the origin and drops its session cookie.
-  const client = createClient<paths>({ baseUrl, cache: "no-store" });
+  const client = createClient<TPaths>({ baseUrl, cache: "no-store" });
   client.use({
     async onRequest({ request }) {
       let req = request;

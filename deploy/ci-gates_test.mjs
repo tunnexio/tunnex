@@ -78,7 +78,7 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   assert.ok(jobs.gates.steps.some(step => step.run === 'node deploy/ci-gates.mjs' &&
     step.env.GATE_NEEDS === '${{ toJSON(needs) }}'));
   assert.deepEqual(jobs.api.strategy.matrix.edition, ['open', 'enterprise']);
-  assert.deepEqual(jobs.api.strategy.matrix.shard, ['db', 'ipsec', 'nodes', 'other']);
+  assert.deepEqual(jobs.api.strategy.matrix.shard, ['db', 'ipsec', 'nodes', 'beam', 'http', 'other']);
   assert.match(jobs.api.env.COMPOSE_PROJECT_NAME, /matrix.shard/);
   assert.match(jobs.api.env.GATE_CACHE_PREFIX, /matrix.shard/);
   assert.ok(jobs.api.steps.some(s => /API_TEST_SHARD=\$\{\{ matrix.shard \}\}/.test(s.run ?? '')));

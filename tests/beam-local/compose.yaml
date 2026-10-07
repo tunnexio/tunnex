@@ -1,0 +1,156 @@
+name: tunnex-beam-local
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: beam
+      POSTGRES_PASSWORD: ${BEAM_DB_PASSWORD:?run prepare.sh}
+      POSTGRES_DB: beam
+    ports: [127.0.0.1:15482:5432]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U beam -d beam]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    ports: [127.0.0.1:16382:6379]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api:
+    image: tunnex-beam-runtime:local
+    build:
+      context: .
+      dockerfile: gateway.Dockerfile
+    command: [/binaries/tunnex-api]
+    environment:
+      TUNNEX_ENV: development
+      DATABASE_URL: postgres://beam:${BEAM_DB_PASSWORD}@postgres:5432/beam?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      TUNNEX_AUTO_MIGRATE: 'true'
+      TUNNEX_SECRETS_DIR: /state
+      TUNNEX_ADMIN_EMAIL: admin@beam.local
+      TUNNEX_BOOTSTRAP_ORG_NAME: Beam local qualification
+      TUNNEX_BOOTSTRAP_GATEWAY_NAME: beam-gateway
+      TUNNEX_BOOTSTRAP_GATEWAY_TOKEN_SHA256: ${BEAM_JOIN_HASH}
+      TUNNEX_AI_VPN_AUTO: 'false'
+      TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: 'false'
+      APP_BASE_URL: https://127.0.0.1:18443
+      # Only the owned console may report HTTPS after terminating TLS.
+      TUNNEX_TRUSTED_PROXIES: console
+      TUNNEX_BEAM_BASE_DOMAIN: beam.127.0.0.1.sslip.io
+      TUNNEX_BEAM_PROXY_URL: https://127.0.0.1:19444
+      # These are proposed targets only. Versioned operator settings and measured
+      # DNS/TLS readiness still govern admission; both start disabled.
+      TUNNEX_BEAM_DEV_ALLOW_LOOPBACK: 'true'
+      TUNNEX_BEAM_DEV_PUBLIC_CA_FILE: /binaries/beam-public-ca.pem
+      TUNNEX_APP_PROXY_AUTHORITY_ADDR: ':9443'
+      TUNNEX_APP_ACCESS_BASE_DOMAIN: apps.fixture.test
+      TUNNEX_APP_ACCESS_RESTORE_MARKER: /owned-app-restore/app-access.pending.json
+      TUNNEX_GATEWAY_CONTROL_URL: https://api:8443
+    volumes: [binaries:/binaries:ro, api_state:/state, app_restore:/owned-app-restore:ro]
+    ports: [127.0.0.1:18284:8080, 127.0.0.1:18646:8443, 127.0.0.1:443:443, 127.0.0.1:19444:19444, 127.0.0.1:19445:19445]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8080/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  gateway:
+    image: tunnex-beam-runtime:local
+    entrypoint: [/bin/sh, -ec]
+    command: ["ip link show wg0 >/dev/null 2>&1 || ip link add wg0 type wireguard; ip address replace 100.100.0.1/24 dev wg0; ip link set wg0 up; exec /binaries/tunnex-node"]
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: 1
+    environment:
+      TUNNEX_API_URL: http://api:8080
+      TUNNEX_AGENT_URL: https://api:8443
+      TUNNEX_AGENT_SERVERNAME: tunnex-control
+      TUNNEX_JOIN_TOKEN: ${BEAM_JOIN_TOKEN}
+      TUNNEX_NODE_NAME: beam-gateway
+      TUNNEX_NODE_STATE_DIR: /state
+      TUNNEX_WG_BACKEND: wgctrl
+      TUNNEX_AI_VPN_AUTO: 'false'
+      TUNNEX_FLOWLOG_GROUP: '0'
+    volumes: [binaries:/binaries:ro, gateway_state:/state]
+    ports: [127.0.0.1:19293:9091]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:9091/readyz]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  volume-init:
+    image: tunnex-beam-runtime:local
+    command: [/bin/sh, -ec, 'chown 10001:10001 /restore; chmod 700 /restore']
+    volumes: [app_restore:/restore]
+  operator:
+    image: tunnex-beam-runtime:local
+    profiles: [tools]
+    environment:
+      DATABASE_URL: postgres://beam:${BEAM_DB_PASSWORD}@postgres:5432/beam?sslmode=disable
+      TUNNEX_SECRETS_DIR: /state
+      TUNNEX_APP_ACCESS_RESTORE_MARKER: /owned-app-restore/app-access.pending.json
+    volumes: [binaries:/binaries:ro, api_state:/state, app_restore:/owned-app-restore]
+  console:
+    image: nginxinc/nginx-unprivileged@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5
+    ports: [127.0.0.1:18283:8080, 127.0.0.1:18443:8443]
+    volumes: [console_assets:/owned-console:ro]
+    command: [nginx, -c, /owned-console/nginx.conf, -g, 'daemon off;']
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8080/healthz]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  beam-proxy:
+    image: tunnex-beam-proxy:local
+    # Fixture-only: wildcard DNS resolves to loopback. Sharing this owned
+    # namespace lets the API measure the real proxy without injected dialers.
+    network_mode: service:api
+    environment:
+      TUNNEX_BEAM_PROXY_PUBLIC_ADDR: ':443'
+      TUNNEX_BEAM_PROXY_CONNECTOR_ADDR: ':19444'
+      TUNNEX_BEAM_PROXY_ADMIN_ADDR: ':19445'
+      TUNNEX_BEAM_PROXY_TLS_CERT_FILE: /proxy/public-cert.pem
+      TUNNEX_BEAM_PROXY_TLS_KEY_FILE: /proxy/public-key.pem
+      TUNNEX_BEAM_PROXY_CONNECTOR_TLS_CERT_FILE: /proxy/gateway-cert.pem
+      TUNNEX_BEAM_PROXY_CONNECTOR_TLS_KEY_FILE: /proxy/gateway-key.pem
+      TUNNEX_BEAM_PROXY_CONNECTOR_CA_FILE: /proxy/agent-ca.pem
+      TUNNEX_BEAM_PROXY_CREDENTIAL_FILE: /proxy/authority.token
+      TUNNEX_BEAM_PROXY_AUTHORITY_URL: https://api:9443
+      TUNNEX_BEAM_PROXY_AUTHORITY_SERVER_NAME: tunnex-app-authority
+      TUNNEX_BEAM_PROXY_AUTHORITY_CA_FILE: /proxy/agent-ca.pem
+      TUNNEX_BEAM_PROXY_BASE_DOMAIN: beam.127.0.0.1.sslip.io
+      TUNNEX_BEAM_PROXY_CONSOLE_BASE_URL: https://127.0.0.1:18443
+      TUNNEX_BEAM_PROXY_RESTORE_MARKER: /owned-app-restore/app-access.pending.json
+    volumes: [proxy_assets:/proxy:ro, app_restore:/owned-app-restore:ro]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:19445/readyz]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  binaries:
+  app_restore:
+  console_assets:
+  proxy_assets:
+  postgres_data:
+  redis_data:
+  api_state:
+  gateway_state:

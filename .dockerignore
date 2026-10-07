@@ -18,3 +18,5 @@
 # Local App Access credentials, database backups and qualification binaries must
 # not enter any image build context.
 tests/app-access-local/.runtime
+# Beam bootstrap passwords, TLS keys and authority credentials are local-only.
+tests/beam-local/.runtime

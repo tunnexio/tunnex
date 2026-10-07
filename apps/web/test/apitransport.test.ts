@@ -48,3 +48,20 @@ describe("API request transport", () => {
     expect(await requests[0].json()).toEqual({ allow_http: true, revision: 1 });
   });
 });
+
+describe("Beam typed client transport", () => {
+  it("keeps the same origin, CSRF and cache rules for the separately generated Beam contract", async () => {
+    const requests = captureRequests();
+    const client = createTunnexClient<import("../src/lib/beam-api").paths>("https://console.example.test");
+    await client.POST("/api/v1/organizations/{orgId}/beam/shares/{id}/actions", {
+      params: { path: { orgId, id: "00000000-0000-4000-8000-000000000002" } },
+      body: { action: "pause", expected_version: 3 },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe(`https://console.example.test/api/v1/organizations/${orgId}/beam/shares/00000000-0000-4000-8000-000000000002/actions`);
+    expect(requests[0].headers.get("X-Tunnex-CSRF")).toBe("1");
+    expect(requests[0].credentials).toBe("same-origin");
+    expect(requests[0].cache).toBe("no-store");
+    expect(await requests[0].json()).toEqual({ action: "pause", expected_version: 3 });
+  });
+});

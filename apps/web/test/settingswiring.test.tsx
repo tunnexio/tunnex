@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
+import { beamApi } from "../src/lib/beam";
 
 // SLICE 6 — Settings. Second SHEDDER, and the consequence here is different in kind from every screen before it.
 //
@@ -904,6 +905,34 @@ describe("Settings — server Applications domain permission", () => {
     expect(await screen.findByLabelText("Application base domain")).toHaveProperty("value", "internal.tunnex.app");
     expect(screen.getByRole("tabpanel").id).toBe("app-access-domains");
     expect(screen.queryByText("No organization available.")).toBeNull();
+  });
+});
+
+describe("Settings — Beam installation checks stay operator scoped", () => {
+  it("does not expose or read installation checks for an organization owner", async () => {
+    const read = vi.spyOn(beamApi, "readiness").mockResolvedValue({ ok: false, error: "Must not be read" });
+    try {
+      window.history.replaceState({}, "", "/settings?section=beam-serving");
+      withAuth(<Settings />);
+      await screen.findByRole("tab", { name: "Organization" });
+      expect(screen.queryByRole("tab", { name: "Beam serving setup" })).toBeNull();
+      expect(read).not.toHaveBeenCalled();
+    } finally { read.mockRestore(); }
+  });
+  it("keeps the operator check panel available without any organization", async () => {
+    const read = vi.spyOn(beamApi, "readiness").mockResolvedValue({ ok: true, data: { base_domain: "beam.example.net", proxy_url: "https://connector.example.net", portal_url: "https://console.example.com", settings_version: 0, configuration_version: "a".repeat(64), operator_asserted: false, checked_at: null, expires_at: null, passed: false, checks: [] } });
+    const settingsRead = vi.spyOn(beamApi, "domainSettings").mockResolvedValue({ ok: true, data: { version: 0, source: "environment", operator_enabled: false, base_domain: "beam.example.net", proxy_url: "https://connector.example.net", portal_url: "https://console.example.com", affected_active_shares: 0, authority_ready: false } });
+    try {
+      serverAdmin = true;
+      const get = defaultGetImplementation as unknown as (path: string, options: unknown) => Promise<unknown>;
+      vi.mocked(api.GET).mockImplementation(((path: string, options: unknown) => path === "/api/v1/organizations" ? Promise.resolve({ data: [] }) : get(path, options)) as typeof defaultGetImplementation);
+      window.history.replaceState({}, "", "/settings?section=beam-serving");
+      withAuth(<Settings />);
+      await screen.findByRole("button", { name: "Check DNS and TLS" });
+      expect(screen.getByRole("tabpanel").id).toBe("beam-serving");
+      expect(screen.queryByText("No organization available.")).toBeNull();
+      expect(read).toHaveBeenCalledOnce();
+    } finally { read.mockRestore(); settingsRead.mockRestore(); }
   });
 });
 

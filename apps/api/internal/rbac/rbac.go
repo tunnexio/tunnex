@@ -23,6 +23,12 @@ const (
 	PermSandboxRunnerManage       Permission = "sandbox:runner_manage"
 	PermSandboxTemplateManage     Permission = "sandbox:template_manage"
 	// App Access administration never grants implicit application content access.
+	PermBeamCreate             Permission = "beam:create"
+	PermBeamUse                Permission = "beam:use"
+	PermBeamManageOwn          Permission = "beam:manage_own"
+	PermBeamManageAll          Permission = "beam:manage_all"
+	PermBeamPolicyManage       Permission = "beam:policy_manage"
+	PermBeamAuditView          Permission = "beam:audit_view"
 	PermAppAccessView          Permission = "app_access:view"
 	PermAppAccessManage        Permission = "app_access:manage"
 	PermAppAccessGrant         Permission = "app_access:grant"
@@ -242,6 +248,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
 	RoleMember: {
+		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true,
 		PermAppAccessUse: true, PermServerAccessUse: true, PermServerAccessReplay: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
 		PermConnectivityUse: true,
@@ -250,6 +257,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true, PermBeamManageAll: true, PermBeamPolicyManage: true, PermBeamAuditView: true,
 		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
 		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
@@ -303,6 +311,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true, PermBeamManageAll: true, PermBeamPolicyManage: true, PermBeamAuditView: true,
 		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
 		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
@@ -423,7 +432,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermBeamUse, PermBeamAuditView, PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

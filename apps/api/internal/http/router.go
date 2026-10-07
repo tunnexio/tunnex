@@ -28,6 +28,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/beam"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
@@ -113,6 +114,7 @@ type Deps struct {
 	WorkflowProvenance   *workflowprovenance.Service
 	SSO                  ssoPort    // nil => open build (SSO endpoints return edition_required)
 	Policy               policyPort // nil => open build (policy endpoints return edition_required)
+	Beam                 *beam.Service
 	AppAccess            appAccessPort
 	ServerAccess         *serveraccess.Service
 	AppDomains           appDomainsRepository
@@ -315,6 +317,9 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
 	srv := apiServer{serverAccess: d.ServerAccess, runnerQualification: d.SandboxRunnerQualification, runnerEnrollment: d.SandboxRunnerEnrollment, appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	if d.Beam != nil {
+		srv.beam = d.Beam
+	}
 	srv.connectivity = d.Connectivity
 	srv.appDomains = d.AppDomains
 	srv.aiTransport = d.AITransport
@@ -335,6 +340,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	r.Use(validateIPsecConfigurationCheck)
 	r.Use(validateIPsecSettingsBody)
 	r.Use(validateIPsecConnectionHeaders)
+	r.Use(beamMiddleware(d.Beam))
 	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
 		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, req *http.Request, opts oapimw.ErrorHandlerOpts) {
 			if appAccessBodyLimitError(w, req, err) || serverAccessBodyLimitError(w, req, err) {

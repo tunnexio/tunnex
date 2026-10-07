@@ -39,7 +39,15 @@ type appProxyCertificateResult struct {
 // This command signs one fixed-purpose server leaf under the already bootstrapped
 // enrollment CA. It neither initializes roots of trust nor changes entitlement.
 func appProxyCertificate(ctx context.Context, cfg config.Config, args []string, out io.Writer) error {
-	flags := flag.NewFlagSet("app-proxy-certificate", flag.ContinueOnError)
+	return fixedProxyCertificate(ctx, cfg, args, out, "app-proxy-certificate", appProxyServerName)
+}
+
+func beamProxyCertificate(ctx context.Context, cfg config.Config, args []string, out io.Writer) error {
+	return fixedProxyCertificate(ctx, cfg, args, out, "beam-proxy-certificate", "tunnex-beam-proxy")
+}
+
+func fixedProxyCertificate(ctx context.Context, cfg config.Config, args []string, out io.Writer, command, serverName string) error {
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	directory := flags.String("output-dir", "", "new exclusive private directory for the gateway TLS pair and public CA")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -95,7 +103,7 @@ func appProxyCertificate(ctx context.Context, cfg config.Config, args []string, 
 		if err != nil || created {
 			return errors.New("existing enrollment CA cannot be loaded; no replacement allowed")
 		}
-		pair, err := ca.ServerTLSCertificate(appProxyServerName)
+		pair, err := ca.ServerTLSCertificate(serverName)
 		if err != nil || len(pair.Certificate) < 2 {
 			return errors.New("gateway certificate issuance failed")
 		}
@@ -103,7 +111,7 @@ func appProxyCertificate(ctx context.Context, cfg config.Config, args []string, 
 		if err != nil {
 			return errors.New("gateway certificate invalid")
 		}
-		chains, err := leaf.Verify(x509.VerifyOptions{Roots: ca.Pool(), DNSName: appProxyServerName, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+		chains, err := leaf.Verify(x509.VerifyOptions{Roots: ca.Pool(), DNSName: serverName, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
 		if err != nil {
 			return errors.New("gateway certificate does not verify against the existing enrollment CA")
 		}
@@ -131,7 +139,7 @@ func appProxyCertificate(ctx context.Context, cfg config.Config, args []string, 
 				notAfter = cert.NotAfter
 			}
 		}
-		return json.NewEncoder(out).Encode(appProxyCertificateResult{appProxyServerName, hex.EncodeToString(caHash[:]), hex.EncodeToString(leafHash[:]), leaf.SerialNumber.Text(16), notAfter})
+		return json.NewEncoder(out).Encode(appProxyCertificateResult{serverName, hex.EncodeToString(caHash[:]), hex.EncodeToString(leafHash[:]), leaf.SerialNumber.Text(16), notAfter})
 	})
 }
 

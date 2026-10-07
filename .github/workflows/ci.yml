@@ -222,7 +222,7 @@ jobs:
       fail-fast: false
       matrix:
         edition: [open, enterprise]
-        shard: [db, ipsec, nodes, other]
+        shard: [db, ipsec, nodes, beam, http, other]
     runs-on: ubuntu-latest
     # Heavy packages run on separate runners/databases; packages within each shard
     # stay serial because integration fixtures include globally counted state.

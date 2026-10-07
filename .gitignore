@@ -89,3 +89,7 @@ walk-artifacts/sso-improvement/local-runtime/
 
 # Disposable gateway qualification binaries and captured kernel evidence.
 /.gateway-update-proof/
+
+# Generated Python caches from Beam qualification helpers.
+__pycache__/
+*.pyc

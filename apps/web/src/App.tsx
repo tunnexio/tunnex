@@ -47,6 +47,7 @@ import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
 import AccessKubernetesScopes from "./pages/AccessKubernetesScopes";
 import Access from "./pages/Access";
 import AppAccess from "./pages/AppAccess";
+import Beam, { BeamLaunch } from "./pages/Beam";
 import BrowserTerminal from "./pages/BrowserTerminal";
 import EditorAuth from "./pages/EditorAuth";
 import { AppAccessLaunch } from "./pages/AppAccessMyApplications";
@@ -173,6 +174,7 @@ function ProductApp() {
           {/* S7.5.5 D8: a MFA-enforcement-gated user (org requires 2FA, none set up) is routed here
               by RequireAuth — enrollment only, until they confirm a TOTP. Org-independent. */}
           <Route path="/enroll-mfa" element={<ForcedEnroll />} />
+          <Route path="/beam/launch" element={<RequireOrg><OrgProvider><BeamLaunch /></OrgProvider></RequireOrg>} />
           <Route
             element={
               <RequireOrg>
@@ -221,6 +223,11 @@ function ProductApp() {
             <Route path="/agents/policies" element={<AgentsPolicyTemplates />} />
             <Route path="/agents/:agentId" element={<AgentDetail />} />
             <Route path="/browser-access/terminal" element={<BrowserTerminal />} />
+            <Route path="/beam" element={<Beam />} />
+            <Route path="/beam/my-shares" element={<Beam />} />
+            <Route path="/beam/shared-with-me" element={<Beam />} />
+            <Route path="/beam/shares/:shareId" element={<Beam />} />
+            <Route path="/beam/events" element={<Beam />} />
             <Route path="/app-access" element={<AppAccess />} />
             <Route path="/app-access/access" element={<AppAccess />} />
             <Route path="/app-access/applications" element={<AppAccess />} />
@@ -269,7 +276,8 @@ function NotFound() {
 function AccessEventsRoute() {
   const [params] = useSearchParams();
   const applications = params.get("source") === "applications";
-  return <div className="space-y-5"><nav aria-label="Access event sources" className="workspace-tabs"><Link className="text-brand" aria-current={!applications ? "page" : undefined} to="/access-events">Network events</Link><Link className="text-brand" aria-current={applications ? "page" : undefined} to="/access-events?source=applications">Application events</Link></nav>{applications ? <AppAccessEvents /> : <AccessEvents />}</div>;
+  const beam = params.get("source") === "beam";
+  return <div className="space-y-5"><nav aria-label="Access event sources" className="workspace-tabs"><Link className="text-brand" aria-current={!applications && !beam ? "page" : undefined} to="/access-events">Network events</Link><Link className="text-brand" aria-current={applications ? "page" : undefined} to="/access-events?source=applications">Application events</Link><Link className="text-brand" aria-current={beam ? "page" : undefined} to="/access-events?source=beam">Beam browser access</Link></nav>{applications ? <AppAccessEvents /> : <AccessEvents key={beam ? "beam" : "network"} />}</div>;
 }
 
 function RequireAuth() {

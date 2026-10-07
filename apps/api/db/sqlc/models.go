@@ -1019,6 +1019,137 @@ type AuthToken struct {
 	CreatedAt  time.Time          `json:"created_at"`
 }
 
+type BeamBrowserSession struct {
+	TokenHash       []byte    `json:"token_hash"`
+	OrgID           uuid.UUID `json:"org_id"`
+	ShareID         uuid.UUID `json:"share_id"`
+	UserID          uuid.UUID `json:"user_id"`
+	ParentSessionID string    `json:"parent_session_id"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type BeamFeedback struct {
+	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"org_id"`
+	ShareID    uuid.UUID `json:"share_id"`
+	AuthorID   uuid.UUID `json:"author_id"`
+	Body       string    `json:"body"`
+	Status     string    `json:"status"`
+	Screenshot []byte    `json:"screenshot"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type BeamGrant struct {
+	OrgID       uuid.UUID `json:"org_id"`
+	ShareID     uuid.UUID `json:"share_id"`
+	SubjectKind string    `json:"subject_kind"`
+	SubjectID   uuid.UUID `json:"subject_id"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type BeamInstallationSetting struct {
+	Singleton          bool               `json:"singleton"`
+	Version            int64              `json:"version"`
+	Configured         bool               `json:"configured"`
+	OperatorEnabled    bool               `json:"operator_enabled"`
+	BaseDomain         string             `json:"base_domain"`
+	ProxyUrl           string             `json:"proxy_url"`
+	PortalUrl          string             `json:"portal_url"`
+	ReadinessVersion   string             `json:"readiness_version"`
+	ReadinessPassed    bool               `json:"readiness_passed"`
+	ReadinessCheckedAt pgtype.Timestamptz `json:"readiness_checked_at"`
+	ReadinessExpiresAt pgtype.Timestamptz `json:"readiness_expires_at"`
+	ReadinessChecks    []byte             `json:"readiness_checks"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
+type BeamLaunchCode struct {
+	CodeHash        []byte             `json:"code_hash"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	ShareID         uuid.UUID          `json:"share_id"`
+	UserID          uuid.UUID          `json:"user_id"`
+	ParentSessionID string             `json:"parent_session_id"`
+	NonceHash       []byte             `json:"nonce_hash"`
+	RelativeTarget  string             `json:"relative_target"`
+	ExpiresAt       time.Time          `json:"expires_at"`
+	ConsumedAt      pgtype.Timestamptz `json:"consumed_at"`
+}
+
+type BeamPendingLaunch struct {
+	NonceHash      []byte    `json:"nonce_hash"`
+	OrgID          uuid.UUID `json:"org_id"`
+	ShareID        uuid.UUID `json:"share_id"`
+	RelativeTarget string    `json:"relative_target"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
+type BeamPolicy struct {
+	OrgID              uuid.UUID   `json:"org_id"`
+	Enabled            bool        `json:"enabled"`
+	Version            int64       `json:"version"`
+	PublisherGroupIds  []uuid.UUID `json:"publisher_group_ids"`
+	ReviewerUserIds    []uuid.UUID `json:"reviewer_user_ids"`
+	ReviewerGroupIds   []uuid.UUID `json:"reviewer_group_ids"`
+	MaxDurationSeconds int32       `json:"max_duration_seconds"`
+	MaxShares          int32       `json:"max_shares"`
+	RequireMfa         bool        `json:"require_mfa"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+	OpenForAllUsers    bool        `json:"open_for_all_users"`
+}
+
+type BeamProject struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	OwnerID         uuid.UUID `json:"owner_id"`
+	Name            string    `json:"name"`
+	Target          []byte    `json:"target"`
+	DurationSeconds int32     `json:"duration_seconds"`
+	Grants          []byte    `json:"grants"`
+	Version         int64     `json:"version"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type BeamShare struct {
+	ID                      uuid.UUID          `json:"id"`
+	OrgID                   uuid.UUID          `json:"org_id"`
+	PublisherID             uuid.UUID          `json:"publisher_id"`
+	SourceCredentialID      pgtype.UUID        `json:"source_credential_id"`
+	SourceSessionID         string             `json:"source_session_id"`
+	Name                    string             `json:"name"`
+	Hostname                string             `json:"hostname"`
+	Target                  []byte             `json:"target"`
+	Digest                  string             `json:"digest"`
+	IdempotencyKey          uuid.UUID          `json:"idempotency_key"`
+	RequestDigest           string             `json:"request_digest"`
+	State                   string             `json:"state"`
+	Version                 int64              `json:"version"`
+	AuthorityVersion        int64              `json:"authority_version"`
+	ConnectorID             uuid.UUID          `json:"connector_id"`
+	Generation              uuid.UUID          `json:"generation"`
+	CertificateSerial       *string            `json:"certificate_serial"`
+	ServingAuthorityVersion int64              `json:"serving_authority_version"`
+	LastChannelAt           pgtype.Timestamptz `json:"last_channel_at"`
+	OriginReady             bool               `json:"origin_ready"`
+	LastHeartbeatAt         pgtype.Timestamptz `json:"last_heartbeat_at"`
+	ExpiresAt               time.Time          `json:"expires_at"`
+	CreatedAt               time.Time          `json:"created_at"`
+	UpdatedAt               time.Time          `json:"updated_at"`
+	ProjectID               pgtype.UUID        `json:"project_id"`
+}
+
+type BeamStream struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	ShareID   uuid.UUID `json:"share_id"`
+	TokenHash []byte    `json:"token_hash"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type CliAuthCode struct {
 	ID            uuid.UUID          `json:"id"`
 	UserID        uuid.UUID          `json:"user_id"`

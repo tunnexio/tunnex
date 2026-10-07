@@ -36,6 +36,12 @@ func main() {
 		usage()
 	}
 	cfg := config.Load()
+	if os.Args[1] == "beam-proxy-certificate" {
+		if err := beamProxyCertificate(context.Background(), cfg, os.Args[2:], os.Stdout); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
 	if os.Args[1] == "app-proxy-certificate" {
 		if err := appProxyCertificate(context.Background(), cfg, os.Args[2:], os.Stdout); err != nil {
 			fatal("%v", err)
@@ -166,6 +172,7 @@ func usage() {
   backupctl app-recovery --barrier ABSOLUTE_PATH --barrier-id UUID --operator NAME
   backupctl app-proxy-issue --name NAME --output ABSOLUTE_PRIVATE_FILE
   backupctl app-proxy-certificate --output-dir ABSOLUTE_NEW_PRIVATE_DIRECTORY
+  backupctl beam-proxy-certificate --output-dir ABSOLUTE_NEW_PRIVATE_DIRECTORY
   backupctl app-proxy-revoke --id UUID --expected-version VERSION
 
 The manifest records a KEYED FINGERPRINT of the master key — never the key. Run verify BEFORE

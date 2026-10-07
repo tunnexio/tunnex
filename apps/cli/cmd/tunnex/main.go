@@ -44,6 +44,8 @@ Usage:
                                             connect an application with renewable workload authentication
   tunnex workload enroll|token|rotate|retire --config FILE
                                             enroll, obtain a token, rotate the key, or permanently retire
+  tunnex beam publish|resume|policy|audience|list|get|pause|stop|extend
+                                            share a local app using this CLI login (foreground)
   tunnex version                            print the exact CLI build version
 `)
 }
@@ -100,6 +102,8 @@ func main() {
 		} else {
 			err = cli.Login(ctx, s)
 		}
+	case "beam":
+		err = cli.Beam(ctx, os.Args[2:], os.Stdout, buildVersionLine())
 	case "sandbox":
 		// TODO(sandbox-reentry): restore help and lifecycle together; see
 		// docs/S-sandbox-shelved-main-reentry.md.

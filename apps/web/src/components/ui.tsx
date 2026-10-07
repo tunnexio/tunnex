@@ -178,8 +178,11 @@ export function Modal({
   size = "default",
   showClose = false,
   placement = "center",
+  returnFocusTo,
 }: {
   title: string;
+  /** Explicit opener for dialogs opened after an asynchronous, disabled trigger. */
+  returnFocusTo?: HTMLElement | null;
   danger?: boolean;
   onDismiss: () => void;
   children: ReactNode;
@@ -196,7 +199,7 @@ export function Modal({
    */
   size?: "default" | "wide" | "workspace" | "enrollment";
 }) {
-  const opener = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const opener = useRef<HTMLElement | null>(returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null));
   return <Dialog.Root open onOpenChange={(open) => { if (!open) onDismiss(); }}>
     <Dialog.Portal>
       <Dialog.Overlay className="tnx-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" data-placement={placement} onClick={(event) => { if (event.target === event.currentTarget) onDismiss(); }}>

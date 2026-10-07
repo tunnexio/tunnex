@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   api,
@@ -24,6 +24,7 @@ import {
   PageHeader,
 } from "../components/ui";
 
+import { beamAuditDetails } from "../lib/beam";
 import { TerminalReplay } from "../components/TerminalReplay";
 import "../network-workspaces.css";
 import "../audit-workspace.css";
@@ -281,9 +282,10 @@ export default function AuditLog() {
                 className="min-h-9 w-full rounded-md border border-white/10 bg-ink-900 px-3 text-sm text-white placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
               />
             </label>
-            <label className="min-w-0 text-sm text-ink-tertiary"><span>Target type</span><Input aria-label="Target type" value={filters.targetType} onChange={(e) => setFilters((f) => ({ ...f, targetType: e.target.value }))} /></label>
+            <label className="min-w-0 text-sm text-ink-tertiary"><span>Target type</span><Input aria-label="Target type" list="audit-target-options" value={filters.targetType} onChange={(e) => setFilters((f) => ({ ...f, targetType: e.target.value }))} /></label>
             <label className="min-w-0 text-sm text-ink-tertiary"><span>Target UUID</span><Input aria-label="Target UUID" value={filters.targetId} onChange={(e) => setFilters((f) => ({ ...f, targetId: e.target.value }))} /></label>
-            <datalist id="audit-action-options">{Array.from(new Set(entries.map(entry => entry.action))).sort().map(action => <option key={action} value={action}>{actionLabel(action)}</option>)}</datalist>
+            <datalist id="audit-target-options"><option value="beam_share">Tunnex Beam shares</option></datalist>
+            <datalist id="audit-action-options">{Array.from(new Set([...entries.map(entry => entry.action), "beam.share.created", "beam.share.pause", "beam.share.resume", "beam.share.stop", "beam.share.extend", "beam.grants.updated", "beam.policy.updated", "beam.connector.issued", "beam.access.allowed", "beam.access.denied"])).sort().map(action => <option key={action} value={action}>{actionLabel(action)}</option>)}</datalist>
             <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
               <span>From</span>
               <Input
@@ -309,6 +311,7 @@ export default function AuditLog() {
               />
             </label>
             <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="ghost" disabled={busy || !org} onClick={() => { const next = { ...NO_FILTERS, targetType: "beam_share" }; setFilters(next); setSelected(null); setEntries([]); if (org) void fetchPage(org.id, next); }}>Beam activity</Button>
               <Button size="sm" type="submit" disabled={busy}>{busy ? "Applying…" : "Apply"}</Button>
               {(Object.values(filters).some(Boolean) || activeFilterCount > 0) && (
                 <Button
@@ -468,7 +471,7 @@ export default function AuditLog() {
       {org&&replay&&<TerminalReplay orgId={org.id} sessionId={replay} onClose={()=>setReplay(undefined)}/>}
       {selected && (() => {
         const actor = resolveActor(selected, members);
-        const details = Object.entries(selected.details ?? {});
+        const details = selected.action.startsWith("beam.") ? beamAuditDetails(selected.details ?? {}) : Object.entries(selected.details ?? {});
         return (
           <Modal title="Audit evidence" size="wide" showClose onDismiss={() => setSelected(null)}>
             <div className="flex flex-col gap-5">
@@ -495,6 +498,8 @@ export default function AuditLog() {
                 </div>
               </dl>
 
+              {selected.target_type === "beam_share" && selected.target_id && /^beam\.(share|grants|connector|access)\./.test(selected.action) && <Link className="text-brand text-sm" to={`/beam/shares/${encodeURIComponent(selected.target_id)}`}>Share history and health</Link>}
+              {selected.action.startsWith("beam.") && <p className="text-xs text-ink-secondary">Beam evidence excludes app bodies, cookies, credential material and request URLs with query strings.</p>}
               <details className="audit-evidence"><summary id="audit-details-title">Recorded details & IDs</summary>
                 <dl className="audit-record-ids"><div><dt>Event ID</dt><dd>{selected.id}</dd></div><div><dt>Target ID</dt><dd>{selected.target_id || "Not recorded"}</dd></div><div><dt>Recorded timestamp</dt><dd>{selected.created_at}</dd></div></dl>
                 {details.length === 0 ? (

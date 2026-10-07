@@ -41,6 +41,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/appdomains"
 	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
+	"github.com/tunnexio/tunnex/apps/api/internal/beam"
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
@@ -90,6 +91,11 @@ func main() {
 
 	logger := applog.New(cfg.LogLevel)
 	slog.SetDefault(logger)
+	beamDevelopmentCA, beamDevelopmentLoopback, err := cfg.BeamDevelopmentTrust()
+	if err != nil {
+		logger.Error("beam_development_trust_invalid")
+		os.Exit(1)
+	}
 	if cfg.ValidateAPITLS() != nil || validateSandboxProductConfiguration(cfg) != nil {
 		logger.Error("api_tls_configuration_invalid")
 		os.Exit(1)
@@ -678,6 +684,11 @@ func main() {
 		logger.Error("terminal_boot_failed")
 		os.Exit(1)
 	}
+	beamSvc := beam.New(pool, beam.Config{BaseDomain: cfg.BeamBaseDomain, ProxyURL: cfg.BeamProxyURL, PortalURL: cfg.AppBaseURL, DomainReady: cfg.BeamDomainReady, RestoreMarker: cfg.AppAccessRestoreMarker, DevelopmentAllowLoopback: beamDevelopmentLoopback, DevelopmentPublicCA: beamDevelopmentCA}, agentCA, sessions)
+	if beamSvc.ReadinessConfigurationError() != nil {
+		logger.Error("beam_probe_trust_invalid")
+		os.Exit(1)
+	}
 	appAccessSvc := appaccess.NewService(pool, appaccess.Config{AppBaseDomain: cfg.AppAccessBaseDomain, ConsoleURL: cfg.AppBaseURL, ConsoleHosts: []string{consoleHost}}).WithDomainProvider(domainSettings).WithSessionAuthority(sessions, appaccess.NewAppSessionStore(sessions.Client()), sealer, func(ctx context.Context, user uuid.UUID) (bool, error) {
 		if !apphttp.NewMfaEnforceEdition() {
 			return false, nil
@@ -742,6 +753,7 @@ func main() {
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
 		ServerAccess:          terminalSvc,
 		AppAccess:             appAccessSvc,
+		Beam:                  beamSvc,
 		FQDNResources:         fqdnresources.New(pool),
 		FQDNSettingNotify:     fqdnInvalidator,
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
@@ -1219,6 +1231,44 @@ func main() {
 			}
 		}
 	}()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-ticker.C:
+				if mayTick() {
+					ctx, cancel := context.WithTimeout(pollCtx, 5*time.Second)
+					if e := beamSvc.Sweep(ctx); e != nil {
+						logger.Error("beam_sweep_failed", "error", e.Error())
+					}
+					cancel()
+				}
+			}
+		}
+	}()
+	// One elected worker refreshes fixed deployment endpoints. Serving decisions
+	// read shared versioned evidence and independently cap every lease at expiry.
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-ticker.C:
+				if mayTick() {
+					ctx, cancel := context.WithTimeout(pollCtx, 10*time.Second)
+					if beamSvc.RefreshDomainReadiness(ctx) != nil {
+						logger.Warn("beam_readiness_refresh_incomplete")
+					}
+					cancel()
+				}
+			}
+		}
+	}()
 	apphttp.StartIdpSyncPoller(pollCtx, idpSyncPort, logger, mayTick)
 	// S7.5.4 temporary-grant expiry sweep (enterprise only; no-op in the open build):
 	// a lapsed temporary grant's /32 is pushed off every org gateway promptly. Shares
@@ -1278,7 +1328,7 @@ func main() {
 			logger.Error("app_proxy_authority_bind_failed", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
-		appProxySrv = &http.Server{Handler: apphttp.NewAppProxyAuthorityHandler(appAccessSvc, func() bool { return licenceMgr.Has(licence.FeatAppAccess, time.Now()) }), TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{leaf}, NextProtos: []string{"http/1.1"}}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32768}
+		appProxySrv = &http.Server{Handler: apphttp.NewBeamProxyAuthorityHandler(beamSvc, appAccessSvc, apphttp.NewAppProxyAuthorityHandler(appAccessSvc, func() bool { return licenceMgr.Has(licence.FeatAppAccess, time.Now()) })), TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{leaf}, NextProtos: []string{"http/1.1"}}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32768}
 		go func() {
 			if err := appProxySrv.ServeTLS(netutil.LimitListener(listener, 256), "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.Error("app_proxy_authority_failed", slog.String("error", err.Error()))

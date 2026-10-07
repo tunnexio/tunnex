@@ -958,6 +958,12 @@ const (
 	AuditLogRetentionRunTriggerScheduled AuditLogRetentionRunTrigger = "scheduled"
 )
 
+// Defines values for BeamAccessEvidenceAction.
+const (
+	BeamAccessAllowed BeamAccessEvidenceAction = "beam.access.allowed"
+	BeamAccessDenied  BeamAccessEvidenceAction = "beam.access.denied"
+)
+
 // Defines values for ChangeRoleRequestRole.
 const (
 	ChangeRoleRequestRoleAdmin   ChangeRoleRequestRole = "admin"
@@ -2079,6 +2085,12 @@ const (
 	StartSsoLoginParamsProviderMicrosoft StartSsoLoginParamsProvider = "microsoft"
 )
 
+// Defines values for ListAccessEventsParamsSource.
+const (
+	Beam    ListAccessEventsParamsSource = "beam"
+	Network ListAccessEventsParamsSource = "network"
+)
+
 // Defines values for ListAgentMCPAssignmentsParamsState.
 const (
 	ListAgentMCPAssignmentsParamsStateActive      ListAgentMCPAssignmentsParamsState = "active"
@@ -2921,29 +2933,34 @@ type AcceptInviteRequest struct {
 
 // AccessEvent defines model for AccessEvent.
 type AccessEvent struct {
+	Beam           *BeamAccessEvidence        `json:"beam,omitempty"`
 	CreatedAt      time.Time                  `json:"created_at"`
 	Decision       AccessEventDecision        `json:"decision"`
 	DecisionReason *AccessEventDecisionReason `json:"decision_reason,omitempty"`
 
 	// DenyCount >1 for a per-source deny aggregate (port-scan collapse); N for a gap marker.
-	DenyCount     *int                `json:"deny_count,omitempty"`
-	DstGroupId    *openapi_types.UUID `json:"dst_group_id,omitempty"`
+	DenyCount  *int                `json:"deny_count,omitempty"`
+	DstGroupId *openapi_types.UUID `json:"dst_group_id,omitempty"`
+
+	// DstIp Network destination address; empty for Beam.
 	DstIp         string              `json:"dst_ip"`
 	DstPort       *int                `json:"dst_port,omitempty"`
 	DstResourceId *openapi_types.UUID `json:"dst_resource_id,omitempty"`
 	Id            openapi_types.UUID  `json:"id"`
 	NodeId        *openapi_types.UUID `json:"node_id,omitempty"`
 
-	// OccurredAt Agent-clock flow observation time (NOT the pagination clock).
+	// OccurredAt Agent-clock flow observation time. For Beam, the control-plane admission evidence timestamp equals created_at.
 	OccurredAt time.Time `json:"occurred_at"`
 
 	// PolicyHash Canonical hash of the policy successfully applied when the gateway observed the flow.
-	PolicyHash    *string             `json:"policy_hash,omitempty"`
-	PolicyVersion *int                `json:"policy_version,omitempty"`
-	Protocol      string              `json:"protocol"`
-	RuleId        *openapi_types.UUID `json:"rule_id,omitempty"`
+	PolicyHash    *string `json:"policy_hash,omitempty"`
+	PolicyVersion *int    `json:"policy_version,omitempty"`
 
-	// Seq Per-org monotonic sequence (tamper-evidence / gap detection).
+	// Protocol Observed network protocol; empty for Beam evidence.
+	Protocol string              `json:"protocol"`
+	RuleId   *openapi_types.UUID `json:"rule_id,omitempty"`
+
+	// Seq Per-org network flow sequence (tamper-evidence / gap detection). Zero for Beam evidence, which has no network sequence.
 	Seq int64 `json:"seq"`
 
 	// SrcAgentId Present only when the verified source device kind is agent.
@@ -2954,12 +2971,14 @@ type AccessEvent struct {
 
 	// SrcDeviceId Verified source device ID captured from the applied gateway artifact and preserved on the event. It may no longer resolve in the live device roster.
 	SrcDeviceId *openapi_types.UUID `json:"src_device_id,omitempty"`
-	SrcIp       string              `json:"src_ip"`
+
+	// SrcIp Network source address; empty for Beam, which records no IP attribution.
+	SrcIp string `json:"src_ip"`
 
 	// SrcKind Verified device kind persisted with the event.
 	SrcKind *AccessEventSrcKind `json:"src_kind,omitempty"`
 
-	// SrcUserId Source device owner resolved and persisted at ingest. It is neither current-ownership data nor proof that the human initiated the traffic.
+	// SrcUserId For network events, source device owner persisted at ingest, not proof of human initiation. For Beam, the reviewer identity authenticated at admission.
 	SrcUserId *openapi_types.UUID `json:"src_user_id,omitempty"`
 
 	// WindowEnd deny_aggregate window end.
@@ -4697,6 +4716,18 @@ type AuthUser struct {
 	MustChangePassword     *bool               `json:"must_change_password,omitempty"`
 	RecoveryCodesRemaining *int                `json:"recovery_codes_remaining,omitempty"`
 }
+
+// BeamAccessEvidence defines model for BeamAccessEvidence.
+type BeamAccessEvidence struct {
+	Action BeamAccessEvidenceAction `json:"action"`
+
+	// Reason Fixed control-plane admission reason. Contains no request paths, headers, tokens or origin target.
+	Reason  string             `json:"reason"`
+	ShareId openapi_types.UUID `json:"share_id"`
+}
+
+// BeamAccessEvidenceAction defines model for BeamAccessEvidence.Action.
+type BeamAccessEvidenceAction string
 
 // BindSiteNodeRequest defines model for BindSiteNodeRequest.
 type BindSiteNodeRequest struct {
@@ -8393,6 +8424,12 @@ type McpOAuthCallbackParams struct {
 
 // ListAccessEventsParams defines parameters for ListAccessEvents.
 type ListAccessEventsParams struct {
+	// Source Network flow evidence retains its enterprise gate. Beam projects retained human browser admission evidence under beam.audit.view; it follows Audit Log retention.
+	Source *ListAccessEventsParamsSource `form:"source,omitempty" json:"source,omitempty"`
+
+	// ShareId Exact historical Beam share ID. Requires source=beam; does not require the share to remain live.
+	ShareId *openapi_types.UUID `form:"share_id,omitempty" json:"share_id,omitempty"`
+
 	// DeniesOnly Only deny/deny_aggregate/terminated/gap events (the security feed).
 	DeniesOnly *bool `form:"denies_only,omitempty" json:"denies_only,omitempty"`
 
@@ -8402,12 +8439,15 @@ type ListAccessEventsParams struct {
 	// SrcDeviceId Only events carrying this verified source device ID, for either a human or agent device. Mutually exclusive with the other source identity filters.
 	SrcDeviceId *openapi_types.UUID `form:"src_device_id,omitempty" json:"src_device_id,omitempty"`
 
-	// SrcUserId Only events carrying this device-owner ID as resolved and persisted at ingest. This does not assert that the human initiated the traffic. Mutually exclusive with the other source identity filters.
+	// SrcUserId For network, only the device-owner ID persisted at ingest, without asserting human initiation. For Beam, the authenticated reviewer ID. Mutually exclusive with the other source identity filters.
 	SrcUserId *openapi_types.UUID `form:"src_user_id,omitempty" json:"src_user_id,omitempty"`
 	CursorTs  *time.Time          `form:"cursor_ts,omitempty" json:"cursor_ts,omitempty"`
 	CursorId  *openapi_types.UUID `form:"cursor_id,omitempty" json:"cursor_id,omitempty"`
 	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// ListAccessEventsParamsSource defines parameters for ListAccessEvents.
+type ListAccessEventsParamsSource string
 
 // ListAgentAccessRequestsParams defines parameters for ListAgentAccessRequests.
 type ListAgentAccessRequestsParams struct {
@@ -22747,6 +22787,38 @@ func NewListAccessEventsRequest(server string, orgId openapi_types.UUID, params 
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.Source != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "source", runtime.ParamLocationQuery, *params.Source); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ShareId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "share_id", runtime.ParamLocationQuery, *params.ShareId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.DeniesOnly != nil {
 

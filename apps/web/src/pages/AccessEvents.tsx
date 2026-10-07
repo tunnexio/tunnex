@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { BeamAccessEvidence } from "../components/BeamAccessEvidence";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -100,6 +102,10 @@ async function loadAllAgents(
  * codebase — a census of what exists cannot find what was never built.
  */
 export default function AccessEvents() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [source, setSource] = useState<"network" | "beam">(searchParams.get("source") === "beam" ? "beam" : "network");
+  const [beamShareID, setBeamShareID] = useState("");
+  const [beamShareDraft, setBeamShareDraft] = useState("");
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5).
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const [org, setOrg] = useState<Org | null>(null);
@@ -149,12 +155,12 @@ export default function AccessEvents() {
           params: { path: { orgId: target.id } },
         }),
       ),
-      loadOne(() =>
+      source === "network" ? loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/devices", {
           params: { path: { orgId: target.id } },
         }),
-      ),
-      loadAllAgents(target.id, stale),
+      ) : Promise.resolve({ ok: true as const, data: [] as Device[] }),
+      source === "network" ? loadAllAgents(target.id, stale) : Promise.resolve({ ok: true as const, data: [] as AgentRow[] }),
     ]);
     if (stale()) return;
     setIdentitiesBusy(false);
@@ -171,7 +177,7 @@ export default function AccessEvents() {
         `Could not load current ${failed.join(", ")} labels. Recorded event identities remain available.`,
       );
     }
-  }, []);
+  }, [source]);
 
   const loadHealth = useCallback(async (target: Org) => {
     const epoch = ++healthEpoch.current;
@@ -230,12 +236,12 @@ export default function AccessEvents() {
     // Current inventory supplies display labels only. Event UUIDs remain the source of historical
     // identity, including after a person, device, or AI agent is no longer in these live rosters.
     void loadIdentities(org);
-    void loadHealth(org);
+    if (source === "network") void loadHealth(org); else { healthEpoch.current++; setHealth(null); setHealthError(null); setHealthBusy(false); }
     return () => {
       healthEpoch.current++;
       identityEpoch.current++;
     };
-  }, [loadHealth, loadIdentities, org]);
+  }, [loadHealth, loadIdentities, org, source]);
 
   const load = useCallback(
     async (reset: boolean) => {
@@ -258,6 +264,7 @@ export default function AccessEvents() {
               query: {
                 limit: PAGE,
                 denies_only: deniesOnly || undefined,
+                ...(source === "beam" ? { source, share_id: beamShareID || undefined } : {}),
                 ...identityQuery,
                 ...(cursor ?? {}),
               },
@@ -280,14 +287,16 @@ export default function AccessEvents() {
       // The API documents that a short page IS the last page — so stop asking.
       setDone(isLastPage(page, PAGE));
     },
-    [org, rows, deniesOnly, identityValue, associatedDevice],
+    [org, rows, deniesOnly, identityValue, associatedDevice, source, beamShareID],
   );
 
   useEffect(() => {
     if (!org) return;
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org, deniesOnly, identityValue, associatedDevice]);
+  }, [org, deniesOnly, identityValue, associatedDevice, source, beamShareID]);
+
+  const sourceSelector = <label className="flex flex-wrap items-center gap-2 text-sm text-ink-secondary">Event source<select aria-label="Event source" className="min-h-9 rounded border border-line bg-ink-950 px-3 text-ink-heading" value={source} onChange={event => { prepareFilterReload(); setIdentityValue(""); setAssociatedDevice(""); setBeamShareID(""); setBeamShareDraft(""); setHistoricalIdentityKind("person"); setSource(event.target.value as "network" | "beam"); setSearchParams(event.target.value === "beam" ? { source: "beam" } : {}); }}><option value="network">Network flows</option><option value="beam">Beam browser access</option></select></label>;
 
   if (orgLoading) {
     return <Loading size="page" label="Loading access events…" />;
@@ -323,7 +332,7 @@ export default function AccessEvents() {
   if (rows === null && !error) {
     return (
       <div>
-        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} />
+        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} actions={sourceSelector} />
         <Loading label="Loading access events…" />
       </div>
     );
@@ -332,7 +341,7 @@ export default function AccessEvents() {
   if (rows === null && error) {
     return (
       <div>
-        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} />
+        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} actions={sourceSelector} />
         <LoadRetry error={error} onRetry={() => void load(true)} />
       </div>
     );
@@ -373,7 +382,7 @@ export default function AccessEvents() {
   const historicalUUID = historicalIdentityID.trim().toLowerCase();
   const historicalUUIDValid = UUID_PATTERN.test(historicalUUID);
   const historicalUUIDInvalid = historicalIdentityID.length > 0 && !historicalUUIDValid;
-  const hasActiveFilters = deniesOnly || identityValue !== "";
+  const hasActiveFilters = deniesOnly || identityValue !== "" || beamShareID !== "";
   const identityLabelsFor = (event: AccessEvent): AccessIdentityLabels => {
     const agentID = event.src_agent_id ??
       (event.src_kind === "agent" ? event.src_device_id ?? undefined : undefined);
@@ -410,7 +419,7 @@ export default function AccessEvents() {
       <PageHeader
         title="Access events"
         subtitle={org.name}
-        actions={<Button variant="ghost" disabled={busy} onClick={() => { void load(true); void loadHealth(org); }}>Refresh</Button>}
+        actions={<div className="flex flex-wrap gap-3">{sourceSelector}<Button variant="ghost" disabled={busy} onClick={() => { void load(true); if (source === "network") void loadHealth(org); }}>Refresh</Button></div>}
       />
 
       <section className="tnx-card-surface access-events-inventory">
@@ -419,7 +428,7 @@ export default function AccessEvents() {
             { label: "Loaded records", value: events.length, tone: "text-white" },
             { label: "Allowed", value: allowedCount, tone: "text-accent-400" },
             { label: "Denied records", value: deniedCount, tone: "text-danger" },
-            { label: "Integrity gaps", value: gapCount, tone: gapCount > 0 ? "text-warn" : "text-ink-body" },
+            { label: source === "beam" ? "Shares in loaded records" : "Integrity gaps", value: source === "beam" ? new Set(events.flatMap(e => e.beam ? [e.beam.share_id] : [])).size : gapCount, tone: gapCount > 0 ? "text-warn" : "text-ink-body" },
           ].map((metric) => (
             <div key={metric.label} className="min-w-0 border-b border-line-row px-5 py-4 last:border-b-0 odd:border-r sm:border-b-0 sm:border-r sm:last:border-r-0">
               <div className={`font-sans text-2xl font-semibold tabular-nums ${metric.tone}`}>{metric.value}</div>
@@ -479,14 +488,14 @@ export default function AccessEvents() {
                   ))}
                 </optgroup>
               )}
-              {identities.devices.length > 0 && (
+              {source === "network" && identities.devices.length > 0 && (
                 <optgroup label="Devices">
                   {identities.devices.map((identity) => (
                     <option key={identity.value} value={identity.value}>{identity.label}</option>
                   ))}
                 </optgroup>
               )}
-              {identities.agents.length > 0 && (
+              {source === "network" && identities.agents.length > 0 && (
                 <optgroup label="AI agents">
                   {identities.agents.map((identity) => (
                     <option key={identity.value} value={identity.value}>{identity.label}</option>
@@ -501,7 +510,7 @@ export default function AccessEvents() {
             )}
           </label>
 
-          {chosenIdentity?.kind === "person" && <div className="access-person-devices">
+          {source === "network" && chosenIdentity?.kind === "person" && <div className="access-person-devices">
             <label>Associated device<select aria-label="Associated device" value={associatedDevice} onChange={e => { prepareFilterReload(); setAssociatedDevice(e.target.value); }}>
               <option value="">All activity recorded for this person</option>
               {associatedDevices.map(device => <option value={device.id} key={device.id}>{device.name}</option>)}
@@ -530,8 +539,7 @@ export default function AccessEvents() {
               className="min-h-9 rounded-md border border-line bg-ink-950 px-2 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
             >
               <option value="person">Person</option>
-              <option value="device">Device</option>
-              <option value="agent">AI agent</option>
+              {source === "network" && <><option value="device">Device</option><option value="agent">AI agent</option></>}
             </select>
             <input
               aria-label="Historical identity UUID"
@@ -559,7 +567,8 @@ export default function AccessEvents() {
           </form>
           </details>
 
-          {rn && (
+          {source === "beam" && <form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); const id = beamShareDraft.trim(); if (id && !UUID_PATTERN.test(id)) return; prepareFilterReload(); setBeamShareID(id); }}><label className="flex flex-col gap-1 text-sm text-ink-secondary">Beam share ID<input aria-label="Beam share ID" maxLength={36} pattern="[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}" value={beamShareDraft} onChange={event => setBeamShareDraft(event.target.value)} className="min-h-9 rounded border border-line bg-ink-950 px-3 text-ink-heading" placeholder="Exact share UUID" /></label><Button type="submit" size="sm">Filter Beam share</Button><Button type="button" size="sm" variant="ghost" onClick={() => { prepareFilterReload(); setBeamShareDraft(""); setBeamShareID(""); }}>Clear Beam share</Button></form>}
+          {source === "network" && rn && (
             <span className={`text-micro ${rn.tone === "danger" ? "text-danger" : rn.tone === "warn" ? "text-warn" : "text-ink-faint"}`}>
               {rn.text}{health?.retention_last_sweep ? ` · ${relativeAge(health.retention_last_sweep)}` : ""}
             </span>
@@ -572,7 +581,7 @@ export default function AccessEvents() {
           </div>
         )}
 
-        <details className="access-events-collectors" aria-label="Gateway collector status">
+        {source === "network" && <details className="access-events-collectors" aria-label="Gateway collector status">
           <summary><span>Collection health</span><span>{healthError ? "Status unavailable" : healthBusy && !health ? "Checking collectors…" : health?.gateway_collectors?.length ? `${health.gateway_collectors.length} collectors · ${health.gateway_collectors.filter(c => collectorStateTone(c.state) === "danger" || collectorStateTone(c.state) === "warn").length} need attention` : "No collector reports"}<span aria-hidden="true"> ＋</span></span></summary>
           {healthBusy && !health ? (
             <Loading size="inline" label="Loading collector status…" />
@@ -612,7 +621,8 @@ export default function AccessEvents() {
           ) : health ? (
             <p className="mt-2 text-xs text-warn">No gateway has reported collector status yet.</p>
           ) : null}
-        </details>
+        </details>}
+        {source === "beam" && <p className="px-4 py-3 text-sm text-ink-secondary">Beam browser access comes from durable control-plane audit records. Retention follows Audit Log policy; network flow sequence and gateway collector health do not apply.</p>}
 
         <div className="access-events-table" aria-busy={busy && events.length === 0}>
         {/* ⛔ TWO PAGERS, AND THEY ARE NOT RIVALS ONCE THEY ARE NAMED. This page pages SERVER-SIDE with a
@@ -642,7 +652,7 @@ export default function AccessEvents() {
             caption="Access events"
             rows={events}
             rowKey={(e) => e.id}
-            empty={hasActiveFilters
+            empty={source === "beam" ? "No retained Beam browser access events match the current filters." : hasActiveFilters
               ? "No retained access events match the current filters."
               : emptyAccessEventsNote(health, healthError !== null)}
             failed={false}
@@ -694,7 +704,7 @@ export default function AccessEvents() {
               header: "Protocol",
               cell: (e) => (
                 <span className="font-sans text-xs uppercase text-ink-tertiary">
-                  {e.protocol}{e.dst_port ? ` · ${e.dst_port}` : ""}
+                  {e.beam ? "Beam browser" : e.protocol}{e.dst_port ? ` · ${e.dst_port}` : ""}
                 </span>
               ),
             },
@@ -714,7 +724,7 @@ export default function AccessEvents() {
 
         {/* ⛔ KEYSET, NOT PAGE NUMBERS — the cursor is (created_at, id), the INGEST clock. */}
         <div className="flex flex-col gap-2 border-t border-line-row px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-micro text-ink-faint">{ATTRIBUTION_NOTE}</p>
+          <p className="text-micro text-ink-faint">{source === "beam" ? "Reviewer IDs are recorded from authenticated browser authority; names are current labels only. These records contain no gateway flow evidence." : ATTRIBUTION_NOTE}</p>
           <div className="flex shrink-0 items-center gap-3">
             <span className="font-sans text-micro text-ink-faint">{events.length} loaded · newest first</span>
             <Button size="sm" onClick={() => void load(false)} disabled={busy || done}>
@@ -727,6 +737,7 @@ export default function AccessEvents() {
       {selected && (
         <Modal title="Access event" size="wide" showClose onDismiss={() => setSelected(null)}>
           <div className="access-event-detail flex flex-col gap-5">
+            {selected.beam ? <BeamAccessEvidence event={selected} reviewerLabel={identityLabelsFor(selected).person} /> : <>
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line-row pb-4">
               <div>
                 <span className={`inline-flex rounded px-2 py-1 font-sans text-badge font-semibold tracking-wide ${decisionClass(selected)}`}>
@@ -783,6 +794,7 @@ export default function AccessEvents() {
             </p>
             </details>
             <p className="text-xs text-ink-secondary">Names reflect current records. Recorded ownership does not identify who initiated the traffic.</p>
+            </>}
           </div>
         </Modal>
       )}

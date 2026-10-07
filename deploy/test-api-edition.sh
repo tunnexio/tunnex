@@ -6,7 +6,7 @@ set -eu
 edition=${TEST_EDITION:-open}
 shard=${API_TEST_SHARD:-all}
 case "$edition" in open) set -- ;; enterprise) set -- -tags enterprise ;; *) echo 'invalid TEST_EDITION' >&2; exit 1 ;; esac
-case "$shard" in all|db|ipsec|nodes|other) ;; *) echo 'invalid API_TEST_SHARD' >&2; exit 1 ;; esac
+case "$shard" in all|db|ipsec|nodes|beam|http|other) ;; *) echo 'invalid API_TEST_SHARD' >&2; exit 1 ;; esac
 : "${TUNNEX_TEST_DATABASE_URL:?explicit test database required}"
 # Build every package in both editions, retaining the previous compile acceptance gate.
 go build "$@" ./...
@@ -17,6 +17,8 @@ selected=$(printf '%s\n' "$packages" | awk -v shard="$shard" '
     if ($0 == "github.com/tunnexio/tunnex/apps/api/db") group="db"
     if ($0 == "github.com/tunnexio/tunnex/apps/api/internal/ipsec") group="ipsec"
     if ($0 == "github.com/tunnexio/tunnex/apps/api/internal/nodes") group="nodes"
+    if ($0 ~ /^github\.com\/tunnexio\/tunnex\/apps\/api\/internal\/beam(\/|$)/) group="beam"
+    if ($0 ~ /^github\.com\/tunnexio\/tunnex\/apps\/api\/internal\/http(\/|$)/) group="http"
     if (shard == "all" || group == shard) print
   }')
 [ -n "$selected" ] || { echo "empty API test shard: $shard" >&2; exit 1; }

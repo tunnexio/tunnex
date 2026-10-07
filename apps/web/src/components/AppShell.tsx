@@ -86,6 +86,10 @@ export const NAV_GROUPS: Array<{
  ],
  },
  {
+    group: "DEVELOPERS",
+    items: [{ to: "/beam", label: "Tunnex Beam", icon: "globe" }],
+  },
+  {
  group: "OBSERVE",
     items: [
       { to: "/alerts", label: "Alerts", icon: "bell" },

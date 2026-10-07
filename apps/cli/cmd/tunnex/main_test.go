@@ -13,7 +13,7 @@ func TestOrdinaryHelpOmitsShelvedSandbox(t *testing.T) {
 	if strings.Contains(help, "sandbox") {
 		t.Fatalf("ordinary help exposes shelved sandbox: %s", help)
 	}
-	for _, command := range []string{"editor", "login", "logout", "device create", "up | down", "k8s", "ai models", "workload run", "version"} {
+	for _, command := range []string{"editor", "login", "logout", "device create", "up | down", "k8s", "ai models", "workload run", "beam publish|resume|policy|audience|list|get|pause|stop|extend", "version"} {
 		if !strings.Contains(help, "tunnex "+command) {
 			t.Errorf("ordinary help lost %q", command)
 		}

@@ -25,6 +25,7 @@ type RecoveryResult struct {
 	PendingOperations int64     `json:"pending_operations_cancelled"`
 	Publications      int64     `json:"publications_disabled"`
 	Users             int64     `json:"user_epochs_advanced"`
+	BeamShares        int64     `json:"beam_shares_revoked,omitempty"`
 	Confirmed         bool      `json:"confirmed"`
 }
 
@@ -63,6 +64,31 @@ func (s *RecoveryService) RecoverAuthority(ctx context.Context, actor string) (R
 	}
 	if out.Users, err = q.AdvanceAllUserAppAuthEpoch(ctx); err != nil {
 		return out, err
+	}
+	// A restored human CLI credential must never resurrect a Beam share.
+	// Historical fixture schemas predate Beam; only the current schema has it.
+	var beamPresent bool
+	if err = tx.QueryRow(ctx, `SELECT to_regclass('public.beam_shares') IS NOT NULL`).Scan(&beamPresent); err != nil {
+		return out, err
+	}
+	if beamPresent {
+		tag, e := tx.Exec(ctx, `UPDATE beam_shares SET state='revoked',certificate_serial=NULL,origin_ready=false,version=version+1,authority_version=authority_version+1,generation=uuid_generate_v7() WHERE state IN ('starting','active','paused')`)
+		if e != nil {
+			return out, e
+		}
+		out.BeamShares = tag.RowsAffected()
+		if _, err = tx.Exec(ctx, `DELETE FROM beam_streams;DELETE FROM beam_browser_sessions;DELETE FROM beam_launch_codes;DELETE FROM beam_pending_launches`); err != nil {
+			return out, err
+		}
+		var settingsPresent bool
+		if err = tx.QueryRow(ctx, `SELECT to_regclass('public.beam_installation_settings') IS NOT NULL`).Scan(&settingsPresent); err != nil {
+			return out, err
+		}
+		if settingsPresent {
+			if _, err = tx.Exec(ctx, `UPDATE beam_installation_settings SET version=version+1,operator_enabled=false,readiness_passed=false,readiness_version='',readiness_checked_at=NULL,readiness_expires_at=NULL,readiness_checks='[]' WHERE singleton`); err != nil {
+				return out, err
+			}
+		}
 	}
 	metadata, err := json.Marshal(struct {
 		RecoveryResult
