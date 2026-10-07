@@ -167,6 +167,7 @@ type Deps struct {
 // correlation ID is available when the access log is written; the OpenAPI
 // validator runs before handlers so malformed requests never reach them.
 func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
+	d = shelvedSandboxDependencies(d)
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -213,6 +214,9 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		})
 	})
 
+	// TODO(sandbox-reentry): docs/S-sandbox-shelved-main-reentry.md. Refuse
+	// dormant product paths before authentication or request-body validation.
+	r.Use(sandboxShelvedMiddleware)
 	r.Use(appDomainRuntimeMiddleware(d.AppDomains))
 	r.Use(aiTransportMiddleware(d.AITransport))
 	r.Use(workloadMiddleware(d.AIWorkloads, d.AIAdapter))

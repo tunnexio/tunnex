@@ -47,6 +47,39 @@ runner, lifetime, enrollment or release development.
 Stories 1 and 2 can proceed independently after this decision record. Story 3
 depends on both, and story 4 closes the local checkpoint.
 
+## Shelving boundaries
+
+| Integration | Main-based boundary |
+| --- | --- |
+| Web | `SANDBOX_PRODUCT_SHELVED` disables existing sandbox lazy pages, routes, navigation and effective metadata. Direct links show Not found before product providers. Existing Settings, SHIELD and App Access wiring remain. |
+| API/server | `sandboxproduct.Shelved` bypasses only sandbox configuration validation and the lazy sandbox initializer. No retirement query, private runtime loader, sandbox worker or fixture transport is constructed. HTTP clears sandbox dependencies and returns 404 before authentication/body processing for sandbox and its saved-key endpoints. |
+| CLI/node executables | CLI `SandboxProductAvailable = false` and node `sandboxproduct.Available = false` hide/refuse existing sandbox entry points before dedicated flags, files or network setup. Ordinary managed-agent and VPN commands remain. |
+| CI/release | Sandbox Python contracts, bundle/image producers, downloads, distribution attachment and attestations are dormant. The two historical tooling matrix contexts print a shelving notice; aggregate needs and ordinary signing/managed-agent/source-ledger steps remain. |
+
+Source is retained, including its underlying scope restrictions and existing
+cleanup contracts. This local source change does not stop or clean up an
+already deployed installation.
+
+The checked package selector excludes the four existing API families
+`sandboxes`, `sandboxrunner`, `sandboxruntime`, `sandboxscope`; node
+`sandboxnetwork`; dedicated API/node `cmd/tunnex-sandbox-*` commands; and CLI's
+exact `cmd/tunnex-sandbox-bootstrap` package. New ordinary
+packages and the new static-gate acceptance code remain covered. Full source
+builds and CLI vet remain active; App Access transport tests are unchanged.
+Exactly ten existing sandbox-only Vitest suites and two historical publication
+contract cases are archived, while shelving/shared acceptance remains active.
+
+Review disposition: the unchanged `cli-release` job deliberately retains its
+full CLI tests, including the bootstrap command's sole new shelving-refusal
+test. That negative acceptance test performs no sandbox feature work. Keeping
+it preserves ordinary release behavior and verifies the unavailable command;
+it is not sandbox qualification.
+
+No dependency manifest or lockfile changed. Shared Python/SQLite prerequisites
+for native AI tests and node VPN tools/`NET_ADMIN` remain. Only sandbox-specific
+CI installation, fixtures and artifact-generation requirements were disabled.
+The existing native web-image build fix remains untouched.
+
 ## Preserved local development history
 
 The earlier combined development/shelving branch remains local as
@@ -76,5 +109,42 @@ checkpoints remain local; obtain that handoff deliberately before any restart.
 
 ## Validation ledger
 
-Decision record committed before implementation. Results and the final content
-pointer will be recorded after the bounded main-based changes are complete.
+Decision record `39e90b7e` was committed before implementation. The final PLAN
+pointer names the completed content checkpoint.
+
+Passed locally:
+
+- Web typecheck, lint and production build; 53 focused tests; 25 built-browser
+  smoke checks with synthetic read-only fixtures. Seven direct sandbox links
+  make no API calls; ordinary Settings, OpenVPN, Applications and SHIELD
+  navigation remain usable. No sandbox page chunks or entry labels are emitted.
+  Discovery retains 173 suites and excludes exactly ten dormant feature files.
+- CI/script contracts: 84 passing, two explicit historical skips, zero failed.
+  Real readonly/offline package discovery preserves shared/current packages;
+  aggregate contexts and remaining artifact producers/consumers are consistent.
+- All five workflows pass actionlint 1.7.12; the 21-job CI graph and 73 embedded
+  shell scripts pass syntax checks without executing those scripts. Shellcheck
+  and pyflakes are unavailable and disabled.
+- Both API editions pass the Go embed/classifier census and focused ordinary
+  release signing, manifest and bootstrap verifier checks (38 passing events
+  per edition), using synthetic fixture keys only.
+- Both API editions pass 17 focused product/shared HTTP tests, with seven
+  explicit dormant/DB skips each. Coverage includes all 30 sandbox operations
+  before authentication/body processing, the 433-operation sessionless census,
+  shared terminal/auth transport, and inactive startup/configuration callbacks.
+  Full API source builds pass for Linux AMD64 in both editions.
+- Six focused node/CLI checks and dedicated node Linux AMD64 builds pass.
+  Ordinary agent and CLI behavior remain preserved.
+- Bounded independent source reviews cover product seams, shared behavior,
+  package selection, CI/artifacts and public-document privacy. No blocking
+  finding remains; the deliberate CLI refusal-test exception is recorded above.
+
+The first API validation run exceeded its compilation timeout without producing
+an assertion/build result; it is incomplete, not passing. A new metadata test
+then injected an inert tenancy service with no database and failed in that
+fixture. The fixture was corrected without a product-code change; both edition
+reruns and full builds pass. Restricted browser and HTTP test listeners lacked
+loopback permission; narrow approved local fixture runs subsequently passed,
+and their servers/browser were closed. Full database/container gates, native Linux execution, full web
+suite, generated-drift execution and remote CI are unrun. No migrations or
+generated-contract inputs/outputs changed.

@@ -20,6 +20,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxruntime"
 	"golang.org/x/crypto/ssh"
 	"io"
@@ -79,6 +80,11 @@ func openOwned(path string) (*os.Root, error) {
 	return os.OpenRoot(path)
 }
 func main() {
+	// TODO(sandbox-reentry): docs/S-sandbox-shelved-main-reentry.md.
+	if sandboxproduct.Shelved {
+		fmt.Fprintln(os.Stderr, sandboxproduct.Message)
+		os.Exit(1)
+	}
 	configPath := flag.String("fixture-config", state+"/worker/config.json", "private task fixture config")
 	supplemental := flag.Bool("qualification-supplemental", false, "explicit approved supplemental Minimal/Python identities only")
 	action := flag.String("qualification-action", "", "explicit existing-fixture action: preflight/migrate/restore-schema/create/status/start/stop/delete/finish")

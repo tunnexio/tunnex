@@ -33,6 +33,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
@@ -50,6 +51,9 @@ import (
 // are used. The clock is rebased ONCE before any worker authorization, keeping
 // the admitted 300-second interval; the remote lease then expires naturally.
 func TestSandboxRemoteHTTPFailureSequence(t *testing.T) {
+	if sandboxproduct.Shelved {
+		t.Skip("historical active sandbox router fixture; see docs/S-sandbox-shelved-main-reentry.md")
+	}
 	ctx, pool := testpostgres.New(t)
 	org, owner, terminalID, template := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	terminalGW := uuid.MustParse("11111111-1111-4111-8111-111111111111")

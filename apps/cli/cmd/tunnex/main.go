@@ -22,7 +22,11 @@ import (
 var version = "dev"
 
 func usage() {
-	fmt.Fprint(os.Stderr, `tunnex — self-hosted VPN & Zero Trust
+	writeUsage(os.Stderr)
+}
+
+func writeUsage(out io.Writer) {
+	fmt.Fprint(out, `tunnex — self-hosted VPN & Zero Trust
 
 Usage:
   tunnex editor --server HTTPS_URL --org UUID --target UUID --account USER [--ca PEM]
@@ -40,8 +44,6 @@ Usage:
                                             connect an application with renewable workload authentication
   tunnex workload enroll|token|rotate|retire --config FILE
                                             enroll, obtain a token, rotate the key, or permanently retire
-  tunnex sandbox create|get|start|stop|delete
-                                            scoped lifecycle with existing machine bearer
   tunnex version                            print the exact CLI build version
 `)
 }
@@ -99,6 +101,8 @@ func main() {
 			err = cli.Login(ctx, s)
 		}
 	case "sandbox":
+		// TODO(sandbox-reentry): restore help and lifecycle together; see
+		// docs/S-sandbox-shelved-main-reentry.md.
 		err = cli.SandboxLifecycle(ctx, os.Args[2:], os.Stdout)
 	case "ai":
 		err = cli.AI(ctx, os.Args[2:], os.Stdout)

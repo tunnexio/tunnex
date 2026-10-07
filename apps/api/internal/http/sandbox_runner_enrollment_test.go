@@ -15,6 +15,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
 
@@ -85,6 +86,9 @@ func (f *runnerEnrollmentStub) StatusQualification(context.Context, uuid.UUID, u
 
 func runnerEnrollmentRouter(t *testing.T, repo *runnerEnrollmentStub, org uuid.UUID, principal **authctx.Principal, wake func()) http.Handler {
 	t.Helper()
+	if sandboxproduct.Shelved {
+		t.Skip("historical active sandbox router fixture; see docs/S-sandbox-shelved-main-reentry.md")
+	}
 	handler, err := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), Deps{SandboxRunnerEnrollment: repo, SandboxRunnerQualification: repo, SandboxWake: wake, Orgs: tenancy.NewService(nil), AuthFn: func(*http.Request) *authctx.Principal { return *principal }})
 	if err != nil {
 		t.Fatal(err)

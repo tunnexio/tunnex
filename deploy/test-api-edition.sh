@@ -1,6 +1,7 @@
 #!/bin/sh
-# Run from apps/api. Every package belongs to exactly one shard; unknown/new packages
-# automatically remain covered by "other". Serial packages still share one isolated DB.
+# Run from apps/api. Every active package belongs to exactly one shard; unknown/new
+# ordinary packages remain covered by "other". Retained source builds in full.
+# Serial packages still share one isolated DB.
 set -eu
 edition=${TEST_EDITION:-open}
 shard=${API_TEST_SHARD:-all}
@@ -9,7 +10,7 @@ case "$shard" in all|db|ipsec|nodes|other) ;; *) echo 'invalid API_TEST_SHARD' >
 : "${TUNNEX_TEST_DATABASE_URL:?explicit test database required}"
 # Build every package in both editions, retaining the previous compile acceptance gate.
 go build "$@" ./...
-packages=$(go list "$@" ./...)
+packages=$(sh "$(dirname "$0")/ci-active-go-packages.sh" api "$@")
 selected=$(printf '%s\n' "$packages" | awk -v shard="$shard" '
   NF {
     group="other"

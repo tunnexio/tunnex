@@ -13,6 +13,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
 
@@ -22,6 +23,9 @@ type generatedDelegationRepo struct {
 }
 
 func TestSandboxDelegationGeneratedRouter(t *testing.T) {
+	if sandboxproduct.Shelved {
+		t.Skip("historical active sandbox router fixture; see docs/S-sandbox-shelved-main-reentry.md")
+	}
 	org, owner := uuid.New(), uuid.New()
 	repo := &generatedDelegationRepo{}
 	principal := &authctx.Principal{UserID: owner, EmailVerified: true, Roles: map[uuid.UUID]string{org: rbac.RoleOwner}}

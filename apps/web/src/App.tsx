@@ -12,6 +12,7 @@ import { MfaSettings } from "./components/MfaSettings";
 import { AppShell } from "./components/AppShell";
 import { DeploymentMetaProvider } from "./lib/deploymentMeta";
 import { SandboxModuleGate } from "./components/SandboxModuleGate";
+import { SANDBOX_PRODUCT_SHELVED } from "./lib/sandboxProduct";
 import { Loading } from "./components/ui";
 import { OrgProvider } from "./lib/useOrg";
 import { LicenceResourceProvider } from "./lib/licenceResource";
@@ -58,11 +59,11 @@ import AuditLog from "./pages/AuditLog";
 import AppAccessEvents from "./pages/AppAccessEvents";
 import Alerts from "./pages/Alerts";
 
-const SandboxesPage = lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxesPage })));
-const SandboxCreatePage = lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxCreatePage })));
-const SandboxDetailPage = lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxDetailPage })));
-const SandboxSetupPage = lazy(() => import("./pages/SandboxSetup").then(module => ({ default: module.SandboxSetupPage })));
-const SandboxCustomSkillsPage = lazy(() => import("./pages/SandboxCustomSkills"));
+const SandboxesPage = !SANDBOX_PRODUCT_SHELVED ? lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxesPage }))) : null;
+const SandboxCreatePage = !SANDBOX_PRODUCT_SHELVED ? lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxCreatePage }))) : null;
+const SandboxDetailPage = !SANDBOX_PRODUCT_SHELVED ? lazy(() => import("./pages/Sandboxes").then(module => ({ default: module.SandboxDetailPage }))) : null;
+const SandboxSetupPage = !SANDBOX_PRODUCT_SHELVED ? lazy(() => import("./pages/SandboxSetup").then(module => ({ default: module.SandboxSetupPage }))) : null;
+const SandboxCustomSkillsPage = !SANDBOX_PRODUCT_SHELVED ? lazy(() => import("./pages/SandboxCustomSkills")) : null;
 
 const VisualGallery = import.meta.env.VITE_VISUAL_GALLERY === "1"
   ? lazy(() => import("./pages/VisualGallery"))
@@ -91,6 +92,7 @@ export default function App() {
   }, []);
   return (
     <Routes>
+      {SANDBOX_PRODUCT_SHELVED && <Route path="/sandboxes/*" element={<NotFound />} />}
       {/* Build-flagged fixture routes are selected before ProductApp mounts. They
           cannot bootstrap /auth/me or any other product provider/API request,
           and their lazy chunks are absent from normal production builds. */}
@@ -199,14 +201,14 @@ function ProductApp() {
             <Route path="/site-to-site" element={<SiteToSite />} />
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
-            <Route element={<SandboxModuleGate />}>
+            {!SANDBOX_PRODUCT_SHELVED && SandboxesPage && SandboxSetupPage && SandboxCreatePage && SandboxCustomSkillsPage && SandboxDetailPage && <Route element={<SandboxModuleGate />}>
               <Route path="/sandboxes" element={<Suspense fallback={<Loading />}><SandboxesPage /></Suspense>} />
               <Route path="/sandboxes/setup" element={<Suspense fallback={<Loading />}><SandboxSetupPage /></Suspense>} />
               <Route path="/sandboxes/new" element={<Suspense fallback={<Loading />}><SandboxCreatePage /></Suspense>} />
               <Route path="/sandboxes/skills" element={<Suspense fallback={<Loading />}><SandboxCustomSkillsPage /></Suspense>} />
               <Route path="/sandboxes/skills/:skillId" element={<Suspense fallback={<Loading />}><SandboxCustomSkillsPage /></Suspense>} />
               <Route path="/sandboxes/:sandboxId" element={<Suspense fallback={<Loading />}><SandboxDetailPage /></Suspense>} />
-            </Route>
+            </Route>}
             <Route path="/agents" element={<AgentsIndex />} />
             <Route path="/mcp" element={<AgentsMCP />} />
             <Route path="/agents/mcp" element={<LegacyWorkspaceRedirect to="/mcp" />} />
@@ -251,6 +253,14 @@ function ProductApp() {
       </Routes>
     </DeploymentMetaProvider></AuthProvider>
   );
+}
+
+function NotFound() {
+  return <main className="space-y-4 p-6">
+    <h1 className="text-2xl font-semibold text-ink-heading">Page not found</h1>
+    <p className="text-sm text-ink-secondary">The page you requested is unavailable.</p>
+    <Link className="text-sm text-accent underline" to="/dashboard">Go to Overview</Link>
+  </main>;
 }
 
 // RequireAuth gates the authenticated area: it waits out the /me bootstrap (no
