@@ -72,6 +72,7 @@ test('standard Make lanes preserve compilation, CLI vet and native VPN tools', (
     const r = spawnSync('make', ['-n', target, 'PG_USER=fixture', 'PG_PASS=fixture', 'PG_DB=fixture', 'NET=fixture'], { encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /go build \.\/\.\.\./);
+    if (target !== 'e2e') assert.match(r.stdout, /GOFLAGS='-mod=readonly -buildvcs=false'/);
     assert.ok(r.stdout.includes(`ci-active-go-packages.sh ${module}`));
     assert.doesNotMatch(r.stdout, /sandboxnetwork\.test|su -s \/bin\/sh nobody/);
     if (target === 'test-node') {

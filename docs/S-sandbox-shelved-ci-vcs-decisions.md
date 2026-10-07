@@ -8,9 +8,10 @@ not provide usable Git metadata to the compiler.
 
 ## Decisions before correction
 
-- Locked: add `-buildvcs=false` only to these two compile-only `go build ./...`
-  steps. Preserve complete source compilation, CLI vet, selected ordinary
-  tests, readonly modules and the existing native VPN prerequisites.
+- Locked: add `-buildvcs=false` to `GOFLAGS` only in these two test containers.
+  Package discovery also loads VCS metadata, so a build-only argument is
+  insufficient. Preserve complete source compilation, CLI vet, selected
+  ordinary tests, readonly modules and the existing native VPN prerequisites.
 - Locked: leave release build flags, release provenance, workflow permissions,
   required checks and shared product behavior unchanged. This correction does
   not reactivate sandbox code or import the preserved implementation history.
@@ -19,6 +20,15 @@ not provide usable Git metadata to the compiler.
   must pass at the actual updated PR head; the failed original run remains
   evidence and is not counted as a passing run.
 
-The architecture choice in the earlier user prompt is already recorded in
-the preserved local runner implementation. It does not require copying that
-unfinished product history into this shelving PR.
+## Local validation
+
+- Real Go 1.26.8 fixture: unavailable Git metadata reproduces both build and
+  discovery failures; inherited corrected flags pass build, vet, actual
+  package selection and selected ordinary tests.
+- Complete Linux AMD64 node and CLI module builds pass with readonly cached
+  dependencies and the corrected flags.
+- CLI vet and all five selected ordinary package test invocations pass.
+- Affected CI contracts: 72 passed, two explicit historical skips, no failures.
+- Independent bounded review and `git diff --check` pass; release source and
+  provenance flags are unchanged. Corrected remote checks remain a separate
+  exact-head gate, not established by local tests.

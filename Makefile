@@ -307,7 +307,7 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
 	# Full retained source builds; ordinary VPN tools and NET_ADMIN checks stay.
 	# TODO: restore exclusive sandbox tests through docs/S-sandbox-shelved-main-reentry.md.
-	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
 	  $(GO_IMAGE) sh -ec 'apk add --no-cache git openvpn nftables iptables; go build ./...; \
 	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh node); set -f; go test -count=1 $$packages'
 
@@ -358,7 +358,7 @@ test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate c
 	# never COMPILES it, so a generated-code defect (an openapi schema name colliding with an oapi-codegen
 	# response-wrapper type) shipped to main and sat there undetected. A shipped module with no gate is the
 	# extreme case of the degraded-signal class this epic repays; build+vet+test closes it.
-	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
 	  $(GO_IMAGE) sh -ec 'apk add --no-cache git; go build ./...; go vet ./...; \
 	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh cli); set -f; go test -count=1 $$packages'
 

@@ -362,6 +362,7 @@ test('node lane preserves ordinary VPN checks without the dormant sandbox Unix f
   assert.match(nodeRecipe, /--cap-add=NET_ADMIN/);
   assert.match(nodeRecipe, /git openvpn nftables iptables/);
   assert.match(nodeRecipe, /go build \.\/\.\.\./);
+  assert.match(nodeRecipe, /GOFLAGS='-mod=readonly -buildvcs=false'/);
   assert.match(nodeRecipe, /ci-active-go-packages\.sh node/);
   assert.doesNotMatch(nodeRecipe, /sandboxnetwork\.test|TestInactiveCleanupActualUnixBoundary|su -s/);
   assert.doesNotMatch(nodeRecipe, /\|\| true|continue-on-error/);
