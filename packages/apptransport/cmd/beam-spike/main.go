@@ -66,6 +66,25 @@ func identity(ca *x509.Certificate, caKey *ecdsa.PrivateKey, serial int64, clien
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}), nil
 }
 
+func newFixtureViewer(certificate tls.Certificate, reviewToken string, next http.Handler) *httptest.Server {
+	viewer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_beam/fixture-signin" {
+			http.SetCookie(w, &http.Cookie{Name: "beam_fixture_review", Value: reviewToken, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		cookie, err := r.Cookie("beam_fixture_review")
+		if err != nil || cookie.Value != reviewToken {
+			http.Error(w, "Fixture reviewer denied", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
+	viewer.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13}
+	viewer.StartTLS()
+	return viewer
+}
+
 func run() error {
 	dir := flag.String("fixture-dir", "", "private directory for ephemeral fixture keys and metadata")
 	ttl := flag.Duration("ttl", 10*time.Minute, "fixture authority lifetime")
@@ -147,7 +166,7 @@ func run() error {
 		p.SetURL(logical)
 		p.Out.Host = binding.Hostname
 		apptransport.StripCredentials(p.Out.Header)
-		// Local fixture HTTP origin only; production cross-origin behavior is not
+		// Local fixture origin only; production cross-origin behavior is not
 		// qualified by this rewrite.
 		if p.In.Header.Get("Origin") == viewerURL {
 			p.Out.Header.Set("Origin", "https://"+binding.Hostname)
@@ -166,17 +185,7 @@ func run() error {
 	}, ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
 		http.Error(w, "Beam fixture unavailable", http.StatusServiceUnavailable)
 	}}
-	viewer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/_beam/fixture-signin" {
-			http.SetCookie(w, &http.Cookie{Name: "beam_fixture_review", Value: reviewToken, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		cookie, cookieErr := r.Cookie("beam_fixture_review")
-		if cookieErr != nil || cookie.Value != reviewToken {
-			http.Error(w, "Fixture reviewer denied", http.StatusForbidden)
-			return
-		}
+	viewer := newFixtureViewer(certificate, reviewToken, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := authority(r.Context(), binding, "b"); err != nil {
 			http.Error(w, "Fixture authority withdrawn", http.StatusForbidden)
 			return

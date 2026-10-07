@@ -54,3 +54,5 @@ Persistent publisher/grant/policy/session APIs and current-source revocation che
 ## Reproduction
 
 Build `packages/apptransport/cmd/beam-spike` to `/private/tmp/tunnex-beam-spike`, then use `BEAM_SPIKE_BIN` with the client's `test:beam:integration` or `dev:beam` commands. Full instructions are in the client worktree's `docs/BEAM-local-development.md`. Run the standard core and client gates from their own worktrees.
+
+The current fixture reviewer uses loopback HTTPS with TLS 1.3 and a Secure, HttpOnly, SameSite=Strict cookie. Its regression verifies HTTPS sign-in, plaintext refusal and cookie transport restrictions. Companion desktop integration programs trust the generated fixture CA explicitly; they keep certificate verification enabled. This replaces the original HTTP viewer described in the historical evidence above.
