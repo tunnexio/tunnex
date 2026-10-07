@@ -110,7 +110,7 @@ checkpoints remain local; obtain that handoff deliberately before any restart.
 ## Validation ledger
 
 Decision record `39e90b7e` was committed before implementation. The final PLAN
-pointer names content checkpoint `af23c13fe986e81867393e46b0e28b0762862842`;
+pointer names content checkpoint `666d0c4c692ae9527f4739db2ea584dfe2bf8ce8`;
 the subsequent checkpoint commit changes documentation only.
 
 Passed locally:
@@ -147,5 +147,20 @@ fixture. The fixture was corrected without a product-code change; both edition
 reruns and full builds pass. Restricted browser and HTTP test listeners lacked
 loopback permission; narrow approved local fixture runs subsequently passed,
 and their servers/browser were closed. Full database/container gates, native Linux execution, full web
-suite, generated-drift execution and remote CI are unrun. No migrations or
+suite and generated-drift execution were not run locally. No migrations or
 generated-contract inputs/outputs changed.
+
+## Authorized draft publication and CI correction
+
+[Draft PR #103](https://github.com/tunnexio/tunnex/pull/103) was published under
+separate authorization after source review. Its initial head `9a3ab4f7` passed
+Security and Dependency Review. The main CI run completed with two tooling
+failures: node and CLI full-source compile steps could not obtain VCS status
+inside their source-mounted containers, before tests ran.
+
+The [scoped correction decisions](S-sandbox-shelved-ci-vcs-decisions.md) record
+the real-Go reproduction and two-lane `GOFLAGS` change. Complete Linux AMD64
+node/CLI builds, CLI vet and selected tests, 72 affected contract checks and
+independent review pass locally. The updated exact-head remote results belong
+to the PR checks; local validation does not establish their success. No release
+flags, live resources or preserved sandbox development source changed.
