@@ -7,6 +7,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 	"github.com/tunnexio/tunnex/apps/api/internal/wgkey"
 	"io"
@@ -18,6 +19,9 @@ import (
 )
 
 func TestSandboxBootstrapPostgresRouterClosedAtomicAndSingleUse(t *testing.T) {
+	if sandboxproduct.Shelved {
+		t.Skip("historical active sandbox router fixture; see docs/S-sandbox-shelved-main-reentry.md")
+	}
 	ctx, pool := testpostgres.New(t)
 	org, user, gateway, template := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	_, public, err := wgkey.Generate()

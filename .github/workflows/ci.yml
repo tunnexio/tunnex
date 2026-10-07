@@ -65,7 +65,7 @@ jobs:
                 # api / cli / node / operator builds — only its ABSENCE can, which DELETED covers.
                 GO_RELEVANT=$(printf '%s\n' "$CHANGED" \
                   | grep -vxF 'apps/api/cmd/seed-fixtures/fixtures.sql' \
-                  | grep -E '(^deploy/test-api-edition\.sh$|^deploy/sandbox/|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|packages/apptransport/bootstrap/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/|apps/api/internal/sandboxes/image_profiles\.json$)' || true)
+                  | grep -E '(^deploy/test-api-edition\.sh$|^deploy/ci-active-go-packages(\.sh|_test\.mjs)$|^deploy/sandbox/|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|packages/apptransport/bootstrap/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/|apps/api/internal/sandboxes/image_profiles\.json$)' || true)
                 DELETED_GO=$(printf '%s\n' "$DELETED" | grep -E '.' || true)
                 if [ -z "$(printf '%s' "$GO_RELEVANT$DELETED_GO" | tr -d '[:space:]')" ]; then
                   RUN_GO=false
@@ -118,14 +118,6 @@ jobs:
 
       - name: Digest-pinned AI VPN overlay contract
         run: python3 -B -m unittest discover -s deploy/ai-vpn -p 'test_*.py' -v
-
-      - name: Sandbox public packaging and source-only safety contracts
-        run: |
-          python3 -B -m unittest discover -s deploy/sandbox -p 'test_*.py' -v
-          python3 -B -m unittest discover -s deploy/sandbox/qualification -p 'test_*.py' -v
-          python3 -B -m unittest discover -s deploy/sandbox/ci -p 'test_*.py' -v
-          python3 -B -m unittest discover -s deploy/sandbox/install -p 'test_*.py' -v
-          python3 -B -m unittest discover -s deploy/sandbox/ubuntu-base -p 'test_*.py' -v
 
       - name: Installer version provenance contract
         run: sh deploy/install-version-provenance_test.sh
@@ -199,7 +191,7 @@ jobs:
       - name: Draft release publication permissions contract
         run: ruby deploy/release-draft-permissions_test.rb
       - name: CI aggregation and wiring contracts
-        run: node --test deploy/ci-gates_test.mjs deploy/test-api-edition_test.mjs deploy/pull-ci-services_test.mjs
+        run: node --test deploy/ci-gates_test.mjs deploy/ci-active-go-packages_test.mjs deploy/test-api-edition_test.mjs deploy/pull-ci-services_test.mjs
 
       - name: Kubernetes zero-touch chart contracts
         run: make test-k8s-charts
@@ -391,40 +383,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - if: matrix.target != 'test-sandbox-package' && matrix.target != 'test-sandbox-image'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/go-container-cache
+      - if: matrix.target != 'test-sandbox-package' && matrix.target != 'test-sandbox-image'
+        uses: ./.github/actions/go-container-cache
         with:
           lane: ${{ matrix.target }}
-      - name: Set up pinned host Go for the offline image producer
-        if: matrix.target == 'test-sandbox-image'
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version: '1.26.8'
-          cache: false
-      - run: make ${{ matrix.target }}
-      - name: Retain public Linux sandbox bundles for the existing release job
-        if: matrix.target == 'test-sandbox-package' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: tunnex-linux-sandbox
-          path: |
-            dist/sandbox/amd64/tunnex-sandbox-linux-amd64.tar.gz
-            dist/sandbox/amd64/tunnex-sandbox-linux-amd64.tar.gz.sha256
-            dist/sandbox/arm64/tunnex-sandbox-linux-arm64.tar.gz
-            dist/sandbox/arm64/tunnex-sandbox-linux-arm64.tar.gz.sha256
-          if-no-files-found: error
-      - name: Retain public Ubuntu AMD64 workload delivery for the existing release job
-        if: matrix.target == 'test-sandbox-image' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: tunnex-linux-sandbox-image
-          path: |
-            dist/sandbox-image/amd64/tunnex-sandbox-ubuntu26-linux-amd64.docker.tar
-            dist/sandbox-image/amd64/workload-image.json
-            dist/sandbox-image/amd64/SHA256SUMS
-          if-no-files-found: error
+      - if: matrix.target != 'test-sandbox-package' && matrix.target != 'test-sandbox-image'
+        run: make ${{ matrix.target }}
+      # Preserve historical check contexts without sandbox tools or artifacts.
+      # TODO: docs/S-sandbox-shelved-main-reentry.md.
+      - name: Shelved sandbox compatibility check
+        if: matrix.target == 'test-sandbox-package' || matrix.target == 'test-sandbox-image'
+        run: echo "::notice::Sandbox packaging and image checks are shelved; no sandbox work ran. See docs/S-sandbox-shelved-main-reentry.md."
 
   web:
     needs: scope
@@ -1501,20 +1474,6 @@ jobs:
         with:
           name: tunnex-linux-agent-runtime
           path: runtime-artifacts
-      - name: Download public Linux sandbox bundles
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: tunnex-linux-sandbox
-          path: sandbox-artifacts
-      - name: Verify sandbox bundle source, checksums and public inventory
-        run: python3 -B deploy/sandbox/ci/package.py verify --directory sandbox-artifacts --source "$GITHUB_SHA"
-      - name: Download public Ubuntu AMD64 workload delivery
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: tunnex-linux-sandbox-image
-          path: sandbox-image-artifacts
-      - name: Verify workload archive, source, architecture and committed dependency lock
-        run: python3 -B deploy/sandbox/ci/image.py verify --directory sandbox-image-artifacts --source "$GITHUB_SHA"
       - name: Checksum platform installers (bare filename so `sha256sum -c` works in the download dir)
         working-directory: deploy
         run: |
@@ -1770,48 +1729,6 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" \
             "$amd64" "$arm64" "$unit" runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS --clobber
-      - name: Attach verified public sandbox bundles to the existing draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          python3 -B deploy/sandbox/ci/package.py verify --directory sandbox-artifacts --source "$GITHUB_SHA"
-          python3 -B deploy/sandbox/ci/image.py verify --directory sandbox-image-artifacts --source "$GITHUB_SHA"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then RELEASE_TAG="$GITHUB_REF_NAME"; else RELEASE_TAG="tunnex-build-${GITHUB_SHA}"; fi
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)" = "$GITHUB_SHA"
-          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
-          EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
-          ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
-          test "$ACTUAL" = "$EXPECTED"
-          python3 -B deploy/sandbox/ci/package.py distribution \
-            --directory sandbox-artifacts --source "$GITHUB_SHA" \
-            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
-            --image-directory sandbox-image-artifacts \
-            --output "$PWD/sandbox-distribution"
-          (cd sandbox-distribution && sha256sum -c Tunnex-Sandbox-Enroll.py.sha256 Tunnex-Sandbox-Distribution.json.sha256)
-          gh release upload "$RELEASE_TAG" \
-            sandbox-artifacts/amd64/tunnex-sandbox-linux-amd64.tar.gz \
-            sandbox-artifacts/amd64/tunnex-sandbox-linux-amd64.tar.gz.sha256 \
-            sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz \
-            sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz.sha256 \
-            sandbox-distribution/Tunnex-Sandbox-Enroll.py \
-            sandbox-distribution/Tunnex-Sandbox-Enroll.py.sha256 \
-            sandbox-distribution/Tunnex-Sandbox-Distribution.json \
-            sandbox-distribution/Tunnex-Sandbox-Distribution.json.sha256 \
-            sandbox-image-artifacts/tunnex-sandbox-ubuntu26-linux-amd64.docker.tar \
-            sandbox-image-artifacts/workload-image.json \
-            sandbox-image-artifacts/SHA256SUMS --clobber
-      - name: Attest public sandbox source bundles
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: |
-            sandbox-artifacts/amd64/tunnex-sandbox-linux-amd64.tar.gz
-            sandbox-artifacts/arm64/tunnex-sandbox-linux-arm64.tar.gz
-            sandbox-distribution/Tunnex-Sandbox-Enroll.py
-            sandbox-distribution/Tunnex-Sandbox-Distribution.json
-            sandbox-image-artifacts/tunnex-sandbox-ubuntu26-linux-amd64.docker.tar
-            sandbox-image-artifacts/workload-image.json
       - name: Attach and verify managed-agent bootstrap verifier assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

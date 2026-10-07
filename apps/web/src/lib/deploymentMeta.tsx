@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type Meta } from "./api";
+import { SANDBOX_PRODUCT_SHELVED } from "./sandboxProduct";
 
 type State = { loaded: boolean; meta: Meta | null };
 const Context = createContext<State>({ loaded: true, meta: null });
@@ -22,5 +23,6 @@ export function DeploymentMetaProvider({ children, value }: { children: ReactNod
 export function useDeploymentMeta() { return useContext(Context); }
 export function useSandboxModuleState() {
  const { loaded, meta } = useDeploymentMeta();
+ if (SANDBOX_PRODUCT_SHELVED) return "disabled";
  return !loaded ? "loading" : meta?.sandbox_module_state ?? "disabled";
 }

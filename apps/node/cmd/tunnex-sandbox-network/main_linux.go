@@ -13,9 +13,16 @@ import (
 	"syscall"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/sandboxnetwork"
+	"github.com/tunnexio/tunnex/apps/node/internal/sandboxproduct"
 )
 
 func main() {
+	// TODO(sandbox-reentry): see docs/S-sandbox-shelved-main-reentry.md.
+	// Refuse before configuration, filesystem inspection or privileged work.
+	if !sandboxproduct.Available {
+		fmt.Fprintln(os.Stderr, sandboxproduct.ErrShelved)
+		os.Exit(1)
+	}
 	socket := flag.String("socket", "/run/tunnex-sandbox-network/control.sock", "root-owned local control socket")
 	state := flag.String("state", "/var/lib/tunnex-sandbox-network", "existing exclusive root-owned state")
 	worker := flag.Uint("worker-uid", 0, "approved rootless worker UID")

@@ -17,6 +17,7 @@ import { SetupReturn } from "./SetupReturn";
 import { IdentityBadges } from "./IdentityBadges";
 import { useLayoutCapability } from "./ComposeGate";
 import { useSandboxModuleState } from "../lib/deploymentMeta";
+import { SANDBOX_PRODUCT_SHELVED } from "../lib/sandboxProduct";
 import { CommandPalette } from "./CommandPalette";
 import { useNavCounts } from "../lib/useNavCounts";
 import { Icon, type IconName } from "./Icon";
@@ -56,10 +57,10 @@ export const NAV_GROUPS: Array<{
 
     ],
   },
-  {
+  ...(!SANDBOX_PRODUCT_SHELVED ? [{
     group: "WORKSPACES",
-    items: [{ to: "/sandboxes", label: "Sandboxes", icon: "boxes" }],
-  },
+    items: [{ to: "/sandboxes", label: "Sandboxes", icon: "boxes" as const }],
+  }] : []),
   {
     group: "AI",
     items: [

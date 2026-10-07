@@ -18,6 +18,15 @@ import (
 // It performs a single request: caller-owned idempotency keys and generations
 // survive uncertain responses. It never logs in, enrolls or polls/provisions.
 func SandboxLifecycle(ctx context.Context, args []string, out io.Writer) error {
+	if !SandboxProductAvailable {
+		return ErrSandboxShelved
+	}
+	return sandboxLifecycle(ctx, args, out)
+}
+
+// Retain the implementation for deliberate re-entry and historical contract tests.
+// TODO(sandbox-reentry): see docs/S-sandbox-shelved-main-reentry.md.
+func sandboxLifecycle(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("usage: tunnex sandbox create|get|start|stop|delete --org UUID [--id UUID --generation N --request FILE --idempotency-key KEY]")
 	}

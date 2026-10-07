@@ -113,7 +113,65 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
     'both exact key and restore prefix must isolate matrix cache writers');
 });
 
-test('sandbox bundles reuse blocking tooling and existing guarded release publication', () => {
+test('shelved sandbox check contexts run only a notice', () => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const { jobs } = JSON.parse(parsed.stdout);
+  const ordinary = "matrix.target != 'test-sandbox-package' && matrix.target != 'test-sandbox-image'";
+  const shelved = "matrix.target == 'test-sandbox-package' || matrix.target == 'test-sandbox-image'";
+  assert.deepEqual(jobs.tooling.strategy.matrix.target, ['test-node', 'test-apptransport', 'test-app-proxy', 'test-operator', 'test-cli', 'test-sandbox-package', 'test-sandbox-image']);
+  assert.equal(jobs.tooling.services, undefined);
+  assert.equal(jobs.tooling.steps.length, 4);
+  for (const step of jobs.tooling.steps.slice(0, 3)) assert.equal(step.if, ordinary);
+  const notice = jobs.tooling.steps[3];
+  assert.equal(notice.if, shelved);
+  assert.deepEqual(Object.keys(notice).sort(), ['if', 'name', 'run']);
+  assert.equal(notice.name, 'Shelved sandbox compatibility check');
+  assert.match(notice.run, /^echo /);
+  assert.match(notice.run, /shelved; no sandbox work ran/);
+  assert.doesNotMatch(notice.run, /\$\(|docker|python|go build|make /);
+  assert.equal(jobs.tooling.steps.find(step => step.run === 'make ${{ matrix.target }}').if, ordinary);
+});
+
+test('ordinary release has no missing sandbox producers and retains signed authority', () => {
+  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const { jobs } = JSON.parse(parsed.stdout);
+  const produced = new Set(); const consumed = []; const patterns = [];
+  for (const [name, job] of Object.entries(jobs)) {
+    for (const dependency of Array.isArray(job.needs) ? job.needs : job.needs ? [job.needs] : []) assert.ok(jobs[dependency], `${name} needs missing ${dependency}`);
+    for (const step of job.steps ?? []) {
+      const inputs = [step.run ?? '', JSON.stringify(step.with ?? {})].join('\n');
+      assert.doesNotMatch(inputs, /deploy\/sandbox\/(?:ci|install|qualification|ubuntu-base)|sandbox-artifacts|sandbox-image-artifacts|sandbox-distribution|tunnex-linux-sandbox/);
+      if (step.uses?.startsWith('actions/upload-artifact@')) produced.add(step.with.name);
+      if (step.uses?.startsWith('actions/download-artifact@')) {
+        if (step.with.name) consumed.push(step.with.name);
+        else patterns.push(step.with.pattern);
+      }
+    }
+  }
+  for (const name of consumed) assert.ok(produced.has(name), `missing producer for ${name}`);
+  for (const pattern of patterns) {
+    assert.match(pattern, /^[a-z-]+\*$/);
+    assert.ok([...produced].some(name => name.startsWith(pattern.slice(0, -1))), `missing producer for ${pattern}`);
+  }
+  const release = jobs['release-assets'];
+  assert.deepEqual(release.needs, ['publish', 'publish-pullable', 'cli-release', 'tooling']);
+  const scripts = release.steps.map(step => step.run ?? '').join('\n');
+  assert.match(scripts, /go run \.\/cmd\/releasesign -manifest \.\.\/\.\.\/release-unsigned\.json/);
+  assert.match(scripts, /-bootstrap-verifier-assets \.\.\/\.\.\/runtime-artifacts/);
+  assert.match(scripts, /-bootstrap-verifier-assets \.\.\/\.\.\/verifier-publication-check/);
+  assert.match(scripts, /Tunnex-release-source\.json/);
+  assert.ok(release.steps.some(step => step.name === 'Attach and verify managed-agent bootstrap verifier assets'));
+  assert.ok(release.steps.some(step => /release edit .*--draft=false/.test(step.run ?? '')));
+  assert.ok(jobs.contracts.steps.some(step => step.name === 'Digest-pinned AI VPN overlay contract'));
+  assert.ok(jobs.contracts.steps.some(step => step.name === 'App Access packaging, restore and upgrade contracts'));
+});
+
+// TODO: restore feature publication contracts through docs/S-sandbox-shelved-main-reentry.md.
+test.skip('sandbox bundles reuse blocking tooling and existing guarded release publication', () => {
   const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
     'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
   assert.equal(parsed.status, 0, parsed.stderr);
@@ -164,7 +222,7 @@ test('sandbox bundles reuse blocking tooling and existing guarded release public
   assert.match(makefile, /unittest discover -s deploy\/sandbox\/install/);
 });
 
-test('Ubuntu image delivery is a required existing tooling target with exact public artifacts', () => {
+test.skip('Ubuntu image delivery is a required existing tooling target with exact public artifacts', () => {
   const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
     'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
   assert.equal(parsed.status, 0, parsed.stderr);
@@ -247,25 +305,30 @@ test('integration lanes run alongside unit gates but publication still requires 
   assert.equal(build.file, 'apps/operator/Dockerfile');
 });
 
-test('API test runner edits select both edition test lanes', t => {
-  const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
-    'puts JSON.generate(YAML.load_file(ARGV[0]))', '.github/workflows/ci.yml'], { encoding: 'utf8' });
-  assert.equal(parsed.status, 0, parsed.stderr);
-  const classify = JSON.parse(parsed.stdout).jobs.scope.steps.find(s => s.id === 'scope').run
-    .replaceAll('${{ github.event_name }}', 'pull_request')
-    .replaceAll('${{ github.event.pull_request.base.sha }}', 'fixture-base');
-  const dir = mkdtempSync(join(tmpdir(), 'api-shard-scope-'));
+test('API runner and package selector edits select CI and security Go lanes', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'shelved-main-selector-scope-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const output = join(dir, 'outputs');
-  const result = spawnSync('bash', ['-c', `git() {
-    [ "$1" != cat-file ] || return 0
-    case "$*" in *--diff-filter=D*) return 0;; esac
-    printf '%s\\n' deploy/test-api-edition.sh
-  }
+  for (const [workflow, stepId] of [['ci', 'scope'], ['security', 'c']]) {
+    const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+      'puts JSON.generate(YAML.load_file(ARGV[0]))', `.github/workflows/${workflow}.yml`], { encoding: 'utf8' });
+    assert.equal(parsed.status, 0, parsed.stderr);
+    const classify = JSON.parse(parsed.stdout).jobs.scope.steps.find(s => s.id === stepId).run
+      .replaceAll('${{ github.event_name }}', 'pull_request')
+      .replaceAll('${{ github.event.pull_request.base.sha }}', 'fixture-base');
+    for (const file of ['deploy/test-api-edition.sh', 'deploy/ci-active-go-packages.sh', 'deploy/ci-active-go-packages_test.mjs']) {
+      const output = join(dir, `${workflow}-outputs`);
+      writeFileSync(output, '');
+      const result = spawnSync('bash', ['-c', `git() {
+        [ "$1" != cat-file ] || return 0
+        case "$*" in *--diff-filter=D*) return 0;; esac
+        printf '%s\\n' ${file}
+      }
 ` + classify], { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output } });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(readFileSync(output, 'utf8'), /^go=true$/m);
-  assert.match(readFileSync(output, 'utf8'), /^docs_only=false$/m);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(readFileSync(output, 'utf8'), /^go=true$/m, `${workflow}: ${file}`);
+      if (workflow === 'ci') assert.match(readFileSync(output, 'utf8'), /^docs_only=false$/m, file);
+    }
+  }
 });
 
 test('sandbox recipe, package and installer assets select the blocking tooling lane', t => {
@@ -292,14 +355,16 @@ test('sandbox recipe, package and installer assets select the blocking tooling l
   }
 });
 
-test('node lane requires the unprivileged Unix fixture before root nft and full-suite checks', () => {
+test('node lane preserves ordinary VPN checks without the dormant sandbox Unix fixture', () => {
   const makefile = readFileSync('Makefile', 'utf8');
-  const nodeRecipe = makefile.match(/^test-node:[\s\S]*?(?=^\.PHONY:|\Z)/m)?.[0];
+  const nodeRecipe = makefile.match(/^test-node:[\s\S]*?(?=^\.PHONY:)/m)?.[0];
   assert.ok(nodeRecipe);
   assert.match(nodeRecipe, /--cap-add=NET_ADMIN/);
-  assert.match(nodeRecipe, /go test -c -o \/tmp\/sandboxnetwork\.test \.\/internal\/sandboxnetwork &&/);
-  assert.match(nodeRecipe, /su -s \/bin\/sh nobody -c "\/tmp\/sandboxnetwork\.test -test\.run \^TestInactiveCleanupActualUnixBoundary\$\$ -test\.v" &&/);
-  assert.ok(nodeRecipe.indexOf('su -s /bin/sh nobody') < nodeRecipe.indexOf('go test -count=1 ./...'));
+  assert.match(nodeRecipe, /git openvpn nftables iptables/);
+  assert.match(nodeRecipe, /go build \.\/\.\.\./);
+  assert.match(nodeRecipe, /GOFLAGS='-mod=readonly -buildvcs=false'/);
+  assert.match(nodeRecipe, /ci-active-go-packages\.sh node/);
+  assert.doesNotMatch(nodeRecipe, /sandboxnetwork\.test|TestInactiveCleanupActualUnixBoundary|su -s/);
   assert.doesNotMatch(nodeRecipe, /\|\| true|continue-on-error/);
 });
 

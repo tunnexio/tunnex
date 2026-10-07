@@ -1,4 +1,21 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
+
+// TODO: restore dormant sandbox feature suites only through
+// docs/S-sandbox-shelved-main-reentry.md. Shelving acceptance and shared UI
+// remain in active discovery; retained source stays typechecked.
+const shelvedSandboxTests = [
+  "test/sandbox-connection.test.ts",
+  "test/sandbox-custom-skills.test.tsx",
+  "test/sandbox-image-profiles.test.tsx",
+  "test/sandbox-module.test.tsx",
+  "test/sandbox-runner-enrollment.test.tsx",
+  "test/sandbox-runner-qualification-trial.test.tsx",
+  "test/sandbox-setup.test.tsx",
+  "test/sandbox-terminal-picker.test.tsx",
+  "test/sandboxes.test.tsx",
+  "test/saved-ssh-key-picker.test.tsx",
+];
+const activeTestExclusions = [...configDefaults.exclude, ...shelvedSandboxTests];
 
 // TWO TIERS, deliberately.
 //
@@ -16,8 +33,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     projects: [
-      { test: { name: "unit", environment: "node", include: ["test/**/*.test.ts"] } },
-      { test: { name: "components", environment: "jsdom", include: ["test/**/*.test.tsx"] } },
+      { test: { name: "unit", environment: "node", include: ["test/**/*.test.ts"], exclude: activeTestExclusions } },
+      { test: { name: "components", environment: "jsdom", include: ["test/**/*.test.tsx"], exclude: activeTestExclusions } },
     ],
   },
 });

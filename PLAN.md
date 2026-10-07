@@ -106,6 +106,24 @@ verification slices remain pending. Existing completion checkpoint follows.
 
 ## Story status (re-entry checkpoint)
 
+**2026-10-07 — Sandbox shelving on published main, draft PR #103:** branch
+`story/sandbox-shelved-main-20261007`, content tip
+`666d0c4c692ae9527f4739db2ea584dfe2bf8ce8` (pre-merge), based on
+`e6b65cd9b60b96d05344fb2cec770a0dc45e28dd`. Static gates disconnect the
+existing sandbox UI, HTTP/startup and dedicated executable entry points;
+sandbox CI/artifact paths are dormant. Shared VPN/security/SHIELD behavior,
+source, migrations and data remain. Focused checks, both-edition API builds,
+web types/build/browser smoke and workflow contracts/lint pass. Initial remote
+CI passed shared/API/web gates but failed node/CLI compilation on unavailable
+VCS metadata; the scoped test-container correction passes local builds, CLI
+vet/tests and contracts. Updated exact-head CI remains required; native
+qualification is unrun. **Sandbox development is paused.** Read
+[the public-safe re-entry checkpoint](docs/S-sandbox-shelved-main-reentry.md)
+before restarting. Later local implementation history is preserved separately
+and is not included here. Previous sandbox NEXT items below are historical
+during this pause. Draft publication was separately authorized; no merge,
+deployment, feature restart or live cleanup is implied.
+
 **2026-10-05 — Sandbox runner enrollment UI:** existing executable content checkpoint `4c8452e` integrates upstream main `435b4d5`; integration `691d56a` repairs the migration fixture and generated metadata, and public README correction `47a44ef` clarifies current image prerequisites. Full enterprise API races passed; open completed with one corrected fixture and a passing full affected-package rerun. Web types/tests/build, CLI/node source checks, generated drift and both Linux bundle proofs are recorded in [validation](docs/S-sandbox-pr-validation.md). The user then explicitly requested a real admin runner-machine enrollment UI and full journey UX; [its implementation stories](docs/S-sandbox-runner-ui-enrollment.md) are now active. Short-lived scoped bootstrap, machine-local keys, existing installer/transport integration and honest readiness are required before PR handoff. Missing approved Ubuntu dependency base and new-host native qualification remain release prerequisites. No PR number or remote CI pass is inferred.
 
 **LOCAL KERNEL READBACK (2026-09-24, supersedes below): Strict bounded Linux XFRM/IPv4 route inventory and read-only command runner implemented. Regression/race, five behavioral mutants and independent review pass. Actual iproute2 6.9.0 in a guarded disconnected container verified two synthetic XFRM interfaces and exact route tuples; captured fixtures retained. Only owned lab objects/container created and removed; no CP/database/host-route/cloud changes. Returns partial facts, not atomic snapshots, ownership or traffic proof. Capability0 and existing UI preserved; no commit/push. Daemon/SA, enforcement/packet qualification and durable runtime lifecycle remain pending. [Readback contract and evidence](docs/S-S2S-2-kernel-readback.md).**

@@ -20,6 +20,7 @@ import (
 	"syscall"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxes"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxruntime"
 	"golang.org/x/crypto/ssh"
@@ -66,6 +67,11 @@ func ownedRoot(path string) (*os.Root, error) {
 	return root, nil
 }
 func main() {
+	// TODO(sandbox-reentry): docs/S-sandbox-shelved-main-reentry.md.
+	if sandboxproduct.Shelved {
+		fmt.Fprintln(os.Stderr, sandboxproduct.Message)
+		os.Exit(1)
+	}
 	path := flag.String("config", state+"/worker/main-config.json", "private runtime operator configuration")
 	role := flag.String("role", roleCombined, "operator-selected combined, actor or transport process")
 	flag.Parse()

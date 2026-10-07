@@ -128,11 +128,11 @@ func TestSandboxGeneratedRoutesSeparateFromAgents(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/organizations/"+org.String()+"/"+suffix, nil)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
-		if rr.Code != 200 {
+		if rr.Code != http.StatusNotFound {
 			t.Fatalf("%s: %d %s", suffix, rr.Code, rr.Body.String())
 		}
 	}
-	if repo.calls != 2 {
+	if repo.calls != 0 {
 		t.Fatal("unexpected repository calls")
 	}
 }

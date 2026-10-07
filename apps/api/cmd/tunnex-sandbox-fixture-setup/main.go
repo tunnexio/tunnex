@@ -16,6 +16,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"io"
 	"net/url"
 	"os"
@@ -212,6 +213,11 @@ func run() error {
 	return nil
 }
 func main() {
+	// TODO(sandbox-reentry): docs/S-sandbox-shelved-main-reentry.md.
+	if sandboxproduct.Shelved {
+		fmt.Fprintln(os.Stderr, sandboxproduct.Message)
+		os.Exit(1)
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "qualification setup failed")
 		os.Exit(1)

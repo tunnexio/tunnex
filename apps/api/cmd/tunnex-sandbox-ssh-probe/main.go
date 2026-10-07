@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxruntime"
 	"golang.org/x/crypto/ssh"
 )
@@ -16,6 +17,11 @@ import (
 // Executed only by the trusted namespace helper, never as a user-selected
 // command. The dedicated worker key arrives on stdin, never argv/environment.
 func main() {
+	// TODO(sandbox-reentry): docs/S-sandbox-shelved-main-reentry.md.
+	if sandboxproduct.Shelved {
+		fmt.Fprintln(os.Stderr, sandboxproduct.Message)
+		os.Exit(1)
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "private SSH probe unavailable")
 		os.Exit(1)

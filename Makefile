@@ -299,8 +299,8 @@ test-edition: ## One edition on its isolated CI database; test-editions remains 
 	@# guards fail here while passing locally; the alternative, skipping when the file is absent, would have
 	@# made them pass here while checking nothing, which is the worse failure (see the witness-liveness law).
 	@echo ">> $(TEST_EDITION) edition build and tests"
-	@# The sandbox interoperability test executes the real stdlib Python producer.
-	@# This interpreter is a test-container prerequisite, never a workload launch step.
+	@# Shared native AI tests require Python. Retain the interpreter while
+	@# exclusive sandbox test packages are dormant.
 	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  -e TEST_EDITION="$(TEST_EDITION)" -e API_TEST_SHARD="$(API_TEST_SHARD)" \
@@ -313,14 +313,11 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# --cap-add=NET_ADMIN: the L11 nft-render-check (TestRenderedRulesetIsValidNft) runs `nft -c` which opens
 	# netlink to init its cache — needs NET_ADMIN even in check-only mode. Without the cap that one test SKIPS
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
-	# The sandbox helper contract reads deploy/sandbox; mount the repository so that proof is exercised.
-	# The actual Unix worker boundary must execute without root before the privileged nft/full suite.
-	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c 'apk add --no-cache git openvpn nftables iptables && \
-	    go test -c -o /tmp/sandboxnetwork.test ./internal/sandboxnetwork && \
-	    chmod 0755 /tmp/sandboxnetwork.test && \
-	    su -s /bin/sh nobody -c "/tmp/sandboxnetwork.test -test.run ^TestInactiveCleanupActualUnixBoundary$$ -test.v" && \
-	    go test -count=1 ./...'
+	# Full retained source builds; ordinary VPN tools and NET_ADMIN checks stay.
+	# TODO: restore exclusive sandbox tests through docs/S-sandbox-shelved-main-reentry.md.
+	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
+	  $(GO_IMAGE) sh -ec 'apk add --no-cache git openvpn nftables iptables; go build ./...; \
+	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh node); set -f; go test -count=1 $$packages'
 
 .PHONY: test-apptransport
 test-apptransport: ## Test shared App Access transport and origin policy
@@ -371,8 +368,9 @@ test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate c
 	# never COMPILES it, so a generated-code defect (an openapi schema name colliding with an oapi-codegen
 	# response-wrapper type) shipped to main and sat there undetected. A shipped module with no gate is the
 	# extreme case of the degraded-signal class this epic repays; build+vet+test closes it.
-	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build -buildvcs=false ./... && go vet ./... && go test -count=1 ./..."
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
+	  $(GO_IMAGE) sh -ec 'apk add --no-cache git; go build ./...; go vet ./...; \
+	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh cli); set -f; go test -count=1 $$packages'
 
 .PHONY: seed
 seed: ## Seed the demo org/user (idempotent, non-destructive)
@@ -482,7 +480,8 @@ e2e: ## One command: bring the stack up healthy, run API integration + Playwrigh
 	@# lifecycle_test.go's own comment has described this exact class since S8.5.
 	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
-	  $(GO_IMAGE) sh -c 'apk add --no-cache python3 && go test -p 1 ./...'
+	  $(GO_IMAGE) sh -ec 'apk add --no-cache python3; go build ./...; \
+	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh api); set -f; go test -p 1 $$packages'
 	@echo ">> Playwright browser e2e (SPA -> API correlation chain)"
 	docker run --rm --network $(NET) -v "$(PWD)/e2e":/e2e -w /e2e -e E2E_BASE_URL=http://nginx:8080 \
 	  $(PW_IMAGE) sh -c "npm ci --no-audit --no-fund && npx playwright test"
@@ -508,15 +507,11 @@ tidy: ## Tidy Go modules
 	cd apps/app-proxy && go mod tidy
 
 .PHONY: test-sandbox-package
-test-sandbox-package: ## Compile public sandbox artifacts for both Linux architectures (not native qualification)
-	docker run --rm -v "$(PWD)":/repo -w /repo $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c 'apk add --no-cache git python3 && \
-	    python3 -B -m unittest discover -s deploy/sandbox/install -p "test_*.py" -v && \
-	    python3 -B deploy/sandbox/ci/package.py build --arch amd64 --output /repo/dist/sandbox/amd64 && \
-	    python3 -B deploy/sandbox/ci/package.py build --arch arm64 --output /repo/dist/sandbox/arm64 && \
-	    python3 -B deploy/sandbox/ci/package.py verify --directory /repo/dist/sandbox --source "$$(git -c safe.directory=/repo rev-parse HEAD)"'
+test-sandbox-package: ## SHELVED compatibility notice; no sandbox package work runs
+	@echo "SHELVED: sandbox packaging is paused; no checks or artifacts ran. See docs/S-sandbox-shelved-main-reentry.md."
+# TODO: restore this producer and all consumers through docs/S-sandbox-shelved-main-reentry.md.
 
 .PHONY: test-sandbox-image
-test-sandbox-image: ## Build and verify the locked Ubuntu AMD64 workload archive (not native qualification)
-	$(if $(GO_CACHE_DIR),env GOMODCACHE="$(GO_CACHE_DIR)/mod" GOCACHE="$(GO_CACHE_DIR)/build") python3 -B deploy/sandbox/ci/image.py build \
-	    --cache "$(PWD)/dist/sandbox-image/cache" --output "$(PWD)/dist/sandbox-image/amd64" --go go
+test-sandbox-image: ## SHELVED compatibility notice; no sandbox image work runs
+	@echo "SHELVED: sandbox image checks are paused; no checks or artifacts ran. See docs/S-sandbox-shelved-main-reentry.md."
+# TODO: restore this producer and all consumers through docs/S-sandbox-shelved-main-reentry.md.

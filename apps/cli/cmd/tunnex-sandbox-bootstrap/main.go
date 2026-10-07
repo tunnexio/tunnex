@@ -16,6 +16,12 @@ import (
 )
 
 func main() {
+	// TODO(sandbox-reentry): see docs/S-sandbox-shelved-main-reentry.md.
+	// Refuse before parsing flags, reading a token or opening any CA/handoff file.
+	if !cli.SandboxProductAvailable {
+		fmt.Fprintln(os.Stderr, cli.ErrSandboxShelved)
+		os.Exit(1)
+	}
 	server := flag.String("server", "", "HTTPS control-plane URL")
 	directory := flag.String("handoff-dir", "", "new private handoff directory")
 	identity := flag.String("sandbox-id", "", "expected sandbox UUID")

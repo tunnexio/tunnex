@@ -4,6 +4,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/tunnexio/tunnex/apps/api/internal/sandboxproduct"
 	"github.com/tunnexio/tunnex/apps/api/internal/sandboxrunner"
 	"os"
 	"path/filepath"
@@ -11,6 +12,11 @@ import (
 )
 
 func main() {
+	// TODO(sandbox-reentry): docs/S-sandbox-shelved-main-reentry.md.
+	if sandboxproduct.Shelved {
+		fmt.Fprintln(os.Stderr, sandboxproduct.Message)
+		os.Exit(1)
+	}
 	destination := flag.String("output", "", "new private output directory")
 	dns := flag.String("controller-dns", "", "controller certificate DNS name")
 	controller := flag.String("controller-uri", "", "exact controller URI identity")
