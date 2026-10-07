@@ -74,10 +74,43 @@ const (
 	Environment BeamDomainSettingsSource = "environment"
 )
 
+// Defines values for BeamFeedbackStatus.
+const (
+	BeamFeedbackStatusApproved         BeamFeedbackStatus = "approved"
+	BeamFeedbackStatusChangesRequested BeamFeedbackStatus = "changes_requested"
+	BeamFeedbackStatusComment          BeamFeedbackStatus = "comment"
+)
+
+// Defines values for BeamFeedbackInputStatus.
+const (
+	BeamFeedbackInputStatusApproved         BeamFeedbackInputStatus = "approved"
+	BeamFeedbackInputStatusChangesRequested BeamFeedbackInputStatus = "changes_requested"
+	BeamFeedbackInputStatusComment          BeamFeedbackInputStatus = "comment"
+)
+
 // Defines values for BeamGrantSubjectKind.
 const (
 	Group BeamGrantSubjectKind = "group"
 	User  BeamGrantSubjectKind = "user"
+)
+
+// Defines values for BeamLocalTargetAddress.
+const (
+	BeamLocalTargetAddressIPv4Loopback BeamLocalTargetAddress = "127.0.0.1"
+	BeamLocalTargetAddressIPv6Loopback BeamLocalTargetAddress = "::1"
+)
+
+// Defines values for BeamLocalTargetProtocol.
+const (
+	BeamLocalTargetProtocolHttp  BeamLocalTargetProtocol = "http"
+	BeamLocalTargetProtocolHttps BeamLocalTargetProtocol = "https"
+)
+
+// Defines values for BeamNotificationKind.
+const (
+	Expiring     BeamNotificationKind = "expiring"
+	Feedback     BeamNotificationKind = "feedback"
+	PreviewReady BeamNotificationKind = "preview_ready"
 )
 
 // Defines values for BeamShareConnectivity.
@@ -100,14 +133,26 @@ const (
 
 // Defines values for BeamTargetAddress.
 const (
-	IPv4Loopback BeamTargetAddress = "127.0.0.1"
-	IPv6Loopback BeamTargetAddress = "::1"
+	BeamTargetAddressIPv4Loopback BeamTargetAddress = "127.0.0.1"
+	BeamTargetAddressIPv6Loopback BeamTargetAddress = "::1"
 )
 
 // Defines values for BeamTargetProtocol.
 const (
-	Http  BeamTargetProtocol = "http"
-	Https BeamTargetProtocol = "https"
+	BeamTargetProtocolHttp  BeamTargetProtocol = "http"
+	BeamTargetProtocolHttps BeamTargetProtocol = "https"
+)
+
+// Defines values for GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScope.
+const (
+	GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScopeActive  GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScope = "active"
+	GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScopeHistory GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScope = "history"
+)
+
+// Defines values for GetApiV1OrganizationsOrgIdBeamSharesParamsScope.
+const (
+	GetApiV1OrganizationsOrgIdBeamSharesParamsScopeActive  GetApiV1OrganizationsOrgIdBeamSharesParamsScope = "active"
+	GetApiV1OrganizationsOrgIdBeamSharesParamsScopeHistory GetApiV1OrganizationsOrgIdBeamSharesParamsScope = "history"
 )
 
 // BeamActionInput defines model for BeamActionInput.
@@ -166,17 +211,19 @@ type BeamConnectorProxyServerName string
 
 // BeamConnectorInput defines model for BeamConnectorInput.
 type BeamConnectorInput struct {
-	CsrPem          string `json:"csr_pem"`
-	ExpectedVersion int64  `json:"expected_version"`
+	Capabilities    *[]string `json:"capabilities,omitempty"`
+	CsrPem          string    `json:"csr_pem"`
+	ExpectedVersion int64     `json:"expected_version"`
 }
 
 // BeamCreateInput Server preserves its explicit initial publisher grant; CLI additionally requires an explicit reviewer selection.
 type BeamCreateInput struct {
-	DurationSeconds int                `json:"duration_seconds"`
-	Grants          []BeamGrant        `json:"grants"`
-	IdempotencyKey  openapi_types.UUID `json:"idempotency_key"`
-	Name            string             `json:"name"`
-	Target          BeamTarget         `json:"target"`
+	DurationSeconds int                 `json:"duration_seconds"`
+	Grants          []BeamGrant         `json:"grants"`
+	IdempotencyKey  openapi_types.UUID  `json:"idempotency_key"`
+	Name            string              `json:"name"`
+	ProjectId       *openapi_types.UUID `json:"project_id,omitempty"`
+	Target          BeamTarget          `json:"target"`
 }
 
 // BeamDiagnostics defines model for BeamDiagnostics.
@@ -257,6 +304,41 @@ type BeamEventList struct {
 	ServerTime time.Time   `json:"server_time"`
 }
 
+// BeamFeedback defines model for BeamFeedback.
+type BeamFeedback struct {
+	AuthorId      openapi_types.UUID `json:"author_id"`
+	AuthorName    string             `json:"author_name"`
+	Body          string             `json:"body"`
+	CreatedAt     time.Time          `json:"created_at"`
+	Id            openapi_types.UUID `json:"id"`
+	ScreenshotUrl *string            `json:"screenshot_url,omitempty"`
+	ShareId       openapi_types.UUID `json:"share_id"`
+	Status        BeamFeedbackStatus `json:"status"`
+}
+
+// BeamFeedbackStatus defines model for BeamFeedback.Status.
+type BeamFeedbackStatus string
+
+// BeamFeedbackInput defines model for BeamFeedbackInput.
+type BeamFeedbackInput struct {
+	Body string `json:"body"`
+
+	// ScreenshotBase64 Raw PNG/JPEG base64, no data URL. Input at most 256 KiB, 2048px maximum each dimension, 4 million pixels. Reencoded to bounded PNG with metadata discarded.
+	ScreenshotBase64 *string                 `json:"screenshot_base64,omitempty"`
+	Status           BeamFeedbackInputStatus `json:"status"`
+}
+
+// BeamFeedbackInputStatus defines model for BeamFeedbackInput.Status.
+type BeamFeedbackInputStatus string
+
+// BeamFeedbackPage defines model for BeamFeedbackPage.
+type BeamFeedbackPage struct {
+	Items      []BeamFeedback `json:"items"`
+	Limit      int            `json:"limit"`
+	Offset     int            `json:"offset"`
+	ServerTime time.Time      `json:"server_time"`
+}
+
 // BeamGrant defines model for BeamGrant.
 type BeamGrant struct {
 	SubjectId   openapi_types.UUID   `json:"subject_id"`
@@ -300,16 +382,52 @@ type BeamLaunchInput struct {
 	RelativeTarget string `json:"relative_target"`
 }
 
+// BeamLocalTarget defines model for BeamLocalTarget.
+type BeamLocalTarget struct {
+	Address  BeamLocalTargetAddress  `json:"address"`
+	CaPem    *string                 `json:"ca_pem,omitempty"`
+	Port     int                     `json:"port"`
+	Protocol BeamLocalTargetProtocol `json:"protocol"`
+}
+
+// BeamLocalTargetAddress defines model for BeamLocalTarget.Address.
+type BeamLocalTargetAddress string
+
+// BeamLocalTargetProtocol defines model for BeamLocalTarget.Protocol.
+type BeamLocalTargetProtocol string
+
+// BeamNotification defines model for BeamNotification.
+type BeamNotification struct {
+	CreatedAt time.Time            `json:"created_at"`
+	Id        string               `json:"id"`
+	Kind      BeamNotificationKind `json:"kind"`
+	ProjectId *openapi_types.UUID  `json:"project_id,omitempty"`
+	ShareId   openapi_types.UUID   `json:"share_id"`
+	Title     string               `json:"title"`
+}
+
+// BeamNotificationKind defines model for BeamNotification.Kind.
+type BeamNotificationKind string
+
+// BeamNotificationPage defines model for BeamNotificationPage.
+type BeamNotificationPage struct {
+	Items      []BeamNotification `json:"items"`
+	Limit      int                `json:"limit"`
+	Offset     int                `json:"offset"`
+	ServerTime time.Time          `json:"server_time"`
+}
+
 // BeamPolicy defines model for BeamPolicy.
 type BeamPolicy struct {
-	BaseDomain         string `json:"base_domain"`
-	CanManagePolicy    bool   `json:"can_manage_policy"`
-	CanPublish         bool   `json:"can_publish"`
-	DomainReady        bool   `json:"domain_ready"`
-	Enabled            bool   `json:"enabled"`
-	MaxDurationSeconds int    `json:"max_duration_seconds"`
-	MaxShares          int    `json:"max_shares"`
-	MinClientVersion   string `json:"min_client_version"`
+	BaseDomain         string   `json:"base_domain"`
+	CanManagePolicy    bool     `json:"can_manage_policy"`
+	CanPublish         bool     `json:"can_publish"`
+	Capabilities       []string `json:"capabilities"`
+	DomainReady        bool     `json:"domain_ready"`
+	Enabled            bool     `json:"enabled"`
+	MaxDurationSeconds int      `json:"max_duration_seconds"`
+	MaxShares          int      `json:"max_shares"`
+	MinClientVersion   string   `json:"min_client_version"`
 
 	// OpenForAllUsers Every eligible organization member may publish and choose any organization user or group as a reviewer. Explicit share grants remain required.
 	OpenForAllUsers   *bool                `json:"open_for_all_users,omitempty"`
@@ -344,6 +462,37 @@ type BeamPolicyInput struct {
 	RequireMfa        bool                 `json:"require_mfa"`
 	ReviewerGroupIds  []openapi_types.UUID `json:"reviewer_group_ids"`
 	ReviewerUserIds   []openapi_types.UUID `json:"reviewer_user_ids"`
+}
+
+// BeamProject defines model for BeamProject.
+type BeamProject struct {
+	CreatedAt       time.Time          `json:"created_at"`
+	DurationSeconds int                `json:"duration_seconds"`
+	Grants          []BeamGrant        `json:"grants"`
+	Id              openapi_types.UUID `json:"id"`
+	Name            string             `json:"name"`
+	OrgId           openapi_types.UUID `json:"org_id"`
+	OwnerId         openapi_types.UUID `json:"owner_id"`
+	Target          BeamTarget         `json:"target"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+	Version         int                `json:"version"`
+}
+
+// BeamProjectInput defines model for BeamProjectInput.
+type BeamProjectInput struct {
+	DurationSeconds int         `json:"duration_seconds"`
+	ExpectedVersion *int        `json:"expected_version,omitempty"`
+	Grants          []BeamGrant `json:"grants"`
+	Name            string      `json:"name"`
+	Target          BeamTarget  `json:"target"`
+}
+
+// BeamProjectPage defines model for BeamProjectPage.
+type BeamProjectPage struct {
+	Items      []BeamProject `json:"items"`
+	Limit      int           `json:"limit"`
+	Offset     int           `json:"offset"`
+	ServerTime time.Time     `json:"server_time"`
 }
 
 // BeamQuota Authoritative current-publisher slots in use, independent of list search, filters or pagination. Shared inventory omits this owner projection.
@@ -391,6 +540,7 @@ type BeamShare struct {
 	Id               openapi_types.UUID    `json:"id"`
 	Name             string                `json:"name"`
 	OrgId            openapi_types.UUID    `json:"org_id"`
+	ProjectId        *openapi_types.UUID   `json:"project_id,omitempty"`
 	PublisherId      openapi_types.UUID    `json:"publisher_id"`
 	PublisherName    *string               `json:"publisher_name,omitempty"`
 	State            BeamShareState        `json:"state"`
@@ -422,6 +572,7 @@ type BeamTarget struct {
 	CaPem    *string            `json:"ca_pem,omitempty"`
 	Port     int                `json:"port"`
 	Protocol BeamTargetProtocol `json:"protocol"`
+	Routes   *[]BeamTargetRoute `json:"routes,omitempty"`
 }
 
 // BeamTargetAddress defines model for BeamTarget.Address.
@@ -429,6 +580,12 @@ type BeamTargetAddress string
 
 // BeamTargetProtocol defines model for BeamTarget.Protocol.
 type BeamTargetProtocol string
+
+// BeamTargetRoute defines model for BeamTargetRoute.
+type BeamTargetRoute struct {
+	PathPrefix string          `json:"path_prefix"`
+	Target     BeamLocalTarget `json:"target"`
+}
 
 // GetApiV1OrganizationsOrgIdBeamEventsParams defines parameters for GetApiV1OrganizationsOrgIdBeamEvents.
 type GetApiV1OrganizationsOrgIdBeamEventsParams struct {
@@ -439,6 +596,28 @@ type GetApiV1OrganizationsOrgIdBeamEventsParams struct {
 	Outcome *string             `form:"outcome,omitempty" json:"outcome,omitempty"`
 	ShareId *openapi_types.UUID `form:"share_id,omitempty" json:"share_id,omitempty"`
 }
+
+// GetApiV1OrganizationsOrgIdBeamNotificationsParams defines parameters for GetApiV1OrganizationsOrgIdBeamNotifications.
+type GetApiV1OrganizationsOrgIdBeamNotificationsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetApiV1OrganizationsOrgIdBeamProjectsParams defines parameters for GetApiV1OrganizationsOrgIdBeamProjects.
+type GetApiV1OrganizationsOrgIdBeamProjectsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParams defines parameters for GetApiV1OrganizationsOrgIdBeamProjectsIdSessions.
+type GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParams struct {
+	Limit  *int                                                         `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                                                         `form:"offset,omitempty" json:"offset,omitempty"`
+	Scope  *GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+}
+
+// GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScope defines parameters for GetApiV1OrganizationsOrgIdBeamProjectsIdSessions.
+type GetApiV1OrganizationsOrgIdBeamProjectsIdSessionsParamsScope string
 
 // GetApiV1OrganizationsOrgIdBeamSharedParams defines parameters for GetApiV1OrganizationsOrgIdBeamShared.
 type GetApiV1OrganizationsOrgIdBeamSharedParams struct {
@@ -451,12 +630,16 @@ type GetApiV1OrganizationsOrgIdBeamSharedParams struct {
 
 // GetApiV1OrganizationsOrgIdBeamSharesParams defines parameters for GetApiV1OrganizationsOrgIdBeamShares.
 type GetApiV1OrganizationsOrgIdBeamSharesParams struct {
-	Limit        *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset       *int    `form:"offset,omitempty" json:"offset,omitempty"`
-	Q            *string `form:"q,omitempty" json:"q,omitempty"`
-	State        *string `form:"state,omitempty" json:"state,omitempty"`
-	Connectivity *string `form:"connectivity,omitempty" json:"connectivity,omitempty"`
+	Scope        *GetApiV1OrganizationsOrgIdBeamSharesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+	Limit        *int                                             `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset       *int                                             `form:"offset,omitempty" json:"offset,omitempty"`
+	Q            *string                                          `form:"q,omitempty" json:"q,omitempty"`
+	State        *string                                          `form:"state,omitempty" json:"state,omitempty"`
+	Connectivity *string                                          `form:"connectivity,omitempty" json:"connectivity,omitempty"`
 }
+
+// GetApiV1OrganizationsOrgIdBeamSharesParamsScope defines parameters for GetApiV1OrganizationsOrgIdBeamShares.
+type GetApiV1OrganizationsOrgIdBeamSharesParamsScope string
 
 // CreateBeamShareParams defines parameters for CreateBeamShare.
 type CreateBeamShareParams struct {
@@ -476,6 +659,12 @@ type GetApiV1OrganizationsOrgIdBeamSharesIdEventsParams struct {
 	Outcome *string `form:"outcome,omitempty" json:"outcome,omitempty"`
 }
 
+// GetApiV1OrganizationsOrgIdBeamSharesIdFeedbackParams defines parameters for GetApiV1OrganizationsOrgIdBeamSharesIdFeedback.
+type GetApiV1OrganizationsOrgIdBeamSharesIdFeedbackParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // PostApiV1AdminBeamReadinessJSONRequestBody defines body for PostApiV1AdminBeamReadiness for application/json ContentType.
 type PostApiV1AdminBeamReadinessJSONRequestBody = BeamReadinessInput
 
@@ -488,6 +677,12 @@ type PutApiV1OrganizationsOrgIdBeamPolicyJSONRequestBody = BeamPolicyInput
 // PostApiV1OrganizationsOrgIdBeamPolicyImpactJSONRequestBody defines body for PostApiV1OrganizationsOrgIdBeamPolicyImpact for application/json ContentType.
 type PostApiV1OrganizationsOrgIdBeamPolicyImpactJSONRequestBody = BeamPolicyInput
 
+// PostApiV1OrganizationsOrgIdBeamProjectsJSONRequestBody defines body for PostApiV1OrganizationsOrgIdBeamProjects for application/json ContentType.
+type PostApiV1OrganizationsOrgIdBeamProjectsJSONRequestBody = BeamProjectInput
+
+// PutApiV1OrganizationsOrgIdBeamProjectsIdJSONRequestBody defines body for PutApiV1OrganizationsOrgIdBeamProjectsId for application/json ContentType.
+type PutApiV1OrganizationsOrgIdBeamProjectsIdJSONRequestBody = BeamProjectInput
+
 // CreateBeamShareJSONRequestBody defines body for CreateBeamShare for application/json ContentType.
 type CreateBeamShareJSONRequestBody = BeamCreateInput
 
@@ -496,6 +691,9 @@ type PostApiV1OrganizationsOrgIdBeamSharesIdActionsJSONRequestBody = BeamActionI
 
 // IssueBeamConnectorJSONRequestBody defines body for IssueBeamConnector for application/json ContentType.
 type IssueBeamConnectorJSONRequestBody = BeamConnectorInput
+
+// PostApiV1OrganizationsOrgIdBeamSharesIdFeedbackJSONRequestBody defines body for PostApiV1OrganizationsOrgIdBeamSharesIdFeedback for application/json ContentType.
+type PostApiV1OrganizationsOrgIdBeamSharesIdFeedbackJSONRequestBody = BeamFeedbackInput
 
 // PutApiV1OrganizationsOrgIdBeamSharesIdGrantsJSONRequestBody defines body for PutApiV1OrganizationsOrgIdBeamSharesIdGrants for application/json ContentType.
 type PutApiV1OrganizationsOrgIdBeamSharesIdGrantsJSONRequestBody = BeamGrantsInput

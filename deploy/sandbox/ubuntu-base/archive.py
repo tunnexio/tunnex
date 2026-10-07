@@ -151,7 +151,10 @@ def assemble_context(lock, lock_raw, cache, source, context, go):
     (context / "Containerfile").write_text(base_recipe + "\n" + final_recipe)
     (context / "expected-inventory.tsv").write_text("\n".join(lock["installed_inventory"]) + "\n")
     (context / "sandbox-entrypoint.py").write_bytes(committed("deploy/sandbox/sandbox-entrypoint.py", source))
-    cli_archive = command(["git", "-C", str(ROOT), "archive", source, "apps/cli"])
+    # Keep local replacement modules in the same committed source layout.
+    # Export only the bootstrap module and its transport dependency, not the worktree.
+    cli_archive = command(["git", "-C", str(ROOT), "archive", source,
+                           "apps/cli", "packages/apptransport"])
     with tempfile.TemporaryDirectory(prefix="tunnex-ubuntu-bootstrap-") as directory:
         source_root = Path(directory)
         with tarfile.open(fileobj=io.BytesIO(cli_archive), mode="r:") as archive:

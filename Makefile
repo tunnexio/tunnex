@@ -363,6 +363,8 @@ web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 24 LTS —
 	  $(NODE_IMAGE) sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
 	    pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build'
 
+# A bind-mounted checkout can be owned by a different UID or use a host-only
+# worktree gitdir. CI compilation does not stamp Git metadata; releases embed a version.
 .PHONY: test-cli
 test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate coverage at all)
 	# S11-2: apps/cli was built by NO CI job — `generate-check` detects DRIFT in its generated client but
@@ -370,7 +372,7 @@ test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate c
 	# response-wrapper type) shipped to main and sat there undetected. A shipped module with no gate is the
 	# extreme case of the degraded-signal class this epic repays; build+vet+test closes it.
 	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go vet ./... && go test -count=1 ./..."
+	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build -buildvcs=false ./... && go vet ./... && go test -count=1 ./..."
 
 .PHONY: seed
 seed: ## Seed the demo org/user (idempotent, non-destructive)

@@ -1,10 +1,12 @@
 import hashlib
 import io
 import json
+import subprocess
 from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import archive
 import delivery
@@ -56,6 +58,52 @@ def write_descriptor(directory, descriptor):
 
 
 class ArchiveTests(unittest.TestCase):
+    def test_bootstrap_exports_committed_local_dependency_and_excludes_worktree_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo, context = root / "repo", root / "context"
+            repo.mkdir()
+            context.mkdir()
+            sources = {
+                "apps/cli/go.mod": "module example/cli\nreplace example/transport => ../../packages/apptransport\n",
+                "packages/apptransport/go.mod": "module example/transport\n",
+                "packages/apptransport/channel.go": "package transport\n",
+                "deploy/sandbox/ubuntu-base/Containerfile": "FROM locked-base\n",
+                "deploy/sandbox/Containerfile": "ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\n",
+                "deploy/sandbox/sandbox-entrypoint.py": "# committed entrypoint\n",
+                "apps/api/private-fixture.txt": "must never enter the source export\n",
+            }
+            for name, content in sources.items():
+                path = repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test Fixture",
+                            "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True)
+            source = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
+            (repo / "packages/apptransport/channel.go").write_text("uncommitted worktree content")
+            real_command = archive.command
+            compiled = []
+
+            def command(args, **kwargs):
+                if args[0] != "fixture-go":
+                    return real_command(args, **kwargs)
+                source_root = kwargs["cwd"].parents[1]
+                self.assertEqual((source_root / "packages/apptransport/channel.go").read_text(),
+                                 sources["packages/apptransport/channel.go"])
+                self.assertFalse((source_root / "apps/api").exists())
+                self.assertEqual(kwargs["env"]["GOPROXY"], "off")
+                self.assertEqual(kwargs["env"]["GOFLAGS"], "-mod=readonly")
+                self.assertIn("-buildvcs=false", args)
+                compiled.append(args)
+                return b""
+
+            lock = {"metadata": [], "download_packages": [], "installed_inventory": [], "architecture": "amd64"}
+            with patch.object(archive, "ROOT", repo), patch.object(archive, "command", side_effect=command):
+                archive.assemble_context(lock, b"{}", root / "cache", source, context, "fixture-go")
+            self.assertEqual(len(compiled), 1)
+
     def test_exact_delivery_identity_and_unqualified_status_verify(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
