@@ -1,6 +1,6 @@
 /* Overview uses a quiet metric strip, a shared operational surface, and one bounded map. */
 .overview-scan { width:100%; max-width:1320px; margin-inline:auto; padding-inline:8px; color:var(--tnx-text-primary); }
-.scan-toolbar { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:5px 0 22px; border-bottom:1px solid var(--tnx-border); }
+.scan-toolbar { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:5px 0 22px; }
 .scan-org { font-size:18px; line-height:1.4; font-weight:500; letter-spacing:-.025em; color:var(--tnx-text-heading); }
 .scan-org > span { display:block; margin-top:4px; font-size:11.5px; font-weight:400; letter-spacing:0; color:var(--tnx-text-secondary); }
 .scan-toolbar-actions { display:flex; align-items:center; gap:18px; flex:none; }
@@ -11,8 +11,8 @@
 .scan-loading { padding:40px 0; }
 .scan-fleet { padding:26px 0 29px; }
 .scan-metrics { display:flex; gap:0; }
-.scan-metric { flex:1; min-width:0; padding-left:20px; border-left:1px solid var(--tnx-border); }
-.scan-metric:first-child { padding-left:0; border:0; }
+.scan-metric { flex:1; min-width:0; padding-left:20px; }
+.scan-metric:first-child { padding-left:0; }
 .scan-metric a { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding-right:12px; }
 .scan-metric-label { font-size:11.5px; color:var(--tnx-text-secondary); }
 .scan-metric-value { font-size:29px; font-weight:500; line-height:1.1; letter-spacing:-.04em; font-variant-numeric:tabular-nums; color:var(--tnx-text-heading); }
@@ -22,7 +22,6 @@
 .scan-onboarding { margin-bottom:28px; }
 .scan-health { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); border:1px solid var(--tnx-border); border-radius:10px; background:color-mix(in srgb,var(--tnx-surface-inset) 22%,var(--tnx-surface)); }
 .scan-health > section { min-width:0; padding:22px 24px; gap:21px; }
-.scan-health > section + section { border-left:1px solid var(--tnx-border); }
 .overview-scan h2 { font-size:14px; font-weight:500; letter-spacing:-.015em; }
 .scan-distribution { margin:0; }
 .scan-distribution-heading { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:10px; }
@@ -47,7 +46,7 @@
 .scan-conditions { margin-top:24px; }
 .scan-section-caption { color:var(--tnx-text-secondary); font-size:10px; margin-bottom:6px; }
 .scan-condition-list { display:grid; }
-.scan-condition { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:34px; padding:7px 0; border-bottom:1px solid var(--tnx-border); font-size:11.5px; }
+.scan-condition { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:34px; padding:7px 0; font-size:11.5px; }
 .scan-condition > span:first-child { color:var(--tnx-text-primary); }
 .scan-condition > span:last-child { font-variant-numeric:tabular-nums; }
 .scan-condition[data-tone=danger] > span:last-child { color:var(--tnx-danger); }
@@ -56,7 +55,7 @@
 .scan-review-link:hover { text-decoration:underline; text-underline-offset:4px; }
 .scan-clear { padding-top:20px; font-size:11.5px; color:var(--tnx-text-secondary); }
 .scan-device-body { display:grid; gap:22px; }
-.scan-device-body > figure + figure { padding-top:18px; border-top:1px solid var(--tnx-border); }
+.scan-device-body > figure + figure { padding-top:18px; }
 .scan-network { margin-top:30px; gap:18px; padding-bottom:16px; }
 .scan-network-layout { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(250px,1fr); gap:28px; }
 .scan-topology { min-width:0; align-self:start; padding:12px 18px; border:1px solid var(--tnx-border); border-radius:8px; background:color-mix(in srgb,var(--tnx-surface-inset) 12%,var(--tnx-surface)); }
@@ -68,7 +67,7 @@
 .scan-infra-heading h3 { font-size:12px; font-weight:500; }
 .scan-infra-heading > span { font-size:10px; color:var(--tnx-text-secondary); }
 .scan-hub-members { display:grid; }
-.scan-hub-members li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--tnx-border); font-size:11.5px; }
+.scan-hub-members li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; font-size:11.5px; }
 .scan-hub-members li > div { min-width:0; }
 .scan-hub-members li > div > span { display:block; overflow-wrap:anywhere; }
 .scan-hub-members small { display:block; margin-top:3px; font-size:10px; color:var(--tnx-text-secondary); }
@@ -94,7 +93,6 @@
   .scan-metrics { flex-wrap:wrap; row-gap:20px; }
   .scan-metric { flex:1 0 23%; }
   .scan-health { grid-template-columns:minmax(0,1fr); }
-  .scan-health > section + section { border-left:0; border-top:1px solid var(--tnx-border); }
   .scan-network-layout { grid-template-columns:minmax(0,1fr); }
 }
 .scan-total-note { font-size:10px; color:var(--tnx-text-secondary); }
