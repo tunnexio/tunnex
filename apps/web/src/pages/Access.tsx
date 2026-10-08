@@ -49,6 +49,7 @@ import { relativeAge } from "../lib/format";
 import { EntityPicker } from "../components/EntityPicker";
 import { ComposeGate } from "../components/ComposeGate";
 import { LoadRetry } from "../components/LoadRetry";
+import { ResourceSummary } from "../components/ResourceSummary";
 import {
   accessView,
   modeEnableConfirm,
@@ -829,7 +830,7 @@ function TestAccessSection({ orgId }: { orgId: string }) {
                   <span className="text-slate-500">{check.message}</span>
                 </div>
                 {check.facts && Object.keys(check.facts).length > 0 && (
-                  <details className="access-disclosure"><summary>Evidence</summary><dl className="mt-2 grid gap-1 font-mono text-[10px] text-slate-500 sm:grid-cols-2">
+                  <details className="access-disclosure"><summary>Evidence</summary><dl className="tnx-resource-facts tnx-resource-facts-single">
                     {Object.entries(check.facts).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => (
                       <div key={key} className="flex gap-1"><dt>{key}:</dt><dd className="break-all text-slate-400">{value}</dd></div>
                     ))}
@@ -1664,22 +1665,22 @@ function RulesSection({
             <button type="button" aria-current={detailSection === "impact" ? "page" : undefined} onClick={() => setDetailSection("impact")}>Impact</button>
           </nav>
           <section className="ap-rule-detail-stage" aria-labelledby="ap-rule-stage-heading">
-            <h3 id="ap-rule-stage-heading" ref={detailHeading} tabIndex={-1}>{detailSection === "overview" ? "Overview" : "Impact"}</h3>
+            <h3 className="sr-only" id="ap-rule-stage-heading" ref={detailHeading} tabIndex={-1}>{detailSection === "overview" ? "Overview" : "Impact"}</h3>
             {detailSection === "overview" ? (
               <>
-                <dl className="ap-rule-facts">
+                <ResourceSummary title="Rule settings"><dl className="ap-rule-facts tnx-resource-facts tnx-resource-facts-three">
                   <div><dt>Source</dt><dd><RefText label={inspectedRow.src.label} broken={inspectedRow.src.state !== "ok"} /><small>{inspectedRule.src_kind ?? "group"}</small></dd></div>
                   <div><dt>Destination</dt><dd><RefText label={inspectedRow.dst.label} broken={inspectedRow.dst.state !== "ok"} /><small>{inspectedRule.dst_kind ?? "resource"}</small></dd></div>
                   <div><dt>State</dt><dd>{ruleColumns[1].cell(inspectedRule)}</dd></div>
                   <div><dt>Managed by</dt><dd>{ruleColumns[2].cell(inspectedRule)}</dd></div>
                   <div><dt>Expiry</dt><dd>{inspectedRule.expires_at ? <>{grantExpiry(inspectedRule, Date.now()).label}<small>{new Date(inspectedRule.expires_at).toLocaleString()}</small></> : "No expiry"}</dd></div>
-                </dl>
+                </dl></ResourceSummary>
                 {grantControls(inspectedRow).withheld && <p className="ap-rule-context">{managedGrantWarning()}</p>}
-                <details className="ap-rule-disclosure"><summary>Rule identity</summary><dl className="ap-rule-metadata"><div><dt>Rule ID</dt><dd>{inspectedRule.id}</dd></div><div><dt>Created</dt><dd>{new Date(inspectedRule.created_at).toLocaleString()}</dd></div></dl></details>
+                <details className="ap-rule-disclosure"><summary>Rule identity</summary><dl className="ap-rule-metadata tnx-resource-facts"><div><dt>Rule ID</dt><dd>{inspectedRule.id}</dd></div><div><dt>Created</dt><dd>{new Date(inspectedRule.created_at).toLocaleString()}</dd></div></dl></details>
               </>
             ) : (
               <>
-                <dl className="ap-rule-facts">
+                <ResourceSummary title="Effect on access"><dl className="ap-rule-facts tnx-resource-facts tnx-resource-facts-three">
                   <div><dt>Enforcement</dt><dd>{modeResult?.ok ? modeResult.data === "off" ? "Off · open mesh" : "On · default deny" : "Unavailable"}</dd></div>
                   <div><dt>Allow path</dt><dd>{inspectedRow.src.label} → {inspectedRow.dst.label}</dd></div>
                   {destinationKind === "resource" && <>
@@ -1696,7 +1697,7 @@ function RulesSection({
                     <div><dt>Protocol &amp; ports</dt><dd>{destinationPortScope(destinationFQDN)}</dd></div>
                   </>}
                   <div><dt>Rule state</dt><dd>{inspectedRule.enabled ? "Enabled" : "Disabled"}{grantExpiry(inspectedRule, Date.now()).state === "expired" && " · Expired"}</dd></div>
-                </dl>
+                </dl></ResourceSummary>
                 <p className="ap-rule-context">{!inspectedRule.enabled ? "This rule is disabled and does not grant access." : grantExpiry(inspectedRule, Date.now()).state === "expired" ? "This temporary grant has expired. It remains visible for audit history." : modeResult?.ok && modeResult.data === "off" ? "Enforcement is off. Stored rules do not restrict traffic." : !modeResult?.ok ? "Enforcement status is unavailable. Refresh before assessing this rule's effect." : "An enabled allow rule applies while enforcement is on and its expiry has not passed."}</p>
                 <div className="ap-rule-attention"><h4>Attention</h4>{ruleColumns[3].sortValue(inspectedRule) ? ruleColumns[3].cell(inspectedRule) : <p>No additional warnings reported.</p>}</div>
               </>
@@ -2490,7 +2491,7 @@ function RuleFormModal({
               <div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div></>}
               <span className="rule-preview-label">Access scope</span>
               {eff.text}
-              {bounded && <dl className="access-rule-scope-facts"><div><dt>Destination</dt><dd>{"cidr" in bounded ? bounded.cidr || "Not reported" : bounded.fqdn || "Not reported"}</dd></div><div><dt>Protocol & ports</dt><dd>{ports}</dd></div></dl>}
+              {bounded && <dl className="access-rule-scope-facts tnx-resource-facts"><div><dt>Destination</dt><dd>{"cidr" in bounded ? bounded.cidr || "Not reported" : bounded.fqdn || "Not reported"}</dd></div><div><dt>Protocol & ports</dt><dd>{ports}</dd></div></dl>}
               {/* ⚠ THE EXTRA SENTENCE FOR THE ONE SHAPE THAT IS USUALLY A MISTAKE — attached to it alone,
                   because a caution on every rule is a caution nobody reads. */}
               {caution && (

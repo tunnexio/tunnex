@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import AppAccessConnection from "../src/components/AppAccessConnection";
 import { api } from "../src/lib/api";
 
@@ -51,7 +51,10 @@ it("shows redacted TLS failure after gateway check completion", async () => {
   await screen.findByText(/supports Applications connection checks/);
   fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
   expect(await screen.findByText(/Origin TLS verification failed/, {}, { timeout: 3000 })).toBeTruthy();
-  expect(screen.getByText("TLS: failed")).toBeTruthy();
+  const results = within(screen.getByLabelText("Origin check results"));
+  const tls = results.getByText("TLS", { selector: "dt" });
+  expect(tls.nextElementSibling).toHaveProperty("tagName", "DD");
+  expect(tls.nextElementSibling).toHaveProperty("textContent", "failed");
 });
 it("lets retained configuration inspect capability after entitlement loss without initiating checks", async () => {
   render(<AppAccessConnection {...props} canCheck={false} />);

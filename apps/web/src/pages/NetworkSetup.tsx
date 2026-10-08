@@ -6,6 +6,7 @@ import { useGatewayInventory } from "../lib/useGatewayInventory";
 import { siteGate } from "../lib/sitesview";
 import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
+import "../resource-summary.css";
 import {
   Button,
   Card,
@@ -249,13 +250,17 @@ function NetworkSetupWorkspace({
                   <p className="network-hint">
                     {existingSite ? "This adds the private range to the gateway’s existing site and approves it for distribution to devices." : "This creates a site, assigns the gateway, and approves the private route for distribution to devices."}
                   </p>
-                  <dl className="network-review">
+                  <dl className="network-review tnx-resource-facts">
+                    <div>
                     <dt>Network</dt>
                     <dd>{siteName}</dd>
+                    </div><div>
                     <dt>Gateway</dt>
                     <dd>{selected?.name || "Gateway no longer available"}</dd>
+                    </div><div>
                     <dt>Private range</dt>
                     <dd>{cidr}</dd>
+                    </div>
                   </dl>
                   <p className="network-hint">
                     Existing access policies still apply. This step does not

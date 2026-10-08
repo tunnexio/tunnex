@@ -4,6 +4,7 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { Badge, Button, ErrorText, Loading, Modal, Field, Select } from "./ui";
 import { Icon } from "./Icon";
+import { ResourceSummary } from "./ResourceSummary";
 
 type Application = components["schemas"]["AppAccessApplication"];
 type Check = components["schemas"]["AppAccessCheck"];
@@ -206,15 +207,12 @@ export default function AppAccessPublication({ orgId, userId, application, check
         </> : <p role="status">No active publication. This app is not available in the browser yet.</p>}
       </div>}
     </div>
-    <div className="aa-publication-draft">
-      <div className="aa-publication-block-heading"><h3>Draft to publish</h3><span>Revision {application.draft.revision}</span></div>
-      <dl className="aa-publication-summary">
+    <ResourceSummary title="Draft to publish" className="aa-publication-draft" actions={<span className="aa-publication-revision">Revision {application.draft.revision}</span>} footer={<div className="aa-publication-draft-links"><Link to={connectionLink}>Edit connection</Link><Link to={accessLink}>Review access grants</Link></div>}>
+      <dl className="aa-publication-summary tnx-resource-facts">
         <div><dt>Browser address</dt><dd>{application.draft.public_hostname}</dd></div>
         <div><dt>Private origin</dt><dd>{application.draft.origin_url}</dd></div>
       </dl>
-      <div className="aa-publication-draft-links"><Link to={connectionLink}>Edit connection</Link><Link to={accessLink}>Review access grants</Link></div>
-
-    </div>
+    </ResourceSummary>
     {error && <ErrorText>{error}</ErrorText>}
     {!view && !error ? <Loading /> : view && <>
       <div className="aa-publication-readiness">

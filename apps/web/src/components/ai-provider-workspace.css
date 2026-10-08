@@ -326,9 +326,6 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 .ai-wizard-steps li>span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--tnx-surface-inset);border:1px solid var(--tnx-border)}
 .ai-wizard-steps li[aria-current=step]{color:var(--tnx-text-heading)}
 .ai-wizard-steps li[aria-current=step]>span{background:#254266;border-color:#80a9dd;color:#fff}
-.ai-wizard-review{display:grid;gap:12px;font-size:13px}
-.ai-wizard-review>div{display:grid;grid-template-columns:90px minmax(0,1fr);gap:12px;border-bottom:1px solid var(--tnx-border);padding-bottom:10px}
-.ai-wizard-review dt{color:var(--tnx-text-secondary)}
 @media(max-width:500px){.ai-wizard-steps{flex-wrap:wrap}}
 
 /* Provider results must contribute height in the short first wizard step. */

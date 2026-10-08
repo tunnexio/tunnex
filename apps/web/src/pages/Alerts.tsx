@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link } from "react-router-dom";
 import { AlertManagement, isAlertEventKey } from "../components/AlertManagement";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import { ResourceSummary } from "../components/ResourceSummary";
 import AppAccessPagination from "../components/AppAccessPagination";
 import { Button, ErrorText, Input, Loading, Modal } from "../components/ui";
 import { api, loadOne, type AlertOccurrence, type AlertOccurrenceState, type Role } from "../lib/api";
@@ -138,8 +139,8 @@ function AlertsWorkspace() {
       </section>}
       {roleError && <p className="alerts-permission-note">Management permissions could not be checked. <button type="button" onClick={() => void loadRole()}>Retry permissions</button></p>}
     </>}
-    {inspected && view !== "management" && <Modal title={inspected.subject} placement="right" size="enrollment" onDismiss={() => setInspectedId(null)} actions={<Button variant="ghost" onClick={() => setInspectedId(null)}>Close</Button>}><div className="alert-occurrence-detail"><div className="alert-detail-state"><span className="alert-severity" data-severity={inspected.severity}>{inspected.severity}</span><span>{inspected.state === "firing" ? "Active condition" : "Resolved"}</span></div><dl className="alert-detail-facts">{[
+    {inspected && view !== "management" && <Modal title={inspected.subject} placement="right" size="enrollment" onDismiss={() => setInspectedId(null)} actions={<Button variant="ghost" onClick={() => setInspectedId(null)}>Close</Button>}><div className="alert-occurrence-detail"><div className="alert-detail-state"><span className="alert-severity" data-severity={inspected.severity}>{inspected.severity}</span><span>{inspected.state === "firing" ? "Active condition" : "Resolved"}</span></div><ResourceSummary title="Recorded condition"><dl className="alert-detail-facts tnx-resource-facts">{[
       ["Resource", inspected.resource_name || inspected.resource_id], ["Product", productLabel(inspected)], ["First observed", dateLabel(inspected.first_observed_at)], ["Last observed", dateLabel(inspected.last_observed_at)], ["Occurrences", inspected.occurrence_count], ["Signal", inspected.event_key], ...(inspected.state === "resolved" ? [["Resolved", dateLabel(inspected.resolved_at)]] : []),
-    ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{resourceHref(inspected) && <Link className="alert-detail-link" to={resourceHref(inspected)!}>Open {productLabel(inspected).toLowerCase()}</Link>}</div></Modal>}
+    ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></ResourceSummary>{resourceHref(inspected) && <Link className="alert-detail-link" to={resourceHref(inspected)!}>Open {productLabel(inspected).toLowerCase()}</Link>}</div></Modal>}
   </div>;
 }

@@ -102,16 +102,7 @@
 .k8s-provider-option > span { display:flex; min-width:0; flex-direction:column; gap:2px; }
 .k8s-provider-option strong { font-size:12px; font-weight:500; color:var(--tnx-text-heading); }
 .k8s-provider-option small { font-size:11px; color:var(--tnx-text-secondary); }
-.k8s-enrollment-review { margin:16px 0; }
-.k8s-enrollment-review > div {
-  display:grid;
-  grid-template-columns:160px minmax(0,1fr);
-  gap:16px;
-  padding:11px 0;
-  border-bottom:1px solid var(--tnx-divider);
-}
-.k8s-enrollment-review dt { font-size:12px; color:var(--tnx-text-secondary); }
-.k8s-enrollment-review dd { margin:0; font-size:13px; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
+dl.k8s-enrollment-review.tnx-resource-facts { margin:16px 0; }
 .k8s-enrollment-feedback:empty { display:none; }
 .k8s-enrollment-feedback { margin-top:12px; }
 .k8s-metadata-correction .k8s-provider-fieldset { margin-top:22px; }

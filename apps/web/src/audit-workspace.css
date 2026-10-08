@@ -35,7 +35,7 @@
 .audit-detail-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
 .audit-detail-heading h1 { font-size: 21px; font-weight: 500; color: var(--tnx-text-heading); outline: none; }
 .audit-detail-heading p { margin-top: 6px; font-size: 12px; color: var(--tnx-text-secondary); overflow-wrap: anywhere; }
-.audit-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.audit-facts:not(.tnx-resource-facts) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .audit-facts dt, .audit-record-ids dt, .audit-record-details dt { font-size: 11px; color: var(--tnx-text-secondary); }
 .audit-facts dd { display: grid; gap: 4px; font-size: 13px; color: var(--tnx-text-heading); overflow-wrap: anywhere; margin-top: 7px; }
 .audit-facts small { font-size: 11px; color: var(--tnx-text-secondary); }
@@ -44,6 +44,9 @@
 .audit-evidence { border-top: 1px solid var(--tnx-divider); padding-top: 12px; }
 .audit-evidence summary { font-size: 13px; }
 .audit-record-ids, .audit-record-details { margin-top: 14px; }
-.audit-record-ids > div, .audit-record-details > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--tnx-divider); }
+.audit-record-ids:not(.tnx-resource-facts) > div, .audit-record-details:not(.tnx-resource-facts) > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--tnx-divider); }
 .audit-record-ids dd, .audit-record-details dd { font-size: 12px; color: var(--tnx-text-heading); overflow-wrap: anywhere; }
 .audit-detail-value { white-space: pre-wrap; line-height: 1.7; }
+
+.audit-evidence > .tnx-resource-summary { margin-top:16px; }
+.audit-evidence > dl.tnx-resource-facts { margin-top:24px; }

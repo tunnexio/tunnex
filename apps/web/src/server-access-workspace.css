@@ -48,14 +48,11 @@
 .server-access-workspace .sa-detail-rail button > span { display:grid; place-items:center; width:21px; height:21px; border:1px solid var(--tnx-border); border-radius:50%; font-size:10px; }
 .server-access-workspace .sa-detail-rail button[aria-current="step"] { background:var(--tnx-surface-inset); color:var(--tnx-text-heading); }
 .server-access-workspace .sa-detail-rail button[aria-current="step"] > span { border-color:var(--tnx-text-secondary); }
-.server-access-workspace .sa-stage { min-width:0; padding-left:26px; border-left:1px solid var(--tnx-border); }
+.server-access-workspace .sa-stage { min-width:0; }
 .server-access-workspace .sa-stage-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:22px; }
 .server-access-workspace .sa-stage-heading h3 { font-size:15px; font-weight:500; }
 .server-access-workspace .sa-stage-heading p,.server-access-workspace .sa-stage-heading > span { font-size:11.5px; color:var(--tnx-text-secondary); margin-top:5px; }
-.server-access-workspace .sa-summary { display:grid; gap:0; margin:0 0 20px; }
-.server-access-workspace .sa-summary > div { display:grid; grid-template-columns:145px minmax(0,1fr); gap:14px; padding:12px 0; border-bottom:1px solid var(--tnx-border); font-size:12px; line-height:1.6; }
-.server-access-workspace .sa-summary dt { color:var(--tnx-text-secondary); }
-.server-access-workspace .sa-summary dd { margin:0; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
+.server-access-workspace .sa-stage > .tnx-resource-summary { margin-bottom:24px; }
 .server-access-workspace .sa-mono { font-family:ui-monospace,SFMono-Regular,monospace; font-size:11px; }
 .server-access-workspace .sa-account-table th:nth-child(2) { width:175px; }
 .server-access-workspace .sa-account-table th:nth-child(3) { width:102px; }
@@ -64,14 +61,14 @@
 .server-access-workspace .sa-account-help { margin:0; font-size:12px; color:var(--tnx-text-secondary); }
 .server-access-workspace .sa-account-help > summary { cursor:pointer; }
 .server-access-workspace .sa-account-help p { margin:12px; max-width:72ch; font-size:12px; line-height:1.65; }
-.server-access-workspace .sa-account-options { margin-block:8px 16px; border:1px solid var(--tnx-border); border-radius:8px; overflow:hidden; }
+.server-access-workspace .sa-account-options { margin-block:8px 16px; }
 .server-access-workspace .sa-account-options > details { padding:0; border-top:0; }
 .server-access-workspace .sa-account-options > details + details { border-top:1px solid var(--tnx-border); }
 .server-access-workspace .sa-account-options > details > summary { border-radius:0; padding-inline:14px; }
-.server-access-workspace .sa-account-options > details > .sa-summary { margin-inline:14px; }
-.server-access-workspace .sa-account-options > details > .tnx-setting-row { align-items:center; gap:16px; padding:12px 14px; }
-.server-access-workspace .sa-account-options > details > .tnx-setting-row p { margin:0; font-size:12px; line-height:1.6; }
-.server-access-workspace .sa-account-options > details > .tnx-setting-row p + p { margin-top:4px; font-size:11px; }
+.server-access-workspace .sa-account-options .sa-session-summary { margin-top:12px; }
+.server-access-workspace .sa-session-summary .tnx-setting-row { align-items:center; gap:16px; margin-top:22px; padding:18px 0 0; border-top:1px solid var(--tnx-border); }
+.server-access-workspace .sa-session-summary .tnx-setting-row p { margin:0; font-size:12px; line-height:1.6; }
+.server-access-workspace .sa-session-summary .tnx-setting-row p + p { margin-top:4px; font-size:11px; }
 .sa-account-help-content { padding:0 14px 12px; }
 .sa-account-help-content dl { display:grid; gap:8px; }
 .sa-account-help-content dl > div { display:grid; grid-template-columns:120px minmax(0,1fr); gap:14px; font-size:12px; line-height:1.5; }
@@ -170,8 +167,4 @@
 .server-access-workspace .sa-import > summary { cursor:pointer; color:var(--tnx-text-secondary); }
 .server-access-workspace .sa-import[open] { flex-basis:100%; margin:4px 0 0; padding:14px 0; border-top:1px solid var(--tnx-border); }
 .server-access-workspace .sa-import[open] > summary { margin-bottom:12px; }
-.sa-dialog-summary { display:grid; margin:0 0 16px; font-size:12px; }
-.sa-dialog-summary > div { display:grid; grid-template-columns:88px minmax(0,1fr); gap:16px; padding:12px 0; border-bottom:1px solid var(--tnx-border); }
-.sa-dialog-summary dt { color:var(--tnx-text-secondary); }
-.sa-dialog-summary dd { margin:0; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
 .sa-form-actions { gap:12px; }

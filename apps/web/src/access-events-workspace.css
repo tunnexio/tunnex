@@ -68,7 +68,7 @@
 .event-detail-stage h2:focus { outline:none; }
 .event-detail-stage h3 { font-size:13px; font-weight:500; margin:24px 0 16px; }
 .event-facts { margin:0; }
-.event-facts > div { display:grid; grid-template-columns:125px minmax(0,1fr); gap:18px; padding:15px 0; font-size:13px; border-bottom:1px solid var(--tnx-divider); }
+.event-facts:not(.tnx-resource-facts) > div { display:grid; grid-template-columns:125px minmax(0,1fr); gap:18px; padding:15px 0; font-size:13px; border-bottom:1px solid var(--tnx-divider); }
 .event-facts dt { color:var(--tnx-text-secondary); font-size:12px; }
 .event-facts dd { margin:0; color:var(--tnx-text-primary); overflow-wrap:anywhere; }
 .event-detail-note { color:var(--tnx-text-secondary); font-size:12px; line-height:1.7; margin:20px 0; }

@@ -1,4 +1,5 @@
 import { NetworkDetailList } from "../components/NetworkDetailList";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
 import "../site-to-site-workspace.css";
@@ -784,7 +785,7 @@ function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, onDone
       </div>
     </Modal>}
     {report && <Modal placement="right" showClose title={nameOf(report.nodeId)} onDismiss={() => setReport(null)} actions={<Button variant="ghost" onClick={() => setReport(null)}>Done</Button>}>
-      <div className="s2s-hub-report"><p>Last reported hub metrics.</p><dl className="s2s-network-facts"><div><dt>Acting role</dt><dd>{report.role === "primary" ? "Primary" : "Standby"}{report.demoted && " · configured primary demoted"}</dd></div><div><dt>Last handshake</dt><dd>{report.handshakeAge === "n/a" ? "Not reported" : report.handshakeAge}</dd></div><div><dt>Received</dt><dd>{report.reporting ? report.rx : "Not reported"}</dd></div><div><dt>Sent</dt><dd>{report.reporting ? report.tx : "Not reported"}</dd></div></dl><p>These counters do not verify application traffic.</p></div>
+      <ResourceSummary className="s2s-hub-report" title="Last reported hub metrics"><dl className="s2s-network-facts tnx-resource-facts"><div><dt>Acting role</dt><dd>{report.role === "primary" ? "Primary" : "Standby"}{report.demoted && " · configured primary demoted"}</dd></div><div><dt>Last handshake</dt><dd>{report.handshakeAge === "n/a" ? "Not reported" : report.handshakeAge}</dd></div><div><dt>Received</dt><dd>{report.reporting ? report.rx : "Not reported"}</dd></div><div><dt>Sent</dt><dd>{report.reporting ? report.tx : "Not reported"}</dd></div></dl><p className="s2s-operation-context mt-5">These counters do not verify application traffic.</p></ResourceSummary>
     </Modal>}
   </section>;
 }
@@ -943,13 +944,12 @@ function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selected
     <header className="s2s-network-header"><h1>{card.name}</h1><Badge tone={focusedGateway?.status === "revoked" ? "neutral" : focusedGateway?.health?.tone ?? "neutral"}>{focusedGateway?.status === "revoked" ? "Gateway revoked" : focusedGateway?.health?.label ?? (activeGateways.length ? "Assigned" : "Needs a gateway")}</Badge></header>
     <div className="s2s-network-detail-layout">
       <aside className="s2s-network-rail"><nav className="s2s-network-detail-nav" aria-label="Network detail sections">{networkSteps.map(item => <button type="button" key={item.id} aria-current={item.id === step ? "page" : undefined} onClick={() => onStepChange(item.id)}>{item.label}</button>)}</nav><p>Routing approval and access policies are separate.</p></aside>
-      <section className={`s2s-network-stage${step === "overview" ? " s2s-network-overview-stage" : ""}`} aria-labelledby="network-stage-heading">
-        <header className="s2s-network-stage-heading"><h2 id="network-stage-heading">{step === "overview" ? "Network settings" : networkSteps[stepIndex].label}</h2><div className="s2s-network-stage-actions">
+      <ResourceSummary className="s2s-network-stage" headingLevel={2} headingId="network-stage-heading" title={step === "overview" ? "Network settings" : networkSteps[stepIndex].label} actions={<div className="s2s-network-stage-actions">
           {step === "gateways" && canManage && unboundNodes.length > 0 && <Button size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
           {step === "gateways" && canManage && hasGateway && <Button size="sm" variant="ghost" onClick={() => setModal("unbind")}>Unbind gateway</Button>}
           {step === "ranges" && canManage && <Button size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
-        </div></header>
-        {step === "overview" && <dl className="s2s-network-overview-facts">
+        </div>} footer={<>{stepIndex > 0 ? <Button size="sm" variant="ghost" onClick={() => onStepChange(networkSteps[stepIndex - 1].id)}>Back to {networkSteps[stepIndex - 1].label.toLowerCase()}</Button> : <span />}{stepIndex < networkSteps.length - 1 && <Button size="sm" onClick={() => onStepChange(networkSteps[stepIndex + 1].id)}>Continue to {networkSteps[stepIndex + 1].label.toLowerCase()}</Button>}</>}>
+        {step === "overview" && <dl className="s2s-network-overview-facts tnx-resource-facts">
           <div className="s2s-network-assignment"><dt>Gateway assignment</dt><dd>{activeGateways.length ? activeGateways.map(gateway => <Link key={gateway.id} to={`/gateways/${gateway.id}`}><span>{gateway.name}</span>{gateway.isHub && <small> · hub</small>}</Link>) : "No active gateway assigned"}</dd></div>
           <div><dt>Approved ranges</dt><dd><span className="s2s-network-fact-value">{approved.length}</span>{" "}<span className="s2s-network-fact-note">routed</span></dd></div>
           <div><dt>Pending ranges</dt><dd><span className="s2s-network-fact-value">{pending.length || "None"}</span>{pending.length > 0 && <>{" "}<span className="s2s-network-fact-note">awaiting approval · not routed</span></>}</dd></div>
@@ -963,8 +963,7 @@ function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selected
           {canManage && <details className="s2s-disclosure"><summary>Lifecycle actions</summary><div className="s2s-network-lifecycle s2s-disclosure-body"><div><h3>Delete this network</h3><p>Deletion removes the Site, its rules and ranges, and unbinds gateways. Immutable policy-template references can block deletion.</p></div><Button variant="danger" size="sm" onClick={() => setModal("delete")}>Delete site</Button><span className="sr-only">Danger zone</span></div></details>}
           {!canManage && <p className="s2s-operation-context">Changes to forwarding and network lifecycle require site management access.</p>}
         </div>}
-        <footer className="s2s-network-footer">{stepIndex > 0 ? <Button size="sm" variant="ghost" onClick={() => onStepChange(networkSteps[stepIndex - 1].id)}>Back to {networkSteps[stepIndex - 1].label.toLowerCase()}</Button> : <span />}{stepIndex < networkSteps.length - 1 && <Button size="sm" onClick={() => onStepChange(networkSteps[stepIndex + 1].id)}>Continue to {networkSteps[stepIndex + 1].label.toLowerCase()}</Button>}</footer>
-      </section>
+      </ResourceSummary>
     </div>
       {modal === "subnet" && (
         <AddSubnetModal

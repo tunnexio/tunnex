@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AccessTabRail } from "../components/AccessTabRail";
 import { FQDNEnforcementSetting } from "../components/FQDNEnforcementSetting";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { LoadRetry } from "../components/LoadRetry";
 import { matchResolverProfile, PrivateDNSResolvers, providerName } from "../components/PrivateDNSResolvers";
 import { Button, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
@@ -516,9 +517,9 @@ function FQDNResourceDetailWorkspace() {
       <div className="access-resource-actions"><StateBadge state={resource.state} /><span className="access-resource-context">{fqdnPortScope(resource)}</span></div>
       <p className="access-resource-copy">{nextAction(resource)}</p>
       {(resource.state === "draft" || resource.state === "unconfigured") && <Link className="access-resource-link" to="/access/resources?type=fqdn#private-dns-heading">Review Sites and resolver settings</Link>}
-      <dl className="access-resource-facts"><DetailFact label="Resolver authority" value={resource.resolver_context ? `${resource.resolver_context.site_name} / ${resource.resolver_context.gateway_name}` : "Unbound draft, cannot compile or authorize traffic"} /><DetailFact label="Generation" value={resource.generation == null ? "Unavailable, no active generation" : String(resource.generation)} /><DetailFact label="Answer summary" value={resource.state === "healthy" ? `${resource.answer_count} active answers` : "No active answers"} /></dl>
+      <ResourceSummary title="Resolver settings"><dl className="access-resource-facts tnx-resource-facts tnx-resource-facts-three"><DetailFact label="Resolver authority" value={resource.resolver_context ? `${resource.resolver_context.site_name} / ${resource.resolver_context.gateway_name}` : "Unbound draft, cannot compile or authorize traffic"} /><DetailFact label="Generation" value={resource.generation == null ? "Unavailable, no active generation" : String(resource.generation)} /><DetailFact label="Answer summary" value={resource.state === "healthy" ? `${resource.answer_count} active answers` : "No active answers"} /></dl></ResourceSummary>
       <div className="access-resource-copy"><h2 className="sr-only">Rule impact and audit</h2>{impact ? <p>{impact.referencing_rule_count === 0 ? "No access rules currently reference this resource." : `${impact.referencing_rule_count} access ${impact.referencing_rule_count === 1 ? "rule references" : "rules reference"} this resource.`}</p> : <p role="status">Loading deletion impact…</p>}<div className="access-resource-actions"><Link className="access-resource-link" to="/access">Review Access Rules</Link><Link className="access-resource-link" to="/audit">Audit log</Link></div></div>
-      <details className="access-resource-help"><summary>Resolver timing</summary><dl className="access-resource-facts"><DetailFact label="Effective TTL" value={resource.effective_ttl_seconds == null ? "Not available" : `${resource.effective_ttl_seconds} seconds`} /><DetailFact label="Last refresh" value={resource.refreshed_at ?? "Not available"} /><DetailFact label="Last good" value={resource.last_good_at ?? "Not available"} /></dl></details>
+      <details className="access-resource-help"><summary>Resolver timing</summary><dl className="access-resource-facts tnx-resource-facts tnx-resource-facts-three"><DetailFact label="Effective TTL" value={resource.effective_ttl_seconds == null ? "Not available" : `${resource.effective_ttl_seconds} seconds`} /><DetailFact label="Last refresh" value={resource.refreshed_at ?? "Not available"} /><DetailFact label="Last good" value={resource.last_good_at ?? "Not available"} /></dl></details>
     </section>
   </div>;
 }

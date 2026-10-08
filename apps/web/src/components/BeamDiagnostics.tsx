@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, ErrorText, Loading } from "./ui";
+import { ResourceSummary } from "./ResourceSummary";
 import { beamApi, beamDiagnosticExport, type BeamDiagnostics as Diagnostics } from "../lib/beam";
 
 const reasons: Record<Diagnostics["reason"], string> = {
@@ -28,7 +29,7 @@ export function BeamDiagnostics({ orgId, shareId, revision }: { orgId: string; s
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `local-sharing-diagnostics-${data.share_id}.json`; anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  return <section className="beam-diagnostics beam-section space-y-3"><div className="beam-section-heading"><h2 className="font-semibold">Share diagnostics</h2><Button variant="ghost" onClick={() => setReload(n => n + 1)}>Check share health</Button></div><p className="text-sm text-ink-secondary">A redacted support snapshot contains share state and serving health. Local app addresses, credentials, certificate material, reviewer identities, request contents and cookies are excluded.</p>
-    {error ? <ErrorText>{error}</ErrorText> : !data ? <Loading label="Checking share health…" /> : <><p role="status">{reasons[data.reason] ?? "Share health is unavailable. Check again."}</p><div className="rounded border border-line p-3"><h3 className="font-semibold text-sm">What to do next</h3><p className="text-sm text-ink-secondary">{beamHealthNextStep(data)}</p></div><dl className="beam-meta"><div><dt>State</dt><dd>{data.state}</dd></div><div><dt>Connectivity</dt><dd>{data.connectivity}</dd></div><div><dt>Serving checks</dt><dd>{data.domain_ready ? "Current" : "Unavailable"}</dd></div><div><dt>Saved version</dt><dd>{data.version}</dd></div></dl><p className="text-xs text-ink-secondary">Snapshot from the last check. Opening an app still requires current reviewer access.</p><Button variant="ghost" onClick={download}>Download redacted diagnostics</Button></>}
-  </section>;
+  return <ResourceSummary title="Share diagnostics" headingLevel={2} className="beam-diagnostics" description="A redacted support snapshot contains share state and serving health. Local app addresses, credentials, certificate material, reviewer identities, request contents and cookies are excluded." actions={<Button variant="ghost" onClick={() => setReload(n => n + 1)}>Check share health</Button>} footer={data && !error ? <Button variant="ghost" onClick={download}>Download redacted diagnostics</Button> : undefined}>
+    {error ? <ErrorText>{error}</ErrorText> : !data ? <Loading label="Checking share health…" /> : <div className="beam-diagnostics-content"><p role="status">{reasons[data.reason] ?? "Share health is unavailable. Check again."}</p><dl className="beam-meta tnx-resource-facts"><div><dt>State</dt><dd>{data.state}</dd></div><div><dt>Connectivity</dt><dd>{data.connectivity}</dd></div><div><dt>Serving checks</dt><dd>{data.domain_ready ? "Current" : "Unavailable"}</dd></div><div><dt>Saved version</dt><dd>{data.version}</dd></div><div className="tnx-resource-fact-wide"><dt>What to do next</dt><dd>{beamHealthNextStep(data)}</dd></div></dl><p className="text-xs text-ink-secondary">Snapshot from the last check. Opening an app still requires current reviewer access.</p></div>}
+  </ResourceSummary>;
 }

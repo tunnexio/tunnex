@@ -14,6 +14,7 @@ import {
 } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
 import { Icon } from "../components/Icon";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { api, apiErrorMessage } from "../lib/api";
 import { relativeAge } from "../lib/format";
 import {
@@ -189,9 +190,13 @@ export default function GatewayDetail() {
           <p className="gw-detail-rail-note">{node.status === "revoked" ? "Revoked credentials cannot reconnect." : "Check health before making lifecycle changes."}</p>
         </aside>
         <section className="gw-detail-stage" aria-labelledby="gateway-stage-heading">
-          <div className="gw-detail-stage-heading"><h2 id="gateway-stage-heading">{tabs.find(item => item.id === tab)?.label}</h2></div>
-          {tab === "overview" && <>
-            <dl className="gw-facts">
+          {tab === "lifecycle" && <div className="gw-detail-stage-heading"><h2 id="gateway-stage-heading">Lifecycle</h2></div>}
+          {tab === "overview" && <ResourceSummary title="Overview" headingLevel={2} headingId="gateway-stage-heading" footer={<div className="gw-related-links" aria-label="Related gateway resources">
+              <Link to="/sites"><span>Site topology</span></Link>
+              <Link to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span></Link>
+              <Link to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span></Link>
+            </div>}>
+            <dl className="gw-facts tnx-resource-facts tnx-resource-facts-three">
               <Fact label="Endpoint">{node.endpoint ?? "Not reported"}</Fact>
               <Fact label="Site">{row.siteName ?? "No site assigned"}</Fact>
               <Fact label="Credential"><Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge></Fact>
@@ -199,13 +204,8 @@ export default function GatewayDetail() {
               <Fact label="Last seen">{node.last_seen_at ? <><span>{relativeAge(node.last_seen_at)}</span><small>{new Date(node.last_seen_at).toLocaleString()}</small></> : "Never connected"}</Fact>
               <Fact label="Enrolled">{node.enrolled_at ? new Date(node.enrolled_at).toLocaleString() : "Not reported"}</Fact>
             </dl>
-            <div className="gw-related-links" aria-label="Related gateway resources">
-              <Link to="/sites"><span>Site topology</span></Link>
-              <Link to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span></Link>
-              <Link to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span></Link>
-            </div>
-          </>}
-          {tab === "health" && <>
+          </ResourceSummary>}
+          {tab === "health" && <ResourceSummary title="Health" headingLevel={2} headingId="gateway-stage-heading">
             <div className="gw-health-list">
               <section className="gw-health-row"><div><h3>Connectivity</h3><p>{node.last_seen_at ? `Last control-plane observation ${relativeAge(node.last_seen_at)}.` : "This gateway has never reported a successful connection."}</p></div><span className="gw-health-value">{node.status === "revoked" ? "Historical" : !node.last_seen_at ? "Awaiting connection" : row.health?.label === "offline" ? "Offline" : "Reported"}</span></section>
               <section className="gw-health-row"><div><h3>Policy and transit</h3>{groupNotes([row]).map(note => <p key={note}>{note}</p>)}</div><Badge tone={node.status === "revoked" ? "neutral" : row.health?.tone ?? (!node.last_seen_at ? "neutral" : "ok")}>{node.status === "revoked" ? "not evaluated" : row.health?.label ?? (!node.last_seen_at ? "Awaiting first report" : "healthy")}</Badge></section>
@@ -213,7 +213,7 @@ export default function GatewayDetail() {
               <section className="gw-health-row"><div><h3>Egress</h3><p>{gatewayEgressDetail(row)}</p></div></section>
             </div>
             <details className="gw-detail-disclosure"><summary>How health is evaluated</summary><p>Active credentials do not confirm a recent connection. Policy health and OpenVPN are separate service signals; egress capabilities come from verified gateway reports.</p></details>
-          </>}
+          </ResourceSummary>}
           {tab === "lifecycle" && <>
             {node.status === "active" && <p className="gw-stage-context">Move dependent devices, then revoke this gateway.</p>}
             {node.status === "revoked" && <p className="gw-stage-context">This gateway cannot reconnect. Recover eligible devices on an active replacement.</p>}

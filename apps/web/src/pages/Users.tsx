@@ -9,6 +9,7 @@ import { canResend, canRevoke, invitationState, inviteErrorCopy, inviteGate, inv
 import { Button, ErrorText, Field, Input, Loading, Modal, Select } from "../components/ui";
 import { UsersTabRail } from "../components/WorkspaceTabs";
 import UsersInventory from "../components/UsersInventory";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import AppAccessPagination from "../components/AppAccessPagination";
@@ -201,8 +202,8 @@ function UsersWorkspace({ view }: { view: View }) {
       <nav aria-label="Person breadcrumb" className="user-breadcrumb"><button type="button" disabled={busy} onClick={() => setInspectedId(null)}>{view === "roles" ? "Roles" : "Users"}</button><span aria-hidden="true">/</span><span>{inspected.name || inspected.email}</span></nav>
       <header className="user-detail-header"><div><h2 ref={titleRef} tabIndex={-1}>{inspected.name || inspected.email}</h2><p>{inspected.name && inspected.name !== inspected.email ? `${inspected.email} · ` : ""}{memberState(inspected)}{inspected.user_id === actorId ? " · You" : ""}</p></div><AppAccessRowMenu label={`Account actions for ${inspected.email}`} actions={personActions(inspected)} /></header>
       <div className="user-detail-layout"><nav aria-label="Person detail sections" className="user-detail-path">{(["overview", "roles", ...(shape.showDeviceCount ? ["devices"] : [])] as Stage[]).map(item => <button key={item} type="button" disabled={busy} aria-current={stage === item ? "step" : undefined} onClick={() => changeStage(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
-        <div className="user-detail-stage"><h3 ref={stageRef} tabIndex={-1}>{stage[0].toUpperCase() + stage.slice(1)}</h3>
-          {stage === "overview" && <UserFacts rows={[["Email", inspected.email], ["Account", memberState(inspected)], ["Email verified", inspected.email_verified ? "Verified" : "Unverified"], ["Joined", dateLabel(inspected.joined_at)], ["Roles", memberRoles(inspected).join(" + ")]]} />}
+        <div className="user-detail-stage"><h3 className={stage === "overview" ? "sr-only" : undefined} ref={stageRef} tabIndex={-1}>{stage[0].toUpperCase() + stage.slice(1)}</h3>
+          {stage === "overview" && <ResourceSummary title="Account details"><UserFacts summary rows={[["Email", inspected.email], ["Account", memberState(inspected)], ["Email verified", inspected.email_verified ? "Verified" : "Unverified"], ["Joined", dateLabel(inspected.joined_at)], ["Roles", memberRoles(inspected).join(" + ")]]} /></ResourceSummary>}
           {stage === "roles" && <PersonRoles key={inspected.user_id + ":" + memberRoles(inspected).join(",") + ":" + myRole + ":" + emailVerified} member={inspected} actorRole={myRole} editable={emailVerified && canManageMembership(myRole, inspected.role, "")} soleOwner={inspected.role === "owner" && ownerCount <= 1} busy={busy} onSave={roles => changeRoles(inspected, roles)} />}
           {stage === "devices" && shape.showDeviceCount && <>{devicesLoading ? <Loading label="Loading devices…" /> : deviceError ? <LoadRetry error={deviceError} onRetry={() => void loadDevices()} /> : devices ? <><p className="user-stage-meta">{deviceCountLabel(deviceCountFor({ role: myRole, devices, userId: inspected.user_id }))}</p>{devices.filter(device => device.user_id === inspected.user_id).length ? <ul className="user-device-list">{devices.filter(device => device.user_id === inspected.user_id).map(device => <li key={device.id}><span>{device.name}</span><span>{device.status}</span></li>)}</ul> : <div className="users-empty"><h4>No devices enrolled</h4><p>This person has no devices in this organization.</p></div>}<Link className="user-text-link" to="/devices">Open device inventory</Link></> : <p>Device counts could not load.</p>}</>}
           <footer className="user-detail-footer"><Button variant="ghost" disabled={busy} onClick={() => setInspectedId(null)}>Back to {view === "roles" ? "roles" : "users"}</Button></footer>
@@ -223,7 +224,7 @@ function UsersWorkspace({ view }: { view: View }) {
   </div>;
 }
 
-function UserFacts({ rows }: { rows: Array<[string, ReactNode]> }) { return <dl className="user-facts">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>; }
+function UserFacts({ rows, summary = false }: { rows: Array<[string, ReactNode]>; summary?: boolean }) { return <dl className={summary ? "user-facts tnx-resource-facts tnx-resource-facts-three" : "user-facts"}>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>; }
 
 function PersonRoles({ member, actorRole, editable, soleOwner, busy, onSave }: { member: Member; actorRole: Role | undefined; editable: boolean; soleOwner: boolean; busy: boolean; onSave: (roles: Role[]) => Promise<void> }) {
   const saved = memberRoles(member), [selected, setSelected] = useState<Role[]>(saved);

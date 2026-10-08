@@ -15,6 +15,7 @@ import {
 import { Button, ErrorText, Field, Input, Modal, Select } from "./ui";
 import { ProviderMark } from "./ProviderMarks";
 import "../kubernetes-enrollment.css";
+import "../resource-summary.css";
 
 export type EnrollmentSubmitResult =
   | { ok: true; notice?: string }
@@ -220,7 +221,7 @@ export function ProviderFirstEnrollmentModal({
 
           {step === 3 && <>
             <p className="k8s-enrollment-note">Register this cluster with the values below.</p>
-            <dl className="k8s-enrollment-review" aria-label="Enrollment context">
+            <dl className="k8s-enrollment-review tnx-resource-facts" aria-label="Enrollment context">
               <div><dt>Cluster</dt><dd>{draft.name.trim() || "Not entered"}</dd></div>
               <div><dt>Provider</dt><dd>{selectedCatalog?.providerLabel ?? "Not selected"}</dd></div>
               <div><dt>Kubernetes service</dt><dd>{providerComplete ? selectedCatalog?.platformLabel : "Not selected"}</dd></div>

@@ -17,6 +17,7 @@ import { LoadRetry } from "../components/LoadRetry";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import AppAccessPagination from "../components/AppAccessPagination";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { NetworkDetailList } from "../components/NetworkDetailList";
 
 type Kind = "people" | "agents" | "directory";
@@ -286,12 +287,13 @@ function CanonicalGroupsWorkspace({
       <ErrorText>{error}</ErrorText>{notice && <p role="status" className="agents-management-notice">{notice}</p>}
       {!agentGroupsEnabled ? <AppAccessEmptyState icon={null} title="Agent groups are turned off" description="Enable this organization’s opt-in for agent groups and network policy templates." action={<Link className="agents-management-link" to="/settings?section=features&feature=agent-templates">Configure AI Agent settings</Link>} /> : !countsValid ? <p role="alert">Member counts require the matching control-plane API version. Refresh when the server can return a valid count for every group.</p> : selected ? <>
         <nav aria-label="Breadcrumb" className="agents-management-breadcrumb"><button disabled={busy} onClick={() => update({ group: null })}>Agent groups</button><span aria-hidden="true">/</span><span aria-current="page">{selected.name}</span></nav>
-        <div className="agents-management-heading"><div><h2>{selected.name}</h2><p className="agents-group-context">{memberLabel(selected.memberCount)}</p></div><div className="agents-management-actions"><Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button><AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
+        <div className="agents-management-heading"><div><h2>{selected.name}</h2></div><div className="agents-management-actions"><Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button><AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
           { key: "rename", label: "Rename", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },
           { key: "archive", label: "Archive", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => setDialog("archive") },
           { key: "network", label: "Network templates", href: `/agents/policies?group=${encodeURIComponent(selected.raw.id)}` },
           { key: "models", label: "Model policies", href: "/agents/model-access" },
         ]} /></div></div>
+        <ResourceSummary title="Group settings" className="group-saved-summary"><dl className="tnx-resource-facts"><div><dt>Reported membership</dt><dd>{memberLabel(selected.memberCount)}</dd></div><div><dt>Group identity</dt><dd>{selected.raw.id}</dd></div></dl></ResourceSummary>
         {currentMemberError ? <LoadRetry error={currentMemberError} onRetry={() => void loadSelected()} /> : currentMembers === null ? <Loading label="Loading members…" /> : <>
           <div className="agents-management-toolbar"><Input aria-label="Search agent group members" value={memberQuery} placeholder="Search members" onChange={(event) => { setMemberQuery(event.target.value); setMemberPage(1); }} /><Link className="agents-management-link" to="/audit">View audit context</Link></div>
           <DataTable variant="flat" caption="Agent group members" rows={memberRows} rowKey={(member) => (member as AgentGroupMember).device_id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={memberQuery ? "No matching members" : "No members."} description={memberQuery ? "Try another agent name." : "Add agents to share this group’s desired configuration."} action={memberQuery ? <Button variant="ghost" onClick={() => { setMemberQuery(""); setMemberPage(1); }}>Clear search</Button> : undefined} />} columns={[
@@ -509,7 +511,8 @@ function PeopleGroupMembers({ orgId, group, canWrite, initialDialog, onBack, onR
   }
   return <>
     <nav aria-label="Group breadcrumb" className="users-groups-breadcrumb"><button disabled={busy} onClick={onBack}>Groups</button><span aria-hidden="true">/</span><span aria-current="page">{group.name}</span></nav>
-    <div className="users-groups-heading"><div><h1>{group.name}</h1><p>{memberLabel(group.member_count)} reported · {directory ? "Directory sync" : "Manual"}</p></div>{editable && <div className="users-groups-actions"><Button disabled={mutationBlocked || !members || !!memberError} onClick={() => openDialog("add")}>Add member</Button><AppAccessRowMenu label={`Actions for ${group.name}`} actions={[{ key: "rename", label: "Rename", disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("rename") }, { key: "archive", label: "Archive", danger: true, disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("archive") }]} /></div>}</div>
+    <div className="users-groups-heading"><div><h1>{group.name}</h1></div>{editable && <div className="users-groups-actions"><Button disabled={mutationBlocked || !members || !!memberError} onClick={() => openDialog("add")}>Add member</Button><AppAccessRowMenu label={`Actions for ${group.name}`} actions={[{ key: "rename", label: "Rename", disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("rename") }, { key: "archive", label: "Archive", danger: true, disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("archive") }]} /></div>}</div>
+    <ResourceSummary title="Group settings" className="group-saved-summary"><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Source</dt><dd>{directory ? "Directory sync" : "Manual"}</dd></div><div><dt>Reported membership</dt><dd>{memberLabel(group.member_count)} reported</dd></div><div><dt>Group identity</dt><dd>{group.id}</dd></div></dl></ResourceSummary>
     {directory && <p className="users-groups-copy">{DIRECTORY_MANAGED_NOTE}</p>}{!canWrite && <p className="users-groups-copy">Verify your email to manage groups.</p>}
     {!dialog && <ErrorText>{error}</ErrorText>}
     {memberError ? <LoadRetry error={memberError} onRetry={() => void reloadMembers()} /> : !members ? <Loading label="Loading members…" /> : <>

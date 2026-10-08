@@ -16,6 +16,7 @@ import {
   type K8sService,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { ResourceSummary } from "../components/ResourceSummary";
 import {
   Badge,
   Button,
@@ -461,20 +462,21 @@ kubectl wait --for=condition=Established --timeout=120s \\
             <header className="kubernetes-entity-header"><div><h2>{selected.name}</h2><p>{selectedProviderContext ? `${selectedProviderContext.providerLabel} · ${selectedProviderContext.platformLabel}` : "Provider not recorded"}{selected.managedByOperator ? " · GitOps" : ""}</p></div>{clusterMenu(selected, false)}</header>
             <div className="kubernetes-detail-layout">
               <nav className="kubernetes-detail-rail" aria-label="Cluster detail sections">{clusterSteps.map(step => <button type="button" key={step} aria-current={detail === step ? "step" : undefined} onClick={() => updateQuery({ detail: step === "overview" ? null : step, q: null })}>{step[0].toUpperCase() + step.slice(1)}</button>)}</nav>
-              <section className="kubernetes-detail-stage" aria-labelledby="kubernetes-stage-heading"><header className="kubernetes-stage-header"><h3 id="kubernetes-stage-heading">{detail[0].toUpperCase() + detail.slice(1)}</h3>{detail !== "services" && <span>{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>}</header>
-                {detail === "overview" && <>
-                  <dl className="kubernetes-facts"><div><dt>Network</dt><dd>{siteName.has(selected.siteId) ? <Link to={`/sites?section=overview&site=${selected.siteId}`}>{siteName.get(selected.siteId)}</Link> : "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{connectorCell(selected)}</dd></div><div><dt>Managed by</dt><dd aria-label={selected.managedByOperator ? managedEditWarning("cluster") : undefined}>{selected.managedByOperator ? "GitOps operator" : "Dashboard"}</dd></div></dl>
+              <section className="kubernetes-detail-stage" aria-labelledby="kubernetes-stage-heading">{detail === "services" && <header className="kubernetes-stage-header"><h3 id="kubernetes-stage-heading">Services</h3></header>}
+                {detail === "overview" && <ResourceSummary title="Overview" headingId="kubernetes-stage-heading" actions={<span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>} footer={<div className="kubernetes-summary-actions"><Button variant="ghost" onClick={() => updateQuery({ detail: "connection", q: null })}>View connection</Button><Button variant="ghost" onClick={() => updateQuery({ section: "services", cluster: selected.id, detail: null, q: null })}>View services</Button></div>}>
+                  <dl className="kubernetes-facts tnx-resource-facts"><div><dt>Network</dt><dd>{siteName.has(selected.siteId) ? <Link to={`/sites?section=overview&site=${selected.siteId}`}>{siteName.get(selected.siteId)}</Link> : "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{connectorCell(selected)}</dd></div><div><dt>Managed by</dt><dd aria-label={selected.managedByOperator ? managedEditWarning("cluster") : undefined}>{selected.managedByOperator ? "GitOps operator" : "Dashboard"}</dd></div></dl>
                   {selected.managedByOperator && <p className="kubernetes-context">Edit the cluster CR to change its configuration.</p>}
-                  <div className="kubernetes-stage-footer"><Button variant="ghost" onClick={() => updateQuery({ detail: "connection", q: null })}>View connection</Button><Button variant="ghost" onClick={() => updateQuery({ section: "services", cluster: selected.id, detail: null, q: null })}>View services</Button></div>
-                </>}
+                </ResourceSummary>}
                 {detail === "connection" && <>
-                  <dl className="kubernetes-facts"><div><dt>Network</dt><dd>{siteName.get(selected.siteId) ?? "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{selectedBinding?.kind === "pool" ? `Pool active: ${nodeName.get(selectedBinding.nodeId) ?? "Unavailable"}` : selectedBinding?.kind === "direct" ? nodeName.get(selectedBinding.nodeId) ?? "Unavailable" : selectedBinding?.kind === "missing" ? "Not selected" : "Pool state unavailable"}</dd></div></dl>
+                  <ResourceSummary title="Connection" headingId="kubernetes-stage-heading" actions={<span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>}>
+                  <dl className="kubernetes-facts tnx-resource-facts"><div><dt>Network</dt><dd>{siteName.get(selected.siteId) ?? "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{selectedBinding?.kind === "pool" ? `Pool active: ${nodeName.get(selectedBinding.nodeId) ?? "Unavailable"}` : selectedBinding?.kind === "direct" ? nodeName.get(selectedBinding.nodeId) ?? "Unavailable" : selectedBinding?.kind === "missing" ? "Not selected" : "Pool state unavailable"}</dd></div></dl>
                   {raw?.nodes !== null && selectedBinding?.kind !== "unavailable" && <p className="kubernetes-context">{clusterConnectorState({ connectorNodeId: selectedBinding?.nodeId ?? null, gateways }).why ?? "Connector configuration is available. Service readiness is reported separately."}</p>}
                   {connectorControls(selected) && <Button variant="ghost" size="sm" onClick={() => setConnectorFor(selected)}>{selectedBinding?.kind === "missing" ? "Select connector" : "Change connector"}</Button>}
+                  </ResourceSummary>
                   {orgId && <K8sConnectorPoolPanel orgId={orgId} cluster={selected} nodes={currentRaw.nodes} role={myRole} emailVerified={emailVerified} onChanged={reload} />}
                 </>}
                 {detail === "services" && servicesList}
-                {detail === "network" && <dl className="kubernetes-facts">{[["VIP range", selected.vipRange], ["Service CIDR", selected.serviceCidr], ["DNS zone", selected.dnsZone || "Not configured"], ["DNS VIP", selected.dnsVip ?? "Not allocated"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+                {detail === "network" && <ResourceSummary title="Network" headingId="kubernetes-stage-heading" actions={<span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>}><dl className="kubernetes-facts tnx-resource-facts">{[["VIP range", selected.vipRange], ["Service CIDR", selected.serviceCidr], ["DNS zone", selected.dnsZone || "Not configured"], ["DNS VIP", selected.dnsVip ?? "Not allocated"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></ResourceSummary>}
               </section>
             </div>
           </section>}
@@ -489,7 +491,7 @@ kubectl wait --for=condition=Established --timeout=120s \\
         </>}
       </>}
       {scopeCurrent && inspectedService && <Modal placement="right" showClose title={inspectedService.name} onDismiss={() => setInspectedService(null)} actions={<><Button variant="ghost" onClick={() => { const card = cards.find(card => card.id === inspectedService.clusterId); if (card) openCluster(card); setInspectedService(null); }}>View cluster</Button>{gate.canManage && !inspectedService.managedByOperator && <Button variant="danger" onClick={() => { setUnexposeFor(inspectedService); setInspectedService(null); }}>Unexpose</Button>}</>}>
-        <div className="kubernetes-service-inspection"><p>{inspectedService.fqdn}</p><dl className="kubernetes-facts">{[["Cluster", inspectedService.clusterName], ["Namespace", inspectedService.namespace], ["VIP", inspectedService.vip], ["Protocol", inspectedService.protocol.toUpperCase()], ["Port", inspectedService.ports], ["Managed by", inspectedService.managedByOperator ? "GitOps operator" : "Dashboard"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{inspectedService.managedByOperator && <p className="kubernetes-context" aria-label={managedEditWarning("Service")}>Edit the Service CR to change exposure.</p>}</div>
+        <ResourceSummary title="Service details" description={inspectedService.fqdn} className="kubernetes-service-inspection"><dl className="kubernetes-facts tnx-resource-facts tnx-resource-facts-single">{[["Cluster", inspectedService.clusterName], ["Namespace", inspectedService.namespace], ["VIP", inspectedService.vip], ["Protocol", inspectedService.protocol.toUpperCase()], ["Port", inspectedService.ports], ["Managed by", inspectedService.managedByOperator ? "GitOps operator" : "Dashboard"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{inspectedService.managedByOperator && <p className="kubernetes-context" aria-label={managedEditWarning("Service")}>Edit the Service CR to change exposure.</p>}</ResourceSummary>
       </Modal>}
       {scopeCurrent && trafficPathOpen && (
         <Modal placement="right" showClose title="Kubernetes traffic path" onDismiss={() => setTrafficPathOpen(false)} actions={<Button variant="ghost" onClick={() => setTrafficPathOpen(false)}>Close</Button>}>

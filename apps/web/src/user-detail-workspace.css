@@ -9,7 +9,7 @@
 .user-detail-header h2 { margin: 0 0 8px; color: var(--tnx-text-primary); font-size: 21px; font-weight: 550; letter-spacing: -.4px; overflow-wrap: anywhere; }
 .user-detail-header p { margin: 0; font-size: 12px; color: var(--tnx-text-secondary); overflow-wrap: anywhere; }
 .user-detail-layout { display: grid; grid-template-columns: 170px minmax(0,1fr); gap: 22px; }
-.user-detail-path { border-right: 1px solid var(--tnx-border); padding-right: 22px; display: flex; flex-direction: column; gap: 7px; }
+.user-detail-path { padding-right: 22px; display: flex; flex-direction: column; gap: 7px; }
 .user-detail-path button { border: 0; background: transparent; color: var(--tnx-text-secondary); text-align: left; padding: 12px 10px; font-size: 13px; border-radius: 6px; cursor: pointer; }
 .user-detail-path button[aria-current] { color: var(--tnx-text-primary); background: var(--tnx-surface-inset); }
 .user-detail-path button:hover { color: var(--tnx-text-primary); }
@@ -18,7 +18,7 @@
 .user-detail-stage h3 { margin: 3px 0 20px; font-size: 14px; font-weight: 550; color: var(--tnx-text-primary); }
 .user-detail-stage h3:focus, .user-detail-header h2:focus { outline: none; }
 .user-facts { margin: 0; }
-.user-facts > div { display: grid; grid-template-columns: 125px minmax(0,1fr); gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--tnx-border); font-size: 13px; }
+.user-facts:not(.tnx-resource-facts) > div { display: grid; grid-template-columns: 125px minmax(0,1fr); gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--tnx-border); font-size: 13px; }
 .user-facts dt { color: var(--tnx-text-secondary); font-size: 12px; }
 .user-facts dd { margin: 0; color: var(--tnx-text-primary); overflow-wrap: anywhere; }
 .user-detail-footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--tnx-border); }

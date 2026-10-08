@@ -56,11 +56,11 @@
 .ap-rule-detail-nav button:hover { color:var(--tnx-text-heading); }
 .ap-rule-detail-nav button[aria-current=page] { background:var(--tnx-surface-inset); color:var(--tnx-text-heading); font-weight:500; }
 .ap-rule-detail-nav button:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:2px; }
-.ap-rule-detail-stage { min-width:0; padding-left:26px; border-left:1px solid var(--tnx-border); }
+.ap-rule-detail-stage { min-width:0; padding-left:26px; }
 .ap-rule-detail-stage > h3 { margin-bottom:14px; color:var(--tnx-text-heading); font-size:14px; font-weight:500; }
 .ap-rule-detail-stage > h3:focus { outline:0; }
 .ap-rule-facts { margin:0 0 18px; }
-.ap-rule-facts > div { display:grid; grid-template-columns:120px minmax(0,1fr); gap:20px; padding:13px 0; border-bottom:1px solid var(--tnx-border); font-size:12px; line-height:1.6; }
+.ap-rule-facts:not(.tnx-resource-facts) > div { display:grid; grid-template-columns:120px minmax(0,1fr); gap:20px; padding:13px 0; border-bottom:1px solid var(--tnx-border); font-size:12px; line-height:1.6; }
 .ap-rule-facts dt { color:var(--tnx-text-secondary); }
 .ap-rule-facts dd { margin:0; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
 .ap-rule-facts small { display:block; margin-top:4px; color:var(--tnx-text-secondary); font-size:10.5px; }
@@ -68,7 +68,7 @@
 .ap-rule-disclosure { border:1px solid var(--tnx-border); border-radius:7px; font-size:12px; }
 .ap-rule-disclosure > summary { padding-inline:14px; }
 .ap-rule-metadata { display:grid; gap:12px; padding:0 14px 15px; }
-.ap-rule-metadata > div { display:grid; grid-template-columns:85px minmax(0,1fr); gap:15px; font-size:11px; }
+.ap-rule-metadata:not(.tnx-resource-facts) > div { display:grid; grid-template-columns:85px minmax(0,1fr); gap:15px; font-size:11px; }
 .ap-rule-metadata dt { color:var(--tnx-text-secondary); }
 .ap-rule-metadata dd { margin:0; overflow-wrap:anywhere; }
 .ap-rule-attention { margin:20px 0; font-size:12px; }
@@ -84,3 +84,7 @@
   .ap-rule-detail-layout { gap:22px; }
   .ap-rule-detail-stage { padding-left:22px; }
 }
+
+.ap-rule-detail-stage > .tnx-resource-summary { margin-bottom:18px; }
+.ap-rule-facts.tnx-resource-facts .tnx-status { font-size:inherit; }
+.ap-rule-disclosure > dl.tnx-resource-facts { padding:4px 14px 18px; }

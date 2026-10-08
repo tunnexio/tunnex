@@ -42,7 +42,7 @@
 .access-resource-choices > button:hover { color: var(--tnx-text-heading); }
 .access-resource-choices small { color: var(--tnx-text-secondary); font-size: 12px; font-weight: 400; }
 .access-resource-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tnx-text-secondary); }
-.access-resource-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--tnx-divider); }
+.access-resource-facts:not(.tnx-resource-facts) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--tnx-divider); }
 .access-resource-facts dd { overflow-wrap: anywhere; }
 .access-resource-help { font-size: 12px; color: var(--tnx-text-secondary); }
 .access-resource-help p { line-height: 1.6; margin: 12px 0; max-width: 76ch; }
@@ -59,7 +59,7 @@
 .access-scope-state-positive { color: var(--tnx-ok); }
 .access-scope-state-attention { color: var(--tnx-warn); }
 .access-scope-state-danger { color: var(--tnx-danger); }
-.access-scope-review-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; font-size: 13px; }
+.access-scope-review-facts:not(.tnx-resource-facts) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; font-size: 13px; }
 .access-scope-review-facts dt { color: var(--tnx-text-secondary); font-size: 11px; }
 .access-scope-review-facts dd { margin-top: 4px; color: var(--tnx-text-heading); overflow-wrap: anywhere; }
 .access-scope-editor h3 { font-size: 13px; font-weight: 500; color: var(--tnx-text-heading); }
@@ -68,3 +68,5 @@
 .access-scope-editor .network-detail-list li { border-bottom: 1px solid var(--tnx-divider); }
 .access-scope-editor .network-detail-list label { display: flex; align-items: center; gap: 12px; padding: 12px 0; cursor: pointer; }
 .access-scope-editor .network-detail-list label small { display: block; font-size: 11px; color: var(--tnx-text-secondary); }
+
+.access-resource-help > dl.tnx-resource-facts { padding:16px 0; }

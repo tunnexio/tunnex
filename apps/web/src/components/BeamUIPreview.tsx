@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type IconName } from "./Icon";
 import { ErrorText } from "./ui";
+import { ResourceSummary } from "./ResourceSummary";
 import { beamUIFixtures, filterBeamUIFixtures } from "../lib/beam-ui-fixtures";
 import { beamCountdown } from "../lib/beam-clock";
 import { beamStatus, type BeamShare, type BeamShareFilters } from "../lib/beam";
@@ -82,6 +83,6 @@ function SampleShareDetail({ share }: { share: BeamShare }) {
     <nav aria-label="Breadcrumb" className="beam-breadcrumb"><Link to="/beam/my-shares">My shares</Link><Icon name="chevron-right" size={13} /><span>{share.name}</span></nav>
     <div className="beam-sample-detail-heading"><ShareAvatar share={share} sample /><div><h1>{share.name}</h1><p>Sample share · Read only</p></div><Status share={share} now={now} example /></div>
     <p role="status" className="beam-fixture-notice">Read-only sample. Nothing is published.</p>
-    <div className="beam-sample-detail-body"><div><h2>Connection</h2><ConnectionPreview share={share} /><dl className="beam-sample-detail-address"><dt>Sample address</dt><dd>{share.hostname}</dd></dl></div><dl className="beam-facts"><div><dt>Publisher</dt><dd>{share.publisher_name}</dd></div><div><dt>Local port</dt><dd>{share.target?.port}</dd></div><div><dt>Expires</dt><dd>{beamCountdown(share.expires_at, now)}</dd></div><div><dt>Access</dt><dd>Invited reviewers</dd></div></dl></div>
+    <ResourceSummary title="Connection" headingLevel={2} className="beam-sample-detail-body"><ConnectionPreview share={share} /><dl className="beam-facts tnx-resource-facts"><div className="tnx-resource-fact-wide"><dt>Sample address</dt><dd>{share.hostname}</dd></div><div><dt>Publisher</dt><dd>{share.publisher_name}</dd></div><div><dt>Local port</dt><dd>{share.target?.port}</dd></div><div><dt>Expires</dt><dd>{beamCountdown(share.expires_at, now)}</dd></div><div><dt>Access</dt><dd>Invited reviewers</dd></div></dl></ResourceSummary>
   </section>;
 }

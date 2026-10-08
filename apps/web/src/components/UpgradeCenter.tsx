@@ -1,3 +1,4 @@
+import "../resource-summary.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, apiErrorMessage, type HostUpgradeStatus, type Meta } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -106,7 +107,7 @@ export function UpgradeCenter() {
           {upgrade.downtime ? ` Downtime: ${upgrade.downtime}.` : ""}
         </p>
       )}
-      <dl className="mt-3 grid gap-1 text-xs text-ink-tertiary sm:grid-cols-2">
+      <dl className="tnx-resource-facts">
         {upgrade && <div><dt className="font-semibold">Installed version</dt><dd>{upgrade.current_version || "unknown"}</dd></div>}
         <div><dt className="font-semibold">Target version</dt><dd>{titleVersion}</dd></div>
         {host && showProgress && <div><dt className="font-semibold">Upgrade state</dt><dd>{stageLabel[host.state] ?? host.state}</dd></div>}

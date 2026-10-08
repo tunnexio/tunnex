@@ -1,3 +1,4 @@
+import "../resource-summary.css";
 import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
@@ -80,7 +81,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels }: { orgId: str
       return <details key={i} className="rounded border border-line text-sm">
         <summary aria-label={`Tunnel ${i + 1} troubleshooting`} className="cursor-pointer px-4 py-3 font-medium text-ink-heading focus-visible:outline focus-visible:outline-2">Tunnel {i + 1} details</summary>
         <div className="border-t border-line px-4 py-4">
-          <dl className="grid grid-cols-2 gap-4"><div><dt className="text-xs text-ink-secondary">Customer inside IP</dt><dd className="mt-1 font-mono text-xs">{tunnel.customer_inside_address}</dd></div><div><dt className="text-xs text-ink-secondary">Cloud inside IP</dt><dd className="mt-1 font-mono text-xs">{tunnel.cloud_inside_address}</dd></div></dl>
+          <dl className="tnx-resource-facts"><div><dt>Customer inside IP</dt><dd className="font-mono">{tunnel.customer_inside_address}</dd></div><div><dt>Cloud inside IP</dt><dd className="font-mono">{tunnel.cloud_inside_address}</dd></div></dl>
           <ul className="mt-4 space-y-1 text-xs text-ink-secondary">{troubleshooting[status].map(check => <li key={check}>{check}</li>)}</ul>
         </div>
       </details>;

@@ -1,5 +1,6 @@
 import "../network-workspaces.css";
 import "../ipsec-workspace.css";
+import { ResourceSummary } from "./ResourceSummary";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
@@ -201,7 +202,7 @@ function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: str
     {error && <Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry configuration</Button>}
     {result && <>
       {!result.configuration ? <p className="text-sm text-ink-secondary">Configuration removed. Identity retained.</p> : <div className="space-y-4">
-        <details className="ipsec-routing"><summary>Stored configuration</summary><dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3"><div><dt className="text-ink-secondary">Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt className="text-ink-secondary">Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt className="text-ink-secondary">Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></details>
+        <ResourceSummary title="Stored configuration" headingLevel={4}><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt>Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt>Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></ResourceSummary>
         <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} /></div>
       </div>}</>}
   </section>;

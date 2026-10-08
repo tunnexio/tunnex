@@ -4,6 +4,7 @@ import AppAccessWorkspaceTabs from "../components/AppAccessWorkspaceTabs";
 import AppAccessDomainSetup from "../components/AppAccessDomainSetup";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { Icon } from "../components/Icon";
 import { AppAccessIcon, isAppIconDataURL } from "../components/AppAccessIcon";
 import AppAccessInventoryTable from "../components/AppAccessInventoryTable";
@@ -241,35 +242,34 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
     <aside className="aa-editor-rail"><p className="aa-editor-rail-label">Setup</p><nav aria-label="Application setup" className="app-access-steps aa-editor-steps">{setupSteps.map((item, index) => <Button key={item.key} type="button" variant="ghost" aria-label={`${index + 1}. ${item.label}`} aria-current={step === item.key ? "step" : undefined} disabled={busy || iconReading || (!appId && (item.key === "access" || item.key === "review")) || (!appId && item.key === "connection" && (!draft.name.trim() || !hostnameReady))} onClick={() => move(item.key)}><span className="aa-editor-step-number" aria-hidden="true">{index + 1}</span><span>{item.label}</span></Button>)}</nav><p className="aa-editor-rail-note">Routing changes go live after publishing.</p></aside>
     <div className="aa-editor-stage">
     <ErrorText>{error}</ErrorText>
-    <div className="aa-editor-step-heading"><div><h2>{currentStep.title}</h2><p>{readOnly && step === "application" ? "How this app appears to your team." : currentStep.description}</p></div>{readOnly && (step === "application" || step === "connection") && <span className="aa-editor-view-mode"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>Read only</span>}</div>
+    {!(readOnly && (step === "application" || step === "connection")) && <div className="aa-editor-step-heading"><div><h2>{currentStep.title}</h2><p>{currentStep.description}</p></div></div>}
     {settings && (step !== "review" || archived) && <Availability settings={settings} manage={manage} archived={archived} />}
     <div className="aa-editor-body" key={step}>
-      {readOnly && savedDraft && step === "application" && <>
-        <dl aria-label="Saved application details" className="aa-editor-readonly-summary">
+      {readOnly && savedDraft && step === "application" && <ResourceSummary title={currentStep.title} headingLevel={2} description="How this app appears to your team." actions={<span className="aa-editor-view-mode">Read only</span>} footer={<div className="aa-editor-actions aa-editor-readonly-actions"><Link to="/app-access/applications">Back to applications</Link><Button onClick={() => move("connection")}>Continue to connection<Icon name="chevron-right" size={16} /></Button></div>}>
+        <dl aria-label="Saved application details" className="aa-editor-readonly-summary tnx-resource-facts">
           <div><dt>Name</dt><dd>{savedDraft.name}</dd></div>
-          <div><dt>Description</dt><dd>{savedDraft.description || <span className="aa-editor-value-empty">No description</span>}</dd></div>
-          <div><dt>Browser address</dt><dd className="aa-editor-value-hostname"><CopyApplicationAddress hostname={savedDraft.public_hostname} />{settings && !settings.domain_ready && <div className="aa-editor-domain-help">Domain setup required{configureDomains && <AppAccessDomainSetup label="View setup" />}</div>}</dd></div>
           <div><dt>App icon</dt><dd><span className="aa-editor-summary-icon"><AppAccessIcon icon={savedDraft.icon} image={savedDraft.icon_data_url} size={26} /></span><span>{savedDraft.icon_data_url ? "Custom icon" : savedDraft.icon === "dashboard" ? "Dashboard" : savedDraft.icon === "globe" ? "Globe" : savedDraft.icon === "terminal" ? "Terminal" : "Application"}</span></dd></div>
+          <div className="tnx-resource-fact-wide"><dt>Description</dt><dd>{savedDraft.description || <span className="aa-editor-value-empty">No description</span>}</dd></div>
+          <div className="tnx-resource-fact-wide"><dt>Browser address</dt><dd className="aa-editor-value-hostname"><CopyApplicationAddress hostname={savedDraft.public_hostname} />{settings && !settings.domain_ready && <div className="aa-editor-domain-help">Domain setup required{configureDomains && <AppAccessDomainSetup label="View setup" />}</div>}</dd></div>
         </dl>
-        <div className="aa-editor-actions aa-editor-readonly-actions"><Link to="/app-access/applications">Back to applications</Link><Button onClick={() => move("connection")}>Continue to connection<Icon name="chevron-right" size={16} /></Button></div>
-      </>}
-      {readOnly && savedDraft && step === "connection" && <>
-        <dl aria-label="Saved connection details" className="aa-editor-readonly-summary">
-          <div><dt>Origin URL</dt><dd>{savedDraft.origin_url}</dd></div>
+      </ResourceSummary>}
+      {readOnly && savedDraft && step === "connection" && <ResourceSummary title={currentStep.title} headingLevel={2} description={currentStep.description} actions={<span className="aa-editor-view-mode">Read only</span>}>
+        <dl aria-label="Saved connection details" className="aa-editor-readonly-summary tnx-resource-facts">
+          <div className="tnx-resource-fact-wide"><dt>Origin URL</dt><dd>{savedDraft.origin_url}</dd></div>
           <div><dt>Gateway connector</dt><dd>{savedNode?.name ?? "Assigned gateway is unavailable"}</dd></div>
           <div><dt>Gateway status</dt><dd>{savedNode ? savedNode.status === "active" ? "Active gateway" : "Revoked gateway" : "Unavailable"}</dd></div>
         </dl>
         <details className="aa-editor-disclosure"><summary>Advanced connection settings</summary><div className="aa-editor-disclosure-content">
-          <dl aria-label="Saved advanced connection settings" className="aa-editor-readonly-summary">
-            <div><dt>Allowed private destination ranges</dt><dd>{savedDraft.allowed_destination_cidrs?.length ? savedDraft.allowed_destination_cidrs.join(", ") : "Safe public destinations only"}</dd></div>
+          <dl aria-label="Saved advanced connection settings" className="aa-editor-readonly-summary tnx-resource-facts">
+            <div className="tnx-resource-fact-wide"><dt>Allowed private destination ranges</dt><dd>{savedDraft.allowed_destination_cidrs?.length ? savedDraft.allowed_destination_cidrs.join(", ") : "Safe public destinations only"}</dd></div>
             <div><dt>Origin certificate trust</dt><dd>{savedDraft.origin_ca_digest ? "Custom CA certificates" : "System certificate roots"}</dd></div>
-            {savedDraft.origin_ca_digest && <div><dt>Saved CA fingerprint</dt><dd className="aa-editor-value-fingerprint">{savedDraft.origin_ca_digest}</dd></div>}
+            {savedDraft.origin_ca_digest && <div className="tnx-resource-fact-wide"><dt>Saved CA fingerprint</dt><dd className="aa-editor-value-fingerprint">{savedDraft.origin_ca_digest}</dd></div>}
             <div><dt>Idle timeout</dt><dd>{savedDraft.idle_timeout_seconds} seconds</dd></div>
             <div><dt>Maximum session</dt><dd>{savedDraft.absolute_timeout_seconds} seconds</dd></div>
           </dl>
           <p className="aa-editor-field-help">HTTPS verifies the origin hostname and certificate chain. Loopback, link-local, metadata and control plane destinations remain blocked.</p>
         </div></details>
-      </>}
+      </ResourceSummary>}
       {!readOnly && (step === "application" || step === "connection") && <form onSubmit={event => {
         if (step === "application") {
           if (!appId || !dirty) { event.preventDefault(); if (appId || (draft.name.trim() && hostnameReady && !iconReading)) move("connection"); }

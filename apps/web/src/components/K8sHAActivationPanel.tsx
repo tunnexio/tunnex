@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import "../kubernetes-operations.css";
+import "../resource-summary.css";
 import { api, apiErrorMessage, type K8sConnectorPoolHAStatus, type K8sHASettings, type Role } from "../lib/api";
 import { can } from "../lib/rbac";
 import { Badge, Button, ErrorText, Modal, SettingRow, SettingValue } from "./ui";
@@ -121,7 +122,7 @@ function HAActivationForScope({ orgId, role, emailVerified, central = false }: H
         <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setReviewing(true)}>Review pools</Button>
       </SettingRow>}
       <details className="k8s-operation-disclosure k8s-ha-context"><summary>Activation status and safeguards</summary><div>
-        <dl className="k8s-operation-facts"><div><dt>Requested availability</dt><dd>{settings.enabled ? "Enabled" : "Disabled"}</dd></div><div><dt>Settings revision</dt><dd>{settings.revision}</dd></div><div><dt>Deployment readiness</dt><dd>{settings.deployment_ready === undefined ? "Not reported" : settings.deployment_ready ? "Reported ready" : "Not ready"}</dd></div><div><dt>Scheduler</dt><dd>{settings.scheduler_state ? stateLabel(settings.scheduler_state) : "Not reported"}</dd></div><div><dt>Reason</dt><dd>{settings.reason_code}</dd></div>{settings.scheduler_reason_codes?.length > 0 && <div><dt>Scheduler reasons</dt><dd>{settings.scheduler_reason_codes.join(", ")}</dd></div>}</dl>
+        <dl className="k8s-operation-facts tnx-resource-facts"><div><dt>Requested availability</dt><dd>{settings.enabled ? "Enabled" : "Disabled"}</dd></div><div><dt>Settings revision</dt><dd>{settings.revision}</dd></div><div><dt>Deployment readiness</dt><dd>{settings.deployment_ready === undefined ? "Not reported" : settings.deployment_ready ? "Reported ready" : "Not ready"}</dd></div><div><dt>Scheduler</dt><dd>{settings.scheduler_state ? stateLabel(settings.scheduler_state) : "Not reported"}</dd></div><div className="tnx-resource-fact-wide"><dt>Reason</dt><dd>{settings.reason_code}</dd></div>{settings.scheduler_reason_codes?.length > 0 && <div className="tnx-resource-fact-wide"><dt>Scheduler reasons</dt><dd>{settings.scheduler_reason_codes.join(", ")}</dd></div>}</dl>
         <p>Availability and requested modes are configuration. Only the reported actual state shows whether fenced activation or a safe drain completed.</p>
       </div></details>
     </>}
@@ -133,7 +134,7 @@ function HAActivationForScope({ orgId, role, emailVerified, central = false }: H
           <div className="k8s-ha-pool-heading"><strong>Pool {pool.pool_id.slice(0, 8)}</strong><Badge tone={actualTone(pool.actual_mode)}>{stateLabel(pool.actual_mode)}</Badge></div>
           <div className="k8s-ha-pool-summary"><span>Requested {stateLabel(pool.requested_mode)}</span><span>Generation {pool.promotion_generation}</span></div>
           <div className="k8s-ha-pool-actions">{canManage && <Button size="sm" variant="ghost" disabled={busy !== null || (!settings.enabled && pool.requested_mode === "legacy")} onClick={() => void requestPoolMode(pool, pool.requested_mode === "fenced_ha" ? "legacy" : "fenced_ha")}>{pool.requested_mode === "fenced_ha" ? "Request safe legacy drain" : "Request fenced HA"}</Button>}</div>
-          <details className="k8s-operation-disclosure"><summary>Transition details</summary><div><dl className="k8s-operation-facts"><div><dt>Cluster</dt><dd>{pool.cluster_id}</dd></div><div><dt>Active connector</dt><dd>{pool.active_node_id}</dd></div><div><dt>Membership epoch</dt><dd>{pool.membership_epoch_known ? pool.membership_epoch ?? "Unavailable" : "Unavailable"}</dd></div><div><dt>Transition revision</dt><dd>{pool.transition_revision}</dd></div><div><dt>Reason</dt><dd>{pool.reason_code}</dd></div>{pool.requested_at && <div><dt>Requested at</dt><dd>{pool.requested_at}</dd></div>}{pool.achieved_at && <div><dt>Achieved at</dt><dd>{pool.achieved_at}</dd></div>}</dl></div></details>
+          <details className="k8s-operation-disclosure"><summary>Transition details</summary><div><dl className="k8s-operation-facts tnx-resource-facts tnx-resource-facts-single"><div><dt>Cluster</dt><dd>{pool.cluster_id}</dd></div><div><dt>Active connector</dt><dd>{pool.active_node_id}</dd></div><div><dt>Membership epoch</dt><dd>{pool.membership_epoch_known ? pool.membership_epoch ?? "Unavailable" : "Unavailable"}</dd></div><div><dt>Transition revision</dt><dd>{pool.transition_revision}</dd></div><div><dt>Reason</dt><dd>{pool.reason_code}</dd></div>{pool.requested_at && <div><dt>Requested at</dt><dd>{pool.requested_at}</dd></div>}{pool.achieved_at && <div><dt>Achieved at</dt><dd>{pool.achieved_at}</dd></div>}</dl></div></details>
         </li>} />}
       </div>
     </Modal>}

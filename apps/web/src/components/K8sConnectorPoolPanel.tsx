@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../kubernetes-operations.css";
+import "../resource-summary.css";
 
 import {
   api,
@@ -134,9 +135,9 @@ function ConnectorPoolForScope({ orgId, cluster, nodes, role, emailVerified, onC
     {state === "unconfigured" && <p className="k8s-operation-note">{initialConnectorID ? "Direct connector. Configure membership before requesting fenced HA." : "Select a direct connector before configuring a pool."}</p>}
     {(state === "ready" || state === "unconfigured") && (nodes === null ? <p role="status" className="k8s-operation-warning">Gateway inventory is unavailable. Candidate selection is withheld.</p> : candidates.length === 0 && <p role="status" className="k8s-operation-warning">No active same-site gateways have a reported endpoint.</p>)}
     {state === "ready" && configuration && <>
-      <dl className="k8s-operation-facts"><div><dt>Active connector</dt><dd>{nameOf(configuration.active_node_id)}</dd></div><div><dt>Preferred connector</dt><dd>{nameOf(configuration.preferred_node_id)}</dd></div></dl>
+      <dl className="k8s-operation-facts tnx-resource-facts"><div><dt>Active connector</dt><dd>{nameOf(configuration.active_node_id)}</dd></div><div><dt>Preferred connector</dt><dd>{nameOf(configuration.preferred_node_id)}</dd></div></dl>
       <NetworkDetailList label="Pool members" items={configuredMembers} searchText={member => `${nameOf(member.node_id)} ${member.admin_priority}`} renderItem={member => <li key={member.node_id} className="k8s-pool-member"><span>{nameOf(member.node_id)}</span><span className="k8s-operation-muted">Priority {member.admin_priority}</span></li>} />
-      <details className="k8s-operation-disclosure"><summary>Membership details</summary><div><dl className="k8s-operation-facts"><div><dt>Generation</dt><dd>{configuration.generation}</dd></div><div><dt>Membership epoch</dt><dd>{configuration.membership_epoch_known ? configuration.membership_epoch ?? "Unavailable" : "Unavailable"}</dd></div></dl><p>Priority affects later failover selection. Membership edits never move current ownership or enable fenced HA.</p></div></details>
+      <details className="k8s-operation-disclosure"><summary>Membership details</summary><div><dl className="k8s-operation-facts tnx-resource-facts"><div><dt>Generation</dt><dd>{configuration.generation}</dd></div><div><dt>Membership epoch</dt><dd>{configuration.membership_epoch_known ? configuration.membership_epoch ?? "Unavailable" : "Unavailable"}</dd></div></dl><p>Priority affects later failover selection. Membership edits never move current ownership or enable fenced HA.</p></div></details>
     </>}
     {!editing && <ErrorText>{error}</ErrorText>}
     {editing && canManage && <Modal title="Configure connector pool" placement="right" size="wide" showClose onDismiss={busy ? () => {} : () => setEditing(false)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setEditing(false)}>Cancel</Button><Button disabled={busy || nodes === null} onClick={() => void save()}>{busy ? "Saving…" : "Save pool"}</Button></>}>
