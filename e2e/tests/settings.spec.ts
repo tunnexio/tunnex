@@ -62,9 +62,12 @@ test("owner sees org settings; SSO config is gated to the enterprise edition", a
 
 test("a plain member cannot manage settings", async ({ page }) => {
   await login(page, MEMBER);
-  await expect(
-    page.getByText("Manage your account security and view your plan."),
-  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Authentication", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel").getByRole("heading", { name: "Authentication", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Licence & plan", exact: true })).toBeVisible();
+  for (const name of ["Organization", "Network", "Features", "Danger zone"]) {
+    await expect(page.getByRole("tab", { name, exact: true, includeHidden: true })).toHaveCount(0);
+  }
   await expect(page.getByLabel("Name")).toHaveCount(0);
 });
 

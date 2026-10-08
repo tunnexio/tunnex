@@ -46,7 +46,8 @@ test("signing in reaches the app shell and the dashboard, then navigates to devi
     .getByLabel("Main")
     .getByRole("link", { name: "Devices" })
     .click();
-  await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
+  await expect(page).toHaveURL(/\/devices$/);
+  await expect(page.getByRole("heading", { name: "Devices", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add device" })).toBeVisible();
 
   // An authenticated user visiting /login is bounced back into the app (AnonOnly).

@@ -30,7 +30,8 @@ async function login(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+  await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
 }
 
 test("the actor filter is org-scoped (offers only this org's members)", async ({
@@ -187,7 +188,8 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+  await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
 
   const row = page
     .getByRole("row")
@@ -214,7 +216,10 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+  await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
+  // Wait for a successful list/empty state before asserting that the foreign event is absent.
+  await expect(page.getByRole("table", { name: "Audit events", exact: true }).or(page.getByRole("heading", { name: "No audit events yet.", exact: true }))).toBeVisible();
   await expect(
     page.getByRole("row").filter({ hasText: "member.role_granted_by_cp_admin" }),
   ).toHaveCount(0);

@@ -316,70 +316,92 @@ test("enrolling a gateway shows the join token exactly once (one-time-secret cer
     return route.fulfill({ response, json: { ...license, gateways_in_use: 0 } });
   });
   const TOKEN = "jt-onboarding-secret-xyz";
+  const NEXT_TOKEN = "jt-onboarding-secret-second";
   let issued = 0;
+  const issueBodies: unknown[] = [];
   await page.route("**/api/v1/organizations/*/nodes/join-token", (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(new URL(route.request().url()).pathname).toBe(`/api/v1/organizations/${ORG}/nodes/join-token`);
+    issueBodies.push(route.request().postDataJSON());
     issued++;
+    expect(issued).toBeLessThanOrEqual(2);
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ join_token: TOKEN }),
+      body: JSON.stringify({ join_token: issued === 1 ? TOKEN : NEXT_TOKEN }),
     });
   });
-  // Owner has the real demo org → straight to the shell, then to Devices where the
-  // Gateways enroll ceremony lives.
+  // Owner has the real demo org and enters the dedicated Gateways workspace.
   await signIn(page, OWNER);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page
     .getByLabel("Main")
     .getByRole("link", { name: /Gateways/ })
     .click();
-  // The page also contains an enrolment-card h2 named "Gateways" after data loads. Target the page-title
-  // h1 semantically; the broad locator raced that async render and failed strict mode on 3 main runs.
   await expect(
     page.getByRole("heading", { name: "Gateways", level: 1 }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Enroll gateway" }).click();
+  const enrollment = page.getByRole("dialog", { name: "Enroll gateway", exact: true });
+  await expect(enrollment).toBeVisible();
   // Name the gateway: the token is PINNED to this name server-side, so the
   // ceremony must emit the COMPLETE env line incl. TUNNEX_NODE_NAME (Round-2
   // friction F1 — without it the agent loops node_name_mismatch).
-  await page.getByLabel(/Gateway name/).fill("walk-gw");
-  await page.getByRole("button", { name: "Generate join token" }).click();
+  await enrollment.getByLabel(/Gateway name/).fill("walk-gw");
+  expect(issued).toBe(0);
+  await expect(page.getByText(new RegExp(TOKEN))).toHaveCount(0);
+  await enrollment.getByRole("button", { name: "Generate join token" }).click();
 
-  // The one-time ceremony: amber modal, command shown, must be acknowledged.
-  await expect(
-    // ⛔ THE EXACT STRING, not /Enroll your gateway/i. The regex was introduced when an em-dash sweep
-    // changed this title, and it matches even if "run this once" is deleted — it removed coverage rather
-    // than tracking the change. An assertion loosened to make a red go away is a check that has stopped
-    // asserting the thing it names.
-    page.getByText("Enroll your gateway: run this once"),
-  ).toBeVisible();
+  // The redesigned command step retains an explicit one-time warning and can
+  // only close through acknowledgement, never Escape or a stray outside click.
+  const command = page.getByRole("dialog", { name: "Run the gateway command", exact: true });
+  await expect(command).toBeVisible();
+  await expect(command).toContainText("The join token is single-use and shown exactly once; copy it before closing.");
   // The COMPLETE runnable command (S6.6 / zero-touch ruling): a SINGLE `docker run` (NEVER compose — the
   // paste-mismatch is structurally impossible), carrying the token env AND the shell-quoted pinned name (an
   // unquoted space would truncate the value on paste). Assert the SHAPE the unit test (enrollcommand.test.ts,
   // the authority for the zero-touch ruling) encodes — robust to the CP's image/URL config, not a brittle
   // full-string match.
-  const pre = page.locator("pre");
+  const pre = command.locator("pre");
   await expect(pre).toContainText("docker run ");
   await expect(pre).toContainText(`-e TUNNEX_JOIN_TOKEN=${TOKEN}`);
   await expect(pre).toContainText(`-e TUNNEX_NODE_NAME="walk-gw"`);
   await expect(pre).not.toContainText("docker compose");
-  await expect(page.getByText(/Pinned to the name/)).toBeVisible();
-  await page.getByRole("button", { name: /I.?ve saved it/ }).click();
+  await expect(command).toContainText("Gateway name is pinned to walk-gw. The agent must use that exact name or enrollment is refused.");
+  expect(issueBodies).toEqual([{ node_name: "walk-gw" }]);
+  await page.keyboard.press("Escape");
+  await expect(command).toBeVisible();
+  await expect(pre).toContainText(`-e TUNNEX_JOIN_TOKEN=${TOKEN}`);
+  await page.mouse.click(1, 1);
+  await expect(command).toBeVisible();
+  expect(issued).toBe(1);
+  await command.getByRole("button", { name: "I’ve saved it", exact: true }).click();
   // Dismissed → the token is gone from the page (never re-served).
   await expect(page.getByText(new RegExp(TOKEN))).toHaveCount(0);
+  await expect(command).toHaveCount(0);
   expect(issued).toBe(1);
 
   // UNNAMED branch: a second mint without a name must render the PLAIN single-`docker run` line —
   // the token but NO TUNNEX_NODE_NAME, no pinning note, and no stale pinned name leaking from the
   // previous (named) ceremony.
   await page.getByRole("button", { name: "Enroll gateway" }).click();
-  await page.getByRole("button", { name: "Generate join token" }).click();
+  await expect(enrollment.getByLabel(/Gateway name/)).toHaveValue("");
+  await expect(page.getByText(new RegExp(TOKEN))).toHaveCount(0);
+  await expect(command).toHaveCount(0);
+  expect(issued).toBe(1);
+  await enrollment.getByRole("button", { name: "Generate join token" }).click();
+  await expect(command).toBeVisible();
   await expect(pre).toContainText("docker run ");
-  await expect(pre).toContainText(`-e TUNNEX_JOIN_TOKEN=${TOKEN}`);
+  await expect(pre).toContainText(`-e TUNNEX_JOIN_TOKEN=${NEXT_TOKEN}`);
   await expect(pre).not.toContainText("TUNNEX_NODE_NAME");
   await expect(pre).not.toContainText("docker compose");
-  await expect(page.getByText(/Pinned to the name/)).toHaveCount(0);
-  await page.getByRole("button", { name: /I.?ve saved it/ }).click();
+  await expect(command).not.toContainText("Gateway name is pinned to");
+  await expect(page.getByText(new RegExp(TOKEN))).toHaveCount(0);
+  expect(issueBodies).toEqual([{ node_name: "walk-gw" }, {}]);
+  await command.getByRole("button", { name: "I’ve saved it", exact: true }).click();
+  await expect(command).toHaveCount(0);
+  await expect(page.getByText(new RegExp(TOKEN))).toHaveCount(0);
+  await expect(page.getByText(new RegExp(NEXT_TOKEN))).toHaveCount(0);
   expect(issued).toBe(2);
 });
