@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -420,12 +422,46 @@ func TestBeamVersionProtocolAndDevelopmentFloor(t *testing.T) {
 func TestBeamReadProjectionNeverPrintsTargetAndCertificate(t *testing.T) {
 	a, _, d, _ := beamFixture()
 	a.share.Target.CAPEM = "PRIVATE-ORIGIN-CA"
+	// A legitimate expiry can contain the origin port's digits in its nanoseconds.
+	// Checking JSON fields must not mistake this allowed value for origin leakage.
+	a.share.ExpiresAt = time.Date(2030, time.October, 8, 13, 42, 47, 517300000, time.UTC)
+	a.share.Grants = []beamGrant{{Kind: "user", ID: beamTestReviewer}}
 	var out bytes.Buffer
 	if e := runBeam(context.Background(), []string{"get", "--org", beamTestOrg, "--share", beamTestShare}, &out, "dev", d); e != nil {
 		t.Fatal(e)
 	}
-	if strings.Contains(out.String(), "PRIVATE") || strings.Contains(out.String(), "5173") || strings.Contains(out.String(), "127.0.0.1") {
-		t.Fatal("read projection exposed connector/origin configuration")
+	for _, private := range []string{"PRIVATE", a.share.Target.CAPEM, a.share.Target.Address, a.connector.CertificatePEM} {
+		if strings.Contains(out.String(), private) {
+			t.Fatal("read projection exposed connector/origin configuration")
+		}
+	}
+	var projection map[string]any
+	if e := json.Unmarshal(out.Bytes(), &projection); e != nil {
+		t.Fatalf("read projection is not a JSON object: %v", e)
+	}
+	for _, forbidden := range []string{
+		"target", "protocol", "address", "port", "routes", "ca_pem",
+		"connector", "binding", "gateway_id", "generation", "digest", "authority_version",
+		"share_version", "proxy_url", "proxy_server_name", "certificate_pem",
+		"certificate_expires_at", "key_pem", "private_key", "token",
+	} {
+		if _, present := projection[forbidden]; present {
+			t.Errorf("read projection exposed forbidden JSON field %q", forbidden)
+		}
+	}
+	expected := map[string]any{
+		"id":           beamTestShare,
+		"org_id":       beamTestOrg,
+		"name":         a.share.Name,
+		"hostname":     a.share.Hostname,
+		"state":        a.share.State,
+		"connectivity": a.share.Connectivity,
+		"version":      float64(a.share.Version),
+		"expires_at":   "2030-10-08T13:42:47.5173Z",
+		"grants":       []any{map[string]any{"subject_kind": "user", "subject_id": beamTestReviewer}},
+	}
+	if !reflect.DeepEqual(projection, expected) {
+		t.Fatal("read projection must contain only the expected public share and grant fields")
 	}
 }
 func TestBeamResumePreflightAndFailedIssueRollbackExactVersion(t *testing.T) {

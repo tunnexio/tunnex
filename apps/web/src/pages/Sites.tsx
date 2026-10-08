@@ -944,7 +944,7 @@ function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selected
     <div className="s2s-network-detail-layout">
       <aside className="s2s-network-rail"><nav className="s2s-network-detail-nav" aria-label="Network detail sections">{networkSteps.map(item => <button type="button" key={item.id} aria-current={item.id === step ? "page" : undefined} onClick={() => onStepChange(item.id)}>{item.label}</button>)}</nav><p>Routing approval and access policies are separate.</p></aside>
       <section className={`s2s-network-stage${step === "overview" ? " s2s-network-overview-stage" : ""}`} aria-labelledby="network-stage-heading">
-        <header className="s2s-network-stage-heading"><h2 id="network-stage-heading">{networkSteps[stepIndex].label}</h2><div className="s2s-network-stage-actions">
+        <header className="s2s-network-stage-heading"><h2 id="network-stage-heading">{step === "overview" ? "Network settings" : networkSteps[stepIndex].label}</h2><div className="s2s-network-stage-actions">
           {step === "gateways" && canManage && unboundNodes.length > 0 && <Button size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
           {step === "gateways" && canManage && hasGateway && <Button size="sm" variant="ghost" onClick={() => setModal("unbind")}>Unbind gateway</Button>}
           {step === "ranges" && canManage && <Button size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}

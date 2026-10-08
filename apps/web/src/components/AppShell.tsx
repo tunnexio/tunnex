@@ -376,8 +376,8 @@ function SidebarFooterProfile({
         data-collapsed={collapsed || undefined}
         title={versionTitle}
       >
-        <span className={collapsed ? "sr-only" : "tnx-sidebar-version-label"}>Control plane<span className="sr-only">{controlPlaneVersion ? " version" : loaded ? " version not reported" : " version loading"}</span>{" "}</span>
-        <span className="tnx-sidebar-version-value" aria-hidden={!controlPlaneVersion || undefined}>{controlPlaneVersion ?? "—"}</span>
+        <span className={collapsed ? "sr-only" : "tnx-sidebar-version-label"}>Control plane<span className="sr-only"> version</span>{" "}</span>
+        <span className="tnx-sidebar-version-value">{controlPlaneVersion ?? (loaded ? "Not reported" : "Loading")}</span>
       </p>
     </div>
   );

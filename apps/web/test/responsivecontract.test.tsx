@@ -214,8 +214,8 @@ describe("sidebar deployment version and keyboard access", () => {
       ? deploymentMeta
       : { ...metadata, upgrade: { ...metadata.upgrade!, current_version: currentVersion } } as unknown as Meta);
     const version = await screen.findByTitle("Control plane version not reported");
-    expect(version.textContent).toBe("Control plane version not reported —");
-    expect(version.querySelector('[aria-hidden="true"]')?.textContent).toBe("—");
+    expect(version.textContent).toBe("Control plane version Not reported");
+    expect(screen.getByText("Not reported", { exact: true }).hasAttribute("aria-hidden")).toBe(false);
     expect(version.textContent).not.toContain("19");
     expect(screen.queryByText("v99.9.9")).toBeNull();
   });
