@@ -651,11 +651,18 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  navigationTitle = false,
 }: {
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  /** The active navigation already names this section; retain its accessible heading and actions. */
+  navigationTitle?: boolean;
 }) {
+  if (navigationTitle) return <div className={actions ? "tnx-navigation-header flex w-full min-w-0 flex-wrap justify-end gap-3" : "tnx-navigation-header tnx-navigation-header-empty sr-only"}>
+    <h1 className="sr-only">{title}</h1>
+    {actions && <div className="max-w-full shrink-0">{actions}</div>}
+  </div>;
   return (
     <div className="flex w-full min-w-0 flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">

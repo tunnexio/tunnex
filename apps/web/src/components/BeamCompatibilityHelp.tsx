@@ -1,7 +1,7 @@
 import type { BeamShare } from "../lib/beam";
 
 export function BeamCompatibilityHelp({ share }: { share?: BeamShare }) {
-  const hostname = share?.hostname ?? "your-allocated-beam-hostname";
+  const hostname = share?.hostname ?? "your-allocated-sharing-hostname";
   const configuration = `server: {\n  host: "127.0.0.1",\n  port: 5173,\n  strictPort: true,\n  allowedHosts: [${JSON.stringify(hostname)}],\n  hmr: { protocol: "wss", host: ${JSON.stringify(hostname)}, clientPort: 443 }\n}`;
   return <details className="rounded-md border border-line p-4 text-sm space-y-3">
     <summary className="cursor-pointer font-medium">Web app compatibility help</summary>

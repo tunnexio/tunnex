@@ -1,9 +1,12 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { DeploymentMetaProvider, useDeploymentMeta, useSandboxModuleState } from "../src/lib/deploymentMeta";
 import type { Meta } from "../src/lib/api";
+
+// This route-only test never opens a terminal; avoid xterm probing jsdom canvas on import.
+vi.mock("@xterm/xterm", () => ({ Terminal: class {} }));
 
 const requests = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() }));
 vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: requests }));
@@ -86,7 +89,7 @@ it("preserves ordinary organization Features in Settings with enabled sandbox me
   mount("/settings?section=features");
   expect(await screen.findByRole("heading", { name: "Settings" })).toBeTruthy();
   expect(await screen.findByRole("switch", { name: "OpenVPN" })).toBeTruthy();
-  expect(await screen.findByRole("switch", { name: "Applications" })).toBeTruthy();
+  expect(await screen.findByRole("switch", { name: "App Access" })).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Features" }).getAttribute("aria-selected")).toBe("true");
   expect(screen.queryByRole("link", { name: "Sandboxes", hidden: true })).toBeNull();
   expect(screen.queryByRole("switch", { name: "Enable Sandboxes", hidden: true })).toBeNull();
@@ -96,7 +99,8 @@ it("preserves ordinary organization Features in Settings with enabled sandbox me
 
 it("preserves the ordinary browser terminal catalog with enabled sandbox metadata", async () => {
   mount("/browser-access/terminal");
-  expect(await screen.findByRole("heading", { name: "Servers" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Server Access" })).toBeTruthy();
+  fireEvent.click(await screen.findByRole("button", { name: "Build host" }));
   expect(await screen.findByRole("button", { name: "Connect as fixture" })).toBeTruthy();
   expect(screen.getByText("Route: /browser-access/terminal")).toBeTruthy();
   expect(requests.GET.mock.calls.some(([path]) => path.endsWith("/server-access"))).toBe(true);

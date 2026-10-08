@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import NetworkSetup from "../pages/NetworkSetup";
 import { SitePairReview, SitePairDetails } from "./SitePairReview";
-import { FaAws, FaNetworkWired, FaShieldAlt } from "react-icons/fa";
-import { SiGooglecloud, SiWireguard } from "react-icons/si";
-import { VscAzure } from "react-icons/vsc";
 import { api, loadOne, type Site } from "../lib/api";
 import { Button, Modal } from "./ui";
 
@@ -26,24 +23,27 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS }: {
     if (result.ok) { setNetworks(result.data); setAdding(false); }
     else setError("Could not refresh locations. Try again.");
   }
-  const tile = "flex min-h-32 flex-col items-start gap-3 rounded-lg border border-line p-5 text-left hover:bg-white/5 focus-visible:outline focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-60";
-  return <Modal title={step === "method" ? "Create connection" : step === "ipsec" ? "Choose IPsec provider" : "Tunnex to Tunnex"} size={step === "wireguard" ? "workspace" : "wide"} onDismiss={busy ? () => {} : onClose} actions={<><Button disabled={busy} variant="ghost" onClick={step === "method" ? onClose : () => { setAdding(false); setStep("method"); }}>{step === "method" ? "Cancel" : "Back"}</Button></>}>
-    {step === "method" && <div className="grid gap-3 sm:grid-cols-2">
-      <button className={tile} onClick={() => setStep("wireguard")}><SiWireguard size={32} color="#ba2636" aria-hidden="true" /><strong>Tunnex to Tunnex</strong><span className="text-sm text-ink-secondary">WireGuard · Gateway at both ends</span></button>
-      <button className={tile} onClick={() => setStep("ipsec")}><FaShieldAlt size={32} aria-hidden="true" /><strong>Cloud VPN / Firewall</strong><span className="text-sm text-ink-secondary">IPsec · External VPN endpoint</span></button>
+  return <Modal title={adding ? "Add location" : step === "method" ? "Create connection" : step === "ipsec" ? "Choose IPsec provider" : "Review WireGuard networks"} size={step === "wireguard" ? "workspace" : "wide"} onDismiss={busy ? () => {} : onClose} actions={adding ? undefined : <><Button disabled={busy} variant="ghost" onClick={step === "method" ? onClose : () => { setAdding(false); setStep("method"); }}>{step === "method" ? "Cancel" : "Back"}</Button></>}>
+    <div className="sts-chooser">
+    {!adding && <ol className="sts-chooser-steps" aria-label="Connection setup steps">
+      <li aria-current={step === "method" ? "step" : undefined}><span aria-hidden="true">1</span>Connection type</li>
+      <li aria-current={step !== "method" ? "step" : undefined}><span aria-hidden="true">2</span>{step === "wireguard" ? "Network pair" : "Provider"}</li>
+    </ol>}
+    {step === "method" && <div className="sts-chooser-choices">
+      <button className="sts-chooser-choice" onClick={() => setStep("wireguard")}><span className="sts-chooser-choice-copy"><strong>Tunnex to Tunnex</strong><span>Review two networks with Tunnex gateways.</span></span><span className="sts-chooser-choice-meta">WireGuard</span></button>
+      <button className="sts-chooser-choice" onClick={() => setStep("ipsec")}><span className="sts-chooser-choice-copy"><strong>Cloud VPN / Firewall</strong><span>Configure an external VPN endpoint.</span></span><span className="sts-chooser-choice-meta">IPsec</span></button>
     </div>}
-    {step === "ipsec" && <div className="grid gap-3 sm:grid-cols-2">
-      <button className={tile} onClick={onAWS}><FaAws size={34} color="#ff9900" aria-hidden="true" /><strong>AWS</strong><span className="text-sm text-ink-secondary">Site-to-Site VPN · Static IPv4</span></button>
-      <button disabled className={tile}><VscAzure size={32} color="#0089d6" aria-hidden="true" /><strong>Azure</strong><span className="text-sm text-ink-secondary">Not available yet</span></button>
-      <button disabled className={tile}><SiGooglecloud size={32} color="#4285f4" aria-hidden="true" /><strong>Google Cloud</strong><span className="text-sm text-ink-secondary">Not available yet</span></button>
-      <button disabled className={tile}><FaNetworkWired size={32} aria-hidden="true" /><strong>On-premises / Other</strong><span className="text-sm text-ink-secondary">Not available yet</span></button>
+    {step === "ipsec" && <div className="sts-chooser-choices">
+      <button className="sts-chooser-choice" onClick={onAWS}><span className="sts-chooser-choice-copy"><strong>AWS</strong><span>Site-to-Site VPN · Static IPv4</span></span><span className="sts-chooser-choice-meta">Configure</span></button>
+      {["Azure", "Google Cloud", "On-premises / Other"].map(provider => <button key={provider} disabled className="sts-chooser-choice"><span className="sts-chooser-choice-copy"><strong>{provider}</strong></span><span className="sts-chooser-choice-meta">Not available yet</span></button>)}
     </div>}
-    {step === "wireguard" && <div className="space-y-4">
+    {step === "wireguard" && <div className="sts-chooser-wireguard">
       {adding ? <NetworkSetup embedded onBusyChange={setBusy} onCancel={() => setAdding(false)} onComplete={() => void reloadNetworks()} /> : <>
-        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-ink-secondary">Choose two locations. Tunnex manages the WireGuard links.</p><Button onClick={() => setAdding(true)}>Add location</Button></div>
-        {networks.length < 2 ? <div className="rounded-lg border border-line p-4"><p className="font-medium">{networks.length === 0 ? "Add two locations" : "Add a second location"}</p>{networks.length === 1 && <p className="mt-1 text-sm text-ink-secondary">{networks[0].name} is ready to select.</p>}</div> : orgId ? <SitePairReview sites={networks} renderDetails={(first, second) => <SitePairDetails orgId={orgId} first={first} second={second} />} /> : <p role="alert">Organization unavailable. Close and retry.</p>}
+        <div className="sts-chooser-wireguard-toolbar"><p>Each network needs a Tunnex gateway.</p><Button onClick={() => setAdding(true)}>Add location</Button></div>
+        {networks.length < 2 ? <div className="sts-chooser-empty"><h3>{networks.length === 0 ? "Add two locations" : "Add a second location"}</h3>{networks.length === 1 && <p>Existing location: {networks[0].name}.</p>}</div> : orgId ? <SitePairReview sites={networks} renderDetails={(first, second) => <SitePairDetails orgId={orgId} first={first} second={second} />} /> : <p role="alert">Organization unavailable. Close and retry.</p>}
       </>}
       {error && <div role="alert"><p>{error}</p><Button disabled={busy} onClick={() => void reloadNetworks()}>Retry locations</Button></div>}
     </div>}
+    </div>
   </Modal>;
 }

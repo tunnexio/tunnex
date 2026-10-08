@@ -63,7 +63,7 @@ describe("⛔ THE PALETTE MAY RANK AND FILTER — IT MAY NEVER BE THE ONLY ROUTE
   it("omits shelved Sandboxes despite enabled metadata while preserving shared destinations", () => {
     open();
     expect(screen.queryByRole("option", { name: "Sandboxes", hidden: true })).toBeNull();
-    for (const name of ["AI Agents", "Applications", "Servers", "Gateways", "Site-to-site"])
+    for (const name of ["AI Agents", "App Access", "Server Access", "Gateways", "Site-to-site"])
       expect(screen.getByRole("option", { name })).toBeTruthy();
   });
   it("its unfiltered destination set is EXACTLY the nav's", () => {

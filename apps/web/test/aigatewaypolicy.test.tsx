@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -128,6 +129,32 @@ describe("AI team and agent policy workspace", () => {
     await screen.findByLabelText("Agent");
     expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("");
     expect(screen.queryByRole("button", { name: "Save agent access" })).toBeNull();
+  });
+  it("retains an existing agent selection across local picker pages and search with its authoritative revision", async () => {
+    const devices = Array.from({ length: 43 }, (_, index) => ({ device_id: index === 0 ? "agent-a" : `agent-${index + 1}`, name: `Worker ${String(index + 1).padStart(2, "0")}`, status: "active" }));
+    mocks.GET.mockImplementation((path: string) => path === "/api/v1/organizations/{orgId}/agents" ? Promise.resolve({ data: { items: devices, next_cursor: null } }) : get(path));
+    render(show());
+    fireEvent.click(await screen.findByRole("button", { name: "Assign agent" }));
+    const dialog = within(screen.getByRole("dialog"));
+    const chosen = await dialog.findByRole("radio", { name: "Select Worker 01" });
+    fireEvent.click(chosen);
+    await dialog.findByText(/Current group membership verified/);
+    fireEvent.click(dialog.getByRole("button", { name: "Next available model agents" }));
+    expect(dialog.queryByRole("radio", { name: "Select Worker 01" })).toBeNull();
+    expect(dialog.getByText("Selected: Worker 01")).toBeTruthy();
+    fireEvent.change(dialog.getByRole("textbox", { name: "Search Available model agents" }), { target: { value: "Worker 43" } });
+    expect(dialog.getByRole("radio", { name: "Select Worker 43" })).toBeTruthy();
+    expect(dialog.getByText("Selected: Worker 01")).toBeTruthy();
+    fireEvent.change(dialog.getByRole("textbox", { name: "Search Available model agents" }), { target: { value: "" } });
+    expect(dialog.getByRole("radio", { name: "Select Worker 01" })).toHaveProperty("checked", true);
+    const agentReads = mocks.GET.mock.calls.filter(([path]) => path === "/api/v1/organizations/{orgId}/agents");
+    expect(agentReads).toHaveLength(1);
+    expect(agentReads[0][1].params.query).toEqual({ limit: 100 });
+    fireEvent.click(dialog.getByRole("button", { name: "Save agent access" }));
+    await waitFor(() => expect(mocks.PUT).toHaveBeenCalledWith(expect.stringContaining("/agents/{deviceId}"), {
+      params: { path: { orgId: "org-a", deviceId: "agent-a" } },
+      body: { team_id: "group-a", enabled: true, models_override: ["openrouter/allowed"], expected_revision: 4 },
+    }));
   });
   it.each([
     [1e-12, "0.000000000001"],

@@ -4,6 +4,9 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
 import AppAccessMemberTabs from "../components/AppAccessMemberTabs";
 import AppAccessSubjectPicker from "../components/AppAccessSubjectPicker";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import AppAccessRequests from "./AppAccessRequests";
 import { Badge, Button, Card, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
 type Managed = components["schemas"]["AppAccessManagedApps"];
@@ -12,19 +15,20 @@ type Subject = components["schemas"]["AppAccessGrantSubjects"]["items"][number];
 
 export default function AppAccessManagedApplications({ orgId, appId }: { orgId: string; appId?: string }) {
   const [data, setData] = useState<Managed | null>(null); const [error, setError] = useState(""); const [reload, setReload] = useState(0); const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   useEffect(() => {
     let cancelled = false; setError("");
-    void api.GET("/api/v1/organizations/{orgId}/app-access/managed-apps", { params: { path: { orgId }, query: { app_id: appId, limit: 20, offset: appId ? 0 : page * 20 } } }).then(result => {
+    void api.GET("/api/v1/organizations/{orgId}/app-access/managed-apps", { params: { path: { orgId }, query: { app_id: appId, limit: pageSize, offset: appId ? 0 : Math.min(10000, page * pageSize) } } }).then(result => {
       if (cancelled) return;
       if (result.error || !result.data) setError(apiErrorMessage(result.error, "Could not load applications you manage."));
       else setData(result.data);
     }).catch(() => { if (!cancelled) setError("Could not reach managed applications."); });
     return () => { cancelled = true; };
-  }, [orgId, appId, page, reload]);
+  }, [orgId, appId, page, pageSize, reload]);
   const app = appId ? data?.items.find(item => item.id === appId) : null;
-  return <div className="app-access-workspace network-management min-w-0 space-y-6 [overflow-wrap:anywhere]"><PageHeader title={app ? `Manage access · ${app.name}` : "Manage application access"} subtitle="Manage grants and review requests for your assigned applications" /><AppAccessMemberTabs orgId={orgId} />
+  return <div className="app-access-workspace network-management min-w-0 space-y-6 [overflow-wrap:anywhere]"><PageHeader title={app ? `Manage access · ${app.name}` : "Manage application access"} navigationTitle={!appId} /><AppAccessMemberTabs orgId={orgId} />
     <p className="text-sm text-ink-secondary">App admin assignment lets you manage access to that app. It does not grant permission to open the app or change its configuration. Organization administrators can review requests when an App admin is unavailable.</p>
-    {error ? <div><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry managed apps</Button></div> : !data ? <Loading /> : appId ? app ? <ScopedManagement key={`${orgId}:${appId}`} orgId={orgId} appId={appId} pending={app.pending_count} onChanged={() => { setReload(value => value + 1); window.dispatchEvent(new Event("app-access-requests-changed")); }} /> : <Card><ErrorText>This app is unavailable or you no longer manage its access.</ErrorText><Link to="/app-access/managed-applications">Back to managed applications</Link></Card> : <><DataTable failed={false} caption="Managed applications" rows={data.items} rowKey={item => item.id} rowLabel={item => item.name} filterable={false} pageSize={0} empty="No applications are assigned to you for access management." columns={[{ key: "app", header: "Application", cell: item => <div><Link className="text-brand" to={`/app-access/managed-applications/${item.id}`}>{item.name}</Link>{item.description && <p className="text-sm text-ink-secondary">{item.description}</p>}</div> }, { key: "requests", header: "Requests", cell: item => <Badge tone={item.pending_count ? "warn" : "neutral"}>{item.pending_count} pending</Badge> }, { key: "manage", header: "Actions", cell: item => <Link className="network-setup-link" to={`/app-access/managed-applications/${item.id}`}>Manage access</Link> }]} /><div className="app-access-pagination flex items-center gap-3"><Button variant="ghost" disabled={page === 0} onClick={() => setPage(value => value - 1)}>Previous applications</Button><span>Page {page + 1}</span><Button variant="ghost" disabled={data.items.length < 20 || page >= 500} onClick={() => setPage(value => value + 1)}>Next applications</Button></div></>}
+    {error ? <div><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry managed apps</Button></div> : !data ? <Loading /> : appId ? app ? <ScopedManagement key={`${orgId}:${appId}`} orgId={orgId} appId={appId} pending={app.pending_count} onChanged={() => { setReload(value => value + 1); window.dispatchEvent(new Event("app-access-requests-changed")); }} /> : <Card><ErrorText>This app is unavailable or you no longer manage its access.</ErrorText><Link to="/app-access/managed-applications">Back to managed applications</Link></Card> : <>{!data.items.length ? <AppAccessEmptyState title={page ? "No more managed applications" : "No assigned applications"} description={page ? "Return to the previous page to review earlier applications." : "No applications are assigned to you for access management."} /> : <DataTable failed={false} caption="Managed applications" rows={data.items} rowKey={item => item.id} rowLabel={item => item.name} filterable={false} pageSize={0} empty={null} columns={[{ key: "app", header: "Application", cell: item => <div><Link className="text-brand" to={`/app-access/managed-applications/${item.id}`}>{item.name}</Link>{item.description && <p className="text-sm text-ink-secondary">{item.description}</p>}</div> }, { key: "requests", header: "Requests", cell: item => <Badge tone={item.pending_count ? "warn" : "neutral"}>{item.pending_count} pending</Badge> }, { key: "manage", header: "Actions", cell: item => <Link className="network-setup-link" to={`/app-access/managed-applications/${item.id}`}>Manage access</Link> }]} />}<AppAccessPagination page={page + 1} pageSize={pageSize} count={data.items.length} hasNext={data.items.length === pageSize} previousLabel="Previous applications" nextLabel="Next applications" onPageChange={next => setPage(Math.max(0, Math.min(Math.floor(10000 / pageSize), next - 1)))} onPageSizeChange={size => { setPageSize(appAccessPageSize(String(size))); setPage(0); }} /></>}
   </div>;
 }
 function ScopedManagement({ orgId, appId, pending, onChanged }: { orgId: string; appId: string; pending: number; onChanged: () => void }) {
@@ -33,29 +37,34 @@ function ScopedManagement({ orgId, appId, pending, onChanged }: { orgId: string;
 }
 function ManagedGrants({ orgId, appId, onChanged }: { orgId: string; appId: string; onChanged: () => void }) {
   const [grants, setGrants] = useState<Grant[] | null>(null); const [error, setError] = useState(""); const [reload, setReload] = useState(0); const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [dialog, setDialog] = useState<{ action: "edit" | "disable" | "revoke"; grant: Grant | null } | null>(null);
   const [view, setView] = useState<"current" | "history">("current");
   const [status, setStatus] = useState<Grant["status"] | "">("");
   const changeView = (next: "current" | "history") => { setView(next); setStatus(""); setPage(0); setDialog(null); };
   useEffect(() => {
     let cancelled = false; setGrants(null); setError("");
-    void api.GET("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants", { params: { path: { orgId, appId }, query: { view, status: status || undefined, limit: 20, offset: page * 20 } } }).then(result => {
+    void api.GET("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants", { params: { path: { orgId, appId }, query: { view, status: status || undefined, limit: pageSize, offset: Math.min(10000, page * pageSize) } } }).then(result => {
       if (cancelled) return;
       if (result.error || !result.data) setError(apiErrorMessage(result.error, "Could not load this application's grants."));
       else setGrants(result.data.items);
     }).catch(() => { if (!cancelled) setError("Could not reach application grants."); });
     return () => { cancelled = true; };
-  }, [orgId, appId, view, status, page, reload]);
+  }, [orgId, appId, view, status, page, pageSize, reload]);
   return <Card className="space-y-4"><div className="flex flex-wrap justify-between gap-3"><h2 className="text-lg font-semibold">Access grants</h2><div className="flex gap-2"><Button variant="ghost" onClick={() => setReload(value => value + 1)}>Refresh grants</Button><Button disabled={!grants} onClick={() => setDialog({ action: "edit", grant: null })}>Add grant</Button></div></div><p className="text-sm text-ink-secondary">A user can still have access through another current user or group grant. Changes do not publish the app or bypass its MFA requirement.</p>
   <div role="group" aria-label="Grant view" className="flex flex-wrap gap-2"><Button type="button" variant={view === "current" ? "primary" : "ghost"} aria-pressed={view === "current"} onClick={() => changeView("current")}>Current</Button><Button type="button" variant={view === "history" ? "primary" : "ghost"} aria-pressed={view === "history"} onClick={() => changeView("history")}>History</Button></div>
   <div className="max-w-xs"><Field label="Grant status"><Select value={status} onChange={event => { setStatus(event.target.value as Grant["status"] | ""); setPage(0); }}><option value="">{view === "current" ? "Active and disabled" : "Revoked and expired"}</option>{view === "current" ? <><option value="active">Active</option><option value="disabled">Disabled</option><option value="scheduled">Scheduled</option><option value="subject_unavailable">Subject unavailable</option></> : <><option value="revoked">Revoked</option><option value="expired">Expired</option></>}</Select></Field></div>
-  {error ? <ErrorText>{error}</ErrorText> : !grants ? <Loading /> : <DataTable failed={false} caption="Application grants" rows={grants} rowKey={grant => grant.id} rowLabel={grant => grant.subject_label} pageSize={0} filterable={false} empty="No grants match these filters." columns={[
+  {error ? <ErrorText>{error}</ErrorText> : !grants ? <Loading /> : !grants.length ? <AppAccessEmptyState title={page ? "No more grants" : "No grants found"} description={page ? "Return to the previous page to review earlier grants." : "No grants match these filters."} /> : <DataTable failed={false} caption="Application grants" rows={grants} rowKey={grant => grant.id} rowLabel={grant => grant.subject_label} pageSize={0} filterable={false} empty={null} columns={[
     { key: "subject", header: "Subject", cell: grant => <div>{grant.subject_label}<p className="text-xs text-ink-secondary">{grant.subject_kind}</p></div> },
     { key: "status", header: "Status", cell: grant => <Badge>{grant.status.replace(/_/g, " ")}</Badge> },
     { key: "validity", header: "Validity", cell: grant => <div className="text-sm"><p>Starts {grant.starts_at ? new Date(grant.starts_at).toLocaleString() : "immediately"}</p><p>Expires {grant.expires_at ? new Date(grant.expires_at).toLocaleString() : "without a time limit"}</p></div> },
-    { key: "actions", header: "Actions", cell: grant => !grant.revoked_at ? <div className="flex flex-wrap gap-2"><Button size="sm" variant="ghost" onClick={() => setDialog({ action: "edit", grant })}>Edit</Button>{grant.enabled && <Button size="sm" variant="ghost" onClick={() => setDialog({ action: "disable", grant })}>Disable</Button>}<Button size="sm" variant="ghost" onClick={() => setDialog({ action: "revoke", grant })}>Revoke</Button></div> : null },
+    { key: "actions", header: "Actions", cell: grant => !grant.revoked_at ? <AppAccessRowMenu label={`Actions for ${grant.subject_label} grant`} actions={[
+      { key: "edit", label: "Edit", onSelect: () => setDialog({ action: "edit", grant }) },
+      ...(grant.enabled ? [{ key: "disable", label: "Disable", onSelect: () => setDialog({ action: "disable", grant }) }] : []),
+      { key: "revoke", label: "Revoke", danger: true, onSelect: () => setDialog({ action: "revoke", grant }) },
+    ]} /> : null },
   ]} />}
-  <div className="app-access-pagination flex items-center gap-3"><Button variant="ghost" disabled={!grants || page === 0} onClick={() => setPage(value => value - 1)}>Previous grants</Button><span>Page {page + 1}</span><Button variant="ghost" disabled={!grants || grants.length < 20 || page >= 500} onClick={() => setPage(value => value + 1)}>Next grants</Button></div>
+  {grants && !error && <AppAccessPagination page={page + 1} pageSize={pageSize} count={grants.length} hasNext={grants.length === pageSize} previousLabel="Previous grants" nextLabel="Next grants" onPageChange={next => setPage(Math.max(0, Math.min(Math.floor(10000 / pageSize), next - 1)))} onPageSizeChange={size => { setPageSize(appAccessPageSize(String(size))); setPage(0); }} />}
   {dialog && <ManagedGrantDialog key={`${appId}:${dialog.grant?.id ?? "new"}:${dialog.action}`} orgId={orgId} appId={appId} action={dialog.action} grant={dialog.grant} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); setReload(value => value + 1); onChanged(); }} />}
   </Card>;
 }

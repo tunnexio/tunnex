@@ -1,61 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BeamAccessEvidence } from "../components/BeamAccessEvidence";
-import { useOrg } from "../lib/useOrg";
-import {
-  api,
-  loadOne,
-  type Device,
-  type Loaded,
-  type Member,
-  type Org,
-} from "../lib/api";
-import { relativeAge } from "../lib/format";
-import {
-  Button,
-  DataTable,
-  EmptyState,
-  Loading,
-  Modal,
-  PageHeader,
-} from "../components/ui";
+import AccessEventSources from "../components/AccessEventSources";
+import AppAccessPagination from "../components/AppAccessPagination";
+import { Button, EmptyState, Loading } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
-import {
-  ATTRIBUTION_NOTE,
-  accessIdentityOptions,
-  accessIdentityQuery,
-  parseAccessIdentityValue,
-  accessIdentityValue,
-  causeFor,
-  collectorStateLabel,
-  collectorStateTone,
-  decisionLabel,
-  decisionTone,
-  destinationFor,
-  emptyAccessEventsNote,
-  eventTimeline,
-  isLastPage,
-  nextCursor,
-  retentionNote,
-  sourceFor,
-  type AccessIdentityLabels,
-  type AccessIdentityKind,
-  type AccessEvent,
-  type AccessLogHealth,
-} from "../lib/flowlogview";
+import { useOrg } from "../lib/useOrg";
+import { useAuth } from "../lib/auth";
+import { api, loadOne, type Device, type Loaded, type Member, type Org } from "../lib/api";
+import { relativeAge } from "../lib/format";
+import { ATTRIBUTION_NOTE, accessIdentityOptions, accessIdentityQuery, parseAccessIdentityValue, accessIdentityValue, causeFor, collectorStateLabel, collectorStateTone, decisionLabel, decisionTone, destinationFor, emptyAccessEventsNote, eventTimeline, nextCursor, retentionNote, sourceFor, type AccessIdentityLabels, type AccessIdentityKind, type AccessEvent, type AccessLogHealth } from "../lib/flowlogview";
 import type { AgentRow } from "../lib/agentview";
-
-import "../network-workspaces.css";
+import "../app-access-workspace.css";
 import "../access-events-workspace.css";
 
-const PAGE = 100;
 const IDENTITY_PAGE = 100;
 const UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-
+type EventPage = { rows: AccessEvent[]; next: ReturnType<typeof nextCursor> };
+const outcomeTitle = (decision: AccessEvent["decision"]) => ({ allow:"Allowed", deny:"Denied", deny_aggregate:"Aggregated denies", terminated:"Terminated", gap:"Integrity gap" })[decision];
+const eventReason = (event: AccessEvent) => { const reason = causeFor(event,() => null); return reason === "n/a" ? event.decision_reason?.replace(/_/g," ") || "Reason not recorded" : reason; };
 type AgentPage = { items?: AgentRow[]; next_cursor?: string | null };
 
 function currentMemberLabel(member: Member): string {
-  const name = member.name.trim();
+  const name = typeof member.name === "string" ? member.name.trim() : "";
   return name && name !== member.email ? `${name} · ${member.email}` : member.email;
 }
 
@@ -82,7 +49,8 @@ async function loadAllAgents(
       agents.push(...page);
       return { ok: true, data: agents };
     }
-    agents.push(...(page.items ?? []));
+    if (!page || !Array.isArray(page.items)) return { ok: false, error: "Could not load current AI-agent labels." };
+    agents.push(...page.items);
     const next = page.next_cursor ?? undefined;
     if (!next) return { ok: true, data: agents };
     if (cursors.has(next)) {
@@ -94,710 +62,212 @@ async function loadAllAgents(
   return { ok: false, error: "Identity request superseded." };
 }
 
-/**
- * Access events — the Zero Trust flow log.
- *
- * ⛔ FOURTH UNREACHABLE-SURFACE INSTANCE. `/access-events` and `/access-log/health` shipped in
- * S7.5.1 and nothing in `apps/web` read either. Found only by censusing the DESIGN rather than the
- * codebase — a census of what exists cannot find what was never built.
- */
+
 export default function AccessEvents() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [source, setSource] = useState<"network" | "beam">(searchParams.get("source") === "beam" ? "beam" : "network");
-  const [beamShareID, setBeamShareID] = useState("");
-  const [beamShareDraft, setBeamShareDraft] = useState("");
-  // ⛔ THE ORG COMES FROM THE SEAM (S12.5).
-  const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
-  const [org, setOrg] = useState<Org | null>(null);
-  const [rows, setRows] = useState<AccessEvent[] | null>(null);
+  const { org } = useOrg();
+  const { state } = useAuth();
+  const [params] = useSearchParams();
+  const source = params.get("source") === "beam" ? "beam" : "network";
+  const actor = state.status === "authed" ? `${state.user.id}:${state.user.email_verified}` : state.status;
+  return <AccessEventsWorkspace key={`${org?.id ?? "none"}:${actor}:${source}`} source={source} />;
+}
+
+function AccessEventsWorkspace({ source }: { source: "network" | "beam" }) {
+  const { org, loading: orgLoading, failed: orgFailed } = useOrg();
+  const [rows, setRows] = useState<AccessEvent[]>([]);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [hasNext, setHasNext] = useState(false);
+  const [reloadRevision, setReloadRevision] = useState(0);
   const [health, setHealth] = useState<AccessLogHealth | null>(null);
   const [healthBusy, setHealthBusy] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const [deniesOnly, setDeniesOnly] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [identitiesBusy, setIdentitiesBusy] = useState(false);
   const [identitiesError, setIdentitiesError] = useState<string | null>(null);
-  const [associatedDevice, setAssociatedDevice] = useState("");
+  const [deniesOnly, setDeniesOnly] = useState(false);
   const [identityValue, setIdentityValue] = useState("");
-  const [historicalIdentityKind, setHistoricalIdentityKind] =
-    useState<AccessIdentityKind>("person");
+  const [associatedDevice, setAssociatedDevice] = useState("");
+  const [historicalIdentityKind, setHistoricalIdentityKind] = useState<AccessIdentityKind>("person");
   const [historicalIdentityID, setHistoricalIdentityID] = useState("");
+  const [beamShareID, setBeamShareID] = useState("");
+  const [beamShareDraft, setBeamShareDraft] = useState("");
   const [selected, setSelected] = useState<AccessEvent | null>(null);
-  const queryEpoch = useRef(0);
-  const healthEpoch = useRef(0);
-  const identityEpoch = useRef(0);
+  const [stage, setStage] = useState<"overview" | "evidence">("overview");
+  const cache = useRef<EventPage[]>([]);
+  const pending = useRef<{ index: number; cursor: ReturnType<typeof nextCursor> }>({ index: 0, cursor: null });
+  const queryEpoch = useRef(0), healthEpoch = useRef(0), identityEpoch = useRef(0);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => () => { queryEpoch.current++; healthEpoch.current++; identityEpoch.current++; }, []);
+  useEffect(() => { if (selected) heading.current?.focus(); }, [selected?.id, stage]);
 
-  const prepareFilterReload = useCallback(() => {
-    // Invalidate an in-flight query before React runs the filter effect. Clearing only the results
-    // keeps the controls mounted (and focused) without presenting rows from the previous filter as
-    // matches for the new one.
-    queryEpoch.current++;
-    setBusy(true);
-    setSelected(null);
-    setRows([]);
-    setError(null);
-    setDone(false);
+  const resetPage = useCallback(() => {
+    queryEpoch.current++; cache.current = []; setRows([]); setReady(false); setBusy(true);
+    pending.current = { index: 0, cursor: null };
+    setPage(1); setHasNext(false); setSelected(null); setError(null);
   }, []);
-
+  const prepareFilterReload = useCallback(() => {
+    resetPage(); setReloadRevision(revision => revision + 1);
+  }, [resetPage]);
   const loadIdentities = useCallback(async (target: Org) => {
     const epoch = ++identityEpoch.current;
-    setIdentitiesBusy(true);
-    setIdentitiesError(null);
+    setIdentitiesBusy(true); setIdentitiesError(null);
     const stale = () => epoch !== identityEpoch.current;
-    const [memberResult, deviceResult, agentResult] = await Promise.all([
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/members", {
-          params: { path: { orgId: target.id } },
-        }),
-      ),
-      source === "network" ? loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/devices", {
-          params: { path: { orgId: target.id } },
-        }),
-      ) : Promise.resolve({ ok: true as const, data: [] as Device[] }),
+    const [people, fleet, ai] = await Promise.all([
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: target.id } } })),
+      source === "network" ? loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices", { params: { path: { orgId: target.id } } })) : Promise.resolve({ ok: true as const, data: [] as Device[] }),
       source === "network" ? loadAllAgents(target.id, stale) : Promise.resolve({ ok: true as const, data: [] as AgentRow[] }),
     ]);
     if (stale()) return;
     setIdentitiesBusy(false);
-    if (memberResult.ok) setMembers(memberResult.data);
-    if (deviceResult.ok) setDevices(deviceResult.data);
-    if (agentResult.ok) setAgents(agentResult.data);
-    const failed = [
-      !memberResult.ok && "people",
-      !deviceResult.ok && "device",
-      !agentResult.ok && "AI-agent",
-    ].filter(Boolean);
-    if (failed.length > 0) {
-      setIdentitiesError(
-        `Could not load current ${failed.join(", ")} labels. Recorded event identities remain available.`,
-      );
-    }
+    setMembers(people.ok && Array.isArray(people.data) ? people.data : []);
+    setDevices(fleet.ok && Array.isArray(fleet.data) ? fleet.data : []);
+    setAgents(ai.ok && Array.isArray(ai.data) ? ai.data : []);
+    const failed = [(!people.ok || !Array.isArray(people.data)) && "people", (!fleet.ok || !Array.isArray(fleet.data)) && "device", (!ai.ok || !Array.isArray(ai.data)) && "AI-agent"].filter(Boolean);
+    if (failed.length) setIdentitiesError(`Could not load current ${failed.join(", ")} labels. Recorded event identities remain available.`);
   }, [source]);
-
   const loadHealth = useCallback(async (target: Org) => {
-    const epoch = ++healthEpoch.current;
-    setHealthBusy(true);
-    setHealthError(null);
-    const result = await loadOne(() =>
-      api.GET("/api/v1/organizations/{orgId}/access-log/health", {
-        params: { path: { orgId: target.id } },
-      }),
-    );
+    const epoch = ++healthEpoch.current; setHealthBusy(true); setHealthError(null);
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/access-log/health", { params: { path: { orgId: target.id } } }));
     if (epoch !== healthEpoch.current) return;
     setHealthBusy(false);
-    if (!result.ok) {
-      setHealthError(
-        result.error === "Could not load."
-          ? "Could not load access-event collection and retention status."
-          : result.error,
-      );
-      return;
-    }
-    setHealth(result.data as AccessLogHealth);
+    if (!result.ok) { setHealth(null); setHealthError(result.error); return; }
+    const data = result.data;
+    const optionalTimestamp = (value: unknown) => value == null || (typeof value === "string" && Number.isFinite(Date.parse(value)));
+    const valid = data && typeof data === "object" && !Array.isArray(data)
+      && typeof data.retention_failed === "boolean"
+      && Number.isInteger(data.retention_dropped) && data.retention_dropped >= 0
+      && optionalTimestamp(data.retention_last_sweep)
+      && (data.gateway_collectors == null || (Array.isArray(data.gateway_collectors) && data.gateway_collectors.every(collector =>
+        collector && typeof collector === "object" && !Array.isArray(collector)
+        && typeof collector.node_id === "string" && !!collector.node_id
+        && typeof collector.name === "string"
+        && ["active", "disabled", "source_error", "delivery_error", "stale", "unknown"].includes(collector.state)
+        && [collector.last_reported_at, collector.last_observed_at, collector.last_delivered_at, collector.last_event_at].every(optionalTimestamp)
+      )));
+    if (!valid) { setHealth(null); setHealthError("Could not load collector status."); return; }
+    setHealth(data as AccessLogHealth);
   }, []);
-
   useEffect(() => {
-    queryEpoch.current++;
-    healthEpoch.current++;
-    identityEpoch.current++;
-    setOrg(null);
-    setRows(null);
-    setHealth(null);
-    setHealthBusy(false);
-    setHealthError(null);
-    setMembers([]);
-    setDevices([]);
-    setAgents([]);
-    setIdentitiesBusy(false);
-    setIdentitiesError(null);
-    setIdentityValue("");
-    setAssociatedDevice("");
-    setHistoricalIdentityKind("person");
-    setHistoricalIdentityID("");
-    setSelected(null);
-    setError(null);
+    if (!org) return;
+    void loadIdentities(org); if (source === "network") void loadHealth(org);
+    return () => { identityEpoch.current++; healthEpoch.current++; };
+  }, [org?.id, loadIdentities, loadHealth, source]);
+
+  const loadPage = useCallback(async (index: number, cursor: ReturnType<typeof nextCursor>) => {
+    if (!org) return;
+    const epoch = ++queryEpoch.current;
+    pending.current = { index, cursor }; setBusy(true); setError(null); setSelected(null);
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/access-events", { params: { path: { orgId: org.id }, query: {
+      limit: pageSize + 1, denies_only: deniesOnly || undefined,
+      ...(source === "beam" ? { source, share_id: beamShareID || undefined } : {}),
+      ...accessIdentityQuery(associatedDevice ? accessIdentityValue("device", associatedDevice) : identityValue), ...(cursor ?? {}),
+    } } }));
+    if (epoch !== queryEpoch.current) return;
     setBusy(false);
-    setDone(false);
-    if (!orgLoading && currentOrg) setOrg(currentOrg);
-    return () => {
-      queryEpoch.current++;
-      healthEpoch.current++;
-      identityEpoch.current++;
-    };
-  }, [currentOrg, orgFailed, orgLoading]);
-
-  useEffect(() => {
-    if (!org) return;
-    // Current inventory supplies display labels only. Event UUIDs remain the source of historical
-    // identity, including after a person, device, or AI agent is no longer in these live rosters.
-    void loadIdentities(org);
-    if (source === "network") void loadHealth(org); else { healthEpoch.current++; setHealth(null); setHealthError(null); setHealthBusy(false); }
-    return () => {
-      healthEpoch.current++;
-      identityEpoch.current++;
-    };
-  }, [loadHealth, loadIdentities, org, source]);
-
-  const load = useCallback(
-    async (reset: boolean) => {
-      if (!org) return;
-      const epoch = reset ? ++queryEpoch.current : queryEpoch.current;
-      setBusy(true);
-      setError(null);
-      if (reset) {
-        if (rows !== null) setRows([]);
-        setDone(false);
-      }
-      const cursor = reset ? null : nextCursor(rows ?? []);
-      const identityQuery = accessIdentityQuery(associatedDevice ? accessIdentityValue("device", associatedDevice) : identityValue);
-      const result = await loadOne(() =>
-        api.GET(
-          "/api/v1/organizations/{orgId}/access-events",
-          {
-            params: {
-              path: { orgId: org.id },
-              query: {
-                limit: PAGE,
-                denies_only: deniesOnly || undefined,
-                ...(source === "beam" ? { source, share_id: beamShareID || undefined } : {}),
-                ...identityQuery,
-                ...(cursor ?? {}),
-              },
-            },
-          },
-        ),
-      );
-      if (epoch !== queryEpoch.current) return;
-      setBusy(false);
-      if (!result.ok) {
-        setError(
-          result.error === "Could not load."
-            ? "Could not load access events."
-            : result.error,
-        );
-        return;
-      }
-      const page = (result.data as AccessEvent[] | undefined) ?? [];
-      setRows(reset ? page : [...(rows ?? []), ...page]);
-      // The API documents that a short page IS the last page — so stop asking.
-      setDone(isLastPage(page, PAGE));
-    },
-    [org, rows, deniesOnly, identityValue, associatedDevice, source, beamShareID],
-  );
-
-  useEffect(() => {
-    if (!org) return;
-    void load(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org, deniesOnly, identityValue, associatedDevice, source, beamShareID]);
-
-  const sourceSelector = <label className="flex flex-wrap items-center gap-2 text-sm text-ink-secondary">Event source<select aria-label="Event source" className="min-h-9 rounded border border-line bg-ink-950 px-3 text-ink-heading" value={source} onChange={event => { prepareFilterReload(); setIdentityValue(""); setAssociatedDevice(""); setBeamShareID(""); setBeamShareDraft(""); setHistoricalIdentityKind("person"); setSource(event.target.value as "network" | "beam"); setSearchParams(event.target.value === "beam" ? { source: "beam" } : {}); }}><option value="network">Network flows</option><option value="beam">Beam browser access</option></select></label>;
-
-  if (orgLoading) {
-    return <Loading size="page" label="Loading access events…" />;
+    if (!result.ok || !Array.isArray(result.data)) { setError(result.ok ? "The server did not return access events." : result.error === "Could not load." ? "Could not load access events." : result.error); return; }
+    const fetched = result.data as AccessEvent[];
+    if (fetched.some(event => !event || typeof event.id !== "string" || !event.id || !["allow","deny","deny_aggregate","terminated","gap"].includes(event.decision) || !Number.isFinite(Date.parse(event.created_at)) || !Number.isFinite(Date.parse(event.occurred_at))) || new Set(fetched.map(event => event.id)).size !== fetched.length) { setError("The server returned incomplete access-event evidence. Refresh to try again."); return; }
+    if (cursor && fetched.some(event => cache.current.slice(0,index).some(item => item.rows.some(previous => previous.id === event.id)))) { setError("Event history did not advance. Refresh before continuing."); return; }
+    const items = fetched.slice(0, pageSize);
+    const next = fetched.length > pageSize ? nextCursor(items) : null;
+    cache.current = [...cache.current.slice(0,index), { rows: items, next }];
+    setRows(items); setPage(index + 1); setHasNext(!!next); setReady(true);
+  }, [org?.id, pageSize, deniesOnly, source, beamShareID, associatedDevice, identityValue]);
+  useEffect(() => { resetPage(); if (org) void loadPage(0,null); }, [loadPage, resetPage, reloadRevision]);
+  function changePage(next: number) {
+    if (busy || next < 1 || (next > page && !hasNext)) return;
+    const cached = cache.current[next - 1]; setSelected(null); setError(null);
+    if (cached) { queryEpoch.current++; setRows(cached.rows); setHasNext(!!cached.next); setPage(next); return; }
+    const cursor = cache.current[next - 2]?.next;
+    if (cursor) void loadPage(next - 1,cursor);
   }
-
-  if (orgFailed && !currentOrg) {
-    return (
-      <div>
-        <PageHeader title="Access events" subtitle="Policy decisions and audit evidence" />
-        <LoadRetry
-          error="Could not load your organizations."
-          onRetry={() => window.location.reload()}
-        />
-      </div>
-    );
-  }
-
-  if (!currentOrg) {
-    return (
-      <div>
-        <PageHeader title="Access events" subtitle="Policy decisions and audit evidence" />
-        <section className="tnx-card-surface mt-5 px-5">
-          <EmptyState>You are not a member of any organization yet.</EmptyState>
-        </section>
-      </div>
-    );
-  }
-
-  if (!org || currentOrg.id !== org.id) {
-    return <Loading size="page" label="Loading access events…" />;
-  }
-
-  if (rows === null && !error) {
-    return (
-      <div>
-        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} actions={sourceSelector} />
-        <Loading label="Loading access events…" />
-      </div>
-    );
-  }
-
-  if (rows === null && error) {
-    return (
-      <div>
-        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} actions={sourceSelector} />
-        <LoadRetry error={error} onRetry={() => void load(true)} />
-      </div>
-    );
-  }
-
-  const events = rows ?? [];
-  const humanDevices = devices.filter((device) => device.kind !== "agent");
-  const memberLabels = new Map(
-    members.map((member) => [member.user_id, currentMemberLabel(member)]),
-  );
-  const deviceLabels = new Map(
-    humanDevices.map((device) => [device.id, device.name]),
-  );
-  const agentLabels = new Map(
-    agents.map((agent) => [agent.device_id, agent.name]),
-  );
-  const identities = accessIdentityOptions(
-    events,
-    {
-      people: members.map((member) => ({
-        id: member.user_id,
-        label: currentMemberLabel(member),
-      })),
-      devices: humanDevices.map((device) => ({
-        id: device.id,
-        label: device.name,
-      })),
-      agents: agents.map((agent) => ({
-        id: agent.device_id,
-        label: agent.name,
-      })),
-    },
-    identityValue,
-  );
+  function refresh() { prepareFilterReload(); if (org) { void loadIdentities(org); if (source === "network") void loadHealth(org); } }
+  const humanDevices = devices.filter(device => device.kind !== "agent");
+  const memberLabels = new Map(members.map(member => [member.user_id,currentMemberLabel(member)]));
+  const deviceLabels = new Map(humanDevices.map(device => [device.id,device.name]));
+  const agentLabels = new Map(agents.map(agent => [agent.device_id,agent.name]));
+  const labelsFor = (event: AccessEvent): AccessIdentityLabels => ({
+    person: event.src_user_id ? memberLabels.get(event.src_user_id) : undefined,
+    device: event.src_device_id ? deviceLabels.get(event.src_device_id) : undefined,
+    agent: agentLabels.get(event.src_agent_id ?? (event.src_kind === "agent" ? event.src_device_id ?? "" : "")),
+  });
+  const identities = accessIdentityOptions(cache.current.flatMap(item => item.rows), {
+    people: members.map(member => ({ id: member.user_id,label: currentMemberLabel(member) })),
+    devices: humanDevices.map(device => ({ id: device.id,label: device.name })),
+    agents: agents.map(agent => ({ id: agent.device_id,label: agent.name })),
+  },identityValue);
   const chosenIdentity = parseAccessIdentityValue(identityValue);
-  const associatedDevices = chosenIdentity?.kind === "person"
-    ? humanDevices.filter(device => device.user_id === chosenIdentity.id) : [];
+  const associatedDevices = chosenIdentity?.kind === "person" ? humanDevices.filter(device => device.user_id === chosenIdentity.id) : [];
   const historicalUUID = historicalIdentityID.trim().toLowerCase();
   const historicalUUIDValid = UUID_PATTERN.test(historicalUUID);
   const historicalUUIDInvalid = historicalIdentityID.length > 0 && !historicalUUIDValid;
-  const hasActiveFilters = deniesOnly || identityValue !== "" || beamShareID !== "";
-  const identityLabelsFor = (event: AccessEvent): AccessIdentityLabels => {
-    const agentID = event.src_agent_id ??
-      (event.src_kind === "agent" ? event.src_device_id ?? undefined : undefined);
-    return {
-      person: event.src_user_id
-        ? memberLabels.get(event.src_user_id)
-        : undefined,
-      device: event.src_device_id
-        ? deviceLabels.get(event.src_device_id)
-        : undefined,
-      agent: agentID ? agentLabels.get(agentID) : undefined,
-    };
-  };
+  const hasFilters = deniesOnly || !!identityValue || !!beamShareID;
   const rn = health ? retentionNote(health) : null;
-  const allowedCount = events.filter((event) => event.decision === "allow").length;
-  const deniedCount = events.filter((event) =>
-    event.decision === "deny" || event.decision === "deny_aggregate",
-  ).length;
-  const gapCount = events.filter((event) => event.decision === "gap").length;
+  const outcomeClass = (event: AccessEvent) => { const tone = decisionTone(event.decision); return `event-outcome is-${tone}`; };
+  const openEvent = (event: AccessEvent) => { setStage("overview"); setSelected(event); };
+  const rail = <AccessEventSources source={source} actions={<Button variant="ghost" disabled={busy || !org} onClick={refresh}>Refresh</Button>} />;
+  if (orgLoading) return <Loading size="page" label="Loading access events…" />;
+  if (orgFailed || !org) return <section className="access-events-workspace">{rail}{orgFailed ? <LoadRetry error="Could not load your organizations." onRetry={() => window.location.reload()} /> : <EmptyState>You are not a member of any organization yet.</EmptyState>}</section>;
 
-  const decisionClass = (event: AccessEvent) => {
-    const tone = decisionTone(event.decision);
-    return tone === "ok"
-      ? "tnx-status text-ok"
-      : tone === "bad"
-        ? "tnx-status text-danger"
-        : tone === "gap"
-          ? "tnx-status text-warn"
-          : "tnx-status text-warn";
-  };
-
-  return (
-    <div className="network-management access-events-workspace">
-      <PageHeader
-        title="Access events"
-        subtitle={org.name}
-        actions={<div className="flex flex-wrap gap-3">{sourceSelector}<Button variant="ghost" disabled={busy} onClick={() => { void load(true); if (source === "network") void loadHealth(org); }}>Refresh</Button></div>}
-      />
-
-      <section className="tnx-card-surface access-events-inventory">
-        <div className="access-events-metrics">
-          {[
-            { label: "Loaded records", value: events.length, tone: "text-white" },
-            { label: "Allowed", value: allowedCount, tone: "text-accent-400" },
-            { label: "Denied records", value: deniedCount, tone: "text-danger" },
-            { label: source === "beam" ? "Shares in loaded records" : "Integrity gaps", value: source === "beam" ? new Set(events.flatMap(e => e.beam ? [e.beam.share_id] : [])).size : gapCount, tone: gapCount > 0 ? "text-warn" : "text-ink-body" },
-          ].map((metric) => (
-            <div key={metric.label} className="min-w-0 border-b border-line-row px-5 py-4 last:border-b-0 odd:border-r sm:border-b-0 sm:border-r sm:last:border-r-0">
-              <div className={`font-sans text-2xl font-semibold tabular-nums ${metric.tone}`}>{metric.value}</div>
-              <div className="mt-1 text-xs font-medium text-ink-faint">{metric.label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="access-events-toolbar">
-          {/* ⛔ ONE VERDICT FILTER, BECAUSE THE API HAS ONE. Per-verdict chips would have to filter a
-              keyset PAGE, hiding events on other pages while looking like a complete filter. */}
-          <div className="inline-flex w-fit rounded-md border border-line bg-ink-950 p-1" aria-label="Event scope">
-            <button
-              type="button"
-              aria-pressed={!deniesOnly}
-              onClick={() => {
-                if (!deniesOnly) return;
-                prepareFilterReload();
-                setDeniesOnly(false);
-              }}
-              className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${!deniesOnly ? "bg-white/[.10] text-white" : "text-ink-tertiary hover:text-white"}`}
-            >
-              All activity
-            </button>
-            <button
-              type="button"
-              aria-pressed={deniesOnly}
-              onClick={() => {
-                if (deniesOnly) return;
-                prepareFilterReload();
-                setDeniesOnly(true);
-              }}
-              className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${deniesOnly ? "bg-white/[.10] text-white" : "text-ink-tertiary hover:text-white"}`}
-            >
-              Denies only
-            </button>
-          </div>
-
-          <label className="flex min-w-0 items-center gap-3 text-sm text-ink-tertiary lg:ml-auto">
-            <span className="shrink-0">Source identity</span>
-            <select
-              aria-label="Source identity"
-              value={identityValue}
-              onChange={(e) => {
-                if (e.target.value === identityValue) return;
-                prepareFilterReload();
-                setIdentityValue(e.target.value);
-                setAssociatedDevice("");
-              }}
-              className="min-h-9 min-w-0 rounded-md border border-line bg-ink-950 px-3 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 sm:min-w-56"
-            >
-              <option value="">All sources</option>
-              {identities.people.length > 0 && (
-                <optgroup label="People">
-                  {identities.people.map((identity) => (
-                    <option key={identity.value} value={identity.value}>{identity.label}</option>
-                  ))}
-                </optgroup>
-              )}
-              {source === "network" && identities.devices.length > 0 && (
-                <optgroup label="Devices">
-                  {identities.devices.map((identity) => (
-                    <option key={identity.value} value={identity.value}>{identity.label}</option>
-                  ))}
-                </optgroup>
-              )}
-              {source === "network" && identities.agents.length > 0 && (
-                <optgroup label="AI agents">
-                  {identities.agents.map((identity) => (
-                    <option key={identity.value} value={identity.value}>{identity.label}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            {identitiesBusy && (
-              <span className="shrink-0 text-micro text-ink-faint" role="status">
-                Loading current labels…
-              </span>
-            )}
-          </label>
-
-          {source === "network" && chosenIdentity?.kind === "person" && <div className="access-person-devices">
-            <label>Associated device<select aria-label="Associated device" value={associatedDevice} onChange={e => { prepareFilterReload(); setAssociatedDevice(e.target.value); }}>
-              <option value="">All activity recorded for this person</option>
-              {associatedDevices.map(device => <option value={device.id} key={device.id}>{device.name}</option>)}
-            </select></label>
-            <span>{associatedDevice ? "Showing this device’s history across recorded owners." : associatedDevices.length ? `${associatedDevices.length} devices currently assigned to this person` : "No currently assigned devices found."}</span>
-          </div>}
-          <details className="access-events-advanced"><summary>Historical identity</summary>
-          <form
-            className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-ink-tertiary"
-            aria-label="Filter by historical identity UUID"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!historicalUUIDValid) return;
-              const next = accessIdentityValue(historicalIdentityKind, historicalUUID);
-              if (next === identityValue) return;
-              prepareFilterReload();
-              setIdentityValue(next);
-              setAssociatedDevice("");
-            }}
-          >
-            <span className="shrink-0">Historical UUID</span>
-            <select
-              aria-label="Historical identity type"
-              value={historicalIdentityKind}
-              onChange={(event) => setHistoricalIdentityKind(event.target.value as AccessIdentityKind)}
-              className="min-h-9 rounded-md border border-line bg-ink-950 px-2 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
-            >
-              <option value="person">Person</option>
-              {source === "network" && <><option value="device">Device</option><option value="agent">AI agent</option></>}
-            </select>
-            <input
-              aria-label="Historical identity UUID"
-              aria-invalid={historicalUUIDInvalid || undefined}
-              aria-describedby={historicalUUIDInvalid ? "historical-identity-uuid-error" : undefined}
-              value={historicalIdentityID}
-              onChange={(event) => setHistoricalIdentityID(event.target.value)}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              spellCheck={false}
-              autoComplete="off"
-              className="min-h-9 min-w-64 flex-1 rounded-md border border-line bg-ink-950 px-3 font-sans text-xs text-white placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
-            />
-            <Button size="sm" variant="ghost" type="submit" disabled={!historicalUUIDValid}>
-              Apply UUID
-            </Button>
-            {historicalUUIDInvalid && (
-              <span
-                id="historical-identity-uuid-error"
-                className="basis-full text-micro text-danger"
-                role="alert"
-              >
-                Enter a complete UUID in xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx format.
-              </span>
-            )}
-          </form>
-          </details>
-
-          {source === "beam" && <form className="flex flex-wrap items-end gap-2" onSubmit={event => { event.preventDefault(); const id = beamShareDraft.trim(); if (id && !UUID_PATTERN.test(id)) return; prepareFilterReload(); setBeamShareID(id); }}><label className="flex flex-col gap-1 text-sm text-ink-secondary">Beam share ID<input aria-label="Beam share ID" maxLength={36} pattern="[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}" value={beamShareDraft} onChange={event => setBeamShareDraft(event.target.value)} className="min-h-9 rounded border border-line bg-ink-950 px-3 text-ink-heading" placeholder="Exact share UUID" /></label><Button type="submit" size="sm">Filter Beam share</Button><Button type="button" size="sm" variant="ghost" onClick={() => { prepareFilterReload(); setBeamShareDraft(""); setBeamShareID(""); }}>Clear Beam share</Button></form>}
-          {source === "network" && rn && (
-            <span className={`text-micro ${rn.tone === "danger" ? "text-danger" : rn.tone === "warn" ? "text-warn" : "text-ink-faint"}`}>
-              {rn.text}{health?.retention_last_sweep ? ` · ${relativeAge(health.retention_last_sweep)}` : ""}
-            </span>
-          )}
-        </div>
-
-        {identitiesError && (
-          <div className="border-b border-line-row px-4 pb-3">
-            <LoadRetry error={identitiesError} onRetry={() => void loadIdentities(org)} />
-          </div>
-        )}
-
-        {source === "network" && <details className="access-events-collectors" aria-label="Gateway collector status">
-          <summary><span>Collection health</span><span>{healthError ? "Status unavailable" : healthBusy && !health ? "Checking collectors…" : health?.gateway_collectors?.length ? `${health.gateway_collectors.length} collectors · ${health.gateway_collectors.filter(c => collectorStateTone(c.state) === "danger" || collectorStateTone(c.state) === "warn").length} need attention` : "No collector reports"}<span aria-hidden="true"> ＋</span></span></summary>
-          {healthBusy && !health ? (
-            <Loading size="inline" label="Loading collector status…" />
-          ) : healthError ? (
-            <LoadRetry error={healthError} onRetry={() => void loadHealth(org)} />
-          ) : health?.gateway_collectors?.length ? (
-            <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {health.gateway_collectors.map((collector) => {
-                const tone = collectorStateTone(collector.state);
-                return (
-                  <li key={collector.node_id} className="rounded-md border border-line bg-ink-950 px-3 py-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate text-xs font-medium text-ink-body">{collector.name}</span>
-                      <span className={`shrink-0 font-sans text-micro ${tone === "ok" ? "text-accent-400" : tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : "text-ink-faint"}`}>
-                        {collectorStateLabel(collector.state)}
-                      </span>
-                    </div>
-                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-micro text-ink-faint">
-                      {[
-                        ["Heartbeat", collector.last_reported_at],
-                        ["Observed", collector.last_observed_at],
-                        ["Delivered", collector.last_delivered_at],
-                        ["Retained", collector.last_event_at],
-                      ].map(([label, timestamp]) => (
-                        <div key={label}>
-                          <dt className="inline">{label}: </dt>
-                          <dd className="inline text-ink-tertiary">
-                            {timestamp ? relativeAge(timestamp) : "not reported"}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : health ? (
-            <p className="mt-2 text-xs text-warn">No gateway has reported collector status yet.</p>
-          ) : null}
-        </details>}
-        {source === "beam" && <p className="px-4 py-3 text-sm text-ink-secondary">Beam browser access comes from durable control-plane audit records. Retention follows Audit Log policy; network flow sequence and gateway collector health do not apply.</p>}
-
-        <div className="access-events-table" aria-busy={busy && events.length === 0}>
-        {/* ⛔ TWO PAGERS, AND THEY ARE NOT RIVALS ONCE THEY ARE NAMED. This page pages SERVER-SIDE with a
-                keyset cursor; the table pages the rows already FETCHED. I first disabled the client pager to
-                avoid the collision, which meant this screen dumped everything loaded at once — the one thing
-                the pager exists to stop, and the founder saw it immediately.
-
-                They compose as long as each says which set it is talking about: the table's count reads
-                "of N" where N is what has been LOADED, and the server control says so on its face. Silence
-                about which set a number describes is what makes two pagers contradict each other. */}
-        {error && (
-          <div className="mb-3">
-            <LoadRetry
-              error={error}
-              onRetry={() => void load(events.length === 0)}
-            />
-          </div>
-        )}
-        {busy && events.length === 0 ? (
-          <Loading
-            label={hasActiveFilters
-              ? "Loading access events matching the current filters…"
-              : "Loading access events…"}
-          />
-        ) : error && events.length === 0 ? null : (
-          <DataTable<AccessEvent>
-            caption="Access events"
-            rows={events}
-            rowKey={(e) => e.id}
-            empty={source === "beam" ? "No retained Beam browser access events match the current filters." : hasActiveFilters
-              ? "No retained access events match the current filters."
-              : emptyAccessEventsNote(health, healthError !== null)}
-            failed={false}
-            columns={[
-            {
-              key: "event",
-              header: "Outcome",
-              cell: (e) => (
-                <button
-                  type="button"
-                  onClick={() => setSelected(e)}
-                  aria-label={`View ${decisionLabel(e.decision)} event details`}
-                  data-decision={e.decision}
-                  className={`rounded px-2 py-1 font-sans text-badge font-semibold tracking-wide hover:brightness-125 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white ${decisionClass(e)}`}
-                >
-                  {decisionLabel(e.decision)}
-                </button>
-              ),
-            },
-            {
-              key: "time",
-              header: "Observed",
-              sortValue: (e) => Date.parse(e.occurred_at),
-              cell: (e) => (
-                <span className="whitespace-nowrap font-sans text-xs text-ink-tertiary">
-                  {relativeAge(e.occurred_at)}
-                </span>
-              ),
-            },
-            {
-              key: "flow",
-              header: "Flow",
-              sortValue: (e) => sourceFor(e, identityLabelsFor(e)),
-              cell: (e) => (
-                <button type="button" onClick={() => setSelected(e)} className="access-event-flow group block min-w-0 text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white">
-                  <span className="block truncate font-sans text-xs text-ink-body group-hover:text-white">
-                    <span aria-hidden={Boolean(identityLabelsFor(e).agent || identityLabelsFor(e).device || identityLabelsFor(e).person)}>{identityLabelsFor(e).agent || identityLabelsFor(e).device || identityLabelsFor(e).person || sourceFor(e, identityLabelsFor(e))}</span>
-                    {(identityLabelsFor(e).agent || identityLabelsFor(e).device || identityLabelsFor(e).person) && <span className="sr-only">{sourceFor(e, identityLabelsFor(e))}</span>}
-                  </span>
-                  <span className="mt-1 block truncate font-sans text-micro text-ink-faint">
-                    → {destinationFor(e)}
-                  </span>
-                  <span className="access-event-open" aria-hidden="true">View details ↗</span>
-                </button>
-              ),
-            },
-            {
-              key: "protocol",
-              header: "Protocol",
-              cell: (e) => (
-                <span className="font-sans text-xs uppercase text-ink-tertiary">
-                  {e.beam ? "Beam browser" : e.protocol}{e.dst_port ? ` · ${e.dst_port}` : ""}
-                </span>
-              ),
-            },
-            {
-              key: "cause",
-              header: "Decision evidence",
-              cell: (e) => (
-                <span className="text-xs text-ink-tertiary">
-                  {causeFor(e, () => null)}
-                </span>
-              ),
-            },
-            ]}
-          />
-        )}
-        </div>
-
-        {/* ⛔ KEYSET, NOT PAGE NUMBERS — the cursor is (created_at, id), the INGEST clock. */}
-        <div className="flex flex-col gap-2 border-t border-line-row px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-micro text-ink-faint">{source === "beam" ? "Reviewer IDs are recorded from authenticated browser authority; names are current labels only. These records contain no gateway flow evidence." : ATTRIBUTION_NOTE}</p>
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="font-sans text-micro text-ink-faint">{events.length} loaded · newest first</span>
-            <Button size="sm" onClick={() => void load(false)} disabled={busy || done}>
-              {busy ? "Loading…" : done ? "No older events" : "Load older"}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {selected && (
-        <Modal title="Access event" size="wide" showClose onDismiss={() => setSelected(null)}>
-          <div className="access-event-detail flex flex-col gap-5">
-            {selected.beam ? <BeamAccessEvidence event={selected} reviewerLabel={identityLabelsFor(selected).person} /> : <>
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line-row pb-4">
-              <div>
-                <span className={`inline-flex rounded px-2 py-1 font-sans text-badge font-semibold tracking-wide ${decisionClass(selected)}`}>
-                  {decisionLabel(selected.decision)}
-                </span>
-                <p className="mt-2 text-sm text-ink-tertiary">Observed {relativeAge(selected.occurred_at)}</p>
-              </div>
-
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-              <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
-                <div className="text-xs font-medium text-ink-faint">Source</div>
-                <div className="mt-2 break-all font-sans text-sm text-white">
-                  {identityLabelsFor(selected).agent || identityLabelsFor(selected).device || identityLabelsFor(selected).person || sourceFor(selected, identityLabelsFor(selected))}
-                </div>
-              </div>
-              <span className="text-center text-ink-faint" aria-hidden="true">→</span>
-              <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
-                <div className="text-xs font-medium text-ink-faint">Destination</div>
-                <div className="mt-2 break-all font-sans text-sm text-white">{destinationFor(selected)}</div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {selected.src_user_id && <Button size="sm" variant="ghost" onClick={() => { const id = selected.src_user_id!; prepareFilterReload(); setAssociatedDevice(""); setIdentityValue(accessIdentityValue("person", id)); }}>Filter by this person</Button>}
-              {(selected.src_agent_id || selected.src_device_id) && <Button size="sm" variant="ghost" onClick={() => { const event = selected; prepareFilterReload(); setAssociatedDevice(""); setIdentityValue(accessIdentityValue(event.src_kind === "agent" ? "agent" : "device", event.src_agent_id || event.src_device_id!)); }}>Filter by this {selected.src_kind === "agent" ? "agent" : "device"}</Button>}
-            </div>
-            <div className="access-decision-explanation"><span>Decision reason</span><p>{causeFor(selected, () => null)}</p></div>
-            <details className="access-evidence-details"><summary>Technical evidence & identity IDs</summary>
-              <div className="text-right font-sans text-micro text-ink-faint">
-                <div>sequence {selected.seq}</div>
-                <div className="mt-1">ingested {selected.created_at}</div>
-              </div>
-            <dl className="grid grid-cols-2 gap-x-5 gap-y-4 border-y border-line-row py-4 text-sm sm:grid-cols-3">
-              <div><dt className="text-xs text-ink-faint">Protocol</dt><dd className="mt-1 font-sans uppercase text-ink-body">{selected.protocol}</dd></div>
-              <div><dt className="text-xs text-ink-faint">Rule / cause</dt><dd className="mt-1 text-ink-body">{causeFor(selected, () => null)}</dd></div>
-              <div><dt className="text-xs text-ink-faint">Policy</dt><dd className="mt-1 font-sans text-ink-body">{selected.policy_version ? `v${selected.policy_version}` : "not recorded"}</dd></div>
-              <div><dt className="text-xs text-ink-faint">Policy hash</dt><dd className="mt-1 break-all font-sans text-ink-body">{selected.policy_hash ?? "not recorded"}</dd></div>
-              <div><dt className="text-xs text-ink-faint">Source config</dt><dd className="mt-1 font-sans text-ink-body">{selected.src_config_revision ?? "not recorded"}</dd></div>
-              <div><dt className="text-xs text-ink-faint">Gateway</dt><dd className="mt-1 font-sans text-ink-body">{selected.node_id ?? "not recorded"}</dd></div>
-            </dl>
-
-            <div>
-              <h3 className="text-xs font-semibold text-ink-faint">Evidence trace</h3>
-              <ol className="mt-3 space-y-2 border-l border-line pl-4">
-                {eventTimeline(selected).map((item) => (
-                  <li key={item} className="relative text-xs text-ink-tertiary before:absolute before:-left-[1.19rem] before:top-1.5 before:h-1.5 before:w-1.5 before:rounded-full before:bg-ink-faint">{item}</li>
-                ))}
-              </ol>
-            </div>
-            <p className="text-micro text-ink-faint">
-              Any displayed person, device, or AI-agent names are current labels; the evidence trace preserves event-time IDs because historical labels are not recorded. A recorded person is device-owner accountability at ingest, not proof that they initiated the traffic.
-            </p>
-            </details>
-            <p className="text-xs text-ink-secondary">Names reflect current records. Recorded ownership does not identify who initiated the traffic.</p>
-            </>}
-          </div>
-        </Modal>
-      )}
+  return <section className="access-events-workspace">{rail}
+    <div hidden={!!selected}>
+      <div className="event-filter-row">
+        <div className="event-scope" aria-label="Event scope">{[[false,"All activity"],[true,"Denies only"]].map(([value,label]) => <button key={String(value)} type="button" aria-pressed={deniesOnly === value} onClick={() => { if (deniesOnly === value) return; prepareFilterReload(); setDeniesOnly(value as boolean); }}>{label}</button>)}</div>
+        <select aria-label="Source identity" value={identityValue} onChange={event => { prepareFilterReload(); setIdentityValue(event.target.value); setAssociatedDevice(""); }}><option value="">All sources</option>{([ ["People",identities.people], ["Devices", source === "network" ? identities.devices : []], ["AI agents",source === "network" ? identities.agents : []] ] as const).map(([label,items]) => !!items.length && <optgroup key={label} label={label}>{items.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</optgroup>)}</select>
+        {identitiesBusy && <span role="status" className="event-muted">Loading current labels…</span>}
+        <span className="event-page-meta">{ready ? `${rows.length} records · newest first` : ""}</span>
+      </div>
+      {source === "network" && chosenIdentity?.kind === "person" && <div className="event-associated"><label>Associated device<select aria-label="Associated device" value={associatedDevice} onChange={event => { prepareFilterReload(); setAssociatedDevice(event.target.value); }}><option value="">All activity recorded for this person</option>{associatedDevices.map(device => <option key={device.id} value={device.id}>{device.name}</option>)}</select></label><span>{associatedDevice ? "Showing this device’s history across recorded owners." : associatedDevices.length ? `${associatedDevices.length} devices currently assigned to this person` : "No currently assigned devices found."}</span></div>}
+      <details className="event-disclosure event-filter-disclosure"><summary>More filters{hasFilters && <span>Filters applied</span>}</summary><div className="event-filter-options">
+        <form aria-label="Filter by historical identity UUID" onSubmit={event => { event.preventDefault(); if (!historicalUUIDValid) return; prepareFilterReload(); setIdentityValue(accessIdentityValue(historicalIdentityKind,historicalUUID)); setAssociatedDevice(""); }}>
+          <label>Identity type<select aria-label="Historical identity type" value={historicalIdentityKind} onChange={event => setHistoricalIdentityKind(event.target.value as AccessIdentityKind)}><option value="person">Person</option>{source === "network" && <><option value="device">Device</option><option value="agent">AI agent</option></>}</select></label>
+          <label>Historical UUID<input aria-label="Historical identity UUID" aria-invalid={historicalUUIDInvalid || undefined} aria-describedby={historicalUUIDInvalid ? "historical-identity-uuid-error" : undefined} value={historicalIdentityID} onChange={event => setHistoricalIdentityID(event.target.value)} placeholder="Exact identity UUID" spellCheck={false} autoComplete="off" /></label><Button variant="ghost" type="submit" disabled={!historicalUUIDValid}>Apply UUID</Button>
+          {historicalUUIDInvalid && <p id="historical-identity-uuid-error" role="alert">Enter a complete UUID in xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx format.</p>}
+        </form>
+        {source === "beam" && <form onSubmit={event => { event.preventDefault(); const id=beamShareDraft.trim(); if (id && !UUID_PATTERN.test(id)) return; prepareFilterReload(); setBeamShareID(id); }}><label>Share ID<input aria-label="Share ID" value={beamShareDraft} onChange={event => setBeamShareDraft(event.target.value)} maxLength={36} placeholder="Exact share UUID" pattern="[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}" /></label><Button variant="ghost" type="submit">Filter share</Button>{beamShareID && <Button variant="ghost" onClick={() => { prepareFilterReload(); setBeamShareDraft(""); setBeamShareID(""); }}>Clear share</Button>}</form>}
+        {hasFilters && <Button variant="ghost" onClick={() => { prepareFilterReload(); setDeniesOnly(false); setIdentityValue(""); setAssociatedDevice(""); setHistoricalIdentityID(""); setBeamShareDraft(""); setBeamShareID(""); }}>Clear filters</Button>}
+      </div></details>
+      {identitiesError && <LoadRetry error={identitiesError} onRetry={() => void loadIdentities(org)} />}
+      {error && <LoadRetry error={error} onRetry={() => void loadPage(pending.current.index,pending.current.cursor)} />}
+      {busy && !ready ? <Loading label={hasFilters ? "Loading access events matching the current filters…" : "Loading access events…"} /> : ready && <>
+        <table className="event-table" aria-label="Access events" aria-busy={busy}><caption className="sr-only">Access events</caption><colgroup><col style={{width:"17%"}} /><col style={{width:"40%"}} /><col style={{width:"27%"}} /><col style={{width:"16%"}} /></colgroup><thead><tr><th>Outcome</th><th>Flow</th><th>Decision evidence</th><th>Observed</th></tr></thead><tbody>
+          {rows.map(event => { const labels=labelsFor(event); const label=labels.agent || labels.device || labels.person; return <tr key={event.id}>
+            <td><button type="button" className={outcomeClass(event)} data-decision={event.decision} aria-label={`View ${decisionLabel(event.decision)} event details`} onClick={() => openEvent(event)}>{outcomeTitle(event.decision)}</button></td>
+            <td><button type="button" className="event-flow" onClick={() => openEvent(event)}><span aria-hidden={!!label}>{label || sourceFor(event,labels)}</span>{label && <span className="sr-only">{sourceFor(event,labels)}</span>}<small>→ {destinationFor(event)}</small></button><span className="event-protocol">{event.beam ? "Shared app" : event.protocol}{event.dst_port ? ` · ${event.dst_port}` : ""}</span></td>
+            <td className="event-muted">{eventReason(event)}</td><td><time dateTime={event.occurred_at} title={new Date(event.occurred_at).toLocaleString()}>{relativeAge(event.occurred_at)}</time></td>
+          </tr>; })}
+          {!rows.length && <tr><td colSpan={4}><div className="event-empty"><h2>{page > 1 ? "No events on this page" : hasFilters ? "No matching events" : "No events recorded"}</h2><p>{page > 1 ? "Older records may have expired. Go back or refresh to read the latest activity." : source === "beam" ? "No retained Local Sharing access events match the current filters." : hasFilters ? "No retained access events match the current filters." : emptyAccessEventsNote(health,healthError !== null)}</p>{hasFilters && <Button variant="ghost" onClick={() => { prepareFilterReload(); setDeniesOnly(false); setIdentityValue(""); setAssociatedDevice(""); setBeamShareID(""); setBeamShareDraft(""); }}>Clear filters</Button>}</div></td></tr>}
+        </tbody></table>
+        <AppAccessPagination page={page} pageSize={pageSize} count={rows.length} hasNext={hasNext} busy={busy} maxOffset={null} firstItem={cache.current.slice(0,page-1).reduce((n,item) => n + item.rows.length,1)} onPageChange={changePage} onPageSizeChange={size => { prepareFilterReload(); setPageSize(size); }} />
+      </>}
+      {source === "network" ? <details className="event-disclosure" aria-label="Gateway collector status"><summary><span>Collection health</span><span className={healthError || health?.retention_failed || health?.gateway_collectors?.some(c => ["danger","warn"].includes(collectorStateTone(c.state))) ? "event-health-attention" : undefined}>{healthError ? "Status unavailable" : health?.retention_failed ? "Retention sweep failed" : !health ? "Checking collectors…" : health?.gateway_collectors?.length ? `${health.gateway_collectors.length} collectors · ${health.gateway_collectors.filter(c => ["danger","warn"].includes(collectorStateTone(c.state))).length} need attention` : "No collector reports"}</span></summary>
+        {healthError ? <LoadRetry error={healthError} onRetry={() => void loadHealth(org)} /> : healthBusy && !health ? <Loading label="Loading collector status…" /> : health && <>{rn && <p className={`event-health-note is-${rn.tone}`}>{rn.text}{health.retention_last_sweep ? ` · ${relativeAge(health.retention_last_sweep)}` : ""}</p>}<CollectorInventory health={health} /></>}
+      </details> : <details className="event-disclosure"><summary>About these records</summary><p>Local Sharing access comes from durable control-plane audit records. Retention follows Audit Log policy; network flow sequence and gateway collector health do not apply.</p><p>Reviewer IDs are recorded from authenticated browser authority; names are current labels only. These records contain no gateway flow evidence.</p></details>}
     </div>
-  );
+    {selected && <section className="event-detail">
+      <nav className="event-breadcrumb" aria-label="Access event breadcrumb"><button type="button" onClick={() => setSelected(null)}>{source === "beam" ? "Local Sharing access" : "Network events"}</button><span aria-hidden="true">/</span><span>Event {selected.id.slice(-8)}</span></nav>
+      <div className="event-detail-heading"><div><h1>{outcomeTitle(selected.decision)}</h1><p>{eventReason(selected)}</p></div><time dateTime={selected.occurred_at}>{new Date(selected.occurred_at).toLocaleString()}</time></div>
+      <div className="event-detail-layout"><nav className="event-detail-path" aria-label="Access event detail sections">{(["overview","evidence"] as const).map(value => <button key={value} type="button" aria-current={stage === value ? "step" : undefined} onClick={() => setStage(value)}>{value === "overview" ? "Overview" : "Evidence"}</button>)}</nav><div className="event-detail-stage"><h2 tabIndex={-1} ref={heading}>{stage === "overview" ? "Overview" : "Technical evidence"}</h2>
+        {selected.beam ? (stage === "overview" ? <BeamAccessEvidence event={selected} reviewerLabel={labelsFor(selected).person} /> : <><dl className="event-facts"><Fact label="Audit event ID" value={selected.id} /><Fact label="Recorded reviewer ID" value={selected.src_user_id || "Not recorded"} /><Fact label="Share ID" value={selected.beam.share_id} /><Fact label="Recorded" value={selected.created_at} /></dl><p className="event-detail-note">Control-plane audit evidence. Gateway flow and policy evidence do not apply.</p></>) : stage === "overview" ? <>
+          <dl className="event-facts"><Fact label="Source" value={labelsFor(selected).agent || labelsFor(selected).device || labelsFor(selected).person || sourceFor(selected,labelsFor(selected))} /><Fact label="Destination" value={destinationFor(selected)} /><Fact label="Protocol" value={`${selected.protocol}${selected.dst_port ? ` · ${selected.dst_port}` : ""}`} /><Fact label="Decision reason" value={eventReason(selected)} /><Fact label="Observed" value={new Date(selected.occurred_at).toLocaleString()} /></dl>
+          <p className="event-detail-note">Names reflect current records. Recorded ownership does not identify who initiated the traffic.</p>
+          <div className="event-detail-actions">{selected.src_user_id && <Button variant="ghost" onClick={() => { const id=selected.src_user_id!; prepareFilterReload(); setAssociatedDevice(""); setIdentityValue(accessIdentityValue("person",id)); }}>Filter by this person</Button>}{(selected.src_agent_id || selected.src_device_id) && <Button variant="ghost" onClick={() => { const event=selected; prepareFilterReload(); setAssociatedDevice(""); setIdentityValue(accessIdentityValue(event.src_agent_id || event.src_kind === "agent" ? "agent" : "device",event.src_agent_id || event.src_device_id!)); }}>Filter by this {selected.src_agent_id || selected.src_kind === "agent" ? "agent" : "device"}</Button>}</div>
+        </> : <><dl className="event-facts"><Fact label="Event ID" value={selected.id} /><Fact label="Sequence" value={selected.seq} /><Fact label="Ingested" value={selected.created_at} /><Fact label="Policy" value={selected.policy_version ? `v${selected.policy_version}` : "not recorded"} /><Fact label="Policy hash" value={selected.policy_hash ?? "not recorded"} /><Fact label="Source config" value={selected.src_config_revision ?? "not recorded"} /><Fact label="Gateway" value={selected.node_id ?? "not recorded"} /><Fact label="Rule ID" value={selected.rule_id ?? "not recorded"} /></dl><h3>Evidence trace</h3><ol className="event-trace">{eventTimeline(selected).map(item => <li key={item}>{item}</li>)}</ol><p className="event-detail-note">{ATTRIBUTION_NOTE}</p></>}
+        <footer className="event-detail-footer"><Button variant="ghost" onClick={() => setSelected(null)}>Back to events</Button></footer>
+      </div></div>
+    </section>}
+  </section>;
+}
+function Fact({ label,value }: { label: string; value: string | number }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }
+function CollectorInventory({ health }: { health: AccessLogHealth }) {
+  const [page,setPage]=useState(1), [size,setSize]=useState(20);
+  const collectors=health.gateway_collectors ?? [];
+  useEffect(() => setPage(1),[health]);
+  return collectors.length ? <><table className="event-table event-collector-table" aria-label="Gateway collectors"><thead><tr><th>Gateway</th><th>Status</th><th>Collection evidence</th></tr></thead><tbody>{collectors.slice((page-1)*size,page*size).map(collector => <tr key={collector.node_id}><td>{collector.name}</td><td className={`is-${collectorStateTone(collector.state)}`}>{collectorStateLabel(collector.state)}</td><td><dl>{[["Heartbeat",collector.last_reported_at],["Observed",collector.last_observed_at],["Delivered",collector.last_delivered_at],["Retained",collector.last_event_at]].map(([label,timestamp]) => <div key={label}><dt>{label}:</dt><dd>{timestamp ? relativeAge(timestamp) : "not reported"}</dd></div>)}</dl></td></tr>)}</tbody></table><AppAccessPagination page={page} pageSize={size} count={collectors.slice((page-1)*size,page*size).length} hasNext={page*size<collectors.length} maxOffset={null} onPageChange={setPage} onPageSizeChange={value => { setSize(value); setPage(1); }} /></> : <p className="event-health-note">No gateway has reported collector status yet.</p>;
 }

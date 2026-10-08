@@ -277,7 +277,7 @@ function AccessEventsRoute() {
   const [params] = useSearchParams();
   const applications = params.get("source") === "applications";
   const beam = params.get("source") === "beam";
-  return <div className="space-y-5"><nav aria-label="Access event sources" className="workspace-tabs"><Link className="text-brand" aria-current={!applications && !beam ? "page" : undefined} to="/access-events">Network events</Link><Link className="text-brand" aria-current={applications ? "page" : undefined} to="/access-events?source=applications">Application events</Link><Link className="text-brand" aria-current={beam ? "page" : undefined} to="/access-events?source=beam">Beam browser access</Link></nav>{applications ? <AppAccessEvents /> : <AccessEvents key={beam ? "beam" : "network"} />}</div>;
+  return applications ? <AppAccessEvents /> : <AccessEvents key={beam ? "beam" : "network"} />;
 }
 
 function RequireAuth() {

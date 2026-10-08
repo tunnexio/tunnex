@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIAccessGate, AIGroupAccess, AIUseModel } from "../src/components/AIUserAccess";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
@@ -43,8 +43,16 @@ describe("AI user access", () => {
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: JSON.stringify([provider.id, provider.models[0]]) } });
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
-    fireEvent.click(await screen.findByRole("radio"));
-    expect(await screen.findByRole("button", { name: "Revoke access" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /^Actions for Engineering · / }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Revoke access" }));
+    const confirmation = within(screen.getByRole("dialog", { name: "Revoke model access?" }));
+    expect(confirmation.getByText(/Other grants remain in effect/)).toBeTruthy();
+    expect(mock.post).toHaveBeenCalledTimes(1);
+    fireEvent.click(confirmation.getByRole("button", { name: "Confirm revoke" }));
+    await waitFor(() => expect(mock.post).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/ai-gateway/user-model-grants", {
+      params: { path: { orgId: "org" } },
+      body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: false, expected_revision: 1 },
+    }));
   });
   it.each([false, true])("creates a group inline with existing groups=%s and waits for an explicit grant", async (hasExisting) => {
     grantInventory(hasExisting ? [{ id: "engineering", name: "Engineering", members: 4 }] : []);
@@ -166,10 +174,91 @@ describe("AI user access", () => {
     await waitFor(() => expect(mock.post).toHaveBeenCalledTimes(2));
     expect(mock.post.mock.calls[1][1].body.messages).toEqual([{role:"user",content:"Hello"},{role:"assistant",content:"Hello Engineering"},{role:"user",content:"Tell me more"}]);
   });
+  it("pages loaded grants, resets search and page size, and restores only the chosen revision", async () => {
+    const grants = Array.from({ length: 55 }, (_, index) => ({ id: `grant-${index + 1}`, group_id: `group-${index + 1}`, group_name: `Group ${String(index + 1).padStart(2, "0")}`, connection_id: provider.id, model: provider.models[0], enabled: false, status: "revoked", revision: index + 7 }));
+    mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("user-groups") ? [] : path.endsWith("user-model-grants") ? grants : { items: [provider] } }));
+    mock.post.mockResolvedValue({ data: { ...grants[54], enabled: true, status: "applied" } });
+    render(<AIGroupAccess orgId="org" canManage />);
+    const table = await screen.findByRole("table", { name: "User group model grants" });
+    expect(within(table).getAllByRole("row")).toHaveLength(21);
+    expect(screen.queryByText("Group 21")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Group 21")).toBeTruthy();
+    expect(screen.queryByText("Group 01")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(16);
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: /^Actions for Group 55 · / }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restore access" }));
+    await waitFor(() => expect(mock.post).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/ai-gateway/user-model-grants", {
+      params: { path: { orgId: "org" } },
+      body: { group_id: "group-55", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 61 },
+    }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search model access" }), { target: { value: "Group 01" } });
+    expect(screen.getByText("Group 01")).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search model access" }), { target: { value: "" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(21);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(51);
+    expect(screen.getByText("Group 01")).toBeTruthy();
+    expect(screen.queryByText("Group 55")).toBeNull();
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", true);
+  });
+  it("keeps saved grants readable for a viewer without a mutation menu or pointless pager", async () => {
+    mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("user-groups") ? [] : path.endsWith("user-model-grants") ? [{ id: "grant", group_id: "engineering", group_name: "Engineering", connection_id: provider.id, model: provider.models[0], enabled: true, status: "applied", revision: 8 }] : { items: [provider] } }));
+    render(<AIGroupAccess orgId="org" canManage={false} />);
+    const table = await screen.findByRole("table", { name: "User group model grants" });
+    expect(within(table).getByText("Engineering")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Grant access" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Actions for / })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(mock.post).not.toHaveBeenCalled();
+  });
+  it("withdraws old organization grants immediately and ignores late reads", async () => {
+    let complete!: (value: unknown) => void;
+    mock.get.mockImplementation((path: string, options: { params: { path: { orgId: string } } }) => {
+      if (path.endsWith("user-model-grants")) return options.params.path.orgId === "org" ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve({ data: [] });
+      return Promise.resolve({ data: path.endsWith("user-groups") ? [] : { items: [provider] } });
+    });
+    const page = render(<AIGroupAccess orgId="org" canManage />);
+    await waitFor(() => expect(complete).toBeDefined());
+    page.rerender(<AIGroupAccess orgId="other-org" canManage={false} />);
+    await screen.findByText("No model access granted.");
+    await act(async () => complete({ data: [{ id: "private", group_id: "private-group", group_name: "Private old group", connection_id: provider.id, model: provider.models[0], enabled: true, status: "applied", revision: 9 }] }));
+    expect(screen.queryByText("Private old group")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Actions for / })).toBeNull();
+    expect(mock.post).not.toHaveBeenCalled();
+  });
+  it("does not show or complete a late grant after management permission is removed", async () => {
+    grantInventory([{ id: "engineering", name: "Engineering", members: 4 }]);
+    const done = vi.fn();
+    let complete!: (value: unknown) => void;
+    mock.post.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const page = render(<AIGroupAccess orgId="org" canManage dialogOnly initialConnection={provider.id} initialModel={provider.models[0]} onDone={done} />);
+    await screen.findByRole("option", { name: "Engineering (4)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
+    fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
+    expect(mock.post).toHaveBeenCalledTimes(1);
+    page.rerender(<AIGroupAccess orgId="org" canManage={false} onDone={done} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => complete({ data: { id: "late", group_id: "engineering", group_name: "Private late grant", connection_id: provider.id, model: provider.models[0], enabled: true, status: "applied", revision: 1 } }));
+    await screen.findByText("No model access granted.");
+    expect(screen.queryByText("Private late grant")).toBeNull();
+    expect(done).not.toHaveBeenCalled(); expect(mock.success).not.toHaveBeenCalled();
+    expect(mock.post).toHaveBeenCalledTimes(1);
+  });
   it("disables provider mutations for an AI viewer", async () => {
     mock.get.mockResolvedValue({ data: { items: [provider], definitions: [{ id: "azure_ai", name: "Azure AI Foundry" }], management_available: true, legacy_key_ids: [] } });
     render(<AIProviderWorkspace orgId="org" canManage={false} />);
-    expect((await screen.findByRole("tab", { name: "Add Model" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Edit credentials" }) as HTMLButtonElement).disabled).toBe(true);
+    await screen.findByRole("table", { name: "Configured models" });
+    expect(screen.queryByRole("button", { name: "Add Model" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `Model actions for ${provider.models[0]} · ${provider.name}` }));
+    expect(screen.queryByRole("menuitem", { name: "Edit credentials" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Check catalog" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "View model" })).toBeTruthy();
+    expect(mock.post).not.toHaveBeenCalled();
   });
 });

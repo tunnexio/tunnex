@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 let orgId = "org-a";
 let role = "admin";
+let emailVerified = true;
 let membershipError = "";
 let inventoryError = "";
 let rows: Array<Record<string, unknown>> = [];
 let impacts: Record<string, Promise<unknown> | unknown> = {};
 
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: orgId, name: orgId } }) }));
-vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a" } } }) }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email_verified: emailVerified } } }) }));
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: {
@@ -36,10 +37,51 @@ const row = (id: string, name = id) => ({ id, name, fqdn: `${id}.example.com`, p
 const clearImpact = (id: string) => ({ data: { referencing_rule_count: 0, referencing_rule_ids: [], generation_withdrawal_required: false, resource_id: id } });
 function page() { return render(<MemoryRouter initialEntries={["/access/resources?type=fqdn"]}><AccessResources /></MemoryRouter>); }
 
-beforeEach(() => { orgId = "org-a"; role = "admin"; membershipError = ""; inventoryError = ""; rows = []; impacts = {}; Object.values(api).forEach((method) => vi.mocked(method).mockClear()); });
+async function resourceAction(name: string, action: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Actions for ${name}` }));
+  fireEvent.click(screen.getByRole("menuitem", { name: `${action} ${name}` }));
+}
+
+beforeEach(() => { orgId = "org-a"; role = "admin"; emailVerified = true; membershipError = ""; inventoryError = ""; rows = []; impacts = {}; Object.values(api).forEach((method) => vi.mocked(method).mockClear()); });
 afterEach(cleanup);
 
 describe("FQDN resource regressions", () => {
+  it("withdraws a pending deletion review when the same actor loses verification", async () => {
+    rows = [row("a", "Alpha")];
+    let resolveImpact!: (value: unknown) => void;
+    impacts.a = new Promise(resolve => { resolveImpact = resolve; });
+    const rendered = page();
+    await resourceAction("Alpha", "Delete");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    emailVerified = false;
+    rendered.rerender(<MemoryRouter initialEntries={["/access/resources?type=fqdn"]}><AccessResources /></MemoryRouter>);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => { resolveImpact(clearImpact("a")); });
+    await screen.findByRole("button", { name: "Alpha" });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Alpha" }));
+    expect(screen.queryByRole("menuitem", { name: "Delete Alpha" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Edit Alpha" })).toBeNull();
+    expect(api.DELETE).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { referencing_rule_count: -1, referencing_rule_ids: [], generation_withdrawal_required: false },
+    { referencing_rule_count: 0, referencing_rule_ids: [], generation_withdrawal_required: undefined },
+    { referencing_rule_count: 0, referencing_rule_ids: null, generation_withdrawal_required: false },
+  ])("refuses deletion when the server impact is incomplete or malformed: %j", async impact => {
+    rows = [row("a", "Alpha")];
+    impacts.a = { data: impact };
+    page();
+    await resourceAction("Alpha", "Delete");
+    await screen.findByText(/Server deletion impact could not be loaded/);
+    const remove = screen.getByRole("button", { name: "Delete FQDN resource" }) as HTMLButtonElement;
+    expect(remove.disabled).toBe(true);
+    fireEvent.click(remove);
+    expect(api.DELETE).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Server impact: 0 referencing rules/)).toBeNull();
+  });
+
   it("keeps membership lookup failure retryable and distinct from permission denial", async () => {
     membershipError = "members unavailable";
     page();
@@ -68,9 +110,9 @@ describe("FQDN resource regressions", () => {
     impacts.a = new Promise((resolve) => { resolveA = resolve; });
     impacts.b = clearImpact("b");
     page();
-    fireEvent.click((await screen.findAllByRole("button", { name: "Delete Alpha" }))[0]);
+    await resourceAction("Alpha", "Delete");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete Beta" })[0]);
+    await resourceAction("Beta", "Delete");
     await screen.findByText(/Server impact: 0 referencing rules/);
     resolveA(clearImpact("a"));
     await Promise.resolve();
@@ -83,7 +125,7 @@ describe("FQDN resource regressions", () => {
   it("keeps deletion impact errors retryable and recovers POST/DELETE failures", async () => {
     rows = [row("a", "Alpha")]; impacts.a = { error: { error: { message: "impact down" } } };
     page();
-    fireEvent.click((await screen.findAllByRole("button", { name: "Delete Alpha" }))[0]);
+    await resourceAction("Alpha", "Delete");
     expect(await screen.findByText(/Server deletion impact could not be loaded: impact down/)).toBeTruthy();
     impacts.a = clearImpact("a"); fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByText(/Server impact: 0 referencing rules/);
@@ -93,7 +135,7 @@ describe("FQDN resource regressions", () => {
     expect(screen.getByRole("button", { name: "Delete FQDN resource" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(screen.getByRole("button", { name: "Create resource" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Create FQDN resource/ }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New" } }); fireEvent.change(screen.getByLabelText("Exact hostname"), { target: { value: "new.example.com" } });
     await screen.findByText(/AWS resolver selected automatically/);
     vi.mocked(api.POST).mockResolvedValueOnce({ error: { error: { message: "post down" } } } as never);
@@ -110,14 +152,19 @@ describe("FQDN resource regressions", () => {
       { ...row("other", "Other"), org_id: "org-b" },
     ];
     const rendered = page();
-    expect(await screen.findByText("Not available")).toBeTruthy(); expect(screen.queryByText("0")).toBeNull();
-    expect(screen.getAllByText("TCP, all ports").length).toBeGreaterThan(0); expect(screen.getAllByText("TCP port 443").length).toBeGreaterThan(0); expect(screen.getAllByText("UDP ports 53–55").length).toBeGreaterThan(0);
+    const staleRow = (await screen.findByRole("button", { name: "Stale" })).closest("tr")!;
+    expect(within(staleRow).getByText("stale")).toBeTruthy();
+    expect(within(staleRow).queryByText(/active answers/)).toBeNull();
+    expect(screen.queryByText("0")).toBeNull();
+    expect(screen.getByRole("button", { name: "All" }).closest("tr")?.textContent).toContain("TCP, all ports");
+    expect(staleRow.textContent).toContain("TCP port 443");
+    expect(screen.getByRole("button", { name: "Range" }).closest("tr")?.textContent).toContain("UDP ports 53–55");
     orgId = "org-b"; rendered.rerender(<MemoryRouter initialEntries={["/access/resources?type=fqdn"]}><AccessResources /></MemoryRouter>);
     expect((await screen.findAllByText("Other")).length).toBeGreaterThan(0); expect(screen.queryByText("Stale")).toBeNull();
   });
 
   it("uses bounded resolver-bound POSTs without changing the organization setting", async () => {
-    page(); fireEvent.click(await screen.findByRole("button", { name: "Create resource" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
+    page(); fireEvent.click(await screen.findByRole("button", { name: "Create resource" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Create FQDN resource/ }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Range" } }); fireEvent.change(screen.getByLabelText("Exact hostname"), { target: { value: "range.example.com" } }); fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "udp" } }); fireEvent.change(screen.getByLabelText("Port scope"), { target: { value: "range" } }); fireEvent.change(screen.getByLabelText("Port"), { target: { value: "1" } }); fireEvent.change(screen.getByLabelText("Through"), { target: { value: "65535" } });
     await screen.findByText(/AWS resolver selected automatically/);
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create resource" })); await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());

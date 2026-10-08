@@ -256,8 +256,6 @@
 .sb-catalog > summary > span:first-child { display:flex; align-items:center; gap:15px; min-width:0; }
 .sb-catalog strong { font-weight:500; font-size:12px; color:#cdd3df; }
 .sb-disclosure-label { font-size:10px; color:#abb4c5; white-space:nowrap; }
-.sb-catalog > summary > .sb-disclosure-label::after { content:' +'; color:#d896a5; }
-.sb-catalog[open] > summary > .sb-disclosure-label::after { content:' −'; }
 .sb-catalog-body { padding:0 16px 16px; border-top:1px solid #292e39; }
 .sb-environment-row { display:grid; grid-template-columns:1fr auto; gap:8px 14px; align-items:center; padding:12px 0; border-bottom:1px solid #282e3a; }
 .sb-environment-identity { display:flex; gap:10px; align-items:center; min-width:0; }

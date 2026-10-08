@@ -229,6 +229,11 @@ describe("Gateway enrollment ceremony", () => {
     fireEvent.change(screen.getByLabelText("Gateway name (optional)"), {
       target: { value: "edge-london" },
     });
+    fireEvent.click(screen.getByText("Advanced connectivity"));
+    fireEvent.change(screen.getByLabelText("Public endpoint (optional)"), {
+      target: { value: "203.0.113.7:51820" },
+    });
+    expect(mocks.apiPost).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
         (screen.getByRole("button", { name: "Generate join token" }) as HTMLButtonElement)
@@ -240,8 +245,15 @@ describe("Gateway enrollment ceremony", () => {
     expect((mocks.apiPost.mock.calls[0] as unknown as [string])[0]).toContain(
       "/nodes/join-token",
     );
+    expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/nodes/join-token",
+      { params: { path: { orgId: "org-1" } }, body: { node_name: "edge-london" } },
+    );
     expect(await screen.findByText("exactly once")).toBeTruthy();
-    expect(screen.getByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Run the gateway command" })).toBeTruthy();
+    const command = screen.getByText(/TUNNEX_JOIN_TOKEN=one-time-token/);
+    expect(command.textContent).toContain('TUNNEX_NODE_NAME="edge-london"');
+    expect(command.textContent).toContain('TUNNEX_NODE_ENDPOINT="203.0.113.7:51820"');
     fireEvent.click(screen.getByRole("button", { name: "I’ve saved it" }));
     expect(screen.queryByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeNull();
     expect(onEnrollmentAcknowledged).toHaveBeenCalledOnce();

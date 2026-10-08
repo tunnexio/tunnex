@@ -6,6 +6,71 @@
   color-scheme: dark;
 }
 
+/* One disclosure row across workspaces. Native details retains keyboard and
+ * open/closed semantics; positioned popovers keep their compact triggers. */
+details:not(.ai-row-menu):not(:has(> .absolute)) > summary {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  min-height:40px;
+  padding:10px 12px;
+  border-radius:6px;
+  color:var(--tnx-text-primary);
+  font-size:13px;
+  font-weight:500;
+  line-height:1.5;
+  list-style:none;
+  cursor:pointer;
+  transition:background .15s,color .15s;
+}
+details > summary::marker { content:""; }
+details > summary::-webkit-details-marker { display:none; }
+details:not(.ai-row-menu) > summary::after {
+  content:"";
+  display:inline-block;
+  flex:none;
+  width:7px;
+  height:7px;
+  margin-left:auto;
+  margin-right:3px;
+  border-right:1.5px solid var(--tnx-text-secondary);
+  border-bottom:1.5px solid var(--tnx-text-secondary);
+  transform:rotate(-45deg);
+  transition:transform .15s;
+}
+details:not(.ai-row-menu):not(:has(> .absolute)) > summary:hover,
+details:not(.ai-row-menu):not(:has(> .absolute))[open] > summary {
+  color:var(--tnx-text-heading);
+  background:color-mix(in srgb,var(--tnx-surface-inset) 65%,transparent);
+}
+details:not(.ai-row-menu)[open] > summary::after { transform:rotate(45deg); }
+details > summary:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
+details:not(.ai-row-menu):not(:has(> .absolute))[open] > summary + :not(summary) { margin-top:12px; }
+@media(prefers-reduced-motion:reduce) {
+  details > summary,details > summary::after { transition:none!important; }
+}
+
+/* Inline identity checks stay close to their target without taking over the
+ * account workspace or changing the verification/enrollment ceremony. */
+.tnx-inline-mfa { margin-block:16px; padding:18px 20px; border:1px solid var(--tnx-border); border-radius:9px; background:color-mix(in srgb,var(--tnx-surface-inset) 40%,var(--tnx-surface)); }
+.tnx-inline-mfa-heading { display:flex; align-items:flex-start; gap:12px; }
+.tnx-inline-mfa-icon { display:grid; place-items:center; flex:none; width:32px; height:32px; border:1px solid var(--tnx-border); border-radius:8px; color:var(--tnx-text-secondary); background:var(--tnx-surface-inset); }
+.tnx-inline-mfa h3 { font-size:13px; font-weight:550; color:var(--tnx-text-heading); }
+.tnx-inline-mfa-context { margin-top:4px; font-size:12px; line-height:1.5; color:var(--tnx-text-primary); }
+.tnx-inline-mfa-policy { margin:12px 0 0; font-size:11px; line-height:1.5; color:var(--tnx-text-secondary); }
+.tnx-inline-mfa-form { margin-top:16px; }
+.tnx-inline-mfa-entry { display:flex; align-items:flex-end; flex-wrap:wrap; gap:10px 16px; }
+.tnx-inline-mfa-entry > .block { flex:0 1 280px; min-width:220px; }
+.tnx-inline-mfa-entry > .block > label { font-size:11.5px; color:var(--tnx-text-secondary); }
+.tnx-inline-mfa-entry input { height:36px; min-height:36px; font-size:13px; }
+.tnx-inline-mfa-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.tnx-inline-mfa-actions > button { min-height:36px; padding:7px 12px; font-size:12px; }
+.tnx-inline-mfa-form > p { margin-top:10px; }
+.tnx-inline-mfa-setup { margin-top:16px; padding-top:8px; border-top:1px solid var(--tnx-border); font-size:12px; }
+.tnx-inline-mfa-setup > summary { font-size:12px!important; }
+.tnx-inline-mfa-setup[open] > :not(summary) { margin-inline:12px; }
+
 /* Shared route navigation for AI and identity workspaces. */
 .workspace-tabs { display:flex; gap:24px; overflow-x:auto; border-bottom:1px solid var(--tnx-border); min-width:0; }
 .workspace-tabs a { flex-shrink:0; padding:12px 2px 14px; border-bottom:2px solid transparent; color:var(--tnx-text-secondary); font-size:14px; font-weight:500; }
@@ -274,7 +339,6 @@ body {
 .tnx-datatable td a:hover { color:var(--tnx-focus); text-decoration-color:currentColor; }
 .tnx-datatable td button:not(:disabled) { cursor:pointer; }
 .tnx-datatable td:first-child button:not(:disabled) { color:var(--tnx-text-heading); text-decoration:underline; text-decoration-color:var(--tnx-text-secondary); text-underline-offset:4px; }
-.tnx-datatable td button:not(:disabled):hover { background:rgba(255,255,255,.06); }
 .tnx-datatable td button:disabled { cursor:not-allowed; }
 
 /* Shared operational labels: quiet text, consistent semantic markers, no pills. */
@@ -392,4 +456,19 @@ body:has(.tnx-modal-overlay[data-placement="right"]) { overflow:hidden; }
 }
 @media(forced-colors:active) {
   :is(input, textarea, select):focus-visible { outline:2px solid Highlight; outline-offset:2px; }
+}
+
+/* Navigation supplies the visible section name; an accessible heading needs no layout slot. */
+.tnx-navigation-header-empty + *,
+.tnx-navigation-header:has(> div:empty) + * { margin-top:0 !important; }
+.tnx-navigation-header:has(> div:empty) {
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
 }

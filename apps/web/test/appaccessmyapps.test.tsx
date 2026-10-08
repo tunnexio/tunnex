@@ -14,11 +14,13 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("../src/lib/api", async importOriginal => {
   const original = await importOriginal<typeof import("../src/lib/api")>();
   return { ...original, api: {
-    GET: vi.fn(async (path: string) => {
+    GET: vi.fn(async (path: string, options?: { params?: { query?: { limit?: number; offset?: number } } }) => {
+      const limit = options?.params?.query?.limit ?? 20;
+      const offset = options?.params?.query?.offset ?? 0;
       if (path.endsWith("/auth/me")) return { data: { id: "user-1", email: "member@test.local", email_verified: true } };
       if (path === "/api/v1/organizations") return { data: [{ id: "00000000-0000-4000-8000-000000000001", name: "Office", slug: "office" }, { id: "00000000-0000-4000-8000-000000000003", name: "Other office", slug: "other-office" }] };
-      if (path.endsWith("/my-apps")) return state.appsFailed ? { error: { error: { message: "Catalog unavailable" } } } : { data: { items: state.items, limit: 20, offset: 0, availability: state.availability } };
-      if (path.endsWith("/my-sessions")) return state.sessionsFailed ? { error: { error: { message: "Sessions unavailable" } } } : { data: { items: state.sessions, limit: 20, offset: 0 } };
+      if (path.endsWith("/my-apps")) return state.appsFailed ? { error: { error: { message: "Catalog unavailable" } } } : { data: { items: state.items.slice(0, limit), limit, offset, availability: state.availability } };
+      if (path.endsWith("/my-sessions")) return state.sessionsFailed ? { error: { error: { message: "Sessions unavailable" } } } : { data: { items: state.sessions.slice(0, limit), limit, offset } };
       throw new Error(`Unexpected path ${path}`);
     }),
     POST: vi.fn(async (path: string) => path.endsWith("/logout") ? { ...(state.logoutFailed ? { error: { error: { message: "Retry sign-out" } } } : {}), response: { status: state.logoutFailed ? 503 : 204 } } : { error: { error: { code: "access_denied", message: "Application access denied" } }, response: { status: 403 } }),
@@ -320,6 +322,36 @@ describe("member application access", () => {
     state.appsFailed = false; fireEvent.click(screen.getByRole("button", { name: "Retry applications" }));
     expect(await screen.findByText(/No published applications are granted/)).toBeTruthy();
   });
+  it("omits pagination and page-size controls for an empty first catalog page", async () => {
+    show();
+    await screen.findByText(/No published applications are granted/);
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(screen.queryByLabelText("Rows per page")).toBeNull();
+    expect(screen.queryByText("0 results")).toBeNull();
+    expect(screen.queryByText("Page 1")).toBeNull();
+  });
+  it("uses the chosen catalog page size and resets the page while retaining search", async () => {
+    state.items = Array.from({ length: 20 }, (_, index) => ({ ...payroll, id: `${appId}-${index}`, name: `Payroll ${index}` }));
+    show("/app-access/my-applications?q=Payroll&page=3&page_size=10");
+    await screen.findByRole("navigation", { name: "Table pagination" });
+    expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-apps", { params: { path: { orgId }, query: { limit: 10, offset: 20, search: "Payroll" } } });
+    fireEvent.change(screen.getByLabelText("Rows per page"), { target: { value: "50" } });
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-apps", { params: { path: { orgId }, query: { limit: 50, offset: 0, search: "Payroll" } } }));
+    expect(await screen.findByLabelText("Rows per page")).toHaveProperty("value", "50");
+    expect(screen.getByText("1–20 shown")).toBeTruthy();
+    expect(screen.queryByText("Page 1")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Previous page" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Search applications"), { target: { value: "Reports" } });
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-apps", { params: { path: { orgId }, query: { limit: 50, offset: 0, search: "Reports" } } }));
+  });
+  it.each([["50", 50, 10000], ["100", 20, 10000]])("bounds catalog offsets and validates the requested page size %s", async (size, limit, offset) => {
+    show(`/app-access/my-applications?page=9999&page_size=${size}`);
+    await screen.findByRole("navigation", { name: "Table pagination" });
+    expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-apps", { params: { path: { orgId }, query: { limit, offset, search: "" } } });
+    expect(screen.getByLabelText("Rows per page")).toHaveProperty("value", String(limit));
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
+  });
   it("retains domain-unavailable and session-read failure states", async () => {
     state.availability = "domain_unavailable"; state.sessionsFailed = true; show();
     expect(await screen.findByText(/setup is not complete/)).toBeTruthy();
@@ -377,8 +409,8 @@ describe("member application access", () => {
     fireEvent.click(screen.getByRole("button", { name: "My sessions" }));
     await screen.findByText("No active application sessions.");
     expect(screen.queryByLabelText("Search applications")).toBeNull();
-    expect(screen.getByRole("heading", { name: "My sessions", level: 1 })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Back to My Applications" }));
+    expect(screen.getByRole("heading", { name: "My sessions", level: 2 })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "My Applications" }));
     expect(await screen.findByLabelText("Search applications")).toHaveProperty("value", "Payroll");
     expect(screen.getByText("Page 2")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "My application sessions" })).toBeNull();
@@ -394,6 +426,39 @@ describe("member application access", () => {
     fireEvent.click(screen.getByRole("button", { name: "More sessions" }));
     await waitFor(() => expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-sessions", { params: { path: { orgId }, query: { limit: 20, offset: 20 } } }));
     expect(api.GET).not.toHaveBeenCalledWith(expect.stringContaining("/my-apps"), expect.anything());
+  });
+  it("omits pagination on an empty first sessions page", async () => {
+    show("/app-access/my-applications?view=sessions");
+    await screen.findByText("No active application sessions.");
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(screen.queryByLabelText("Rows per page")).toBeNull();
+    expect(screen.queryByText("0 results")).toBeNull();
+    expect(api.GET).not.toHaveBeenCalledWith(expect.stringContaining("/my-apps"), expect.anything());
+  });
+  it("queries a smaller session page size on a full result page", async () => {
+    state.sessions = Array.from({ length: 20 }, (_, index) => ({ id: `session-${index}`, app_label: "Payroll", created_at: "2026-10-03T00:00:00Z", expires_at: "2026-10-04T00:00:00Z", current_parent: true }));
+    show("/app-access/my-applications?view=sessions");
+    await screen.findByLabelText("Rows per page");
+    fireEvent.change(screen.getByLabelText("Rows per page"), { target: { value: "10" } });
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-sessions", { params: { path: { orgId }, query: { limit: 10, offset: 0 } } }));
+    expect(await screen.findByLabelText("Rows per page")).toHaveProperty("value", "10");
+    expect(screen.getAllByRole("button", { name: /^Sign out of Payroll/ })).toHaveLength(10);
+    expect(screen.getByRole("button", { name: "More sessions" })).toHaveProperty("disabled", false);
+    expect(api.GET).not.toHaveBeenCalledWith(expect.stringContaining("/my-apps"), expect.anything());
+  });
+  it("resets session pagination after changing its page size", async () => {
+    state.sessions = Array.from({ length: 20 }, (_, index) => ({ id: `session-${index}`, app_label: "Payroll", created_at: "2026-10-03T00:00:00Z", expires_at: "2026-10-04T00:00:00Z", current_parent: true }));
+    show("/app-access/my-applications?view=sessions");
+    await screen.findByLabelText("Rows per page");
+    fireEvent.click(screen.getByRole("button", { name: "More sessions" }));
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-sessions", { params: { path: { orgId }, query: { limit: 20, offset: 20 } } }));
+    fireEvent.change(await screen.findByLabelText("Rows per page"), { target: { value: "50" } });
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-sessions", { params: { path: { orgId }, query: { limit: 50, offset: 0 } } }));
+    expect(await screen.findByLabelText("Rows per page")).toHaveProperty("value", "50");
+    expect(screen.getByText("1–20 shown")).toBeTruthy();
+    expect(screen.queryByText("Page 1")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Previous sessions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More sessions" })).toBeNull();
   });
   it("opens and detaches an empty tab during the click before requesting a code, then navigates only that tab", async () => {
     const tab = pendingWindow();

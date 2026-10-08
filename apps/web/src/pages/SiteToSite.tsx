@@ -1,6 +1,7 @@
 import "../network-workspaces.css";
+import "../app-access-workspace.css";
+import "../site-to-site-workspace.css";
 import { Button as ActionButton } from "../components/ui/button";
-import { Icon } from "../components/Icon";
 import { IPsecWorkspace } from "../components/IPsecWorkspace";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -11,7 +12,8 @@ import { useAuth } from "../lib/auth";
 import { siteGate } from "../lib/sitesview";
 import { Link, useSearchParams } from "react-router-dom";
 import { ConnectionChooser } from "../components/ConnectionChooser";
-import { Button, Card, PageHeader } from "../components/ui";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import { Button, Loading, PageHeader } from "../components/ui";
 
 export type SiteToSiteState = {
   kind: "loading" | "error" | "ready";
@@ -61,39 +63,37 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
   const setMethod = (value: "wireguard" | "ipsec") => setParams(previous => { const next = new URLSearchParams(previous); next.set("method", value); return next; });
   const [choosing, setChoosing] = useState(false);
   const [createRequest, setCreateRequest] = useState(0);
-  return <div className="network-management space-y-5">
-    <PageHeader title="Site-to-site" subtitle="Connect entire networks through gateways." actions={state.canManage ? <ActionButton onClick={() => setChoosing(true)}>Create connection</ActionButton> : undefined} />
+  return <div className="site-to-site-workspace s2s-connections-workspace network-management">
+    <PageHeader navigationTitle title="Site-to-site" />
     <div className="s2s-workspace-toolbar">
       <SiteToSiteNavigation active="connectivity" />
-      {method === "wireguard" && <ActionButton variant="ghost" onClick={onRetry}>Refresh</ActionButton>}
+      <div className="s2s-toolbar-actions">
+        {method === "wireguard" && <ActionButton size="sm" variant="ghost" disabled={state.kind === "loading"} onClick={onRetry}>Refresh</ActionButton>}
+        {state.canManage && <ActionButton size="sm" onClick={() => setChoosing(true)}>Create connection</ActionButton>}
+      </div>
     </div>
     <fieldset className="connection-purpose">
       <legend className="sr-only">What would you like to connect?</legend>
       <label className={`connection-purpose-option ${method === "wireguard" ? "is-selected" : ""}`}>
         <input type="radio" name="connection-purpose" value="wireguard" checked={method === "wireguard"} onChange={() => setMethod("wireguard")} />
-        <Icon name="network" size={20} />
-        <span><strong>Between your networks</strong><span>Tunnex gateways at both locations.</span><small>WireGuard · managed by Tunnex</small></span>
+        <span><strong>Between your networks</strong><small>WireGuard</small></span>
       </label>
       <label className={`connection-purpose-option ${method === "ipsec" ? "is-selected" : ""}`}>
         <input type="radio" name="connection-purpose" value="ipsec" checked={method === "ipsec"} onChange={() => setMethod("ipsec")} />
-        <Icon name="shield" size={20} />
-        <span><strong>To a cloud VPN</strong><span>A Tunnex gateway connects to your AWS VPN.</span><small>IPsec · AWS supported</small></span>
+        <span><strong>To a cloud VPN</strong><small>IPsec · AWS</small></span>
       </label>
     </fieldset>
-    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0)) : ipsecWorkspace) ?? <Card><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></Card> : <>
-    <Card>
-      {state.kind === "loading" && <p role="status">Loading networks…</p>}
+    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0)) : ipsecWorkspace) ?? <section className="s2s-connection-state"><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></section> : <>
+    <section className="s2s-connection-content">
+      {state.kind === "loading" && <Loading label="Loading networks…" />}
       {state.kind === "error" && <div role="alert"><p>{state.error}</p><Button onClick={state.reloadPage ? () => window.location.reload() : onRetry}>{state.reloadPage ? "Reload page" : "Retry networks"}</Button></div>}
       {state.kind === "ready" && <>
-        {state.sites.length < 2 ? <div className="flex flex-wrap items-center justify-between gap-4">
-          <div><h3 className="font-semibold text-ink-heading">No WireGuard links</h3><p className="mt-1 text-sm text-ink-secondary">{state.sites.length === 0 ? "No networks configured yet." : "A second network is required."}</p></div>
-          {state.sites.length === 1 && state.canManage && <ActionButton asChild variant="outline"><Link to="/sites">Go to Networks</Link></ActionButton>}
-        </div> : renderDetails ? <SitePairReview sites={state.sites} renderDetails={renderDetails} /> : <p className="text-sm text-ink-secondary">Link details unavailable.</p>}
+        {state.sites.length < 2 ? <AppAccessEmptyState icon={null} title="No WireGuard links" description={state.sites.length === 0 ? "No networks configured yet." : "A second network is required."} action={state.sites.length === 1 && state.canManage ? <ActionButton asChild size="sm" variant="outline"><Link to="/sites">Go to Networks</Link></ActionButton> : undefined} /> : renderDetails ? <SitePairReview sites={state.sites} renderDetails={renderDetails} /> : <p className="text-sm text-ink-secondary">Link details unavailable.</p>}
         {state.permissionError && <div role="alert" className="mt-4"><p>Could not check your setup permissions.</p><Button onClick={onRetry}>Retry permissions</Button></div>}
         {!state.canManage && !state.permissionError && <p className="mt-4 text-sm text-ink-secondary">Setup requires a verified site manager. Contact your administrator for access.</p>}
       </>}
-    </Card>
-    <details className="text-cell text-ink-tertiary">
+    </section>
+    <details className="s2s-disclosure s2s-setup-requirements">
       <summary className="cursor-pointer">Setup requirements</summary>
       <p className="mt-2">A gateway and approved ranges at each location, one reachable public WireGuard hub, access policies and return routes. Links are configured automatically.</p>
     </details>

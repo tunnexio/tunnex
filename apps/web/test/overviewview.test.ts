@@ -98,18 +98,21 @@ describe("peerSlices — the donut counts DEVICES, and the buckets are disjoint"
 
   it("every device lands in exactly one bucket", () => {
     const devices = [
-      D({ status: "active", online: true }),
-      D({ status: "active", online: false }),
-      D({ status: "active", online: true, health_blocked: true }),
-      D({ status: "revoked", online: false }),
+      D({ status: "active", public_key: "wireguard-key", online: true }),
+      D({ status: "active", public_key: "wireguard-key", online: false }),
+      D({ status: "active", public_key: "wireguard-key", online: true, health_blocked: true }),
+      D({ status: "revoked", public_key: "wireguard-key", online: false }),
     ];
     const s = peerSlices(devices);
     expect(s.reduce((t, x) => t + x.value, 0)).toBe(devices.length);
     expect(s.map((x) => [x.label, x.value])).toEqual([
-      ["Connected", 1],
-      ["Idle", 1],
+      ["Recent handshake", 1],
+      ["No recent handshake", 1],
       ["Posture-blocked", 1],
-      ["Revoked / offline", 1],
+      ["Liveness not reported", 0],
+      ["Pending approval", 0],
+      ["Suspended", 0],
+      ["Revoked", 1],
     ]);
   });
 
@@ -124,6 +127,38 @@ describe("peerSlices — the donut counts DEVICES, and the buckets are disjoint"
       ])[0]!.value,
     ).toBe(0);
   });
+
+  it("does not infer OpenVPN or missing-telemetry liveness from a WireGuard online flag", () => {
+    const slices = peerSlices([
+      D({ status: "active", public_key: "", online: false }),
+      D({ status: "active", public_key: "", online: true }),
+      D({ status: "active", public_key: "wireguard-key" }),
+    ]);
+    expect(slices.find(slice => slice.label === "Liveness not reported")?.value).toBe(3);
+    expect(slices.find(slice => slice.label === "Recent handshake")?.value).toBe(0);
+    expect(slices.find(slice => slice.label === "No recent handshake")?.value).toBe(0);
+  });
+
+  it("keeps pending and suspended credentials separate from reported handshake recency", () => {
+    const slices = peerSlices([
+      D({ status: "pending", public_key: "wireguard-key", online: true }),
+      D({ status: "suspended", public_key: "wireguard-key", online: true, health_blocked: true }),
+    ]);
+    expect(slices.find(slice => slice.label === "Pending approval")?.value).toBe(1);
+    expect(slices.find(slice => slice.label === "Suspended")?.value).toBe(1);
+    expect(slices.find(slice => slice.label === "Recent handshake")?.value).toBe(0);
+    expect(slices.reduce((sum, slice) => sum + slice.value, 0)).toBe(2);
+  });
+
+  it("does not claim recent handshake access for an unknown or missing credential status", () => {
+    const slices = peerSlices([
+      D({ public_key: "wireguard-key", online: true }),
+      D({ status: "unreported-state", public_key: "wireguard-key", online: true }),
+    ]);
+    expect(slices.find(slice => slice.label === "Recent handshake")?.value).toBe(0);
+    expect(slices.find(slice => slice.label === "Liveness not reported")?.value).toBe(2);
+    expect(slices.reduce((sum, slice) => sum + slice.value, 0)).toBe(2);
+  });
 });
 
 describe("postureSplit — UNKNOWN is its own state and is excluded from the percentage", () => {
@@ -134,7 +169,7 @@ describe("postureSplit — UNKNOWN is its own state and is excluded from the per
     // "Absence ≠ compliance — unknown is its own state."
     const s = postureSplit([
       D({ status: "active" }),
-      D({ status: "active", health_state: "ok" }),
+      D({ status: "active", health_state: "compliant" }),
     ]);
     expect(s.unknown).toBe(1);
     expect(s.compliant).toBe(1);
@@ -148,12 +183,32 @@ describe("postureSplit — UNKNOWN is its own state and is excluded from the per
 
   it("revoked devices are excluded entirely", () => {
     expect(
-      postureSplit([D({ status: "revoked", health_state: "ok" })]),
+      postureSplit([D({ status: "revoked", health_state: "compliant" })]),
     ).toEqual({
       compliant: 0,
+      noncompliant: 0,
       blocked: 0,
       unknown: 0,
       percent: null,
     });
+  });
+
+  it("distinguishes unknown and warning-mode noncompliance from a pass or access block", () => {
+    expect(postureSplit([
+      D({ status: "active", health_state: "compliant" }),
+      D({ status: "active", health_state: "noncompliant", health_blocked: false }),
+      D({ status: "active", health_state: "unknown", health_reported_at: "2026-10-08T09:00:00Z" }),
+      D({ status: "active", health_state: "unknown", health_blocked: true }),
+      D({ status: "active", health_state: "unexpected" }),
+    ])).toEqual({ compliant: 1, noncompliant: 1, blocked: 1, unknown: 2, percent: 33 });
+  });
+
+  it("does not present an inactive saved pass or unsupported platform as compliant", () => {
+    expect(postureSplit([
+      D({ status: "pending", health_state: "compliant" }),
+      D({ status: "suspended", health_state: "compliant" }),
+      D({ status: "active", platform: "ios", health_state: "compliant" }),
+      D({ status: "active", platform: "linux", health_state: "compliant" }),
+    ])).toEqual({ compliant: 0, noncompliant: 0, blocked: 0, unknown: 4, percent: null });
   });
 });

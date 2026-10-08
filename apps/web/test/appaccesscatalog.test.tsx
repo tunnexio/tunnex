@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import AppAccessCompanyApplications from "../src/pages/AppAccessCompanyApplications";
@@ -17,6 +17,18 @@ const request = { id: "request", app_id: "app", app_name: "Payroll", requester: 
 const app = { id: "app", name: "Payroll", description: "Private payroll", icon: "app", icon_data_url: "", app_admin: owner, access_granted: false, require_mfa: true, mfa_required: true, mfa_setup_required: true, mfa_freshness_seconds: 900, latest_request: null };
 const response = (items: unknown[], extra = {}) => ({ data: { items, limit: 20, offset: 0, ...extra } });
 function mount(node: React.ReactNode) { return render(<MemoryRouter>{node}</MemoryRouter>); }
+async function requestAction(action: string) {
+  const label = "Actions for Payroll request by Member";
+  const trigger = await screen.findByRole("button", { name: label });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+  return within(screen.getByRole("menu", { name: label })).getByRole("menuitem", { name: action });
+}
+async function managedGrantAction(action: string) {
+  const label = "Actions for Member grant";
+  const trigger = await screen.findByRole("button", { name: label });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+  return within(screen.getByRole("menu", { name: label })).getByRole("menuitem", { name: action });
+}
 beforeEach(() => {
   calls.GET.mockReset(); calls.POST.mockReset(); calls.PATCH.mockReset();
   calls.GET.mockImplementation(async (path: string) => path.endsWith("/access-requests") ? response([], { pending_count: 0 }) : path.endsWith("/grant-subjects") ? response([{ id: owner.id, name: owner.name, email: owner.email, kind: "user" }]) : { error: { error: { message: "Unexpected read" } } });
@@ -64,6 +76,36 @@ describe("Company app discovery and requests", () => {
     expect(await screen.findByRole("button", { name: "Retry company apps" })).toBeTruthy();
     expect(screen.queryByText("No company applications are available in this view.")).not.toBeTruthy();
   });
+  it("requests the selected company-app limit and resets pagination when it changes", async () => {
+    calls.GET.mockImplementation(async (path: string, options: any) => {
+      if (!path.endsWith("/company-apps")) return response([], { pending_count: 0 });
+      const { limit, offset } = options.params.query;
+      return response(Array.from({ length: limit }, (_, index) => ({ ...app, id: `app-${offset + index}`, name: `App ${offset + index}` })), { availability: "available", limit, offset });
+    });
+    mount(<AppAccessCompanyApplications orgId="org" />);
+    await screen.findByText("App 0");
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await screen.findByText("App 0");
+    expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/company-apps", { params: { path: { orgId: "org" }, query: { limit: 10, offset: 0 } } });
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await screen.findByText("App 10");
+    expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/company-apps", { params: { path: { orgId: "org" }, query: { limit: 10, offset: 10 } } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    await screen.findByText("App 0");
+    expect(await screen.findByText("App 49")).toBeTruthy();
+    expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/company-apps", { params: { path: { orgId: "org" }, query: { limit: 50, offset: 0 } } });
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", true);
+    expect(calls.GET.mock.calls.every(([path]) => /company-apps|access-requests|managed-apps/.test(path))).toBe(true);
+    expect(calls.POST).not.toHaveBeenCalled();
+  });
+  it("omits company-app pagination when the loaded first page is empty", async () => {
+    calls.GET.mockImplementation(async (path: string) => path.endsWith("/company-apps") ? response([], { availability: "available" }) : response([], { pending_count: 0 }));
+    mount(<AppAccessCompanyApplications orgId="org" />);
+    await screen.findByRole("heading", { name: "No company apps" });
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Rows per page" })).toBeNull();
+    expect(screen.queryByText("0 results")).toBeNull();
+  });
 });
 
 describe("Access request history and review", () => {
@@ -72,14 +114,16 @@ describe("Access request history and review", () => {
     mount(<AppAccessRequests orgId="org" />);
     expect(await screen.findByText("Payroll")).toBeTruthy();
     expect(screen.getByText(/App admin: Owner One/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Actions for/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Approve" })).toBeNull();
     expect(calls.GET.mock.calls.every(([path]) => (path.endsWith("/access-requests") || path.endsWith("/managed-apps")))).toBe(true);
   });
   it("approves atomically with the observed request version and no separate grant call", async () => {
     calls.GET.mockResolvedValue(response([request], { pending_count: 1 }));
     calls.POST.mockResolvedValue({ data: { ...request, status: "approved" } });
     mount(<AppAccessRequests orgId="org" appId="app" managed embedded />);
-    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    fireEvent.click(await requestAction("Approve"));
+    expect(calls.POST).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Confirm approval" }));
     await waitFor(() => expect(calls.POST).toHaveBeenCalledTimes(1));
     expect(calls.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests/{requestId}/decision", { params: { path: { orgId: "org", requestId: "request" } }, body: { expected_version: 2, decision: "approved", reason: "", expires_at: null } });
@@ -88,7 +132,7 @@ describe("Access request history and review", () => {
     calls.GET.mockResolvedValue(response([request], { pending_count: 1 }));
     calls.POST.mockResolvedValue({ error: { error: { code: "version_conflict", message: "This request changed" } } });
     mount(<AppAccessRequests orgId="org" managed embedded />);
-    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    fireEvent.click(await requestAction("Reject"));
     fireEvent.change(screen.getByLabelText("Rejection reason"), { target: { value: "Needs manager approval" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
     await waitFor(() => expect(calls.POST).toHaveBeenCalledTimes(1));
@@ -98,8 +142,107 @@ describe("Access request history and review", () => {
   it("shows a request read failure separately from no requests", async () => {
     calls.GET.mockResolvedValue({ error: { error: { message: "Requests unavailable" } } });
     mount(<AppAccessRequests orgId="org" managed embedded />);
-    await waitFor(() => expect(screen.queryByText("No access requests in this view.")).not.toBeTruthy());
     expect(await screen.findByText("Requests unavailable")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "All caught up" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "Access requests" })).toBeNull();
+    calls.GET.mockResolvedValue(response([request], { pending_count: 1 }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry requests" }));
+    expect(await screen.findByRole("table", { name: "Access requests" })).toBeTruthy();
+  });
+  it("keeps approval unavailable for an unavailable member while allowing an explicit rejection", async () => {
+    calls.GET.mockResolvedValue(response([{ ...request, requester: { ...request.requester, available: false } }], { pending_count: 1 }));
+    calls.POST.mockResolvedValue({ data: { ...request, status: "rejected" } });
+    mount(<AppAccessRequests orgId="org" managed embedded />);
+    expect(await requestAction("Approve")).toHaveProperty("disabled", true);
+    expect(screen.getByText("This member is unavailable.")).toBeTruthy();
+    const reject = await requestAction("Reject");
+    expect(reject).toHaveProperty("disabled", false);
+    fireEvent.click(reject);
+    expect(screen.getByRole("button", { name: "Confirm rejection" })).toHaveProperty("disabled", true);
+    expect(calls.POST).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Rejection reason"), { target: { value: " No active membership " } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
+    await waitFor(() => expect(calls.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests/{requestId}/decision", { params: { path: { orgId: "org", requestId: "request" } }, body: { expected_version: 2, decision: "rejected", reason: "No active membership", expires_at: null } }));
+    expect(calls.POST).toHaveBeenCalledTimes(1);
+  });
+  it("validates approval expiry before confirming the versioned decision", async () => {
+    calls.GET.mockResolvedValue(response([request], { pending_count: 1 }));
+    calls.POST.mockResolvedValue({ data: { ...request, status: "approved" } });
+    mount(<AppAccessRequests orgId="org" managed embedded />);
+    fireEvent.click(await requestAction("Approve"));
+    fireEvent.change(screen.getByLabelText("Access expires at (optional)"), { target: { value: "2000-01-01T12:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm approval" }));
+    expect(await screen.findByText("Enter a future expiry date.")).toBeTruthy();
+    expect(calls.POST).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Access expires at (optional)"), { target: { value: "2099-01-01T12:00" } });
+    fireEvent.change(screen.getByLabelText("Decision note (optional)"), { target: { value: "Quarter close" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm approval" }));
+    await waitFor(() => expect(calls.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests/{requestId}/decision", { params: { path: { orgId: "org", requestId: "request" } }, body: { expected_version: 2, decision: "approved", reason: "Quarter close", expires_at: new Date("2099-01-01T12:00").toISOString() } }));
+  });
+  it("offers history from an empty pending view without pagination, table headers or writes", async () => {
+    mount(<AppAccessRequests orgId="org" appId="app" managed embedded />);
+    expect(await screen.findByRole("heading", { name: "All caught up" })).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Access requests" })).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Rows per page" })).toBeNull();
+    expect(screen.queryByText("0 results")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View all requests" }));
+    await screen.findByRole("heading", { name: "No requests yet" });
+    expect(calls.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests", { params: { path: { orgId: "org" }, query: { scope: "managed", status: undefined, app_id: "app", limit: 20, offset: 0 } } });
+    expect(calls.POST).not.toHaveBeenCalled();
+    expect(calls.PATCH).not.toHaveBeenCalled();
+  });
+  it("offers company discovery from empty own history and clears a status-only empty view", async () => {
+    mount(<AppAccessRequests orgId="org" embedded />);
+    expect(await screen.findByRole("heading", { name: "No requests yet" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Browse company apps" }).getAttribute("href")).toBe("/app-access/company-applications");
+    expect(screen.queryByRole("table", { name: "Access requests" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Request status" }), { target: { value: "approved" } });
+    await screen.findByRole("heading", { name: "No approved requests" });
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    await screen.findByRole("heading", { name: "No requests yet" });
+    expect(calls.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests", { params: { path: { orgId: "org" }, query: { scope: "mine", status: undefined, app_id: undefined, limit: 20, offset: 0 } } });
+    expect(calls.POST).not.toHaveBeenCalled();
+  });
+  it("returns from a page emptied by request decisions without showing an empty table", async () => {
+    const page = Array.from({ length: 20 }, (_, index) => ({ ...request, id: `request-${index}` }));
+    calls.GET.mockImplementation(async (_path: string, options: any) => response(options.params.query.offset ? [] : page, { pending_count: 20 }));
+    mount(<AppAccessRequests orgId="org" managed embedded />);
+    fireEvent.click(await screen.findByRole("button", { name: "Next requests" }));
+    await screen.findByRole("heading", { name: "No more requests" });
+    expect(screen.queryByRole("table", { name: "Access requests" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Next requests" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Previous requests" })).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: "Previous requests" }));
+    await screen.findByRole("table", { name: "Access requests" });
+    expect(calls.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests", { params: { path: { orgId: "org" }, query: { scope: "managed", status: "pending", app_id: undefined, limit: 20, offset: 0 } } });
+  });
+  it("queries the chosen page size, pages by that size, and resets the offset while retaining scope and filters", async () => {
+    calls.GET.mockImplementation(async (_path: string, options: any) => {
+      const { limit, offset } = options.params.query;
+      return response(Array.from({ length: limit }, (_, index) => ({ ...request, id: `request-${offset + index}`, status: "approved" })), { limit, offset, pending_count: 0 });
+    });
+    mount(<AppAccessRequests orgId="org" appId="app" managed embedded />);
+    await screen.findByRole("table", { name: "Access requests" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Request status" }), { target: { value: "approved" } });
+    await screen.findByRole("table", { name: "Access requests" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await screen.findByRole("table", { name: "Access requests" });
+    expect(calls.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests", { params: { path: { orgId: "org" }, query: { scope: "managed", status: "approved", app_id: "app", limit: 10, offset: 0 } } });
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+    fireEvent.click(screen.getByRole("button", { name: "Next requests" }));
+    await screen.findByRole("table", { name: "Access requests" });
+    expect(calls.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests", { params: { path: { orgId: "org" }, query: { scope: "managed", status: "approved", app_id: "app", limit: 10, offset: 10 } } });
+    expect(screen.getByText("11–20 shown")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    await screen.findByRole("table", { name: "Access requests" });
+    expect(calls.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/app-access/access-requests", { params: { path: { orgId: "org" }, query: { scope: "managed", status: "approved", app_id: "app", limit: 50, offset: 0 } } });
+    expect(screen.getAllByRole("row")).toHaveLength(51);
+    expect(screen.getByText("Page 1")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Previous requests" })).toHaveProperty("disabled", true);
+    expect(calls.POST).not.toHaveBeenCalled();
+    expect(calls.PATCH).not.toHaveBeenCalled();
   });
 });
 
@@ -115,7 +258,7 @@ describe("Scoped App admin and visibility", () => {
   });
   it("filters and pages Current and History only through the assigned app grant endpoint", async () => {
     const grants = Array.from({ length: 20 }, (_, index) => ({ id: `grant-${index}`, app_id: "app", subject_label: `Member ${index}`, subject_kind: "user", subject_id: `member-${index}`, status: "active", enabled: true, starts_at: null, expires_at: null, revoked_at: null, version: 1 }));
-    calls.GET.mockImplementation(async (path: string) => path.endsWith("/managed-apps") ? response([{ id: "app", name: "Payroll", description: "", icon: "app", icon_data_url: "", pending_count: 0 }]) : path.endsWith("/managed-grants") ? response(grants) : response([], { pending_count: 0 }));
+    calls.GET.mockImplementation(async (path: string, options: any) => path.endsWith("/managed-apps") ? response([{ id: "app", name: "Payroll", description: "", icon: "app", icon_data_url: "", pending_count: 0 }]) : path.endsWith("/managed-grants") ? response(grants.slice(0, options.params.query.limit)) : response([], { pending_count: 0 }));
     mount(<AppAccessManagedApplications orgId="org" appId="app" />);
     await screen.findByRole("table", { name: "Application grants" });
     const expectedQuery = (query: object) => expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants", { params: { path: { orgId: "org", appId: "app" }, query: { limit: 20, offset: 0, ...query } } });
@@ -137,9 +280,19 @@ describe("Scoped App admin and visibility", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Grant status" }), { target: { value: "expired" } });
     await screen.findByRole("table", { name: "Application grants" });
     expectedQuery({ view: "history", status: "expired" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await screen.findByRole("table", { name: "Application grants" });
+    expectedQuery({ view: "history", status: "expired", limit: 10 });
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+    fireEvent.click(screen.getByRole("button", { name: "Next grants" }));
+    await screen.findByRole("table", { name: "Application grants" });
+    expectedQuery({ view: "history", status: "expired", limit: 10, offset: 10 });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    await screen.findByRole("table", { name: "Application grants" });
+    expectedQuery({ view: "history", status: "expired", limit: 50 });
     fireEvent.click(screen.getByRole("button", { name: "Current" }));
     await screen.findByRole("table", { name: "Application grants" });
-    expectedQuery({ view: "current", status: undefined });
+    expectedQuery({ view: "current", status: undefined, limit: 50 });
     expect(calls.GET.mock.calls.every(([path]) => /managed-apps|managed-grants|access-requests/.test(path))).toBe(true);
     expect(calls.POST).not.toHaveBeenCalled();
     expect(calls.PATCH).not.toHaveBeenCalled();
@@ -170,6 +323,44 @@ describe("Scoped App admin and visibility", () => {
     mount(<AppAccessManagedApplications orgId="org" />);
     expect(await screen.findByRole("button", { name: "Retry managed apps" })).toBeTruthy();
     expect(screen.queryByText("No applications are assigned to you for access management.")).not.toBeTruthy();
+  });
+  it("uses the chosen managed-app limit for pagination and resets to the first page", async () => {
+    calls.GET.mockImplementation(async (path: string, options: any) => {
+      if (!path.endsWith("/managed-apps")) return response([], { pending_count: 0 });
+      const { limit, offset } = options.params.query;
+      return response(Array.from({ length: limit }, (_, index) => ({ id: `app-${offset + index}`, name: `Managed app ${offset + index}`, description: "", icon: "app", icon_data_url: "", pending_count: 0 })), { limit, offset });
+    });
+    mount(<AppAccessManagedApplications orgId="org" />);
+    await screen.findByRole("table", { name: "Managed applications" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
+    expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/managed-apps", { params: { path: { orgId: "org" }, query: { app_id: undefined, limit: 10, offset: 0 } } });
+    fireEvent.click(screen.getByRole("button", { name: "Next applications" }));
+    await screen.findByText("Managed app 10");
+    expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/managed-apps", { params: { path: { orgId: "org" }, query: { app_id: undefined, limit: 10, offset: 10 } } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    await screen.findByText("Managed app 49");
+    expect(calls.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/managed-apps", { params: { path: { orgId: "org" }, query: { app_id: undefined, limit: 50, offset: 0 } } });
+    expect(screen.getByRole("button", { name: "Previous applications" })).toHaveProperty("disabled", true);
+    expect(calls.POST).not.toHaveBeenCalled();
+    expect(calls.PATCH).not.toHaveBeenCalled();
+  });
+  it("omits pagination on empty managed-app and scoped grant first pages without table headers", async () => {
+    calls.GET.mockResolvedValue(response([], { pending_count: 0 }));
+    mount(<AppAccessManagedApplications orgId="org" />);
+    await screen.findByRole("heading", { name: "No assigned applications" });
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Rows per page" })).toBeNull();
+    cleanup();
+    calls.GET.mockImplementation(async (path: string) => path.endsWith("/managed-apps") ? response([{ id: "app", name: "Payroll", description: "", icon: "app", icon_data_url: "", pending_count: 0 }]) : response([], { pending_count: 0 }));
+    mount(<AppAccessManagedApplications orgId="org" appId="app" />);
+    await screen.findByRole("heading", { name: "No grants found" });
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Rows per page" })).toBeNull();
   });
   it("does not read or offer assignment without the administrator capability", () => {
     mount(<AppAccessCatalogSettings orgId="org" appId="app" permitted={false} dirty={false} onChanged={vi.fn()} />);
@@ -225,7 +416,7 @@ describe("Catalog scope and lifecycle regressions", () => {
     calls.GET.mockResolvedValue(response([request], { pending_count: 1 }));
     calls.POST.mockImplementation(() => new Promise(() => {}));
     mount(<AppAccessRequests orgId="org" managed embedded />);
-    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    fireEvent.click(await requestAction("Approve"));
     const button = screen.getByRole("button", { name: "Confirm approval" });
     fireEvent.click(button); fireEvent.click(button);
     expect(calls.POST).toHaveBeenCalledTimes(1);
@@ -235,7 +426,7 @@ describe("Catalog scope and lifecycle regressions", () => {
     calls.GET.mockImplementation(async (path: string) => path.endsWith("/managed-apps") ? response([{ id: "app", name: "Payroll", description: "", icon: "app", icon_data_url: "", pending_count: 0 }]) : path.endsWith("/managed-grants") ? response([grant]) : response([], { pending_count: 0 }));
     calls.PATCH.mockResolvedValue({ data: { ...grant, enabled: false, version: 4 } });
     mount(<AppAccessManagedApplications orgId="org" appId="app" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Disable" }));
+    fireEvent.click(await managedGrantAction("Disable"));
     expect(calls.PATCH).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Confirm grant disable" }));
     await waitFor(() => expect(calls.PATCH).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}", { params: { path: { orgId: "org", appId: "app", grantId: "grant" } }, body: { expected_version: 3, enabled: false, starts_at: null, expires_at: null } }));

@@ -3,6 +3,7 @@ import { Button, Loading } from "../components/ui";
 import { api, type Member } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
+import { can } from "../lib/rbac";
 
 export function AgentsManagementGate({
   children,
@@ -12,7 +13,8 @@ export function AgentsManagementGate({
   const { org } = useOrg();
   const { state } = useAuth();
   const userId = state.status === "authed" ? state.user.id : "";
-  const scope = `${org?.id ?? ""}/${userId}`;
+  const writable = state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
+  const scope = `${org?.id ?? ""}/${state.status}/${userId}/${writable}`;
   const [result, setResult] = useState<{
     scope: string;
     status: "allowed" | "denied" | "error";
@@ -28,7 +30,7 @@ export function AgentsManagementGate({
       })
       .then(({ data, error }) => {
         if (cancelled) return;
-        if (error || !data) {
+        if (error || !Array.isArray(data) || !data.every(member => member && typeof member.user_id === "string" && typeof member.role === "string")) {
           setResult({ scope, status: "error" });
           return;
         }
@@ -38,7 +40,7 @@ export function AgentsManagementGate({
         setResult({
           scope,
           status:
-            member?.role === "owner" || member?.role === "admin"
+            can(member ? [member.role, ...(member.roles ?? [])] : [], "agent_template:manage")
               ? "allowed"
               : "denied",
         });
@@ -85,5 +87,6 @@ export function AgentsManagementGate({
         templates.
       </p>
     );
+  if (!writable) return <p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups or policy templates.</p>;
   return <>{children(org.id)}</>;
 }

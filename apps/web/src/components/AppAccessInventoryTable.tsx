@@ -4,7 +4,9 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { EntityPicker, type PickerOption } from "./EntityPicker";
 import { AppAccessIcon } from "./AppAccessIcon";
-import { Badge, Button, DataTable, ErrorText, Field, Input, Loading, Modal } from "./ui";
+import { Icon } from "./Icon";
+import AppAccessRowMenu, { type AppAccessRowMenuAction } from "./AppAccessRowMenu";
+import { Button, DataTable, ErrorText, Field, Input, Loading, Modal } from "./ui";
 
 type Application = components["schemas"]["AppAccessApplication"];
 type Publication = components["schemas"]["AppAccessPublicationState"];
@@ -34,8 +36,21 @@ function Outcomes({ outcomes }: { outcomes: Outcome[] }) {
   return <div role="status" className="space-y-3"><p>{succeeded} succeeded · {outcomes.length - succeeded} not confirmed</p><ul className="space-y-2">{outcomes.map(outcome => <li key={outcome.id}><span className="font-medium">{outcome.name}: </span><span className={outcome.ok ? "" : "text-danger"}>{outcome.message}</span></li>)}</ul><p className="text-sm text-ink-secondary">Close to refresh applications before another action.</p></div>;
 }
 
-export default function AppAccessInventoryTable({ orgId, applications, manage, grant, canGrant, empty, onChanged }: {
-  orgId: string; applications: Application[]; manage: boolean; grant: boolean; canGrant: boolean; empty: React.ReactNode; onChanged: () => void;
+function InventoryRowActions({ app, manage, grant, canGrant, grantUnavailable, deleteUnavailable, onAction }: {
+  app: Application; manage: boolean; grant: boolean; canGrant: boolean; grantUnavailable?: string; deleteUnavailable: string | null; onAction: (action: Action | "grant") => void;
+}) {
+  const actions: AppAccessRowMenuAction[] = [
+    ...(grant ? [{ key: "grant", label: "Grant access", icon: <Icon name="users" size={16} />, disabledReason: canGrant ? null : grantUnavailable ?? "Complete App Access setup first.", onSelect: () => onAction("grant") }] : []),
+    ...(manage ? [
+      { key: "disable", label: "Disable application", icon: <Icon name="ban" size={16} />, onSelect: () => onAction("disable") },
+      { key: "delete", label: "Delete application", danger: true, disabledReason: deleteUnavailable, icon: <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>, onSelect: () => onAction("delete") },
+    ] : []),
+  ];
+  return <AppAccessRowMenu label={`Actions for ${app.draft.name}`} actions={actions} />;
+}
+
+export default function AppAccessInventoryTable({ orgId, applications, manage, grant, canGrant, grantUnavailable, empty, onChanged }: {
+  orgId: string; applications: Application[]; manage: boolean; grant: boolean; canGrant: boolean; grantUnavailable?: string; empty: React.ReactNode; onChanged: () => void;
 }) {
   const [publications, setPublications] = useState<Record<string, Publication>>({});
   const [readErrors, setReadErrors] = useState<Record<string, string>>({});
@@ -52,7 +67,7 @@ export default function AppAccessInventoryTable({ orgId, applications, manage, g
   }, [orgId, applications, manage]);
   const unavailableDelete = (app: Application) => readErrors[app.id] ? "Could not read withdrawal status. Refresh applications." : deleteReason(app, publications[app.id]);
   return <>
-    <DataTable caption="Applications" failed={false} filterable={false} pageSize={0} rows={applications} rowKey={app => app.id} rowLabel={app => app.draft.name} empty={empty} rowActions={[
+    <div className="aa-inventory-table"><DataTable caption="Applications" failed={false} filterable={false} pageSize={0} selectionBar="active" rows={applications} rowKey={app => app.id} rowLabel={app => app.draft.name} empty={empty} rowActions={[
       ...(grant ? [{ key: "grant", label: "Grant access", unavailable: () => canGrant ? null : "Grants require an eligible license, Applications enabled and a configured domain.", run: (apps: Application[]) => setDialog({ action: "grant", applications: apps }) }] : []),
       ...(manage ? [
         { key: "disable", label: "Disable", run: (apps: Application[]) => setDialog({ action: "disable", applications: apps }) },
@@ -60,12 +75,12 @@ export default function AppAccessInventoryTable({ orgId, applications, manage, g
       ] : []),
     ]} columns={[
       { key: "application", header: "Application", cell: app => <div className="app-access-application-name"><span className="app-access-icon"><AppAccessIcon icon={app.draft.icon} image={app.draft.icon_data_url} size={18} /></span><div><Link to={`/app-access/applications/${app.id}`}>{app.draft.name}</Link><p>{app.draft.public_hostname}</p></div></div> },
-      { key: "publication", header: "Publication", cell: app => <div className="space-y-1"><Badge tone={app.publication_state === "disabled" ? "warn" : "neutral"}>{app.publication_state === "published" ? `Published · Active revision ${app.active_revision}` : app.publication_state === "disabled" ? "Disabled · New browser access is denied" : "Draft · Browser traffic is not published"}</Badge>{manage && app.publication_state === "disabled" && <p className="text-xs text-ink-secondary">{unavailableDelete(app) ?? "Withdrawal confirmed · Ready to delete"}</p>}</div> },
-      ...(manage || grant ? [{ key: "actions", header: "Actions", cell: (app: Application) => <div role="group" aria-label={`Actions for ${app.draft.name}`} className="flex flex-wrap gap-1">
-        {grant && <Button size="sm" variant="ghost" disabled={!canGrant} onClick={() => setDialog({ action: "grant", applications: [app] })}>Grant access</Button>}
-        {manage && <><Button size="sm" variant="ghost" onClick={() => setDialog({ action: "disable", applications: [app] })}>Disable</Button><Button size="sm" variant="ghost" disabled={!!unavailableDelete(app)} title={unavailableDelete(app) ?? undefined} onClick={() => setDialog({ action: "delete", applications: [app] })}>Delete</Button></>}
-      </div> }] : []),
-    ]} />
+      { key: "publication", header: "Status", cell: app => <span className={`aa-inventory-status aa-inventory-status-${app.publication_state}`} title={app.publication_state === "published" ? `Published · Active revision ${app.active_revision}` : app.publication_state === "disabled" ? `New browser access is denied. ${manage ? unavailableDelete(app) ?? "Withdrawal confirmed · Ready to delete" : ""}`.trim() : "Draft · Browser traffic is not published"}>
+        <span className="aa-inventory-status-dot" aria-hidden="true" />{app.publication_state === "published" ? "Published" : app.publication_state === "disabled" ? "Disabled" : "Draft"}
+        <span className="sr-only">{app.publication_state === "published" ? ` · Active revision ${app.active_revision}` : app.publication_state === "disabled" ? ` · New browser access is denied. ${manage ? unavailableDelete(app) ?? "Withdrawal confirmed · Ready to delete" : ""}` : " · Browser traffic is not published"}</span>
+      </span> },
+      ...(manage || grant ? [{ key: "actions", header: "Actions", cell: (app: Application) => <InventoryRowActions app={app} manage={manage} grant={grant} canGrant={canGrant} grantUnavailable={grantUnavailable} deleteUnavailable={unavailableDelete(app)} onAction={action => setDialog({ action, applications: [app] })} /> }] : []),
+    ]} /></div>
     {dialog?.action === "grant" && grant && <InventoryGrantDialog orgId={orgId} applications={dialog.applications} onClose={changed => { setDialog(null); if (changed) onChanged(); }} />}
     {dialog && dialog.action !== "grant" && manage && <InventoryActionDialog orgId={orgId} applications={dialog.applications} action={dialog.action} onClose={changed => { setDialog(null); if (changed) onChanged(); }} />}
   </>;

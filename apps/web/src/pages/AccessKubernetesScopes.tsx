@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { Link } from "react-router-dom";
 import { AccessTabRail } from "../components/AccessTabRail";
+import "../access-policies-resources.css";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import AppAccessPagination from "../components/AppAccessPagination";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import { NetworkDetailList } from "../components/NetworkDetailList";
 import {
   Button,
-  Card,
-  EmptyState,
+  DataTable,
   ErrorText,
   Field,
   Input,
@@ -44,7 +48,6 @@ type SourceOption = { kind: Exclude<CreateScopeSource["kind"], "cidr">; id: stri
 type Detail = { ruleId: string; candidates: Candidate[]; memberships: Membership[]; candidateCursor?: string | null; membershipCursor?: string | null };
 
 type Confirm =
-  | { kind: "setting"; enabled: boolean }
   | { kind: "active"; scope: Scope; active: boolean }
   | { kind: "delete"; scope: Scope }
   | { kind: "decision"; membership: Membership; decision: "approved" | "rejected" }
@@ -90,12 +93,7 @@ function inactiveReasonLabel(reason: Candidate["inactive_reason"] | Membership["
 }
 
 function StatePill({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "positive" | "attention" | "danger" | "neutral" }) {
-  return <span className={`inline-flex tnx-status rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-    tone === "positive" ? "border-emerald-700/50 bg-emerald-950/50 text-emerald-300" :
-      tone === "attention" ? "border-amber-700/50 bg-amber-950/40 text-amber-300" :
-        tone === "danger" ? "border-rose-700/50 bg-rose-950/40 text-rose-300" :
-          "border-white/10 bg-white/5 text-ink-tertiary"
-  }`}>{children}</span>;
+  return <span className={`access-scope-state access-scope-state-${tone}`}>{children}</span>;
 }
 
 function permissionRole(members: Member[], userId: string): Role | undefined {
@@ -103,6 +101,12 @@ function permissionRole(members: Member[], userId: string): Role | undefined {
 }
 
 export default function AccessKubernetesScopes() {
+  const { org } = useOrg();
+  const { state } = useAuth();
+  return <KubernetesScopesWorkspace key={`${org?.id ?? ""}:${state.status === "authed" ? state.user.id : ""}`} />;
+}
+
+function KubernetesScopesWorkspace() {
   const { org, loading: orgLoading, failed: orgFailed } = useOrg();
   const { state } = useAuth();
   const userId = state.status === "authed" ? state.user.id : "";
@@ -129,9 +133,13 @@ export default function AccessKubernetesScopes() {
   const detailEpoch = useRef(0);
   const detailRef = useRef<Detail | null>(null);
   const queueEpoch = useRef(0);
+  const [view, setView] = useState<"scopes" | "queue">("scopes");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
+  const mutationLock = useRef(false), alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; detailEpoch.current++; queueEpoch.current++; }; }, []);
 
   const canView = can(role, "k8s_scope:view") && can(role, "policy:view");
-  const canManageSetting = can(role, "k8s_scope:manage");
   const canManageScope = can(role, "k8s_scope:manage");
   const canCreateScope = canManageScope && can(role, "policy:manage");
   const canApprove = can(role, "k8s_scope:approve");
@@ -211,7 +219,7 @@ export default function AccessKubernetesScopes() {
   }, [loadAll]);
 
   const loadDetail = useCallback(async (scope: Scope, append = false) => {
-    if (!org) return;
+    if (!org) return false;
     const epoch = ++detailEpoch.current;
     setDetailError("");
     if (!append) {
@@ -231,20 +239,21 @@ export default function AccessKubernetesScopes() {
         ? loadOne(() => api.GET("/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships", { params: { path: { orgId: org.id, ruleId: scope.rule_id }, query: { cursor: membershipCursor, limit: 100 } } }))
         : Promise.resolve({ ok: true as const, data: { items: [] as Membership[], next_cursor: undefined } }),
     ]);
-    if (epoch !== detailEpoch.current || scope.rule_id !== selectedRuleId) return;
+    if (epoch !== detailEpoch.current || scope.rule_id !== selectedRuleId) return false;
     if (!candidateResult.ok || !membershipResult.ok) {
       setDetailError(!candidateResult.ok ? candidateResult.error : membershipResult.ok ? "" : membershipResult.error);
-      return;
+      return false;
     }
     const next: Detail = {
       ruleId: scope.rule_id,
-      candidates: append ? [...(previous?.candidates ?? []), ...candidateResult.data.items] : candidateResult.data.items,
-      memberships: append ? [...(previous?.memberships ?? []), ...membershipResult.data.items] : membershipResult.data.items,
+      candidates: [...new Map([...(append ? previous?.candidates ?? [] : []), ...candidateResult.data.items].map((item) => [item.service_child_id, item])).values()],
+      memberships: [...new Map([...(append ? previous?.memberships ?? [] : []), ...membershipResult.data.items].map((item) => [item.service_child_id, item])).values()],
       candidateCursor: candidateResult.data.next_cursor,
       membershipCursor: membershipResult.data.next_cursor,
     };
     detailRef.current = next;
     setDetail(next);
+    return true;
   }, [org?.id, selectedRuleId]);
 
   useEffect(() => {
@@ -260,39 +269,22 @@ export default function AccessKubernetesScopes() {
   const handleMutationError = useCallback(async (error: unknown, fallback: string) => {
     const code = apiErrorCode(error);
     if (code?.includes("revision") || code?.includes("conflict")) {
+      setConfirm(null);
       setNotice("This scope changed in another session. Latest server state has been reloaded; review it before retrying.");
       await loadAll();
     } else setLoadError(apiErrorMessage(error, fallback));
   }, [loadAll]);
 
-  async function toggleSetting(enabled: boolean) {
-    if (!org || !settings) return;
-    setBusy(true);
-    try {
-      const response = await api.PUT("/api/v1/organizations/{orgId}/k8s/cluster-scope-settings", {
-        params: { path: { orgId: org.id } },
-        body: { enabled, expected_revision: settings.revision },
-      });
-      if (response.error) {
-        await handleMutationError(response.error, "Could not change the organization setting.");
-        return;
-      }
-      setConfirm(null);
-      setNotice(enabled ? "Cluster scopes are enabled. Existing live approvals may resume." : "Cluster scopes are disabled. Scope-derived access was withdrawn; decisions were preserved.");
-      await loadAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function toggleScope(scope: Scope, active: boolean) {
-    if (!org) return;
+    if (!org || !canManageScope || mutationLock.current || !alive.current) return;
+    mutationLock.current = true;
     setBusy(true);
     try {
       const response = await api.PUT("/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}", {
         params: { path: { orgId: org.id, ruleId: scope.rule_id } },
         body: { active, expected_revision: scope.revision },
       });
+      if (!alive.current) return;
       if (response.error) {
         await handleMutationError(response.error, `Could not ${active ? "enable" : "disable"} the scope.`);
         return;
@@ -300,18 +292,20 @@ export default function AccessKubernetesScopes() {
       setConfirm(null);
       setNotice(active ? "Scope enabled. Only still-current approved exact children can grant access." : "Scope disabled. Derived access was withdrawn; decisions were preserved for recovery.");
       await loadAll();
-    } finally {
-      setBusy(false);
+    } catch { if (alive.current) setLoadError("Could not reach the API. Reload saved state before retrying; the change was not confirmed."); } finally {
+      mutationLock.current = false; if (alive.current) setBusy(false);
     }
   }
 
   async function deleteScope(scope: Scope) {
-    if (!org) return;
+    if (!org || !canManageScope || mutationLock.current || !alive.current) return;
+    mutationLock.current = true;
     setBusy(true);
     try {
       const response = await api.DELETE("/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}", {
         params: { path: { orgId: org.id, ruleId: scope.rule_id }, query: { expected_revision: scope.revision } },
       });
+      if (!alive.current) return;
       if (response.error) {
         await handleMutationError(response.error, "Could not delete the scope.");
         return;
@@ -320,19 +314,21 @@ export default function AccessKubernetesScopes() {
       setSelectedRuleId("");
       setNotice("Scope and live membership rows were deleted. Append-only audit evidence remains; recovery requires creating a new scope.");
       await loadAll();
-    } finally {
-      setBusy(false);
+    } catch { if (alive.current) setLoadError("Could not reach the API. Reload saved state before retrying; the change was not confirmed."); } finally {
+      mutationLock.current = false; if (alive.current) setBusy(false);
     }
   }
 
   async function decide(membership: Membership, decision: "approved" | "rejected") {
-    if (!org) return;
+    if (!org || !canApprove || !settings?.effective || (decision === "approved" && membership.current !== true) || mutationLock.current || !alive.current) return;
+    mutationLock.current = true;
     setBusy(true);
     try {
       const response = await api.POST("/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships/{serviceChildId}/decision", {
         params: { path: { orgId: org.id, ruleId: membership.rule_id, serviceChildId: membership.service_child_id } },
         body: { decision },
       });
+      if (!alive.current) return;
       if (response.error) {
         await handleMutationError(response.error, `Could not ${decision === "approved" ? "approve" : "reject"} the membership.`);
         return;
@@ -340,91 +336,101 @@ export default function AccessKubernetesScopes() {
       setConfirm(null);
       setNotice(decision === "approved" ? "Exact child approved. It grants only while the scope, organization setting, entitlement, and child identity remain active." : "Membership permanently rejected. It grants nothing; recovery requires a new scope or a future explicit-inclusion flow.");
       await loadAll();
-    } finally {
-      setBusy(false);
+    } catch { if (alive.current) setLoadError("Could not reach the API. Reload saved state before retrying; the change was not confirmed."); } finally {
+      mutationLock.current = false; if (alive.current) setBusy(false);
     }
   }
 
   async function loadMoreQueue() {
-    if (!org || !queueCursor) return;
+    if (!org || !queueCursor || busy) return false;
     const epoch = ++queueEpoch.current;
     const loadAllGeneration = loadEpoch.current;
     const cursor = queueCursor;
-    setBusy(true);
+    setQueueError(""); setBusy(true);
     try {
       const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/k8s/cluster-scope-review-queue", { params: { path: { orgId: org.id }, query: { cursor, limit: 100 } } }));
-      if (epoch !== queueEpoch.current || loadAllGeneration !== loadEpoch.current) return;
-      if (!result.ok) return setQueueError(result.error);
-      setQueue((current) => [...(current ?? []), ...result.data.items]);
+      if (epoch !== queueEpoch.current || loadAllGeneration !== loadEpoch.current) return false;
+      if (!result.ok) { setQueueError(result.error); return false; }
+      if (result.data.next_cursor === cursor) { setQueueError("The review cursor did not advance. Reload server state before retrying."); return false; }
+      setQueue((current) => [...new Map([...(current ?? []), ...result.data.items].map((item) => [`${item.rule_id}:${item.service_child_id}`, item])).values()]);
       setQueueCursor(result.data.next_cursor);
+      return true;
     } finally {
       if (epoch === queueEpoch.current) setBusy(false);
     }
   }
 
-  const header = <><PageHeader title="Kubernetes access scopes" subtitle={org ? `${org.name} · approval-gated exact Service access` : "Access governance"} /><AccessTabRail /></>;
-  if (permissionState === "loading") return <div className="space-y-5">{header}<Card><Loading label="Checking Kubernetes scope permissions…" /></Card></div>;
-  if (permissionState === "denied") return <div className="space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">Kubernetes scope governance is available only to authorized Access administrators.</p><Link className="mt-3 inline-block text-sm font-medium text-accent-400 hover:underline" to="/access">Return to Access policies</Link></Card></div>;
-  if (permissionState === "error") return <div className="space-y-5">{header}<Card><ErrorText>{loadError || "Could not verify Kubernetes scope permissions."}</ErrorText><Button className="mt-3" onClick={() => void loadAll()}>Retry</Button></Card></div>;
+  const header = <><PageHeader navigationTitle title="Kubernetes access scopes" /><AccessTabRail includeKubernetesScopes={canView} actions={permissionState === "allowed" ? <><Button variant="ghost" disabled={busy} onClick={() => { setPage(1); void loadAll(); }}>Refresh scopes</Button>{canCreateScope && settings && scopes && <Button disabled={busy || !settings.effective || Boolean(auxiliaryError) || !clusters || !services} onClick={() => setCreateOpen(true)}>Create scope</Button>}</> : undefined} /></>;
+  const shellClass = "network-management access-scopes-workspace space-y-5";
+  if (permissionState === "loading") return <div className={shellClass}>{header}<Loading label="Checking Kubernetes scope permissions…" /></div>;
+  if (permissionState === "denied") return <div className={shellClass}>{header}<p role="alert" className="access-resource-copy">Kubernetes scope governance is available only to authorized Access administrators.</p><Link className="access-resource-link" to="/access">Return to Access policies</Link></div>;
+  if (permissionState === "error") return <div className={shellClass}>{header}<ErrorText>{loadError || "Could not verify Kubernetes scope permissions."}</ErrorText><Button variant="ghost" onClick={() => void loadAll()}>Retry</Button></div>;
   if (!canView) return null;
-
-  return <div className="space-y-5" data-testid="k8s-scope-governance">
+  const matchedScopes = (scopes ?? []).filter((scope) => `${clusterLabel(scope.cluster_id, clusters ?? [])} ${sourceLabel(scope.source, sources)}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(matchedScopes.length / pageSize)));
+  const visibleScopes = matchedScopes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const scopeState = (scope: Scope) => scopeExpired(scope) ? "Expired · ineffective" : scope.active ? settings?.effective ? "Active" : "Active · ineffective" : "Disabled";
+  return <div className={shellClass} data-testid="k8s-scope-governance">
     {header}
-    {notice && <div role="status" className="rounded-md border border-accent-400/30 bg-white/[.04] px-4 py-3 text-sm text-ink-secondary">{notice}</div>}
-    {loadError && <Card><ErrorText>{loadError}</ErrorText><Button className="mt-3" onClick={() => void loadAll()}>Reload server state</Button></Card>}
-    {!loadError && (!settings || !scopes) && <Card><Loading label="Loading preserved scopes and review state…" /></Card>}
-    {!loadError && settings && scopes && <>
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-ink-heading">Organization opt-in</h2><StatePill tone={settings.effective ? "positive" : settings.entitlement_unlocked ? "attention" : "neutral"}>{settings.effective ? "Effective" : settings.enabled ? "Unavailable" : "Off"}</StatePill></div>
-              <p className="mt-2 text-sm text-ink-tertiary">A licence unlocks this capability but never enables it. Turning it off withdraws every scope-derived allow immediately and preserves decisions for recovery.</p>
-            </div>
-            {canManageSetting && (settings.entitlement_unlocked || settings.enabled) && <Button variant={settings.enabled ? "ghost" : "primary"} disabled={busy} onClick={() => setConfirm({ kind: "setting", enabled: !settings.enabled })}>{settings.enabled ? "Disable for organization" : "Enable for organization"}</Button>}
-          </div>
-          <dl className="mt-5 grid gap-3 border-t border-white/10 pt-4 text-sm sm:grid-cols-3"><div><dt className="text-ink-tertiary">Licensed</dt><dd className="mt-1 text-ink-heading">{settings.entitlement_unlocked ? "Available" : "Not in current plan"}</dd></div><div><dt className="text-ink-tertiary">Explicit opt-in</dt><dd className="mt-1 text-ink-heading">{settings.enabled ? "Enabled" : "Disabled"}</dd></div><div><dt className="text-ink-tertiary">Revision</dt><dd className="mt-1 font-mono text-ink-heading">{settings.revision}</dd></div></dl>
-        </Card>
-        <Card>
-          <h2 className="text-sm font-semibold text-ink-heading">Exact-child boundary</h2>
-          <p className="mt-2 text-sm text-ink-tertiary">A scope never grants a namespace, cluster, Pod, Node, CIDR, or sibling port. Only individually approved, still-current protocol/port children compile.</p>
-          <p className="mt-3 text-xs text-ink-tertiary">Rejected decisions are permanent. Disabled scopes and the organization opt-in are reversible.</p>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,.7fr)]">
-        <Card>
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold text-ink-heading">Cluster scopes</h2><p className="mt-1 text-sm text-ink-tertiary">Each scope binds one Access source to explicitly approved exact Service children.</p></div>{canCreateScope && <Button disabled={busy || !settings.effective || Boolean(auxiliaryError) || !clusters || !services} onClick={() => setCreateOpen(true)}>Create scope</Button>}</div>
-          {!settings.effective && <p className="mt-4 rounded-md border border-amber-700/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">Creation and approval are unavailable while the organization setting or entitlement is inactive. Preserved scopes remain readable.</p>}
-          {auxiliaryError && <ErrorText>{auxiliaryError}</ErrorText>}
-          {scopes.length === 0 ? <div className="mt-4"><EmptyState>No cluster scopes exist. Creating one starts with zero Services selected.</EmptyState></div> : <div className="mt-4 space-y-2">{scopes.map((scope) => { const expired = scopeExpired(scope); const effective = scope.active && settings.effective && !expired; return <button key={scope.rule_id} type="button" aria-pressed={selectedRuleId === scope.rule_id} onClick={() => setSelectedRuleId(scope.rule_id)} className={`w-full rounded-md border p-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${selectedRuleId === scope.rule_id ? "border-accent-400/60 bg-white/[.06]" : "border-white/10 hover:bg-white/[.03]"}`}><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-ink-heading">{clusterLabel(scope.cluster_id, clusters ?? [])}</span><StatePill tone={effective ? "positive" : expired ? "danger" : scope.active ? "attention" : "neutral"}>{effective ? "Active" : expired ? "Expired · ineffective" : scope.active ? "Active · ineffective" : "Disabled"}</StatePill></div><p className="mt-1 text-sm text-ink-secondary">{sourceLabel(scope.source, sources)}</p><p className="mt-2 text-xs text-ink-tertiary">{scope.initial_candidate_count} initially offered · revision {scope.revision} · created {relativeAge(scope.created_at)}{scope.expires_at ? ` · expires ${relativeAge(scope.expires_at)}` : " · no expiry"}</p></button>; })}</div>}
-        </Card>
-
-        <Card>
-          <div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-semibold text-ink-heading">Pending review</h2><p className="mt-1 text-sm text-ink-tertiary">Only Services exposed after scope creation appear here.</p></div>{queue !== null && <StatePill tone={queue.length ? "attention" : "neutral"}>{queue.length ? `${queue.length} loaded` : "None"}</StatePill>}</div>
-          {queueError ? <div className="mt-4"><ErrorText>{queueError}</ErrorText><Button className="mt-3" onClick={() => void loadAll()}>Retry queue</Button></div> : queue === null ? <div className="mt-4"><Loading label="Loading pending reviews…" /></div> : queue.length === 0 ? <div className="mt-4"><EmptyState>No later-exposure decisions are pending.</EmptyState></div> : <div className="mt-4 space-y-3">{queue.map((membership) => <MembershipRow key={`${membership.rule_id}:${membership.service_child_id}`} membership={membership} canApprove={canApprove && settings.effective} onDecision={(decision) => setConfirm({ kind: "decision", membership, decision })} />)}{queueCursor && <Button variant="ghost" disabled={busy} onClick={() => void loadMoreQueue()}>Load more pending reviews</Button>}</div>}
-        </Card>
-      </section>
-
-      {selectedRuleId && <ScopeDetail scope={scopes.find((scope) => scope.rule_id === selectedRuleId) ?? null} settings={settings} detail={detail?.ruleId === selectedRuleId ? detail : null} error={detailError} clusters={clusters ?? []} sources={sources} canManage={canManageScope} busy={busy} onReload={(scope) => void loadDetail(scope)} onLoadMore={(scope) => void loadDetail(scope, true)} onActive={(scope, active) => setConfirm({ kind: "active", scope, active })} onDelete={(scope) => setConfirm({ kind: "delete", scope })} />}
-    </>}
-
-    {createOpen && canCreateScope && settings && clusters && services && <CreateScopeModal orgId={org?.id ?? ""} clusters={clusters} services={services} sources={sources} busy={busy} onDismiss={() => { if (!busy) setCreateOpen(false); }} onBusy={setBusy} onError={setLoadError} onCreated={async (scope) => { setCreateOpen(false); setSelectedRuleId(scope.rule_id); setNotice("Scope created. Only the exact children explicitly selected in the review step were initially approved."); await loadAll(); }} />}
-    {confirm && <ConfirmModal confirm={confirm} busy={busy} onDismiss={() => { if (!busy) setConfirm(null); }} onSetting={toggleSetting} onActive={toggleScope} onDelete={deleteScope} onDecision={decide} />}
+    {notice && <p role="status" className="access-scope-notice">{notice}</p>}
+    {loadError && <><ErrorText>{loadError}</ErrorText><Button variant="ghost" onClick={() => void loadAll()}>Reload server state</Button></>}
+    {!loadError && (!settings || !scopes) && <Loading label="Loading preserved scopes and review state…" />}
+    {!loadError && settings && scopes && <div className="access-resource-content">
+      {!selectedRuleId ? <>
+        <div className="access-scope-status"><div className="access-scope-status-copy"><span>Organization opt-in</span><StatePill tone={settings.effective ? "positive" : settings.entitlement_unlocked ? "attention" : "neutral"}>{settings.effective ? "Effective" : settings.enabled ? "Unavailable" : "Off"}</StatePill>{!settings.entitlement_unlocked && <span className="access-resource-context">Not in current plan</span>}</div><Link className="features-link" to="/settings?section=features&feature=kubernetes-scopes">Manage in Features</Link></div>
+        {!settings.effective && <p role="status" className="access-resource-copy">Creation and approval are unavailable while the organization setting or entitlement is inactive. Preserved scopes remain readable.</p>}
+        {auxiliaryError && <ErrorText>{auxiliaryError}</ErrorText>}
+        {queueError && <ErrorText>{queueError}</ErrorText>}
+        <div className="access-scope-tabs" role="group" aria-label="Kubernetes scope views"><button disabled={busy} aria-pressed={view === "scopes"} onClick={() => setView("scopes")}>Cluster scopes</button><button disabled={busy} aria-pressed={view === "queue"} onClick={() => setView("queue")}>Pending review</button></div>
+        {view === "scopes" ? <>
+          <div className="access-resource-toolbar"><Input aria-label="Search cluster scopes" placeholder="Search cluster or source" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /></div>
+          <DataTable variant="flat" caption="Kubernetes cluster scopes" rows={visibleScopes} rowKey={(scope) => scope.rule_id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={query ? "No matching scopes" : "No cluster scopes yet"} description={query ? "Try another cluster or source." : "Creating a scope starts with zero Services selected."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />} columns={[
+            { key: "scope", header: "Cluster / source", cell: (scope) => <div className="access-resource-cell"><button className="access-resource-name" aria-label={`${clusterLabel(scope.cluster_id, clusters ?? [])} ${scopeState(scope)}`} onClick={() => setSelectedRuleId(scope.rule_id)}>{clusterLabel(scope.cluster_id, clusters ?? [])}</button><small>{sourceLabel(scope.source, sources)}</small></div> },
+            { key: "state", header: "State", cell: (scope) => <StatePill tone={scopeExpired(scope) ? "danger" : scope.active && settings.effective ? "positive" : "neutral"}>{scopeState(scope)}</StatePill> },
+            { key: "expiry", header: "Expires", cell: (scope) => scope.expires_at ? <span title={scope.expires_at}>{relativeAge(scope.expires_at)}</span> : "No expiry" },
+            { key: "actions", header: "Actions", cell: (scope) => <AppAccessRowMenu label={`Actions for scope ${clusterLabel(scope.cluster_id, clusters ?? [])}`} actions={[{ key: "detail", label: "View scope", onSelect: () => setSelectedRuleId(scope.rule_id) }, ...(canManageScope ? [{ key: "active", label: scope.active ? "Disable scope" : "Enable scope", disabledReason: busy ? "Wait for the current action." : !scope.active && (!settings.effective || scopeExpired(scope)) ? "Organization enforcement must be active and the scope unexpired." : undefined, onSelect: () => setConfirm({ kind: "active", scope, active: !scope.active }) }, { key: "delete", label: "Delete scope", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => setConfirm({ kind: "delete", scope }) }] : [])]} /> },
+          ]} />
+          <AppAccessPagination maxOffset={null} page={currentPage} pageSize={pageSize} count={visibleScopes.length} hasNext={currentPage * pageSize < matchedScopes.length} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+        </> : queue === null ? queueError ? <Button variant="ghost" onClick={() => void loadAll()}>Retry queue</Button> : <Loading label="Loading pending reviews…" /> : queue.length === 0 && !queueCursor ? <AppAccessEmptyState icon={null} title="No later-exposure decisions are pending." /> : <ScopeEvidenceList label="Pending reviews" items={queue} searchText={(membership) => `${membership.namespace}/${membership.service} ${membership.protocol} ${membership.port}`} hasMore={Boolean(queueCursor)} busy={busy} onLoadMore={loadMoreQueue} renderItem={(membership) => <li key={`${membership.rule_id}:${membership.service_child_id}`}><MembershipRow membership={membership} busy={busy} canApprove={canApprove && settings.effective} onDecision={(decision) => setConfirm({ kind: "decision", membership, decision })} /></li>} />}
+        <details className="access-resource-help"><summary>Scope authority and organization setting</summary><p>A licence unlocks this capability and requires explicit organization opt-in. Turning it off withdraws scope-derived access and preserves decisions. A scope grants only individually approved, still-current Service protocol/port children; it grants no namespace, cluster, Pod, Node, CIDR, or sibling port. Rejection is permanent; disabled scopes and opt-in are reversible.</p><p>Setting revision {settings.revision}. Explicit opt-in: {settings.enabled ? "Enabled" : "Disabled"}. Licensed: {settings.entitlement_unlocked ? "Available" : "Not in current plan"}.</p></details>
+      </> : <ScopeDetail scope={scopes.find((scope) => scope.rule_id === selectedRuleId) ?? null} settings={settings} detail={detail?.ruleId === selectedRuleId ? detail : null} error={detailError} clusters={clusters ?? []} sources={sources} canManage={canManageScope} busy={busy} onBack={() => setSelectedRuleId("")} onReload={(scope) => { void loadDetail(scope); }} onLoadMore={(scope) => loadDetail(scope, true)} onActive={(scope, active) => setConfirm({ kind: "active", scope, active })} onDelete={(scope) => setConfirm({ kind: "delete", scope })} />}
+    </div>}
+    {createOpen && canCreateScope && settings && settings.effective && !auxiliaryError && clusters && services && <CreateScopeModal orgId={org?.id ?? ""} clusters={clusters} services={services} sources={sources} busy={busy} onDismiss={() => { if (!busy) setCreateOpen(false); }} onBusy={setBusy} onError={setLoadError} onCreated={async (scope) => { setCreateOpen(false); setSelectedRuleId(scope.rule_id); setNotice("Scope created. Only the exact children explicitly selected in the review step were initially approved."); await loadAll(); }} />}
+    {confirm && <ConfirmModal confirm={confirm} error={loadError} busy={busy} onDismiss={() => { if (!busy) setConfirm(null); }} onActive={toggleScope} onDelete={deleteScope} onDecision={decide} />}
   </div>;
 }
 
-function MembershipRow({ membership, canApprove, onDecision }: { membership: Membership; canApprove: boolean; onDecision: (decision: "approved" | "rejected") => void }) {
-  return <article className="rounded-md border border-white/10 bg-black/10 p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-medium text-ink-heading">{membership.namespace}/{membership.service}</p><p className="mt-1 font-mono text-xs text-ink-secondary">{protocolPort(membership)}</p></div><div className="flex gap-2"><StatePill tone={membership.effective ? "positive" : !membership.current ? "danger" : membership.status === "pending" ? "attention" : "neutral"}>{membership.effective ? "Effective" : membership.current ? membership.status : "Vanished"}</StatePill><StatePill>{membership.origin}</StatePill></div></div>{!membership.current && <p className="mt-2 text-xs text-rose-300">The exact child no longer maps to its original live Service identity. It grants nothing; history is retained.</p>}{membership.effective === false && membership.inactive_reason && <p className="mt-2 text-xs text-amber-200">{inactiveReasonLabel(membership.inactive_reason)}</p>}{membership.status === "pending" && canApprove && <div className="mt-3 flex gap-2"><Button size="sm" onClick={() => onDecision("approved")}>Review approval</Button><Button size="sm" variant="danger" onClick={() => onDecision("rejected")}>Review rejection</Button></div>}{membership.decided_at && <p className="mt-2 text-xs text-ink-tertiary">Decided {relativeAge(membership.decided_at)}</p>}</article>;
+function ScopeEvidenceList<T>({ label, items, searchText, renderItem, hasMore, busy, onLoadMore }: { label: string; items: T[]; searchText: (item: T) => string; renderItem: (item: T) => React.ReactNode; hasMore: boolean; busy: boolean; onLoadMore: () => Promise<boolean> }) {
+  const [query, setQuery] = useState(""), [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
+  const [loading, setLoading] = useState(false);
+  const filtered = items.filter((item) => searchText(item).toLowerCase().includes(query.trim().toLowerCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const current = Math.min(page, pages), visible = filtered.slice((current - 1) * pageSize, current * pageSize);
+  const next = async () => { if (current < pages) { setPage(current + 1); return; } if (!hasMore || loading) return; setLoading(true); try { if (await onLoadMore()) setPage(current + 1); } finally { setLoading(false); } };
+  return <div className="access-resource-content">{(items.length > 10 || query) && <Input aria-label={`Search loaded ${label.toLowerCase()}`} placeholder={`Search loaded ${label.toLowerCase()}`} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />}{filtered.length ? <ul aria-label={label}>{visible.map(renderItem)}</ul> : <p className="access-resource-copy">No matching loaded rows.</p>}<AppAccessPagination maxOffset={null} page={current} pageSize={pageSize} count={visible.length} hasNext={current < pages || hasMore} busy={busy || loading} onPageChange={(requested) => requested > current ? void next() : setPage(requested)} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} previousLabel={`Previous ${label.toLowerCase()}`} nextLabel={`Next ${label.toLowerCase()}`} /></div>;
 }
 
-function ScopeDetail({ scope, settings, detail, error, clusters, sources, canManage, busy, onReload, onLoadMore, onActive, onDelete }: { scope: Scope | null; settings: ScopeSettings; detail: Detail | null; error: string; clusters: K8sCluster[]; sources: SourceOption[]; canManage: boolean; busy: boolean; onReload: (scope: Scope) => void; onLoadMore: (scope: Scope) => void; onActive: (scope: Scope, active: boolean) => void; onDelete: (scope: Scope) => void }) {
-  if (!scope) return null;
-  const expired = scopeExpired(scope);
-  const effective = scope.active && settings.effective && !expired;
-  return <Card><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-ink-heading">Scope detail</h2><StatePill tone={effective ? "positive" : expired ? "danger" : scope.active ? "attention" : "neutral"}>{effective ? "Active" : expired ? "Expired and ineffective" : scope.active ? "Active but ineffective" : "Disabled"}</StatePill></div><p className="mt-1 text-sm text-ink-secondary">{clusterLabel(scope.cluster_id, clusters)} · {sourceLabel(scope.source, sources)}</p><p className="mt-1 font-mono text-xs text-ink-tertiary">Rule {scope.rule_id} · revision {scope.revision}</p><p className="mt-1 text-xs text-ink-tertiary">{scope.expires_at ? <span title={scope.expires_at}>Expires {relativeAge(scope.expires_at)}</span> : "No expiry"}</p>{scope.active && !effective && <p className="mt-2 text-xs text-amber-200">Stored active state is preserved, but it currently grants nothing because {expired ? "the scope has expired" : "the organization opt-in or entitlement is inactive"}.</p>}</div>{canManage && <div className="flex flex-wrap gap-2"><Button variant="ghost" disabled={busy || (settings.effective === false && !scope.active) || (expired && !scope.active)} onClick={() => onActive(scope, !scope.active)}>{scope.active ? "Disable scope" : "Enable scope"}</Button><Button variant="danger" disabled={busy} onClick={() => onDelete(scope)}>Delete scope</Button></div>}</div>
-    {error ? <div className="mt-4"><ErrorText>{error}</ErrorText><Button className="mt-3" onClick={() => onReload(scope)}>Retry detail</Button></div> : detail === null ? <div className="mt-4"><Loading label="Loading initial evidence and membership history…" /></div> : <div className="mt-5 grid gap-5 lg:grid-cols-2"><section><h3 className="text-sm font-semibold text-ink-heading">Initial candidate evidence</h3><p className="mt-1 text-xs text-ink-tertiary">Immutable creation-time snapshot. Unselected rows were offered, not rejected.</p><div className="mt-3 space-y-2">{detail.candidates.length === 0 ? <EmptyState>No exact children were offered when this scope was created.</EmptyState> : detail.candidates.map((candidate) => <div key={candidate.service_child_id} className="flex items-start justify-between gap-3 rounded-md border border-white/10 p-3"><div><p className="text-sm text-ink-heading">{candidate.namespace}/{candidate.service}</p><p className="mt-1 font-mono text-xs text-ink-tertiary">{protocolPort(candidate)}</p>{candidate.effective === false && candidate.inactive_reason && <p className="mt-1 text-xs text-amber-200">{inactiveReasonLabel(candidate.inactive_reason)}</p>}</div><div className="flex gap-2"><StatePill tone={candidate.effective ? "positive" : candidate.selected ? "attention" : "neutral"}>{candidate.effective ? "Effective" : candidate.selected ? "Selected · ineffective" : "Not selected"}</StatePill>{candidate.current === false && <StatePill tone="danger">Vanished</StatePill>}</div></div>)}</div></section><section><h3 className="text-sm font-semibold text-ink-heading">Membership history</h3><p className="mt-1 text-xs text-ink-tertiary">Pending, approved, rejected, effective, and vanished states remain distinct.</p><div className="mt-3 space-y-2">{detail.memberships.length === 0 ? <EmptyState>No memberships exist for this scope.</EmptyState> : detail.memberships.map((membership) => <MembershipRow key={membership.service_child_id} membership={membership} canApprove={false} onDecision={() => {}} />)}</div></section>{(detail.candidateCursor || detail.membershipCursor) && <Button variant="ghost" disabled={busy} onClick={() => onLoadMore(scope)}>Load more history</Button>}</div>}
-  </Card>;
+function MembershipRow({ membership, canApprove, busy, onDecision }: { membership: Membership; canApprove: boolean; busy: boolean; onDecision: (decision: "approved" | "rejected") => void }) {
+  return <article className="access-scope-member"><div><span>{membership.namespace}/{membership.service}<small> · {protocolPort(membership)}</small></span><div><StatePill tone={membership.effective ? "positive" : !membership.current ? "danger" : membership.status === "pending" ? "attention" : "neutral"}>{membership.effective ? "Effective" : membership.current ? membership.status : "Vanished"}</StatePill>{membership.status === "pending" && canApprove && <AppAccessRowMenu label={`Actions for ${membership.namespace}/${membership.service} ${protocolPort(membership)}`} actions={[{ key: "approve", label: "Review approval", disabledReason: busy ? "Wait for the current action." : !membership.current ? "This exact Service identity is no longer current." : undefined, onSelect: () => onDecision("approved") }, { key: "reject", label: "Review rejection", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => onDecision("rejected") }]} />}</div></div><small>{membership.origin}{membership.decided_at ? ` · decided ${relativeAge(membership.decided_at)}` : ""}</small>{!membership.current && <p className="access-resource-copy">The exact child no longer maps to its original live Service identity. It grants nothing; history is retained.</p>}{membership.effective === false && membership.inactive_reason && <p className="access-resource-copy">{inactiveReasonLabel(membership.inactive_reason)}</p>}</article>;
+}
+
+function ScopeDetail({ scope, settings, detail, error, clusters, sources, canManage, busy, onBack, onReload, onLoadMore, onActive, onDelete }: { scope: Scope | null; settings: ScopeSettings; detail: Detail | null; error: string; clusters: K8sCluster[]; sources: SourceOption[]; canManage: boolean; busy: boolean; onBack: () => void; onReload: (scope: Scope) => void; onLoadMore: (scope: Scope) => Promise<boolean>; onActive: (scope: Scope, active: boolean) => void; onDelete: (scope: Scope) => void }) {
+  const [view, setView] = useState<"memberships" | "candidates">("memberships");
+  if (!scope) return <AppAccessEmptyState icon={null} title="Scope unavailable" action={<Button variant="ghost" onClick={onBack}>Back to scopes</Button>} />;
+  const expired = scopeExpired(scope), effective = scope.active && settings.effective && !expired;
+  return <div className="access-resource-content">
+    <nav aria-label="Breadcrumb" className="access-resource-breadcrumb"><button disabled={busy} onClick={onBack}>Kubernetes scopes</button><span aria-hidden="true">/</span><span aria-current="page">{clusterLabel(scope.cluster_id, clusters)}</span></nav>
+    <div className="access-resource-heading"><div><h2>{clusterLabel(scope.cluster_id, clusters)}</h2><p className="access-resource-context">{sourceLabel(scope.source, sources)}</p></div><div className="access-resource-actions"><Button variant="ghost" disabled={busy} onClick={() => onReload(scope)}>Refresh detail</Button>{canManage && <AppAccessRowMenu label="Scope actions" actions={[{ key: "active", label: scope.active ? "Disable scope" : "Enable scope", disabledReason: busy ? "Wait for the current action." : !scope.active && (!settings.effective || expired) ? "Organization enforcement must be active and the scope unexpired." : undefined, onSelect: () => onActive(scope, !scope.active) }, { key: "delete", label: "Delete scope", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => onDelete(scope) }]} />}</div></div>
+    <div className="access-resource-actions"><StatePill tone={effective ? "positive" : expired ? "danger" : scope.active ? "attention" : "neutral"}>{effective ? "Active" : expired ? "Expired and ineffective" : scope.active ? "Active but ineffective" : "Disabled"}</StatePill><span className="access-resource-context">{scope.expires_at ? <span title={scope.expires_at}>Expires {relativeAge(scope.expires_at)}</span> : "No expiry"} · revision {scope.revision}</span></div>
+    {scope.active && !effective && <p className="access-resource-copy">Stored active state is preserved, but it currently grants nothing because {expired ? "the scope has expired" : "the organization opt-in or entitlement is inactive"}.</p>}
+    {error && <ErrorText>{error}</ErrorText>}
+    {detail === null ? error ? <Button variant="ghost" onClick={() => onReload(scope)}>Retry detail</Button> : <Loading label="Loading initial evidence and membership history…" /> : <>
+      <div className="access-scope-tabs" role="group" aria-label="Scope evidence views"><button disabled={busy} aria-pressed={view === "memberships"} onClick={() => setView("memberships")}>Membership history</button><button disabled={busy} aria-pressed={view === "candidates"} onClick={() => setView("candidates")}>Initial candidate evidence</button></div>
+      {view === "memberships" ? detail.memberships.length === 0 && !detail.membershipCursor ? <AppAccessEmptyState icon={null} title="No memberships exist for this scope." /> : <ScopeEvidenceList key={`${scope.rule_id}:memberships`} label="Membership history" items={detail.memberships} searchText={(membership) => `${membership.namespace}/${membership.service} ${membership.protocol} ${membership.port} ${membership.status}`} hasMore={Boolean(detail.membershipCursor)} busy={busy} onLoadMore={() => onLoadMore(scope)} renderItem={(membership) => <li key={membership.service_child_id}><MembershipRow membership={membership} canApprove={false} busy={busy} onDecision={() => {}} /></li>} />
+      : <><p className="access-resource-copy">Immutable creation-time snapshot. Unselected rows were offered, not rejected.</p>{detail.candidates.length === 0 && !detail.candidateCursor ? <AppAccessEmptyState icon={null} title="No exact children were offered when this scope was created." /> : <ScopeEvidenceList key={`${scope.rule_id}:candidates`} label="Initial candidate evidence" items={detail.candidates} searchText={(candidate) => `${candidate.namespace}/${candidate.service} ${candidate.protocol} ${candidate.port}`} hasMore={Boolean(detail.candidateCursor)} busy={busy} onLoadMore={() => onLoadMore(scope)} renderItem={(candidate) => <li key={candidate.service_child_id} className="access-scope-member"><div><span>{candidate.namespace}/{candidate.service}<small> · {protocolPort(candidate)}</small></span><StatePill tone={candidate.effective ? "positive" : candidate.selected ? "attention" : "neutral"}>{candidate.effective ? "Effective" : candidate.selected ? "Selected · ineffective" : "Not selected"}</StatePill></div>{candidate.current === false && <StatePill tone="danger">Vanished</StatePill>}{candidate.effective === false && candidate.inactive_reason && <p className="access-resource-copy">{inactiveReasonLabel(candidate.inactive_reason)}</p>}</li>} />}</>}
+    </>}
+    <details className="access-resource-help"><summary>Scope identity and authority</summary><p>Rule {scope.rule_id}. {scope.initial_candidate_count} initial candidates offered · created {relativeAge(scope.created_at)}. Only individually approved, still-current Service protocol/port children grant access while this scope, organization opt-in, and entitlement are active. Rejected decisions remain permanent.</p></details>
+  </div>;
 }
 
 function CreateScopeModal({ orgId, clusters, services, sources, busy, onDismiss, onBusy, onError, onCreated }: { orgId: string; clusters: K8sCluster[]; services: K8sService[]; sources: SourceOption[]; busy: boolean; onDismiss: () => void; onBusy: (busy: boolean) => void; onError: (error: string) => void; onCreated: (scope: Scope) => Promise<void> }) {
@@ -436,17 +442,22 @@ function CreateScopeModal({ orgId, clusters, services, sources, busy, onDismiss,
   const [expiresAt, setExpiresAt] = useState("");
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [localError, setLocalError] = useState("");
+  const [uncertain, setUncertain] = useState(false);
+  const locked = useRef(false), alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const sourceOptions = sources.filter((option) => option.kind === sourceKind);
   const candidates = useMemo(() => services.filter((service) => service.cluster_id === clusterId && exactChild(service)).sort((a, b) => `${a.namespace}/${a.name}/${a.protocol}/${a.port_low}`.localeCompare(`${b.namespace}/${b.name}/${b.protocol}/${b.port_low}`)), [clusterId, services]);
   const sourceReady = sourceKind === "cidr" ? cidr.trim().length > 0 : sourceId.length > 0;
 
   async function submit() {
-    if (!clusterId || !sourceReady) return;
+    if (locked.current || uncertain || !alive.current || !clusterId || !sourceReady || selected.length > 100) return;
+    locked.current = true;
     onBusy(true);
     setLocalError("");
     try {
       const source: CreateScopeSource = sourceKind === "cidr" ? { kind: "cidr", cidr: cidr.trim() } : { kind: sourceKind, id: sourceId };
       const response = await api.POST("/api/v1/organizations/{orgId}/k8s/cluster-scopes", { params: { path: { orgId } }, body: { cluster_id: clusterId, source, initial_service_child_ids: selected, expires_at: expiresAt ? new Date(expiresAt).toISOString() : undefined } });
+      if (!alive.current) return;
       if (response.error || !response.data) {
         const message = apiErrorMessage(response.error, "Could not create the scope. Current candidates may have changed; close and reload before retrying.");
         setLocalError(message);
@@ -454,20 +465,25 @@ function CreateScopeModal({ orgId, clusters, services, sources, busy, onDismiss,
         return;
       }
       await onCreated(response.data);
-    } finally {
-      onBusy(false);
+    } catch { if (alive.current) { const message = "Creation was not confirmed. Close and reload server state before retrying."; setUncertain(true); setLocalError(message); onError(message); } } finally {
+      locked.current = false; onBusy(false);
     }
   }
 
-  return <Modal title="Create Kubernetes access scope" size="wide" onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={step === 1 ? onDismiss : () => setStep((step - 1) as 1 | 2)}>Back</Button>{step < 3 ? <Button disabled={step === 1 ? !clusterId || !sourceReady : false} onClick={() => setStep((step + 1) as 2 | 3)}>Continue</Button> : <Button disabled={busy || !clusterId || !sourceReady || selected.length > 100} onClick={() => void submit()}>{busy ? "Creating…" : "Create scope"}</Button>}</>}>
-    <div className="space-y-5"><div className="flex gap-2" aria-label={`Step ${step} of 3`}>{[1, 2, 3].map((value) => <span key={value} className={`h-1.5 flex-1 rounded-full ${value <= step ? "bg-accent-400" : "bg-white/10"}`} />)}</div><ErrorText>{localError}</ErrorText>{step === 1 && <><div><h3 className="text-sm font-semibold text-ink-heading">1. Cluster and Access source</h3><p className="mt-1 text-sm text-ink-tertiary">Choose one enrolled cluster and the identity that may reach approved exact children.</p></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Enrolled cluster"><Select autoFocus value={clusterId} onChange={(event) => { setClusterId(event.target.value); setSelected([]); }}><option value="">Choose a cluster…</option>{clusters.map((cluster) => <option key={cluster.id} value={cluster.id}>{cluster.name} · {cluster.platform.replace(/_/g, " ")}</option>)}</Select></Field><Field label="Source type"><Select value={sourceKind} onChange={(event) => { setSourceKind(event.target.value as CreateScopeSource["kind"]); setSourceId(""); setCidr(""); }}><option value="group">Group</option><option value="user">User</option><option value="site">Site</option><option value="agent">Agent</option><option value="cidr">Exact CIDR</option></Select></Field></div>{sourceKind === "cidr" ? <Field label="Source CIDR"><Input value={cidr} placeholder="10.20.0.0/24" onChange={(event) => setCidr(event.target.value)} /></Field> : <Field label={`${sourceKind[0].toUpperCase()}${sourceKind.slice(1)}`}><Select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">Choose a current {sourceKind}…</option>{sourceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</Select></Field>}<Field label="Expires at (optional)"><Input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></Field></>}{step === 2 && <><div><h3 className="text-sm font-semibold text-ink-heading">2. Select initial exact children</h3><p className="mt-1 text-sm text-ink-tertiary">Nothing is selected by default. Unselected current children are recorded as offered, not rejected.</p></div><div className="flex items-center justify-between text-xs text-ink-tertiary"><span>{candidates.length} current exact children</span><span>{selected.length} selected · maximum 100</span></div>{candidates.length === 0 ? <EmptyState>No current exposed TCP/UDP exact-port children are available in this cluster. Expose verified Services in Kubernetes first.</EmptyState> : <fieldset className="max-h-[23rem] space-y-2 overflow-y-auto pr-1"><legend className="sr-only">Initial exact Service children</legend>{candidates.map((service) => { const checked = selected.includes(service.id); return <label key={service.id} className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${checked ? "border-accent-400/60 bg-white/[.06]" : "border-white/10 hover:bg-white/[.03]"}`}><input type="checkbox" className="mt-1 h-4 w-4 accent-current" checked={checked} onChange={() => setSelected((current) => checked ? current.filter((id) => id !== service.id) : current.length < 100 ? [...current, service.id] : current)} /><span><span className="block text-sm font-medium text-ink-heading">{service.namespace}/{service.name}</span><span className="mt-1 block font-mono text-xs text-ink-tertiary">{service.protocol.toUpperCase()} {service.port_low} · {service.fqdn}</span></span></label>; })}</fieldset>}</>}{step === 3 && <><div><h3 className="text-sm font-semibold text-ink-heading">3. Review exact authority</h3><p className="mt-1 text-sm text-ink-tertiary">Creating approves only the selected exact children in one server transaction. No namespace, sibling port, ClusterIP, Pod, Node, or provider account is granted.</p></div><dl className="grid gap-3 rounded-md border border-white/10 p-4 text-sm sm:grid-cols-2"><div><dt className="text-ink-tertiary">Cluster</dt><dd className="mt-1 text-ink-heading">{clusters.find((cluster) => cluster.id === clusterId)?.name}</dd></div><div><dt className="text-ink-tertiary">Source</dt><dd className="mt-1 text-ink-heading">{sourceKind === "cidr" ? cidr : sourceOptions.find((option) => option.id === sourceId)?.label}</dd></div><div><dt className="text-ink-tertiary">Initially approved</dt><dd className="mt-1 text-ink-heading">{selected.length} exact {selected.length === 1 ? "child" : "children"}</dd></div><div><dt className="text-ink-tertiary">Unselected</dt><dd className="mt-1 text-ink-heading">{Math.max(0, candidates.length - selected.length)} offered, no membership</dd></div></dl>{selected.length === 0 && <p className="rounded-md border border-amber-700/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">This is valid: the scope begins with no approved Service children. Later exposures enter the human review queue.</p>}</>}</div>
+  return <Modal title="Create Kubernetes access scope" placement="right" size="enrollment" showClose onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={step === 1 ? onDismiss : () => setStep((step - 1) as 1 | 2)}>Back</Button>{step < 3 ? <Button disabled={busy || (step === 1 && (!clusterId || !sourceReady))} onClick={() => setStep((step + 1) as 2 | 3)}>Continue</Button> : <Button disabled={busy || uncertain || !clusterId || !sourceReady || selected.length > 100} onClick={() => void submit()}>{busy ? "Creating…" : "Create scope"}</Button>}</>}>
+    <div className="access-scope-editor"><p aria-label={`Step ${step} of 3`}>Step {step} of 3</p><ErrorText>{localError}</ErrorText>
+      {step === 1 && <><h3>Cluster and Access source</h3><Field label="Enrolled cluster"><Select autoFocus disabled={busy} value={clusterId} onChange={(event) => { setClusterId(event.target.value); setSelected([]); }}><option value="">Choose a cluster…</option>{clusters.map((cluster) => <option key={cluster.id} value={cluster.id}>{cluster.name} · {cluster.platform.replace(/_/g, " ")}</option>)}</Select></Field><Field label="Source type"><Select disabled={busy} value={sourceKind} onChange={(event) => { setSourceKind(event.target.value as CreateScopeSource["kind"]); setSourceId(""); setCidr(""); }}><option value="group">Group</option><option value="user">User</option><option value="site">Site</option><option value="agent">Agent</option><option value="cidr">Exact CIDR</option></Select></Field>{sourceKind === "cidr" ? <Field label="Source CIDR"><Input disabled={busy} value={cidr} placeholder="10.20.0.0/24" onChange={(event) => setCidr(event.target.value)} /></Field> : <Field label={`${sourceKind[0].toUpperCase()}${sourceKind.slice(1)}`}><Select disabled={busy} value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">Choose a current {sourceKind}…</option>{sourceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</Select></Field>}<details><summary>Expiry</summary><Field label="Expires at (optional)"><Input disabled={busy} type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></Field></details></>}
+      {step === 2 && <><h3>Select initial exact children</h3><p>Nothing is selected by default. Unselected children are recorded as offered, not rejected.</p><p>{candidates.length} current exact children · {selected.length} selected · maximum 100</p>{candidates.length === 0 ? <AppAccessEmptyState icon={null} title="No current exposed exact-port children" description="Expose verified TCP/UDP Services in Kubernetes first." /> : <fieldset><legend className="sr-only">Initial exact Service children</legend><NetworkDetailList label="Initial exact Service children" items={candidates} searchText={(service) => `${service.namespace}/${service.name} ${service.protocol} ${service.port_low} ${service.fqdn}`} renderItem={(service) => { const checked = selected.includes(service.id); return <li key={service.id}><label><input type="checkbox" aria-label={`${service.namespace}/${service.name} ${service.protocol.toUpperCase()} ${service.port_low}`} checked={checked} disabled={busy || (!checked && selected.length >= 100)} onChange={() => setSelected((current) => checked ? current.filter((id) => id !== service.id) : current.length < 100 ? [...current, service.id] : current)} /><span>{service.namespace}/{service.name}<small>{service.protocol.toUpperCase()} {service.port_low} · {service.fqdn}</small></span></label></li>; }} /></fieldset>}</>}
+      {step === 3 && <><h3>Review exact authority</h3><p>Creating approves only the selected exact children in one transaction. No namespace, sibling port, ClusterIP, Pod, Node, or provider account is granted.</p><dl className="access-scope-review-facts"><DetailFact label="Cluster" value={clusters.find((cluster) => cluster.id === clusterId)?.name ?? clusterId} /><DetailFact label="Source" value={sourceKind === "cidr" ? cidr : sourceOptions.find((option) => option.id === sourceId)?.label ?? sourceId} /><DetailFact label="Initially approved" value={`${selected.length} exact ${selected.length === 1 ? "child" : "children"}`} /><DetailFact label="Unselected" value={`${Math.max(0, candidates.length - selected.length)} offered, no membership`} /></dl>{selected.length === 0 && <p>This scope begins with no approved Service children. Later exposures enter the human review queue.</p>}</>}
+    </div>
   </Modal>;
 }
 
-function ConfirmModal({ confirm, busy, onDismiss, onSetting, onActive, onDelete, onDecision }: { confirm: Exclude<Confirm, null>; busy: boolean; onDismiss: () => void; onSetting: (enabled: boolean) => Promise<void>; onActive: (scope: Scope, active: boolean) => Promise<void>; onDelete: (scope: Scope) => Promise<void>; onDecision: (membership: Membership, decision: "approved" | "rejected") => Promise<void> }) {
-  if (confirm.kind === "setting") return <Modal title={`${confirm.enabled ? "Enable" : "Disable"} cluster scopes for this organization?`} danger={!confirm.enabled} onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant={confirm.enabled ? "primary" : "danger"} disabled={busy} onClick={() => void onSetting(confirm.enabled)}>{busy ? "Saving…" : confirm.enabled ? "Enable scopes" : "Disable and withdraw"}</Button></>}><p className="text-sm text-ink-tertiary">{confirm.enabled ? "This makes still-current approved children eligible to grant again. It does not create a scope or approve a pending child. The change is audited and reversible." : "This immediately withdraws all scope-derived access for the organization. Scopes, decisions, and audit evidence are preserved; re-enabling can restore only still-current approvals."}</p></Modal>;
-  if (confirm.kind === "active") return <Modal title={`${confirm.active ? "Enable" : "Disable"} this scope?`} danger={!confirm.active} onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant={confirm.active ? "primary" : "danger"} disabled={busy} onClick={() => void onActive(confirm.scope, confirm.active)}>{busy ? "Saving…" : confirm.active ? "Enable scope" : "Disable and withdraw"}</Button></>}><p className="text-sm text-ink-tertiary">{confirm.active ? "Only still-current, approved exact children can grant. The organization opt-in and entitlement must also be active. This transition is audited and reversible." : "All access derived from this scope is withdrawn. Membership decisions and audit evidence remain, so an authorized administrator can enable it again."}</p></Modal>;
-  if (confirm.kind === "delete") return <Modal title="Permanently delete this scope?" danger onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void onDelete(confirm.scope)}>{busy ? "Deleting…" : "Delete permanently"}</Button></>}><div className="space-y-2 text-sm text-ink-tertiary"><p>Live scope and membership rows are removed and derived access is withdrawn. This operation has no rollback.</p><p>Append-only audit evidence remains. Recovery requires creating a new scope and explicitly selecting current exact children again.</p></div></Modal>;
+function DetailFact({ label, value }: { label: string; value: string }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }
+
+function ConfirmModal({ confirm, error, busy, onDismiss, onActive, onDelete, onDecision }: { confirm: Exclude<Confirm, null>; error: string; busy: boolean; onDismiss: () => void; onActive: (scope: Scope, active: boolean) => Promise<void>; onDelete: (scope: Scope) => Promise<void>; onDecision: (membership: Membership, decision: "approved" | "rejected") => Promise<void> }) {
+  if (confirm.kind === "active") return <Modal showClose title={`${confirm.active ? "Enable" : "Disable"} this scope?`} danger={!confirm.active} onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant={confirm.active ? "primary" : "danger"} disabled={busy} onClick={() => void onActive(confirm.scope, confirm.active)}>{busy ? "Saving…" : confirm.active ? "Enable scope" : "Disable and withdraw"}</Button></>}><><ErrorText>{error}</ErrorText><p className="text-sm text-ink-tertiary">{confirm.active ? "Only still-current, approved exact children can grant. The organization opt-in and entitlement must also be active. This transition is audited and reversible." : "All access derived from this scope is withdrawn. Membership decisions and audit evidence remain, so an authorized administrator can enable it again."}</p></></Modal>;
+  if (confirm.kind === "delete") return <Modal showClose title="Permanently delete this scope?" danger onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void onDelete(confirm.scope)}>{busy ? "Deleting…" : "Delete permanently"}</Button></>}><div className="space-y-2 text-sm text-ink-tertiary"><ErrorText>{error}</ErrorText><p>Live scope and membership rows are removed and derived access is withdrawn. This operation has no rollback.</p><p>Append-only audit evidence remains. Recovery requires creating a new scope and explicitly selecting current exact children again.</p></div></Modal>;
   const reject = confirm.decision === "rejected";
-  return <Modal title={`${reject ? "Reject" : "Approve"} this exact child?`} danger={reject} onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant={reject ? "danger" : "primary"} disabled={busy} onClick={() => void onDecision(confirm.membership, confirm.decision)}>{busy ? "Saving decision…" : reject ? "Reject permanently" : "Approve exact child"}</Button></>}><div className="space-y-2 text-sm text-ink-tertiary"><p>{confirm.membership.namespace}/{confirm.membership.service} · {protocolPort(confirm.membership)}</p><p>{reject ? "Rejection is permanent for this membership and grants nothing. Recovery requires a new scope or the future explicit-inclusion flow. The decision is audited." : "Approval applies only to this protocol/port child while its exact identity, scope, setting, and entitlement remain current. The decision is audited and cannot be changed to rejected later."}</p></div></Modal>;
+  return <Modal showClose title={`${reject ? "Reject" : "Approve"} this exact child?`} danger={reject} onDismiss={onDismiss} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant={reject ? "danger" : "primary"} disabled={busy} onClick={() => void onDecision(confirm.membership, confirm.decision)}>{busy ? "Saving decision…" : reject ? "Reject permanently" : "Approve exact child"}</Button></>}><div className="space-y-2 text-sm text-ink-tertiary"><ErrorText>{error}</ErrorText><p>{confirm.membership.namespace}/{confirm.membership.service} · {protocolPort(confirm.membership)}</p><p>{reject ? "Rejection is permanent for this membership and grants nothing. Recovery requires a new scope or the future explicit-inclusion flow. The decision is audited." : "Approval applies only to this protocol/port child while its exact identity, scope, setting, and entitlement remain current. The decision is audited and cannot be changed to rejected later."}</p></div></Modal>;
 }

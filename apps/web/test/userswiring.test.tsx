@@ -170,16 +170,23 @@ beforeEach(() => {
   ];
 });
 
+async function openRoles(name: string) {
+  fireEvent.click(await screen.findByRole("button", { name }));
+  fireEvent.click(screen.getByRole("button", { name: "Roles" }));
+  return screen.getByRole("region", { name: "Person details" });
+}
+
 describe("Users — wiring: the last owner cannot be demoted", () => {
   it("the SOLE owner's role control is disabled, and says why", async () => {
     withAuth(<Users />);
+    await openRoles("Olive Owner");
 
     // Query rule 5: wait for THE THING ASSERTED. (Not an email — those appear more than once; and not a
     // combobox count — the invite form contributes a third.)
     const soleOwnerControl = await waitFor(() =>
       screen.getByTitle("An organization must always have at least one owner."),
     );
-    expect((soleOwnerControl as HTMLSelectElement).disabled).toBe(true);
+    expect((soleOwnerControl as HTMLInputElement).disabled).toBe(true);
   });
 
   it("with TWO owners, neither control is disabled — 'always disabled' must not pass", async () => {
@@ -204,31 +211,14 @@ describe("Users — wiring: the last owner cannot be demoted", () => {
       },
     ];
     withAuth(<Users />);
-    // An ABSENCE assertion needs a POSITIVE anchor proving the roster rendered, or it is trivially true against
-    // a tree that has not finished — the async form (docs/laws.md). Anchor on the second owner's row.
-    // RE-POINTED IN S14.3 SLICE A. `getAllByText(email).length > 0` passed if the address appeared anywhere
-    // and said nothing about WHOSE row the role control belonged to. Now the member is a row, and the role
-    // control is asserted INSIDE it — which is the assertion the screen actually needs, since a role select
-    // wired to the wrong member is the failure that matters here.
-    const table = await waitFor(() =>
-      screen.getByRole("table", { name: "Members" }),
-    );
-    const row = within(table)
-      .getAllByRole("row")
-      // queryAllByText, not queryByText: a member with no display name renders the email TWICE in its own
-      // cell (as the name and as the address), and `queryBy*` throws on multiple matches. The row predicate
-      // only needs "does this row mention them", so the count is irrelevant.
-      .find((r) => within(r).queryAllByText("second@acme.test").length > 0)!;
-    expect(row, "no row for second@acme.test").toBeTruthy();
-    expect(
-      within(row).getByLabelText("Roles for second@acme.test", { selector: "summary" }),
-    ).toBeTruthy();
-
-    expect(
-      screen.queryByTitle(
-        "An organization must always have at least one owner.",
-      ),
-    ).toBeNull();
+    for (const name of ["Sam Second", "Olive Owner"]) {
+      const detail = await openRoles(name);
+      const owner = within(detail).getByRole("checkbox", { name: "owner" });
+      expect(owner).toHaveProperty("checked", true);
+      expect(owner).toHaveProperty("disabled", false);
+      expect(within(detail).queryByTitle("An organization must always have at least one owner.")).toBeNull();
+      fireEvent.click(within(detail).getByRole("button", { name: "Back to users" }));
+    }
   });
 });
 
@@ -240,7 +230,7 @@ describe("Users — failure path", () => {
     membersFail = true;
     withAuth(<Users />);
 
-    await waitFor(() => screen.getByText("Could not load members."));
+    await waitFor(() => screen.getByText("nope"));
     expect(screen.queryByText("No members yet.")).toBeNull();
     // AND the table itself is absent, not merely empty. This is the assertion that would have caught the
     // defect this slice introduced and the tier found: converting the roster to a table dropped the page's
@@ -388,7 +378,7 @@ describe("Users — the filter", () => {
     // ⛔ "No members yet." under an active query would tell an admin their org is EMPTY when they simply typed
     // a name that does not match. Two different facts, two different sentences.
     fireEvent.change(box, { target: { value: "zzz-nobody" } });
-    await waitFor(() => screen.getByText(/No members match/));
+    await waitFor(() => screen.getByText(/No people match/));
     expect(screen.queryByText("No members yet.")).toBeNull();
   });
 });
@@ -522,7 +512,7 @@ describe("Users — the ACTIONS column follows the same rule as Devices", () => 
     const headers = within(table)
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
-    expect(headers).toEqual(["Member", "State", "Roles"]);
+    expect(headers).toEqual(["Member", "Roles", "State"]);
     // ⚠ The verbs moved from an Actions COLUMN to the selection bar, so the affordance to assert is the
     // checkbox. The RULE is untouched: a viewer who can act on nobody is offered nothing to act WITH.
     expect(within(table).queryByRole("checkbox", { name: /select/i })).toBeNull();
@@ -674,9 +664,9 @@ describe("Invitation resend permissions", () => {
       accepted_at:null, revoked_at:null}];
     withAuth(<Users view="invitations" />);
     const row = await screen.findByRole('row', {name:/owner-invite@example.test/});
-    fireEvent.click(within(row).getByRole('checkbox'));
-    expect((screen.getByRole('button', {name:'Resend'}) as HTMLButtonElement).disabled).toBe(disabled);
-    if (disabled) expect(screen.getByRole('button', {name:'Resend'}).getAttribute('title')).toBe('Only an owner can resend an owner invitation.');
+    fireEvent.click(within(row).getByRole('button', {name:'Invitation actions for owner-invite@example.test'}));
+    expect(screen.getByRole('menuitem', {name:'Resend'})).toHaveProperty('disabled', disabled);
+    if (disabled) expect(screen.getByRole('menu').textContent).toContain('Only an owner can resend an owner invitation.');
     expect(api.POST).not.toHaveBeenCalled();
   });
 });

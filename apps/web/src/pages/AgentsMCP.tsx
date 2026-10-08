@@ -49,10 +49,7 @@ export default function AgentsMCP() {
   // profile click made while inventory is first appearing.
   const groupId = search.get("group") || (groups.kind === "ready" ? groups.data[0]?.id ?? "" : "");
   const profileId = search.get("profile") ?? "";
-  const [managementEnabled, setManagementEnabled] = useState(Boolean(org?.agent_policy_templates_enabled));
-  const enabled = managementEnabled;
-
-  useEffect(() => setManagementEnabled(Boolean(org?.agent_policy_templates_enabled)), [org?.id, org?.agent_policy_templates_enabled]);
+  const enabled = Boolean(org?.agent_policy_templates_enabled);
   const selectedGroup = useMemo(() => groups.kind === "ready" ? groups.data.find((group) => group.id === groupId) : undefined, [groups, groupId]);
   const selectedProfile = useMemo(() => profiles.kind === "ready" ? profiles.data.find((profile) => profile.id === profileId) : undefined, [profiles, profileId]);
   const activeAssignment = useMemo(() => assignments.kind === "ready" ? assignments.data.find((assignment) => assignment.group_id === groupId && assignment.state === "active") : undefined, [assignments, groupId]);
@@ -84,14 +81,6 @@ export default function AgentsMCP() {
     });
     return () => { cancelled = true; };
   }, [org?.id, enabled, groupId]);
-  async function enable() {
-    if (!org) return;
-    setBusy(true); setError("");
-    const result = await api.PUT("/api/v1/organizations/{orgId}/agent-policy-template-settings", { params: { path: { orgId: org.id } }, body: { enabled: true } });
-    setBusy(false);
-    if (result.error) { setError(apiErrorMessage(result.error, "Could not enable MCP profile management.")); return; }
-    setManagementEnabled(true); setNotice("MCP profile management is enabled for this organization.");
-  }
   async function createProfile() {
     if (!org || !profileName.trim() || !endpoint.trim()) return false;
     setBusy(true); setError(""); setNotice("");
@@ -159,9 +148,9 @@ export default function AgentsMCP() {
   const selectedProfileAlreadyActive = activeAssignment?.profile_id === selectedProfile?.id;
 
   return <div className="network-management agents-workspace space-y-5">
-    <PageHeader title="MCP profiles" subtitle={org.name} actions={enabled && profiles.kind === "ready" && profiles.data.length > 0 ? createButton : undefined} />
+    <PageHeader navigationTitle title="MCP profiles" subtitle={org.name} actions={enabled && profiles.kind === "ready" && profiles.data.length > 0 ? createButton : undefined} />
     <div className="text-right"><HelpTooltip label="About MCP profiles">Create a profile, assign it to an agent group, then review discovered tools. Adding a profile does not grant tool access.</HelpTooltip></div>
-    {!enabled && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP management is turned off</h2><p className="mt-2 text-cell text-ink-tertiary">Enable the organization opt-in to create reusable profiles. Profile assignment remains group-owned, never direct to an agent.</p><div className="mt-4"><Button disabled={busy} onClick={() => void enable()}>{busy ? "Enabling…" : "Enable MCP management"}</Button></div><ErrorText>{error}</ErrorText></Card>}
+    {!enabled && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP management is turned off</h2><p className="mt-2 text-cell text-ink-tertiary">Enable the organization opt-in to create reusable profiles. Profile assignment remains group-owned, never direct to an agent.</p><div className="mt-4"><Link className="text-brand text-sm" to="/settings?section=features&feature=agent-templates">Open feature settings</Link></div><ErrorText>{error}</ErrorText></Card>}
     {enabled && profiles.kind === "loading" && <Card><Loading label="Loading MCP profiles…" /></Card>}
     {enabled && denied && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">You do not have permission to view MCP profiles</h2><p className="mt-2 text-cell text-ink-tertiary">No profile, group, assignment, or plan information is shown without the required permission.</p></Card>}
     {enabled && transportError && !denied && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP profiles could not be loaded</h2><p className="mt-2 text-cell text-ink-tertiary">No empty inventory is shown because the current API response failed. Refresh to retry.</p><ErrorText>{transportError}</ErrorText></Card>}

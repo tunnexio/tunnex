@@ -1,3 +1,4 @@
+vi.mock("../src/components/TerminalReplay", () => ({ TerminalReplay: () => null }));
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -32,15 +33,15 @@ function show(source = "network") { return render(<MemoryRouter initialEntries={
 describe("Unified Beam access evidence", () => {
   it("keeps Beam selectable after the default network edition rejects and requests a separate scoped source", async () => {
     show(); await screen.findByText("Network edition required");
-    fireEvent.change(screen.getByRole("combobox", { name: "Event source" }), { target: { value: "beam" } });
+    fireEvent.click(screen.getByRole("link", { name: "Local Sharing access" }));
     await screen.findByText(/browser reviewer Reviewer/);
-    expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ source: "beam", limit: 100 }));
+    expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ source: "beam", limit: 21 }));
     expect(screen.queryByText("Network edition required")).toBeNull();
     expect(screen.queryByLabelText("Gateway collector status")).toBeNull();
   });
   it("withholds gateway flow claims and secret fields from Beam details while preserving durable evidence", async () => {
     show("beam"); fireEvent.click(await screen.findByRole("button", { name: "View ALLOW event details" }));
-    const dialog = await screen.findByRole("dialog", { name: "Access event" });
+    const dialog = screen.getByRole("navigation", { name: "Access event breadcrumb" }).parentElement!;
     expect(within(dialog).getByText(/Gateway addresses, flow sequence/)).toBeTruthy();
     expect(within(dialog).getByText(fixture.share)).toBeTruthy();
     expect(within(dialog).getByRole("link", { name: "Share history and health" }).getAttribute("href")).toBe(`/beam/shares/${fixture.share}`);
@@ -49,13 +50,14 @@ describe("Unified Beam access evidence", () => {
   });
   it("does not treat denied Beam event access as an empty history", async () => {
     fixture.beamDenied = true; show("beam"); await screen.findByText("Beam audit permission denied");
-    expect(screen.queryByText("No retained Beam browser access events match the current filters.")).toBeNull();
+    expect(screen.queryByText("No retained Local Sharing access events match the current filters.")).toBeNull();
     expect(screen.queryByRole("button", { name: "View ALLOW event details" })).toBeNull();
   });
   it("applies share and reviewer filters on the server without changing network defaults", async () => {
     show("beam"); await screen.findByText(/browser reviewer Reviewer/);
-    fireEvent.change(screen.getByRole("textbox", { name: "Beam share ID" }), { target: { value: fixture.share } });
-    fireEvent.click(screen.getByRole("button", { name: "Filter Beam share" }));
+    fireEvent.click(screen.getByText("More filters"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Share ID" }), { target: { value: fixture.share } });
+    fireEvent.click(screen.getByRole("button", { name: "Filter share" }));
     await waitFor(() => expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ source: "beam", share_id: fixture.share })));
     fireEvent.change(screen.getByRole("combobox", { name: "Source identity" }), { target: { value: `person:${fixture.user}` } });
     await waitFor(() => expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ source: "beam", src_user_id: fixture.user, share_id: fixture.share })));
@@ -65,10 +67,12 @@ describe("Unified Beam access evidence", () => {
 describe("Beam Audit Log integration", () => {
   it("applies a typed Beam target filter and shows only redacted metadata in details", async () => {
     render(<MemoryRouter><AuditLog /></MemoryRouter>);
-    const activity = await screen.findByRole("button", { name: "Beam activity" }); fireEvent.click(activity);
+    await screen.findByRole("table", { name: "Audit events" });
+    fireEvent.click(screen.getByText("More filters"));
+    const activity = await screen.findByRole("button", { name: "Local Sharing activity" }); fireEvent.click(activity);
     await waitFor(() => expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ target_type: "beam_share" })));
     fireEvent.click(await screen.findByRole("button", { name: "Inspect beam.access.allowed audit event" }));
-    const dialog = await screen.findByRole("dialog", { name: "Audit evidence" });
+    const dialog = await screen.findByRole("region", { name: "Audit evidence" });
     expect(dialog.textContent).toContain("admission"); expect(dialog.textContent).not.toMatch(/PRIVATE|connector_token/);
     expect(within(dialog).getByRole("link", { name: "Share history and health" })).toBeTruthy();
   });

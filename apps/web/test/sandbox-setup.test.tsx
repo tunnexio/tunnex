@@ -11,7 +11,7 @@ function mockSetup(value:unknown){mocks.get.mockImplementation(async(path:string
 beforeEach(()=>{mocks.get.mockReset();mocks.put.mockReset();mockSetup(setup);mocks.put.mockResolvedValue({data:setup})});afterEach(cleanup);
 function page(){render(<MemoryRouter><SandboxSetupPage/></MemoryRouter>)}
 it("keeps activation unavailable without a qualified runtime while saving limits through real CAS API",async()=>{
- page();const enable=await screen.findByRole("checkbox",{name:"Enable sandbox creation"});expect((enable as HTMLInputElement).disabled).toBe(true);
+ page();await screen.findByText("Sandbox creation: Disabled");expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();
  expect(screen.getByText(/No qualified runtime is currently connected/)).toBeTruthy();
  fireEvent.change(screen.getByLabelText("Retained sandboxes per user"),{target:{value:"3"}});fireEvent.click(screen.getByRole("button",{name:"Save settings"}));
  await waitFor(()=>expect(mocks.put).toHaveBeenCalledTimes(1));
@@ -20,15 +20,15 @@ it("keeps activation unavailable without a qualified runtime while saving limits
 it("publishes an existing catalog entry separately from activation",async()=>{
  page();fireEvent.click(await screen.findByRole("button",{name:"Publish configuration"}));
  await waitFor(()=>expect(mocks.put).toHaveBeenCalledTimes(1));expect(mocks.put.mock.calls[0][0]).toBe("/api/v1/organizations/{orgId}/sandbox-catalog/{templateId}");expect(mocks.put.mock.calls[0][1]).toMatchObject({params:{path:{orgId:"org-a",templateId:"profile-a"}},body:{expected_enabled:false,enabled:true}});
- expect((screen.getByRole("checkbox",{name:"Enable sandbox creation"}) as HTMLInputElement).checked).toBe(false);
+ expect(screen.getByText("Sandbox creation: Disabled")).toBeTruthy();
 });
-it("permits activation only with readiness, enforcing policy and published compatibility",async()=>{
- mockSetup({...setup,creation_status:{...setup.creation_status,runtime_ready:true},catalog:[{...setup.catalog[0],enabled:true}]});page();const enable=await screen.findByRole("checkbox",{name:"Enable sandbox creation"});await waitFor(()=>expect((enable as HTMLInputElement).disabled).toBe(false));fireEvent.click(enable);fireEvent.click(screen.getByRole("button",{name:"Save settings"}));await waitFor(()=>expect(mocks.put).toHaveBeenCalled());expect(mocks.put.mock.calls[0][1].body.settings.enabled).toBe(true);
+it("keeps activation in Features even when runtime and catalog prerequisites are satisfied",async()=>{
+ mockSetup({...setup,creation_status:{...setup.creation_status,runtime_ready:true},catalog:[{...setup.catalog[0],enabled:true}]});page();await screen.findByText("Sandbox creation: Disabled");expect(screen.getByRole("link",{name:"Manage feature"}).getAttribute("href")).toBe("/settings?section=features&feature=sandboxes");expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();expect(mocks.put).not.toHaveBeenCalled();
 });
 it.each([undefined,false])("preserves fresh qualified legacy runtime setup without an enrollment service (%s)",async(required)=>{
  const ready={...setup,creation_status:{...setup.creation_status,runtime_ready:true,runner_enrollment_required:required},catalog:[{...setup.catalog[0],enabled:true}]};
  mocks.get.mockImplementation(async(path:string)=>path.endsWith("/sandbox-runner-enrollments")?{error:{code:"unavailable"}}:{data:ready});page();
- const enable=await screen.findByRole("checkbox",{name:"Enable sandbox creation"});await waitFor(()=>expect((enable as HTMLInputElement).disabled).toBe(false));
+ await screen.findByText("Sandbox creation: Disabled");expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();
  expect(screen.getByText(/Runtime: Qualified and connected/)).toBeTruthy();expect(screen.queryByRole("button",{name:"Add sandbox runner"})).toBeNull();
  expect(mocks.get.mock.calls.some(([path])=>path.endsWith("/sandbox-runner-enrollments"))).toBe(false);
 });
@@ -36,29 +36,29 @@ it.each(["unavailable","offline"])("requires fresh Ready enrollment in configure
  const ready={...setup,creation_status:{...setup.creation_status,runtime_ready:true,runner_enrollment_required:true},catalog:[{...setup.catalog[0],enabled:true}]};
  mocks.get.mockImplementation(async(path:string)=>path.endsWith("/sandbox-runner-enrollments")?state==="unavailable"?{error:{code:"unavailable"}}:{data:{profiles:[],enrollments:[{id:"runner-a",name:"Offline runner",state:"offline",blocked_reasons:["runner_offline"]}],blocked_reasons:[]}}:{data:ready});page();
  await screen.findByRole("button",{name:"Add sandbox runner"});await waitFor(()=>expect(mocks.get.mock.calls.some(([path])=>path.endsWith("/sandbox-runner-enrollments"))).toBe(true));
- expect((screen.getByRole("checkbox",{name:"Enable sandbox creation"}) as HTMLInputElement).disabled).toBe(true);expect(screen.getByText(/Runtime: Readiness unconfirmed/)).toBeTruthy();
+ expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();expect(screen.getByText(/Runtime: Readiness unconfirmed/)).toBeTruthy();
 });
 it("retains the runner modal when a Ready transition reloads canonical setup",async()=>{
  const ready={...setup,creation_status:{...setup.creation_status,runtime_ready:true,runner_enrollment_required:true},catalog:[{...setup.catalog[0],enabled:true}]};
  const runners={profiles:[],enrollments:[{id:"runner-a",name:"Team runner",state:"awaiting_connection",blocked_reasons:[]}],blocked_reasons:[]};
  mocks.get.mockImplementation(async(path:string)=>({data:path.endsWith("/sandbox-runner-enrollments")?runners:{...ready,creation_status:{...ready.creation_status,runtime_ready:false}}}));page();
- const enable=await screen.findByRole("checkbox",{name:"Enable sandbox creation"});fireEvent.click(await screen.findByRole("button",{name:"View Team runner"}));
+ await screen.findByText("Sandbox creation: Disabled");fireEvent.click(await screen.findByRole("button",{name:"View Team runner"}));
  await waitFor(()=>expect((screen.getByRole("button",{name:"Refresh status"}) as HTMLButtonElement).disabled).toBe(false));
  let resolve!:(value:unknown)=>void;mocks.get.mockImplementation(async(path:string)=>path.endsWith("/sandbox-runner-enrollments")?{data:{...runners,enrollments:[{...runners.enrollments[0],state:"ready"}]}}:new Promise(done=>{resolve=done}));
  fireEvent.click(screen.getByRole("button",{name:"Refresh status"}));await waitFor(()=>expect(typeof resolve).toBe("function"));
  expect(screen.getByRole("dialog",{name:"Runner: Team runner"})).toBeTruthy();
- expect((enable as HTMLInputElement).disabled).toBe(true);await act(async()=>resolve({data:ready}));
- expect(screen.getByRole("dialog",{name:"Runner: Team runner"})).toBeTruthy();expect(screen.getByRole("link",{name:/Review Sandbox setup/})).toBeTruthy();expect((enable as HTMLInputElement).disabled).toBe(false);
+ expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();await act(async()=>resolve({data:ready}));
+ expect(screen.getByRole("dialog",{name:"Runner: Team runner"})).toBeTruthy();expect(screen.getByRole("link",{name:/Review Sandbox setup/})).toBeTruthy();expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();
 });
 it("keeps setup visible but invalidates canonical readiness while refreshing and after a failed read",async()=>{
  const ready={...setup,creation_status:{...setup.creation_status,runtime_ready:true,runner_enrollment_required:true},catalog:[{...setup.catalog[0],enabled:true}]};
  const runners={profiles:[],enrollments:[{id:"runner-a",name:"Team runner",state:"ready",blocked_reasons:[]}],blocked_reasons:[]};
  mocks.get.mockImplementation(async(path:string)=>({data:path.endsWith("/sandbox-runner-enrollments")?runners:ready}));page();
- const enable=await screen.findByRole("checkbox",{name:"Enable sandbox creation"});await waitFor(()=>expect((enable as HTMLInputElement).disabled).toBe(false));
+ await screen.findByText("Sandbox creation: Disabled");expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();
  let resolve!:(value:unknown)=>void;mocks.get.mockImplementation(async(path:string)=>path.endsWith("/sandbox-runner-enrollments")?{data:runners}:new Promise(done=>{resolve=done}));
- fireEvent.click(screen.getByRole("button",{name:"Refresh"}));await waitFor(()=>expect((enable as HTMLInputElement).disabled).toBe(true));
+ fireEvent.click(screen.getByRole("button",{name:"Refresh"}));await screen.findByText(/Runtime: Readiness unconfirmed/);
  expect(screen.getByRole("button",{name:"View Team runner"})).toBeTruthy();await act(async()=>resolve({error:{error:{message:"Synthetic canonical setup failure"}}}));
- expect(screen.getByRole("button",{name:"View Team runner"})).toBeTruthy();expect((enable as HTMLInputElement).disabled).toBe(true);
+ expect(screen.getByRole("button",{name:"View Team runner"})).toBeTruthy();expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();
 });
 it("separates permission or server failure from empty setup",async()=>{
  mocks.get.mockResolvedValue({error:{code:"forbidden"}});page();expect(await screen.findByText(/requires administrator permission and server support/)).toBeTruthy();expect(screen.queryByRole("button",{name:"Save settings"})).toBeNull();
@@ -69,7 +69,7 @@ it("retains draft and reports an unconfirmed settings request",async()=>{
 it("distinguishes a connected runtime from a configuration mismatch",async()=>{
  mockSetup({...setup,creation_status:{...setup.creation_status,runtime_ready:true},catalog:[{...setup.catalog[0],runtime_compatible:false}]});page();
  expect(await screen.findByText(/Unpublished · Runtime mismatch/)).toBeTruthy();
- expect((screen.getByRole('checkbox',{name:'Enable sandbox creation'}) as HTMLInputElement).disabled).toBe(true);
+ expect(screen.queryByRole('checkbox',{name:'Enable sandbox creation'})).toBeNull();
 });
 
 it("distinguishes a held historical reservation from one reusable workload and closes activation on drift",async()=>{
@@ -78,8 +78,8 @@ it("distinguishes a held historical reservation from one reusable workload and c
  expect(await screen.findByText(/Runtime limit: 1 retained workload; 0 occupied/)).toBeTruthy();
  expect(screen.getByText(/Overall retained limit: 2; 1 occupied/)).toBeTruthy();
  expect(screen.getByText(/Its position never becomes reusable workload capacity/)).toBeTruthy();
- await waitFor(()=>expect((screen.getByRole("checkbox",{name:"Enable sandbox creation"}) as HTMLInputElement).disabled).toBe(false));
+ await screen.findByText("Sandbox creation: Disabled");
  cleanup();mockSetup({...withReservation,runtime_limits:{...withReservation.runtime_limits,reservation_state:"invalid"},creation_status:{...withReservation.creation_status,blocked_reasons:["historical_reservation_invalid"]}});page();
  expect(await screen.findByText(/historical reservation no longer matches/)).toBeTruthy();
- expect((screen.getByRole("checkbox",{name:"Enable sandbox creation"}) as HTMLInputElement).disabled).toBe(true);
+ expect(screen.queryByRole("checkbox",{name:"Enable sandbox creation"})).toBeNull();
 });

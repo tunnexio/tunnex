@@ -12,11 +12,13 @@ const mocked = vi.hoisted(() => ({
   GET: vi.fn(),
   org: { id: "org-a" },
   user: "user-a",
+  emailVerified: true,
+  mustChangePassword: false,
 }));
 vi.mock("../src/lib/api", () => ({ api: mocked }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: mocked.org }) }));
 vi.mock("../src/lib/auth", () => ({
-  useAuth: () => ({ state: { status: "authed", user: { id: mocked.user } } }),
+  useAuth: () => ({ state: { status: "authed", user: { id: mocked.user, email_verified: mocked.emailVerified, must_change_password: mocked.mustChangePassword } } }),
 }));
 const child = vi.fn((org: string) =>
   createElement("div", null, `private workspace ${org}`),
@@ -26,12 +28,36 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocked.org = { id: "org-a" };
   mocked.user = "user-a";
+  mocked.emailVerified = true;
+  mocked.mustChangePassword = false;
   child.mockImplementation((org) =>
     createElement("div", null, `private workspace ${org}`),
   );
 });
 afterEach(cleanup);
 describe("Agent management permission gate", () => {
+  it.each(["verification", "password requirement"])("withdraws the same actor's allowed workspace when %s changes", async restriction => {
+    mocked.GET.mockResolvedValue({ data: [{ user_id: "user-a", role: "member", roles: ["member", "admin"] }] });
+    const page = render(view());
+    await screen.findByText("private workspace org-a");
+    child.mockClear();
+    if (restriction === "verification") mocked.emailVerified = false;
+    else mocked.mustChangePassword = true;
+    page.rerender(view());
+    expect(screen.queryByText(/private workspace/)).toBeNull();
+    expect(child).not.toHaveBeenCalled();
+    await screen.findByText(/Verify your email before managing/);
+    expect(child).not.toHaveBeenCalled();
+  });
+
+  it("refuses malformed membership evidence without exposing the workspace or claiming permission denial", async () => {
+    mocked.GET.mockResolvedValue({ data: [null] });
+    render(view());
+    await screen.findByRole("button", { name: "Retry permissions" });
+    expect(screen.queryByText(/You do not have permission/)).toBeNull();
+    expect(child).not.toHaveBeenCalled();
+  });
+
   it("handles network rejection and retries without exposing children", async () => {
     mocked.GET.mockRejectedValueOnce(
       new Error("offline"),

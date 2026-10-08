@@ -1,6 +1,9 @@
 import { NetworkDetailList } from "../components/NetworkDetailList";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
+import "../site-to-site-workspace.css";
+import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
@@ -21,14 +24,13 @@ import {
   type HubSet,
   type DNSForward,
 } from "../lib/api";
-import { hubSetView } from "../lib/hubsetview";
+import { hubSetView, type HubMemberRow } from "../lib/hubsetview";
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
 import { toast } from "../components/Toasts";
 import {
   Badge,
   Button,
-  Card,
   DataTable,
   EmptyState,
   ErrorText,
@@ -36,8 +38,6 @@ import {
   Input,
   Loading,
   Modal,
-  PageHeader,
-  Panel,
   Select,
 } from "../components/ui";
 import { NodeLink } from "../components/viz";
@@ -69,10 +69,31 @@ interface Raw {
   sites: Site[];
   nodes: Node[];
   subnetsBySite: Record<string, SiteSubnet[]>;
-  hubSet: HubSet | null; // S8.6 — the persisted HA hub set (null when unpinned / load failed: no HA surface)
+  hubSet: HubSet | null; // The persisted HA hub set; failed reads are distinguished below from an unconfigured set.
+  hubSetUnavailable: boolean;
   // S14.5 D1 — the ORG-WIDE zone list, fanned out one request per site. Carries its own per-site failure
   // record, because a short list on a conflict view reads as "no conflict".
   forwards: OrgForwardsView;
+}
+
+type NetworkStep = "overview" | "gateways" | "ranges" | "advanced";
+const networkSteps: Array<{ id: NetworkStep; label: string }> = [
+  { id: "overview", label: "Overview" }, { id: "gateways", label: "Gateways" },
+  { id: "ranges", label: "Ranges" }, { id: "advanced", label: "Advanced" },
+];
+function networkStep(value: string | null): NetworkStep {
+  return value === "gateways" || value === "ranges" || value === "advanced" ? value : "overview";
+}
+function OperationalSection({ title, actions, className = "", children }: { title: string; actions?: import("react").ReactNode; className?: string; children: import("react").ReactNode }) {
+  return <section className={`s2s-operation-panel ${className}`} aria-label={title}><header className="s2s-operation-header"><h2>{title}</h2>{actions}</header>{children}</section>;
+}
+
+function useNetworkListPage(count: number) {
+  const [requestedPage, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(count / pageSize)));
+  useEffect(() => { if (page !== requestedPage) setPage(page); }, [page, requestedPage]);
+  return { page, pageSize, start: (page - 1) * pageSize, end: page * pageSize, hasNext: page * pageSize < count, onPageChange: setPage, onPageSizeChange: (size: number) => { setPageSize(size); setPage(1); } };
 }
 
 export default function Sites() {
@@ -81,6 +102,12 @@ export default function Sites() {
   const { state } = useAuth();
   const myId = state.status === "authed" ? state.user.id : "";
   const emailVerified = state.status === "authed" && state.user.email_verified;
+  const loadScope = `${currentOrg?.id ?? ""}:${myId}:${emailVerified ? "verified" : "unverified"}`;
+  const loadScopeRef = useRef(loadScope);
+  loadScopeRef.current = loadScope;
+  const requestSequence = useRef(0);
+  const [loadedScope, setLoadedScope] = useState("");
+  const scopeCurrent = loadedScope === loadScope;
   const [meta, setMeta] = useState<Meta | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [myRole, setMyRole] = useState<Role | undefined>(undefined);
@@ -96,14 +123,18 @@ export default function Sites() {
   const selectedGatewayId = params.get("gateway");
   const dnsFocus = params.get("dns") === "1";
   const query = params.get("q") ?? "";
+  const inventoryPageSize = appAccessPageSize(params.get("page_size"));
+  const requestedInventoryPage = Math.max(1, Number(params.get("page")) || 1);
+  const detail = dnsFocus ? "advanced" : selectedGatewayId ? "gateways" : networkStep(params.get("detail"));
   const requestedSection = params.get("section") ?? "overview";
   const section = ["overview", "approvals", "ha", "dns"].includes(requestedSection)
     ? requestedSection
     : "overview";
 
-  const updateQuery = useCallback((next: { site?: string | null; gateway?: string | null; q?: string | null; section?: string | null; dns?: string | null }) => {
+  const updateQuery = useCallback((next: { site?: string | null; gateway?: string | null; q?: string | null; section?: string | null; dns?: string | null; detail?: string | null; page?: string | null; page_size?: string | null }) => {
     setParams((current) => {
       const updated = new URLSearchParams(current);
+      if ("q" in next || "page_size" in next) updated.delete("page");
       for (const [key, value] of Object.entries(next)) {
         if (value) updated.set(key, value);
         else updated.delete(key);
@@ -117,13 +148,15 @@ export default function Sites() {
   // workspace so browser history never preserves an impossible mixed state.
   useEffect(() => {
     if (section === "overview") return;
-    if (!params.has("site") && !params.has("gateway") && !params.has("q") && !params.has("dns")) return;
+    if (!params.has("site") && !params.has("gateway") && !params.has("q") && !params.has("dns") && !params.has("detail") && !params.has("page")) return;
     setParams((current) => {
       const normalized = new URLSearchParams(current);
       normalized.delete("site");
       normalized.delete("gateway");
       normalized.delete("q");
       normalized.delete("dns");
+      normalized.delete("detail");
+      normalized.delete("page");
       return normalized;
     }, { replace: true });
   }, [params, section, setParams]);
@@ -138,18 +171,23 @@ export default function Sites() {
       setLoadError(null);
       setRegistering(false);
       setRoutingLan(false);
-      updateQuery({ site: null });
+      updateQuery({ site: null, gateway: null, dns: null, detail: null, page: null });
     }
     priorOrgId.current = nextOrgId;
   }, [currentOrg?.id, updateQuery]);
 
   const reload = useCallback(async () => {
+    const request = ++requestSequence.current;
+    const requestedScope = loadScope;
+    const isCurrent = () => request === requestSequence.current && requestedScope === loadScopeRef.current;
+    setLoadedScope(requestedScope);
     setMeta(null);
     setOrg(null);
     setMyRole(undefined);
     setLoadError(null);
     setRaw(null);
     const mRes = await loadOne(() => api.GET("/api/v1/meta"));
+    if (!isCurrent()) return;
     if (!mRes.ok) return setLoadError(mRes.error);
     setMeta(mRes.data as Meta);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5). This used to fetch the org list here and
@@ -171,6 +209,7 @@ export default function Sites() {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Member[]>;
+    if (!isCurrent()) return;
     setMyRole(roleFromMembers(memRes, myId).role);
 
     const sRes = (await loadOne(() =>
@@ -178,12 +217,14 @@ export default function Sites() {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Site[]>;
+    if (!isCurrent()) return;
     if (!sRes.ok) return setLoadError(sRes.error);
     const nRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/nodes", {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Node[]>;
+    if (!isCurrent()) return;
     if (!nRes.ok) return setLoadError(nRes.error);
     // Per-site subnet fetches are independent → run them in PARALLEL (review #6: was a serial for-await
     // that stalled N round-trips deep on an N-site org).
@@ -196,19 +237,21 @@ export default function Sites() {
         ),
       ),
     )) as Loaded<SiteSubnet[]>[];
+    if (!isCurrent()) return;
     const subnetsBySite: Record<string, SiteSubnet[]> = {};
     for (let i = 0; i < sRes.data.length; i++) {
       const subRes = subResults[i];
       if (!subRes.ok) return setLoadError(subRes.error); // any failed subnet load → legible retry, not a partial topology
       subnetsBySite[sRes.data[i].id] = subRes.data;
     }
-    // S8.6 hub set (member-readable). NON-fatal: a load failure just hides the HA surface (render-floor —
-    // show nothing rather than a broken card or block the whole topology).
+    // A failed hub read does not block the topology. Failover shows an unavailable state
+    // and withholds pin controls until the current configuration can be read.
     const hRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/hub-set", {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<HubSet>;
+    if (!isCurrent()) return;
     // D1 — the org-wide DNS fan-out. ONE request per site, issued HERE with the rest of the page load, not
     // per render: a per-site effect would re-fire on every selection change the mesh causes.
     //
@@ -225,11 +268,13 @@ export default function Sites() {
         ),
       ),
     )) as Loaded<DNSForward[]>[];
+    if (!isCurrent()) return;
     setRaw({
       sites: sRes.data,
       nodes: nRes.data,
       subnetsBySite,
       hubSet: hRes.ok ? hRes.data : null,
+      hubSetUnavailable: !hRes.ok,
       forwards: mergeOrgForwards(
         sRes.data.map((site, i) => ({ site, res: fwdResults[i] })),
       ),
@@ -237,43 +282,43 @@ export default function Sites() {
     // ⚠ currentOrg IS A DEPENDENCY, AND THAT IS THE HALF THAT MAKES THE SWITCHER WORK. Without it the
     // page keeps rendering the org it mounted with — the control moves, the data does not, and the user is
     // looking at one tenant's screen labelled with another's name.
-  }, [currentOrg, myId]);
+  }, [currentOrg, myId, loadScope, orgLoading, orgFailed]);
   useEffect(() => {
     reload();
   }, [reload]);
 
-  const gate = siteGate({ role: myRole, emailVerified });
+  const gate = siteGate({ role: scopeCurrent ? myRole : undefined, emailVerified });
   const view = sitesView({
-    ready: meta != null && org != null,
-    loadError: loadError != null,
+    ready: scopeCurrent && meta != null && org != null,
+    loadError: scopeCurrent && loadError != null,
   });
 
   const cards: SiteCard[] = useMemo(
     () =>
-      raw ? assembleTopology(raw.sites, raw.subnetsBySite, raw.nodes) : [],
-    [raw],
+      scopeCurrent && raw ? assembleTopology(raw.sites, raw.subnetsBySite, raw.nodes) : [],
+    [raw, scopeCurrent],
   );
   // Approved-subnet count per site — the CW threshold input. Unbound nodes — the bind picker. All gateways
   // (nodes bound to any site) — the CW sub-ceiling naming input. All derived from wire data.
   const approvedCountBySite = useMemo(() => {
     const m: Record<string, number> = {};
-    if (raw)
+    if (scopeCurrent && raw)
       for (const [sid, subs] of Object.entries(raw.subnetsBySite))
         m[sid] = subs.filter((s) => s.status === "approved").length;
     return m;
-  }, [raw]);
+  }, [raw, scopeCurrent]);
   const unboundGatewayNodes = useMemo(
     () =>
-      raw
+      scopeCurrent && raw
         ? raw.nodes.filter(
             (n) => !n.site_id && n.status === "active" && n.enrolled_kind === "gateway",
           )
         : [],
-    [raw],
+    [raw, scopeCurrent],
   );
   const allGateways = useMemo(() => cards.flatMap((c) => c.gateways), [cards]);
 
-  const selectedCard = cards.find((c) => c.id === selectedSiteId) ?? null;
+  const selectedCard = cards.find(c => selectedSiteId ? c.id === selectedSiteId : selectedGatewayId ? c.gateways.some(gateway => gateway.id === selectedGatewayId) : false) ?? null;
   const visibleCards = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return cards;
@@ -282,6 +327,9 @@ export default function Sites() {
       card.gateways.some((gateway) => gateway.name.toLowerCase().includes(needle)),
     );
   }, [cards, query]);
+
+  const inventoryPage = Math.min(Math.floor(requestedInventoryPage), Math.max(1, Math.ceil(visibleCards.length / inventoryPageSize)));
+  const inventoryRows = visibleCards.slice((inventoryPage - 1) * inventoryPageSize, inventoryPage * inventoryPageSize);
 
   const searchResults = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -307,7 +355,7 @@ export default function Sites() {
       updateQuery({ site: null, gateway: result.gatewayId });
       return;
     }
-    updateQuery({ site: result.siteId, gateway: result.gatewayId });
+    updateQuery({ site: result.siteId, gateway: result.gatewayId, detail: null, dns: null });
   }
 
   useEffect(() => {
@@ -317,7 +365,7 @@ export default function Sites() {
   }, [cards, selectedSiteId, updateQuery]);
 
   const selectSite = useCallback(
-    (siteId: string | null) => updateQuery({ site: siteId, gateway: null, dns: null }),
+    (siteId: string | null) => updateQuery({ site: siteId, gateway: null, dns: null, detail: null }),
     [updateQuery],
   );
 
@@ -327,36 +375,23 @@ export default function Sites() {
   );
 
   return (
-    <div className="network-management sites-workspace flex flex-col gap-5">
-      <PageHeader
-        title="Site-to-site"
-        subtitle={org ? `${org.name}${raw ? ` · ${cards.length} ${cards.length === 1 ? "network" : "networks"}` : ""}` : "…"}
-        actions={
-          view === "body" ? (
-            <div className="network-header-actions">
-              {gate.canManage && <Link className="sites-primary-action" to="/network/setup">Set up a network</Link>}
-            </div>
-          ) : null
-        }
-      />
-
-      <div className="s2s-workspace-toolbar">
+    <div className="site-to-site-workspace network-management sites-workspace s2s-networks-workspace">
+      {!selectedCard && <h1 className="sr-only">Site-to-site</h1>}
+      <div className="s2s-networks-topbar">
         <SiteToSiteNavigation active="networks" />
-        {view === "body" && section === "overview" && <SiteOverviewSummary cards={cards} unboundCount={unboundGatewayNodes.length} />}
+        {view === "body" && <div className="s2s-networks-actions"><Button size="sm" variant="ghost" aria-label="Refresh networks" onClick={() => void reload()}>Refresh</Button>{gate.canManage && <Link className="sites-primary-action" to="/network/setup">Set up a network</Link>}</div>}
       </div>
 
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
       )}
       {view === "loading" && (
-        <Card>
-          <Loading label="Loading Sites…" />
-        </Card>
+        <div className="s2s-network-state"><Loading label="Loading Sites…" /></div>
       )}
 
       {view === "body" && raw != null && org != null && (
         <div className="sites-layout">
-          <nav className="sites-section-nav" aria-label="Network management">
+          <nav className="sites-section-nav s2s-networks-sections" aria-label="Network management">
             {[
               ["overview", "Inventory", "Your networks and gateways"],
               ["topology", "Topology", "See how networks connect"],
@@ -372,15 +407,22 @@ export default function Sites() {
           <div className="sites-section-content">
           {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
-              {mapCollapsed && <SiteList
-                toolbar={<Input aria-label="Search networks" placeholder="Search networks…" value={query} onChange={event => updateQuery({ q: event.target.value, site: null, gateway: null })} className="sites-search" />}
-                cards={visibleCards}
+              {!selectedCard && mapCollapsed && <SiteList
+                toolbar={<Input aria-label="Search networks" placeholder="Search networks…" value={query} onChange={event => updateQuery({ q: event.target.value, site: null, gateway: null, dns: null, detail: null })} className="sites-search" />}
+                cards={inventoryRows}
+                total={visibleCards.length}
+                page={inventoryPage}
+                pageSize={inventoryPageSize}
+                onPageChange={page => updateQuery({ page: page === 1 ? null : String(page) })}
+                onPageSizeChange={size => updateQuery({ page_size: size === 20 ? null : String(size) })}
+                onClearSearch={() => updateQuery({ q: null, page: null })}
                 canManage={gate.canManage}
                 query={query}
                 selectedId={selectedSiteId}
                 onSelect={selectSite}
+                onRanges={site => updateQuery({ site, gateway: null, dns: null, detail: "ranges" })}
               />}
-              {!mapCollapsed && <Panel
+              {!selectedCard && !mapCollapsed && <OperationalSection
                 title="WireGuard topology"
                 className="min-w-0"
                 actions={
@@ -444,29 +486,22 @@ export default function Sites() {
                   links={mesh.links}
                   selectedId={selectedSiteId}
                   onSelect={selectSite}
-                  maxHeight={225}
+                  maxHeight={360}
                   empty="Route a LAN to draw your first site here."
                 />
                 <p className="text-micro text-ink-faint">WireGuard links only. View Connections for IPsec tunnel status.</p>
-              </Panel>}
-              <SelectedSiteStrip card={selectedCard} selectedGatewayId={selectedGatewayId} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />
+              </OperationalSection>}
+              {!selectedCard && <SelectedSiteStrip canManage={gate.canManage} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />}
 
-              {gate.canManage && <details className="sites-advanced"><summary>Advanced setup</summary><div>{unboundGatewayNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setRoutingLan(true)}>Route a LAN</Button>}<Button variant="ghost" size="sm" onClick={() => setRegistering(true)}>Create empty location</Button><Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button></div></details>}
+              {!selectedCard && gate.canManage && <details className="sites-advanced s2s-disclosure"><summary>Advanced setup</summary><div className="s2s-disclosure-body">{unboundGatewayNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setRoutingLan(true)}>Route a LAN</Button>}<Button variant="ghost" size="sm" onClick={() => setRegistering(true)}>Create empty location</Button><Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button></div></details>}
 
-              {selectedCard && (
-                <Modal title={selectedCard.name} size="workspace" showClose onDismiss={() => selectSite(null)}>
-                  <div id="site-details">
-                  <SiteCardView key={selectedCard.id}
-                    card={selectedCard}
-                    canManage={gate.canManage}
-                    orgId={org.id}
-                    unboundNodes={unboundGatewayNodes}
-                    dnsFocus={dnsFocus}
-                    onDone={reload}
-                  />
-                  </div>
-                </Modal>
-              )}
+              {selectedCard && <SiteCardView key={`${org.id}:${selectedCard.id}`}
+                card={selectedCard} canManage={gate.canManage} orgId={org.id}
+                unboundNodes={unboundGatewayNodes} dnsFocus={dnsFocus} selectedGatewayId={selectedGatewayId}
+                step={detail} params={params} onStepChange={next => updateQuery({ detail: next === "overview" ? null : next, gateway: next === "gateways" ? selectedGatewayId : null, dns: next === "advanced" && dnsFocus ? "1" : null })}
+                onDone={reload}
+              />}
+
             </div>
           )}
 
@@ -481,9 +516,9 @@ export default function Sites() {
                 onDone={reload}
               />
             ) : (
-              <Panel title="Range approvals">
+              <OperationalSection title="Range approvals">
                 <p className="text-cell text-ink-tertiary">You can view Sites, but approving routed ranges requires site:manage and a verified email.</p>
-              </Panel>
+              </OperationalSection>
             )
           )}
 
@@ -492,19 +527,20 @@ export default function Sites() {
               orgId={org.id}
               canManage={gate.canManage}
               hubSet={raw.hubSet}
+              unavailable={raw.hubSetUnavailable}
               gateways={allGateways}
               onDone={reload}
             />
           )}
 
           {section === "dns" && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Advanced Site Networking</p><p className="mt-1 text-cell text-ink-tertiary">Optional site-to-site zone forwarding. Private DNS Resolver remains the only primary configuration for FQDN access.</p></div><Button variant="ghost" onClick={() => updateQuery({ section: "overview", site: null, gateway: null, q: null, dns: null })}>Back to Sites overview</Button></div>
+            <div className="s2s-dns-workspace">
               <DNSForwardsPanel
                 view={raw.forwards}
                 siteCount={raw.sites.length}
                 canManage={gate.canManage}
                 onManageSite={(siteId) => updateQuery({ section: "overview", site: siteId, gateway: null, q: null, dns: "1" })}
+                onRetry={reload}
               />
             </div>
           )}
@@ -512,17 +548,17 @@ export default function Sites() {
         </div>
       )}
       {view === "body" && raw == null && (
-        <Card><Loading label="Loading Sites…" /></Card>
+        <div className="s2s-network-state"><Loading label="Loading Sites…" /></div>
       )}
 
-      {registering && org && (
+      {registering && org && gate.canManage && (
         <RegisterSiteModal
           orgId={org.id}
           onDone={reload}
           onClose={() => setRegistering(false)}
         />
       )}
-      {routingLan && org && (
+      {routingLan && org && gate.canManage && (
         <RouteLANModal
           orgId={org.id}
           nodes={unboundGatewayNodes}
@@ -539,53 +575,57 @@ export default function Sites() {
 // The wireframe lists zones across the org with a `via <site>` column. Our endpoint is per-site, so this is
 // an N+1 — founder-ruled and accepted, because the invariant it exists to show (one zone maps to one
 // resolver ORG-WIDE) cannot be seen from inside any single site.
-function DNSForwardsPanel({
-  view,
-  siteCount,
-  canManage,
-  onManageSite,
-}: {
-  view: OrgForwardsView;
-  siteCount: number;
-  canManage: boolean;
-  onManageSite: (siteId: string) => void;
+function DNSForwardsPanel({ view, siteCount, canManage, onManageSite, onRetry }: {
+  view: OrgForwardsView; siteCount: number; canManage: boolean;
+  onManageSite: (siteId: string) => void; onRetry: () => void;
 }) {
-  const columns = [
-    { key: "zone", header: "Zone", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-sans text-ink-body">{row.domain}</span> },
-    { key: "resolver", header: "Resolver", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-sans text-ink-tertiary">{row.resolverIp}</span> },
-    { key: "site", header: "Network", cell: (row: OrgForwardsView["rows"][number]) => <span className="text-ink-tertiary">{row.siteName}</span> },
-    { key: "status", header: "Status", cell: (row: OrgForwardsView["rows"][number]) => view.conflicts.includes(row.domain) ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge> },
-    { key: "action", header: "", cell: (row: OrgForwardsView["rows"][number]) => canManage ? <Button variant="ghost" size="sm" onClick={() => onManageSite(row.siteId)}>Manage</Button> : <span className="text-micro text-ink-faint">Read-only</span> },
-  ];
-  return (
-    <Panel title="Cross-site DNS forwarding" className="min-w-0" actions={<span className="text-micro text-ink-tertiary">{view.rows.length} configured</span>}>
-      <p className="-mt-1 text-cell text-ink-tertiary">Optional Site-to-Site zone routes. FQDN access uses <Link className="text-accent-400 hover:underline" to="/access/resources?type=fqdn#private-dns-heading">Private DNS Resolvers</Link>.</p>
-      {/* ⛔ THE PARTIAL-LOAD BANNER COMES FIRST, above the rows it qualifies. Below them it would be read
-          after the list had already been believed. */}
-      {view.failedSites.length > 0 && (
-        <p role="status" className="text-cell text-danger">
-          Could not read zones from {view.failedSites.join(", ")}. This list is
-          incomplete, so conflicts cannot be ruled out.
-        </p>
-      )}
-
-      {siteCount === 0 ? (
-        <EmptyState>Nothing to forward between yet.</EmptyState>
-      ) : view.rows.length === 0 ? (
-        <EmptyState>
-          {view.conflictsAreComplete
-            ? "No forwarded zones. Add one on a site below."
-            : "No zones read from the sites that answered."}
-        </EmptyState>
-      ) : <DataTable caption="DNS forwarding" columns={columns} rows={view.rows} rowKey={(row: OrgForwardsView["rows"][number]) => `${row.siteId}-${row.domain}`} empty="No forwarded zones." failed={false} />}
-
-      {/* ⛔ ONLY CLAIM A CLEAN BILL OF HEALTH WHEN THE READ WAS COMPLETE. "No conflicts found" and "no
-          conflicts exist" are different claims and only the second is reassuring. */}
-      {view.conflicts.length > 0 && (
-        <p className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-cell text-danger"><strong>{view.conflicts.length} conflict{view.conflicts.length === 1 ? "" : "s"}:</strong> {view.conflicts.join(", ")}. Keep one resolver per zone.</p>
-      )}
-    </Panel>
-  );
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [zone, setZone] = useState<string | null>(null);
+  const conflictRows = view.rows.filter(row => view.conflicts.includes(row.domain));
+  const filtered = view.rows.filter(row => (filter !== "conflicts" || view.conflicts.includes(row.domain)) && `${row.domain} ${row.resolverIp} ${row.siteName}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const pagination = useNetworkListPage(filtered.length);
+  const pageRows = filtered.slice(pagination.start, pagination.end);
+  const selectedRows = zone === null ? [] : view.rows.filter(row => row.domain === zone);
+  const selectedPagination = useNetworkListPage(selectedRows.length);
+  const selectedPageRows = selectedRows.slice(selectedPagination.start, selectedPagination.end);
+  const clearFilters = () => { setQuery(""); setFilter("all"); pagination.onPageChange(1); };
+  const openZone = (domain: string) => { setZone(domain); selectedPagination.onPageChange(1); };
+  const partialNotice = view.failedSites.length > 0 && <div role="status" className="s2s-operational-notice s2s-partial-notice"><p>Could not read zones from {view.failedSites.join(", ")}. This list is incomplete, so conflicts cannot be ruled out.</p><Button size="sm" variant="ghost" onClick={onRetry}>Retry DNS reads</Button></div>;
+  const rowMenu = (row: OrgForwardsView["rows"][number], includeDetails = true) => <AppAccessRowMenu label={`DNS actions for ${row.domain} in ${row.siteName}`} actions={[
+    ...(includeDetails ? [{ key: "details", label: "Zone details", onSelect: () => openZone(row.domain) }] : []),
+    ...(canManage ? [{ key: "edit", label: `Edit forwarding in ${row.siteName}`, onSelect: () => onManageSite(row.siteId) }] : []),
+  ]} />;
+  if (zone !== null) return <section className="s2s-dns-detail" aria-label={`${zone} forwarding`}>
+    <nav className="s2s-network-breadcrumb" aria-label="DNS forwarding breadcrumb"><button type="button" onClick={() => setZone(null)}>Back to DNS forwarding</button><span aria-hidden="true">/</span><span aria-current="page">{zone}</span></nav>
+    <header className="s2s-network-header"><h2>{zone}</h2><span className="s2s-muted">{selectedRows.length} network{selectedRows.length === 1 ? "" : "s"}</span></header>
+    {partialNotice}
+    {view.conflicts.includes(zone) && <div className="s2s-operational-notice" role="status"><p>Multiple resolvers for this zone. Keep one target IP across networks.</p></div>}
+    {!selectedRows.length ? <div className="s2s-empty-state" role="status"><h3>No forwarding records</h3><p>{view.conflictsAreComplete ? "This zone is no longer configured." : "This zone was not returned by the networks that answered."}</p></div> : <div className="s2s-flat-table s2s-dns-target-table"><DataTable caption="Zone resolver targets" rows={selectedPageRows} rowKey={row => `${row.siteId}-${row.domain}`} failed={false} empty={null} pageSize={0} filterable={false} variant="flat" columns={[
+      { key: "site", header: "Network", cell: row => row.siteName },
+      { key: "resolver", header: "Resolver target", cell: row => row.resolverIp },
+      { key: "actions", header: "Actions", cell: row => rowMenu(row, false) },
+    ]} /></div>}
+    <AppAccessPagination maxOffset={null} page={selectedPagination.page} pageSize={selectedPagination.pageSize} count={selectedPageRows.length} hasNext={selectedPagination.hasNext} onPageChange={selectedPagination.onPageChange} onPageSizeChange={selectedPagination.onPageSizeChange} previousLabel="Previous resolver targets" nextLabel="Next resolver targets" />
+    <p className="s2s-operation-context s2s-dns-detail-note">{canManage ? "Use a network’s row menu to edit its forwarding settings." : "An owner or admin can edit forwarding settings."}</p>
+  </section>;
+  return <section className="s2s-dns-workspace" aria-label="Cross-site DNS forwarding">
+    <h2 className="sr-only">Cross-site DNS forwarding</h2>
+    {partialNotice}
+    <div className="s2s-operations-toolbar">
+      <div className="s2s-operations-filters"><Input aria-label="Search DNS forwards" placeholder="Search zones, resolvers or networks…" value={query} onChange={event => { setQuery(event.target.value); pagination.onPageChange(1); }} /><Select aria-label="DNS forwarding status" width="auto" value={filter} onChange={event => { setFilter(event.target.value); pagination.onPageChange(1); }}><option value="all">All forwards</option><option value="conflicts">Conflicts ({conflictRows.length})</option></Select></div>
+      <div className="s2s-operations-summary"><span>{filtered.length}{view.conflictsAreComplete ? " forwards" : " loaded forwards"}</span>{view.conflicts.length > 0 && <button className="s2s-conflict-filter" type="button" aria-label="Show conflicting forwards" onClick={() => { setFilter("conflicts"); setQuery(""); pagination.onPageChange(1); }}>{view.conflicts.length} zone conflict{view.conflicts.length === 1 ? "" : "s"}</button>}</div>
+    </div>
+    {!pageRows.length ? <div className="s2s-empty-state" role="status"><h3>{query || filter !== "all" ? "No matching forwards" : siteCount === 0 ? "No networks yet" : view.conflictsAreComplete ? "No forwarded zones" : "No records loaded"}</h3><p>{query || filter !== "all" ? "Try another zone, resolver or network." : siteCount === 0 ? "Add a network before configuring zone forwarding." : view.conflictsAreComplete ? "Add a zone in a network’s Advanced settings." : "Retry the unavailable networks to read their zones."}</p>{(query || filter !== "all") && <Button size="sm" variant="ghost" onClick={clearFilters}>Clear filters</Button>}</div> : <div className="s2s-flat-table s2s-dns-table"><DataTable caption="DNS forwarding" rows={pageRows} rowKey={row => `${row.siteId}-${row.domain}`} failed={false} empty={null} filterable={false} pageSize={0} variant="flat" columns={[
+      { key: "zone", header: "Zone", cell: row => <button type="button" className="s2s-name-link" onClick={() => openZone(row.domain)}>{row.domain}</button> },
+      { key: "network", header: "Network", cell: row => row.siteName },
+      { key: "resolver", header: "Resolver", cell: row => row.resolverIp },
+      { key: "status", header: "Status", cell: row => view.conflicts.includes(row.domain) ? <Badge tone="danger">Conflict</Badge> : <Badge tone="neutral">Configured</Badge> },
+      { key: "actions", header: "Actions", cell: row => rowMenu(row) },
+    ]} /></div>}
+    <AppAccessPagination maxOffset={null} page={pagination.page} pageSize={pagination.pageSize} count={pageRows.length} hasNext={pagination.hasNext} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} previousLabel="Previous DNS forwards" nextLabel="Next DNS forwards" />
+    <details className="s2s-disclosure s2s-operations-help"><summary>About DNS forwarding</summary><div className="s2s-disclosure-body"><p>Use the same resolver target for a zone across networks.</p><p>Private DNS Resolver remains the only primary configuration for FQDN access. Manage it in <Link className="s2s-text-link" to="/access/resources?type=fqdn#private-dns-heading">Private DNS Resolvers</Link>.</p></div></details>
+  </section>;
 }
 
 // RouteLANModal (S8.5 D1) — the one-screen affordance for the solo-admin / Pritunl migrator: pick a
@@ -630,6 +670,7 @@ function RouteLANModal({
   }
   return (
     <Modal
+      placement="right" showClose
       title="Route a LAN"
       onDismiss={onClose}
       actions={
@@ -643,6 +684,7 @@ function RouteLANModal({
         </>
       }
     >
+      <div className="s2s-setup-form">
       <p className="text-cell text-ink-tertiary">Choose an available gateway and the private range behind it. Tunnex creates the Site and approves the route in one step.</p>
       <Field label="Gateway">
         <Select value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
@@ -669,6 +711,7 @@ function RouteLANModal({
         />
       </Field>
       <ErrorText>{err}</ErrorText>
+      </div>
     </Modal>
   );
 }
@@ -679,213 +722,76 @@ function RouteLANModal({
 // link shows "—", NEVER 0; an idle link shows its real 0 bytes), and the generation as the set's version
 // tag. When the active order diverges from the configured pins a failover is IN EFFECT — stated, with the
 // demoted member marked and an audit pointer. Member-readable; the pin control is manage-gated.
-function HubSetSection({
-  orgId,
-  canManage,
-  hubSet,
-  gateways,
-  onDone,
-}: {
-  orgId: string;
-  canManage: boolean;
-  hubSet: HubSet | null;
-  gateways: GatewayView[];
-  onDone: () => void;
+function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, onDone }: {
+  orgId: string; canManage: boolean; hubSet: HubSet | null; unavailable: boolean;
+  gateways: GatewayView[]; onDone: () => void;
 }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [report, setReport] = useState<HubMemberRow | null>(null);
   const view = hubSetView(hubSet, Date.now());
-  const nameOf = (id: string) =>
-    gateways.find((g) => g.id === id)?.name ?? id.slice(0, 8);
-  const priorityByNode = new Map<string, number | null>();
-  for (const m of hubSet?.members ?? [])
-    priorityByNode.set(m.node_id, m.hub_priority ?? null);
+  const nameOf = (id: string) => gateways.find(gateway => gateway.id === id)?.name ?? id.slice(0, 8);
+  const priorities = new Map((hubSet?.members ?? []).map(member => [member.node_id, member.hub_priority ?? null]));
+  const pins = [...priorities.values()].filter((value): value is number => value != null);
+  const nextPin = pins.length ? Math.max(...pins) + 1 : 1;
 
   async function setPin(nodeId: string, priority: number | null) {
+    if (busy || !canManage || unavailable) return;
     setBusy(true);
     setErr(null);
-    const { error } = await api.PUT(
-      "/api/v1/organizations/{orgId}/nodes/{nodeId}/hub-priority",
-      {
-        params: { path: { orgId, nodeId } },
-        body: { priority },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not set the hub priority."));
-    onDone();
+    try {
+      const { error } = await api.PUT("/api/v1/organizations/{orgId}/nodes/{nodeId}/hub-priority", {
+        params: { path: { orgId, nodeId } }, body: { priority },
+      });
+      if (error) setErr(apiErrorMessage(error, "Could not set the hub priority."));
+      else { setManaging(false); onDone(); }
+    } catch { setErr("Could not set the hub priority. Refresh before trying again."); }
+    finally { setBusy(false); }
   }
 
-  // Nothing to show a MEMBER when no HA set is configured (zero-config — no HA surface).
+  if (unavailable) return <section className="s2s-failover-workspace" aria-label="WireGuard redundancy">
+    <div className="s2s-empty-state" role="status"><h2>Hub configuration unavailable</h2><p>Refresh to read the current primary and standby configuration.</p><Button variant="ghost" size="sm" onClick={onDone}>Retry hub configuration</Button></div>
+  </section>;
   if (!view && !canManage) return null;
-
-  // ⛔ BELOW THE THRESHOLD THE PANEL EXPLAINS ITSELF AND OFFERS NO CONTROL (S14.5, founder-ruled).
-  //
-  // It used to render "pin as primary" beside a lone gateway, under copy about failing transit over to a
-  // standby if the primary goes stale. THERE IS NOTHING TO FAIL OVER TO. A control for multi-gateway transit,
-  // offered on a one-gateway stack, describes machinery that cannot engage — the same family as a
-  // `site link down` badge on a link that was never attempted.
-  //
-  // THE RULE, FOR EVERY SCREEN: WHEN A CONTROL IS MEANINGLESS AT CURRENT SCALE, RENDER THE PANEL WITH AN
-  // EMPTY STATE THAT NAMES THE PRECONDITION AND THE ACTION THAT CROSSES IT. NEVER THE CONTROL, NEVER
-  // DISABLED-WITHOUT-REASON, NEVER ABSENT.
-  //
-  //   · not ABSENT   — scale is a state the operator MOVES THROUGH, unlike an edition boundary, which is a
-  //                    purchase. Hiding HA means they never learn it exists nor what unlocks it.
-  //   · not DISABLED — a greyed control says something is unavailable without saying why or what to do.
-  //   · not OFFERED  — which is what shipped, and it produced the question "when does connectivity start?"
-  //
-  // An EXISTING hub set still renders in full: crossing back below the threshold (a gateway revoked) must
-  // show the set that is still configured, not hide it behind a precondition notice.
-  const HA_MIN_GATEWAYS = 2;
-  if (!view && gateways.length < HA_MIN_GATEWAYS) {
-    return (
-      <Panel title="WireGuard redundancy">
-        <p className="mt-1 text-xs text-slate-500">
-          A primary and standby WireGuard hub need {HA_MIN_GATEWAYS} or more gateways. You have{" "}
-          {gateways.length}. Assign another gateway to a network, then choose the hub candidates here.
-          IPsec tunnel redundancy is shown in Connections.
-        </p>
-      </Panel>
-    );
-  }
-
-  return (
-    <Panel
-      title="WireGuard redundancy"
-      className="min-w-0"
-      actions={view ? <Badge tone={view.promotionInEffect ? "warn" : "neutral"}>generation {view.generation}</Badge> : undefined}
-    >
-      <p className="mb-3 text-cell text-ink-tertiary">Manage primary and standby WireGuard hubs. IPsec tunnel redundancy is shown in Connections.</p>
-      {view ? (
-        <>
-          <div className="grid overflow-hidden rounded-lg border border-line sm:grid-cols-3">
-            <div className="border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r"><p className="text-micro uppercase tracking-wide text-ink-faint">Primary</p><p className="mt-1 font-medium text-ink-heading">{nameOf(view.members.find((member) => member.role === "primary")?.nodeId ?? "")}</p></div>
-            <div className="border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r"><p className="text-micro uppercase tracking-wide text-ink-faint">Standbys</p><p className="mt-1 font-medium tabular-nums text-ink-heading">{view.members.filter((member) => member.role !== "primary").length}</p></div>
-            <div className="px-3 py-2.5"><p className="text-micro uppercase tracking-wide text-ink-faint">State</p><p className={`mt-1 font-medium ${view.promotionInEffect ? "text-warn" : "text-ink-heading"}`}>{view.promotionInEffect ? "Failover active" : "Configured"}</p></div>
-          </div>
-          {view.promotionInEffect && <p className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-cell text-warn"><span>Standby is carrying transit while the primary is unavailable.</span><Link className="text-ink-heading underline underline-offset-2" to="/audit">View timeline</Link></p>}
-          <div className="mt-3 overflow-x-auto">
-            <div className="min-w-[560px]">
-              <div className="grid grid-cols-[minmax(12rem,1fr)_7rem_7rem_minmax(14rem,1fr)] gap-3 border-b border-line px-2 py-1.5 text-micro uppercase tracking-wide text-ink-faint"><span>Gateway</span><span>Role</span><span>Health</span><span className="text-right">Traffic · handshake</span></div>
-              <ul>
-                {view.members.map((member) => (
-                  <li key={member.nodeId} className="grid min-h-11 grid-cols-[minmax(12rem,1fr)_7rem_7rem_minmax(14rem,1fr)] items-center gap-3 border-b border-line/70 px-2 text-cell last:border-0">
-                    <span className="font-medium text-ink-body">{nameOf(member.nodeId)}</span>
-                    <span><Badge tone="neutral">{member.role}</Badge></span>
-                    <span className={member.warm === false ? "text-danger" : member.warm === true ? "text-ok" : "text-ink-tertiary"}>{member.demoted ? "demoted" : member.warm === false ? "stale" : member.warm === true ? "warm" : "unknown"}</span>
-                    <span className="text-right font-sans text-micro text-ink-tertiary">↓{member.rx} ↑{member.tx} · {member.handshakeAge === "n/a" ? "no handshake" : member.handshakeAge}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </>
-      ) : <EmptyState>No hub set is configured. Choose at least two candidates to enable gateway failover.</EmptyState>}
-
-      {canManage && (
-        <details className="mt-3 border-t border-line pt-3">
-          <summary className="cursor-pointer text-cell font-medium text-ink-body">Manage hub candidates · {gateways.length} gateways</summary>
-          <p className="mt-1 text-micro text-ink-tertiary">Lower pin numbers are preferred during failover.</p>
-          <ul className="mt-2">
-            {gateways.map((g) => {
-              const pri = priorityByNode.get(g.id);
-              const pinned = pri != null;
-              const pins = [...priorityByNode.values()].filter(
-                (v): v is number => v != null,
-              );
-              const nextPin = pins.length ? Math.max(...pins) + 1 : 1; // append after the current candidates
-              return (
-                <li key={g.id} className="flex min-h-10 flex-wrap items-center gap-2 border-b border-line/70 text-cell last:border-0">
-                  <span className="font-medium text-ink-body">{g.name}</span>
-                  {pinned && (
-                    <Badge tone="neutral">priority {pri}</Badge>
-                  )}
-                  <span className="ml-auto flex gap-1">
-                    {pinned ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => setPin(g.id, null)}
-                      >
-                        Unpin
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => setPin(g.id, nextPin)}
-                      >
-                        {nextPin === 1 ? "Set primary" : `Pin #${nextPin}`}
-                      </Button>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
-      <ErrorText>{err}</ErrorText>
-    </Panel>
-  );
+  const tooFewGateways = !view && gateways.length < 2;
+  const stale = view?.members.filter(member => member.warm === false).length ?? 0;
+  const missing = view?.members.filter(member => member.warm === null).length ?? 0;
+  return <section className="s2s-failover-workspace" aria-label="WireGuard redundancy">
+    <h2 className="sr-only">WireGuard redundancy</h2>
+    <div className="s2s-operations-toolbar">
+      <div className="s2s-operations-summary"><span>{view ? `${view.members.length} transit hubs` : "No transit hubs"}</span>{view && <span className="s2s-muted">Generation {view.generation}</span>}{stale > 0 && <span className="s2s-report-warning">{stale} stale handshake report{stale === 1 ? "" : "s"}</span>}{missing > 0 && <span className="s2s-muted">{missing} report{missing === 1 ? "" : "s"} unavailable</span>}</div>
+      {canManage && !tooFewGateways && <Button size="sm" onClick={() => setManaging(true)}>Manage candidates</Button>}
+    </div>
+    {view?.promotionInEffect && <div className="s2s-operational-notice" role="status"><span>Standby promoted to acting primary.</span><Link to="/audit">View timeline</Link></div>}
+    {view ? <div className="s2s-flat-table s2s-hub-table"><DataTable<HubMemberRow> caption="Transit hubs" rows={view.members} rowKey={member => member.nodeId} failed={false} filterable={false} pageSize={0} empty={null} variant="flat" columns={[
+      { key: "gateway", header: "Gateway", cell: member => <Link className="s2s-name-link" to={`/gateways/${member.nodeId}`}>{nameOf(member.nodeId)}</Link> },
+      { key: "role", header: "Acting role", cell: member => <div className="s2s-role-cell"><span>{member.role === "primary" ? "Primary" : "Standby"}</span>{member.demoted && <span className="s2s-muted">Configured primary · demoted</span>}</div> },
+      { key: "health", header: "Handshake", cell: member => <Badge tone={member.warm === false ? "danger" : member.warm === true ? "ok" : "neutral"}>{member.warm === false ? "Stale" : member.warm === true ? "Recent" : "Not reported"}</Badge> },
+      { key: "last", header: "Last handshake", cell: member => member.handshakeAge === "n/a" ? "Not reported" : member.handshakeAge },
+      { key: "actions", header: "Actions", cell: member => <AppAccessRowMenu label={`Hub actions for ${nameOf(member.nodeId)}`} actions={[{ key: "report", label: "Report details", onSelect: () => setReport(member) }]} /> },
+    ]} /></div> : <div className="s2s-empty-state" role="status"><h2>{tooFewGateways ? "Add another gateway" : "Choose your transit hubs"}</h2><p>{tooFewGateways ? "Failover needs a primary and standby gateway. Assign another gateway to a network to begin." : "Pin a preferred primary and at least one standby."}</p>{tooFewGateways && <Link className="s2s-text-link" to="/gateways">View gateways</Link>}</div>}
+    <ErrorText>{err}</ErrorText>
+    <details className="s2s-disclosure s2s-operations-help"><summary>How failover works</summary><div className="s2s-disclosure-body"><p>Lower pin numbers are preferred. The acting primary can change when a candidate becomes unavailable.</p><p>A recent handshake is a gateway report, not an application reachability check.</p><Link className="s2s-text-link" to="/site-to-site?method=ipsec">IPsec tunnel redundancy in Connections</Link></div></details>
+    {canManage && managing && <Modal placement="right" size="wide" showClose title="Hub candidates" onDismiss={busy ? () => {} : () => setManaging(false)} actions={<Button variant="ghost" disabled={busy} onClick={() => setManaging(false)}>Done</Button>}>
+      <div className="s2s-candidate-editor"><p>Pin gateways in order of preference. The lowest number is the preferred primary.</p>
+        <NetworkDetailList label="Hub candidates" items={gateways} searchText={gateway => `${gateway.name} ${priorities.get(gateway.id) ?? ""}`} renderItem={gateway => {
+          const priority = priorities.get(gateway.id);
+          const pinned = priority != null;
+          return <li key={gateway.id} className="s2s-candidate-row"><div><strong>{gateway.name}</strong><span>{pinned ? `Priority ${priority}` : "Not pinned"}</span></div><Button variant="ghost" size="sm" disabled={busy} onClick={() => void setPin(gateway.id, pinned ? null : nextPin)}>{pinned ? "Unpin" : nextPin === 1 ? "Set primary" : `Pin #${nextPin}`}</Button></li>;
+        }} />
+        <ErrorText>{err}</ErrorText>
+      </div>
+    </Modal>}
+    {report && <Modal placement="right" showClose title={nameOf(report.nodeId)} onDismiss={() => setReport(null)} actions={<Button variant="ghost" onClick={() => setReport(null)}>Done</Button>}>
+      <div className="s2s-hub-report"><p>Last reported hub metrics.</p><dl className="s2s-network-facts"><div><dt>Acting role</dt><dd>{report.role === "primary" ? "Primary" : "Standby"}{report.demoted && " · configured primary demoted"}</dd></div><div><dt>Last handshake</dt><dd>{report.handshakeAge === "n/a" ? "Not reported" : report.handshakeAge}</dd></div><div><dt>Received</dt><dd>{report.reporting ? report.rx : "Not reported"}</dd></div><div><dt>Sent</dt><dd>{report.reporting ? report.tx : "Not reported"}</dd></div></dl><p>These counters do not verify application traffic.</p></div>
+    </Modal>}
+  </section>;
 }
 
-function SiteOverviewSummary({
-  cards,
-  unboundCount,
-}: {
-  cards: SiteCard[];
-  unboundCount: number;
-}) {
-  const gateways = cards.flatMap((card) => card.gateways);
-  const approved = cards.reduce(
-    (total, card) => total + card.subnets.filter((subnet) => subnet.status === "approved").length,
-    0,
-  );
-  const pending = cards.reduce(
-    (total, card) => total + card.subnets.filter((subnet) => subnet.status === "pending").length,
-    0,
-  );
-  const stats = [
-    { label: "Networks", value: cards.length, detail: `${cards.filter((card) => card.gateways.length > 0).length} with a gateway` },
-    { label: "Gateways", value: gateways.length + unboundCount, detail: unboundCount > 0 ? `${unboundCount} available to bind` : "all assigned" },
-    { label: "Routed ranges", value: approved, detail: "approved" },
-    { label: "Pending", value: pending, detail: pending > 0 ? "needs review" : "nothing waiting", attention: pending > 0 },
-  ];
-
-  return (
-    <section aria-label="Sites summary" className="sites-inline-summary">
-      {stats.map(stat => <div key={stat.label} title={stat.detail}><strong className={stat.attention ? "text-warn" : "text-ink-heading"}>{stat.value}</strong><span>{stat.label.toLowerCase()}</span></div>)}
-    </section>
-  );
-}
-
-function SelectedSiteStrip({ card, selectedGatewayId, unboundGateway, onRouteLan }: { card: SiteCard | null; selectedGatewayId: string | null; unboundGateway: Node | null; onRouteLan: () => void }) {
-  if (unboundGateway) {
-    return <section aria-label="Selected Site" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell"><span className="font-semibold text-ink-heading">{unboundGateway.name}</span><Badge tone="neutral">Unbound Gateway</Badge><span className="text-ink-tertiary">No Site is bound. Its location is not shown on this topology.</span><Button className="ml-auto" variant="ghost" onClick={onRouteLan}>Route a LAN</Button></section>;
-  }
-  if (!card) return null;
-  const activeGateway = card.gateways.find((gateway) => gateway.id === selectedGatewayId) ?? card.gateways.find((gateway) => gateway.status === "active");
-  const state = activeGateway?.health?.label ?? (activeGateway ? "Gateway active" : "No active Gateway");
-  const tone = activeGateway?.health?.tone as "ok" | "warn" | "danger" | "neutral" | undefined;
-  return (
-    <section
-      aria-label={`Selected Site: ${card.name}`}
-      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell"
-    >
-      <span className="font-semibold text-ink-heading">{card.name}</span>
-      <Badge tone={tone ?? "neutral"}>{state}</Badge>
-      <span className="text-ink-tertiary">{activeGateway ? `Gateway: ${activeGateway.name}` : `${card.gateways.length} gateway${card.gateways.length === 1 ? "" : "s"}`}</span>
-      <span className="text-ink-tertiary">{card.subnets.length} range{card.subnets.length === 1 ? "" : "s"}</span>
-      <a className="ml-auto text-accent-400 underline underline-offset-2 hover:text-ink-primary" href="#site-details">
-        View details
-      </a>
-    </section>
-  );
+function SelectedSiteStrip({ unboundGateway, canManage, onRouteLan }: { unboundGateway: Node | null; canManage: boolean; onRouteLan: () => void }) {
+  if (!unboundGateway) return null;
+  return <section aria-label="Selected Site" className="s2s-unbound-gateway"><strong>{unboundGateway.name}</strong><Badge tone="neutral">Unbound Gateway</Badge><p>No Site is bound. Its location is not shown on this topology.</p>{canManage && <Button variant="ghost" size="sm" onClick={onRouteLan}>Route a LAN</Button>}</section>;
 }
 
 // ── the read-only topology + per-site mutation affordances ───────────────────────────
@@ -915,7 +821,7 @@ function SiteList({
   canManage,
   query,
   selectedId,
-  onSelect,
+  onSelect, onRanges, total, page, pageSize, onPageChange, onPageSizeChange, onClearSearch,
 }: {
   toolbar: import("react").ReactNode;
   cards: SiteCard[];
@@ -923,6 +829,9 @@ function SiteList({
   query: string;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  onRanges: (id: string) => void;
+  total: number; page: number; pageSize: number;
+  onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void; onClearSearch: () => void;
 }) {
   const columns = [
     {
@@ -933,7 +842,7 @@ function SiteList({
           type="button"
           aria-pressed={c.id === selectedId}
           onClick={() => onSelect(c.id === selectedId ? null : c.id)}
-          className={`text-left font-sans ${c.id === selectedId ? "text-ink-heading underline" : "text-ink-primary"}`}
+          className="s2s-network-name"
         >
           {c.name}
         </button>
@@ -980,8 +889,8 @@ function SiteList({
           // ⛔ role + accessible name, NOT `title`. A `title` on a role-less <span> is not an accessible
           // name a screen reader reliably announces, and querying it violated query rule 1 — role and
           // accessible name only. The chip is a LIST ITEM stating a range's routing state, so it says so.
-          <span role="list" className="flex flex-wrap gap-1">
-            {c.subnets.map((sn) => (
+          <span className="s2s-network-range-cell"><span role="list" className="s2s-network-range-preview">
+            {c.subnets.slice(0, 3).map((sn) => (
               <span
                 key={sn.id}
                 role="listitem"
@@ -1000,144 +909,63 @@ function SiteList({
                 {sn.status === "pending" && " · pending"}
               </span>
             ))}
-          </span>
+          </span>{c.subnets.length > 3 && <button type="button" className="s2s-text-link" aria-label={`View ${c.subnets.length - 3} more ranges for ${c.name}`} onClick={() => onRanges(c.id)}>+{c.subnets.length - 3} more</button>}</span>
         ),
     },
   ];
 
-  return (
-    <Panel
-      title="Your networks"
-      actions={toolbar}
-    >
-      <DataTable
-        caption="Sites"
-        columns={columns}
-        rows={cards}
-        rowKey={(c: SiteCard) => c.id}
-        empty={
-          query.trim()
-            ? "No Sites or Gateways match this search. Clear the search to restore the inventory."
-            : canManage
-            ? "Add your first network using Set up a network."
-            : "No sites yet. An owner or admin can add one."
-        }
-        // The page blanks to a retry on any failed load, so reaching this render means the read succeeded.
-        failed={false}
-      />
-    </Panel>
-  );
+  return <section className="s2s-networks-inventory" aria-label="Network inventory">
+    <div className="s2s-network-toolbar">{toolbar}<span>{total} network{total === 1 ? "" : "s"}</span></div>
+    {cards.length ? <div className="s2s-network-table"><DataTable caption="Sites" columns={columns} rows={cards} rowKey={(card: SiteCard) => card.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="s2s-empty-state" role="status"><h3>{query.trim() ? "No matching networks" : "No networks yet"}</h3><p>{query.trim() ? "No Sites or Gateways match this search." : canManage ? "Set up a network to assign gateways and route its private ranges." : "An owner or admin can add a network."}</p>{query.trim() && <Button size="sm" variant="ghost" onClick={onClearSearch}>Clear search</Button>}</div>}
+    <AppAccessPagination maxOffset={null} page={page} pageSize={pageSize} count={cards.length} hasNext={page * pageSize < total} previousLabel="Previous networks" nextLabel="Next networks" onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} />
+  </section>;
 }
 
-function SiteCardView({
-  card,
-  canManage,
-  orgId,
-  unboundNodes,
-  dnsFocus,
-  onDone,
-}: {
-  card: SiteCard;
-  canManage: boolean;
-  orgId: string;
-  unboundNodes: Node[];
-  dnsFocus: boolean;
-  onDone: () => void;
+
+function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selectedGatewayId, step, params, onStepChange, onDone }: {
+  card: SiteCard; canManage: boolean; orgId: string; unboundNodes: Node[]; dnsFocus: boolean;
+  selectedGatewayId: string | null; step: NetworkStep; params: URLSearchParams; onStepChange: (step: NetworkStep) => void; onDone: () => void;
 }) {
-  const approvedSubnet = card.subnets.find((subnet) => subnet.status === "approved")?.cidr;
-  const resolverHint = approvedSubnet
-    ? `Resolver IP inside ${approvedSubnet}`
-    : "Resolver IP inside an approved subnet";
-  const [modal, setModal] = useState<
-    "subnet" | "bind" | "unbind" | "delete" | null
-  >(null);
-  const [removing, setRemoving] = useState<{
-    id: string;
-    cidr: string;
-    status: string;
-  } | null>(null); // WF-5
+  const approved = card.subnets.filter(subnet => subnet.status === "approved");
+  const pending = card.subnets.filter(subnet => subnet.status === "pending");
+  const activeGateways = card.gateways.filter(gateway => gateway.status === "active");
+  const focusedGateway = card.gateways.find(gateway => gateway.id === selectedGatewayId) ?? activeGateways[0];
+  const resolverHint = approved[0] ? `Resolver IP inside ${approved[0].cidr}` : "Resolver IP inside an approved subnet";
+  const [modal, setModal] = useState<"subnet" | "bind" | "unbind" | "delete" | null>(null);
+  const [removing, setRemoving] = useState<{ id: string; cidr: string; status: string } | null>(null);
   const hasGateway = card.gateways.length > 0;
-  return (
-    <Card variant="plain" className="network-site-detail space-y-0 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-        <p className="text-xs text-ink-tertiary">Network configuration</p>
-        <div className="flex items-center gap-2 text-micro text-ink-tertiary">
-          <span>{card.gateways.length} gateway{card.gateways.length === 1 ? "" : "s"}</span>
-          <span aria-hidden="true">·</span>
-          <span>{card.subnets.length} range{card.subnets.length === 1 ? "" : "s"}</span>
-        </div>
-      </div>
-
-      <div className="network-detail-sections">
-        <section className="network-detail-section">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-cell font-semibold text-ink-heading">Gateways</h3>
-            {canManage && unboundNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
-          </div>
-          {card.gateways.length === 0 ? (
-            <p className="py-4 text-cell text-ink-tertiary">No gateway is bound to this Site.</p>
-          ) : (
-            <NetworkDetailList label="Gateways" items={card.gateways} searchText={g => `${g.name} ${g.status}`} renderItem={g => <GatewayRow key={g.id} g={g} />} />
-          )}
-        </section>
-
-        <section className="network-detail-section">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-cell font-semibold text-ink-heading">Routed ranges</h3>
-            {canManage && <Button variant="ghost" size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
-          </div>
-          {card.subnets.length === 0 ? (
-            <p className="py-4 text-cell text-ink-tertiary">No ranges advertised.</p>
-          ) : (
-            <NetworkDetailList label="Routed ranges" items={card.subnets} searchText={s => `${s.cidr} ${s.status}`} renderItem={s => (
-                <li key={s.id} role="listitem" aria-label={`${s.cidr}: ${s.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="network-range-row">
-                  <span className="font-sans text-ink-body">{s.cidr}</span>
-                  <Badge tone={s.status === "approved" ? "ok" : "warn"}>{s.status === "approved" ? "routed" : "pending"}</Badge>
-                  {canManage && <button type="button" className="ml-auto rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-label={`Remove ${s.cidr}`} onClick={() => setRemoving({ id: s.id, cidr: s.cidr, status: s.status })}>Remove</button>}
-                </li>
-              )} />
-          )}
-        </section>
-      </div>
-
-      {hasGateway && card.subnets.some((s) => s.status === "approved") && (
-        <details className="border-t border-line py-3 text-cell text-ink-tertiary">
-          <summary className="cursor-pointer font-medium text-ink-body">Advanced cloud routing</summary>
-          <div className="mt-2 grid gap-2 text-micro sm:grid-cols-2">
-            <p><span className="font-medium text-ink-body">Gateway VM:</span> enable IP forwarding. On AWS, disable source/destination checks.</p>
-            <p><span className="font-medium text-ink-body">Cloud routes:</span> send remote Site and device-pool CIDRs to this gateway. Update that target when cloud-side HA fails over.</p>
-            <p className="sm:col-span-2 text-ink-faint">Full operator reference: <span className="font-sans">docs/deploy-cloud-gateway.md</span></p>
-          </div>
-        </details>
-      )}
-
-      {/* S8.4 D7: cross-site DNS forwarding — rides the same card as the fabric steps (one site, one story). */}
-      {canManage && card.subnets.some((s) => s.status === "approved") && (
-        <DNSForwardSection
-          orgId={orgId}
-          siteId={card.id}
-          open={dnsFocus}
-          resolverHint={resolverHint}
-        />
-      )}
-
-      {canManage && (
-        <details className="border-t border-line py-3">
-          <summary className="cursor-pointer text-xs text-ink-secondary">Lifecycle actions</summary>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-cell font-semibold text-ink-heading">Lifecycle</h3>
-              <p className="text-micro text-ink-tertiary">Move gateways before permanently deleting this Site.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {hasGateway && <Button variant="ghost" size="sm" onClick={() => setModal("unbind")}>Unbind gateway</Button>}
-              <Button variant="danger" size="sm" onClick={() => setModal("delete")}>Delete site</Button>
-            </div>
-          </div>
-          <span className="sr-only">Danger zone</span>
-        </details>
-      )}
-
+  const listParams = new URLSearchParams(params);
+  for (const key of ["site", "gateway", "dns", "detail"]) listParams.delete(key);
+  const listHref = `/sites${listParams.size ? `?${listParams}` : ""}`;
+  const stepIndex = networkSteps.findIndex(item => item.id === step);
+  return <section id="site-details" aria-label={`Selected Site: ${card.name}`} className="s2s-network-detail">
+    <nav className="s2s-network-breadcrumb" aria-label="Network breadcrumb"><Link to={listHref}>Networks</Link><span aria-hidden="true">/</span><span aria-current="page">{card.name}</span></nav>
+    <header className="s2s-network-header"><h1>{card.name}</h1><Badge tone={focusedGateway?.status === "revoked" ? "neutral" : focusedGateway?.health?.tone ?? "neutral"}>{focusedGateway?.status === "revoked" ? "Gateway revoked" : focusedGateway?.health?.label ?? (activeGateways.length ? "Assigned" : "Needs a gateway")}</Badge></header>
+    <div className="s2s-network-detail-layout">
+      <aside className="s2s-network-rail"><nav className="s2s-network-detail-nav" aria-label="Network detail sections">{networkSteps.map(item => <button type="button" key={item.id} aria-current={item.id === step ? "page" : undefined} onClick={() => onStepChange(item.id)}>{item.label}</button>)}</nav><p>Routing approval and access policies are separate.</p></aside>
+      <section className="s2s-network-stage" aria-labelledby="network-stage-heading">
+        <header className="s2s-network-stage-heading"><h2 id="network-stage-heading">{networkSteps[stepIndex].label}</h2><div className="s2s-network-stage-actions">
+          {step === "gateways" && canManage && unboundNodes.length > 0 && <Button size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
+          {step === "gateways" && canManage && hasGateway && <Button size="sm" variant="ghost" onClick={() => setModal("unbind")}>Unbind gateway</Button>}
+          {step === "ranges" && canManage && <Button size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
+        </div></header>
+        {step === "overview" && <dl className="s2s-network-facts">
+          <div><dt>Gateway assignment</dt><dd>{activeGateways.length ? activeGateways.map(gateway => <Link key={gateway.id} to={`/gateways/${gateway.id}`}>{gateway.name}{gateway.isHub && " · hub"}</Link>) : "No active gateway assigned"}</dd></div>
+          <div><dt>Approved ranges</dt><dd>{approved.length} routed</dd></div>
+          <div><dt>Pending ranges</dt><dd>{pending.length ? `${pending.length} awaiting approval · not routed` : "None"}</dd></div>
+        </dl>}
+        {step === "gateways" && (hasGateway ? <NetworkDetailList label="Gateways" items={card.gateways} searchText={gateway => `${gateway.name} ${gateway.status}`} renderItem={gateway => <GatewayRow key={gateway.id} g={gateway} />} /> : <div className="s2s-empty-state" role="status"><h3>No gateway assigned</h3><p>{canManage ? unboundNodes.length ? "Bind an available gateway to connect this network." : "Enroll a gateway before binding it to this network." : "An owner or admin can bind a gateway."}</p></div>)}
+        {step === "ranges" && <><p className="s2s-operation-context">Approved ranges are routed. Access Policies control who can use them.</p>{card.subnets.length ? <NetworkDetailList label="Routed ranges" items={card.subnets} searchText={subnet => `${subnet.cidr} ${subnet.status}`} renderItem={subnet => <li key={subnet.id} role="listitem" aria-label={`${subnet.cidr}: ${subnet.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="network-range-row"><span>{subnet.cidr}</span><Badge tone={subnet.status === "approved" ? "ok" : "warn"}>{subnet.status === "approved" ? "routed" : "pending"}</Badge>{canManage && <button type="button" className="s2s-text-link s2s-range-remove" aria-label={`Remove ${subnet.cidr}`} onClick={() => setRemoving({ id: subnet.id, cidr: subnet.cidr, status: subnet.status })}>Remove</button>}</li>} /> : <div className="s2s-empty-state" role="status"><h3>No ranges advertised</h3><p>{canManage ? "Advertise the private range behind this network’s gateway." : "An owner or admin can advertise a private range."}</p></div>}</>}
+        {step === "advanced" && <div className="s2s-network-advanced">
+          {hasGateway && approved.length > 0 && <details className="s2s-disclosure"><summary>Advanced cloud routing</summary><div className="s2s-disclosure-body"><p>Enable IP forwarding on the gateway VM. On AWS, disable source/destination checks.</p><p>Point remote Site and device-pool CIDRs at this gateway. Update cloud route targets after cloud-side HA failover.</p><p>Operator reference: <span>docs/deploy-cloud-gateway.md</span></p></div></details>}
+          {canManage && approved.length > 0 && <DNSForwardSection orgId={orgId} siteId={card.id} open={dnsFocus} resolverHint={resolverHint} />}
+          {canManage && approved.length === 0 && <p className="s2s-operation-context">DNS forwarding requires an approved range in this network.</p>}
+          {canManage && <details className="s2s-disclosure"><summary>Lifecycle actions</summary><div className="s2s-network-lifecycle s2s-disclosure-body"><div><h3>Delete this network</h3><p>Deletion removes the Site, its rules and ranges, and unbinds gateways. Immutable policy-template references can block deletion.</p></div><Button variant="danger" size="sm" onClick={() => setModal("delete")}>Delete site</Button><span className="sr-only">Danger zone</span></div></details>}
+          {!canManage && <p className="s2s-operation-context">Changes to forwarding and network lifecycle require site management access.</p>}
+        </div>}
+        <footer className="s2s-network-footer">{stepIndex > 0 ? <Button size="sm" variant="ghost" onClick={() => onStepChange(networkSteps[stepIndex - 1].id)}>Back to {networkSteps[stepIndex - 1].label.toLowerCase()}</Button> : <span />}{stepIndex < networkSteps.length - 1 && <Button size="sm" onClick={() => onStepChange(networkSteps[stepIndex + 1].id)}>Continue to {networkSteps[stepIndex + 1].label.toLowerCase()}</Button>}</footer>
+      </section>
+    </div>
       {modal === "subnet" && (
         <AddSubnetModal
           orgId={orgId}
@@ -1184,8 +1012,7 @@ function SiteCardView({
           onClose={() => setRemoving(null)}
         />
       )}
-    </Card>
-  );
+  </section>;
 }
 
 // EXPORTED FOR THE SIBLING-CONSISTENCY TEST (D4), not for reuse. The revoked-suppression rule is rendered by
@@ -1285,6 +1112,7 @@ function RegisterSiteModal({
   }
   return (
     <Modal
+      placement="right" showClose
       title="Add Site"
       onDismiss={onClose}
       actions={
@@ -1298,6 +1126,7 @@ function RegisterSiteModal({
         </>
       }
     >
+      <div className="s2s-setup-form">
       <p className="text-cell text-ink-tertiary">Create the location first, then bind gateways and advertise its private ranges.</p>
       <Field label="Site name">
         <Input
@@ -1308,6 +1137,7 @@ function RegisterSiteModal({
         />
       </Field>
       <ErrorText>{err}</ErrorText>
+      </div>
     </Modal>
   );
 }
@@ -1349,6 +1179,7 @@ function AddSubnetModal({
   }
   return (
     <Modal
+      placement="right" showClose
       title="Advertise a subnet"
       onDismiss={onClose}
       actions={
@@ -1362,6 +1193,7 @@ function AddSubnetModal({
         </>
       }
     >
+      <div className="s2s-setup-form">
       <p className="text-cell text-ink-tertiary">The range stays inactive until an owner or admin approves it.</p>
       <div>
         <Field label="LAN CIDR">
@@ -1374,6 +1206,7 @@ function AddSubnetModal({
         </Field>
       </div>
       <ErrorText>{err}</ErrorText>
+      </div>
     </Modal>
   );
 }
@@ -1417,6 +1250,7 @@ function BindGatewayModal({
   }
   return (
     <Modal
+      placement="right" showClose
       title="Bind a gateway"
       onDismiss={onClose}
       actions={
@@ -1430,6 +1264,7 @@ function BindGatewayModal({
         </>
       }
     >
+      <div className="s2s-setup-form">
       <p className="text-cell text-ink-tertiary">Assign an enrolled, unbound gateway to this Site.</p>
       <Field label="Gateway">
         <Select value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
@@ -1441,6 +1276,7 @@ function BindGatewayModal({
         </Select>
       </Field>
       <ErrorText>{err}</ErrorText>
+      </div>
     </Modal>
   );
 }
@@ -1638,18 +1474,22 @@ function DNSForwardSection({
   resolverHint: string;
 }) {
   const [forwards, setForwards] = useState<
-    { domain: string; resolver_ip: string }[]
-  >([]);
+    { domain: string; resolver_ip: string }[] | null
+  >(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [domain, setDomain] = useState("");
   const [resolverIp, setResolverIp] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
-    const { data } = await api.GET(
+    setForwards(null);
+    setLoadErr(null);
+    const result = await loadOne(() => api.GET(
       "/api/v1/organizations/{orgId}/sites/{siteId}/dns-forwards",
       { params: { path: { orgId, siteId } } },
-    );
-    if (data) setForwards(data as { domain: string; resolver_ip: string }[]);
+    ));
+    if (result.ok) setForwards(result.data as { domain: string; resolver_ip: string }[]);
+    else setLoadErr(result.error);
   }, [orgId, siteId]);
   useEffect(() => {
     load().catch(() => {});
@@ -1694,13 +1534,13 @@ function DNSForwardSection({
     load().catch(() => {});
   }
   return (
-    <details open={open} className="border-t border-line py-3 text-cell text-ink-tertiary">
+    <details open={open} className="s2s-disclosure s2s-site-dns">
       <summary className="cursor-pointer font-medium text-ink-body">
         Advanced Site DNS forwarding
       </summary>
-      <div className="mt-2 space-y-2">
+      <div className="s2s-disclosure-body">
         <p className="text-micro">Forward a Site-local zone through an approved range. FQDN access uses Private DNS Resolvers instead.</p>
-        <ul className="max-h-[7.25rem] space-y-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+        {loadErr ? <LoadRetry error={loadErr} onRetry={load} /> : forwards === null ? <Loading size="inline" label="Loading DNS forwards…" /> : <ul className="s2s-dns-forward-list">
           {forwards.map((f) => (
             <li key={f.domain} className="flex min-h-9 items-center gap-2 border-b border-line/70 last:border-0">
               <span className="font-sans text-slate-300">{f.domain}</span>
@@ -1718,8 +1558,8 @@ function DNSForwardSection({
           {forwards.length === 0 && (
             <li className="text-slate-500">No forwarded zones.</li>
           )}
-        </ul>
-        <div className="grid items-end gap-2 sm:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_auto]">
+        </ul>}
+        <div className="s2s-dns-form">
           <Field label="DNS zone">
           <Input
             value={domain}
@@ -1911,6 +1751,7 @@ function PendingQueue({
 }) {
   const [pending, setPending] = useState<SiteSubnet[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const pagination = useNetworkListPage(pending?.length ?? 0);
   const [confirm, setConfirm] = useState<{
     subnet: SiteSubnet;
     gateways: { id: string; name: string }[];
@@ -1970,39 +1811,39 @@ function PendingQueue({
 
   if (loadErr)
     return (
-      <Panel title="Range approvals">
+      <OperationalSection title="Range approvals">
         <LoadRetry error={loadErr} onRetry={loadQueue} />
-      </Panel>
+      </OperationalSection>
     );
   if (pending == null)
     return (
-      <Panel title="Range approvals">
+      <OperationalSection title="Range approvals">
         <Loading size="inline" label="Loading pending subnet approvals…" />
-      </Panel>
+      </OperationalSection>
     );
   if (pending.length === 0)
     return (
-      <Panel title="Range approvals">
+      <OperationalSection title="Range approvals">
         <EmptyState>No local IP ranges are waiting for approval. Access is controlled separately in Access Policies.</EmptyState>
-      </Panel>
+      </OperationalSection>
     );
 
   return (
-    <Panel title="Range approvals">
+    <OperationalSection title="Range approvals">
       <p className="mt-1 text-xs text-slate-500">
         Approve local IP ranges advertised by gateways so they can be routed. Access Policies control who can use them.
       </p>
-      <div className="mt-3 overflow-x-auto">
+      <div className="s2s-flat-table">
         <div className="min-w-[520px]">
-          <div className="grid grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] gap-3 border-b border-line px-2.5 py-1.5 text-micro uppercase tracking-wide text-ink-faint">
+          <div className="s2s-approval-columns">
             <span>CIDR</span>
             <span>Site</span>
             <span>State</span>
             <span>Action</span>
           </div>
           <ul className="space-y-1.5 pt-1.5">
-        {pending.map((s) => (
-          <li key={s.id} className="grid grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] items-center gap-3 rounded-md border border-line bg-ink-800 px-2.5 py-2 text-sm">
+        {pending.slice(pagination.start, pagination.end).map((s) => (
+          <li key={s.id} className="s2s-approval-row">
             <span className="font-sans text-slate-200">{s.cidr}</span>
             <span className="text-ink-tertiary">{siteNames[s.site_id] ?? "Site unavailable"}</span>
             <span className="text-ink-tertiary">Pending · not routed</span>
@@ -2017,6 +1858,7 @@ function PendingQueue({
       </ul>
         </div>
       </div>
+      <AppAccessPagination maxOffset={null} page={pagination.page} pageSize={pagination.pageSize} count={pending.slice(pagination.start, pagination.end).length} hasNext={pagination.hasNext} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} previousLabel="Previous range approvals" nextLabel="Next range approvals" />
       <ErrorText>{rowErr}</ErrorText>
 
       {confirm && (
@@ -2047,6 +1889,6 @@ function PendingQueue({
           </ul>
         </Modal>
       )}
-    </Panel>
+    </OperationalSection>
   );
 }

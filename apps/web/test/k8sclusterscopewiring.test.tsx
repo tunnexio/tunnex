@@ -11,6 +11,7 @@ let scopeExpiresAt: string | null = null;
 let policyManageAllowed = true;
 let candidateTotal = 1;
 let membershipTotal = 1;
+let childCurrent = true;
 const now = "2026-08-28T10:00:00Z";
 
 const scope = {
@@ -65,7 +66,7 @@ vi.mock("../src/lib/api", async () => {
         if (path.endsWith("/members")) return { data: [{ user_id: "10000000-0000-4000-8000-000000000001", name: "Asha", email: "asha@example.test", role, status: "active", email_verified: true, joined_at: now }] };
         if (path.endsWith("/cluster-scope-settings")) return { data: { enabled, revision: 2, entitlement_unlocked: entitlementUnlocked, effective: enabled && entitlementUnlocked } };
         if (path.endsWith("/cluster-scopes")) return { data: [{ ...scope, expires_at: scopeExpiresAt }] };
-        if (path.endsWith("/cluster-scope-review-queue")) return queueFails ? { error: { error: { code: "inventory_unavailable", message: "Review queue unavailable." } } } : { data: { items: [pending] } };
+        if (path.endsWith("/cluster-scope-review-queue")) return queueFails ? { error: { error: { code: "inventory_unavailable", message: "Review queue unavailable." } } } : { data: { items: [{ ...pending, current: childCurrent }] } };
         if (path.endsWith("/k8s/clusters")) return clusterInventoryFails ? { error: { error: { message: "Cluster inventory failed." } } } : { data: [{ id: scope.cluster_id, site_id: "site-a", name: "prod-eks", provider: "aws", platform: "eks", vip_range: "100.64.0.0/20", service_cidr: "10.96.0.0/12", dns_zone: "k8s.test", managed_by_operator: false }] };
         if (path.endsWith("/k8s/services")) return { data: [
           { id: "40000000-0000-4000-8000-000000000001", cluster_id: scope.cluster_id, name: "api", namespace: "payments", protocol: "tcp", port_low: 443, port_high: 443, vip: "100.64.0.2", fqdn: "api.payments.svc.prod.k8s.test", managed_by_operator: false },
@@ -102,6 +103,7 @@ vi.mock("../src/lib/api", async () => {
 
 import { api } from "../src/lib/api";
 import AccessKubernetesScopes from "../src/pages/AccessKubernetesScopes";
+import { NetworkFeatureControl } from "../src/components/NetworkFeatureControl";
 
 function renderPage() {
   return render(<MemoryRouter initialEntries={["/access/kubernetes-scopes"]}><AccessKubernetesScopes /></MemoryRouter>);
@@ -117,6 +119,7 @@ beforeEach(() => {
   policyManageAllowed = true;
   candidateTotal = 1;
   membershipTotal = 1;
+  childCurrent = true;
   vi.mocked(api.GET).mockClear();
   vi.mocked(api.POST).mockClear();
   vi.mocked(api.PUT).mockClear();
@@ -125,7 +128,48 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+async function collectEvidence(label: string, pattern: RegExp) {
+  const values: string[] = [];
+  await screen.findByRole("list", { name: label });
+  const rows = () => within(screen.getByRole("list", { name: label })).getAllByText(pattern).map(node => node.textContent ?? "");
+  for (let page = 0; page < 20; page++) {
+    const current = rows();
+    values.push(...current);
+    const next = screen.queryByRole("button", { name: `Next ${label.toLowerCase()}` }) as HTMLButtonElement | null;
+    if (!next || next.disabled) return values;
+    fireEvent.click(next);
+    await waitFor(() => expect(rows()[0]).not.toBe(current[0]));
+  }
+  throw new Error("Evidence pagination did not terminate");
+}
+
 describe("S20.4 Access-owned Kubernetes scope governance", () => {
+  it("does not offer approval authority for a vanished exact child", async () => {
+    childCurrent = false;
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Pending review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for payments/ledger TCP 8443" }));
+    const approve = screen.getByRole("menuitem", { name: "Review approval" }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    fireEvent.click(approve);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it("withdraws a stale approval confirmation and reloads evidence after a server conflict", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Pending review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for payments/ledger TCP 8443" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Review approval" }));
+    const dialog = screen.getByRole("dialog", { name: "Approve this exact child?" });
+    vi.mocked(api.POST).mockResolvedValueOnce({ error: { error: { code: "scope_revision_conflict", message: "Scope changed" } } } as never);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve exact child" }));
+    await screen.findByText("This scope changed in another session. Latest server state has been reloaded; review it before retrying.");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.POST).toHaveBeenCalledTimes(1);
+    expect(api.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships/{serviceChildId}/decision", expect.objectContaining({ params: { path: { orgId: "org-a", ruleId: scope.rule_id, serviceChildId: pending.service_child_id } }, body: { decision: "approved" } }));
+  });
+
   it("removes protected scope DOM and calls when named permissions are absent", async () => {
     role = "member";
     renderPage();
@@ -163,7 +207,9 @@ describe("S20.4 Access-owned Kubernetes scope governance", () => {
 
   it("requires explicit permanent-rejection confirmation before deciding", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Review rejection" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pending review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for payments/ledger TCP 8443" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Review rejection" }));
     expect(screen.getByRole("heading", { name: "Reject this exact child?" })).toBeTruthy();
     expect(screen.getByText(/Rejection is permanent for this membership/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reject permanently" }));
@@ -185,7 +231,13 @@ describe("S20.4 Access-owned Kubernetes scope governance", () => {
     entitlementUnlocked = false;
     renderPage();
     expect(await screen.findByText("Active · ineffective")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Disable for organization" }));
+    expect(screen.getByRole("link", { name: "Manage in Features" }).getAttribute("href")).toBe("/settings?section=features&feature=kubernetes-scopes");
+    expect(screen.queryByRole("button", { name: "Disable for organization" })).toBeNull();
+    expect(api.PUT).not.toHaveBeenCalled();
+    cleanup();
+    vi.mocked(api.PUT).mockResolvedValueOnce({ data: { enabled: false, revision: 3, entitlement_unlocked: false, effective: false } } as never);
+    render(<MemoryRouter><NetworkFeatureControl feature="kubernetes-scopes" orgId="org-a" roles={["admin"]} canEdit /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Disable for organization" }));
     fireEvent.click(screen.getByRole("button", { name: "Disable and withdraw" }));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(
       "/api/v1/organizations/{orgId}/k8s/cluster-scope-settings",
@@ -206,38 +258,35 @@ describe("S20.4 Access-owned Kubernetes scope governance", () => {
     candidateTotal = 50;
     membershipTotal = 150;
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /prod-eks/ }));
-    await screen.findByText("membership/membership-99");
-    fireEvent.click(screen.getByRole("button", { name: "Load more history" }));
-    await screen.findByText("membership/membership-149");
-
-    const candidates = screen.getAllByText(/^candidate\/candidate-/).map((node) => node.textContent);
-    const memberships = screen.getAllByText(/^membership\/membership-/).map((node) => node.textContent);
+    fireEvent.click(await screen.findByRole("button", { name: /^prod-eks/ }));
+    const memberships = await collectEvidence("Membership history", /^membership\/membership-/);
+    fireEvent.click(screen.getByRole("button", { name: "Initial candidate evidence" }));
+    const candidates = await collectEvidence("Initial candidate evidence", /^candidate\/candidate-/);
     expect(candidates).toHaveLength(50);
     expect(new Set(candidates).size).toBe(50);
     expect(memberships).toHaveLength(150);
     expect(new Set(memberships).size).toBe(150);
     const candidateCalls = (vi.mocked(api.GET).mock.calls as unknown as Array<[string]>).filter(([path]) => path.endsWith("/initial-candidates"));
     expect(candidateCalls).toHaveLength(1);
+    expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("/memberships"), expect.objectContaining({ params: expect.objectContaining({ query: { cursor: "membership:100", limit: 100 } }) }));
   });
 
   it("keeps 50 exhausted memberships unique while candidates continue from 100 to 150", async () => {
     candidateTotal = 150;
     membershipTotal = 50;
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /prod-eks/ }));
-    await screen.findByText("candidate/candidate-99");
-    fireEvent.click(screen.getByRole("button", { name: "Load more history" }));
-    await screen.findByText("candidate/candidate-149");
-
-    const candidates = screen.getAllByText(/^candidate\/candidate-/).map((node) => node.textContent);
-    const memberships = screen.getAllByText(/^membership\/membership-/).map((node) => node.textContent);
+    fireEvent.click(await screen.findByRole("button", { name: /^prod-eks/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Initial candidate evidence" }));
+    const candidates = await collectEvidence("Initial candidate evidence", /^candidate\/candidate-/);
+    fireEvent.click(screen.getByRole("button", { name: "Membership history" }));
+    const memberships = await collectEvidence("Membership history", /^membership\/membership-/);
     expect(candidates).toHaveLength(150);
     expect(new Set(candidates).size).toBe(150);
     expect(memberships).toHaveLength(50);
     expect(new Set(memberships).size).toBe(50);
     const membershipCalls = (vi.mocked(api.GET).mock.calls as unknown as Array<[string]>).filter(([path]) => path.endsWith("/memberships"));
     expect(membershipCalls).toHaveLength(1);
+    expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("/initial-candidates"), expect.objectContaining({ params: expect.objectContaining({ query: { cursor: "candidate:100", limit: 100 } }) }));
   });
 
   it("keeps manage actions without exposing create when policy manage is absent", async () => {
@@ -245,8 +294,9 @@ describe("S20.4 Access-owned Kubernetes scope governance", () => {
     renderPage();
     expect(await screen.findByText("prod-eks")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Create scope" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /prod-eks/ }));
-    expect(await screen.findByRole("button", { name: "Disable scope" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Delete scope" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^prod-eks/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Scope actions" }));
+    expect(screen.getByRole("menuitem", { name: "Disable scope" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete scope" })).toBeTruthy();
   });
 });

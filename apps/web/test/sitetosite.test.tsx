@@ -3,13 +3,19 @@ import { cleanup, render, screen, waitFor, fireEvent, act, within } from "@testi
 import { useLayoutEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 const mock = vi.hoisted(() => ({ org: { id: "a" } as { id: string } | null, failed: false, loading: false, verified: true, userId: "user", get: vi.fn() }));
+const authStates = vi.hoisted(() => new Map<string, { status: "authed"; user: { id: string; email_verified: boolean } }>());
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: mock.org, loading: mock.loading, failed: mock.failed }) }));
-vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: mock.userId, email_verified: mock.verified } } }) }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => {
+  const key = `${mock.userId}:${mock.verified}`;
+  let state = authStates.get(key);
+  if (!state) { state = { status: "authed", user: { id: mock.userId, email_verified: mock.verified } }; authStates.set(key, state); }
+  return { state };
+} }));
 vi.mock("../src/lib/api", async (original) => ({ ...await original<object>(), api: { GET: mock.get } }));
 import SiteToSite from "../src/pages/SiteToSite";
 const app = () => <MemoryRouter><SiteToSite /></MemoryRouter>;
 afterEach(cleanup);
-beforeEach(() => { mock.org = { id: "a" }; mock.loading = false; mock.failed = false; mock.verified = true; mock.userId = "user"; mock.get.mockReset(); });
+beforeEach(() => { authStates.clear(); mock.org = { id: "a" }; mock.loading = false; mock.failed = false; mock.verified = true; mock.userId = "user"; mock.get.mockReset(); });
 it("does not turn a failed site read into an empty inventory, and retries", async () => {
   let fail = true;
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { data: [] } : fail ? { error: { error: { message: "Unavailable" } } } : { data: [] });
@@ -133,20 +139,20 @@ it("loads IPsec only after choosing its method and leaves WireGuard as default",
  mock.get.mockImplementation(async (path: string) => {
   if (path.endsWith("/members")) return { data: [{ user_id: "user", role: "owner" }] };
   if (path.endsWith("/settings")) return { data: { enabled: false, revision: 0 } };
-  if (path.endsWith("/connections")) return { data: { items: [] } };
+  if (path.endsWith("/connections")) return { data: { items: [], next_cursor: null } };
   return { data: [] };
  });
  render(app()); await screen.findByText("No networks configured yet.");
  expect(mock.get.mock.calls.some(([path]) => path.includes("/ipsec/"))).toBe(false);
  fireEvent.click(screen.getByRole("radio", { name: /To a cloud VPN/ }));
- await screen.findByRole("button", { name: "Enable IPsec" });
+ await screen.findByRole("link", { name: "Manage in Features" });
  expect(screen.getByRole("button", { name: "Create connection" })).toBeTruthy();
  fireEvent.click(screen.getByRole("radio", { name: /Between your networks/ }));
- expect(screen.queryByRole("button", { name: "Enable IPsec" })).toBeNull();
+ expect(screen.queryByRole("link", { name: "Manage in Features" })).toBeNull();
  expect(screen.getByText("No networks configured yet.")).toBeTruthy();
 });
 it("withdraws IPsec on the first commit of same-organization loading", async () => {
- mock.get.mockImplementation(async(path:string)=>path.endsWith("/members")?{data:[{user_id:"user",role:"owner"}]}:path.endsWith("/settings")?{data:{enabled:true,revision:1}}:path.endsWith("/connections")?{data:{items:[]}}:{data:[]});
+ mock.get.mockImplementation(async(path:string)=>path.endsWith("/members")?{data:[{user_id:"user",role:"owner"}]}:path.endsWith("/settings")?{data:{enabled:true,revision:1}}:path.endsWith("/connections")?{data:{items:[],next_cursor:null}}:{data:[]});
  let leaked=false;
  function Probe(){useLayoutEffect(()=>{if(mock.loading) leaked=!!screen.queryByRole("button",{name:"Create connection"});});return app();}
  const result=render(<Probe/>);await screen.findByText("No networks configured yet.");
@@ -173,7 +179,7 @@ it("routes AWS through provider selection and does not reopen a cancelled draft 
   mock.get.mockImplementation(async (path: string) => {
     if (path.endsWith("/members")) return { data: [{ user_id: "user", role: "owner" }] };
     if (path.endsWith("/settings")) return { data: { enabled: true, revision: 1 } };
-    if (path.endsWith("/connections")) return { data: { items: [] } };
+    if (path.endsWith("/connections")) return { data: { items: [], next_cursor: null } };
     return { data: [] };
   });
   render(app());
@@ -195,17 +201,26 @@ it("WireGuard creation offers in-place location setup without redirecting to inv
   render(app());
   fireEvent.click(await screen.findByRole("button", { name: "Create connection" }));
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /WireGuard/ }));
-  const dialog = within(screen.getByRole("dialog", { name: "Tunnex to Tunnex" }));
+  const dialog = within(screen.getByRole("dialog", { name: "Review WireGuard networks" }));
   expect(dialog.getByRole("button", { name: "Add location" })).toBeTruthy();
   expect(dialog.queryByRole("link", { name: "Go to Networks" })).toBeNull();
   expect(dialog.queryByRole("button", { name: "Review network pair" })).toBeNull();
+  fireEvent.click(dialog.getByRole("button", { name: "Add location" }));
+  const adding = within(screen.getByRole("dialog", { name: "Add location" }));
+  expect(await adding.findByRole("navigation", { name: "Network setup steps" })).toBeTruthy();
+  expect(adding.queryByRole("list", { name: "Connection setup steps" })).toBeNull();
+  expect(adding.queryByRole("button", { name: "Back" })).toBeNull();
+  expect(adding.getAllByRole("button", { name: "Back to locations" })).toHaveLength(1);
+  fireEvent.click(adding.getByRole("button", { name: "Back to locations" }));
+  expect(screen.getByRole("dialog", { name: "Review WireGuard networks" })).toBeTruthy();
+  expect(screen.getByRole("list", { name: "Connection setup steps" })).toBeTruthy();
 });
 
 it("opens IPsec directly from a shared connection-method URL", async () => {
   mock.get.mockImplementation(async (path: string) => {
     if (path.endsWith("/members")) return { data: [{ user_id: "user", role: "owner" }] };
     if (path.endsWith("/settings")) return { data: { enabled: true, revision: 1 } };
-    if (path.endsWith("/connections")) return { data: { items: [] } };
+    if (path.endsWith("/connections")) return { data: { items: [], next_cursor: null } };
     return { data: [] };
   });
   render(<MemoryRouter initialEntries={["/site-to-site?method=ipsec"]}><SiteToSite /></MemoryRouter>);

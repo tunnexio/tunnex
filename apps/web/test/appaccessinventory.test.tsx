@@ -33,10 +33,44 @@ afterEach(cleanup);
 function show(applications = [app("a1", "Payroll"), app("a2", "Billing")], permissions = { manage: true, grant: true, canGrant: true }) {
   return render(<MemoryRouter><AppAccessInventoryTable orgId="org-1" applications={applications} {...permissions} empty="No applications" onChanged={changed} /></MemoryRouter>);
 }
-function rowAction(name: string, action: string) { return within(screen.getByRole("group", { name: `Actions for ${name}` })).getByRole("button", { name: action }); }
+function rowAction(name: string, action: string) {
+  const trigger = screen.getByRole("button", { name: `Actions for ${name}` });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+  const menu = screen.getByRole("menu", { name: `Actions for ${name}` });
+  return within(menu).getByRole("menuitem", { name: action === "Disable" || action === "Delete" ? `${action} application` : action });
+}
 function bulkAction(action: string) { return within(document.querySelector(".tnx-table-selection") as HTMLElement).getByRole("button", { name: action }); }
 
 describe("Applications inventory actions", () => {
+  it("reveals bulk controls only for an explicit selection and hides them when cleared", () => {
+    show();
+    expect(document.querySelector(".tnx-table-selection")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Disable" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Payroll" }));
+    expect(bulkAction("Disable")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Select Billing" })).toHaveProperty("checked", false);
+    fireEvent.click(bulkAction("Clear"));
+    expect(screen.getByRole("checkbox", { name: "Select Payroll" })).toHaveProperty("checked", false);
+    expect(document.querySelector(".tnx-table-selection")).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it("opens row actions from the keyboard and returns focus after Escape", () => {
+    show();
+    const trigger = screen.getByRole("button", { name: "Actions for Payroll" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const menu = screen.getByRole("menu", { name: "Actions for Payroll" });
+    const grant = within(menu).getByRole("menuitem", { name: "Grant access" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(grant);
+    fireEvent.keyDown(grant, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
   it("uses the shared table, selects the current page, and names the full disable confirmation", async () => {
     show();
     const table = screen.getByRole("table", { name: "Applications" });
@@ -73,7 +107,7 @@ describe("Applications inventory actions", () => {
   it("blocks deletion until disabled, withdrawn and free of a pending publication", async () => {
     state.publications = { a2: publication(true, false), a3: { ...publication(true, true), pending_operation: { status: "checking" } }, a4: publication(true, true) };
     show([app("a1", "Payroll"), app("a2", "Billing", "disabled"), app("a3", "Pending", "disabled"), app("a4", "Ready", "disabled")]);
-    await screen.findByText("Withdrawal confirmed · Ready to delete");
+    await screen.findByText(/Withdrawal confirmed · Ready to delete/);
     expect(rowAction("Payroll", "Delete")).toHaveProperty("disabled", true);
     expect(rowAction("Billing", "Delete")).toHaveProperty("disabled", true);
     expect(rowAction("Pending", "Delete")).toHaveProperty("disabled", true);
@@ -90,7 +124,7 @@ describe("Applications inventory actions", () => {
   it("rechecks deletion when the dialog opens and blocks stale versions", async () => {
     state.publications.a1 = publication(true, true);
     show([app("a1", "Payroll", "disabled")]);
-    await screen.findByText("Withdrawal confirmed · Ready to delete");
+    await screen.findByText(/Withdrawal confirmed · Ready to delete/);
     state.publications.a1 = { ...publication(true, true), application_version: 8 };
     fireEvent.click(rowAction("Payroll", "Delete"));
     await screen.findByText(/Payroll: Application changed/);
@@ -102,7 +136,7 @@ describe("Applications inventory actions", () => {
 
   it("blocks destructive controls when publication readback fails", async () => {
     state.readFail = true; show([app("a1", "Payroll", "disabled")]);
-    await screen.findByText("Could not read withdrawal status. Refresh applications.");
+    await screen.findByText(/Could not read withdrawal status\. Refresh applications\./);
     expect(rowAction("Payroll", "Delete")).toHaveProperty("disabled", true);
     fireEvent.click(rowAction("Payroll", "Disable"));
     await screen.findByText("Payroll: Publication unavailable");
@@ -127,14 +161,15 @@ describe("Applications inventory actions", () => {
   it("separates grant and manage permissions before reading privileged subjects", () => {
     const view = show(undefined, { manage: false, grant: false, canGrant: true });
     expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Grant access" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Disable" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Actions for/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Grant access" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Disable application" })).toBeNull();
     expect(api.GET).not.toHaveBeenCalled();
     view.unmount();
     show(undefined, { manage: false, grant: true, canGrant: true });
     expect(rowAction("Payroll", "Grant access")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Disable" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Disable application" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Delete application" })).toBeNull();
   });
 
   it("grants an explicit group to each selected application and preserves partial outcomes", async () => {

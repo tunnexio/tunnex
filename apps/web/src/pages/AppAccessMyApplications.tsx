@@ -4,12 +4,15 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
-import { Badge, Button, Card, ErrorText, Field, Input, Loading, PageHeader } from "../components/ui";
+import { Badge, Button, ErrorText, Input, Loading, PageHeader } from "../components/ui";
 
 import { Icon } from "../components/Icon";
 import { AppAccessIcon } from "../components/AppAccessIcon";
 import AppAccessMfaChallenge from "../components/AppAccessMfaChallenge";
 import AppAccessMemberTabs from "../components/AppAccessMemberTabs";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import AppAccessDomainSetup from "../components/AppAccessDomainSetup";
+import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 
 function browserDomain(launchURL: string) {
   try { return new URL(launchURL).hostname; } catch { return ""; }
@@ -17,7 +20,6 @@ function browserDomain(launchURL: string) {
 
 type MyApps = components["schemas"]["AppAccessMyApps"];
 type MySessions = components["schemas"]["AppAccessMySessions"];
-const pageSize = 20;
 const availabilityText: Record<MyApps["availability"], string> = {
   available: "Only published applications granted to you appear here.",
   feature_disabled: "Applications is off for this organization.",
@@ -61,7 +63,8 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
   const [params, setParams] = useSearchParams();
   const showingSessions = params.get("view") === "sessions";
   const search = (params.get("q") ?? "").slice(0, 100);
-  const page = Math.min(501, Math.max(1, Math.floor(Number(params.get("page"))) || 1));
+  const pageSize = appAccessPageSize(params.get("page_size"));
+  const page = Math.min(Math.floor(10000 / pageSize) + 1, Math.max(1, Math.floor(Number(params.get("page"))) || 1));
   const [apps, setApps] = useState<MyApps | null>(null);
   const [sessions, setSessions] = useState<MySessions | null>(null);
   const [error, setError] = useState("");
@@ -69,6 +72,7 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
   const [reload, setReload] = useState(0);
   const [sessionReload, setSessionReload] = useState(0);
   const [sessionPage, setSessionPage] = useState(1);
+  const [sessionPageSize, setSessionPageSize] = useState(20);
   const [revoking, setRevoking] = useState("");
   const [notice, setNotice] = useState("");
   const [launchError, setLaunchError] = useState("");
@@ -85,19 +89,40 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
       else setApps(result.data);
     }).catch(() => { if (!cancelled) setError("Could not reach the API. Retry your applications."); });
     return () => { cancelled = true; };
-  }, [orgId, page, search, reload, canUse, showingSessions]);
+  }, [orgId, page, pageSize, search, reload, canUse, showingSessions]);
 
   useEffect(() => {
     let cancelled = false;
     setSessions(null); setSessionError("");
     if (!showingSessions) return () => { cancelled = true; };
-    void api.GET("/api/v1/organizations/{orgId}/app-access/my-sessions", { params: { path: { orgId }, query: { limit: pageSize, offset: (sessionPage - 1) * pageSize } } }).then(result => {
+    void api.GET("/api/v1/organizations/{orgId}/app-access/my-sessions", { params: { path: { orgId }, query: { limit: sessionPageSize, offset: (sessionPage - 1) * sessionPageSize } } }).then(result => {
       if (cancelled) return;
       if (result.error || !result.data) setSessionError(apiErrorMessage(result.error, "Could not load your application sessions."));
       else setSessions(result.data);
     }).catch(() => { if (!cancelled) setSessionError("Could not reach your application sessions."); });
     return () => { cancelled = true; };
-  }, [orgId, sessionReload, sessionPage, showingSessions]);
+  }, [orgId, sessionReload, sessionPage, sessionPageSize, showingSessions]);
+
+  function changeSearch(value: string) {
+    const next = new URLSearchParams(params);
+    next.delete("page");
+    if (value) next.set("q", value);
+    else next.delete("q");
+    setParams(next);
+  }
+
+  function changeCatalogPage(nextPage: number) {
+    const next = new URLSearchParams(params);
+    next.set("page", String(nextPage));
+    setParams(next);
+  }
+
+  function changeCatalogPageSize(size: number) {
+    const next = new URLSearchParams(params);
+    next.set("page_size", String(size));
+    next.delete("page");
+    setParams(next);
+  }
 
   function changeView(sessionsView: boolean) {
     const next = new URLSearchParams(params);
@@ -123,19 +148,40 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
     finally { if (mounted.current) setRevoking(""); }
   }
 
-  return <div className="app-access-workspace network-management min-w-0 space-y-6 [overflow-wrap:anywhere]">
-    <PageHeader title={showingSessions ? "My sessions" : "My Applications"} subtitle={showingSessions ? "Manage your application sessions" : "Open private web apps in your browser"} actions={<Button variant="ghost" onClick={() => changeView(!showingSessions)}>{showingSessions ? "Back to My Applications" : "My sessions"}</Button>} />
+  return <div className="app-access-workspace network-management app-access-inventory-workspace app-access-my-apps min-w-0 space-y-6 [overflow-wrap:anywhere]">
+    <div className="app-access-heading"><PageHeader title="App Access" navigationTitle actions={<AppAccessDomainSetup />} /></div>
     <AppAccessMemberTabs orgId={orgId} />
-    {!canUse && <ErrorText>You do not have permission to launch applications. You can still revoke your own sessions.</ErrorText>}
-    {canUse && !showingSessions && <>
-    <ErrorText>{launchError}</ErrorText>
-    {apps && <p role="status" className="text-sm text-ink-secondary">{availabilityText[apps.availability]}</p>}
-    {apps?.availability === "parent_unavailable" && <FreshLogin />}
-    <div className="app-access-toolbar"><div className="w-full sm:max-w-md"><Field label="Search applications"><Input maxLength={100} value={search} onChange={event => setParams(event.target.value ? { q: event.target.value } : {})} /></Field></div></div>
-    {error ? <div><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry applications</Button></div> : !apps ? <Loading /> : !apps.items.length ? <Card><p role="status">{search ? "No applications match your search." : apps.availability === "available" ? "No published applications are granted to you. Ask your administrator for access." : "Applications are currently unavailable."}</p></Card> : <ul className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">{apps.items.map(app => <li key={app.id}><Card className="flex h-full min-w-0 flex-col gap-3 p-4"><div className="flex min-w-0 items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-surface"><AppAccessIcon icon={app.icon} image={app.icon_data_url} className="h-5 w-5 text-ink-secondary" /></span><div className="min-w-0"><h2 className="text-base font-semibold">{app.name}</h2><p className="mt-1 break-all text-sm text-ink-secondary">{browserDomain(app.launch_url)}</p></div></div>{app.description && <p className="text-sm text-ink-secondary">{app.description}</p>}{app.require_mfa && <div className="flex flex-wrap gap-2"><Badge>MFA required</Badge>{app.mfa_setup_required ? <span className="text-xs text-ink-secondary">Set up MFA when you open this app</span> : app.mfa_required ? <span className="text-xs text-ink-secondary">Verification needed</span> : <span className="text-xs text-ink-secondary">Recent verification can be reused</span>}</div>}<div className="mt-auto border-t border-line pt-3"><a className="inline-flex items-center gap-2 text-sm font-medium text-brand underline underline-offset-4" href={app.launch_url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={event => { event.preventDefault(); if (event.detail <= 1) openApplication(app); }}>Open {app.name}<Icon name="chevron-right" className="h-4 w-4" /></a></div></Card></li>)}</ul>}
-    <div className="app-access-pagination flex flex-wrap items-center gap-3"><Button variant="ghost" disabled={page === 1 || !apps} onClick={() => setParams({ q: search, page: String(page - 1) })}>Previous page</Button><span>Page {page}</span><Button variant="ghost" disabled={!apps || apps.items.length < pageSize || page >= 501} onClick={() => setParams({ q: search, page: String(page + 1) })}>Next page</Button></div>
-    </>}
-    {showingSessions && <section aria-label="My application sessions"><Card className="space-y-4"><div className="app-access-panel-header"><h2 className="text-lg font-semibold">My sessions</h2><Badge>Only your sessions</Badge></div><p className="text-sm text-ink-secondary">Signing out here ends one application session. Your console login and other application sessions stay available.</p>{notice && <p role="status" className="app-access-notice">{notice}</p>}{sessionError && <ErrorText>{sessionError}</ErrorText>}{sessionError ? <Button variant="ghost" onClick={() => setSessionReload(value => value + 1)}>Retry sessions</Button> : !sessions ? <Loading /> : !sessions.items.length ? <p role="status">{sessionPage === 1 ? "No active application sessions." : "No more application sessions."}</p> : <ul className="app-access-data-list divide-y divide-line">{sessions.items.map(item => <li key={item.id} className="app-access-data-row flex min-w-0 flex-wrap items-center justify-between gap-3 py-4"><div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><p className="font-medium">{item.app_label}</p><Badge>{item.current_parent ? "This login" : "Another login"}</Badge></div><p className="text-sm text-ink-secondary">Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p><p className="text-sm text-ink-secondary">Started <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time> · <span className="font-mono">Session {item.id.slice(0, 8)}</span></p></div><Button variant="ghost" aria-label={`Sign out of ${item.app_label} · Session ${item.id.slice(0, 8)}`} disabled={!!revoking} onClick={() => void revoke(item.id)}>{revoking === item.id ? "Revoking…" : `Sign out of ${item.app_label}`}</Button></li>)}</ul>}<div className="app-access-pagination flex flex-wrap items-center gap-3"><Button variant="ghost" disabled={sessionPage === 1 || !sessions || !!revoking} onClick={() => setSessionPage(value => value - 1)}>Previous sessions</Button><span>Session page {sessionPage}</span><Button variant="ghost" disabled={!sessions || sessions.items.length < pageSize || !!revoking || sessionPage >= 501} onClick={() => setSessionPage(value => value + 1)}>More sessions</Button></div></Card></section>}
+    {!canUse && <div className="space-y-3"><ErrorText>You do not have permission to launch applications. You can still revoke your own sessions.</ErrorText>{!showingSessions && <Button variant="ghost" onClick={() => changeView(true)}>My sessions</Button>}</div>}
+    {canUse && !showingSessions && <section aria-label="My Applications" className="app-access-my-applications">
+      <ErrorText>{launchError}</ErrorText>
+      {apps && apps.items.length > 0 && apps.availability !== "available" && <p role="status" className="app-access-notice">{availabilityText[apps.availability]}</p>}
+      {apps?.availability === "parent_unavailable" && apps.items.length > 0 && <FreshLogin />}
+      <div className="app-access-toolbar">
+        <div className="app-access-search"><Icon name="search" size={17} /><Input type="search" aria-label="Search applications" placeholder="Search your applications…" maxLength={100} value={search} onChange={event => changeSearch(event.target.value)} /></div>
+        <button type="button" className="app-access-refresh" aria-label="Refresh my applications" title="Refresh my applications" disabled={apps === null && !error} onClick={() => setReload(value => value + 1)}><Icon name="refresh-cw" size={17} /></button>
+        {apps && <span className="app-access-result-count">{apps.items.length}{apps.items.length === pageSize ? "+" : ""} application{apps.items.length === 1 ? "" : "s"}</span>}
+        <Button className="app-access-view-toggle" variant="ghost" onClick={() => changeView(true)}>My sessions</Button>
+      </div>
+      {error ? <div className="mt-5 space-y-3"><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry applications</Button></div> : !apps ? <Loading label="Loading your applications…" /> : !apps.items.length ? <AppAccessEmptyState
+        title={apps.availability !== "available" ? "Application access is unavailable" : search ? "No applications match your search." : page > 1 ? "No more applications" : "No applications yet"}
+        description={apps.availability !== "available" ? availabilityText[apps.availability] : search ? "Try a different name or clear the search to see all your applications." : page > 1 ? "Return to the previous page to see your applications." : "No published applications are granted to you. Ask your administrator for access."}
+        action={apps.availability === "parent_unavailable" ? <FreshLogin /> : apps.availability !== "available" ? undefined : search ? <Button variant="ghost" onClick={() => changeSearch("")}>Clear search</Button> : page > 1 ? undefined : <Link className="app-access-inline-link" to="/app-access/company-applications">Browse company apps</Link>}
+      /> : <ul className="app-access-launch-list">{apps.items.map(app => <li key={app.id} className="app-access-launch-row">
+        <div className="app-access-launch-identity"><span className="app-access-launch-icon"><AppAccessIcon icon={app.icon} image={app.icon_data_url} className="h-5 w-5" /></span><div className="app-access-launch-copy"><h2>{app.name}</h2><p>{browserDomain(app.launch_url)}</p>{app.description && <p className="app-access-launch-description">{app.description}</p>}</div></div>
+        <div className="app-access-launch-assurance">{app.require_mfa && <><Badge>MFA required</Badge><span>{app.mfa_setup_required ? "Set up MFA when you open this app" : app.mfa_required ? "Verification needed" : "Recent verification can be reused"}</span></>}</div>
+        <a className="app-access-launch-action" aria-label={`Open ${app.name}`} href={app.launch_url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={event => { event.preventDefault(); if (event.detail <= 1) openApplication(app); }}>Open app<Icon name="chevron-right" className="h-4 w-4" /></a>
+      </li>)}</ul>}
+      {apps && <AppAccessPagination page={page} pageSize={pageSize} count={apps.items.length} hasNext={apps.items.length >= pageSize} onPageChange={changeCatalogPage} onPageSizeChange={changeCatalogPageSize} />}
+    </section>}
+    {showingSessions && <section className="app-access-session-workspace" aria-label="My application sessions">
+      <div className="app-access-panel-header"><div><h2>My sessions</h2><p>Signing out here ends one application session. Your console login and other application sessions stay available.</p></div><Button variant="ghost" onClick={() => changeView(false)}>My Applications</Button></div>
+      {notice && <p role="status" className="app-access-notice">{notice}</p>}
+      {sessionError ? <div className="space-y-3"><ErrorText>{sessionError}</ErrorText><Button variant="ghost" onClick={() => setSessionReload(value => value + 1)}>Retry sessions</Button></div> : !sessions ? <Loading label="Loading your sessions…" /> : !sessions.items.length ? <AppAccessEmptyState icon="app-grid" title={sessionPage === 1 ? "No active sessions" : "No more sessions"} description={sessionPage === 1 ? "No active application sessions." : "No more application sessions."} /> : <ul className="app-access-data-list app-access-session-list">{sessions.items.map(item => <li key={item.id} className="app-access-data-row">
+        <div><div className="mb-2 flex flex-wrap items-center gap-2"><p className="font-medium">{item.app_label}</p><Badge>{item.current_parent ? "This login" : "Another login"}</Badge></div><p className="text-sm text-ink-secondary">Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p><p className="text-sm text-ink-secondary">Started <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time> · <span className="font-mono">Session {item.id.slice(0, 8)}</span></p></div>
+        <Button variant="ghost" size="sm" aria-label={`Sign out of ${item.app_label} · Session ${item.id.slice(0, 8)}`} disabled={!!revoking} onClick={() => void revoke(item.id)}>{revoking === item.id ? "Revoking…" : `Sign out of ${item.app_label}`}</Button>
+      </li>)}</ul>}
+      {sessions && <AppAccessPagination page={sessionPage} pageSize={sessionPageSize} count={sessions.items.length} hasNext={sessions.items.length >= sessionPageSize} busy={!!revoking} previousLabel="Previous sessions" nextLabel="More sessions" onPageChange={next => setSessionPage(Math.min(Math.floor(10000 / sessionPageSize) + 1, Math.max(1, next)))} onPageSizeChange={size => { setSessionPageSize(size); setSessionPage(1); }} />}
+    </section>}
   </div>;
 }
 

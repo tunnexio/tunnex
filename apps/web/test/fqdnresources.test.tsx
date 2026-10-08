@@ -7,7 +7,7 @@ let rows: Array<Record<string, unknown>> = [];
 let cidrRows: Array<Record<string, unknown>> = [];
 let resolverContext: Record<string, unknown> = {};
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-a", name: "Org A" } }) }));
-vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a" } } }) }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email_verified: true } } }) }));
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: { GET: vi.fn(async (path: string) => {
@@ -92,7 +92,7 @@ describe("FQDN resource operator index", () => {
     };
     page("/access/resources?type=fqdn");
     fireEvent.click(await screen.findByRole("button", { name: "Create resource" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Create FQDN resource/ }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Orders" } });
     const hostname = within(dialog).getByLabelText("Exact hostname");
@@ -122,11 +122,13 @@ describe("FQDN resource operator index", () => {
     cleanup(); page("/access/resources?type=fqdn");
     expect((await screen.findAllByText("Orders")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("table", { name: "Resources inventory" })).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Edit Orders" }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Orders" }));
+    expect(screen.getByRole("menuitem", { name: "Edit Orders" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("button", { name: /Bind now|Enable/ })).toBeNull();
     expect(screen.getAllByRole("button", { name: "Create resource" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Create resource" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Create FQDN resource/ }));
     expect(await screen.findByRole("group", { name: "Identity" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Access scope" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Private DNS path" })).toBeTruthy();
@@ -142,7 +144,10 @@ describe("FQDN resource operator index", () => {
   });
   it("names row actions and leaves member capability unavailable", async () => {
     rows = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 }];
-    page("/access/resources?type=fqdn"); expect((await screen.findAllByRole("button", { name: "Delete Orders" })).length).toBeGreaterThan(0);
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Orders" }));
+    expect(screen.getByRole("menuitem", { name: "Delete Orders" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.getByLabelText("FQDN status")).toBeTruthy();
     cleanup(); role = "member"; page("/access/resources?type=fqdn");
     expect(await screen.findByText(/fqdn_resource:view/)).toBeTruthy();

@@ -4,12 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 
 let resources: Array<Record<string, unknown>> = [];
 let role = "admin";
+let emailVerified = true;
 
 vi.mock("../src/lib/useOrg", () => ({
   useOrg: () => ({ org: { id: "org-a", name: "Org A" } }),
 }));
 vi.mock("../src/lib/auth", () => ({
-  useAuth: () => ({ state: { status: "authed", user: { id: "user-a" } } }),
+  useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email_verified: emailVerified } } }),
 }));
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
@@ -43,7 +44,7 @@ async function openCreate() {
   // port contract rather than racing the independent list request.
   await screen.findByLabelText("Search resources");
   fireEvent.click(screen.getAllByRole("button", { name: "Create resource" })[0]);
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create CIDR resource" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Create CIDR resource/ }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Jira" } });
   fireEvent.change(screen.getByLabelText("CIDR"), { target: { value: "10.0.0.4/32" } });
 }
@@ -51,10 +52,53 @@ function submitCreate() {
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create resource" }));
 }
 
-beforeEach(() => { resources = []; role = "admin"; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); });
+beforeEach(() => { resources = []; role = "admin"; emailVerified = true; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); });
 afterEach(() => cleanup());
 
 describe("Access Resources port scope", () => {
+  it("withdraws a CIDR draft when the same actor loses email verification while retaining authorized reads", async () => {
+    resources = [{ id: "saved", name: "Saved resource", cidr: "10.1.0.0/24", protocol: "tcp", port_low: 443, port_high: null }];
+    const rendered = renderPage();
+    await openCreate();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    emailVerified = false;
+    rendered.rerender(<MemoryRouter><AccessResources /></MemoryRouter>);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await screen.findByText("Saved resource");
+    expect(screen.queryByRole("button", { name: "Create resource" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Saved resource" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Actions for Saved resource" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+  });
+
+  it("pages the loaded CIDR inventory with real size choices and resets search without another read", async () => {
+    resources = Array.from({ length: 55 }, (_, index) => ({ id: `res-${index + 1}`, name: `Resource ${String(index + 1).padStart(2, "0")}`, cidr: `10.0.${index + 1}.0/24`, protocol: "tcp", port_low: 443, port_high: null }));
+    renderPage();
+    await screen.findByRole("button", { name: "Resource 01" });
+    expect(screen.getByRole("button", { name: "Resource 20" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Resource 21" })).toBeNull();
+    const reads = vi.mocked(api.GET).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByRole("button", { name: "Resource 55" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    expect(screen.getByRole("button", { name: "Resource 10" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Resource 11" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    expect(screen.getByRole("button", { name: "Resource 50" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search resources" }), { target: { value: "Resource 55" } });
+    expect(screen.getByRole("button", { name: "Resource 55" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(vi.mocked(api.GET).mock.calls).toHaveLength(reads);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+  });
+
   it("sends explicit null bounds for Any and TCP/UDP All ports", async () => {
     renderPage();
     await openCreate();

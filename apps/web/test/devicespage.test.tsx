@@ -27,10 +27,12 @@ const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
 // which is exactly the path the founder hit and found rendering behind the dialog.
 let createFails = false;
 
-vi.mock("../src/lib/api", () => ({
+vi.mock("../src/lib/api", async () => ({
+  ...await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api"),
   apiErrorMessage: (_e: unknown, fallback: string) => fallback,
   api: {
     GET: vi.fn(async (path: string) => {
+      if (path === "/api/v1/auth/me") return { data: { id: "user-1", email: "owner@example.test", email_verified: true } };
       if (path === "/api/v1/organizations")
         return { data: [{ id: "org-1", name: "Acme" }] };
       if (path.endsWith("/nodes")) {
@@ -68,8 +70,15 @@ vi.mock("../src/lib/api", () => ({
 vi.mock("qrcode.react", () => ({ QRCodeSVG: () => null }));
 
 import { OrgProvider } from "../src/lib/useOrg";
+import { AuthProvider } from "../src/lib/auth";
 import Devices from "../src/pages/Devices";
 import { deviceModeLabel } from "../src/pages/Devices";
+
+async function addDevice() {
+  const button = await screen.findByRole("button", { name: "Add device" });
+  await waitFor(() => expect(button).toHaveProperty("disabled", false));
+  fireEvent.click(button);
+}
 
 describe("device mode rendering", () => {
   it("labels the API's full_tunnel flag without inventing a third state", () => {
@@ -95,16 +104,16 @@ describe("device creation homes on an ACTIVE gateway (S13.1 Slice 3 — the wiri
     // reason that has nothing to do with what it asserts. The assertion below is untouched.
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
 
     // Wait for the fleet to load, then create a device through the real form.
     // ⚠ The create form is a MODAL now (matching Add rule), so it has to be opened before its fields
     // exist. The subject of this test is unchanged: which gateway id the POST carries.
-    fireEvent.click(await screen.findByRole("button", { name: "Add device" }));
+    await addDevice();
     const nameInput = await waitFor(() =>
       screen.getByPlaceholderText("my-laptop"),
     );
@@ -133,23 +142,23 @@ describe("Devices — creation is a dialog, not a permanent form", () => {
   const open = async () => {
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
-    const btn = await screen.findByRole("button", { name: "Add device" });
-    fireEvent.click(btn);
+    await addDevice();
   };
   it("⛔ THE FORM IS ABSENT UNTIL ASKED FOR", async () => {
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     const trigger = await screen.findByRole("button", { name: "Add device" });
+    await waitFor(() => expect(trigger).toHaveProperty("disabled", false));
     // Nothing of the form is on the page…
     expect(screen.queryByPlaceholderText("my-laptop")).toBeNull();
     expect(screen.queryByRole("button", { name: /create device/i })).toBeNull();
@@ -173,9 +182,9 @@ describe("Devices — creation is a dialog, not a permanent form", () => {
   it("⛔ THE MIGRATION BANNER IS GONE — a first-time reader is not owed a note about where something USED to be", () => {
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     expect(
@@ -198,14 +207,12 @@ describe("Devices — a create failure is readable where it happened", () => {
     try {
       render(
         <MemoryRouter>
-          <OrgProvider>
+          <AuthProvider><OrgProvider>
             <Devices />
-          </OrgProvider>
+          </OrgProvider></AuthProvider>
         </MemoryRouter>,
       );
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Add device" }),
-      );
+      await addDevice();
       fireEvent.change(screen.getByPlaceholderText("my-laptop"), {
         target: { value: "x" },
       });

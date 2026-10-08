@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { BeamRooms } from "../src/components/BeamRooms";
 import { BeamFeedback, BeamNotifications } from "../src/components/BeamFeedback";
@@ -17,6 +17,12 @@ const share: BeamShare = { id: "55555555-5555-4555-8555-555555555555", org_id: o
 const feedback: Feedback = { id: "66666666-6666-4666-8666-666666666666", share_id: share.id, author_id: user, author_name: "Alice", body: "Button overlaps on mobile", status: "changes_requested", created_at: "2026-10-07T11:10:00Z" };
 const empty = { items: [], limit: 20, offset: 0, server_time: "2026-10-07T11:00:00Z" };
 function show(element: React.ReactNode) { return render(<MemoryRouter>{element}</MemoryRouter>); }
+async function projectAction(action: string) {
+  const label = "Actions for Checkout";
+  const trigger = await screen.findByRole("button", { name: label });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+  return within(screen.getByRole("menu", { name: label })).getByRole("menuitem", { name: action });
+}
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(prepareBeamScreenshot).mockResolvedValue("aW1hZ2U="); vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: empty }); vi.mocked(beamRoomsApi.sessions).mockResolvedValue({ ok: true, data: empty }); vi.mocked(beamRoomsApi.feedback).mockResolvedValue({ ok: true, data: empty }); vi.mocked(beamRoomsApi.notifications).mockResolvedValue({ ok: true, data: empty }); vi.mocked(beamApi.audience).mockResolvedValue({ ok: true, data: audience }); vi.mocked(beamRoomsApi.saveProject).mockResolvedValue({ ok: true, data: project }); vi.mocked(beamRoomsApi.addFeedback).mockResolvedValue({ ok: true, data: feedback }); });
 afterEach(cleanup);
 describe("Saved Beam projects", () => {
@@ -26,10 +32,13 @@ describe("Saved Beam projects", () => {
     await waitFor(() => expect(beamRoomsApi.saveProject).toHaveBeenCalledWith(org, { name: "Checkout", target: { protocol: "http", address: "127.0.0.1", port: 5173, routes: [] }, duration_seconds: 1800, grants: [{ subject_kind: "group", subject_id: group }] }, undefined));
     expect(beamApi.grants).not.toHaveBeenCalled(); expect(beamApi.launch).not.toHaveBeenCalled(); expect(beamApi.action).not.toHaveBeenCalled();
   });
-  it("keeps project sessions beneath one card and requests history before pagination", async () => {
+  it("loads project sessions on demand beneath one project and requests history before pagination", async () => {
     vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } }); vi.mocked(beamRoomsApi.sessions).mockImplementation(async (_org, _id, offset, scope) => ({ ok: true, data: { ...empty, offset: offset ?? 0, items: scope === "history" ? [{ ...share, state: "stopped", can_open: false }] : [share] } }));
-    show(<BeamRooms orgId={org} policy={policy} />); await screen.findByRole("link", { name: "Open Checkout" }); expect(screen.getAllByRole("heading", { name: "Checkout" })).toHaveLength(1); expect(beamRoomsApi.sessions).toHaveBeenCalledWith(org, project.id, 0, "active");
-    fireEvent.click(screen.getByRole("button", { name: "Session history" })); await screen.findByText("Stopped"); expect(screen.queryByRole("link", { name: "Open Checkout" })).toBeNull(); expect(beamRoomsApi.sessions).toHaveBeenLastCalledWith(org, project.id, 0, "history");
+    show(<BeamRooms orgId={org} policy={policy} />); await screen.findByRole("heading", { name: "Checkout" });
+    expect(beamRoomsApi.sessions).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Sessions for Checkout" }));
+    await screen.findByRole("link", { name: "Open Checkout" }); expect(screen.getAllByRole("heading", { name: "Checkout" })).toHaveLength(1); expect(beamRoomsApi.sessions).toHaveBeenCalledWith(org, project.id, 0, "active", 20);
+    fireEvent.click(screen.getByRole("button", { name: "Session history" })); await screen.findByText("Stopped"); expect(screen.queryByRole("link", { name: "Open Checkout" })).toBeNull(); expect(beamRoomsApi.sessions).toHaveBeenLastCalledWith(org, project.id, 0, "history", 20);
     expect(screen.getAllByRole("heading", { name: "Checkout" })).toHaveLength(1);
   });
   it("prefills the CLI form from the project without granting stale reviewers", async () => {
@@ -37,13 +46,53 @@ describe("Saved Beam projects", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate command" })); expect((screen.getByRole("textbox", { name: "Publish command" }) as HTMLTextAreaElement).value).toContain(`--project ${project.id}`); expect(beamRoomsApi.saveProject).not.toHaveBeenCalled();
   });
   it("requires explicitly discarding saved reviewers no longer permitted", async () => {
-    vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } }); vi.mocked(beamApi.audience).mockResolvedValue({ ok: true, data: { users: audience.users, groups: [] } }); show(<BeamRooms orgId={org} policy={policy} />); fireEvent.click(await screen.findByRole("button", { name: "Edit Checkout" })); await screen.findByText(/saved reviewer choices are no longer permitted/); expect((screen.getByRole("button", { name: "Save project defaults" }) as HTMLButtonElement).disabled).toBe(true); fireEvent.click(screen.getByRole("button", { name: "Remove unavailable reviewer choices" })); fireEvent.click(screen.getByRole("checkbox", { name: /Alice/ })); fireEvent.click(screen.getByRole("button", { name: "Save project defaults" })); await waitFor(() => expect(beamRoomsApi.saveProject).toHaveBeenCalledWith(org, expect.objectContaining({ grants: [{ subject_kind: "user", subject_id: user }] }), project));
+    vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } }); vi.mocked(beamApi.audience).mockResolvedValue({ ok: true, data: { users: audience.users, groups: [] } }); show(<BeamRooms orgId={org} policy={policy} />); fireEvent.click(await projectAction("Edit Checkout")); await screen.findByText(/saved reviewer choices are no longer permitted/); expect((screen.getByRole("button", { name: "Save project defaults" }) as HTMLButtonElement).disabled).toBe(true); fireEvent.click(screen.getByRole("button", { name: "Remove unavailable reviewer choices" })); fireEvent.click(screen.getByRole("checkbox", { name: /Alice/ })); fireEvent.click(screen.getByRole("button", { name: "Save project defaults" })); await waitFor(() => expect(beamRoomsApi.saveProject).toHaveBeenCalledWith(org, expect.objectContaining({ grants: [{ subject_kind: "user", subject_id: user }] }), project));
   });
   it("preserves edits on version conflict and prevents blind retry", async () => {
-    vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } }); vi.mocked(beamRoomsApi.saveProject).mockResolvedValue({ ok: false, error: "Version changed", code: "beam_version_conflict" }); show(<BeamRooms orgId={org} policy={policy} />); fireEvent.click(await screen.findByRole("button", { name: "Edit Checkout" })); await screen.findByRole("checkbox", { name: /Design team/ }); fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Edited checkout" } }); fireEvent.click(screen.getByRole("button", { name: "Save project defaults" })); await screen.findByText(/This project changed elsewhere/); expect((screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe("Edited checkout"); expect((screen.getByRole("button", { name: "Save project defaults" }) as HTMLButtonElement).disabled).toBe(true);
+    vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } }); vi.mocked(beamRoomsApi.saveProject).mockResolvedValue({ ok: false, error: "Version changed", code: "beam_version_conflict" }); show(<BeamRooms orgId={org} policy={policy} />); fireEvent.click(await projectAction("Edit Checkout")); await screen.findByRole("checkbox", { name: /Design team/ }); fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Edited checkout" } }); fireEvent.click(screen.getByRole("button", { name: "Save project defaults" })); await screen.findByText(/This project changed elsewhere/); expect((screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe("Edited checkout"); expect((screen.getByRole("button", { name: "Save project defaults" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("makes saved project read failures retryable without claiming an empty list", async () => {
     vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: false, error: "Current projects could not be checked" }); show(<BeamRooms orgId={org} policy={policy} />); await screen.findByText("Current projects could not be checked"); expect(screen.queryByText(/No saved projects yet/)).toBeNull(); vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: empty }); fireEvent.click(screen.getByRole("button", { name: "Retry projects" })); await screen.findByText(/No saved projects yet/);
+  });
+  it("queries selected project page sizes and resets the offset without loading collapsed sessions", async () => {
+    vi.mocked(beamRoomsApi.projects).mockImplementation(async (_org, offset = 0, limit = 20) => ({ ok: true, data: { ...empty, limit, offset, items: Array.from({ length: limit }, (_, index) => ({ ...project, id: `project-${offset + index}`, name: `Checkout ${offset + index}` })) } }));
+    show(<BeamRooms orgId={org} policy={policy} />);
+    await screen.findByRole("heading", { name: "Checkout 0" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await screen.findByRole("heading", { name: "Checkout 0" });
+    expect(beamRoomsApi.projects).toHaveBeenLastCalledWith(org, 0, 10);
+    fireEvent.click(screen.getByRole("button", { name: "Next projects" }));
+    await screen.findByRole("heading", { name: "Checkout 10" });
+    expect(beamRoomsApi.projects).toHaveBeenLastCalledWith(org, 10, 10);
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    await screen.findByRole("heading", { name: "Checkout 49" });
+    expect(beamRoomsApi.projects).toHaveBeenLastCalledWith(org, 0, 50);
+    expect(screen.getByRole("button", { name: "Previous projects" })).toHaveProperty("disabled", true);
+    expect(beamRoomsApi.sessions).not.toHaveBeenCalled();
+    expect(beamRoomsApi.saveProject).not.toHaveBeenCalled();
+  });
+  it("retains session scope with selected limits and resets paging for history and size changes", async () => {
+    vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } });
+    vi.mocked(beamRoomsApi.sessions).mockImplementation(async (_org, _id, offset = 0, scope, limit = 20) => ({ ok: true, data: { ...empty, offset, limit, items: Array.from({ length: limit }, (_, index) => ({ ...share, id: `share-${offset + index}`, ...(scope === "history" ? { state: "stopped" as const, can_open: false } : {}) })) } }));
+    show(<BeamRooms orgId={org} policy={policy} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sessions for Checkout" }));
+    await screen.findAllByRole("link", { name: "Open Checkout" });
+    const sessions = screen.getByRole("region", { name: "Checkout preview sessions" });
+    fireEvent.change(within(sessions).getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await screen.findAllByRole("link", { name: "Open Checkout" });
+    expect(beamRoomsApi.sessions).toHaveBeenLastCalledWith(org, project.id, 0, "active", 10);
+    fireEvent.click(within(sessions).getByRole("button", { name: "Next sessions" }));
+    await screen.findAllByRole("link", { name: "Open Checkout" });
+    expect(beamRoomsApi.sessions).toHaveBeenLastCalledWith(org, project.id, 10, "active", 10);
+    fireEvent.click(within(sessions).getByRole("button", { name: "Session history" }));
+    await screen.findAllByText("Stopped");
+    expect(beamRoomsApi.sessions).toHaveBeenLastCalledWith(org, project.id, 0, "history", 10);
+    fireEvent.change(within(sessions).getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    await screen.findAllByText("Stopped");
+    expect(beamRoomsApi.sessions).toHaveBeenLastCalledWith(org, project.id, 0, "history", 50);
+    expect(screen.queryByRole("link", { name: "Open Checkout" })).toBeNull();
+    expect(beamRoomsApi.saveProject).not.toHaveBeenCalled();
+    expect(beamApi.action).not.toHaveBeenCalled();
   });
 });
 describe("Beam review feedback", () => {
@@ -86,6 +135,6 @@ describe("Beam review feedback", () => {
 });
 describe("Beam preview updates", () => {
   it("loads current-authority notifications on demand and links into feedback", async () => {
-    vi.mocked(beamRoomsApi.notifications).mockResolvedValue({ ok: true, data: { ...empty, items: [{ id: "feedback-1", kind: "feedback", share_id: share.id, title: "Checkout: review feedback received", created_at: feedback.created_at }] } }); show(<BeamNotifications orgId={org} />); expect(beamRoomsApi.notifications).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Preview updates" })); const link = await screen.findByRole("link", { name: "Checkout: review feedback received" }); expect(link.getAttribute("href")).toBe(`/beam/shares/${share.id}`); expect(beamRoomsApi.notifications).toHaveBeenCalledWith(org, 0);
+    vi.mocked(beamRoomsApi.notifications).mockResolvedValue({ ok: true, data: { ...empty, items: [{ id: "feedback-1", kind: "feedback", share_id: share.id, title: "Checkout: review feedback received", created_at: feedback.created_at }] } }); show(<BeamNotifications orgId={org} />); expect(beamRoomsApi.notifications).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Preview updates" })); const link = await screen.findByRole("link", { name: "Checkout: review feedback received" }); expect(link.getAttribute("href")).toBe(`/beam/shares/${share.id}`); expect(beamRoomsApi.notifications).toHaveBeenCalledWith(org, 0, 20);
   });
 });

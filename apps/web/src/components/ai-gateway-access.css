@@ -1,0 +1,84 @@
+.ai-secondary-workspace { min-width:0; }
+.ai-secondary-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 0 20px; }
+.ai-secondary-toolbar > input { max-width:320px; min-height:36px; font-size:13px; }
+.ai-secondary-actions { display:flex; align-items:center; flex-shrink:0; gap:8px; }
+.ai-secondary-toolbar button { min-height:34px; font-size:12px; }
+.ai-secondary-workspace .tnx-card-surface,
+.ai-workload-detail .tnx-card-surface { padding:0!important; border:0; border-radius:0; background:transparent; box-shadow:none; }
+.ai-secondary-table-scroll { overflow-x:auto; min-width:0; }
+.ai-secondary-workspace .ai-compact-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
+.ai-secondary-workspace .ai-compact-table th { padding:11px 12px; background:transparent; color:var(--tnx-text-secondary); font-size:11px; font-weight:500; text-align:left; border-bottom:1px solid var(--tnx-border); }
+.ai-secondary-workspace .ai-compact-table thead tr { background:transparent; }
+.ai-secondary-workspace .ai-compact-table td { padding:13px 12px; border-bottom:1px solid var(--tnx-divider); vertical-align:middle; overflow-wrap:anywhere; color:var(--tnx-text-primary); }
+.ai-secondary-workspace .ai-compact-table th:first-child,
+.ai-secondary-workspace .ai-compact-table td:first-child { padding-left:0; }
+.ai-secondary-workspace .ai-compact-table th.ai-secondary-action-column { width:44px; }
+.ai-secondary-workspace .ai-compact-table td:last-child:has(.aa-row-menu) { padding-right:0; text-align:right; }
+.ai-secondary-status { font-size:12px; color:var(--tnx-text-secondary); }
+.ai-secondary-workspace .tnx-table-scroll { border:0; border-radius:0; background:transparent; }
+.ai-secondary-workspace .tnx-datatable { min-width:0; font-size:12px; }
+.ai-secondary-workspace .tnx-datatable thead tr { background:transparent; }
+.ai-secondary-workspace .tnx-datatable th { padding:10px 12px; font-size:11px; }
+.ai-secondary-workspace .tnx-datatable td { padding:13px 12px; font-size:12px; }
+.ai-secondary-workspace .tnx-datatable th:first-child,
+.ai-secondary-workspace .tnx-datatable td:first-child { padding-left:0; }
+.ai-secondary-workspace .tnx-datatable th:last-child,
+.ai-secondary-workspace .tnx-datatable td:last-child { padding-right:0; }
+.ai-secondary-workspace .tnx-table-scroll:has(.tnx-datatable th:nth-child(5)) > table { min-width:0; }
+.ai-secondary-workspace .tnx-datatable caption { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+.ai-secondary-workspace .tnx-datatable:has(.aa-row-menu) th:last-child { width:44px; font-size:0; }
+.ai-secondary-workspace .tnx-datatable:has(.aa-empty-state) thead { display:none; }
+.ai-secondary-workspace .aa-empty-state { padding:48px 20px; }
+.ai-secondary-workspace .aa-pagination { padding-top:14px; }
+.ai-secondary-empty { padding:40px 0; color:var(--tnx-text-secondary); font-size:13px; }
+.ai-secondary-empty h3 { margin-bottom:8px; color:var(--tnx-text-heading); font-size:14px; font-weight:500; }
+.ai-secondary-empty p { max-width:520px; margin-bottom:16px; line-height:1.7; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.ai-access-editor,.ai-access-connection,.ai-workload-editor,.ai-workload-key-editor) { width:min(100%,560px); max-width:560px; padding:24px; }
+.tnx-modal-panel:has(.ai-access-editor,.ai-access-connection,.ai-workload-editor,.ai-workload-key-editor) .tnx-modal-body { margin-top:20px; font-size:13px; }
+.tnx-modal-panel:has(.ai-access-editor,.ai-access-connection,.ai-workload-editor,.ai-workload-key-editor) .tnx-modal-body section { padding:0; }
+.tnx-modal-panel:has(.ai-access-editor,.ai-access-connection,.ai-workload-editor,.ai-workload-key-editor) .tnx-modal-body input:not([type="checkbox"]):not([type="radio"]),
+.tnx-modal-panel:has(.ai-access-editor,.ai-access-connection,.ai-workload-editor,.ai-workload-key-editor) .tnx-modal-body select { min-height:38px; font-size:13px; }
+.ai-access-editor > .grid { gap:16px; }
+.ai-access-editor > .grid > button { justify-self:start; width:auto; min-height:30px; padding:4px 0; border:0; border-radius:0; background:transparent; box-shadow:none; color:var(--tnx-text-heading); font-size:12px; text-decoration:underline; text-underline-offset:4px; }
+.ai-access-editor > .grid > button:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
+.ai-access-context { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--tnx-text-secondary); }
+.ai-access-editor label,
+.ai-workload-editor .block > label,
+.ai-workload-key-editor .block > label { font-size:12px; }
+.ai-access-connection { min-width:0; }
+.ai-access-connection pre { max-width:100%; font-size:11px; }
+.ai-access-connection .ai-file-icon { display:none; }
+.ai-access-connection .ai-code-tabs button { padding:9px 10px; font-size:12px; }
+.ai-workload-detail { min-width:0; }
+.ai-workload-breadcrumb { display:flex; align-items:center; gap:9px; margin-bottom:20px; font-size:12px; color:var(--tnx-text-secondary); }
+.ai-workload-breadcrumb button { text-decoration:underline; text-underline-offset:3px; }
+.ai-workload-breadcrumb [aria-current="page"] { color:var(--tnx-text-primary); }
+.ai-workload-detail .ai-provider-panel-heading { margin-bottom:20px; }
+.ai-workload-detail .ai-provider-panel-heading h2 { font-size:20px; font-weight:500; line-height:1.5; }
+.ai-workload-layout { display:grid; grid-template-columns:148px minmax(0,1fr); gap:28px; align-items:start; }
+.ai-workload-layout > .ai-provider-view-tabs { display:flex; flex-direction:column; align-items:stretch; gap:3px; padding:0; border:0; }
+.ai-workload-layout > .ai-provider-view-tabs button { padding:10px 12px; border:0; border-radius:5px; text-align:left; font-size:12px; font-weight:400; white-space:normal; }
+.ai-workload-layout > .ai-provider-view-tabs button[aria-selected="true"] { color:var(--tnx-text-heading); background:var(--tnx-surface-inset); border:0; }
+.ai-workload-layout > [role="tabpanel"] { min-width:0; }
+.ai-workload-detail .ai-provider-notice { padding:10px 0; border:0; background:transparent; font-size:12px; line-height:1.7; }
+.ai-workload-detail .tnx-card-surface h3 { font-size:14px; font-weight:500; }
+.ai-workload-detail .tnx-card-surface > p,
+.ai-workload-detail .tnx-card-surface > div > p { font-size:12px; line-height:1.7; }
+.ai-workload-detail .tnx-card-surface:has(> h3) { padding-top:20px!important; border-top:1px solid var(--tnx-divider); }
+.ai-workload-detail .tnx-datatable code { font-size:11px; }
+.ai-workload-model-picker { display:grid; gap:8px; }
+.ai-workload-model-picker > label { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--tnx-divider); font-size:12px; }
+.ai-workload-model-picker small { display:block; margin-top:4px; font-size:11px; line-height:1.5; color:var(--tnx-text-secondary); }
+.ai-workload-editor .ai-provider-notice { font-size:12px; line-height:1.7; }
+.ai-secondary-settings.tnx-card-surface { padding:0!important; border:0; background:transparent; box-shadow:none; border-radius:0; }
+.ai-secondary-settings .ai-setting-row { padding:0 0 16px; }
+.ai-secondary-settings .ai-setting-copy h3 { font-size:14px; font-weight:500; }
+.ai-secondary-settings .ai-setting-copy p { font-size:12px; color:var(--tnx-text-secondary); }
+.ai-secondary-settings .ai-setting-state { padding:0; border-radius:0; background:transparent; color:var(--tnx-text-secondary); }
+.ai-secondary-settings .ai-setting-state.is-on { color:var(--tnx-text-heading); background:transparent; }
+.ai-secondary-settings .ai-setting-foot { margin:0; padding:14px 0; font-size:12px; color:var(--tnx-text-secondary); border-color:var(--tnx-divider); }
+.ai-transport-settings { font-size:13px; }
+.ai-transport-settings h3 { font-size:14px; font-weight:500; }
+.ai-transport-settings p { font-size:12px; line-height:1.7; }
+.ai-transport-settings .ai-transport-risk { padding:12px 0; border:0; border-top:1px solid var(--tnx-divider); border-radius:0; background:transparent; }
+.ai-transport-settings .ai-transport-saved { padding:0; border:0; color:var(--tnx-text-secondary); font-size:12px; }

@@ -1,7 +1,6 @@
 import { MemoryRouter } from "react-router-dom";
-import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 type TestOrg = { id: string; name: string };
 
@@ -48,6 +47,7 @@ let healthResponse: Record<string, unknown> = {
 vi.mock("../src/lib/useOrg", () => ({
   useOrg: () => ({ org: currentOrg, loading: orgLoading, failed: orgFailed }),
 }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email_verified: true } } }) }));
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: { GET: vi.fn(async (path: string, request?: { params?: { path?: { orgId?: string }; query?: {
@@ -88,32 +88,6 @@ vi.mock("../src/lib/api", async () => {
   return { data: [] };
 }) } };
 });
-vi.mock("../src/components/ui", () => ({
-  // Mocked to an h1 so the route's heading stays assertable — spreading `title` onto a DOM node would
-  // drop the text out of the tree entirely.
-  PageHeader: ({ title, subtitle }: { title: string; subtitle?: ReactNode }) =>
-    createElement("header", null, createElement("h1", null, title), subtitle ?? null),
-  Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => createElement("button", props, children),
-  Card: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => createElement("section", props, children),
-  EmptyState: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
-  ErrorText: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
-  Loading: ({ label }: { label?: string }) => createElement("div", { role: "status" }, label ?? "Loading…"),
-  Modal: ({ title, children, onDismiss }: { title: string; children?: ReactNode; onDismiss: () => void }) =>
-    createElement("div", { role: "dialog", "aria-label": title }, children, createElement("button", { onClick: onDismiss }, "Close")),
-  DataTable: ({ rows, columns, empty, failed }: {
-    rows: Array<Record<string, unknown>>;
-    columns: Array<{
-      key: string;
-      header: string;
-      cell?: (row: Record<string, unknown>) => ReactNode;
-    }>;
-    empty?: ReactNode;
-    failed?: boolean;
-  }) => failed ? null : createElement("div", null,
-    ...columns.map((c) => createElement("span", { key: c.key }, c.header)),
-    ...(rows.length === 0 ? [createElement("div", { key: "empty" }, empty)] : rows.flatMap((row) => columns.map((c) => createElement("div", { key: String(row.id) + c.key }, c.cell?.(row))))),
-  ),
-}));
 
 import AccessEvents from "../src/pages/AccessEvents";
 import { api } from "../src/lib/api";
@@ -175,10 +149,11 @@ describe("released access-event identity attribution", () => {
       expect(calls.some(([, req]) => req?.params?.query?.src_agent_id === "agent-a")).toBe(true);
     });
     fireEvent.click(screen.getByRole("button", { name: "View DENY event details" }));
-    expect(screen.getByRole("dialog", { name: "Access event" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Access event breadcrumb" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Evidence" }));
     expect(screen.getByText("Gateway not recorded · applied policy v7 · abcdef123456")).toBeTruthy();
     expect(screen.getByText("Source AI agent agent-a · recorded person user-a · configuration revision 4")).toBeTruthy();
-    expect(screen.getByText(/device-owner accountability at ingest/i)).toBeTruthy();
+    expect(screen.getByText(/org-scoped ownership verified at ingest/i)).toBeTruthy();
 
     currentOrg = { id: "org-b", name: "Organization B" };
     view.rerender(<MemoryRouter><AccessEvents /></MemoryRouter>);
@@ -291,6 +266,7 @@ describe("released access-event identity attribution", () => {
     render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     await screen.findByLabelText("Historical identity UUID");
+    fireEvent.click(screen.getByText("More filters"));
     fireEvent.change(screen.getByLabelText("Historical identity type"), {
       target: { value: "device" },
     });
@@ -320,6 +296,7 @@ describe("released access-event identity attribution", () => {
     render(<MemoryRouter><AccessEvents /></MemoryRouter>);
 
     const input = await screen.findByLabelText("Historical identity UUID");
+    fireEvent.click(screen.getByText("More filters"));
     fireEvent.change(input, { target: { value: "not-a-uuid" } });
 
     const error = screen.getByText(/enter a complete uuid/i);
@@ -498,4 +475,26 @@ describe("released access-event identity attribution", () => {
     expect(await screen.findByText(/gateway collector status is unavailable/i)).toBeTruthy();
     expect(screen.getByText(/could not reach the api/i)).toBeTruthy();
   });
+});
+
+
+it.each([
+  {},
+  { retention_dropped: -1, retention_failed: false, gateway_collectors: [] },
+  { retention_dropped: 0, retention_failed: false, gateway_collectors: [null] },
+])("keeps retained events visible when collector evidence is malformed and retries health independently: %j", async invalid => {
+  healthResponse = invalid;
+  render(<MemoryRouter><AccessEvents /></MemoryRouter>);
+  await screen.findByRole("table", { name: "Access events" });
+  await screen.findByText("Status unavailable");
+  expect(screen.getByRole("button", { name: "View DENY event details" })).toBeTruthy();
+  fireEvent.click(screen.getByText("Collection health"));
+  const health = screen.getByRole("group", { name: "Gateway collector status" });
+  expect(within(health).getByText("Could not load collector status.")).toBeTruthy();
+  const reads = (vi.mocked(api.GET).mock.calls as unknown as Array<[string]>).filter(([path]) => path.endsWith("/access-events")).length;
+  healthResponse = { retention_dropped: 0, retention_failed: false, gateway_collectors: [] };
+  fireEvent.click(within(health).getByRole("button", { name: "Retry" }));
+  await within(health).findByText("No gateway has reported collector status yet.");
+  expect(within(health).queryByText("Could not load collector status.")).toBeNull();
+  expect((vi.mocked(api.GET).mock.calls as unknown as Array<[string]>).filter(([path]) => path.endsWith("/access-events"))).toHaveLength(reads);
 });

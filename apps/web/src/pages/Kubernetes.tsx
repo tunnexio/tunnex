@@ -20,13 +20,11 @@ import {
   Badge,
   Button,
   DataTable,
-  EmptyState,
   ErrorText,
   Field,
   Input,
   Loading,
   Modal,
-  PageHeader,
   Select,
   SettingGroup,
   SettingRow,
@@ -47,7 +45,6 @@ import {
 // ⛔ EXPLICIT IMPORT, and it is load-bearing: without it `Node` resolves to the DOM's global `Node`, so
 // `site_id` and `policy_degraded_kind` "do not exist" with no hint that a different type was found.
 import type { Node } from "../lib/api";
-import { ManagedBadge } from "../components/ManagedBadge";
 import {
   ProviderFirstEnrollmentModal,
   ProviderMetadataCorrectionModal,
@@ -55,8 +52,9 @@ import {
 import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStatus";
 import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
 import { K8sConnectorPoolPanel } from "../components/K8sConnectorPoolPanel";
-import { ProviderMark } from "../components/ProviderMarks";
 import { providerPlatformEntry } from "../lib/k8senrollment";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 
 import "../network-workspaces.css";
 import "../kubernetes-workspace.css";
@@ -95,11 +93,20 @@ type ConnectorBinding =
   | { kind: "missing"; nodeId: null }
   | { kind: "unavailable"; nodeId: null };
 
+const clusterSteps = ["overview", "connection", "services", "network"] as const;
+type ClusterStep = typeof clusterSteps[number];
+
 export default function Kubernetes() {
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const { state } = useAuth();
   const myId = state.status === "authed" ? state.user.id : "";
   const emailVerified = state.status === "authed" && state.user.email_verified;
+  const loadScope = `${currentOrg?.id ?? ""}:${myId}:${emailVerified ? "verified" : "unverified"}`;
+  const loadScopeRef = useRef(loadScope);
+  loadScopeRef.current = loadScope;
+  const requestSequence = useRef(0);
+  const [loadedScope, setLoadedScope] = useState("");
+  const scopeCurrent = loadedScope === loadScope;
   const [orgId, setOrgId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<Role | undefined>(undefined);
   const [raw, setRaw] = useState<Raw | null>(null);
@@ -110,6 +117,11 @@ export default function Kubernetes() {
   const section = requestedSection === "services" || requestedSection === "operations" ? requestedSection : "clusters";
   const query = params.get("q") ?? "";
   const selectedId = params.get("cluster");
+  const requestedDetail = params.get("detail");
+  const detail: ClusterStep = clusterSteps.includes(requestedDetail as ClusterStep) ? requestedDetail as ClusterStep : "overview";
+  const pageSize = appAccessPageSize(params.get("page_size"));
+  const pageValue = Number(params.get("page"));
+  const requestedPage = Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1;
 
   useEffect(() => {
     if (requestedSection !== null && requestedSection !== section) {
@@ -120,6 +132,12 @@ export default function Kubernetes() {
   }, [params, requestedSection, section, setParams]);
 
   const reload = useCallback(async () => {
+    const sequence = ++requestSequence.current;
+    const requestScope = loadScope;
+    const isCurrent = () => sequence === requestSequence.current && loadScopeRef.current === requestScope;
+    setLoadedScope("");
+    setMyRole(undefined);
+    setOrgId(null);
     setLoadError(null);
     setRaw(null);
     setRegistering(false);
@@ -128,6 +146,9 @@ export default function Kubernetes() {
     setProviderMetadataFor(null);
     setDeregisterFor(null);
     setUnexposeFor(null);
+    setInspectedService(null);
+    setTrafficPathOpen(false);
+    setCommandsOpen(false);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5). This used to fetch the org list here and
     // take `[0]`, which meant a user in two organizations could reach only one of them and the switcher in
     // the header would have had nothing to switch.
@@ -135,18 +156,21 @@ export default function Kubernetes() {
     // loading (say nothing), the read failed (say THAT), genuinely no membership (say that).
     if (orgLoading) return;
     const first = currentOrg;
-    if (!first)
+    if (!first) {
+      setLoadedScope(requestScope);
       return setLoadError(
         orgFailed
           ? "Could not load your organizations."
           : "You are not a member of any organization yet.",
       );
+    }
     setOrgId(first.id);
     const memRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/members", {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Member[]>;
+    if (!isCurrent()) return;
     const role = roleFromMembers(memRes, myId).role;
     setMyRole(role);
     const cRes = (await loadOne(() =>
@@ -154,18 +178,21 @@ export default function Kubernetes() {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<K8sCluster[]>;
-    if (!cRes.ok) return setLoadError(cRes.error);
+    if (!isCurrent()) return;
+    if (!cRes.ok) { setLoadedScope(requestScope); return setLoadError(cRes.error); }
     const svcRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/k8s/services", {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<K8sService[]>;
-    if (!svcRes.ok) return setLoadError(svcRes.error);
+    if (!isCurrent()) return;
+    if (!svcRes.ok) { setLoadedScope(requestScope); return setLoadError(svcRes.error); }
     const sRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/sites", {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Site[]>;
+    if (!isCurrent()) return;
     // ⛔ TWO SECOND-CLASS READS. Both enrich a screen that is already correct, so a failure degrades a cell
     // rather than blanking the page — and `null` is carried through rather than collapsed to 0/[].
     const nRes = (await loadOne(() =>
@@ -173,26 +200,32 @@ export default function Kubernetes() {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Node[]>;
+    if (!isCurrent()) return;
     const mcRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/machine-credentials", {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<unknown[]>;
+    if (!isCurrent()) return;
     const connectorPools: Record<string, ConnectorPoolLookup> = {};
     // A direct owner is already present in the cluster payload. Only clusters
     // without it need the pool read, which keeps the common path single-read.
     if (can(role, "k8s_ha:view")) {
       await Promise.all(cRes.data.filter((cluster) => cluster.connector_node_id == null).map(async (cluster) => {
-        const { data, error } = await api.GET("/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector-pool", {
-          params: { path: { orgId: first.id, clusterId: cluster.id } },
-        });
-        connectorPools[cluster.id] = error
-          ? apiErrorCode(error) === "connector_pool_not_found" ? { kind: "unconfigured" } : { kind: "unavailable" }
-          : data ? { kind: "configured", configuration: data } : { kind: "unavailable" };
+        try {
+          const { data, error } = await api.GET("/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector-pool", {
+            params: { path: { orgId: first.id, clusterId: cluster.id } },
+          });
+          connectorPools[cluster.id] = error
+            ? apiErrorCode(error) === "connector_pool_not_found" ? { kind: "unconfigured" } : { kind: "unavailable" }
+            : data ? { kind: "configured", configuration: data } : { kind: "unavailable" };
+        } catch { connectorPools[cluster.id] = { kind: "unavailable" }; }
       }));
     } else {
       for (const cluster of cRes.data) if (cluster.connector_node_id == null) connectorPools[cluster.id] = { kind: "unavailable" };
     }
+    if (!isCurrent()) return;
+    setLoadedScope(requestScope);
     setRaw({
       clusters: cRes.data,
       services: svcRes.data,
@@ -207,15 +240,16 @@ export default function Kubernetes() {
     // ⚠ currentOrg IS A DEPENDENCY, AND THAT IS THE HALF THAT MAKES THE SWITCHER WORK. Without it the
     // page keeps rendering the org it mounted with — the control moves, the data does not, and the user is
     // looking at one tenant's screen labelled with another's name.
-  }, [currentOrg, myId]);
+  }, [currentOrg, myId, orgLoading, orgFailed, loadScope]);
   useEffect(() => {
-    reload();
+    void reload();
+    return () => { requestSequence.current += 1; };
   }, [reload]);
 
-  const gate = k8sGate({ role: myRole, emailVerified });
+  const gate = k8sGate({ role: scopeCurrent ? myRole : undefined, emailVerified });
   const cards: ClusterCard[] = useMemo(
-    () => (raw ? assembleClusters(raw.clusters, raw.services) : []),
-    [raw],
+    () => (raw && scopeCurrent ? assembleClusters(raw.clusters, raw.services) : []),
+    [raw, scopeCurrent],
   );
   const siteName = useMemo(
     () => new Map((raw?.sites ?? []).map((x) => [x.id, x.name])),
@@ -257,6 +291,8 @@ export default function Kubernetes() {
   const [unexposeFor, setUnexposeFor] = useState<ServiceRow | null>(null);
   const [trafficPathOpen, setTrafficPathOpen] = useState(false);
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [commandKind, setCommandKind] = useState<"gateway" | "operator">("gateway");
+  const [commandStep, setCommandStep] = useState(0);
 
   // Every exposed Service, flattened WITH its cluster, so the table is one scannable list rather than a list
   // per card. §6.2: the SERVICE list is the scaling surface, so it gets the table; the cluster list does not.
@@ -282,385 +318,95 @@ export default function Kubernetes() {
     if (selectedId && raw && !selected) updateQuery({ cluster: null });
   }, [raw, selected, selectedId]);
   function updateQuery(changes: Record<string, string | null>) {
-    const next = new URLSearchParams(params);
-    for (const [key, value] of Object.entries(changes)) {
-      if (value === null || value === "") next.delete(key);
-      else next.set(key, value);
-    }
-    setParams(next);
+    setParams(current => {
+      const next = new URLSearchParams(current);
+      if (["q", "cluster", "section", "detail", "page_size"].some(key => key in changes)) next.delete("page");
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === null || value === "") next.delete(key);
+        else next.set(key, value);
+      }
+      return next;
+    });
   }
 
+  function openCluster(card: ClusterCard, step: ClusterStep = "overview") {
+    updateQuery({ section: "clusters", cluster: card.id, detail: step === "overview" ? null : step, q: null });
+  }
+  function editable(card: ClusterCard) { return gate.canManage && !objectControls(card.managedByOperator).withheld; }
+  function connectorControls(card: ClusterCard) {
+    const binding = connectorBinding(card);
+    return editable(card) && raw?.nodes !== null && binding.kind !== "pool" && binding.kind !== "unavailable";
+  }
+  function clusterMenu(card: ClusterCard, includeNavigation = true) {
+    return <AppAccessRowMenu label={`Cluster actions for ${card.name}`} actions={[
+      ...(includeNavigation ? [
+        { key: "view", label: "View cluster", onSelect: () => openCluster(card) },
+        { key: "services", label: "View services", onSelect: () => updateQuery({ section: "services", cluster: card.id, detail: null, q: null }) },
+      ] : []),
+      ...(connectorControls(card) ? [{ key: "connector", label: connectorBinding(card).kind === "missing" ? "Select connector" : "Change connector", onSelect: () => setConnectorFor(card) }] : []),
+      ...(editable(card) ? [
+        { key: "provider", label: "Correct provider metadata", onSelect: () => setProviderMetadataFor(card) },
+        { key: "remove", label: "Deregister", danger: true, onSelect: () => setDeregisterFor(card) },
+      ] : []),
+    ]} />;
+  }
+  function connectorCell(card: ClusterCard) {
+    const binding = connectorBinding(card);
+    const connector = clusterConnectorState({ connectorNodeId: binding.nodeId, gateways });
+    return <div className="kubernetes-cell-stack">
+      <span>{binding.kind === "pool" ? `Pool: ${nodeName.get(binding.nodeId) ?? "active connector unavailable"}` : binding.kind === "direct" ? nodeName.get(binding.nodeId) ?? "Connector unavailable" : binding.kind === "missing" ? "Connector required" : "Connector pool state unavailable"}</span>
+      {binding.kind === "missing" && <span className="sr-only">connector: not selected</span>}
+      {binding.kind === "unavailable" && <span className="sr-only">connector pool state could not be read; no connector state is inferred</span>}
+      {raw?.nodes === null ? <span className="kubernetes-muted">Gateway inventory unavailable</span> : binding.kind !== "unavailable" && !connector.configured && connector.why !== null && <><Badge tone="warn">Needs setup</Badge><span className="sr-only">{connector.why}</span></>}
+    </div>;
+  }
   const clusterColumns = [
-    {
-      key: "cluster",
-      header: "Cluster",
-      sortValue: (c: ClusterCard) => c.name,
-      cell: (c: ClusterCard) => {
-        const provider = providerPlatformEntry(c.provider, c.platform);
-        const platform = provider
-          ? provider.platform === "gke_standard" ? "GKE" : provider.platform === "kubernetes" ? "K8s" : provider.platform.toUpperCase()
-          : "Legacy";
-        return (
-        <span className="flex items-center gap-2.5 whitespace-nowrap">
-          {provider && <ProviderMark provider={provider.provider} className="h-4 w-5 shrink-0" />}
-          <span className="flex min-w-0 items-center gap-2">
-            <button type="button" className="font-medium text-ink-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>{c.name}</button>
-            {c.managedByOperator && <ManagedBadge />}
-            {c.managedByOperator && <span className="sr-only" aria-label={managedEditWarning("cluster")} />}
-          </span>
-          <Badge tone="neutral">{platform}</Badge>
-        </span>
-      );},
-    },
-    {
-      key: "site",
-      header: "Site & connector",
-      sortValue: (c: ClusterCard) => siteName.get(c.siteId) ?? "",
-      cell: (c: ClusterCard) => {
-        const binding = connectorBinding(c);
-        const connector = clusterConnectorState({ connectorNodeId: binding.nodeId, gateways });
-        const name = siteName.get(c.siteId) ?? null;
-        return (
-          <span className="kubernetes-connector-cell">
-            <span className="text-ink-body">{name === null ? "Site unavailable" : name}</span>
-
-            <span className="text-ink-faint">
-              {binding.kind === "pool" ? `Pool: ${nodeName.get(binding.nodeId) ?? "active connector unavailable"}` : binding.kind === "direct" ? nodeName.get(binding.nodeId) ?? "Connector unavailable" : binding.kind === "missing" ? "Connector required" : "Connector pool state unavailable"}
-            </span>
-            {binding.kind === "missing" && <span className="sr-only">connector: not selected</span>}
-            {binding.kind === "unavailable" && <span className="sr-only">connector pool state could not be read; no connector state is inferred</span>}
-            {/* ⛔ D9 SITS HERE, ON THE THING IT IS ABOUT. The claim is about the GATEWAY fronting the site, so
-                it belongs in this column and not on the Service rows, which would read as a fact about them. */}
-            {binding.kind !== "unavailable" && !connector.configured && connector.why !== null && (
-              <Badge tone="warn">Needs setup</Badge>
-            )}
-            {binding.kind !== "unavailable" && !connector.configured && connector.why !== null && <span className="sr-only">{connector.why}</span>}
-          </span>
-        );
-      },
-    },
-    {
-      key: "network",
-      header: "Service network",
-      sortValue: (c: ClusterCard) => c.dnsZone,
-      cell: (c: ClusterCard) => (
-        <span className="flex flex-col gap-0.5 font-sans text-cell text-ink-body">
-          <span>{c.vipRange}</span>
-          <span className="text-micro text-ink-faint">{c.dnsZone || "DNS zone not set"}</span>
-        </span>
-      ),
-    },
-    {
-      key: "services",
-      header: "Services",
-      numeric: true,
-      sortValue: (c: ClusterCard) => c.services.length,
-      cell: (c: ClusterCard) => <span className="text-cell text-ink-body">{c.services.length}</span>,
-    },
-    {
-      key: "owner",
-      header: "Managed by",
-      cell: (c: ClusterCard) => (
-        <Badge tone="neutral">
-          {c.managedByOperator ? "Operator" : "Dashboard"}
-        </Badge>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      numeric: true,
-      cell: (c: ClusterCard) => (
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={`View ${c.name}`}
-          onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}
-        >
-          Open →
-        </Button>
-      ),
-    },
+    { key: "cluster", header: "Cluster", cell: (card: ClusterCard) => {
+      const provider = providerPlatformEntry(card.provider, card.platform);
+      return <div className="kubernetes-cell-stack"><button type="button" className="kubernetes-name-link" onClick={() => openCluster(card)}>{card.name}</button><span className="kubernetes-muted" aria-label={card.managedByOperator ? managedEditWarning("cluster") : undefined}>{[provider?.platformLabel, card.managedByOperator ? "GitOps" : "Dashboard"].filter(Boolean).join(" · ")}</span></div>;
+    } },
+    { key: "site", header: "Network", cell: (card: ClusterCard) => siteName.get(card.siteId) ?? "Site unavailable" },
+    { key: "connector", header: "Connector", cell: connectorCell },
+    { key: "services", header: "Services", cell: (card: ClusterCard) => card.services.length },
+    { key: "actions", header: "Actions", cell: (card: ClusterCard) => clusterMenu(card) },
   ];
 
   type SvcRow = (typeof serviceRows)[number];
+  const [inspectedService, setInspectedService] = useState<SvcRow | null>(null);
   const serviceColumns = [
-    {
-      key: "fqdn",
-      header: "Service",
-      sortValue: (r: SvcRow) => r.fqdn,
-      cell: (r: SvcRow) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="font-sans text-ink-primary">{r.fqdn}</span>
-          <span className="text-micro text-ink-faint">
-            {r.namespace} / {r.name}
-            {cards.length > 1 ? ` · cluster ${r.clusterName}` : ""}
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: "vip",
-      header: "VIP",
-      sortValue: (r: SvcRow) => r.vip,
-      cell: (r: SvcRow) => (
-        <span className="font-sans text-cell text-ink-body">{r.vip}</span>
-      ),
-    },
-    {
-      key: "ports",
-      header: "Port",
-      cell: (r: SvcRow) => (
-        <span className="font-sans text-cell text-ink-body">
-          {r.protocol} {r.ports}
-        </span>
-      ),
-    },
-    {
-      key: "owner",
-      header: "Managed by",
-      cell: (r: SvcRow) => (
-        <Badge tone="neutral">
-          {r.managedByOperator ? "Operator" : "Dashboard"}
-        </Badge>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      numeric: true,
-      cell: (r: SvcRow) =>
-        !gate.canManage ? null : objectControls(r.managedByOperator)
-            .withheld ? (
-          <span
-            className="text-micro text-ink-faint"
-            aria-label={managedEditWarning("Service")}
-          >
-            edit the CR, not here
-          </span>
-        ) : (
-          <Button size="sm" variant="ghost" onClick={() => setUnexposeFor(r)}>
-            Unexpose
-          </Button>
-        ),
-    },
+    { key: "service", header: "Service", cell: (row: SvcRow) => <div className="kubernetes-cell-stack"><button type="button" className="kubernetes-name-link" aria-label={row.fqdn} title={row.fqdn} onClick={() => setInspectedService(row)}>{row.name}</button><span className="kubernetes-muted">{row.namespace}</span></div> },
+    { key: "cluster", header: "Cluster", cell: (row: SvcRow) => <button type="button" className="kubernetes-text-link" onClick={() => { const card = cards.find(card => card.id === row.clusterId); if (card) openCluster(card); }}>{row.clusterName}</button> },
+    { key: "vip", header: "VIP · port", cell: (row: SvcRow) => <div className="kubernetes-cell-stack"><span>{row.vip}</span><span className="kubernetes-muted">{row.protocol.toUpperCase()} {row.ports}</span></div> },
+    { key: "owner", header: "Managed by", cell: (row: SvcRow) => <span aria-label={row.managedByOperator ? managedEditWarning("Service") : undefined}>{row.managedByOperator ? "GitOps" : "Dashboard"}</span> },
+    { key: "actions", header: "Actions", cell: (row: SvcRow) => <AppAccessRowMenu label={`Service actions for ${row.fqdn}`} actions={[
+      { key: "view", label: "View service", onSelect: () => setInspectedService(row) },
+      ...(gate.canManage && !objectControls(row.managedByOperator).withheld ? [{ key: "remove", label: "Unexpose", danger: true, onSelect: () => setUnexposeFor(row) }] : []),
+    ]} /> },
   ];
-
-  const selectedProviderContext = selected
-    ? providerPlatformEntry(selected.provider, selected.platform)
-    : null;
+  const filteredServices = serviceRows.filter(row => (!selectedId || row.clusterId === selectedId) && `${row.fqdn} ${row.namespace} ${row.name} ${row.clusterName}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const showingServices = section === "services" || (section === "clusters" && selected && detail === "services");
+  const count = showingServices ? filteredServices.length : visibleCards.length;
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(count / pageSize)));
+  const first = (page - 1) * pageSize;
+  const pagedCards = visibleCards.slice(first, first + pageSize);
+  const pagedServices = filteredServices.slice(first, first + pageSize);
+  useEffect(() => { if (raw && scopeCurrent && requestedPage !== page) updateQuery({ page: page === 1 ? null : String(page) }); }, [raw, scopeCurrent, requestedPage, page]);
+  const pagination = <AppAccessPagination maxOffset={null} page={page} pageSize={pageSize} count={showingServices ? pagedServices.length : pagedCards.length} hasNext={page * pageSize < count} onPageChange={next => updateQuery({ page: String(next) })} onPageSizeChange={size => updateQuery({ page_size: String(size) })} previousLabel={showingServices ? "Previous services" : "Previous clusters"} nextLabel={showingServices ? "Next services" : "Next clusters"} />;
+  const selectedProviderContext = selected ? providerPlatformEntry(selected.provider, selected.platform) : null;
   const selectedBinding = selected ? connectorBinding(selected) : null;
-
-  return (
-    <div className="network-management kubernetes-workspace flex flex-col gap-5">
-      <PageHeader
-        title="Kubernetes"
-        subtitle={currentOrg?.name ?? "Clusters and private services"}
-        actions={section === "clusters" && raw && gate.canManage && (raw.sites?.length ?? 0) > 0
-          ? <Button onClick={() => setRegistering(true)}>Register cluster</Button>
-          : undefined}
-      />
-
-      <nav aria-label="Kubernetes workspace" className="kubernetes-tabs">
-        {([
-          ["clusters", "Clusters"],
-          ["services", "Exposed services"],
-          ["operations", "Setup & diagnostics"],
-        ] as const).map(([id, label]) => (
-          <button
-            type="button"
-            key={id}
-            aria-current={section === id ? "page" : undefined}
-            className={`relative -mb-px px-0.5 py-2.5 text-cell font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${section === id ? "text-white after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-white" : "text-ink-tertiary hover:text-ink-heading"}`}
-            onClick={() => updateQuery({ section: id, cluster: id === "operations" ? null : selectedId })}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {loadError && <LoadRetry error={loadError} onRetry={reload} />}
-      {!loadError && raw === null && (
-        <Loading size="inline" label="Loading Kubernetes services…" />
-      )}
-
-      {raw && !loadError && cards.length === 0 && (
-        // ⛔ N=0 IS ONE EMPTY STATE, NOT EIGHT. Every panel below would render its own emptiness, and eight
-        // simultaneous empty panels is the reassuring-empty defect multiplied. It names the precondition.
-        <EmptyState>
-          <h2 className="mb-3">Connect your first cluster</h2>
-          {raw.sites === null
-            ? "The Site inventory could not be read. Cluster registration is unavailable until it loads; no zero-Site result is inferred."
-            : raw.sites.length === 0
-            ? "Register a site with a gateway first: a cluster is fronted by one site's gateway, and without one no VIP can be programmed."
-            : "No clusters registered. Registering one reserves a VIP range and a DNS zone, and then in-cluster Services can be exposed by name."}
-          {raw.sites?.length === 0 && <Link className="network-setup-link mt-4" to="/network/setup">Set up a network →</Link>}
-        </EmptyState>
-      )}
-
-      {raw && (raw.sitesError || raw.nodesError) && cards.length > 0 && (
-        <p role="alert" className="rounded-md border border-amber-700/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-          {[raw.sitesError && "Site inventory is unavailable; registration is disabled.", raw.nodesError && "Node inventory is unavailable; connector selection and reachability details are unavailable."].filter(Boolean).join(" ")}
-        </p>
-      )}
-
-      {raw && !loadError && cards.length > 0 && (
-        <>
-          <section className="tnx-card-surface kubernetes-summary" aria-label="Kubernetes summary">
-            <div><span>Clusters</span><strong>{cards.length}</strong><small>Registered in your network</small></div>
-            <div><span>Exposed services</span><strong>{serviceRows.length}</strong><small>Private service identities</small></div>
-            <div><span>Connector configuration</span><strong>{raw.nodes === null ? "Unknown" : `${cards.filter(c => clusterConnectorState({connectorNodeId:c.connectorNodeId,gateways}).configured).length} / ${cards.length}`}</strong><small>{raw.nodes === null ? "Inventory unavailable" : "Clusters with a configured connector"}</small></div>
-          </section>
-          {section === "clusters" && <>
-            <section aria-labelledby="k8s-clusters-heading" className="tnx-card-surface flex flex-col gap-4 p-5">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h2 id="k8s-clusters-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Clusters</h2>
-                  <p className="mt-1 text-cell text-ink-tertiary">{visibleCards.length} registered <span aria-hidden className="mx-1.5 text-white/20">/</span> {serviceRows.length} exposed {serviceRows.length === 1 ? "service" : "services"}</p>
-                </div>
-                <label className="block w-full sm:w-80">
-                <span className="sr-only">Search clusters</span>
-                <Input className="bg-black/30" value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Search clusters" />
-                </label>
-              </div>
-              <DataTable
-                caption="Registered Kubernetes clusters"
-                columns={clusterColumns}
-                rows={visibleCards}
-                rowKey={(c: ClusterCard) => c.id}
-                empty="No clusters match this search."
-                failed={false}
-                filterable={false}
-              />
-            </section>
-          </>}
-
-
-          <div className={section === "operations" ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 items-start gap-3"}>
-            <div className="flex min-w-0 flex-col gap-3">
-              {section === "services" && <section aria-labelledby="k8s-services-heading" className="tnx-card-surface flex flex-col gap-4 p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 id="k8s-services-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Exposed Services ({serviceRows.length})</h2>
-                  <div className="flex items-center gap-2">
-                    <Select aria-label="Filter services by cluster" value={selectedId ?? ""} onChange={(event) => updateQuery({ cluster: event.target.value || null })} width="auto">
-                      <option value="">All clusters</option>
-                      {cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
-                    </Select>
-                    {gate.canManage && selected && !objectControls(selected.managedByOperator).withheld && <Button size="sm" onClick={() => setExposeFor(selected)}>Expose service</Button>}
-                  </div>
-                </div>
-                <DataTable
-                  caption="Exposed Kubernetes Services"
-                  columns={serviceColumns}
-                  rows={selectedId ? serviceRows.filter((row) => row.clusterId === selectedId) : serviceRows}
-                  rowKey={(r: SvcRow) => r.id}
-                  empty="No Services exposed yet. Exposing one allocates a VIP and gives it a name clients can reach."
-                  failed={false}
-                />
-              </section>}
-
-              {section === "operations" && <SettingGroup title="Kubernetes configuration">
-                <SettingRow label="Traffic path" description="Service names resolve to a synthetic VIP, then the selected connector forwards only to ready pod endpoints.">
-                  <Button size="sm" variant="ghost" onClick={() => setTrafficPathOpen(true)}>View path</Button>
-                </SettingRow>
-                {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
-                <SettingRow label="Operator and connector setup" description="Use the version-matched lifecycle CLI for gateways; charts accept Secret references, never raw credentials.">
-                  <Button size="sm" variant="ghost" onClick={() => setCommandsOpen(true)}>View commands</Button>
-                </SettingRow>
-                <SettingRow label="Operational visibility" description="Endpoint health is reported on Gateways; removed-service references remain visible on Access Policies.">
-                  <SettingValue>{raw.machineCreds === null ? "Credentials unavailable" : `${raw.machineCreds} machine ${raw.machineCreds === 1 ? "credential" : "credentials"}`}</SettingValue>
-                </SettingRow>
-              </SettingGroup>}
-            </div>
-          </div>
-        </>
-      )}
-
-      {section === "clusters" && selected && (
-        <Modal
-          title={selected.name}
-          size="wide"
-          onDismiss={() => updateQuery({ cluster: null })}
-          actions={<Button variant="ghost" onClick={() => updateQuery({ cluster: null })}>Close</Button>}
-        >
-          <div className="kubernetes-cluster-detail flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {selectedProviderContext ? (
-                <span className="inline-flex items-center gap-2 text-cell text-ink-body">
-                  <ProviderMark provider={selectedProviderContext.provider} className="h-4 w-5" />
-                  {selectedProviderContext.providerLabel} · {selectedProviderContext.platformLabel}
-                </span>
-              ) : <span className="text-cell text-ink-tertiary">Unknown (legacy registration; not inferred)</span>}
-              {selected.managedByOperator && <ManagedBadge />}
-            </div>
-
-            <div className="kubernetes-next-step">
-              <div><strong>{selected.services.length} exposed {selected.services.length === 1 ? "service" : "services"}</strong><p>Inspect service addresses and manage exposure.</p></div>
-              <Button variant="ghost" onClick={() => updateQuery({section:"services",cluster:selected.id})}>View services →</Button>
-            </div>
-            <dl className="kubernetes-detail-grid">
-              {[
-                ["Site", siteName.get(selected.siteId) ?? "Site record unavailable"],
-                ["Connector", selectedBinding?.kind === "pool" ? `Pool active: ${nodeName.get(selectedBinding.nodeId) ?? "Unavailable"}` : selectedBinding?.kind === "direct" ? (nodeName.get(selectedBinding.nodeId) ?? "Unavailable") : selectedBinding?.kind === "missing" ? "Not selected" : "Pool state unavailable"],
-                ["Exposed services", String(selected.services.length)],
-                ["DNS VIP", selected.dnsVip ?? "Not allocated"],
-                ["VIP range", selected.vipRange],
-                ["Service CIDR", selected.serviceCidr],
-                ["DNS zone", selected.dnsZone || "Not configured"],
-                ["Managed by", selected.managedByOperator ? "GitOps operator" : "Dashboard"],
-              ].map(([label, value]) => <div key={label}>
-                <dt className="text-micro text-ink-faint">{label}</dt>
-                <dd className="mt-1 break-words font-sans text-ink-body">{value}</dd>
-              </div>)}
-            </dl>
-
-            {orgId && <K8sConnectorPoolPanel
-              orgId={orgId}
-              cluster={selected}
-              nodes={raw?.nodes ?? null}
-              role={myRole}
-              emailVerified={emailVerified}
-              onChanged={reload}
-            />}
-
-            {objectControls(selected.managedByOperator).withheld ? (
-              <p className="text-micro text-ink-tertiary" aria-label={managedEditWarning("cluster")}>Managed by GitOps. Edit its CR to change this cluster.</p>
-            ) : gate.canManage ? (
-              <div className="flex flex-wrap gap-2">
-                {selectedBinding?.kind !== "pool" && selectedBinding?.kind !== "unavailable" && <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setConnectorFor(selected); }}>{selectedBinding?.kind === "missing" ? "Select connector" : "Change connector"}</Button>}
-                <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setProviderMetadataFor(selected); }}>Correct provider metadata</Button>
-                <Button size="sm" onClick={() => { updateQuery({ cluster: null }); setExposeFor(selected); }}>Expose service</Button>
-              </div>
-            ) : null}
-
-            {gate.canManage && !objectControls(selected.managedByOperator).withheld && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-danger/30 pt-4">
-                <span className="text-micro text-ink-faint">Deregistering also removes this cluster&rsquo;s exposed Services.</span>
-                <Button size="sm" variant="danger" onClick={() => { updateQuery({ cluster: null }); setDeregisterFor(selected); }}>Deregister</Button>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
-      {trafficPathOpen && (
-        <Modal title="Kubernetes traffic path" onDismiss={() => setTrafficPathOpen(false)} actions={<Button variant="ghost" onClick={() => setTrafficPathOpen(false)}>Close</Button>}>
-          <p className="font-sans text-cell text-ink-heading">device → service name → VIP → ready pod</p>
-          <p className="mt-3 text-cell text-ink-tertiary">Endpoint inventory failures withdraw delivery. Policy remains keyed to the pre-DNAT VIP.</p>
-        </Modal>
-      )}
-      {commandsOpen && (
-        <Modal title="Operator and connector setup" onDismiss={() => setCommandsOpen(false)} actions={<Button variant="ghost" onClick={() => setCommandsOpen(false)}>Close</Button>}>
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="mb-2 text-cell font-medium text-ink-heading">Gateway lifecycle</p>
-              <p className="mb-2 text-micro text-ink-tertiary">The logged-in CLI prints a redacted plan, streams the single-use token on stdin, and removes the consumed bootstrap Secret after readiness.</p>
-              <pre className="overflow-x-auto rounded-input border border-line bg-black/30 p-3 text-micro text-ink-body">{`tunnex k8s plan --org ${orgId ?? "<organization-id>"} --node-name <gateway-name>
-tunnex k8s install --org ${orgId ?? "<organization-id>"} --node-name <gateway-name> --yes`}</pre>
-            </div>
-            <div>
-              <p className="mb-2 text-cell font-medium text-ink-heading">Optional GitOps operator</p>
-              <p className="mb-2 text-micro text-ink-tertiary">Create the machine credential as Kubernetes Secret <span className="font-mono">tunnex-operator-credential</span> first. Upgrade the retained CRDs before the rollbackable operator. <span className="font-mono">--take-ownership</span> adopts only an exact approved Tunnex legacy schema; unknown ownerless schemas fail before apply. These commands contain no secret values.</p>
-              <pre className="overflow-x-auto rounded-input border border-line bg-black/30 p-3 text-micro text-ink-body">{`CLI_VERSION="$(tunnex version)"
+  const resetSearch = () => updateQuery({ q: null });
+  const servicesList = <section className="kubernetes-services" aria-label="Exposed services">
+    <div className="kubernetes-list-toolbar">
+      <Input aria-label="Search services" placeholder="Search services, namespaces or clusters…" value={query} onChange={event => updateQuery({ q: event.target.value })} />
+      {section === "services" && <Select aria-label="Filter services by cluster" value={selectedId ?? ""} onChange={event => updateQuery({ cluster: event.target.value || null })} width="auto"><option value="">All clusters</option>{cards.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</Select>}
+      <span className="kubernetes-list-count">{filteredServices.length} service{filteredServices.length === 1 ? "" : "s"}</span>
+      {selected && editable(selected) && <Button size="sm" onClick={() => setExposeFor(selected)}>Expose service</Button>}
+    </div>
+    {pagedServices.length ? <div className="kubernetes-flat-table kubernetes-service-table" data-scoped={section === "clusters" ? "true" : undefined}><DataTable caption="Exposed Kubernetes Services" columns={section === "clusters" ? serviceColumns.filter(column => column.key !== "cluster") : serviceColumns} rows={pagedServices} rowKey={row => row.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="kubernetes-empty-state" role="status"><h3>{query ? "No matching services" : "No exposed services"}</h3><p>{query ? "Try another service or namespace." : selected ? "Choose a service from this cluster’s connector inventory." : "Select a cluster to expose its first service."}</p>{query && <Button size="sm" variant="ghost" onClick={resetSearch}>Clear search</Button>}</div>}
+    {pagination}
+  </section>;
+  const operatorCommands = [
+    `CLI_VERSION="$(tunnex version)"
 CHART_VERSION="\${CLI_VERSION#v}"
 TUNNEX_CONTROL_PLANE_URL="${window.location.origin}"
 TUNNEX_ORGANIZATION_ID="${orgId ?? "replace-with-organization-uuid"}"
@@ -668,9 +414,8 @@ TUNNEX_ORGANIZATION_ID="${orgId ?? "replace-with-organization-uuid"}"
 case "$CHART_VERSION" in dev|unknown|"")
   echo "Use a released CLI or set CHART_VERSION explicitly." >&2
   exit 1
-esac
-
-helm upgrade --install tunnex-operator-crds \\
+esac`,
+    `helm upgrade --install tunnex-operator-crds \\
   oci://ghcr.io/tunnexio/charts/tunnex-operator-crds \\
   --version "$CHART_VERSION" \\
   --namespace tunnex-system --create-namespace \\
@@ -679,22 +424,94 @@ helm upgrade --install tunnex-operator-crds \\
 kubectl wait --for=condition=Established --timeout=120s \\
   crd/tunnexclusters.tunnex.io \\
   crd/tunnexexposedservices.tunnex.io \\
-  crd/tunnexgrants.tunnex.io
-
-helm upgrade --install tunnex-operator \\
+  crd/tunnexgrants.tunnex.io`,
+    `helm upgrade --install tunnex-operator \\
   oci://ghcr.io/tunnexio/charts/tunnex-operator \\
   --version "$CHART_VERSION" \\
   --namespace tunnex-system --create-namespace \\
   --set-string controlPlane.url="$TUNNEX_CONTROL_PLANE_URL" \\
   --set-string controlPlane.organizationID="$TUNNEX_ORGANIZATION_ID" \\
   --set-string machineToken.existingSecret=tunnex-operator-credential \\
-  --atomic --wait`}</pre>
+  --atomic --wait`
+  ];
+  const currentRaw = scopeCurrent ? raw : null;
+
+  return (
+    <div className="network-management kubernetes-workspace">
+      <h1 className="sr-only">Kubernetes</h1>
+      <div className="kubernetes-workspace-toolbar">
+        <nav aria-label="Kubernetes workspace" className="kubernetes-tabs">
+          {([["clusters", "Clusters"], ["services", "Exposed services"], ["operations", "Operations"]] as const).map(([id, label]) => <button type="button" key={id} aria-current={section === id ? "page" : undefined} onClick={() => updateQuery({ section: id, cluster: null, detail: null, q: null })}>{label}</button>)}
+        </nav>
+        <div className="kubernetes-toolbar-actions"><Button variant="ghost" size="sm" aria-label="Refresh Kubernetes" onClick={() => void reload()}>Refresh</Button>{currentRaw && gate.canManage && (currentRaw.sites?.length ?? 0) > 0 && <Button size="sm" onClick={() => setRegistering(true)}>Register cluster</Button>}</div>
+      </div>
+      {scopeCurrent && loadError && <LoadRetry error={loadError} onRetry={reload} />}
+      {(!scopeCurrent || (!loadError && currentRaw === null)) && <Loading size="inline" label="Loading Kubernetes services…" />}
+      {currentRaw && !loadError && <>
+        {(currentRaw.sitesError || currentRaw.nodesError) && <div role="alert" className="kubernetes-read-warning"><span>{[currentRaw.sitesError && "Network inventory unavailable. Registration is disabled.", currentRaw.nodesError && "Gateway inventory unavailable. Connector selection and configuration details cannot be verified."].filter(Boolean).join(" ")}</span><Button variant="ghost" size="sm" onClick={() => void reload()}>Retry inventory reads</Button></div>}
+        {cards.length === 0 && section !== "operations" ? <div className="kubernetes-empty-state" role="status"><h2>Connect your first cluster</h2><p>{currentRaw.sites === null ? "Network inventory is unavailable. Retry before registering a cluster." : currentRaw.sites.length === 0 ? "Add a network with a gateway before connecting a cluster." : "Register a cluster, then choose the services to expose."}</p>{currentRaw.sites?.length === 0 && <Link className="kubernetes-text-link" to="/network/setup">Set up a network</Link>}</div> : <>
+          {section === "clusters" && !selected && <section aria-label="Clusters" className="kubernetes-clusters">
+            <div className="kubernetes-list-toolbar"><Input aria-label="Search clusters" value={query} onChange={event => updateQuery({ q: event.target.value })} placeholder="Search clusters" /><span className="kubernetes-list-count">{visibleCards.length} cluster{visibleCards.length === 1 ? "" : "s"} · {serviceRows.length} exposed service{serviceRows.length === 1 ? "" : "s"}</span></div>
+            {pagedCards.length ? <div className="kubernetes-flat-table kubernetes-cluster-table"><DataTable caption="Registered Kubernetes clusters" columns={clusterColumns} rows={pagedCards} rowKey={card => card.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="kubernetes-empty-state" role="status"><h3>No matching clusters</h3><p>Try another cluster name.</p><Button size="sm" variant="ghost" onClick={resetSearch}>Clear search</Button></div>}
+            {pagination}
+          </section>}
+          {section === "services" && servicesList}
+          {section === "clusters" && selected && <section className="kubernetes-cluster-detail" aria-label={`${selected.name} cluster`}>
+            <nav className="kubernetes-breadcrumb" aria-label="Cluster breadcrumb"><button type="button" onClick={() => updateQuery({ cluster: null, detail: null, q: null })}>Clusters</button><span aria-hidden="true">/</span><span aria-current="page">{selected.name}</span></nav>
+            <header className="kubernetes-entity-header"><div><h2>{selected.name}</h2><p>{selectedProviderContext ? `${selectedProviderContext.providerLabel} · ${selectedProviderContext.platformLabel}` : "Provider not recorded"}{selected.managedByOperator ? " · GitOps" : ""}</p></div>{clusterMenu(selected, false)}</header>
+            <div className="kubernetes-detail-layout">
+              <nav className="kubernetes-detail-rail" aria-label="Cluster detail sections">{clusterSteps.map(step => <button type="button" key={step} aria-current={detail === step ? "step" : undefined} onClick={() => updateQuery({ detail: step === "overview" ? null : step, q: null })}>{step[0].toUpperCase() + step.slice(1)}</button>)}</nav>
+              <section className="kubernetes-detail-stage" aria-labelledby="kubernetes-stage-heading"><header className="kubernetes-stage-header"><h3 id="kubernetes-stage-heading">{detail[0].toUpperCase() + detail.slice(1)}</h3>{detail !== "services" && <span>{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>}</header>
+                {detail === "overview" && <>
+                  <dl className="kubernetes-facts"><div><dt>Network</dt><dd>{siteName.has(selected.siteId) ? <Link to={`/sites?section=overview&site=${selected.siteId}`}>{siteName.get(selected.siteId)}</Link> : "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{connectorCell(selected)}</dd></div><div><dt>Managed by</dt><dd aria-label={selected.managedByOperator ? managedEditWarning("cluster") : undefined}>{selected.managedByOperator ? "GitOps operator" : "Dashboard"}</dd></div></dl>
+                  {selected.managedByOperator && <p className="kubernetes-context">Edit the cluster CR to change its configuration.</p>}
+                  <div className="kubernetes-stage-footer"><Button variant="ghost" onClick={() => updateQuery({ detail: "connection", q: null })}>View connection</Button><Button variant="ghost" onClick={() => updateQuery({ section: "services", cluster: selected.id, detail: null, q: null })}>View services</Button></div>
+                </>}
+                {detail === "connection" && <>
+                  <dl className="kubernetes-facts"><div><dt>Network</dt><dd>{siteName.get(selected.siteId) ?? "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{selectedBinding?.kind === "pool" ? `Pool active: ${nodeName.get(selectedBinding.nodeId) ?? "Unavailable"}` : selectedBinding?.kind === "direct" ? nodeName.get(selectedBinding.nodeId) ?? "Unavailable" : selectedBinding?.kind === "missing" ? "Not selected" : "Pool state unavailable"}</dd></div></dl>
+                  {raw?.nodes !== null && selectedBinding?.kind !== "unavailable" && <p className="kubernetes-context">{clusterConnectorState({ connectorNodeId: selectedBinding?.nodeId ?? null, gateways }).why ?? "Connector configuration is available. Service readiness is reported separately."}</p>}
+                  {connectorControls(selected) && <Button variant="ghost" size="sm" onClick={() => setConnectorFor(selected)}>{selectedBinding?.kind === "missing" ? "Select connector" : "Change connector"}</Button>}
+                  {orgId && <K8sConnectorPoolPanel orgId={orgId} cluster={selected} nodes={currentRaw.nodes} role={myRole} emailVerified={emailVerified} onChanged={reload} />}
+                </>}
+                {detail === "services" && servicesList}
+                {detail === "network" && <dl className="kubernetes-facts">{[["VIP range", selected.vipRange], ["Service CIDR", selected.serviceCidr], ["DNS zone", selected.dnsZone || "Not configured"], ["DNS VIP", selected.dnsVip ?? "Not allocated"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+              </section>
             </div>
-          </div>
+          </section>}
+          {section === "operations" && <div className="kubernetes-operations">
+            <SettingGroup title="Kubernetes configuration">
+              <SettingRow label="Traffic path" description="Service name → VIP → connector → ready pod"><Button size="sm" variant="ghost" onClick={() => setTrafficPathOpen(true)}>View path</Button></SettingRow>
+              {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
+              <SettingRow label="Operator and connector setup" description="Install a connector or the optional GitOps operator."><Button size="sm" variant="ghost" onClick={() => { setCommandKind("gateway"); setCommandStep(0); setCommandsOpen(true); }}>View commands</Button></SettingRow>
+              <SettingRow label="Machine credentials"><SettingValue>{currentRaw.machineCreds === null ? "Credentials unavailable" : `${currentRaw.machineCreds} machine ${currentRaw.machineCreds === 1 ? "credential" : "credentials"}`}</SettingValue></SettingRow>
+            </SettingGroup>
+          </div>}
+        </>}
+      </>}
+      {scopeCurrent && inspectedService && <Modal placement="right" showClose title={inspectedService.name} onDismiss={() => setInspectedService(null)} actions={<><Button variant="ghost" onClick={() => { const card = cards.find(card => card.id === inspectedService.clusterId); if (card) openCluster(card); setInspectedService(null); }}>View cluster</Button>{gate.canManage && !inspectedService.managedByOperator && <Button variant="danger" onClick={() => { setUnexposeFor(inspectedService); setInspectedService(null); }}>Unexpose</Button>}</>}>
+        <div className="kubernetes-service-inspection"><p>{inspectedService.fqdn}</p><dl className="kubernetes-facts">{[["Cluster", inspectedService.clusterName], ["Namespace", inspectedService.namespace], ["VIP", inspectedService.vip], ["Protocol", inspectedService.protocol.toUpperCase()], ["Port", inspectedService.ports], ["Managed by", inspectedService.managedByOperator ? "GitOps operator" : "Dashboard"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{inspectedService.managedByOperator && <p className="kubernetes-context" aria-label={managedEditWarning("Service")}>Edit the Service CR to change exposure.</p>}</div>
+      </Modal>}
+      {scopeCurrent && trafficPathOpen && (
+        <Modal placement="right" showClose title="Kubernetes traffic path" onDismiss={() => setTrafficPathOpen(false)} actions={<Button variant="ghost" onClick={() => setTrafficPathOpen(false)}>Close</Button>}>
+          <p className="font-sans text-cell text-ink-heading">device → service name → VIP → ready pod</p>
+          <p className="mt-3 text-cell text-ink-tertiary">Endpoint inventory failures withdraw delivery. Policy remains keyed to the pre-DNAT VIP.</p>
         </Modal>
       )}
+      {scopeCurrent && commandsOpen && <Modal placement="right" showClose title="Operator and connector setup" onDismiss={() => setCommandsOpen(false)} actions={<Button variant="ghost" onClick={() => setCommandsOpen(false)}>Close</Button>}>
+        <div className="kubernetes-command-guide">
+          <nav aria-label="Setup method" className="kubernetes-command-methods"><button type="button" aria-current={commandKind === "gateway" ? "page" : undefined} onClick={() => setCommandKind("gateway")}>Gateway</button><button type="button" aria-current={commandKind === "operator" ? "page" : undefined} onClick={() => { setCommandKind("operator"); setCommandStep(0); }}>GitOps operator</button></nav>
+          {commandKind === "gateway" ? <><h3>Install the connector</h3><p>Use the logged-in, version-matched CLI. Review the plan before installing.</p><pre>{`tunnex k8s plan --org ${orgId ?? "<organization-id>"} --node-name <gateway-name>
+tunnex k8s install --org ${orgId ?? "<organization-id>"} --node-name <gateway-name> --yes`}</pre><details><summary>Credential handling</summary><p>The CLI streams the single-use token on stdin and removes the consumed bootstrap Secret after readiness.</p></details></> : <>
+            <nav className="kubernetes-command-steps" aria-label="Operator setup steps">{["Prepare", "Install CRDs", "Install operator"].map((label, index) => <button type="button" key={label} aria-current={commandStep === index ? "step" : undefined} onClick={() => setCommandStep(index)}><span>{index + 1}</span>{label}</button>)}</nav>
+            <h3>{["Prepare the environment", "Upgrade the CRDs", "Install the operator"][commandStep]}</h3>
+            <p>{commandStep === 0 ? "Create the machine credential as Kubernetes Secret tunnex-operator-credential in tunnex-system. Set these variables, then run all steps in the same shell." : commandStep === 1 ? "Upgrade retained CRDs before the operator. Adoption accepts only an exact approved legacy Tunnex schema; unknown ownerless schemas fail before apply." : "The chart reads the existing Secret. This upgrade waits for readiness and rolls back on failure."}</p>
+            <pre>{operatorCommands[commandStep]}</pre>
+            <div className="kubernetes-command-footer"><Button variant="ghost" disabled={commandStep === 0} onClick={() => setCommandStep(step => step - 1)}>Back</Button>{commandStep < 2 && <Button onClick={() => setCommandStep(step => step + 1)}>Continue</Button>}</div>
+          </>}
+        </div>
+      </Modal>}
 
-      {registering && orgId && raw && (
+      {scopeCurrent && gate.canManage && registering && orgId && raw && (
         <ProviderFirstEnrollmentModal
           sites={raw.sites}
           nodes={raw.nodes}
@@ -734,7 +551,7 @@ helm upgrade --install tunnex-operator \\
           }}
         />
       )}
-      {exposeFor && orgId && (
+      {scopeCurrent && gate.canManage && exposeFor && orgId && (
         <ExposeServiceModal
           orgId={orgId}
           clusterId={exposeFor.id}
@@ -742,7 +559,7 @@ helm upgrade --install tunnex-operator \\
           onDone={reload}
         />
       )}
-      {connectorFor && orgId && raw && (
+      {scopeCurrent && gate.canManage && connectorFor && orgId && raw && raw.nodes !== null && (
         <SetConnectorModal
           orgId={orgId}
           cluster={connectorFor}
@@ -751,7 +568,7 @@ helm upgrade --install tunnex-operator \\
           onDone={reload}
         />
       )}
-      {providerMetadataFor && orgId && (
+      {scopeCurrent && gate.canManage && providerMetadataFor && orgId && (
         <ProviderMetadataCorrectionModal
           clusterName={providerMetadataFor.name}
           initialProvider={providerMetadataFor.provider}
@@ -775,7 +592,7 @@ helm upgrade --install tunnex-operator \\
           }}
         />
       )}
-      {deregisterFor && orgId && (
+      {scopeCurrent && gate.canManage && deregisterFor && orgId && (
         <DeregisterClusterModal
           orgId={orgId}
           card={deregisterFor}
@@ -783,7 +600,7 @@ helm upgrade --install tunnex-operator \\
           onDone={reload}
         />
       )}
-      {unexposeFor && orgId && (
+      {scopeCurrent && gate.canManage && unexposeFor && orgId && (
         <UnexposeServiceModal
           orgId={orgId}
           service={unexposeFor}
@@ -810,7 +627,7 @@ function SetConnectorModal({
 }) {
   const connectors = nodes.filter(
     (node) =>
-      node.status === "active" && node.site_id === cluster.siteId && node.endpoint,
+      node.status === "active" && node.site_id === cluster.siteId && node.endpoint?.trim(),
   );
   const [connectorNodeId, setConnectorNodeId] = useState(
     cluster.connectorNodeId ?? connectors[0]?.id ?? "",
@@ -819,24 +636,22 @@ function SetConnectorModal({
   const [busy, setBusy] = useState(false);
 
   async function submit() {
+    if (busy || !connectors.some(node => node.id === connectorNodeId)) return;
     setBusy(true);
     setErr(null);
-    const { error } = await api.PUT(
-      "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector",
-      {
-        params: { path: { orgId, clusterId: cluster.id } },
-        body: { node_id: connectorNodeId },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not set the in-cluster connector."));
-    onClose();
-    onDone();
+    try {
+      const { error } = await api.PUT("/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector", {
+        params: { path: { orgId, clusterId: cluster.id } }, body: { node_id: connectorNodeId },
+      });
+      if (error) return setErr(apiErrorMessage(error, "Could not set the in-cluster connector."));
+      onClose(); onDone();
+    } catch { setErr("Could not reach the API. Refresh before retrying the connector change."); }
+    finally { setBusy(false); }
   }
 
   return (
     <Modal
+      placement="right" showClose
       title={`Set connector for ${cluster.name}`}
       onDismiss={busy ? () => {} : onClose}
       actions={
@@ -850,12 +665,13 @@ function SetConnectorModal({
         </>
       }
     >
+      <div className="kubernetes-action-form">
       <p className="mb-3 text-cell text-ink-tertiary">
-        The connector is the selected in-cluster Tunnex node. It resolves ready pod endpoints and receives the encrypted service handoff from the existing site edge gateway.
+        Choose the in-cluster gateway that receives service traffic.
       </p>
-      <p className="mb-3 text-micro text-warn">Changing it starts reconciliation against the new connector. Existing Service delivery may be withdrawn before the replacement connector has reported fresh inventory and is ready to serve it.</p>
+      <p className="mb-3 text-micro text-warn">Changing the connector can interrupt service delivery until the replacement reports fresh inventory.</p>
       <Field label="In-cluster connector node">
-        <Select value={connectorNodeId} onChange={(e) => setConnectorNodeId(e.target.value)}>
+        <Select disabled={busy} value={connectorNodeId} onChange={(e) => setConnectorNodeId(e.target.value)}>
           {connectors.length === 0 ? (
             <option value="">No active endpoint-bearing connector is bound to this site</option>
           ) : (
@@ -868,6 +684,7 @@ function SetConnectorModal({
         </Select>
       </Field>
       <ErrorText>{err}</ErrorText>
+      </div>
     </Modal>
   );
 }
@@ -1008,7 +825,7 @@ export function ExposeServiceModal({
   }
 
   async function exposeInventory() {
-    if (!selectedInventory || selectedPortRefs.length === 0 || busy || inventoryBusy) return;
+    if (manualOpen || inventoryState !== "ready" || !selectedInventory || selectedPortRefs.length === 0 || busy || inventoryBusy) return;
     setInventoryBusy(true);
     setInventoryError(null);
     try {
@@ -1038,6 +855,7 @@ export function ExposeServiceModal({
 
   return (
     <Modal
+      placement="right" showClose
       title="Expose a Service"
       size="wide"
       onDismiss={busy || inventoryBusy ? () => {} : onClose}
@@ -1062,6 +880,8 @@ export function ExposeServiceModal({
         </>
       }
     >
+      <div className="kubernetes-exposure-form">
+      {!manualOpen && <>
       <K8sServiceInventoryStatus variant="flat" state={
         inventoryState === "unavailable" ? { kind: "unavailable" } :
           inventoryState === "loading" ? { kind: "loading" } :
@@ -1096,6 +916,7 @@ export function ExposeServiceModal({
 
       {(inventoryState === "stale" || inventoryState === "error") && <div className="mt-2"><Button variant="ghost" size="sm" disabled={inventoryBusy || busy} onClick={() => void loadInventory()}>Retry inventory</Button></div>}
 
+      </>}
       <details
         open={manualOpen}
         className="mt-4 border-t border-line pt-3"
@@ -1154,6 +975,7 @@ export function ExposeServiceModal({
         </div>
       </details>
       <ErrorText>{err}</ErrorText>
+      </div>
     </Modal>
   );
 }
@@ -1173,6 +995,7 @@ function UnexposeServiceModal({
   const [busy, setBusy] = useState(false);
 
   async function submit() {
+    if (busy) return;
     setBusy(true);
     setErr(null);
     try {
@@ -1190,6 +1013,7 @@ function UnexposeServiceModal({
 
   return (
     <Modal
+      placement="right" showClose
       title={`Unexpose ${service.name}`}
       onDismiss={busy ? () => {} : onClose}
       actions={
@@ -1203,21 +1027,10 @@ function UnexposeServiceModal({
         </>
       }
     >
-      <div className="flex flex-col gap-2 text-sm text-ink-tertiary">
-        <p>
-          Unexpose <span className="font-medium text-ink-heading">{service.name}</span>{" "}
-          at <span className="font-sans text-ink-body">{service.fqdn}</span> ({" "}
-          <span className="font-sans text-ink-body">{service.vip}</span>). Its VIP and DNS
-          answer withdraw on the next compile, and ordinary grants to this identity stop
-          compiling because the Service becomes vanished.
-        </p>
-        <p>
-          This is not an undo: live Agent Access requests or immutable Agent Policy Template
-          references may refuse the change. Cluster-scope memberships do not refuse it: they
-          are retained as vanished, ineffective evidence. If it succeeds, the audit records
-          the withdrawal and recovery requires a new exposure with a new Service identity; a
-          freed VIP may be reused.
-        </p>
+      <div className="kubernetes-action-form">
+        <p>Withdraw <strong>{service.fqdn}</strong> and its VIP <strong>{service.vip}</strong>. Grants to this Service identity stop compiling.</p>
+        <p className="kubernetes-action-impact">Recovery requires a new exposure with a new Service identity. The freed VIP may be reused.</p>
+        <details><summary>Dependencies and audit</summary><p>Live Agent Access requests or immutable Agent Policy Template references may refuse the change. Cluster-scope memberships remain as vanished, ineffective evidence. A successful withdrawal is recorded in the audit log.</p></details>
       </div>
       <ErrorText>{err}</ErrorText>
     </Modal>
@@ -1240,6 +1053,7 @@ function DeregisterClusterModal({
   const [busy, setBusy] = useState(false);
 
   async function submit() {
+    if (busy || typed !== card.name) return;
     setBusy(true);
     setErr(null);
     try {
@@ -1259,6 +1073,7 @@ function DeregisterClusterModal({
 
   return (
     <Modal
+      placement="right" showClose
       title={`Deregister ${card.name}`}
       onDismiss={busy ? () => {} : onClose}
       actions={
@@ -1276,25 +1091,10 @@ function DeregisterClusterModal({
         </>
       }
     >
-      <div className="flex flex-col gap-2 text-sm text-ink-tertiary">
-        <p>
-          If accepted, this hard-deletes the cluster and its exposed Services;
-          dependent policy rules that directly grant those Services are cascade-deleted. The audit
-          records deleted Service and grant counts. Its VIP range, reserved DNS
-          VIP, and DNS zone are then freed for reuse.
-        </p>
-        <p>
-          Live Agent Access requests, immutable Agent Policy Template references, or any
-          Kubernetes cluster scopes refuse deregistration until those references are cleared.
-          Connector-pool HA state and retained inventory are cascade-deleted with the cluster;
-          they do not preserve evidence or block the delete. A successful deregistration has no
-          rollback or restore: recovery requires registering the cluster again, selecting a
-          connector, exposing Services again, and recreating grants and scopes.
-        </p>
-        <p>
-          Type the cluster name <span className="font-sans text-ink-body">{card.name}</span>{" "}
-          to confirm.
-        </p>
+      <div className="kubernetes-action-form">
+        <p>Permanently delete <strong>{card.name}</strong> and its <strong>{card.services.length} exposed service{card.services.length === 1 ? "" : "s"}</strong>. Direct Service grants are removed; VIP and DNS allocations are freed.</p>
+        <p className="kubernetes-action-impact">This has no restore. Recovery requires registering the cluster again and recreating its connector, Services, grants and scopes.</p>
+        <details><summary>Dependencies and audit</summary><p>Live Agent Access requests, immutable Agent Policy Template references or Kubernetes cluster scopes block deletion until cleared. Connector-pool HA state and retained inventory are deleted with the cluster. The audit records deleted Service and grant counts.</p></details>
       </div>
       <div className="mt-3">
         <Field label="Cluster name">

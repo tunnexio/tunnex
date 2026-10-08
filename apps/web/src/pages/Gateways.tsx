@@ -1,13 +1,17 @@
 import "../network-workspaces.css";
+import "../app-access-workspace.css";
+import "../gateway-workspace.css";
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { Gateways as EnrolCeremony } from "../components/Gateways";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import { Icon } from "../components/Icon";
 import {
   Button,
-  Card,
   DataTable,
-  EmptyState,
   Loading,
   Modal,
   PageHeader,
@@ -56,12 +60,15 @@ export default function GatewaysPage() {
   const sort = validSort(params.get("sort"));
   const dir = params.get("dir") === "desc" ? "desc" : "asc";
   const enrolling = params.get("enroll") === "1";
+  const pageSize = appAccessPageSize(params.get("page_size"));
+  const requestedPage = Number(params.get("page") ?? "1");
   const previousOrgId = useRef(org?.id);
 
   const setParam = (key: string, value: string, defaultValue = "") => {
     const next = new URLSearchParams(params);
     if (value === defaultValue) next.delete(key);
     else next.set(key, value);
+    if (["q", "health", "sort", "dir", "page_size"].includes(key)) next.delete("page");
     setParams(next);
   };
 
@@ -92,6 +99,12 @@ export default function GatewaysPage() {
     });
   }, [dir, filter, q, sort, state]);
 
+  const page = Math.min(
+    Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    Math.max(1, Math.ceil(rows.length / pageSize)),
+  );
+  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+
   const counts = gatewayFilterCounts(state.kind === "ready" ? state.nodes : []);
   const ceilingReached =
     state.kind === "ready" &&
@@ -120,26 +133,22 @@ export default function GatewaysPage() {
       key: "name",
       header: "Gateway",
       cell: (row: GatewayRow) => (
-        <span className="flex flex-col gap-0.5">
-          <Link className="font-medium text-ink-heading hover:text-accent-400" to={`/gateways/${row.id}`}>
-            {row.name}
-          </Link>
-          <span className="text-micro text-ink-faint">
-            {row.siteName ? `Site: ${row.siteName}` : "No site assigned"}
-          </span>
-        </span>
+        <div className="gw-gateway-name">
+          <div>
+            <Link className="gw-name-link" to={`/gateways/${row.id}`}>{row.name}</Link>
+            <span className="gw-secondary">{row.siteName ?? "No site assigned"}</span>
+          </div>
+        </div>
       ),
     },
     {
       key: "address",
       header: "IP / hostname",
       cell: (row: GatewayRow) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="font-mono text-cell text-ink-body break-all">{row.address ?? "Not reported"}</span>
-          <span className="text-micro text-ink-faint">
-            {row.address ? (row.status === "revoked" ? "Last reported address" : "VPN endpoint address") : "Awaiting gateway address"}
-          </span>
-        </span>
+        <div>
+          <span className="gw-address">{row.address ?? "Not reported"}</span>
+          {row.address && row.status === "revoked" && <span className="gw-secondary">Last reported address</span>}
+        </div>
       ),
     },
     {
@@ -147,205 +156,91 @@ export default function GatewaysPage() {
       header: "State",
       cell: (row: GatewayRow) => {
         const status = lifecycle(row);
-        return (
-          <span className="inline-flex items-center gap-2 text-cell text-ink-body">
-            <StatusDot
-              tone={
-                status === "healthy"
-                  ? "on"
-                  : status === "degraded"
-                    ? "warn"
-                    : "off"
-              }
-            />
-            <span>{gatewayOperationalLabel(row)}</span>
-          </span>
-        );
+        return <span className="gw-status"><StatusDot tone={status === "healthy" ? "on" : status === "degraded" ? "warn" : "off"} /><span>{gatewayOperationalLabel(row)}</span></span>;
       },
     },
     {
       key: "runtime",
-      header: "Runtime",
+      header: "Agent",
       cell: (row: GatewayRow) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="font-sans text-cell text-ink-body">
-            {row.agentVersion || "Not reported"}
-          </span>
-          <span className="text-micro text-ink-faint" data-volatile>
-            {row.lastSeenAt ? `Seen ${relativeAge(row.lastSeenAt)}` : "Never connected"}
-          </span>
-        </span>
+        <div><span>{row.agentVersion || "Not reported"}</span><span className="gw-secondary" data-volatile>{row.lastSeenAt ? `Seen ${relativeAge(row.lastSeenAt)}` : "Never connected"}</span></div>
       ),
     },
+    { key: "egress", header: "Egress", cell: (row: GatewayRow) => gatewayEgressLabel(row) },
     {
-      key: "egress",
-      header: "Egress",
-      cell: (row: GatewayRow) => gatewayEgressLabel(row),
-    },
-    {
-      key: "details",
-      header: "",
-      cell: (row: GatewayRow) => (
-        <Link
-          to={`/gateways/${row.id}`}
-          aria-label={`Open details for ${row.name}`}
-          className="inline-flex min-h-8 items-center justify-center gap-1 rounded-md px-2 text-sm text-ink-tertiary hover:bg-white/[.06] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
-        >
-          Open <span aria-hidden="true">→</span>
-        </Link>
-      ),
+      key: "actions",
+      header: "Actions",
+      cell: (row: GatewayRow) => <AppAccessRowMenu label={`Actions for ${row.name}`} actions={[
+        { key: "overview", label: "Overview", href: `/gateways/${row.id}` },
+        { key: "health", label: "Health", href: `/gateways/${row.id}?tab=health` },
+        { key: "lifecycle", label: "Lifecycle", href: `/gateways/${row.id}?tab=lifecycle` },
+      ]} />,
     },
   ];
 
   const openEnrollment = () => setParam("enroll", "1");
   const closeEnrollment = () => setParam("enroll", "", "");
+  const clearFilters = () => {
+    const next = new URLSearchParams(params);
+    next.delete("q");
+    next.delete("health");
+    next.delete("page");
+    setParams(next);
+  };
 
   return (
-    <div className="network-management space-y-6">
-      <PageHeader
-        title="Gateways"
-        subtitle={org?.name || "Your network infrastructure"}
-        actions={
-          canEnroll ? (
-            <div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link><Button onClick={openEnrollment} disabled={ceilingReached}>
-              Enroll gateway
-            </Button></div>
-          ) : undefined
-        }
-      />
+    <div className="gateway-workspace gw-inventory-workspace network-management">
+      <PageHeader navigationTitle title="Gateways" />
+      <div className="gw-topbar">
+        {state.kind === "ready" && <div role="group" aria-label="Filter gateway health" className="gw-filter-tabs">
+          {([
+            ["all", "All", counts.all],
+            ["healthy", "Healthy", counts.healthy],
+            ["degraded", "Needs attention", counts.degraded],
+            ["revoked", "Revoked", counts.revoked],
+          ] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setParam("health", value, "all")}>
+            {label}<span>{count}</span>
+          </button>)}
+        </div>}
+        <div className="gw-topbar-actions">
+          {canEnroll && <Link className="gw-setup-link" to="/network/setup">Set up a network</Link>}
+          <Button size="sm" variant="ghost" aria-label="Refresh gateways" title="Refresh gateways" disabled={state.kind === "loading"} onClick={() => void reload()}><Icon name="refresh-cw" size={16} /></Button>
+          {canEnroll && <Button size="sm" onClick={openEnrollment} disabled={ceilingReached}>Enroll gateway</Button>}
+        </div>
+      </div>
 
-      {state.kind === "ready" && state.licence?.gateway_ceiling != null && ceilingReached && (
-        <CeilingUpgrade
-          kind="gateway"
-          compact
-          used={state.licence.gateways_in_use ?? state.nodes.length}
-          ceiling={state.licence.gateway_ceiling}
-          message={ceilingSentence(
-            state.licence.gateways_in_use ?? state.nodes.length,
-            state.licence.gateway_ceiling,
-            state.licence.tier,
-          )}
-        />
-      )}
-
-      {state.kind === "loading" && <Card><Loading label="Loading gateways…" /></Card>}
+      {state.kind === "ready" && state.licence?.gateway_ceiling != null && ceilingReached && <CeilingUpgrade
+        kind="gateway" compact used={state.licence.gateways_in_use ?? state.nodes.length} ceiling={state.licence.gateway_ceiling}
+        message={ceilingSentence(state.licence.gateways_in_use ?? state.nodes.length, state.licence.gateway_ceiling, state.licence.tier)}
+      />}
+      {state.kind === "loading" && <div className="gw-inventory-state"><Loading label="Loading gateways…" /></div>}
       {state.kind === "error" && <LoadRetry error={state.error ?? "Could not load gateways."} onRetry={reload} />}
 
-      {state.kind === "ready" && (
-        <>
-          <section className="tnx-card-surface overflow-hidden">
-            <div className="network-inventory-toolbar">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <input
-                  aria-label="Search gateways"
-              placeholder="Search gateway, IP, site, version, or state"
-                  value={q}
-                  onChange={(event) => setParam("q", event.target.value)}
-                  className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
-                />
-                <span className="ml-auto whitespace-nowrap px-1 text-micro font-medium tabular-nums text-ink-tertiary">
-                  {rows.length === counts.all
-                    ? `${counts.all} gateways`
-                    : `${rows.length} of ${counts.all}`}
-                </span>
-                <label className="sr-only" htmlFor="gateway-sort">Sort gateways</label>
-                <select
-                  id="gateway-sort"
-                  aria-label="Sort gateways"
-                  value={sort}
-                  onChange={(event) => setParam("sort", event.target.value, "name")}
-                  className="h-9 rounded-md border border-white/10 bg-black/25 px-2.5 text-cell text-ink-body focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
-                >
-                  <option value="name">Name</option>
-                  <option value="health">State</option>
-                  <option value="seen">Freshness</option>
-                  <option value="version">Agent version</option>
-                </select>
-                <button
-                  type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 text-base text-ink-secondary hover:bg-white/[.05] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
-                  aria-label={dir === "asc" ? "Ascending" : "Descending"}
-                  title={dir === "asc" ? "Sort ascending" : "Sort descending"}
-                  onClick={() => setParam("dir", dir === "asc" ? "desc" : "asc", "asc")}
-                >
-                  <span aria-hidden="true">{dir === "asc" ? "↑" : "↓"}</span>
-                </button>
-              </div>
-
-              <div
-                role="group"
-                aria-label="Filter gateway health"
-                className="network-filter-tabs"
-              >
-                {(
-                  [
-                    ["all", "All", counts.all],
-                    ["healthy", "Healthy", counts.healthy],
-                    ["degraded", "Needs attention", counts.degraded],
-                    ["revoked", "Revoked", counts.revoked],
-                  ] as const
-                ).map(([value, label, count]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={filter === value}
-                    onClick={() => setParam("health", value, "all")}
-                    className={
-                      "whitespace-nowrap rounded px-3 py-1.5 text-micro font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 " +
-                      (filter === value
-                        ? "network-filter-active"
-                        : "text-ink-tertiary hover:bg-white/[.05] hover:text-ink-heading")
-                    }
-                  >
-                    {label} <span className="tabular-nums opacity-70">{count}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <DataTable
-              caption="Gateway inventory"
-              rows={rows}
-              rowKey={(row) => row.id}
-              failed={false}
-              filterable={false}
-              pageSize={25}
-              variant="flat"
-              columns={columns}
-              empty={
-                <EmptyState>
-                  {state.nodes.length === 0
-                    ? "No gateways are enrolled. Issue a one-time command to bring the first gateway online."
-                    : "No gateways match the current search and health filter."}
-                </EmptyState>
-              }
-            />
-            {state.licence && (
-              <div className="border-t border-white/[.08] px-3 py-2 text-micro text-ink-faint">
-                {state.licence.tier} plan · {state.licence.gateways_in_use ?? "not reported"} / {state.licence.gateway_ceiling == null ? "unlimited" : state.licence.gateway_ceiling} gateways
-              </div>
-            )}
-          </section>
-        </>
-      )}
-
-      {enrolling && org && state.kind === "ready" && canEnroll && !ceilingReached && (
-        <Modal
-          title="Enroll gateway"
-          onDismiss={closeEnrollment}
-          size="enrollment"
-        >
-          <p className="mb-3 text-cell text-ink-tertiary">
-            Create a one-time command, then run it on the Linux host that will carry private traffic.
-          </p>
-          <EnrolCeremony
-            org={org}
-            initiallyOpen
-            hideHeader
-            onCancel={closeEnrollment}
-            onEnrollmentAcknowledged={closeEnrollment}
+      {state.kind === "ready" && <section className="gw-inventory">
+        <div className="gw-inventory-toolbar">
+          <div className="gw-search"><Icon name="search" size={16} /><input aria-label="Search gateways" placeholder="Search gateways…" value={q} onChange={event => setParam("q", event.target.value)} /></div>
+          <span className="gw-inventory-count">{rows.length === counts.all ? `${counts.all} gateway${counts.all === 1 ? "" : "s"}` : `${rows.length} of ${counts.all}`}</span>
+          <div className="gw-sort-controls">
+            <label className="sr-only" htmlFor="gateway-sort">Sort gateways</label>
+            <select id="gateway-sort" value={sort} onChange={event => setParam("sort", event.target.value, "name")}>
+              <option value="name">Name</option><option value="health">State</option><option value="seen">Last seen</option><option value="version">Agent version</option>
+            </select>
+            <button type="button" aria-label={dir === "asc" ? "Ascending" : "Descending"} title={dir === "asc" ? "Sort ascending" : "Sort descending"} onClick={() => setParam("dir", dir === "asc" ? "desc" : "asc", "asc")}><span aria-hidden="true">{dir === "asc" ? "↑" : "↓"}</span></button>
+          </div>
+        </div>
+        <div className="gw-inventory-table">{pageRows.length ? <DataTable caption="Gateway inventory" rows={pageRows} rowKey={row => row.id} failed={false} filterable={false} pageSize={0} variant="flat" columns={columns} empty={null} /> :
+          <AppAccessEmptyState icon={null} title={state.nodes.length === 0 ? "No gateways are enrolled" : "No matching gateways"}
+            description={state.nodes.length === 0 ? "Enroll a Linux host to connect your network." : "Try another search or clear the health filter."}
+            action={state.nodes.length > 0 ? <Button size="sm" variant="ghost" onClick={clearFilters}>Clear filters</Button> : undefined}
           />
-        </Modal>
-      )}
+        }</div>
+        <AppAccessPagination page={page} pageSize={pageSize} count={pageRows.length} hasNext={page * pageSize < rows.length} previousLabel="Previous gateways" nextLabel="Next gateways" onPageChange={nextPage => setParam("page", String(nextPage), "1")} onPageSizeChange={size => setParam("page_size", String(size), "20")} />
+        {state.licence && <p className="gw-plan-usage">{state.licence.tier} plan · {state.licence.gateways_in_use ?? "not reported"} / {state.licence.gateway_ceiling == null ? "unlimited" : state.licence.gateway_ceiling} gateways</p>}
+      </section>}
+
+      {enrolling && org && state.kind === "ready" && canEnroll && !ceilingReached && <Modal title="Enroll gateway" onDismiss={closeEnrollment} size="enrollment" showClose placement="right">
+        <EnrolCeremony key={org.id} org={org} initiallyOpen hideHeader onCancel={closeEnrollment} onEnrollmentAcknowledged={closeEnrollment} />
+      </Modal>}
     </div>
   );
 }

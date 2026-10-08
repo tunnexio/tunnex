@@ -1,0 +1,68 @@
+.devices-management-inventory { min-width:0; color:var(--tnx-text-primary); }
+.dm-gateway-context { display:flex; align-items:center; gap:16px; margin-bottom:15px; color:var(--tnx-text-secondary); font-size:11.5px; }
+.dm-gateway-context strong { color:var(--tnx-text-heading); font-weight:500; }
+.dm-gateway-context a,.dm-text-link { color:var(--tnx-text-secondary); font-size:11.5px; text-decoration:underline; text-decoration-color:var(--tnx-border); text-underline-offset:4px; }
+.dm-gateway-context a:hover,.dm-text-link:hover { color:var(--tnx-text-heading); text-decoration-color:currentColor; }
+.dm-inventory-topbar { display:flex; align-items:center; justify-content:space-between; gap:20px; border-bottom:1px solid var(--tnx-border); }
+.dm-filter-tabs { display:flex; align-items:stretch; gap:24px; }
+.dm-filter-tabs button { padding:8px 0 13px; border-bottom:2px solid transparent; font-size:12px; color:var(--tnx-text-secondary); white-space:nowrap; }
+.dm-filter-tabs button > span { margin-left:4px; font-size:10.5px; font-variant-numeric:tabular-nums; color:var(--tnx-text-secondary); }
+.dm-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-text-primary); color:var(--tnx-text-heading); }
+.dm-filter-tabs button:hover { color:var(--tnx-text-heading); }
+.dm-inventory-topbar > button { min-height:30px; padding:5px 9px; margin-bottom:7px; font-size:11.5px; }
+.dm-inventory-toolbar { display:flex; align-items:center; gap:18px; margin:18px 0 12px; }
+.dm-inventory-toolbar input { width:250px; min-height:34px; height:34px; padding:7px 10px; font-size:12px; }
+.dm-approvals-link { display:inline-flex; align-items:center; gap:7px; font-size:11px; color:var(--tnx-text-secondary); }
+.dm-approvals-link > span { color:var(--tnx-warn); font-variant-numeric:tabular-nums; }
+.dm-approvals-link:hover { color:var(--tnx-text-heading); text-decoration:underline; text-underline-offset:4px; }
+.dm-result-count { margin-left:auto; color:var(--tnx-text-secondary); font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.dm-mutation-note { margin:0 0 12px; font-size:11px; color:var(--tnx-text-secondary); }
+.dm-table-scroll { min-width:0; overflow-x:auto; }
+.devices-management-inventory .dm-devices-table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; background:transparent; }
+.devices-management-inventory .dm-devices-table thead tr { background:transparent; }
+.dm-devices-table th { padding:11px 8px; border-bottom:1px solid var(--tnx-border); color:var(--tnx-text-secondary); text-align:left; font-size:11px; font-weight:400; }
+.dm-devices-table th > button { font-size:inherit; color:inherit; text-align:left; }
+.dm-devices-table th > button:hover { color:var(--tnx-text-heading); }
+.dm-devices-table td { padding:15px 8px; border-bottom:1px solid var(--tnx-border); font-size:12px; line-height:1.6; vertical-align:middle; overflow-wrap:anywhere; }
+.dm-devices-table th[data-column=name] { width:25%; }
+.dm-devices-table th[data-column=connection] { width:26%; }
+.dm-devices-table th[data-column=state] { width:23%; }
+.dm-devices-table .dm-select { width:29px; padding-left:0; padding-right:8px; }
+.dm-devices-table .dm-actions { width:34px; padding-left:4px; padding-right:0; }
+.dm-devices-table input[type=checkbox] { width:13px; height:13px; cursor:pointer; accent-color:var(--tnx-text-heading); }
+.dm-devices-table tr[data-selected=true] { background:var(--tnx-surface-inset); }
+.dm-devices-table .aa-row-menu-trigger { width:30px; min-height:30px; padding:5px; }
+.dm-device-name { text-align:left; color:var(--tnx-text-heading); font-size:12.5px; font-weight:500; line-height:1.6; }
+.dm-device-name:hover { text-decoration:underline; text-underline-offset:4px; }
+.dm-secondary { display:block; margin-top:4px; color:var(--tnx-text-secondary); font-size:10.5px; line-height:1.6; }
+.dm-owner { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dm-connection-primary { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 9px; font-size:11.5px; }
+.dm-address { font-family:ui-monospace,SFMono-Regular,monospace; font-size:10.5px; color:var(--tnx-text-secondary); }
+.dm-lifecycle { font-size:11.5px; color:var(--tnx-text-primary); }
+.dm-lifecycle[data-state=pending],.dm-lifecycle[data-state=suspended] { color:var(--tnx-warn); }
+.dm-lifecycle[data-state=revoked] { color:var(--tnx-text-secondary); }
+.dm-reexport { display:block; margin-top:4px; color:var(--tnx-warn); font-size:10.5px; }
+.dm-posture-label { font-size:11px; color:var(--tnx-text-secondary); }
+.dm-posture-label[data-tone=danger] { color:var(--tnx-danger); }
+.dm-posture-label[data-tone=warn] { color:var(--tnx-warn); }
+.dm-posture-label[data-tone=ok] { color:var(--tnx-ok); }
+.dm-posture-failure { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.dm-selection { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 18px; padding:8px 0; margin:4px 0 8px; border-top:1px solid var(--tnx-border); border-bottom:1px solid var(--tnx-border); font-size:11px; }
+.dm-selection-summary,.dm-selection-actions { display:flex; flex-wrap:wrap; align-items:center; gap:9px; }
+.dm-selection-summary strong { font-weight:500; }
+.dm-selection-summary > span,.dm-selection-actions > div > span { color:var(--tnx-text-secondary); font-size:10.5px; }
+.dm-selection-actions > div { display:flex; align-items:center; gap:5px; }
+.dm-selection button { min-height:29px; padding:5px 8px; font-size:11px; }
+.devices-management-inventory > .aa-pagination { padding-inline:0; }
+.devices-management-inventory .aa-empty-state { padding:38px 0; border:0; background:transparent; justify-content:flex-start; }
+.devices-management-inventory .aa-empty-state h3 { font-size:13px; font-weight:500; }
+.devices-management-inventory .aa-empty-state p { font-size:11.5px; }
+.devices-management-inventory .aa-empty-state-actions button { min-height:32px; padding:6px 10px; font-size:11.5px; }
+.dm-filter-tabs button:focus-visible,.dm-device-name:focus-visible,.dm-devices-table th button:focus-visible,.dm-gateway-context a:focus-visible,.dm-approvals-link:focus-visible,.dm-text-link:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:4px; border-radius:2px; }
+.dm-devices-table input[type=checkbox]:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:4px; }
+
+@media (max-width:1100px) {
+  .dm-filter-tabs { gap:20px; }
+  .dm-inventory-toolbar { gap:13px; }
+  .dm-inventory-toolbar input { width:230px; }
+}

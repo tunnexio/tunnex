@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   api,
@@ -6,11 +7,11 @@ import {
   loadOne,
   type FQDNResourceSetting,
   type FQDNResourceSettingImpact,
-  type Member,
+  type Role,
 } from "../lib/api";
 import { can } from "../lib/rbac";
 import { LoadRetry } from "./LoadRetry";
-import { Button, Card, ErrorText, Loading, Modal } from "./ui";
+import { Button, ErrorText, Loading, Modal, SettingRow, SettingValue } from "./ui";
 
 type Change = "enable" | "disable";
 
@@ -23,12 +24,20 @@ type Change = "enable" | "disable";
 export function FQDNEnforcementSetting({
   orgId,
   role,
+  central = false,
+  canEdit = false,
 }: {
   orgId: string;
-  role: Member["role"] | undefined;
+  role: Role | readonly Role[] | undefined;
+  central?: boolean;
+  canEdit?: boolean;
 }) {
+  return <FQDNSettingForScope key={`${orgId}:${Array.isArray(role) ? role.join(",") : role}:${central}:${canEdit}`} orgId={orgId} role={role} central={central} canEdit={canEdit} />;
+}
+
+function FQDNSettingForScope({ orgId, role, central, canEdit }: { orgId: string; role: Role | readonly Role[] | undefined; central: boolean; canEdit: boolean }) {
   const canView = can(role, "fqdn_resource:view");
-  const canManage = can(role, "fqdn_resource:manage");
+  const canManage = central && canEdit && can(role, "fqdn_resource:manage");
   const [setting, setSetting] = useState<FQDNResourceSetting | null>(null);
   const [error, setError] = useState("");
   const [change, setChange] = useState<Change | null>(null);
@@ -38,6 +47,8 @@ export function FQDNEnforcementSetting({
   const [busy, setBusy] = useState(false);
   const settingRequest = useRef(0);
   const impactRequest = useRef(0);
+  const alive = useRef(true), pending = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const reload = useCallback(async () => {
     if (!canView) return;
@@ -54,6 +65,7 @@ export function FQDNEnforcementSetting({
       setError(result.error);
       return;
     }
+    if (typeof result.data?.enabled !== "boolean") { setError("The server returned incomplete FQDN settings."); return; }
     setSetting(result.data as FQDNResourceSetting);
   }, [canView, orgId]);
 
@@ -66,6 +78,7 @@ export function FQDNEnforcementSetting({
   }, [reload]);
 
   const loadImpact = useCallback(async () => {
+    if (!canManage) return;
     const request = ++impactRequest.current;
     setImpact(null);
     setImpactError("");
@@ -81,10 +94,13 @@ export function FQDNEnforcementSetting({
       setImpactError(result.error);
       return;
     }
-    setImpact(result.data as FQDNResourceSettingImpact);
-  }, [orgId]);
+    const value = result.data;
+    if (!value || typeof value.enabled !== "boolean" || !Number.isInteger(value.enforcement_ready_rule_count) || value.enforcement_ready_rule_count < 0 || !Array.isArray(value.enforcement_ready_rule_ids) || value.enforcement_ready_rule_ids.some(id => typeof id !== "string") || typeof value.rule_ids_truncated !== "boolean" || typeof value.entitlement_available !== "boolean" || (value.expected_impact_token != null && typeof value.expected_impact_token !== "string")) { setImpactError("The server returned incomplete impact evidence. Retry the preview."); return; }
+    setImpact(value as FQDNResourceSettingImpact);
+  }, [orgId, canManage]);
 
   function open(next: Change) {
+    if (!canManage || busy) return;
     setChange(next);
     void loadImpact();
   }
@@ -98,10 +114,10 @@ export function FQDNEnforcementSetting({
   }
 
   async function confirm() {
-    if (!change || !impact) return;
+    if (!alive.current || !canManage || !change || !impact || pending.current || impactError || impactLoading) return;
     const enabling = change === "enable";
     if (enabling && (!impact.entitlement_available || !impact.expected_impact_token)) return;
-    setBusy(true);
+    pending.current = true; setBusy(true);
     setImpactError("");
     try {
       const result = await api.PUT(
@@ -116,6 +132,7 @@ export function FQDNEnforcementSetting({
           },
         },
       );
+      if (!alive.current) return;
       if (result.error || !result.data) {
         setImpactError(
           apiErrorMessage(
@@ -125,12 +142,13 @@ export function FQDNEnforcementSetting({
         );
         return;
       }
+      if (typeof result.data.enabled !== "boolean") { setError("The server did not confirm the setting. Reload before retrying."); setSetting(null); dismiss(); return; }
       setSetting(result.data as FQDNResourceSetting);
       dismiss();
     } catch {
-      setImpactError("Could not reach the API. The organization setting was not confirmed.");
+      if (alive.current) setImpactError("Could not reach the API. The organization setting was not confirmed.");
     } finally {
-      setBusy(false);
+      pending.current = false; if (alive.current) setBusy(false);
     }
   }
 
@@ -144,60 +162,19 @@ export function FQDNEnforcementSetting({
     !impact ||
     (enabling && (!impact.entitlement_available || !impact.expected_impact_token));
 
-  return (
-    <Card>
-      <section aria-labelledby="fqdn-enforcement-heading" className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 id="fqdn-enforcement-heading" className="text-lg font-semibold text-ink-heading">
-              FQDN enforcement
-            </h2>
-            <p className="text-sm text-ink-tertiary">
-              Organization setting · controls whether eligible FQDN rules may authorize traffic.
-            </p>
-          </div>
-          {setting && (
-            <span
-              role="status"
-              className={`tnx-status rounded-full border px-2.5 py-1 font-mono text-xs font-semibold ${
-                enabled
-                  ? "border-emerald-800/50 bg-emerald-950/40 text-emerald-400"
-                  : "border-warn/40 bg-warn/10 text-warn"
-              }`}
-            >
-              {enabled ? "ENABLED" : "DISABLED · NO FQDN TRAFFIC"}
-            </span>
-          )}
-        </div>
-
-        {setting === null ? (
-          error ? (
-            <LoadRetry error={`Could not load FQDN enforcement setting: ${error}`} onRetry={() => void reload()} />
-          ) : (
-            <Loading label="Loading FQDN enforcement setting…" />
-          )
-        ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-white/[.025] p-3">
-            <p className="max-w-3xl text-sm text-ink-tertiary">
-              {enabled
-                ? "Enabled FQDN rules can compile only when their selected resolver has a current active generation."
-                : "FQDN resources and resolver history remain visible, but every FQDN destination fails closed until this setting is enabled."}
-            </p>
-            {canManage ? (
-              <Button variant={enabled ? "ghost" : "enforce"} onClick={() => open(enabled ? "disable" : "enable")}>
-                Review and {enabled ? "disable" : "enable"}
-              </Button>
-            ) : (
-              <span className="text-sm text-ink-tertiary">Read only</span>
-            )}
-          </div>
-        )}
-
-        {change && (
+  const status = setting ? enabled ? "Enabled" : "Off · FQDN traffic denied" : error ? "Unavailable" : "Loading…";
+  return <>
+    {central ? <SettingRow label="FQDN enforcement" description="Allow eligible hostname rules to authorize traffic through a current resolver generation.">
+      <div className="features-control"><SettingValue>{status}</SettingValue>{setting && canManage && <Button variant="ghost" disabled={busy} onClick={() => open(enabled ? "disable" : "enable")}>Review and {enabled ? "disable" : "enable"}</Button>}</div>
+      {error && <LoadRetry error={`Could not load FQDN enforcement setting: ${error}`} onRetry={() => void reload()} />}
+    </SettingRow> : <section id="fqdn-enforcement-heading" className="features-referral" aria-label="FQDN enforcement"><span role="status">FQDN enforcement: {status}</span><Link to="/settings?section=features&feature=fqdn">Manage in Features</Link>{error && <LoadRetry error={`Could not load FQDN enforcement setting: ${error}`} onRetry={() => void reload()} />}</section>}
+        {central && change && canManage && (
           <Modal
+            placement="right"
+            showClose
             title={`${enabling ? "Enable" : "Disable"} FQDN enforcement?`}
             danger={!enabling}
-            onDismiss={dismiss}
+            onDismiss={() => { if (!busy) dismiss(); }}
             actions={
               <>
                 <Button variant="ghost" disabled={busy} onClick={dismiss}>Cancel</Button>
@@ -251,7 +228,5 @@ export function FQDNEnforcementSetting({
             </div>
           </Modal>
         )}
-      </section>
-    </Card>
-  );
+  </>;
 }

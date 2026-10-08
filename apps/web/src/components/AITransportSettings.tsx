@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorMessage } from "../lib/api";
 import { Button, ErrorText, Loading, Switch } from "./ui";
+import "./ai-gateway-access.css";
 
 type TransportSettings = components["schemas"]["AITransportSettings"];
 const endpoint = "/api/v1/admin/ai-transport-settings" as const;
@@ -66,11 +67,11 @@ export function AITransportSettings({ canEdit }: { canEdit: boolean }) {
   if (busy === "load") return <Loading label="Loading AI Gateway transport settings…" />;
   if (!saved) return <div className="space-y-3"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry transport settings</Button></div>;
   const disabled = !canEdit || busy !== null || needsReload;
-  return <div className="space-y-6">
+  return <div className="ai-transport-settings space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
       <div className="space-y-1"><h3 className="text-sm font-semibold text-ink-heading">AI Gateway transport for this server</h3>
         <p className="text-sm text-ink-secondary">Applies to every organization. HTTPS is required by default.</p></div>
-      <span className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-secondary">Saved policy: {saved.allow_http ? "HTTP allowed" : "HTTPS required"}</span>
+      <span className="ai-transport-saved">Saved policy: {saved.allow_http ? "HTTP allowed" : "HTTPS required"}</span>
     </div>
     {!canEdit && <p className="text-sm text-warn">Verify your email and change your initial password to edit server settings.</p>}
     <form onSubmit={event => void save(event)} className="space-y-5">
@@ -79,7 +80,7 @@ export function AITransportSettings({ canEdit }: { canEdit: boolean }) {
           <p className="text-xs text-ink-secondary">Permit AI setup and model requests on HTTP endpoints, including public endpoints. Changes take effect when you save.</p></div>
         <Switch label="Allow AI Gateway over HTTP" checked={allowHttp} disabled={disabled} onChange={value => { setAllowHttp(value); setError(null); setResult(null); }} />
       </div>
-      <p className="rounded-md border border-warn/20 bg-warn/5 p-3 text-sm text-ink-body">HTTP does not encrypt credentials or requests. Anyone on the network path may read or change them. Use HTTPS whenever possible.</p>
+      <p className="ai-transport-risk">HTTP does not encrypt credentials or requests. Anyone on the network path may read or change them. Use HTTPS whenever possible.</p>
       <p className="text-sm text-ink-secondary">Provider credentials, organization access, and model grants remain separate. Changing this policy preserves saved credentials and keeps HTTPS available.</p>
       <ErrorText>{error}</ErrorText>
       {result && <p role="status" className="rounded-md border border-line bg-surface-inset p-3 text-sm text-ink-body">{result}</p>}

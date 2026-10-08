@@ -1,5 +1,9 @@
 import "../rule-builder.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../access-policies-workspace.css";
+import "../network-workspaces.css";
+import "../app-access-workspace.css";
+import "../access-policies-inventory.css";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import {
@@ -32,14 +36,14 @@ import { can } from "../lib/rbac";
 import {
   Button,
   Card,
-  DataTable,
   ErrorText,
   Field,
   Input,
   Loading,
   Modal,
-  PageHeader,
   Select,
+  SettingRow,
+  SettingValue,
 } from "../components/ui";
 import { relativeAge } from "../lib/format";
 import { EntityPicker } from "../components/EntityPicker";
@@ -86,6 +90,8 @@ import {
 } from "../lib/policyview";
 import { ManagedBadge } from "../components/ManagedBadge";
 import { AccessTabRail } from "../components/AccessTabRail";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import AppAccessPagination from "../components/AppAccessPagination";
 import { toast } from "../components/Toasts";
 // swapRule + swapPartialMessage power the create-then-delete rule edit (D-a5) in RuleFormModal.
 // Every GET here goes through loadOne — a raw api.GET whose emptiness is user-meaningful is
@@ -102,6 +108,13 @@ function fqdnDestinationBadgeClass(tone: "positive" | "attention" | "danger" | "
 }
 
 export default function Access() {
+  const { org } = useOrg();
+  const { state } = useAuth();
+  const actor = state.status === "authed" ? `${state.user.id}:${state.user.email_verified}` : state.status;
+  return <AccessWorkspace key={`${org?.id ?? "no-organization"}:${actor}`} />;
+}
+
+function AccessWorkspace() {
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const { state } = useAuth();
   const myId = state.status === "authed" ? state.user.id : "";
@@ -116,8 +129,9 @@ export default function Access() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
-  // JIT approval and revocation change the sibling Rules inventory.
+  // Enforcement and JIT changes invalidate the sibling Rules inventory and posture.
   const [subjectsRev, setSubjectsRev] = useState(0);
+  const refreshPolicy = useCallback(() => setSubjectsRev((revision) => revision + 1), []);
   const [roleResolved, setRoleResolved] = useState(false);
   const reloadEpoch = useRef(0);
   const selectedOrgId = useRef<string | null>(currentOrg?.id ?? null);
@@ -200,14 +214,9 @@ export default function Access() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      {/* ⛔ THIS TITLE WAS A `<div>`, so the page had NO h1 at all — and its type/colour were an inline
-          style object using `Instrument Sans` and raw hex, neither of which is in the token set. */}
-      <PageHeader
-        title="Access policies"
-        subtitle={org ? `${org.name} · who can reach what` : "Loading policy context…"}
-      />
-      <AccessTabRail />
+    <div className="network-management access-policies-workspace">
+      <h1 className="sr-only">Access policies</h1>
+      <AccessTabRail includeKubernetesScopes={can(myRole, "k8s_scope:view") && can(myRole, "policy:view")} actions={view === "admin_body" && org ? <TestAccessSection key={org.id} orgId={org.id} /> : undefined} />
 
       {view === "fatal" && <ErrorText>{fatal}</ErrorText>}
       {view === "load_retry" && (
@@ -232,17 +241,8 @@ export default function Access() {
       )}
 
       {view === "admin_body" && org && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <Card className="overflow-hidden !p-0">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] px-4 py-3">
-              <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
-              <div className="flex flex-wrap items-center gap-2">
-                <TestAccessSection key={org.id} orgId={org.id} />
-                {can(myRole, "k8s_scope:view") && can(myRole, "policy:view") && (
-                  <a className="inline-flex min-h-8 items-center rounded-md border border-white/10 px-2.5 py-1 text-xs font-medium text-ink-body hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35" href="/access/kubernetes-scopes">Kubernetes scopes</a>
-                )}
-              </div>
-            </div>
+        <div className="access-policies-body">
+            <ModeSection key={org.id} orgId={org.id} canManage={gate.canManagePolicy} onPolicyChange={refreshPolicy} />
             <RulesSection
               orgId={org.id}
               canManage={gate.canManagePolicy}
@@ -253,7 +253,6 @@ export default function Access() {
               canViewFQDNResources={can(myRole, "fqdn_resource:view")}
               subjectsRev={subjectsRev}
             />
-          </Card>
           {(can(myRole, "agent:grant_access") || can(myRole, "agent_access:approve")) && (
             <AgentJITCapabilitySection
               key={`f10-${org.id}`}
@@ -261,7 +260,7 @@ export default function Access() {
               enabled={org.agent_jit_access_enabled}
               canApprove={can(myRole, "agent_access:approve")}
               currentUserId={myId}
-              onPolicyChange={() => setSubjectsRev((revision) => revision + 1)}
+              onPolicyChange={refreshPolicy}
             />
           )}
         </div>
@@ -284,7 +283,7 @@ function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId, 
   if (!licence.ok) return <Card><p className="text-cell text-ink-tertiary">Could not load just-in-time access capability.</p><ErrorText>{licence.error}</ErrorText></Card>;
   if (!Array.isArray(licence.data.features)) return <Card><h2 className="text-sm font-semibold text-ink-heading">Just-in-time access</h2><p className="mt-1 text-cell text-ink-tertiary">The control plane returned an invalid licence capability response.</p><ErrorText>Refresh the page or contact an administrator if the problem continues.</ErrorText></Card>;
   if (!licence.data.features.includes("agent_jit_access")) return null;
-  if (!enabled) return <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-ink-tertiary"><span className="h-1.5 w-1.5 rounded-full bg-slate-600" aria-hidden="true" /><span>Just-in-time access is off.</span><Link className="font-medium text-ink-body hover:underline" to="/settings">Configure</Link></div>;
+  if (!enabled) return <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-ink-tertiary"><span className="h-1.5 w-1.5 rounded-full bg-slate-600" aria-hidden="true" /><span>Just-in-time access is off.</span><Link className="font-medium text-ink-body hover:underline" to="/settings?section=features&feature=agent-jit">Manage in Features</Link></div>;
   return <AgentJITAccessSection orgId={orgId} enabled={enabled} canApprove={canApprove} currentUserId={currentUserId} onPolicyChange={onPolicyChange} />;
 }
 
@@ -305,6 +304,8 @@ function AgentJITAccessSection({
   const [agents, setAgents] = useState<Array<{ device_id: string; name: string }>>([]);
   const [destinations, setDestinations] = useState<AgentAccessDestination[]>([]);
   const [requests, setRequests] = useState<AgentAccessRequest[]>([]);
+  const [requestPages, setRequestPages] = useState<AgentAccessRequest[][]>([]);
+  const [requestsReady, setRequestsReady] = useState(false);
   const [agentId, setAgentId] = useState("");
   const [destinationKey, setDestinationKey] = useState("");
   const [reason, setReason] = useState("");
@@ -314,11 +315,18 @@ function AgentJITAccessSection({
   const [deviceFilter, setDeviceFilter] = useState(() => new URLSearchParams(window.location.search).get("agent") ?? "");
   const [cursor, setCursor] = useState<{ before_requested_at: string; before_id: string }>();
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestPage, setRequestPage] = useState(1);
+  const [requestPageSize, setRequestPageSize] = useState(20);
   const [rejectRequest, setRejectRequest] = useState<AgentAccessRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadEpoch = useRef(0);
+  const jitAlive = useRef(true);
+  const jitMutation = useRef(false);
+  const jitScope = useRef({ canApprove, enabled, authorized, requestsReady, requests, currentUserId });
+  jitScope.current = { canApprove, enabled, authorized, requestsReady, requests, currentUserId };
+  useEffect(() => { jitAlive.current = true; return () => { jitAlive.current = false; }; }, []);
 
   const load = useCallback(async () => {
     const epoch = ++loadEpoch.current;
@@ -326,6 +334,11 @@ function AgentJITAccessSection({
     setHistory({});
     setCursor(undefined);
     setRequests([]);
+    setRequestPages([]);
+    setRequestsReady(false);
+    setAgents([]);
+    setDestinations([]);
+    setRequestPage(1);
     const agentResult = await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/agents", {
         params: { path: { orgId } },
@@ -367,7 +380,7 @@ function AgentJITAccessSection({
     );
     const requestResult = await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
-        params: { path: { orgId }, query: { page_size: 50, state: stateFilter || undefined, device_id: deviceFilter || undefined } },
+        params: { path: { orgId }, query: { page_size: requestPageSize, state: stateFilter || undefined, device_id: deviceFilter || undefined } },
       }),
     );
     if (epoch !== loadEpoch.current) return;
@@ -390,6 +403,8 @@ function AgentJITAccessSection({
       setAgents([]);
       setDestinations([]);
       setRequests(requestItems);
+      setRequestPages([requestItems]);
+      setRequestsReady(true);
       setCursor(page.next_before_id && page.next_before_requested_at ? { before_id: page.next_before_id, before_requested_at: page.next_before_requested_at } : undefined);
       return;
     }
@@ -414,6 +429,8 @@ function AgentJITAccessSection({
     setAgents(scoped);
     setDestinations(destinationItems);
     setRequests(requestItems);
+    setRequestPages([requestItems]);
+    setRequestsReady(true);
     setCursor(page.next_before_id && page.next_before_requested_at ? { before_id: page.next_before_id, before_requested_at: page.next_before_requested_at } : undefined);
     setAgentId((current) =>
       scoped.some((agent) => agent.device_id === current)
@@ -429,7 +446,7 @@ function AgentJITAccessSection({
           ? `${destinationItems[0].kind}:${destinationItems[0].id}`
           : "",
     );
-  }, [canApprove, orgId, stateFilter, deviceFilter]);
+  }, [canApprove, orgId, stateFilter, deviceFilter, requestPageSize]);
 
   useEffect(() => {
     void load();
@@ -439,29 +456,35 @@ function AgentJITAccessSection({
   }, [load]);
 
   async function loadMore() {
-    if (!cursor || loadingRequests || busy) return;
+    if (!cursor || loadingRequests || busy) return false;
     const epoch = loadEpoch.current;
     setLoadingRequests(true);
     setError(null);
     try {
       const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
-        params: { path: { orgId }, query: { page_size: 50, state: stateFilter || undefined, device_id: deviceFilter || undefined, ...cursor } },
+        params: { path: { orgId }, query: { page_size: requestPageSize, state: stateFilter || undefined, device_id: deviceFilter || undefined, ...cursor } },
       }));
-      if (epoch !== loadEpoch.current) return;
-      if (!result.ok) { setError(result.error); return; }
+      if (epoch !== loadEpoch.current) return false;
+      if (!result.ok) { setError(result.error); return false; }
       const page = result.data;
-      setRequests(current => [...current, ...page.items.filter(row => !current.some(existing => existing.id === row.id))]);
+      const nextRows = listItems(page).filter(row => !requests.some(existing => existing.id === row.id));
+      setRequests(current => [...current, ...nextRows]);
+      setRequestPages(current => [...current, nextRows]);
       setCursor(page.next_before_id && page.next_before_requested_at ? { before_id: page.next_before_id, before_requested_at: page.next_before_requested_at } : undefined);
+      return true;
     } finally { setLoadingRequests(false); }
   }
 
   async function submitRequest() {
+    if (!jitAlive.current || jitMutation.current || !jitScope.current.enabled || jitScope.current.authorized !== true || !jitScope.current.requestsReady) return;
     const destination = destinations.find(
       (item) => `${item.kind}:${item.id}` === destinationKey,
     );
     if (!destination || !agentId || !reason.trim()) return;
+    jitMutation.current = true;
     setBusy(true);
     setError(null);
+    try {
     const response = await api.POST(
       "/api/v1/organizations/{orgId}/agent-access-requests",
       {
@@ -476,6 +499,7 @@ function AgentJITAccessSection({
         },
       },
     );
+    if (!jitAlive.current) return;
     setBusy(false);
     if (response.error) {
       return setError(
@@ -484,14 +508,26 @@ function AgentJITAccessSection({
     }
     setReason("");
     await load();
+    } catch {
+      if (jitAlive.current) setError("Could not confirm the access request. Refresh before trying again.");
+    } finally { jitMutation.current = false; if (jitAlive.current) setBusy(false); }
   }
 
   async function transition(
     request: AgentAccessRequest,
     action: "approve" | "reject" | "cancel" | "revoke",
   ) {
+    const scope = jitScope.current;
+    const current = scope.requests.find(item => item.id === request.id);
+    if (!jitAlive.current || jitMutation.current || scope.authorized !== true || !scope.requestsReady || !current || current.state !== request.state) return;
+    if ((action === "approve" || action === "reject" || action === "revoke") && !scope.canApprove) return;
+    if (action === "cancel" && current.requested_by_user_id !== scope.currentUserId) return;
+    if ((action === "approve" || action === "reject" || action === "cancel") && current.state !== "pending") return;
+    if (action === "revoke" && current.state !== "approved") return;
+    jitMutation.current = true;
     setBusy(true);
     setError(null);
+    try {
     const key = `web-${action}-${crypto.randomUUID()}`;
     let response;
     if (action === "approve") {
@@ -520,6 +556,7 @@ function AgentJITAccessSection({
         { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
       );
     }
+    if (!jitAlive.current) return;
     setBusy(false);
     if (response.error) {
       return setError(
@@ -530,6 +567,9 @@ function AgentJITAccessSection({
     setRejectionReason("");
     if (action === "approve" || action === "revoke") onPolicyChange();
     await load();
+    } catch {
+      if (jitAlive.current) setError(`Could not confirm the ${action} action. Refresh before trying again.`);
+    } finally { jitMutation.current = false; if (jitAlive.current) setBusy(false); }
   }
 
   async function showHistory(requestId: string) {
@@ -550,25 +590,22 @@ function AgentJITAccessSection({
   if (authorized == null) return error ? <Card><ErrorText>{error}</ErrorText><Button onClick={() => void load()}>Retry temporary access</Button></Card> : null;
 
   return (
-    <Card data-testid="agent-jit-access-panel">
+    <section className="access-temporary" data-testid="agent-jit-access-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="agent-jit-access" className="text-sm font-semibold text-slate-200">
             Just-in-time agent access
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Request one expiring destination grant. Pending requests change no policy.
-          </p>
         </div>
         <Button disabled={busy || loadingRequests} onClick={() => void load()}>Refresh</Button>
       </div>
       {!enabled && (
         <p className="mt-3 text-xs text-amber-300">
-          JIT agent access is off. An owner or admin can enable it in Org Settings.
+          Just-in-time access is off. Enable it in Settings → Features.
         </p>
       )}
-      {enabled && agents.length > 0 && destinations.length > 0 && (
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      {enabled && requestsReady && agents.length > 0 && destinations.length > 0 && (
+        <details className="access-disclosure access-request-builder"><summary>Request temporary access <span>Choose an agent and destination</span></summary><div className="access-request-fields">
           <Field label="Agent">
             <Select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
               {agents.map((agent) => <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>)}
@@ -602,26 +639,26 @@ function AgentJITAccessSection({
               {busy ? "Saving…" : "Request access"}
             </Button>
           </div>
-        </div>
+        </div></details>
       )}
-      {enabled && (agents.length === 0 || destinations.length === 0) && (
+      {enabled && requestsReady && (agents.length === 0 || destinations.length === 0) && (
         <p className="mt-3 text-xs text-slate-500">
           {agents.length === 0 ? "No manageable agents are available." : "No access destinations are configured."}
         </p>
       )}
       <div className="mt-5 flex flex-wrap gap-3">
-        <Field label="Request state"><Select value={stateFilter} disabled={busy} onChange={event => { loadEpoch.current++; setRequests([]); setCursor(undefined); setStateFilter(event.target.value as AgentAccessRequest["state"] | ""); }}>
+        <Field label="Request state"><Select value={stateFilter} disabled={busy} onChange={event => { loadEpoch.current++; setRequests([]); setRequestPages([]); setRequestsReady(false); setRequestPage(1); setCursor(undefined); setStateFilter(event.target.value as AgentAccessRequest["state"] | ""); }}>
           <option value="">All states</option>{(["pending", "approved", "rejected", "cancelled", "expired", "revoked"] as const).map(state => <option key={state} value={state}>{state[0].toUpperCase() + state.slice(1)}</option>)}
         </Select></Field>
-        <Field label="Requests for agent"><Select value={deviceFilter} disabled={busy} onChange={event => { loadEpoch.current++; setRequests([]); setCursor(undefined); setDeviceFilter(event.target.value); }}>
+        <Field label="Requests for agent"><Select value={deviceFilter} disabled={busy} onChange={event => { loadEpoch.current++; setRequests([]); setRequestPages([]); setRequestsReady(false); setRequestPage(1); setCursor(undefined); setDeviceFilter(event.target.value); }}>
           <option value="">All accessible agents</option>{agents.map(agent => <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>)}
         </Select></Field>
       </div>
       <ErrorText>{error}</ErrorText>
       {requests.length > 0 && (
         <div className="mt-5 space-y-2">
-          {requests.map((request) => (
-            <div key={request.id} id={`jit-request-${request.id}`} className="rounded border border-slate-800 px-3 py-3" data-testid={`jit-request-${request.id}`}>
+          {(requestPages[requestPage-1] ?? []).map((request) => (
+            <div key={request.id} id={`jit-request-${request.id}`} className="access-request-row" data-testid={`jit-request-${request.id}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm text-slate-300">{request.agent_name} → {request.destination_name}</p>
@@ -629,30 +666,32 @@ function AgentJITAccessSection({
                   {request.approved_expires_at && <p className="mt-1 text-xs text-amber-300">Expires {new Date(request.approved_expires_at).toLocaleString()}</p>}
                   {history[request.id] && <p className="mt-1 font-mono text-[10px] text-slate-500">{history[request.id].join(" → ")}</p>}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void showHistory(request.id)}>History</Button>
-                  {canApprove && request.state === "pending" && (
-                    <><Button disabled={busy} onClick={() => void transition(request, "approve")}>Approve</Button><Button disabled={busy} onClick={() => { setError(null); setRejectionReason(""); setRejectRequest(request); }}>Reject</Button></>
-                  )}
-                  {request.state === "pending" && request.requested_by_user_id === currentUserId && (
-                    <Button disabled={busy} onClick={() => void transition(request, "cancel")}>Cancel</Button>
-                  )}
-                  {canApprove && request.state === "approved" && (
-                    <Button disabled={busy} onClick={() => void transition(request, "revoke")}>Revoke</Button>
-                  )}
-                </div>
+                <AppAccessRowMenu label={`Request actions for ${request.agent_name} to ${request.destination_name}`} actions={[
+                  { key:"history", label:"History", disabledReason:busy ? "Wait for the current request." : undefined, onSelect:() => void showHistory(request.id) },
+                  ...(canApprove && request.state === "pending" ? [
+                    { key:"approve", label:"Approve", disabledReason:busy ? "Wait for the current request." : undefined, onSelect:() => void transition(request,"approve") },
+                    { key:"reject", label:"Reject", disabledReason:busy ? "Wait for the current request." : undefined, onSelect:() => { setError(null); setRejectionReason(""); setRejectRequest(request); } },
+                  ] : []),
+                  ...(request.state === "pending" && request.requested_by_user_id === currentUserId ? [{ key:"cancel", label:"Cancel", disabledReason:busy ? "Wait for the current request." : undefined, onSelect:() => void transition(request,"cancel") }] : []),
+                  ...(canApprove && request.state === "approved" ? [{ key:"revoke", label:"Revoke", danger:true, disabledReason:busy ? "Wait for the current request." : undefined, onSelect:() => void transition(request,"revoke") }] : []),
+                ]} />
               </div>
             </div>
           ))}
         </div>
       )}
-      {cursor && <Button className="mt-4" disabled={busy || loadingRequests} onClick={() => void loadMore()}>{loadingRequests ? "Loading requests…" : "Load more requests"}</Button>}
-      {rejectRequest && <Modal title="Reject access request" onDismiss={() => !busy && setRejectRequest(null)} actions={<><Button disabled={busy} variant="ghost" onClick={() => setRejectRequest(null)}>Keep request</Button><Button disabled={busy || !rejectionReason.trim()} onClick={() => void transition(rejectRequest, "reject")}>{busy ? "Rejecting…" : "Reject request"}</Button></>}>
+      {!requestsReady && !error && <Loading label="Loading temporary access…" />}
+      {requestsReady && !error && requests.length === 0 && <p className="access-request-empty">No temporary access requests.</p>}
+      <AppAccessPagination page={requestPage} pageSize={requestPageSize} count={requestPages[requestPage-1]?.length ?? 0} firstItem={requestPages.slice(0,requestPage-1).reduce((total,rows) => total+rows.length,1)} hasNext={requestPages.length>requestPage || Boolean(cursor)} busy={busy || loadingRequests || !requestsReady} maxOffset={null} onPageChange={page => {
+        if (page <= requestPages.length) setRequestPage(page);
+        else void loadMore().then(loaded => { if (loaded) setRequestPage(page); });
+      }} onPageSizeChange={size => { if (size === requestPageSize) return; loadEpoch.current++; setRequests([]); setRequestPages([]); setRequestsReady(false); setCursor(undefined); setRequestPage(1); setRequestPageSize(size); }} />
+      {rejectRequest && <Modal title="Reject access request" placement="right" onDismiss={() => !busy && setRejectRequest(null)} actions={<><Button disabled={busy} variant="ghost" onClick={() => setRejectRequest(null)}>Keep request</Button><Button disabled={busy || !rejectionReason.trim()} onClick={() => void transition(rejectRequest, "reject")}>{busy ? "Rejecting…" : "Reject request"}</Button></>}>
         <p className="mb-3 text-sm">{rejectRequest.agent_name} → {rejectRequest.destination_name}</p>
         <Field label="Rejection reason"><Input autoFocus maxLength={500} value={rejectionReason} onChange={event => setRejectionReason(event.target.value)} /></Field>
         <ErrorText>{error}</ErrorText>
       </Modal>}
-    </Card>
+    </section>
   );
 }
 
@@ -751,9 +790,10 @@ function TestAccessSection({ orgId }: { orgId: string }) {
   return (
     <div data-testid="test-access-panel">
       <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>Test access</Button>
-      {open && <Modal title="Test access" size="wide" onDismiss={() => setOpen(false)} actions={<><Button variant="ghost" onClick={() => setOpen(false)}>Close</Button><Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Run test"}</Button></>}>
-        <p className="mb-4 text-cell text-ink-tertiary">Explain current policy intent without sending traffic, resolving DNS, or changing policy.</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,.9fr)_minmax(14rem,1.4fr)_7rem_6rem] lg:items-end">
+      {open && <Modal title="Test access" placement="right" onDismiss={() => setOpen(false)} actions={<><Button variant="ghost" onClick={() => setOpen(false)}>Close</Button><Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Run test"}</Button></>}>
+        <div className="access-test-editor">
+        <p>Check current policy intent. No traffic is sent.</p>
+        <div className="access-test-fields">
           <Field label="Agent">
             <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
               {agents.map((agent) => (
@@ -780,159 +820,125 @@ function TestAccessSection({ orgId }: { orgId: string }) {
             {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
           </p>
           {result.first_blocker && <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>}
-          <ol className="mt-3 space-y-2">
+          <ol className="access-test-checks">
             {result.checks.map((check, index) => (
-              <li key={`${index}-${check.code}`} className="rounded border border-slate-800 px-3 py-2">
+              <li key={`${index}-${check.code}`}>
                 <div className="flex gap-2 text-xs">
                   <span aria-hidden="true">{check.status === "pass" ? "✓" : check.status === "fail" ? "×" : "?"}</span>
                   <span className="font-medium text-slate-300">{check.code}</span>
                   <span className="text-slate-500">{check.message}</span>
                 </div>
                 {check.facts && Object.keys(check.facts).length > 0 && (
-                  <dl className="mt-2 grid gap-1 font-mono text-[10px] text-slate-500 sm:grid-cols-2">
+                  <details className="access-disclosure"><summary>Evidence</summary><dl className="mt-2 grid gap-1 font-mono text-[10px] text-slate-500 sm:grid-cols-2">
                     {Object.entries(check.facts).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => (
                       <div key={key} className="flex gap-1"><dt>{key}:</dt><dd className="break-all text-slate-400">{value}</dd></div>
                     ))}
-                  </dl>
+                  </dl></details>
                 )}
               </li>
             ))}
           </ol>
         </div>
         )}
+        </div>
       </Modal>}
     </div>
   );
 }
 
 // ── Zero Trust mode ─────────────────────────────────────────────────────────────────
-function ModeSection({
-  orgId,
-  canManage,
-}: {
-  orgId: string;
-  canManage: boolean;
-}) {
+export function ModeSection({ orgId, canManage, onPolicyChange, central = false }: { orgId: string; canManage: boolean; onPolicyChange: () => void; central?: boolean }) {
   const [mode, setMode] = useState<"off" | "enforcing" | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<"enable" | "disable" | null>(null);
   const [confirmCount, setConfirmCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const alive = useRef(true);
+  const epoch = useRef(0);
+  const pending = useRef(false);
+  const allowed = useRef(central && canManage);
+  allowed.current = central && canManage;
+  useEffect(() => { alive.current = true; return () => { alive.current = false; epoch.current++; }; }, []);
+  useEffect(() => { if (!central || !canManage) setConfirming(null); }, [central, canManage]);
 
   const load = useCallback(async () => {
-    const r = await loadOne(() =>
-      api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", {
-        params: { path: { orgId } },
-      }),
-    );
-    if (!r.ok) {
-      setLoadError(r.error); // never hide the toggle on a failure ([5]) — show retry
-      return;
-    }
+    const attempt = ++epoch.current;
+    const r = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", { params: { path: { orgId } } }));
+    if (!alive.current || attempt !== epoch.current) return;
+    if (!r.ok) { setLoadError(r.error); return; }
+    const next = (r.data as ZeroTrustMode).mode;
+    if (next !== "off" && next !== "enforcing") { setLoadError("The server returned an invalid enforcement state."); return; }
     setLoadError(null);
-    setMode((r.data as ZeroTrustMode).mode);
+    setMode(next);
   }, [orgId]);
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  // [1]+[7]: fetch the rule count FRESH at Enable-click — never a stale/defaulted-0 count that
-  // would show the false zero-rules danger gate. A failed count fetch aborts LEGIBLY.
   async function openEnableConfirm() {
+    if (!alive.current || !allowed.current || pending.current) return;
+    pending.current = true;
+    setBusy(true);
     setErr(null);
-    const r = await loadOne(() =>
-      api.GET("/api/v1/organizations/{orgId}/policies", {
-        params: { path: { orgId } },
-      }),
-    );
-    if (!r.ok) return setErr("Couldn't verify the current rule count. retry.");
-    setConfirmCount((r.data as PolicyRule[]).length);
-    setConfirming(true);
+    const r = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/policies", { params: { path: { orgId } } }));
+    pending.current = false;
+    if (!alive.current || !allowed.current) return;
+    setBusy(false);
+    if (!r.ok || !Array.isArray(r.data)) { setErr("Couldn't verify the current rule count. retry."); return; }
+    setConfirmCount(r.data.length);
+    setConfirming("enable");
   }
 
   async function setModeTo(next: "off" | "enforcing") {
+    if (!alive.current || !allowed.current || pending.current) return;
+    pending.current = true;
     setBusy(true);
     setErr(null);
-    const { data, error } = await api.PUT(
-      "/api/v1/organizations/{orgId}/zero-trust-mode",
-      {
-        params: { path: { orgId } },
-        body: { mode: next },
-      },
-    );
-    setBusy(false);
-    setConfirming(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not change the mode."));
-    const zt = data as ZeroTrustMode | undefined;
-    if (zt) {
+    try {
+      const { data, error } = await api.PUT("/api/v1/organizations/{orgId}/zero-trust-mode", { params: { path: { orgId } }, body: { mode: next } });
+      if (!alive.current || !allowed.current) return;
+      if (error) { setErr(apiErrorMessage(error, "Could not change the mode.")); return; }
+      const zt = data as ZeroTrustMode | undefined;
+      if (!zt || (zt.mode !== "off" && zt.mode !== "enforcing")) { setErr("The server did not confirm enforcement. Refresh its state before trying again."); void load(); onPolicyChange(); return; }
+      setConfirming(null);
       setMode(zt.mode);
+      onPolicyChange();
       const affected = zt.affected_full_tunnel_devices ?? [];
-      if (next === "enforcing" && affected.length > 0) {
-        toast.warning("Enforcement enabled", {
-          description: `${affected.length} full-tunnel device${affected.length === 1 ? "" : "s"} lost internet egress until an allow rule applies: ${affected.map((device) => device.name).join(", ")}`,
-          duration: 10_000,
-        });
-      } else {
-        toast.success(next === "enforcing" ? "Enforcement enabled" : "Enforcement disabled");
-      }
+      if (zt.mode === "enforcing" && affected.length > 0) {
+        toast.warning("Enforcement enabled", { description: `${affected.length} full-tunnel device${affected.length === 1 ? "" : "s"} lost internet egress until an allow rule applies: ${affected.map(device => device.name).join(", ")}`, duration: 10_000 });
+      } else toast.success(zt.mode === "enforcing" ? "Enforcement enabled" : "Enforcement disabled");
+    } catch {
+      if (alive.current && allowed.current) { setErr("Could not confirm enforcement. Refresh its state before trying again."); void load(); onPolicyChange(); }
+    } finally {
+      pending.current = false;
+      if (alive.current) setBusy(false);
     }
   }
 
   const confirm = modeEnableConfirm(confirmCount);
-
-  return (
-    <div className="min-w-[18rem] flex-1">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${mode === "enforcing" ? "bg-ok" : mode === "off" ? "bg-warn" : "bg-slate-600"}`} aria-hidden="true" />
-        <div className="min-w-[12rem] flex-1 text-sm">
-          <h2 className="inline font-medium text-ink-heading">Enforcement</h2>
-          <span className="ml-2 text-ink-tertiary">
-            {mode === "enforcing" ? "On · Default-deny active; only matching allow rules pass." : mode === "off" ? "Off · Policy not enforced. Open mesh: every device reaches every device." : loadError ? "Unavailable" : "Loading…"}
-          </span>
-        </div>
-        {canManage && mode != null && !loadError && (
-          <Button
-            size="sm"
-            variant={mode === "enforcing" ? "ghost" : "enforce"}
-            disabled={busy}
-            onClick={() =>
-              mode === "enforcing" ? setModeTo("off") : openEnableConfirm()
-            }
-          >
-            {mode === "enforcing" ? "Disable" : "Enable enforcing"}
-          </Button>
-        )}
-      </div>
+  const status = loadError ? "Unavailable" : mode === "enforcing" ? "On · Default-deny" : mode === "off" ? "Off · Open mesh" : "Loading…";
+  return <>
+    {central ? <div><SettingRow label="Zero Trust enforcement" description="Enforce default-deny network access using saved allow rules.">
+      <div className="features-control"><SettingValue>{status}</SettingValue>{canManage && mode != null && !loadError && <Button size="sm" variant="ghost" disabled={busy} onClick={() => mode === "enforcing" ? setConfirming("disable") : void openEnableConfirm()}>{mode === "enforcing" ? "Disable" : "Enable enforcing"}</Button>}</div>
+    </SettingRow>
+      {mode === "off" && !loadError && <p className="features-note">Rules are saved but not enforced. Devices can reach each other without an allow rule.</p>}
       {loadError && <LoadRetry error={loadError} onRetry={load} />}
-      <ErrorText>{err}</ErrorText>
-
-      {confirming && (
-        <Modal
-          title={confirm.title}
-          danger={confirm.danger}
-          onDismiss={() => setConfirming(false)}
-          actions={
-            <>
-              <Button variant="ghost" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant={confirm.danger ? "danger" : "enforce"}
-                disabled={busy}
-                onClick={() => setModeTo("enforcing")}
-              >
-                {confirm.confirmLabel}
-              </Button>
-            </>
-          }
-        >
-          {confirm.body}
-        </Modal>
-      )}
+      <ErrorText>{confirming ? null : err}</ErrorText>
+    </div> : <section className="access-enforcement" aria-label="Policy enforcement">
+    <div className="access-enforcement-status">
+      <span className="access-enforcement-dot" data-state={loadError ? "unknown" : mode ?? "unknown"} aria-hidden="true" />
+      <h2>Enforcement</h2>
+      <span>{status}</span>
+      {!loadError && mode === "off" && <span className="access-enforcement-explain">Rules are not enforced.</span>}
+      <span className="sr-only">{mode === "enforcing" ? "Default-deny active; only matching allow rules pass." : mode === "off" ? "Policy not enforced. Open mesh: every device reaches every device." : ""}</span>
     </div>
-  );
+    <Link className="features-link" to="/settings?section=features&feature=zero-trust">Manage in Features</Link>
+    {loadError && <LoadRetry error={loadError} onRetry={load} />}
+    <ErrorText>{confirming ? null : err}</ErrorText>
+    </section>}
+    {central && confirming && canManage && <Modal placement="right" showClose title={confirming === "enable" ? confirm.title : "Disable enforcement?"} danger={confirming === "enable" ? confirm.danger : true} onDismiss={() => { if (!busy) setConfirming(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button><Button variant={confirming === "disable" || confirm.danger ? "danger" : "enforce"} disabled={busy} onClick={() => void setModeTo(confirming === "enable" ? "enforcing" : "off")}>{confirming === "enable" ? confirm.confirmLabel : "Disable enforcement"}</Button></>}>
+      <div className="access-mode-confirm">{confirming === "enable" ? confirm.body : "Devices will be able to reach every other device without an allow rule. Existing rules remain saved."}<ErrorText>{err}</ErrorText></div>
+    </Modal>}
+  </>;
 }
 
 // ── Rules ─────────────────────────────────────────────────────────────────────────────
@@ -995,6 +1001,24 @@ function RulesSection({
   // filtering in the route (rather than hidden inside DataTable) means it cannot
   // silently draw rules the operator has narrowed out of the authoritative table.
   const [ruleQuery, setRuleQuery] = useState("");
+  const [rulePage, setRulePage] = useState(1);
+  const [rulePageSize, setRulePageSize] = useState(20);
+  const [ruleSort, setRuleSort] = useState<{ key: string; descending: boolean } | null>(null);
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
+  const [inspectedRuleId, setInspectedRuleId] = useState<string | null>(null);
+  const [detailSection, setDetailSection] = useState<"overview" | "impact">("overview");
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const mutationBusy = useRef(false);
+  const readGeneration = useRef(0);
+  const alive = useRef(true);
+  const readScope = `${orgId}:${canManage}:${canManageAgentTemplates}:${agentGroupsEnabled}:${canViewFQDNResources}`;
+  const currentScope = useRef(readScope);
+  currentScope.current = readScope;
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; readGeneration.current += 1; };
+  }, []);
   // ⛔ MEMBER COUNTS FOR SOURCE GROUPS ONLY — the bounded half of the coupling.
   // Lazy counts in the Groups panel LOSE the visibly-empty property; src_group_empty restores it HERE, on the
   // rule row, where the operator's attention already is. The fan-out is the DISTINCT SOURCE GROUPS of the
@@ -1016,6 +1040,10 @@ function RulesSection({
   ) => resolveRuleRow(rule, ruleGroups, ruleResources, ruleMembers, ruleSites, ruleLoaded, ruleServices, fqdnResources), [fqdnResources]);
 
   const load = useCallback(async () => {
+    const scope = readScope;
+    if (!alive.current || currentScope.current !== scope) return;
+    const generation = ++readGeneration.current;
+    const isCurrent = () => alive.current && readGeneration.current === generation && currentScope.current === scope;
     setErr(null); // [310]: never carry a stale partial-load/mutation error into a fresh load
     setAgentsOrgId("");
     setLoaded((previous) => ({
@@ -1082,6 +1110,7 @@ function RulesSection({
             error: "Agent groups are disabled or unavailable for this role.",
           }),
     ]);
+    if (!isCurrent()) return;
     // Summary inputs — set from the SAME results (a rules-load failure → summary shows "failed", never 0).
     setRulesResult(
       rr.ok ? { ok: true, data: (rr.data as PolicyRule[]).length } : rr,
@@ -1098,6 +1127,7 @@ function RulesSection({
     setLoadError(null);
     const freshRules = rr.data as PolicyRule[];
     setRules(freshRules);
+    setSrcGroupCounts(new Map());
     // Bounded: one call per DISTINCT source group actually referenced by a rule.
     const srcIds = [
       ...new Set(
@@ -1115,7 +1145,7 @@ function RulesSection({
         )) as Loaded<GroupMember[]>;
         return [gid, mr.ok ? mr.data.length : null] as const;
       }),
-    ).then((pairs) => setSrcGroupCounts(new Map(pairs)));
+    ).then((pairs) => { if (isCurrent()) setSrcGroupCounts(new Map(pairs)); });
     setGroups((gr.ok ? (gr.data as UserGroup[]) : []) as UserGroup[]);
     setResources((resr.ok ? (resr.data as Resource[]) : []) as Resource[]);
     setFQDNResources(fr.ok ? (fr.data as FQDNResource[]) : []);
@@ -1162,12 +1192,14 @@ function RulesSection({
     setStaleRuleIds((prev) => pruneStaleRuleIds(prev, true, freshRules));
   }, [
     agentGroupsEnabled,
+    canManage,
     canManageAgentTemplates,
     canViewFQDNResources,
     orgId,
   ]);
   useEffect(() => {
-    load();
+    void load();
+    return () => { readGeneration.current += 1; };
   }, [load, subjectsRev]); // S8.5: re-load when a sibling section mutates groups/resources (stale-button fix)
 
   const notice = staleNoticeText(staleRuleIds); // DERIVED — no notice state
@@ -1185,11 +1217,18 @@ function RulesSection({
         loaded,
         services,
       );
-      return [row.src.label, row.dst.label, rule.src_kind, rule.dst_kind]
+      const expiry = grantExpiry(rule, Date.now());
+      const fqdn = fqdnDestinationPresentation(row.fqdnDestinationStatus);
+      const empty = (rule.src_kind ?? "group") === "group" && rule.src_group_id
+        ? srcGroupEmptyBadge(srcGroupEmptyWarn(srcGroupCounts.get(rule.src_group_id))) : null;
+      return [row.src.label, row.dst.label, rule.src_kind, rule.dst_kind,
+        rule.enabled ? "enabled active" : "disabled", expiry.state, expiry.label,
+        row.managedByAgentAccess ? "JIT access" : row.managedByAgentTemplate ? "Managed by agent template" : row.managedByOperator ? "Managed by GitOps" : "Manual",
+        row.cidrOutsideRanges ? "outside ranges" : "", row.k8sServiceVanished ? "vanished" : "", fqdn?.searchText, empty]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [groups, loaded, members, resources, ruleQuery, rules, services, sites]);
+  }, [groups, loaded, members, resources, ruleQuery, ruleRow, rules, services, sites, srcGroupCounts]);
   // The optional graph is derived from the same filtered inventory as the table before it can open.
   // It is complete-or-withheld: a graph that omits even one loaded flow is not an operational summary.
   const flowRows = useMemo(() => filteredRules.map((rule) => {
@@ -1202,7 +1241,7 @@ function RulesSection({
       srcKind: rule.src_kind as FlowKind,
       dstKind: rule.dst_kind as FlowKind,
     };
-  }), [filteredRules, groups, loaded, members, resources, services, sites]);
+  }), [filteredRules, groups, loaded, members, resources, ruleRow, services, sites]);
   const flowProbe = useMemo(() => flowLayout(flowRows), [flowRows]);
   const visualization = useMemo(() => {
     if (!rulesResult || !modeResult) return { kind: "loading" as const };
@@ -1215,73 +1254,374 @@ function RulesSection({
     if (visualizing && visualization.kind !== "draw") setVisualizing(false);
   }, [visualization.kind, visualizing]);
 
-  async function del(id: string) {
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/policies/{ruleId}",
-      {
-        params: { path: { orgId, ruleId: id } },
-      },
-    );
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not delete the rule."));
-    load();
-  }
+  const mutationUnavailable = (rule: PolicyRule, operation: "edit" | "extend" | "enable" | "disable" | "delete") => {
+    if (!canManage) return "Your role cannot manage access rules.";
+    if (rulesResult?.ok !== true) return "Load the current rule inventory first.";
+    if (ruleBusy) return "A rule change is in progress.";
+    const row = ruleRow(rule, groups, resources, members, sites, loaded, services);
+    if (grantControls(row).withheld) return managedGrantWarning();
+    if (operation === "edit" && !canEditRuleInModal(rule)) return "This rule's source or destination is not editable here.";
+    if (operation === "extend" && !grantExpiry(rule, Date.now()).extendable) return "Only a temporary grant can be extended.";
+    if (operation === "enable" && rule.enabled) return "Already enabled.";
+    if (operation === "disable" && !rule.enabled) return "Already disabled.";
+    return null;
+  };
 
-  // F3: toggle a rule enabled/disabled. Disabling withdraws its allow (in-hash push, effective in seconds);
-  // ENABLE is one-click (additive/harmless), DISABLE goes through the confirm modal (asymmetric ceremony).
-  async function setEnabled(id: string, enabled: boolean) {
-    const { error } = await api.PATCH(
-      "/api/v1/organizations/{orgId}/policies/{ruleId}",
-      {
-        params: { path: { orgId, ruleId: id } },
-        body: { enabled },
-      },
-    );
-    if (error)
-      return setErr(
-        apiErrorMessage(
-          error,
-          enabled
-            ? "Could not enable the rule."
-            : "Could not disable the rule.",
-        ),
-      );
-    load();
+  async function mutateRules(selected: PolicyRule[], operation: "enable" | "disable" | "delete") {
+    if (!alive.current || currentScope.current !== readScope || mutationBusy.current || !canManage || rulesResult?.ok !== true || selected.length === 0) return;
+    // Confirmed rows must still be present and editable. Never turn a stale dialog
+    // into an operation on a changed or workflow-owned rule.
+    const current = selected.map(rule => rules.find(value => value.id === rule.id));
+    if (current.some(rule => !rule || mutationUnavailable(rule, operation))) {
+      setErr("Rules changed. Review the selected rules and try again.");
+      return;
+    }
+    mutationBusy.current = true;
+    setRuleBusy(true);
+    setErr(null);
+    const scope = currentScope.current;
+    const isCurrent = () => alive.current && currentScope.current === scope;
+    const change = async (rule: PolicyRule) => {
+      try {
+        const result = operation === "delete"
+          ? await api.DELETE("/api/v1/organizations/{orgId}/policies/{ruleId}", { params: { path: { orgId, ruleId: rule.id } } })
+          : await api.PATCH("/api/v1/organizations/{orgId}/policies/{ruleId}", { params: { path: { orgId, ruleId: rule.id } }, body: { enabled: operation === "enable" } });
+        return result.error ? apiErrorMessage(result.error, operation === "delete" ? "Could not delete the rule." : operation === "enable" ? "Could not enable the rule." : "Could not disable the rule.") : null;
+      } catch {
+        return "Could not confirm the rule change. Refresh the rule list before trying again.";
+      }
+    };
+    try {
+      const errors: Array<string | null> = [];
+      // Keep deletion ordered; additive enables and confirmed disables retain the
+      // existing parallel request semantics and exact mutation payloads.
+      if (operation === "delete") {
+        for (const rule of current) {
+          if (!isCurrent()) break;
+          errors.push(await change(rule as PolicyRule));
+        }
+      } else errors.push(...await Promise.all(current.map(rule => change(rule as PolicyRule))));
+      if (!isCurrent()) return;
+      await load();
+      if (isCurrent()) setErr([...new Set(errors.filter((error): error is string => error !== null))].join(" ") || null);
+    } finally {
+      mutationBusy.current = false;
+      if (isCurrent()) setRuleBusy(false);
+    }
   }
 
   const view = sectionRender(loadError, notice);
   const ruleEmptyState = rulesEmptyState({ rulesResult, modeResult, renderedCount: rules.length });
   const rulesAuthoritative = rulesResult?.ok === true;
 
-  return (
-    <section aria-labelledby="access-rules-heading" className="p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="access-rules-heading" className="text-base font-semibold text-ink-heading">Rules</h2>
-          <p className="mt-0.5 text-xs text-ink-tertiary">
-            {rulesResult?.ok ? `${rulesResult.data} total · ${rules.filter((rule) => rule.enabled).length} active` : "Loading rule inventory…"}
-          </p>
+  const ruleColumns: Array<{ key: string; header: string; sortValue: (rule: PolicyRule) => string; cell: (rule: PolicyRule) => ReactNode }> = [
+  {
+    key: "path",
+    header: "Access path",
+    sortValue: (r) => {
+      const row = ruleRow(r, groups, resources, members, sites, loaded, services);
+      return `${row.src.label} ${row.dst.label}`;
+    },
+    cell: (r) => {
+      const row = ruleRow(r, groups, resources, members, sites, loaded, services);
+      return (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-medium text-ink-body">
+          <RefText label={row.src.label} broken={row.src.state !== "ok"} />
+          <span aria-hidden="true" className="text-ink-faint">→</span>
+          <RefText label={row.dst.label} broken={row.dst.state !== "ok"} />
         </div>
-        {/* TWO seams, both producing ABSENCE, and the ORDER is the decision (S14.2 D3):
-            PERMISSION first, WIDTH second. A member who may not manage rules sees nothing — never
-            "read-only on this screen size", which would imply a wider window grants what their role does not. */}
-        {canManage && !view.showRetry && (
-          <ComposeGate surface="Access rules">
-            <Button
-              size="sm"
-              onClick={() => setCreating(true)}
-              disabled={
-                !rulesAuthoritative ||
-                (groups.length === 0 &&
-                  sites.length === 0 &&
-                  visibleAgents.length === 0)
+      );
+    },
+  },
+  {
+    key: "status",
+    header: "State",
+    // ⛔ THE WORD, NOT THE STYLING. A disabled rule used to be signalled by opacity on the
+    // whole row; opacity is invisible to a search and to anyone who cannot see it.
+    sortValue: (r) => (r.enabled ? "enabled" : "disabled"),
+    cell: (r) =>
+      r.enabled ? (
+        <span className="text-xs text-ink-secondary">Enabled</span>
+      ) : (
+        /* F3: a disabled rule is shown DISTINCTLY, never hidden — the list must not lie
+           about what is enforcing. */
+        <span className="tnx-status rounded-full border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-400">
+            Disabled
+          </span>
+      ),
+  },
+  {
+    key: "type",
+    header: "Managed by",
+    sortValue: (r) => {
+      const row = ruleRow(
+        r,
+        groups,
+        resources,
+        members,
+        sites,
+        loaded,
+        services,
+      );
+      if (row.managedByAgentAccess)
+        return "managed by jit access";
+      if (row.managedByAgentTemplate)
+        return "managed by agent template";
+      if (row.managedByOperator) return "managed by gitops";
+      return grantExpiry(r, Date.now()).state === "permanent"
+        ? "manual"
+        : "temporary";
+    },
+    cell: (r) => {
+      const row = ruleRow(
+        r,
+        groups,
+        resources,
+        members,
+        sites,
+        loaded,
+        services,
+      );
+      /* S10.2 D2 cond 1: a GitOps-managed grant is badged; its mutation controls are
+         withheld in the actions column. */
+      if (row.managedByAgentAccess)
+        return (
+          <a href={row.agentAccessRequestId ? `#jit-request-${row.agentAccessRequestId}` : undefined} className="tnx-status rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
+            JIT access
+          </a>
+        );
+      if (row.managedByAgentTemplate)
+        return (
+          <span className="tnx-status rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-300">
+            Managed by agent template
+          </span>
+        );
+      if (row.managedByOperator) return <ManagedBadge />;
+      const exp = grantExpiry(r, Date.now());
+      return exp.state === "permanent" ? (
+        <span className="text-xs text-ink-tertiary">Manual</span>
+      ) : (
+        /* S7.5.4 linger model: a temporary grant shows its window; an EXPIRED grant stays
+           visible (audit history), rendered distinctly — never hidden. */
+        <span
+          className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${exp.state === "expired" ? "border-rose-800/50 bg-rose-950/40 text-rose-400" : "border-amber-800/50 bg-amber-950/40 text-amber-300"}`}
+        >
+          Temporary · {exp.label}
+        </span>
+      );
+    },
+  },
+  {
+    key: "notes",
+    header: "Attention",
+    // ⚠ EVERY WARN KIND IS SEARCHABLE BY ITS OWN WORDS. These are the states an operator most
+    // needs to find — each one means a rule that reads ACTIVE and compiles to NOTHING — and a
+    // badge contributes no text, so without this they would be the least findable rows here.
+    sortValue: (r) => {
+      const row = ruleRow(
+        r,
+        groups,
+        resources,
+        members,
+        sites,
+        loaded,
+        services,
+      );
+      const empty =
+        (r.src_kind ?? "group") === "group" && r.src_group_id
+          ? srcGroupEmptyBadge(
+              srcGroupEmptyWarn(
+                srcGroupCounts.get(r.src_group_id),
+              ),
+            )
+          : null;
+      const fqdn = fqdnDestinationPresentation(
+        row.fqdnDestinationStatus,
+      );
+      return [
+        row.cidrOutsideRanges ? "outside ranges" : "",
+        row.k8sServiceVanished ? "vanished" : "",
+        fqdn?.searchText ?? "",
+        empty ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    },
+    cell: (r) => {
+      const row = ruleRow(
+        r,
+        groups,
+        resources,
+        members,
+        sites,
+        loaded,
+        services,
+      );
+      const emptyBadge =
+        (r.src_kind ?? "group") === "group" && r.src_group_id
+          ? srcGroupEmptyBadge(
+              srcGroupEmptyWarn(
+                srcGroupCounts.get(r.src_group_id),
+              ),
+            )
+          : null;
+      const fqdn = fqdnDestinationPresentation(
+        row.fqdnDestinationStatus,
+      );
+      return (
+        <span className="flex flex-wrap items-center gap-1">
+          {/* S8.7 warn-not-refuse (D1): the SERVER's read-time judgment, rendered verbatim —
+              a CIDR rule matching no current org range. Self-clears when a range lands. */}
+          {row.cidrOutsideRanges && (
+            <span
+              className="tnx-status rounded-full border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber-400"
+              title="This CIDR is inside no current site subnet. the rule matches nothing until the range is declared."
+            >
+              Outside ranges
+            </span>
+          )}
+          {/* S10.3 warn-not-refuse: the dst Service was unexposed or its cluster
+              deregistered, so the grant compiles to nothing. Self-clears if it returns. */}
+          {row.k8sServiceVanished && (
+            <span
+              className="tnx-status rounded-full border border-rose-800/50 bg-rose-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-400"
+              title="The Kubernetes Service this rule reaches is no longer exposed. the grant matches nothing until it is re-exposed."
+            >
+              Vanished
+            </span>
+          )}
+          {fqdn && (row.fqdnDestinationStatus === "opt_in_disabled" ? (
+            <Link
+              to="/settings?section=features&feature=fqdn"
+              className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+              title={`${fqdn.title} Open the organization setting.`}
+            >
+              {fqdn.label}
+            </Link>
+          ) : (
+            <span
+              className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+              title={fqdn.title}
+            >
+              {fqdn.label}
+            </span>
+          ))}
+          {/* ⛔ src_group_empty (S14.12) — measured at compiler.go:399: a group with zero
+              members matches NO device, so this rule COMPILES TO NOTHING while rendering
+              ACTIVE. Derived from the member COUNT, never from group existence, and it does
+              NOT fire while the count is unfetched or failed — "could not check" is not
+              "empty". */}
+          {emptyBadge && (
+            <span
+              className="tnx-status rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-warn"
+              title={
+                srcGroupEmptyExplain(
+                  srcGroupEmptyWarn(
+                    srcGroupCounts.get(r.src_group_id as string),
+                  ),
+                ) ?? undefined
               }
             >
-              Add rule
-            </Button>
-          </ComposeGate>
-        )}
-      </div>
+              {emptyBadge}
+            </span>
+          )}
+        </span>
+      );
+    },
+  },
+];
+  const orderedRules = useMemo(() => {
+    if (!ruleSort) return filteredRules;
+    const column = ruleColumns.find(value => value.key === ruleSort.key);
+    if (!column) return filteredRules;
+    return [...filteredRules].sort((a, b) => column.sortValue(a).localeCompare(column.sortValue(b), undefined, { numeric: true, sensitivity: "base" }) * (ruleSort.descending ? -1 : 1));
+  }, [filteredRules, ruleSort, groups, resources, members, sites, loaded, services, srcGroupCounts, ruleRow]);
+  const lastPage = Math.max(1, Math.ceil(orderedRules.length / rulePageSize));
+  const currentPage = Math.min(rulePage, lastPage);
+  const pageRules = orderedRules.slice((currentPage - 1) * rulePageSize, currentPage * rulePageSize);
+  const selectedRules = rules.filter(rule => selectedRuleIds.has(rule.id));
+  const pageSelected = pageRules.length > 0 && pageRules.every(rule => selectedRuleIds.has(rule.id));
+  const hiddenSelectionCount = selectedRules.filter(rule => !pageRules.some(visible => visible.id === rule.id)).length;
+  const inspectedRule = rules.find(rule => rule.id === inspectedRuleId) ?? null;
+  const inspectedRow = inspectedRule ? ruleRow(inspectedRule, groups, resources, members, sites, loaded, services) : null;
+  const destinationKind = inspectedRule?.dst_kind ?? "resource";
+  const destinationResource = destinationKind === "resource" && loaded.resourcesLoaded
+    ? resources.find(resource => resource.id === inspectedRule?.dst_resource_id) : undefined;
+  const destinationService = destinationKind === "k8s_service" && loaded.k8sServicesLoaded
+    ? services.find(service => service.id === inspectedRule?.dst_k8s_service_id) : undefined;
+  const destinationFQDN = destinationKind === "fqdn_resource" && loaded.fqdnResourcesLoaded
+    ? fqdnResources.find(resource => resource.id === inspectedRule?.dst_fqdn_resource_id) : undefined;
+  const destinationPortScope = (destination: { protocol?: string; port_low?: number | null; port_high?: number | null } | undefined) => {
+    if (!destination || !["any", "tcp", "udp"].includes(destination.protocol ?? "")) return "Not reported";
+    if (destination.protocol === "any") return "Any protocol · all ports";
+    const protocol = (destination.protocol as string).toUpperCase();
+    // The saved API contract uses absent/null bounds for an unscoped protocol.
+    // A missing destination or a partial/invalid bound is never widened to all ports.
+    if (destination.port_low == null && destination.port_high == null) return `${protocol} · all ports`;
+    const low = destination.port_low;
+    const high = destination.port_high ?? low;
+    if (typeof low !== "number" || typeof high !== "number" || !Number.isInteger(low) || !Number.isInteger(high) || low < 1 || high > 65535 || high < low) return `${protocol} · port scope not reported`;
+    return low === high ? `${protocol} · port ${low}` : `${protocol} · ports ${low}–${high}`;
+  };
+  useEffect(() => {
+    setRulePage(previous => Math.min(previous, lastPage));
+  }, [lastPage]);
+  useEffect(() => {
+    setSelectedRuleIds(previous => {
+      const next = new Set([...previous].filter(id => rules.some(rule => rule.id === id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [rules]);
+  useEffect(() => {
+    if (inspectedRuleId) detailHeading.current?.focus({ preventScroll: true });
+  }, [inspectedRuleId, detailSection]);
+
+  const inspectRule = (rule: PolicyRule) => {
+    setInspectedRuleId(rule.id);
+    setDetailSection("overview");
+  };
+  const rowActions = (rule: PolicyRule) => [
+    { key: "inspect", label: "View details", onSelect: () => inspectRule(rule) },
+    ...(canManage ? [
+      { key: "edit", label: "Edit", disabledReason: mutationUnavailable(rule, "edit"), onSelect: () => setEditing(rule) },
+      { key: "extend", label: "Extend", disabledReason: mutationUnavailable(rule, "extend"), onSelect: () => setExtendingGrant(rule) },
+      { key: "toggle", label: rule.enabled ? "Disable" : "Enable", disabledReason: mutationUnavailable(rule, rule.enabled ? "disable" : "enable"), onSelect: () => { if (rule.enabled) setDisablingRules([rule]); else void mutateRules([rule], "enable"); } },
+      { key: "delete", label: "Delete", danger: true, disabledReason: mutationUnavailable(rule, "delete"), onSelect: () => setDeletingRules([rule]) },
+    ] : []),
+  ];
+  const bulkActions = [
+    { key: "edit" as const, label: "Edit", single: true, run: (rows: PolicyRule[]) => setEditing(rows[0]) },
+    { key: "extend" as const, label: "Extend", single: true, run: (rows: PolicyRule[]) => setExtendingGrant(rows[0]) },
+    { key: "enable" as const, label: "Enable", single: false, run: (rows: PolicyRule[]) => { void mutateRules(rows, "enable"); } },
+    { key: "disable" as const, label: "Disable", single: false, run: (rows: PolicyRule[]) => setDisablingRules(rows) },
+    { key: "delete" as const, label: "Delete", single: false, run: (rows: PolicyRule[]) => setDeletingRules(rows) },
+  ];
+  const selectRule = (id: string, checked: boolean) => setSelectedRuleIds(previous => {
+    const next = new Set(previous);
+    if (checked) next.add(id); else next.delete(id);
+    return next;
+  });
+
+  return (
+    <section aria-labelledby="access-rules-heading" className="ap-rules-inventory">
+      {inspectedRule && inspectedRow ? (
+        <>
+          <nav className="ap-rule-breadcrumb" aria-label="Breadcrumb">
+            <button type="button" onClick={() => setInspectedRuleId(null)}>Rules</button>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">{inspectedRow.src.label} → {inspectedRow.dst.label}</span>
+          </nav>
+          <div className="ap-rule-detail-header">
+            <div><h2 id="access-rules-heading">{inspectedRow.src.label} → {inspectedRow.dst.label}</h2><p>{inspectedRule.enabled ? "Enabled rule" : "Disabled rule"} · {inspectedRule.src_kind ?? "group"} to {inspectedRule.dst_kind ?? "resource"}</p></div>
+            <AppAccessRowMenu label={`Rule actions for ${inspectedRule.id}`} actions={rowActions(inspectedRule)} />
+          </div>
+        </>
+      ) : (
+        <div className="ap-rules-heading">
+          <div><h2 id="access-rules-heading">Rules</h2><span className="ap-rules-count">{rulesResult?.ok ? `${rulesResult.data} total · ${rules.filter(rule => rule.enabled).length} enabled` : "Loading rule inventory…"}</span></div>
+          {canManage && !view.showRetry && <ComposeGate surface="Access rules"><Button size="sm" disabled={ruleBusy || !rulesAuthoritative || (groups.length === 0 && sites.length === 0 && visibleAgents.length === 0)} onClick={() => setCreating(true)}>Add rule</Button></ComposeGate>}
+        </div>
+      )}
       {/* S8.3 CP: the posture summary line. enforcing+0 is LOUD (a live default-deny with no rules); a
           failed load reads "unavailable", never the reassuring 0-rules message. */}
       {(() => {
@@ -1317,32 +1657,60 @@ function RulesSection({
         <Loading size="inline" label="Loading access rules…" />
       )}
 
-      {view.showContent && ruleEmptyState.kind !== "loading" && (
+      {view.showContent && ruleEmptyState.kind !== "loading" && (inspectedRule && inspectedRow ? (
+        <div className="ap-rule-detail-layout">
+          <nav className="ap-rule-detail-nav" aria-label="Rule sections">
+            <button type="button" aria-current={detailSection === "overview" ? "page" : undefined} onClick={() => setDetailSection("overview")}>Overview</button>
+            <button type="button" aria-current={detailSection === "impact" ? "page" : undefined} onClick={() => setDetailSection("impact")}>Impact</button>
+          </nav>
+          <section className="ap-rule-detail-stage" aria-labelledby="ap-rule-stage-heading">
+            <h3 id="ap-rule-stage-heading" ref={detailHeading} tabIndex={-1}>{detailSection === "overview" ? "Overview" : "Impact"}</h3>
+            {detailSection === "overview" ? (
+              <>
+                <dl className="ap-rule-facts">
+                  <div><dt>Source</dt><dd><RefText label={inspectedRow.src.label} broken={inspectedRow.src.state !== "ok"} /><small>{inspectedRule.src_kind ?? "group"}</small></dd></div>
+                  <div><dt>Destination</dt><dd><RefText label={inspectedRow.dst.label} broken={inspectedRow.dst.state !== "ok"} /><small>{inspectedRule.dst_kind ?? "resource"}</small></dd></div>
+                  <div><dt>State</dt><dd>{ruleColumns[1].cell(inspectedRule)}</dd></div>
+                  <div><dt>Managed by</dt><dd>{ruleColumns[2].cell(inspectedRule)}</dd></div>
+                  <div><dt>Expiry</dt><dd>{inspectedRule.expires_at ? <>{grantExpiry(inspectedRule, Date.now()).label}<small>{new Date(inspectedRule.expires_at).toLocaleString()}</small></> : "No expiry"}</dd></div>
+                </dl>
+                {grantControls(inspectedRow).withheld && <p className="ap-rule-context">{managedGrantWarning()}</p>}
+                <details className="ap-rule-disclosure"><summary>Rule identity</summary><dl className="ap-rule-metadata"><div><dt>Rule ID</dt><dd>{inspectedRule.id}</dd></div><div><dt>Created</dt><dd>{new Date(inspectedRule.created_at).toLocaleString()}</dd></div></dl></details>
+              </>
+            ) : (
+              <>
+                <dl className="ap-rule-facts">
+                  <div><dt>Enforcement</dt><dd>{modeResult?.ok ? modeResult.data === "off" ? "Off · open mesh" : "On · default deny" : "Unavailable"}</dd></div>
+                  <div><dt>Allow path</dt><dd>{inspectedRow.src.label} → {inspectedRow.dst.label}</dd></div>
+                  {destinationKind === "resource" && <>
+                    <div><dt>Destination CIDR</dt><dd>{destinationResource?.cidr || "Not reported"}{!destinationResource && <small>{loaded.resourcesLoaded ? "Resource details unavailable." : "Resource inventory unavailable."}</small>}</dd></div>
+                    <div><dt>Protocol &amp; ports</dt><dd>{destinationPortScope(destinationResource)}</dd></div>
+                  </>}
+                  {destinationKind === "k8s_service" && <>
+                    <div><dt>Service endpoint</dt><dd>{destinationService?.fqdn || "Not reported"}{!destinationService && <small>{loaded.k8sServicesLoaded ? "Service details unavailable." : "Service inventory unavailable."}</small>}</dd></div>
+                    <div><dt>Service VIP</dt><dd>{destinationService?.vip || "Not reported"}</dd></div>
+                    <div><dt>Protocol &amp; ports</dt><dd>{destinationPortScope(destinationService)}</dd></div>
+                  </>}
+                  {destinationKind === "fqdn_resource" && <>
+                    <div><dt>Hostname</dt><dd>{destinationFQDN?.fqdn || "Not reported"}{!destinationFQDN && <small>{loaded.fqdnResourcesLoaded ? "FQDN resource details unavailable." : "FQDN resource inventory unavailable."}</small>}</dd></div>
+                    <div><dt>Protocol &amp; ports</dt><dd>{destinationPortScope(destinationFQDN)}</dd></div>
+                  </>}
+                  <div><dt>Rule state</dt><dd>{inspectedRule.enabled ? "Enabled" : "Disabled"}{grantExpiry(inspectedRule, Date.now()).state === "expired" && " · Expired"}</dd></div>
+                </dl>
+                <p className="ap-rule-context">{!inspectedRule.enabled ? "This rule is disabled and does not grant access." : grantExpiry(inspectedRule, Date.now()).state === "expired" ? "This temporary grant has expired. It remains visible for audit history." : modeResult?.ok && modeResult.data === "off" ? "Enforcement is off. Stored rules do not restrict traffic." : !modeResult?.ok ? "Enforcement status is unavailable. Refresh before assessing this rule's effect." : "An enabled allow rule applies while enforcement is on and its expiry has not passed."}</p>
+                <div className="ap-rule-attention"><h4>Attention</h4>{ruleColumns[3].sortValue(inspectedRule) ? ruleColumns[3].cell(inspectedRule) : <p>No additional warnings reported.</p>}</div>
+              </>
+            )}
+            <div className="ap-rule-detail-footer"><Button variant="ghost" onClick={() => detailSection === "impact" ? setDetailSection("overview") : setInspectedRuleId(null)}>{detailSection === "impact" ? "Back to overview" : "Back to rules"}</Button>{detailSection === "overview" && <Button variant="ghost" onClick={() => setDetailSection("impact")}>View impact</Button>}</div>
+          </section>
+        </div>
+      ) : (
         <>
-          {groups.length === 0 &&
-            sites.length === 0 &&
-            visibleAgents.length === 0 &&
-            loaded.groupsLoaded && (
-            <p className="mt-2 text-xs text-slate-500">
-              Create a group of users, register a site, or enrol an agent to add
-              a rule.
-            </p>
-          )}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <div className="min-w-[14rem] flex-1">
-              <Input
-                aria-label="Search rules"
-                value={ruleQuery}
-                onChange={(event) => setRuleQuery(event.target.value)}
-                placeholder="Search source, destination, or status"
-              />
-            </div>
-            <Button size="sm" variant="ghost" aria-describedby="rules-visualization-status" disabled={visualization.kind !== "draw"} onClick={() => {
-              if (visualizing) setVisualizing(false);
-              else if (visualization.kind === "draw") setVisualizing(true);
-            }}>
-              {visualizing && visualization.kind === "draw" ? "Hide access map" : "View access map"}
-            </Button>
+          {groups.length === 0 && sites.length === 0 && visibleAgents.length === 0 && loaded.groupsLoaded && <p className="ap-rule-context">Create a group of users, register a site, or enrol an agent to add a rule.</p>}
+          <div className="ap-rules-toolbar">
+            <Input aria-label="Search rules" value={ruleQuery} onChange={event => { setRuleQuery(event.target.value); setRulePage(1); }} placeholder="Search rules…" />
+            {ruleQuery && <span className="ap-rules-filter-count">{filteredRules.length} matching</span>}
+            <Button size="sm" variant="ghost" aria-describedby="rules-visualization-status" disabled={visualization.kind !== "draw"} onClick={() => { if (visualizing) setVisualizing(false); else if (visualization.kind === "draw") setVisualizing(true); }}>{visualizing && visualization.kind === "draw" ? "Hide access map" : "View access map"}</Button>
           </div>
           <p className="sr-only" data-testid="visualization-count">{filteredRules.length} matching rules · visualization limit {FLOW_GRAPH_MAX_RULES}</p>
           {visualization.kind === "empty" && <p id="rules-visualization-status" className="sr-only">No matching rules to map.</p>}
@@ -1494,426 +1862,33 @@ function RulesSection({
               </div>
             );
           })()}
-          {/* ⛔ THE RULES TABLE. Converted from a <ul> so it can be searched, sorted and paged like every
-              other roster — 15 rules already overflowed a screen, and the list gave no way to find one.
-
-              ⚠ THE BADGE COLOURS STAY. The founder asked for the mockup's SHAPE without its palette, and
-              these are not palette: OUTSIDE RANGES, VANISHED, SOURCE GROUP EMPTY and TEMP are the four
-              warn-kinds, each meaning "this rule renders as active and compiles to NOTHING". Draining their
-              colour would remove the only thing that distinguishes them from decoration. What did go is the
-              mockup's decorative green/blue/purple on Active and Managed-by-GitOps, which carried no state
-              this product does not already say in words. */}
-          {/* ⛔ THE FAILED COPY IS THE PAGE'S JOB, NOT THE TABLE'S — and forgetting it was one edit away.
-              DataTable renders NOTHING when `failed`, deliberately, because only the page knows what to
-              retry. Converting this list without this block would have replaced "Rules could not be loaded"
-              with a blank area: the screen would say nothing at all about a read that failed, which is the
-              reassuring-empty defect wearing its quietest possible face. */}
-          {rulesEmptyState({
-            rulesResult,
-            modeResult,
-            renderedCount: rules.length,
-          }).kind === "failed" && (
-            <p className="mt-3 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
-              {
-                rulesEmptyCopy(
-                  rulesEmptyState({
-                    rulesResult,
-                    modeResult,
-                    renderedCount: rules.length,
-                  }),
-                ).text
-              }
-            </p>
-          )}
-          <div className="mt-3">
-            <DataTable<PolicyRule>
-              caption="Rules"
-              rows={filteredRules}
-              rowKey={(r) => r.id}
-              rowLabel={(r) => ruleRow(r, groups, resources, members, sites, loaded, services).src.label}
-              filterable={false}
-              selectionBar="active"
-              // ⛔ THE PAGE OWNS THE EMPTY COPY, because it distinguishes states this component cannot see:
-              // an ENFORCING org with zero rules is a lockout warning, not an emptiness.
-              failed={
-                rulesEmptyState({
-                  rulesResult,
-                  modeResult,
-                  renderedCount: rules.length,
-                }).kind === "failed"
-              }
-              empty={
-                filteredRules.length === 0 && rules.length > 0 ? (
-                  <span className="text-xs text-slate-500">No loaded rules match this filter.</span>
-                ) : (
-                  <span
-                    className={
-                      rulesEmptyState({
-                        rulesResult,
-                        modeResult,
-                        renderedCount: rules.length,
-                      }).kind === "enforcing_empty"
-                        ? "text-xs font-semibold text-warn"
-                        : "text-xs text-slate-500"
-                    }
-                  >
-                    {
-                      rulesEmptyCopy(
-                        rulesEmptyState({
-                          rulesResult,
-                          modeResult,
-                          renderedCount: rules.length,
-                        }),
-                      ).text
-                    }
-                  </span>
-                )
-              }
-              // ⛔ THE VERBS LIVE IN ONE BAR, NOT ON EVERY ROW. Fifteen rules meant forty-five buttons —
-              // the same three verbs redrawn fifteen times, crowding out the thing the row is actually
-              // about. `unavailable` is what makes that safe rather than merely tidier: a GitOps-managed
-              // grant refuses every mutation, and the bar names that BEFORE the click instead of skipping
-              // the row afterwards.
-              rowActions={
-                canManage
-                  ? [
-                      {
-                        key: "edit",
-                        label: "Edit",
-                        arity: "single",
-                        unavailable: (r: PolicyRule) =>
-                          grantControls(
-                            ruleRow(
-                              r,
-                              groups,
-                              resources,
-                              members,
-                              sites,
-                              loaded,
-                              services,
-                            ),
-                          ).withheld
-                            ? managedGrantWarning()
-                            : canEditRuleInModal(r)
-                              ? null
-                              : "This rule's source or destination is not editable here.",
-                        run: (rs: PolicyRule[]) => setEditing(rs[0]),
-                      },
-                      {
-                        key: "extend",
-                        label: "Extend",
-                        arity: "single",
-                        unavailable: (r: PolicyRule) =>
-                          grantControls(
-                            ruleRow(
-                              r,
-                              groups,
-                              resources,
-                              members,
-                              sites,
-                              loaded,
-                              services,
-                            ),
-                          ).withheld
-                            ? managedGrantWarning()
-                            : grantExpiry(r, Date.now()).extendable
-                              ? null
-                              : "Only a temporary grant can be extended.",
-                        run: (rs: PolicyRule[]) => setExtendingGrant(rs[0]),
-                      },
-                      {
-                        key: "enable",
-                        label: "Enable",
-                        // F3: enable is ADDITIVE and therefore one click, in bulk as on a single row.
-                        unavailable: (r: PolicyRule) =>
-                          grantControls(
-                            ruleRow(
-                              r,
-                              groups,
-                              resources,
-                              members,
-                              sites,
-                              loaded,
-                              services,
-                            ),
-                          ).withheld
-                            ? managedGrantWarning()
-                            : r.enabled
-                              ? "Already enabled."
-                              : null,
-                        run: (rs: PolicyRule[]) => {
-                          void Promise.all(
-                            rs.map((r) => setEnabled(r.id, true)),
-                          );
-                        },
-                      },
-                      {
-                        key: "disable",
-                        label: "Disable",
-                        // ⛔ F3'S ASYMMETRIC CEREMONY SURVIVES THE MOVE. Disabling withdraws a live allow in
-                        // seconds, so it confirms — and it must still confirm when it is doing so to five
-                        // rules at once, which is strictly more consequential than doing it to one.
-                        unavailable: (r: PolicyRule) =>
-                          grantControls(
-                            ruleRow(
-                              r,
-                              groups,
-                              resources,
-                              members,
-                              sites,
-                              loaded,
-                              services,
-                            ),
-                          ).withheld
-                            ? managedGrantWarning()
-                            : r.enabled
-                              ? null
-                              : "Already disabled.",
-                        run: (rs: PolicyRule[]) => setDisablingRules(rs),
-                      },
-                      {
-                        key: "delete",
-                        label: "Delete",
-                        danger: true,
-                        unavailable: (r: PolicyRule) =>
-                          grantControls(
-                            ruleRow(
-                              r,
-                              groups,
-                              resources,
-                              members,
-                              sites,
-                              loaded,
-                              services,
-                            ),
-                          ).withheld
-                            ? managedGrantWarning()
-                            : null,
-                        run: (rs: PolicyRule[]) => setDeletingRules(rs),
-                      },
-                    ]
-                  : undefined
-              }
-              columns={[
-                {
-                  key: "path",
-                  header: "Access path",
-                  sortValue: (r) => {
-                    const row = ruleRow(r, groups, resources, members, sites, loaded, services);
-                    return `${row.src.label} ${row.dst.label}`;
-                  },
-                  cell: (r) => {
-                    const row = ruleRow(r, groups, resources, members, sites, loaded, services);
-                    return (
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-medium text-ink-body">
-                        <RefText label={row.src.label} broken={row.src.state !== "ok"} />
-                        <span aria-hidden="true" className="text-ink-faint">→</span>
-                        <RefText label={row.dst.label} broken={row.dst.state !== "ok"} />
-                      </div>
-                    );
-                  },
-                },
-                {
-                  key: "status",
-                  header: "State",
-                  // ⛔ THE WORD, NOT THE STYLING. A disabled rule used to be signalled by opacity on the
-                  // whole row; opacity is invisible to a search and to anyone who cannot see it.
-                  sortValue: (r) => (r.enabled ? "active" : "disabled"),
-                  cell: (r) =>
-                    r.enabled ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-ink-secondary"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />Active</span>
-                    ) : (
-                      /* F3: a disabled rule is shown DISTINCTLY, never hidden — the list must not lie
-                         about what is enforcing. */
-                      <span className="tnx-status rounded-full border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-400">
-                          Disabled
-                        </span>
-                    ),
-                },
-                {
-                  key: "type",
-                  header: "Managed by",
-                  sortValue: (r) => {
-                    const row = ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    );
-                    if (row.managedByAgentAccess)
-                      return "managed by jit access";
-                    if (row.managedByAgentTemplate)
-                      return "managed by agent template";
-                    if (row.managedByOperator) return "managed by gitops";
-                    return grantExpiry(r, Date.now()).state === "permanent"
-                      ? "manual"
-                      : "temporary";
-                  },
-                  cell: (r) => {
-                    const row = ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    );
-                    /* S10.2 D2 cond 1: a GitOps-managed grant is badged; its mutation controls are
-                       withheld in the actions column. */
-                    if (row.managedByAgentAccess)
-                      return (
-                        <a href={row.agentAccessRequestId ? `#jit-request-${row.agentAccessRequestId}` : undefined} className="tnx-status rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
-                          JIT access
-                        </a>
-                      );
-                    if (row.managedByAgentTemplate)
-                      return (
-                        <span className="tnx-status rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-300">
-                          Managed by agent template
-                        </span>
-                      );
-                    if (row.managedByOperator) return <ManagedBadge />;
-                    const exp = grantExpiry(r, Date.now());
-                    return exp.state === "permanent" ? (
-                      <span className="text-xs text-ink-tertiary">Manual</span>
-                    ) : (
-                      /* S7.5.4 linger model: a temporary grant shows its window; an EXPIRED grant stays
-                         visible (audit history), rendered distinctly — never hidden. */
-                      <span
-                        className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${exp.state === "expired" ? "border-rose-800/50 bg-rose-950/40 text-rose-400" : "border-amber-800/50 bg-amber-950/40 text-amber-300"}`}
-                      >
-                        Temporary · {exp.label}
-                      </span>
-                    );
-                  },
-                },
-                {
-                  key: "notes",
-                  header: "Attention",
-                  // ⚠ EVERY WARN KIND IS SEARCHABLE BY ITS OWN WORDS. These are the states an operator most
-                  // needs to find — each one means a rule that reads ACTIVE and compiles to NOTHING — and a
-                  // badge contributes no text, so without this they would be the least findable rows here.
-                  sortValue: (r) => {
-                    const row = ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    );
-                    const empty =
-                      (r.src_kind ?? "group") === "group" && r.src_group_id
-                        ? srcGroupEmptyBadge(
-                            srcGroupEmptyWarn(
-                              srcGroupCounts.get(r.src_group_id),
-                            ),
-                          )
-                        : null;
-                    const fqdn = fqdnDestinationPresentation(
-                      row.fqdnDestinationStatus,
-                    );
-                    return [
-                      row.cidrOutsideRanges ? "outside ranges" : "",
-                      row.k8sServiceVanished ? "vanished" : "",
-                      fqdn?.searchText ?? "",
-                      empty ?? "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
-                  },
-                  cell: (r) => {
-                    const row = ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    );
-                    const emptyBadge =
-                      (r.src_kind ?? "group") === "group" && r.src_group_id
-                        ? srcGroupEmptyBadge(
-                            srcGroupEmptyWarn(
-                              srcGroupCounts.get(r.src_group_id),
-                            ),
-                          )
-                        : null;
-                    const fqdn = fqdnDestinationPresentation(
-                      row.fqdnDestinationStatus,
-                    );
-                    return (
-                      <span className="flex flex-wrap items-center gap-1">
-                        {/* S8.7 warn-not-refuse (D1): the SERVER's read-time judgment, rendered verbatim —
-                            a CIDR rule matching no current org range. Self-clears when a range lands. */}
-                        {row.cidrOutsideRanges && (
-                          <span
-                            className="tnx-status rounded-full border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber-400"
-                            title="This CIDR is inside no current site subnet. the rule matches nothing until the range is declared."
-                          >
-                            Outside ranges
-                          </span>
-                        )}
-                        {/* S10.3 warn-not-refuse: the dst Service was unexposed or its cluster
-                            deregistered, so the grant compiles to nothing. Self-clears if it returns. */}
-                        {row.k8sServiceVanished && (
-                          <span
-                            className="tnx-status rounded-full border border-rose-800/50 bg-rose-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-400"
-                            title="The Kubernetes Service this rule reaches is no longer exposed. the grant matches nothing until it is re-exposed."
-                          >
-                            Vanished
-                          </span>
-                        )}
-                        {fqdn && (row.fqdnDestinationStatus === "opt_in_disabled" ? (
-                          <Link
-                            to="/access/resources?type=fqdn#fqdn-enforcement-heading"
-                            className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${fqdnDestinationBadgeClass(fqdn.tone)}`}
-                            title={`${fqdn.title} Open the organization setting.`}
-                          >
-                            {fqdn.label}
-                          </Link>
-                        ) : (
-                          <span
-                            className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
-                            title={fqdn.title}
-                          >
-                            {fqdn.label}
-                          </span>
-                        ))}
-                        {/* ⛔ src_group_empty (S14.12) — measured at compiler.go:399: a group with zero
-                            members matches NO device, so this rule COMPILES TO NOTHING while rendering
-                            ACTIVE. Derived from the member COUNT, never from group existence, and it does
-                            NOT fire while the count is unfetched or failed — "could not check" is not
-                            "empty". */}
-                        {emptyBadge && (
-                          <span
-                            className="tnx-status rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-warn"
-                            title={
-                              srcGroupEmptyExplain(
-                                srcGroupEmptyWarn(
-                                  srcGroupCounts.get(r.src_group_id as string),
-                                ),
-                              ) ?? undefined
-                            }
-                          >
-                            {emptyBadge}
-                          </span>
-                        )}
-                      </span>
-                    );
-                  },
-                },
-              ]}
-            />
-          </div>
+          {canManage && selectedRules.length > 0 && <div className="ap-rules-selection" role="group" aria-label="Selected rule actions">
+            <div className="ap-rules-selection-summary"><strong>{selectedRules.length} selected</strong>{hiddenSelectionCount > 0 && <span>{hiddenSelectionCount} outside this page</span>}<Button size="sm" variant="ghost" onClick={() => setSelectedRuleIds(new Set())}>Clear</Button>{pageSelected && filteredRules.length > pageRules.length && <Button size="sm" variant="ghost" onClick={() => setSelectedRuleIds(new Set(filteredRules.map(rule => rule.id)))}>Select all {filteredRules.length} matching</Button>}</div>
+            <div className="ap-rules-selection-actions">{bulkActions.map(action => {
+              const eligible = selectedRules.filter(rule => !mutationUnavailable(rule, action.key));
+              const wrongArity = action.single && selectedRules.length !== 1;
+              const reason = wrongArity ? "Select exactly one rule." : selectedRules.map(rule => mutationUnavailable(rule, action.key)).find(Boolean);
+              return <div key={action.key}>{!wrongArity && eligible.length > 0 && eligible.length < selectedRules.length && <span>{eligible.length} of {selectedRules.length}</span>}<Button size="sm" variant={action.key === "delete" ? "danger" : "ghost"} disabled={ruleBusy || wrongArity || eligible.length === 0} title={reason ?? undefined} onClick={() => action.run(eligible)}>{action.label}</Button></div>;
+            })}</div>
+          </div>}
+          {pageRules.length > 0 ? <div className="ap-rules-table-scroll"><table className={`ap-rules-table${canManage ? " ap-rules-table-selectable" : ""}`}><caption className="sr-only">Rules</caption><thead><tr>
+            {canManage && <th className="ap-rule-select"><input type="checkbox" aria-label={`Select all ${pageRules.length} on this page`} checked={pageSelected} ref={element => { if (element) element.indeterminate = !pageSelected && pageRules.some(rule => selectedRuleIds.has(rule.id)); }} onChange={event => { const checked = event.target.checked; setSelectedRuleIds(previous => { const next = new Set(previous); pageRules.forEach(rule => { if (checked) next.add(rule.id); else next.delete(rule.id); }); return next; }); }} /></th>}
+            {ruleColumns.map(column => <th key={column.key} scope="col" data-column={column.key} aria-sort={ruleSort?.key === column.key ? ruleSort.descending ? "descending" : "ascending" : "none"}><button type="button" onClick={() => { setRuleSort(previous => ({ key: column.key, descending: previous?.key === column.key ? !previous.descending : false })); setRulePage(1); }}>{column.header}<span aria-hidden="true">{ruleSort?.key === column.key ? ruleSort.descending ? " ↓" : " ↑" : ""}</span></button></th>)}
+            <th className="ap-rule-actions"><span className="sr-only">Actions</span></th>
+          </tr></thead><tbody>{pageRules.map(rule => {
+            const row = ruleRow(rule, groups, resources, members, sites, loaded, services);
+            return <tr key={rule.id} data-selected={selectedRuleIds.has(rule.id) || undefined}>
+              {canManage && <td className="ap-rule-select"><input type="checkbox" aria-label={`Select ${row.src.label}`} checked={selectedRuleIds.has(rule.id)} onChange={event => selectRule(rule.id, event.target.checked)} /></td>}
+              {ruleColumns.map(column => <td key={column.key} data-column={column.key}>{column.key === "path" ? <button type="button" className="ap-rule-path" aria-label={`View rule ${row.src.label} to ${row.dst.label}`} onClick={() => inspectRule(rule)}>{column.cell(rule)}</button> : column.cell(rule)}</td>)}
+              <td className="ap-rule-actions"><AppAccessRowMenu label={`Rule actions for ${rule.id}`} actions={rowActions(rule)} /></td>
+            </tr>;
+          })}</tbody></table></div> : <div className={`ap-rules-empty${ruleEmptyState.kind === "enforcing_empty" ? " ap-rules-empty-warning" : ""}`}>
+            <p>{filteredRules.length === 0 && rules.length > 0 ? "No loaded rules match this filter." : rulesEmptyCopy(ruleEmptyState).text}</p>
+            {ruleQuery && <Button size="sm" variant="ghost" onClick={() => { setRuleQuery(""); setRulePage(1); }}>Clear search</Button>}
+          </div>}
+          <AppAccessPagination page={currentPage} pageSize={rulePageSize} count={pageRules.length} hasNext={currentPage < lastPage} maxOffset={null} busy={ruleBusy} onPageChange={setRulePage} onPageSizeChange={size => { setRulePageSize(size); setRulePage(1); }} previousLabel="Previous rules page" nextLabel="Next rules page" />
         </>
-      )}
+      ))}
 
       {(creating || editing) && (
         <RuleFormModal
@@ -1981,7 +1956,7 @@ function RulesSection({
                     variant="danger"
                     onClick={async () => {
                       setDisablingRules([]);
-                      await Promise.all(rs.map((r) => setEnabled(r.id, false)));
+                      await mutateRules(rs, "disable");
                     }}
                   >
                     Disable
@@ -2047,7 +2022,7 @@ function RulesSection({
                 onClick={async () => {
                   const rs = deletingRules;
                   setDeletingRules([]);
-                  for (const r of rs) await del(r.id);
+                  await mutateRules(rs, "delete");
                 }}
               >
                 Delete
@@ -2276,6 +2251,14 @@ function RuleFormModal({
   const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const editorAlive = useRef(true);
+  const submitting = useRef(false);
+  useEffect(() => { editorAlive.current = true; return () => { editorAlive.current = false; }; }, []);
+  const sourceValue = srcKind === "group" ? src : srcKind === "user" ? srcUser : srcKind === "site" ? srcSite : srcKind === "agent" ? srcAgent : srcCidr;
+  const destinationValue = dstKind === "group" ? dstGroup : dstKind === "resource" ? dstResource : dstKind === "site" ? dstSite : dstKind === "k8s_service" ? dstK8sService : dstFQDNResource;
+  const sourceLabel = sourceOptions({ groups, members, sites, agents: visibleAgents, dstKind, dstSite }).find(option => option.kind === srcKind && option.value === sourceValue)?.label ?? (srcKind === "cidr" ? srcCidr : "");
+  const destinationLabel = destinationOptions({ groups, resources, sites, services, fqdnResources, srcKind, srcSite }).find(option => option.kind === dstKind && option.value === destinationValue)?.label ?? "";
+  const reviewable = Boolean(sourceLabel && destinationLabel);
 
   function bodyFor(): CreatePolicyRuleRequest {
     return ruleBody({
@@ -2297,10 +2280,13 @@ function RuleFormModal({
   }
 
   async function submit() {
+    if (!editorAlive.current || submitting.current || !reviewing || !reviewable) return;
+    submitting.current = true;
     setBusy(true);
     setErr(null);
     // [8]: guard a 2xx-with-no-body — never let (data).id throw and strand busy=true.
     const create = async (): Promise<{ id: string } | { error: unknown }> => {
+      try {
       const { data, error } = await api.POST(
         "/api/v1/organizations/{orgId}/policies",
         {
@@ -2311,12 +2297,17 @@ function RuleFormModal({
       if (error) return { error };
       const id = (data as PolicyRule | undefined)?.id;
       if (!id)
-        return { error: { error: { message: "Server returned no rule id." } } };
+        return { error: { error: { message: editing ? "Could not confirm rule creation. The original rule was not removed. Refresh the rule list before trying again." : "Could not confirm rule creation. Refresh the rule list before trying again." } } };
       return { id };
+      } catch {
+        return { error: { error: { message: editing ? "Could not confirm rule creation. The original rule was not removed. Refresh the rule list before trying again." : "Could not confirm rule creation. Refresh the rule list before trying again." } } };
+      }
     };
 
     if (!editing) {
       const created = await create();
+      if (!editorAlive.current) return;
+      submitting.current = false;
       setBusy(false);
       if ("error" in created)
         return setErr(
@@ -2325,11 +2316,14 @@ function RuleFormModal({
       return onDone();
     }
 
-    const out = await swapRule(editing.id, create, async (id) =>
-      api.DELETE("/api/v1/organizations/{orgId}/policies/{ruleId}", {
-        params: { path: { orgId, ruleId: id } },
-      }),
+    const out = await swapRule(editing.id, create, async (id) => {
+      if (!editorAlive.current) return { error: { error: { message: "The editor context changed before removal." } } };
+      try { return await api.DELETE("/api/v1/organizations/{orgId}/policies/{ruleId}", { params: { path: { orgId, ruleId: id } } }); }
+      catch (error) { return { error }; }
+    },
     );
+    if (!editorAlive.current) return;
+    submitting.current = false;
     setBusy(false);
     if (out.outcome === "create_failed")
       return setErr(
@@ -2342,7 +2336,7 @@ function RuleFormModal({
   return (
     <Modal
       title={editing ? "Edit rule" : "Add rule"}
-      size="wide"
+      placement="right"
       onDismiss={busy ? () => {} : onClose}
       actions={
         <>
@@ -2351,7 +2345,7 @@ function RuleFormModal({
           </Button>
           <Button
             disabled={
-              busy ||
+              busy || !reviewable ||
               !ruleSourceReady({
                 kind: srcKind,
                 group: src,
@@ -2377,12 +2371,11 @@ function RuleFormModal({
         </>
       }
     >
-      <div className="rule-builder" data-reviewing={reviewing}>
+      <div className="rule-builder access-rule-editor" data-reviewing={reviewing}>
         <ol className="rule-builder-steps" aria-label="Rule progress">
-          <li aria-current={!reviewing ? "step" : undefined}><span>1</span>Build your rule</li>
-          <li aria-current={reviewing ? "step" : undefined}><span>2</span>Review access</li>
+          <li aria-current={!reviewing ? "step" : undefined}><span>1</span>Access scope</li>
+          <li aria-current={reviewing ? "step" : undefined}><span>2</span>Review</li>
         </ol>
-        <div className="rule-builder-intro"><h3>{reviewing ? "This is the access you’re granting." : "Define a trusted path."}</h3><p>{reviewing ? "Check the scope and duration before saving." : "Choose an identity and the destination it may reach."}</p></div>
         {/* S8.3 CP layout: source + destination each read as a labeled panel (was a flat field list),
             so the "who → what" of a rule is legible at a glance. Layout only — no behavior change. */}
         {/* ⛔ ONE PICKER PER SIDE. Four controls became two, and the KIND stopped being a thing you choose
@@ -2395,7 +2388,7 @@ function RuleFormModal({
             guarding one caller of three. What the picker adds is the EXPLANATION. */}
 
         <div className="rule-builder-path" hidden={reviewing}>
-        <div className="rule-builder-endpoint"><p className="rule-endpoint-caption">Who can connect</p><EntityPicker
+        <div className="rule-builder-endpoint"><EntityPicker
           label="Source"
           placeholder="Search groups, people, sites, agents… or type a CIDR"
           acceptCidr
@@ -2427,8 +2420,7 @@ function RuleFormModal({
             else setSrcCidr(o.value);
           }}
         /></div>
-        <span aria-hidden="true" className="rule-builder-arrow">→</span>
-        <div className="rule-builder-endpoint"><p className="rule-endpoint-caption">What they can reach</p><EntityPicker
+        <div className="rule-builder-endpoint"><EntityPicker
           label="Destination"
           placeholder="Search groups, resources, FQDN resources, sites, services…"
           value={
@@ -2475,52 +2467,9 @@ function RuleFormModal({
             ⚠ A DESCRIPTION, NEVER A REFUSAL. Every pair compiles and every one has a legitimate use. The
             form's job is that the operator cannot be SURPRISED by their own rule. */}
         {(() => {
-          const srcLabel =
-            sourceOptions({
-              groups,
-              members,
-              sites,
-              agents: visibleAgents,
-              dstKind,
-              dstSite,
-            }).find(
-              (o) =>
-                o.kind === srcKind &&
-                o.value ===
-                  (srcKind === "group"
-                    ? src
-                    : srcKind === "user"
-                      ? srcUser
-                      : srcKind === "site"
-                        ? srcSite
-                        : srcKind === "agent"
-                          ? srcAgent
-                          : srcCidr),
-            )?.label ?? (srcKind === "cidr" ? srcCidr : "");
-          const dstLabel =
-            destinationOptions({
-              groups,
-              resources,
-              sites,
-              services,
-              fqdnResources,
-              srcKind,
-              srcSite,
-            }).find(
-              (o) =>
-                o.kind === dstKind &&
-                o.value ===
-                  (dstKind === "group"
-                    ? dstGroup
-                    : dstKind === "resource"
-                      ? dstResource
-                      : dstKind === "site"
-                        ? dstSite
-                        : dstKind === "k8s_service"
-                          ? dstK8sService
-                          : dstFQDNResource),
-            )?.label ?? "";
-          if (!srcLabel || !dstLabel) return null;
+          const srcLabel = sourceLabel || "Source unavailable";
+          const dstLabel = destinationLabel || "Destination unavailable";
+          if (!reviewable) return <div data-testid="rule-effect" className="rule-builder-preview"><span className="rule-preview-label">Access path</span><div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div><p role="status">Scope not reported. Choose a current source and destination before reviewing this rule.</p></div>;
           const eff = ruleEffectSummary({
             srcKind,
             srcLabel,
@@ -2528,15 +2477,20 @@ function RuleFormModal({
             dstLabel,
           });
           const caution = ruleEffectCaution(srcKind, dstKind);
+          const bounded = dstKind === "resource" ? resources.find(item => item.id === dstResource) : dstKind === "k8s_service" ? services.find(item => item.id === dstK8sService) : undefined;
+          const ports = bounded?.protocol === "any" ? "Any protocol · all ports" : bounded?.protocol
+            ? `${bounded.protocol.toUpperCase()} · ${bounded.port_low == null ? "all ports" : bounded.port_high == null || bounded.port_high === bounded.port_low ? `port ${bounded.port_low}` : `ports ${bounded.port_low}–${bounded.port_high}`}`
+            : "Scope not reported";
           return (
             <div
               data-testid="rule-effect"
               className="rule-builder-preview"
             >
-              <span className="rule-preview-label">{reviewing ? "Rule summary" : "Live preview"}</span>
-              <div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div>
+              {reviewing && <><span className="rule-preview-label">Access path</span>
+              <div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div></>}
               <span className="rule-preview-label">Access scope</span>
               {eff.text}
+              {bounded && <dl className="access-rule-scope-facts"><div><dt>Destination</dt><dd>{"cidr" in bounded ? bounded.cidr || "Not reported" : bounded.fqdn || "Not reported"}</dd></div><div><dt>Protocol & ports</dt><dd>{ports}</dd></div></dl>}
               {/* ⚠ THE EXTRA SENTENCE FOR THE ONE SHAPE THAT IS USUALLY A MISTAKE — attached to it alone,
                   because a caution on every rule is a caution nobody reads. */}
               {caution && (
@@ -2549,13 +2503,13 @@ function RuleFormModal({
             Editing an existing rule changes its src/dst; change a temporary grant's window
             with Extend (a window bump), not Edit. */}
         {!editing && !reviewing && (
-          <div className="rule-builder-duration"><h4>How long?</h4><p>Keep access permanent, or set an automatic expiry.</p><Field label="Expires (optional. leave empty for a permanent grant)">
+          <div className="rule-builder-duration"><Field label="Expiry (optional)">
             <Input
               type="datetime-local"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
             />
-          </Field></div>
+          </Field><p>{expiresAt ? "Access ends at this time." : "Permanent access until revoked."}</p></div>
         )}
         {reviewing && <div className="rule-builder-duration"><h4>Duration</h4><p>{editing ? "This creates a replacement rule without an expiry. Use Extend instead to change a temporary grant’s window." : expiresAt ? `Expires ${new Date(expiresAt).toLocaleString()}` : "Permanent · no automatic expiry"}</p></div>}
         <ErrorText>{err}</ErrorText>

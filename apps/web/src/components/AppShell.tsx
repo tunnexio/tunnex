@@ -78,16 +78,13 @@ export const NAV_GROUPS: Array<{
     ],
   },
   {
-    group: "Tunnex Shield",
- icon: "shield-check",
- items: [
-   { to: "/app-access", label: "Applications", icon: "app-grid" },
-   { to: "/browser-access/terminal", label: "Servers", icon: "server" },
- ],
- },
- {
-    group: "DEVELOPERS",
-    items: [{ to: "/beam", label: "Tunnex Beam", icon: "globe" }],
+    group: "Access & Sharing",
+    icon: "passport",
+    items: [
+      { to: "/app-access", label: "App Access", icon: "chrome" },
+      { to: "/browser-access/terminal", label: "Server Access", icon: "browser-access" },
+      { to: "/beam", label: "Local Sharing", icon: "local-sharing" },
+    ],
   },
   {
  group: "OBSERVE",

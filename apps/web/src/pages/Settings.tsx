@@ -8,9 +8,13 @@ import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
 import { SsoSelfLink } from "../components/SsoSelfLink";
 import { SsoConnections } from "../components/SsoConnections";
 import { RelayFallbackSettings } from "../components/RelayFallbackSettings";
+import { FeaturesWorkspace, type FeatureEntry } from "../components/FeaturesWorkspace";
+import { NetworkFeatureControl } from "../components/NetworkFeatureControl";
+import { WorkspaceFeatureControl } from "../components/WorkspaceFeatureControl";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLocation } from "react-router-dom";
 import {
   api,
   apiErrorCode,
@@ -31,7 +35,7 @@ import { useOrg } from "../lib/useOrg";
 import { useLicenceResource } from "../lib/licenceResource";
 import { OrgSwitcher } from "../components/OrgSwitcher";
 import { relativeAge } from "../lib/format";
-import { can } from "../lib/rbac";
+import { can, HUMAN_ROLES } from "../lib/rbac";
 import {
   FAIL_STATIC_NOTE,
   UNMAP_CONSEQUENCES,
@@ -88,14 +92,27 @@ const DIRECTORY_PROVIDERS = [...PROVIDERS, "okta"] as const;
 const directoryLabel = (p: string) => p === "okta" ? "Okta" : providerLabel(p as Provider);
 type SsoView = SsoConfigView;
 
+const FEATURE_PERMISSIONS = ["org:update", "app_access:manage", "server_access:manage", "beam:policy_manage", "ai_gateway:manage", "agent_runtime:manage", "agent_template:manage", "agent_access:approve", "ipsec:manage", "fqdn_resource:manage", "policy:manage", "k8s_scope:manage", "k8s_ha:manage", "sandbox:admin", "alerting:manage"];
+
 export default function Settings() {
+  const { org } = useOrg();
+  const { state } = useAuth();
+  const actor = state.status === "authed" ? `${state.user.id}:${state.user.email_verified}:${state.user.must_change_password}` : state.status;
+  return <SettingsWorkspace key={`${org?.id ?? "none"}:${actor}`} />;
+}
+
+function SettingsWorkspace() {
+  const routeLocation = useLocation();
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
   // fetched itself, which is what made a second organization unreachable.
-  const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
+  const { org: currentOrg, loading: orgLoading, failed: orgFailed, updateOrg } = useOrg();
   const { state } = useAuth();
   const serverAdmin = state.status === "authed" && Boolean(state.user.cp_admin);
   const myId = state.status === "authed" ? state.user.id : "";
-  const emailVerified = state.status === "authed" && state.user.email_verified;
+  const emailVerified = state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
+  const alive = useRef(true);
+  const organizationRefresh = useRef(0);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; organizationRefresh.current++; }; }, []);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
@@ -153,11 +170,10 @@ export default function Settings() {
           },
         );
         if (!cancelled) {
-          setMembers((members as Member[] | undefined) ?? []);
-          setMyRole(
-            (members as Member[] | undefined)?.find((mm) => mm.user_id === myId)
-              ?.role,
-          );
+          const roster = Array.isArray(members) ? members : [];
+          setMembers(roster);
+          const actor = roster.find(mm => mm.user_id === myId && mm.status === "active");
+          setMyRole(actor && HUMAN_ROLES.includes(actor.role) ? actor.role : undefined);
         }
       } catch {
         if (!cancelled) setError("Could not reach the API.");
@@ -170,14 +186,18 @@ export default function Settings() {
     // list asynchronously, so on this effect's first run currentOrg is still null. Without the dependency
     // the effect never ran again and the page rendered "You are not a member of any organization yet" — a
     // confident, wrong statement — permanently, for every user. The same line is what makes the switcher work.
-  }, [myId, currentOrg, orgFailed, orgLoading]);
+  }, [myId, currentOrg?.id, orgFailed, orgLoading]);
+
+  useEffect(() => { if (currentOrg && org?.id === currentOrg.id) setOrg(currentOrg); }, [currentOrg]);
 
   const appAccessRoles = useMemo(() => {
     const member = members?.find(row => row.user_id === myId && row.status === "active");
-    return member ? member.roles ?? [member.role] : [];
+    if (!member || !HUMAN_ROLES.includes(member.role) || (member.roles !== undefined && (!Array.isArray(member.roles) || member.roles.some(role => !HUMAN_ROLES.includes(role))))) return [];
+    return Array.from(new Set([member.role, ...(member.roles ?? [])]));
   }, [members, myId]);
   const canViewAppAccess = can(appAccessRoles, "app_access:view");
   const canManageAppAccess = can(appAccessRoles, "app_access:manage");
+  const canManageFeatures = FEATURE_PERMISSIONS.some(permission => can(appAccessRoles, permission));
   const isAdmin = can(myRole, "org:update");
   const canManageDataRetention =
     can(myRole, "access_event_retention:manage") ||
@@ -190,14 +210,16 @@ export default function Settings() {
       RAIL.filter(
         (r) =>
           (!r.serverAdminOnly || serverAdmin) &&
+          (r.id !== "features" || canManageFeatures) &&
           (!r.requiredPermission || can(myRole, r.requiredPermission)) &&
           (!r.requiredAnyPermission ||
             r.requiredAnyPermission.some((permission) => can(myRole, permission))) &&
           (!r.needsOrg || org !== null),
       ),
-    [myRole, org, serverAdmin],
+    [myRole, org, serverAdmin, canManageFeatures],
   );
   const [section, setSection] = useState<string>(() => sectionFromLocation());
+  useEffect(() => { setSection(sectionFromLocation()); }, [routeLocation.search]);
   // ⚠ FALL BACK WHEN THE SELECTION STOPS EXISTING. Switching to an org where you are a plain member must not
   // leave a tab selected that is no longer in the rail — the panel would vanish and nothing would be active.
   const active = shown.some((r) => r.id === section)
@@ -206,6 +228,7 @@ export default function Settings() {
   const selectSection = useCallback((id: string, replace = false) => {
     const url = new URL(window.location.href);
     url.searchParams.set("section", id);
+    if (id !== "features") url.searchParams.delete("feature");
     window.history[replace ? "replaceState" : "pushState"]({}, "", `${url.pathname}${url.search}${url.hash}`);
     setSection(id);
   }, []);
@@ -223,6 +246,34 @@ export default function Settings() {
   }, [active, myRole, org, orgLoading, section, selectSection]);
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
 
+  async function reconcileOrganization(saved: Org) {
+    if (!alive.current || saved.id !== currentOrg?.id) return;
+    const attempt = ++organizationRefresh.current;
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId: saved.id } } }));
+    if (!alive.current || attempt !== organizationRefresh.current) return;
+    if (!result.ok || result.data.id !== saved.id) { const message = "The feature was saved, but organization status could not be refreshed. Reload Settings to confirm its current state."; setError(message); throw new Error(message); }
+    setOrg(result.data); updateOrg?.(result.data);
+  }
+
+  const featureEntries: FeatureEntry[] = org ? [
+    { id:"app-access", name:"App Access", category:"Access", keywords:"applications browser private web enabled", permission:"app_access:manage", control:<AppAccessFeatureSettings key={org.id} orgId={org.id} permitted={canViewAppAccess} canEdit={canManageAppAccess && emailVerified} /> },
+    { id:"server-access", name:"Server Access", category:"Access", keywords:"SSH RDP terminal enabled", permission:"server_access:manage", control:<WorkspaceFeatureControl feature="server-access" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
+    { id:"local-sharing", name:"Local Sharing", category:"Access", keywords:"local app publishing sharing enabled", permission:"beam:policy_manage", control:<WorkspaceFeatureControl feature="local-sharing" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
+    { id:"zero-trust", name:"Zero Trust enforcement", category:"Access", keywords:"default deny open mesh enforcing mode", permission:"policy:manage", control:<NetworkFeatureControl feature="zero-trust" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
+    { id:"fqdn", name:"FQDN access", category:"Access", keywords:"hostname domain DNS enforcement enabled", permission:"fqdn_resource:manage", control:<NetworkFeatureControl feature="fqdn" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
+    { id:"cross-gateway", name:"Cross-gateway clients", category:"Network", keywords:"cross_gateway_clients_enabled connectivity WireGuard", permission:"org:update", control:<CrossGatewaySettings key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
+    { id:"openvpn", name:"OpenVPN", category:"Network", keywords:"ovpn_enabled profiles tunnel", permission:"org:update", control:<OrgOVPNToggle key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
+    { id:"ipsec", name:"IPsec", category:"Network", keywords:"IKE tunnels connections enabled", permission:"ipsec:manage", control:<NetworkFeatureControl feature="ipsec" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
+    { id:"ai-gateway", name:"AI Gateway", category:"AI", keywords:"models inference enabled", permission:"ai_gateway:manage", control:<WorkspaceFeatureControl feature="ai-gateway" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
+    { id:"agent-runtime", name:"Agent runtime synchronization", category:"AI", keywords:"managed_agent_runtime_enabled configuration sync", permission:"agent_runtime:manage", control:<AgentRuntimeSettingCard key={org.id} orgId={org.id} value={org.managed_agent_runtime_enabled} canEdit={emailVerified && can(appAccessRoles,"agent_runtime:manage")} central onSaved={enabled => reconcileOrganization({ ...org, managed_agent_runtime_enabled:enabled })} /> },
+    { id:"agent-templates", name:"Agent groups & policy templates", category:"AI", keywords:"agent_policy_templates_enabled MCP management reusable", permission:"agent_template:manage", control:<AgentPolicyTemplatesToggle key={org.id} org={org} canEdit={emailVerified && can(appAccessRoles,"agent_template:manage")} onSaved={saved => reconcileOrganization(saved)} /> },
+    { id:"agent-jit", name:"Just-in-time agent access", category:"AI", keywords:"agent_jit_access_enabled JIT temporary approval", permission:"agent_access:approve", control:<AgentJITAccessToggle key={org.id} orgId={org.id} canEdit={emailVerified && can(appAccessRoles,"agent_access:approve")} onSaved={enabled => reconcileOrganization({ ...org, agent_jit_access_enabled:enabled })} /> },
+    { id:"sandboxes", name:"Sandbox creation", category:"AI", keywords:"private workspaces enabled", permission:"sandbox:admin", control:<WorkspaceFeatureControl feature="sandboxes" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
+    { id:"kubernetes-scopes", name:"Kubernetes cluster scopes", category:"Kubernetes", keywords:"cluster access governance opt in enabled", permission:"k8s_scope:manage", control:<NetworkFeatureControl feature="kubernetes-scopes" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
+    { id:"kubernetes-ha", name:"Kubernetes connector HA", category:"Kubernetes", keywords:"high availability fenced safe drain enabled", permission:"k8s_ha:manage", control:<NetworkFeatureControl feature="kubernetes-ha" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
+    { id:"alert-delivery", name:"Alert delivery", category:"Observe", keywords:"automatic notifications enabled paused", permission:"alerting:manage", control:<WorkspaceFeatureControl feature="alert-delivery" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
+  ].filter(entry => can(appAccessRoles, entry.permission)).map(({ permission: _permission, ...entry }) => entry as FeatureEntry) : [];
+
   if (currentOrg && org?.id !== currentOrg.id) {
     return <Loading size="page" label="Loading settings…" />;
   }
@@ -236,8 +287,9 @@ export default function Settings() {
     // ⚠ THE WORRY IT ENCODED WAS A ONE-COLUMN WORRY. The rail track is fixed and the content track takes
     // what is left, so a wide screen buys a wider VALUE column, not a 2000px input — and AppShell's stated
     // law is that page bodies fill available width (its own comment records what capping one cost before).
-    <div className="network-management settings-workspace">
+    <div className={`network-management settings-workspace${active === "features" ? " is-feature-view" : ""}`}>
       <PageHeader
+        navigationTitle
         title="Settings"
         subtitle={
           isAdmin
@@ -304,12 +356,12 @@ export default function Settings() {
           </SettingGroup>
         )}
         {serverAdmin && active === "beam-serving" && state.status === "authed" && (
-          <SettingGroup id="beam-serving" title="Beam serving setup" tabpanel>
+          <SettingGroup id="beam-serving" title="Local Sharing setup" tabpanel>
             <BeamDomainReadinessSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
         {org && active === "beam" && (
-          <SettingGroup id="beam" title="Tunnex Beam" tabpanel>
+          <SettingGroup id="beam" title="Local Sharing" tabpanel>
             <BeamPolicySettings key={org.id} orgId={org.id} canEdit={emailVerified} canOperate={serverAdmin} />
           </SettingGroup>
         )}
@@ -434,28 +486,18 @@ export default function Settings() {
           </SettingGroup>
         )}
 
-        {org && isAdmin && active === "features" && (
-          <SettingGroup id="features" title="Features"
+        {org && canManageFeatures && active === "features" && (
+          <SettingGroup id="features" title="Features" className="feature-setting-group"
             tabpanel>
-            <div className="flex flex-col gap-3.5">
-              <AppAccessFeatureSettings orgId={org.id} permitted={canViewAppAccess} canEdit={canManageAppAccess && emailVerified} />
-              {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
-              <CrossGatewaySettings key={org.id} org={org} canEdit={can(myRole, "org:update") && emailVerified} onSaved={setOrg} />
-              <OrgOVPNToggle
-                org={org}
-                canEdit={emailVerified}
-                onSaved={(o) => setOrg(o)}
-              />
-            </div>
+            <FeaturesWorkspace entries={featureEntries} />
           </SettingGroup>
         )}
 
         {org && isAdmin && active === "ai-agents" && (
           <SettingGroup id="ai-agents" title="AI Agents" tabpanel>
             <div className="flex flex-col gap-3.5">
-              <AgentRuntimeSettingCard orgId={org.id} value={org.managed_agent_runtime_enabled} canEdit={can(myRole, "agent_runtime:manage") && emailVerified} onSaved={(enabled) => setOrg((current) => current ? { ...current, managed_agent_runtime_enabled: enabled } : current)} />
               <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRole, "org:update") && emailVerified} />
-              <AgentPolicyTemplatesToggle org={org} canEdit={can(myRole, "agent_template:manage") && emailVerified} onSaved={(next) => setOrg(next)} />
+              <SettingRow label="Agent features" description="Runtime synchronization, agent groups, templates, and temporary access."><a className="feature-control-link" href="/settings?section=features&feature=agent-runtime">Manage in Features</a></SettingRow>
             </div>
           </SettingGroup>
         )}
@@ -506,39 +548,42 @@ function AgentPolicyTemplatesToggle({
 }: {
   org: Org;
   canEdit: boolean;
-  onSaved: (org: Org) => void;
+  onSaved: (org: Org) => void | Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const enabled = org.agent_policy_templates_enabled;
+  const alive = useRef(true), locked = useRef(false), allowed = useRef(canEdit);
+  allowed.current = canEdit;
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  async function reload() {
+    if (!alive.current || locked.current) return;
+    locked.current = true; setBusy(true);
+    try {
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId: org.id } } }));
+    if (alive.current) {
+      if (!result.ok || result.data.id !== org.id || typeof result.data.agent_policy_templates_enabled !== "boolean") setErr(result.ok ? "The feature setting is unavailable." : result.error);
+      else { setErr(null); await onSaved(result.data); }
+    }
+    } catch { if (alive.current) setErr("Organization status could not be confirmed. Reload before another change."); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
 
   async function toggle() {
-    setBusy(true);
-    setErr(null);
+    if (!alive.current || !allowed.current || locked.current || err || typeof enabled !== "boolean") return;
+    locked.current = true; setBusy(true); setErr(null);
     const next = !enabled;
-    const result = await api.PUT(
-      "/api/v1/organizations/{orgId}/agent-policy-template-settings",
-      { params: { path: { orgId: org.id } }, body: { enabled: next } },
-    );
-    if (result.error) {
-      setBusy(false);
-      return setErr(
-        apiErrorMessage(
-          result.error,
-          next
-            ? "Could not enable agent policy templates."
-            : "Could not disable agent policy templates.",
-        ),
-      );
-    }
-    const refetch = await api.GET("/api/v1/organizations/{orgId}", {
-      params: { path: { orgId: org.id } },
-    });
-    setBusy(false);
-    if (refetch.error || !refetch.data) {
-      return setErr("The setting was saved, but the organization could not be refreshed.");
-    }
-    onSaved(refetch.data);
+    try {
+      const result = await api.PUT("/api/v1/organizations/{orgId}/agent-policy-template-settings", { params: { path: { orgId: org.id } }, body: { enabled: next } });
+      if (!alive.current || !allowed.current) return;
+      if (result.error) return setErr(apiErrorMessage(result.error, "Could not update agent policy templates."));
+      const refetch = await api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId: org.id } } });
+      if (!alive.current || !allowed.current) return;
+      if (refetch.error || !refetch.data || refetch.data.id !== org.id || typeof refetch.data.agent_policy_templates_enabled !== "boolean") return setErr("The setting was saved, but the organization could not be refreshed. Reload Settings before another change.");
+      await onSaved(refetch.data);
+    } catch { if (alive.current) setErr("Could not confirm the saved setting. Reload Settings before another change."); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
   }
 
   return (
@@ -550,15 +595,14 @@ function AgentPolicyTemplatesToggle({
       data-testid="agent-policy-template-settings"
       error={err}
     >
-      <Switch checked={enabled} disabled={!canEdit || busy} onChange={toggle} />
+      {typeof enabled === "boolean" && !err ? <Switch label="Agent groups & policy templates" checked={enabled} disabled={!canEdit || busy} onChange={toggle} /> : <SettingValue>Unavailable</SettingValue>}
+      {(err || typeof enabled !== "boolean") && <Button variant="ghost" disabled={busy} onClick={() => void reload()}>Reload template setting</Button>}
     </SettingRow>
   );
 }
 
 function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
-  const licenceResource = useLicenceResource();
   const [approval, setApproval] = useState<DeviceApproval | null>(null);
-  const [licenceFeatures, setLicenceFeatures] = useState<string[] | null>(null);
   const [zeroTrust, setZeroTrust] = useState<
     | { kind: "loading" }
     | { kind: "ready"; mode: ZeroTrustMode["mode"] }
@@ -570,24 +614,19 @@ function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: bo
   const load = async () => {
     setError(null);
     setZeroTrust({ kind: "loading" });
-    const [approvalResult, licenceResult, zeroTrustResult] = await Promise.all([
+    const [approvalResult, zeroTrustResult] = await Promise.all([
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/device-approval", { params: { path: { orgId } } })),
-      licenceResource
-        ? licenceResource.read()
-        : loadOne(() => api.GET("/api/v1/license")),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", { params: { path: { orgId } } })),
     ]);
     if (!approvalResult.ok) setError(approvalResult.error);
     else setApproval(approvalResult.data as DeviceApproval);
-    if (licenceResult.ok && Array.isArray(licenceResult.data.features)) setLicenceFeatures(licenceResult.data.features);
-    else if (!licenceResult.ok) setError((prior) => prior ?? licenceResult.error);
     if (!zeroTrustResult.ok) setZeroTrust({ kind: "error", message: zeroTrustResult.error });
     else if (zeroTrustResult.data.mode === "enforcing" || zeroTrustResult.data.mode === "off") {
       setZeroTrust({ kind: "ready", mode: zeroTrustResult.data.mode });
     } else setZeroTrust({ kind: "error", message: "The API returned an invalid Zero Trust mode." });
   };
 
-  useEffect(() => { void load(); }, [orgId, licenceResource]);
+  useEffect(() => { void load(); }, [orgId]);
   const toggleApproval = async () => {
     if (!approval) return;
     setBusy(true);
@@ -603,11 +642,11 @@ function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: bo
     <SettingRow label="Require device approval" description="When on, future device enrolments wait for an administrator. Existing active devices are grandfathered.">
       {approval ? <Switch label="Require device approval" checked={approval.mode === "on"} disabled={!canEdit || busy} onChange={() => void toggleApproval()} /> : <Loading size="inline" label="Loading approval policy…" />}
     </SettingRow>
-    <SettingRow label="Just-in-time agent access" description="A licensed capability that remains off until this organization explicitly enables it.">
-      {licenceFeatures === null ? <Loading size="inline" label="Loading licence capabilities…" /> : licenceFeatures.includes("agent_jit_access") ? <AgentJITAccessToggle key={orgId} orgId={orgId} canEdit={canEdit} compact /> : <a className="text-sm font-medium text-accent-400 hover:underline" href="/settings?section=licence">Manage licence &amp; plan</a>}
+    <SettingRow label="Just-in-time agent access" description="Temporary agent access is managed with the other organization features.">
+      <a className="feature-control-link" href="/settings?section=features&feature=agent-jit">Manage in Features</a>
     </SettingRow>
-    <SettingRow label="Zero Trust enforcement" description="Current enforcement is read-only here because changes require rule and affected-device impact confirmation.">
-      {zeroTrust.kind === "loading" ? <Loading size="inline" label="Loading current mode…" /> : zeroTrust.kind === "error" ? <span role="alert" className="text-xs text-danger">Could not load current Zero Trust mode. <a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span> : <span className="inline-flex items-center gap-3 text-sm"><strong className="text-ink-heading">{zeroTrust.mode === "enforcing" ? "Enforcing" : "Off"}</strong><a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span>}
+    <SettingRow label="Zero Trust enforcement" description="Review rule impact before changing enforcement in Features.">
+      {zeroTrust.kind === "loading" ? <Loading size="inline" label="Loading current mode…" /> : zeroTrust.kind === "error" ? <span role="alert" className="text-xs text-danger">Could not load current Zero Trust mode. <a className="feature-control-link" href="/settings?section=features&feature=zero-trust">Manage in Features</a></span> : <span className="inline-flex items-center gap-3 text-sm"><strong className="text-ink-heading">{zeroTrust.mode === "enforcing" ? "Enforcing" : "Off"}</strong><a className="feature-control-link" href="/settings?section=features&feature=zero-trust">Manage in Features</a></span>}
     </SettingRow>
     <SettingRow label="Device posture" description="Posture is client-reported, not hardware-attested.">
       <a className="text-sm font-medium text-accent-400 hover:underline" href="/devices/posture">Manage device posture</a>
@@ -620,57 +659,76 @@ function AgentJITAccessToggle({
   orgId,
   canEdit,
   compact = false,
+  onSaved,
 }: {
   orgId: string;
   canEdit: boolean;
   compact?: boolean;
+  onSaved?: (enabled: boolean) => void | Promise<void>;
 }) {
+  const licenceResource = useLicenceResource();
+  const [entitled, setEntitled] = useState<boolean | null>(null);
   const [setting, setSetting] = useState<AgentJITAccessSetting | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const alive = useRef(true), locked = useRef(false), request = useRef(0), allowed = useRef(canEdit);
+  allowed.current = canEdit;
+  useEffect(() => { alive.current = true; return () => { alive.current = false; request.current++; }; }, []);
 
   async function load() {
-    setLoadError(null);
+    const attempt = ++request.current;
+    setLoadError(null); setErr(null); setSetting(null); setEntitled(null);
+    const licence = licenceResource ? await licenceResource.read() : await loadOne(() => api.GET("/api/v1/license"));
+    if (!alive.current || attempt !== request.current) return;
+    if (!licence.ok || !Array.isArray(licence.data.features)) { setLoadError(licence.ok ? "Licence capabilities are unavailable." : licence.error); return; }
+    const included = licence.data.features.includes("agent_jit_access");
+    setEntitled(included);
+    if (!included) return;
     const result = await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/agent-jit-access-settings", {
         params: { path: { orgId } },
       }),
     );
+    if (!alive.current || attempt !== request.current) return;
     if (!result.ok) return setLoadError(result.error);
+    if (typeof result.data.enabled !== "boolean" || !Number.isInteger(result.data.pending_requests) || result.data.pending_requests < 0 || !Number.isInteger(result.data.approved_requests) || result.data.approved_requests < 0) { setLoadError("The server returned an incomplete temporary-access setting."); return; }
     setSetting(result.data);
   }
 
   useEffect(() => {
     void load();
     // orgId keys this component; a new tenant never inherits the prior setting.
-  }, [orgId]);
+  }, [orgId, licenceResource]);
 
   async function toggle() {
-    if (!setting) return;
-    setBusy(true);
-    setErr(null);
+    if (!alive.current || !allowed.current || locked.current || !setting || entitled !== true || loadError || err) return;
+    locked.current = true; setBusy(true); setErr(null);
+    const enabled = !setting.enabled;
+    try {
     const response = await api.PUT(
       "/api/v1/organizations/{orgId}/agent-jit-access-settings",
       {
         params: { path: { orgId } },
-        body: { enabled: !setting.enabled },
+        body: { enabled },
       },
     );
+    if (!alive.current || !allowed.current) return;
     if (response.error) {
-      setBusy(false);
       return setErr(
         apiErrorMessage(response.error, "Could not update JIT agent access."),
       );
     }
     await load();
-    setBusy(false);
+    if (alive.current && allowed.current) await onSaved?.(enabled);
+    } catch { if (alive.current) setErr("Could not confirm the saved setting. Reload before another change."); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
   }
 
   const control = <>
       {/* ⚠ THREE STATES, NOT TWO. A failed load must NOT render a switch: an off-looking switch would be a
           confident claim about a setting we could not read. Retry, loading and the control stay distinct. */}
-      {loadError ? (
+      {entitled === false ? <a className="feature-control-link" href="/settings?section=licence">Not in current plan</a> : loadError ? (
         <div className="flex flex-col items-end gap-1">
           <ErrorText>{loadError}</ErrorText>
           <Button onClick={() => void load()}>Retry</Button>
@@ -680,7 +738,7 @@ function AgentJITAccessToggle({
           <Switch
             label="Just-in-time agent access"
             checked={setting.enabled}
-            disabled={!canEdit || busy}
+            disabled={!canEdit || busy || !!err}
             onChange={toggle}
           />
           <p className="text-xs text-slate-500">
@@ -688,9 +746,10 @@ function AgentJITAccessToggle({
             approved
           </p>
           <ErrorText>{err}</ErrorText>
+          {err && <Button variant="ghost" disabled={busy} onClick={() => void load()}>Reload temporary-access setting</Button>}
         </div>
       ) : (
-        <Loading size="inline" label="Loading identity provider settings…" />
+      <Loading size="inline" label="Loading temporary-access setting…" />
       )}
   </>;
   if (compact) return control;
@@ -938,28 +997,51 @@ function OrgOVPNToggle({
 }: {
   org: Org;
   canEdit: boolean;
-  onSaved: (o: Org) => void;
+  onSaved: (o: Org) => void | Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unknown, setUnknown] = useState(false);
   const enabled = org.ovpn_enabled === true;
+  const alive = useRef(true), locked = useRef(false), allowed = useRef(canEdit);
+  allowed.current = canEdit;
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  async function reload() {
+    if (!alive.current || locked.current) return;
+    locked.current = true; setBusy(true);
+    try {
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId: org.id } } }));
+    if (alive.current) {
+      if (!result.ok || result.data.id !== org.id || typeof result.data.ovpn_enabled !== "boolean") setError(result.ok ? "Organization settings are unavailable." : result.error);
+      else { setUnknown(false); setError(null); await onSaved(result.data); }
+    }
+    } catch { if (alive.current) { setUnknown(true); setError("Organization status could not be confirmed. Reload before another change."); } }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
 
   async function toggle(next: boolean) {
-    setBusy(true);
+    if (!alive.current || !allowed.current || locked.current || unknown || error || typeof org.ovpn_enabled !== "boolean") return;
+    locked.current = true; setBusy(true);
     setError(null);
-    const { data, error } = await api.PUT(
+    try {
+    const { data, error: failure } = await api.PUT(
       "/api/v1/organizations/{orgId}/ovpn-settings",
       {
         params: { path: { orgId: org.id } },
         body: { enabled: next },
       },
     );
-    setBusy(false);
-    if (error || !data) {
-      setError(apiErrorMessage(error, "Could not update OpenVPN."));
+    if (!alive.current || !allowed.current) return;
+    if (failure || typeof data?.enabled !== "boolean") {
+      setUnknown(true);
+      setError(apiErrorMessage(failure, "The OpenVPN setting could not be confirmed. Reload before another change."));
       return;
     }
-    onSaved({ ...org, ovpn_enabled: data.enabled });
+    await onSaved({ ...org, ovpn_enabled: data.enabled });
+    } catch {
+      if (alive.current) { setUnknown(true); setError("The change could not be confirmed. Reload before another change."); }
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
   }
 
   return (
@@ -971,11 +1053,13 @@ function OrgOVPNToggle({
       description="Export devices as .ovpn profiles for official OpenVPN clients. WireGuard is unaffected; turning it off does not revoke issued profiles."
       error={error}
     >
-      <Switch
+      {unknown || typeof org.ovpn_enabled !== "boolean" ? <SettingValue>Unavailable</SettingValue> : <Switch
+        label="OpenVPN"
         checked={enabled}
-        disabled={busy || !canEdit}
+        disabled={busy || !canEdit || !!error}
         onChange={(next) => toggle(next)}
-      />
+      />}
+      {(error || typeof org.ovpn_enabled !== "boolean") && <Button variant="ghost" disabled={busy} onClick={() => void reload()}>Reload OpenVPN setting</Button>}
     </SettingRow>
   );
 }
@@ -1762,7 +1846,7 @@ const RAIL: ReadonlyArray<{
     id: "access-security",
     needsOrg: true,
     label: "Access & security",
-    hint: "Control organization-wide access safeguards and capability opt-ins.",
+    hint: "Control device approval and access safeguards.",
     requiredPermission: "org:update",
   },
   {
@@ -1779,14 +1863,13 @@ const RAIL: ReadonlyArray<{
     id: "features",
     needsOrg: true,
     label: "Features",
-    hint: "Enable and configure advanced capabilities.",
-    requiredPermission: "org:update",
+    hint: "Manage feature activation for this organization.",
   },
   {
     id: "ai-agents",
     needsOrg: true,
     label: "AI Agents",
-    hint: "Configure managed runtime, capacity, and Agent workspace opt-ins.",
+    hint: "Configure agent capacity. Activation is managed in Features.",
     requiredPermission: "org:update",
   },
   {
@@ -1795,11 +1878,11 @@ const RAIL: ReadonlyArray<{
     label: "Licence & plan",
     hint: "Manage your licence and subscription.",
   },
-  { id: "beam", needsOrg: true, label: "Tunnex Beam", hint: "Delegate local app sharing and bound reviewer access.", requiredPermission: "beam:policy_manage" },
+  { id: "beam", needsOrg: true, label: "Local Sharing", hint: "Delegate local app sharing and bound reviewer access.", requiredPermission: "beam:policy_manage" },
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "app-access-domains", label: "Applications domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
-  { id: "beam-serving", label: "Beam serving setup", hint: "Measure installation DNS and TLS readiness. Only server administrators can run checks.", serverAdminOnly: true },
+  { id: "beam-serving", label: "Local Sharing setup", hint: "Measure installation DNS and TLS readiness. Only server administrators can run checks.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,
@@ -1886,7 +1969,7 @@ function OrgSection({
 }: {
   org: Org;
   canEdit: boolean;
-  onSaved: (o: Org) => void;
+  onSaved: (o: Org) => void | Promise<void>;
 }) {
   const [name, setName] = useState(org.name);
   const [busy, setBusy] = useState(false);

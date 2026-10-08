@@ -47,12 +47,15 @@ export default function AppAccessIconPicker({ icon, image, onIconChange, onImage
       if (request === generation.current) { setReading(false); onReadingChange(false); }
     }
   }
-  return <div className="space-y-3">
-    <div className="flex items-center gap-3"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-surface"><AppAccessIcon icon={icon} image={image} size={32} /></span><p className="text-sm text-ink-secondary">PNG or JPEG, up to 64 KiB and 512 × 512 pixels. Save to update the icon for everyone with access to this app. No republishing is needed for icon changes.</p></div>
+  return <details className="aa-editor-disclosure aa-icon-picker">
+    <summary><span className="aa-icon-picker-summary"><span className="aa-icon-picker-preview"><AppAccessIcon icon={icon} image={image} size={24} /></span>Application icon</span></summary>
+    <div className="aa-editor-disclosure-content space-y-3">
+    <p className="text-sm text-ink-secondary">PNG or JPEG · up to 64 KiB · 512 × 512 pixels. Saved icons update for everyone with access; no republishing needed.</p>
     <Field label={image ? "Replace application icon" : "Upload application icon"}><Input type="file" accept="image/png,image/jpeg" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void choose(file); }} /></Field>
     {reading && <p role="status">Reading application icon…</p>}
     <ErrorText>{error}</ErrorText>
     {image && <Button type="button" variant="ghost" onClick={() => { generation.current++; setReading(false); onReadingChange(false); setError(""); onImageChange(""); }}>Remove uploaded icon</Button>}
     <Field label="Default application icon"><Select value={icon} onChange={event => onIconChange(event.target.value as DefaultIcon)}><option value="app">Application</option><option value="globe">Website</option><option value="dashboard">Dashboard</option><option value="terminal">Terminal</option></Select></Field>
-  </div>;
+    </div>
+  </details>;
 }

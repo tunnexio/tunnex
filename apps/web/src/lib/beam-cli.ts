@@ -7,12 +7,12 @@ export function beamShellQuote(value: string): string { return "'" + value.repla
 export type BeamCommandRoute = { path_prefix: string; port: number };
 export function beamPublishCommand(input: { serverOrigin: string; includeLogin?: boolean; orgId: string; projectId?: string; name: string; port: number; protocol?: string; address?: string; originCAPath?: string; routes?: BeamCommandRoute[]; lifetimeMinutes: number; maxDurationSeconds: number; audience: BeamAudience; grants: BeamGrant[] }): string {
   const server = new URL(input.serverOrigin);
-  if (!["https:", "http:"].includes(server.protocol) || server.origin !== input.serverOrigin) throw new Error("Your control-plane address could not be identified. Reload Beam.");
+  if (!["https:", "http:"].includes(server.protocol) || server.origin !== input.serverOrigin) throw new Error("Your control-plane address could not be identified. Reload Local Sharing.");
   const name = input.name.trim();
-  if (!uuid.test(input.orgId)) throw new Error("Your organization could not be identified. Reload Beam.");
+  if (!uuid.test(input.orgId)) throw new Error("Your organization could not be identified. Reload Local Sharing.");
   if (!name || [...name].length > 100 || /[\r\n\x00]/.test(name)) throw new Error("Enter an app name with 1 to 100 characters on one line.");
   if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) throw new Error("Enter a local port between 1 and 65535.");
-  if (input.projectId && !uuid.test(input.projectId)) throw new Error("Your saved project could not be identified. Reload Beam.");
+  if (input.projectId && !uuid.test(input.projectId)) throw new Error("Your saved project could not be identified. Reload Local Sharing.");
   const protocol = input.protocol ?? "http", address = input.address ?? "127.0.0.1";
   if (!["http", "https"].includes(protocol) || !["127.0.0.1", "::1"].includes(address)) throw new Error("Choose HTTP or HTTPS on a numeric loopback address.");
   if (input.originCAPath && (protocol !== "https" || /[\r\n\x00]/.test(input.originCAPath))) throw new Error("Use a local CA file path on one line for an HTTPS app.");

@@ -1,21 +1,19 @@
-import "../network-workspaces.css";
+import "../gateway-workspace.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   Badge,
   Button,
-  Card,
-  EmptyState,
   ErrorText,
   Field,
   Input,
   Loading,
   Modal,
-  PageHeader,
   Select,
 } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
+import { Icon } from "../components/Icon";
 import { api, apiErrorMessage } from "../lib/api";
 import { relativeAge } from "../lib/format";
 import {
@@ -34,9 +32,9 @@ const detailTab = (value: string | null): DetailTab =>
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt>
-      <dd className="mt-1 break-words text-cell text-ink-body">{children}</dd>
+    <div className="gw-fact">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
     </div>
   );
 }
@@ -143,16 +141,17 @@ export default function GatewayDetail() {
     setDialog(next);
   };
 
-  if (state.kind === "loading") return <Card><Loading label="Loading gateway workspace…" /></Card>;
-  if (state.kind === "error") return <LoadRetry error={state.error ?? "Could not load gateways."} onRetry={reload} />;
-  if (!node || !row) {
-    return (
-      <div className="network-management space-y-6">
-        <PageHeader title="Gateway not found" subtitle="The authoritative Gateway inventory does not contain this identifier." />
-        <Card><EmptyState action={<Link className="text-accent-400 hover:underline" to="/gateways">Return to Gateways</Link>}>It may have been deleted or belong to another organization.</EmptyState></Card>
-      </div>
-    );
-  }
+  const breadcrumb = <nav className="gw-breadcrumb" aria-label="Gateway breadcrumb">
+    <Link to="/gateways">Gateways</Link><Icon name="chevron-right" size={13} />
+    <span aria-current="page">{node?.name ?? "Gateway details"}</span>
+  </nav>;
+  if (state.kind === "loading") return <div className="gateway-workspace gw-detail-workspace">{breadcrumb}<div className="gw-detail-state"><Loading label="Loading gateway workspace…" /></div></div>;
+  if (state.kind === "error") return <div className="gateway-workspace gw-detail-workspace">{breadcrumb}<div className="gw-detail-state"><LoadRetry error={state.error ?? "Could not load gateways."} onRetry={reload} /></div></div>;
+  if (!node || !row) return <div className="gateway-workspace gw-detail-workspace">{breadcrumb}<div className="gw-detail-state" role="status">
+    <h1>Gateway not found</h1>
+    <p>It may have been deleted or belong to another organization.</p>
+    <Link className="gw-text-link" to="/gateways">Return to Gateways</Link>
+  </div></div>;
 
   // The list contract is organization-scoped but Node intentionally carries no org_id.
   const activeOrgId = org?.id ?? "";
@@ -168,162 +167,85 @@ export default function GatewayDetail() {
   const canDeleteRevoked = node.status === "revoked" && canManage;
 
   return (
-    <div className="network-management space-y-6">
-      <Link className="inline-flex text-cell text-ink-tertiary hover:text-ink-heading" to="/gateways">← Gateway inventory</Link>
-      <PageHeader
-        title={node.name}
-        subtitle={`${row.siteName ?? "No site assigned"} · ${node.last_seen_at ? `seen ${relativeAge(node.last_seen_at)}` : "never connected"}`}
-        actions={
-          <div className="flex items-center gap-2">
-            <Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>{statusLabel}</Badge>
-            {canManage && node.status !== "revoked" && (
-              <Button size="sm" variant="ghost" onClick={() => { setDraft(node.name); openDialog("rename"); }}>Rename</Button>
-            )}
-          </div>
-        }
-      />
-      <nav aria-label="Gateway detail sections" className="border-b border-white/10">
-        <div className="flex min-w-max gap-1 overflow-x-auto">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={tab === item.id ? "page" : undefined}
-              onClick={() => selectTab(item.id)}
-              className={`min-h-10 border-b-2 px-3 py-2 text-sm ${tab === item.id ? "border-accent-400 text-ink-heading" : "border-transparent text-ink-tertiary hover:text-ink-heading"}`}
-            >
-              {item.label}
-            </button>
-          ))}
+    <div className="gateway-workspace gw-detail-workspace">
+      {breadcrumb}
+      <header className="gw-detail-header">
+        <div className="gw-detail-identity"><h1>{node.name}</h1><p>{row.siteName ?? "No site assigned"}{row.address && <> · <span>{row.address}</span></>}</p></div>
+        <div className="gw-detail-header-actions">
+          <Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>{statusLabel}</Badge>
+          <Button size="sm" variant="ghost" aria-label="Refresh gateway" title="Refresh gateway" disabled={busy} onClick={() => void reload()}><Icon name="refresh-cw" size={16} /></Button>
+          {canManage && node.status !== "revoked" && <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setDraft(node.name); openDialog("rename"); }}>Rename</Button>}
         </div>
-      </nav>
+      </header>
       {!dialog && <ErrorText>{error}</ErrorText>}
-      {notice && <div role="status" className="rounded-card border border-ok/30 bg-ok/5 p-3 text-cell text-ink-body">{notice}</div>}
-
-      {tab === "overview" && (
-        <Card>
-            <div>
-              <h2 className="text-heading font-semibold text-ink-heading">Gateway overview</h2>
-              <p className="mt-1 text-cell text-ink-tertiary">Identity, placement, and the latest reported runtime.</p>
-            </div>
-            <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Fact label="Lifecycle"><Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge></Fact>
-              <Fact label="Site">{row.siteName ?? "No site assigned"}</Fact>
+      {notice && <div role="status" className="gw-detail-notice">{notice}</div>}
+      <div className="gw-detail-layout">
+        <aside className="gw-detail-rail">
+          <nav aria-label="Gateway detail sections" className="gw-detail-nav">
+            {tabs.map(item => <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={() => selectTab(item.id)}>
+              {item.label}
+            </button>)}
+          </nav>
+          <p className="gw-detail-rail-note">{node.status === "revoked" ? "Revoked credentials cannot reconnect." : "Check health before making lifecycle changes."}</p>
+        </aside>
+        <section className="gw-detail-stage" aria-labelledby="gateway-stage-heading">
+          <div className="gw-detail-stage-heading"><h2 id="gateway-stage-heading">{tabs.find(item => item.id === tab)?.label}</h2></div>
+          {tab === "overview" && <>
+            <dl className="gw-facts">
               <Fact label="Endpoint">{node.endpoint ?? "Not reported"}</Fact>
+              <Fact label="Site">{row.siteName ?? "No site assigned"}</Fact>
+              <Fact label="Credential"><Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge></Fact>
               <Fact label="Agent version">{node.agent_version || "Not reported"}</Fact>
+              <Fact label="Last seen">{node.last_seen_at ? <><span>{relativeAge(node.last_seen_at)}</span><small>{new Date(node.last_seen_at).toLocaleString()}</small></> : "Never connected"}</Fact>
               <Fact label="Enrolled">{node.enrolled_at ? new Date(node.enrolled_at).toLocaleString() : "Not reported"}</Fact>
-              <Fact label="Last seen">{node.last_seen_at ? `${relativeAge(node.last_seen_at)} (${new Date(node.last_seen_at).toLocaleString()})` : "Never connected"}</Fact>
             </dl>
-            <div className="mt-5 border-t border-white/[.08] pt-3">
-              <h3 className="text-micro font-medium uppercase tracking-wide text-ink-faint">Related</h3>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                <Link className="flex min-h-10 items-center justify-between rounded-md border border-white/[.08] px-3 text-cell text-ink-body hover:bg-white/[.04] hover:text-ink-heading" to="/sites"><span>Site topology</span><span aria-hidden="true">›</span></Link>
-                <Link className="flex min-h-10 items-center justify-between rounded-md border border-white/[.08] px-3 text-cell text-ink-body hover:bg-white/[.04] hover:text-ink-heading" to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span><span aria-hidden="true">›</span></Link>
-                <Link className="flex min-h-10 items-center justify-between rounded-md border border-white/[.08] px-3 text-cell text-ink-body hover:bg-white/[.04] hover:text-ink-heading" to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span><span aria-hidden="true">›</span></Link>
-              </div>
+            <div className="gw-related-links" aria-label="Related gateway resources">
+              <Link to="/sites"><span>Site topology</span></Link>
+              <Link to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span></Link>
+              <Link to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span></Link>
             </div>
-          </Card>
-      )}
-
-      {tab === "health" && (
-        <Card className="overflow-hidden !p-0">
-          <div className="grid gap-0 md:grid-cols-2">
-          <section className="border-b border-white/[.08] p-4 md:border-r">
-            <h2 className="text-heading font-semibold text-ink-heading">Connectivity</h2>
-            <p className="mt-3 text-cell text-ink-body">{node.last_seen_at ? `Last control-plane observation ${relativeAge(node.last_seen_at)}.` : "This gateway has never reported a successful connection."}</p>
-            <p className="mt-2 text-micro text-ink-tertiary">Lifecycle and connectivity are separate: an active credential does not prove a fresh handshake.</p>
-          </section>
-          <section className="border-b border-white/[.08] p-4">
-            <h2 className="text-heading font-semibold text-ink-heading">Policy and transit</h2>
-            <div className="mt-3"><Badge tone={row.health ? "warn" : node.status === "revoked" ? "neutral" : "ok"}>{row.health?.label ?? (node.status === "revoked" ? "not evaluated" : "healthy")}</Badge></div>
-            {groupNotes([row]).map((note) => <p key={note} className="mt-2 text-cell text-ink-tertiary">{note}</p>)}
-          </section>
-          <section className="p-4 md:border-r md:border-white/[.08]">
-            <h2 className="text-heading font-semibold text-ink-heading">OpenVPN</h2>
-            <p className="mt-3 text-cell text-ink-body">{row.ovpnHealth ? row.ovpnHealth.replace(/^ovpn_/, "").replace(/_/g, " ") : "No OpenVPN failure reported."}</p>
-            <p className="mt-2 text-micro text-ink-tertiary">A separate service axis from WireGuard policy health.</p>
-          </section>
-          <section className="border-t border-white/[.08] p-4 md:border-t-0">
-            <h2 className="text-heading font-semibold text-ink-heading">Egress</h2>
-            <p className="mt-3 text-cell text-ink-body">{gatewayEgressDetail(row)}</p>
-          </section>
-          </div>
-        </Card>
-      )}
-
-      {tab === "lifecycle" && (
-        <Card className="overflow-hidden !p-0">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[.08] px-4 py-3">
-            <div>
-              <h2 className="text-heading font-semibold text-ink-heading">Gateway lifecycle</h2>
-              <p className="mt-1 text-cell text-ink-tertiary">Move dependent devices before permanently retiring this gateway.</p>
+          </>}
+          {tab === "health" && <>
+            <div className="gw-health-list">
+              <section className="gw-health-row"><div><h3>Connectivity</h3><p>{node.last_seen_at ? `Last control-plane observation ${relativeAge(node.last_seen_at)}.` : "This gateway has never reported a successful connection."}</p></div><span className="gw-health-value">{node.status === "revoked" ? "Historical" : !node.last_seen_at ? "Awaiting connection" : row.health?.label === "offline" ? "Offline" : "Reported"}</span></section>
+              <section className="gw-health-row"><div><h3>Policy and transit</h3>{groupNotes([row]).map(note => <p key={note}>{note}</p>)}</div><Badge tone={node.status === "revoked" ? "neutral" : row.health?.tone ?? (!node.last_seen_at ? "neutral" : "ok")}>{node.status === "revoked" ? "not evaluated" : row.health?.label ?? (!node.last_seen_at ? "Awaiting first report" : "healthy")}</Badge></section>
+              <section className="gw-health-row"><div><h3>OpenVPN</h3><p>{node.status === "revoked" ? "Not evaluated after revocation." : row.ovpnHealth ? row.ovpnHealth.replace(/^ovpn_/, "").replace(/_/g, " ") : "No OpenVPN failure reported."}</p></div>{row.ovpnHealth && <Badge tone="warn">Needs attention</Badge>}</section>
+              <section className="gw-health-row"><div><h3>Egress</h3><p>{gatewayEgressDetail(row)}</p></div></section>
             </div>
-            <Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/[.08] px-4 py-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 text-micro font-semibold text-ink-tertiary">1</span>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-cell font-semibold text-ink-heading">Homed devices</h3>
-                  {homed === 0 && <Badge tone="ok">Complete</Badge>}
-                  {homed === null && <Badge tone="neutral">Unavailable</Badge>}
+            <details className="gw-detail-disclosure"><summary>How health is evaluated</summary><p>Active credentials do not confirm a recent connection. Policy health and OpenVPN are separate service signals; egress capabilities come from verified gateway reports.</p></details>
+          </>}
+          {tab === "lifecycle" && <>
+            {node.status === "active" && <p className="gw-stage-context">Move dependent devices, then revoke this gateway.</p>}
+            {node.status === "revoked" && <p className="gw-stage-context">This gateway cannot reconnect. Recover eligible devices on an active replacement.</p>}
+            <div className="gw-lifecycle-steps">
+              <section className="gw-lifecycle-step">
+                <span className="gw-step-number" aria-hidden="true">1</span>
+                <div className="gw-lifecycle-copy"><h3>Homed devices</h3><p>{homed === null ? "Impact count unavailable. Dependent actions are withheld." : homed === 0 ? "No active or pending devices depend on this gateway." : `${homed} active or pending device${homed === 1 ? " depends" : "s depend"} on this gateway.`}</p>
+                  {homed !== null && homed > 0 && <Link className="gw-text-link" to={`/devices?gateway=${gatewayId}`}>View dependent devices</Link>}
+                  {node.status === "active" && homed !== null && homed > 0 && canTransfer && !destinations.length && <p>No active replacement gateway is available. Enroll a replacement before moving devices.</p>}
                 </div>
-                <p className="mt-1 text-cell text-ink-tertiary">
-                  {homed === null
-                    ? "Impact count unavailable. Dependent actions are withheld."
-                    : homed === 0
-                      ? "No active or pending devices depend on this gateway."
-                      : `${homed} active or pending device${homed === 1 ? " depends" : "s depend"} on this gateway.`}
-                </p>
-              </div>
+                <div className="gw-lifecycle-action">
+                  {homed === 0 && <Badge tone="ok">No dependencies</Badge>}{homed === null && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void reload()}>Refresh impact</Button>}
+                  {node.status === "active" && homed !== null && homed > 0 && canTransfer && <Button size="sm" disabled={busy || !destinations.length} onClick={() => openDialog("transfer")}>Move devices</Button>}
+                </div>
+              </section>
+              {node.status === "active" && <section className="gw-lifecycle-step">
+                <span className="gw-step-number" aria-hidden="true">2</span><div className="gw-lifecycle-copy"><h3>Revoke credential</h3><p>{homed === 0 ? "Permanently stop this gateway from authenticating again." : "Available after the authoritative homed-device count reaches zero."}</p></div>
+                <div className="gw-lifecycle-action">{homed !== 0 && <Badge tone="neutral">Blocked</Badge>}{canRevoke && <Button size="sm" variant="danger" disabled={busy} onClick={() => openDialog("revoke")}>Revoke gateway</Button>}</div>
+              </section>}
+              {node.status === "revoked" && <>
+                <section className="gw-lifecycle-step"><span className="gw-step-number" aria-hidden="true">2</span><div className="gw-lifecycle-copy"><h3>Restore cascaded devices</h3><p>Move eligible cascade-revoked devices to an active replacement. Deliberately revoked devices stay revoked.</p>{canRestoreRevoked && !destinations.length && <p>No active replacement gateway is available.</p>}</div><div className="gw-lifecycle-action">{canRestoreRevoked && destinations.length > 0 && <Button size="sm" disabled={busy} onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}</div></section>
+                <section className="gw-lifecycle-step gw-lifecycle-danger"><span className="gw-step-number" aria-hidden="true">3</span><div className="gw-lifecycle-copy"><h3>Delete gateway record</h3><p>Permanently remove the revoked record. Audit evidence remains.</p></div><div className="gw-lifecycle-action">{canDeleteRevoked && <Button size="sm" variant="danger" disabled={busy} onClick={() => openDialog("delete")}>Delete gateway record</Button>}</div></section>
+              </>}
             </div>
-            {node.status === "active" && homed !== null && homed > 0 && canTransfer && (
-              <Button size="sm" onClick={() => openDialog("transfer")}>Move devices</Button>
-            )}
-          </div>
-
-          {node.status === "active" && (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 text-micro font-semibold text-ink-tertiary">2</span>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-cell font-semibold text-ink-heading">Revoke credential</h3>
-                    {homed !== 0 && <Badge tone="neutral">Blocked</Badge>}
-                  </div>
-                  <p className="mt-1 text-cell text-ink-tertiary">
-                    {homed === 0
-                      ? "Permanently stop this gateway from authenticating again."
-                      : "Available after the authoritative homed-device count reaches zero."}
-                  </p>
-                </div>
-              </div>
-              {canRevoke && <Button size="sm" variant="danger" onClick={() => openDialog("revoke")}>Revoke gateway</Button>}
-            </div>
-          )}
-
-          {node.status === "revoked" && (
-            <>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/[.08] px-4 py-3">
-                <div>
-                  <h3 className="text-cell font-semibold text-ink-heading">Restore cascaded devices</h3>
-                  <p className="mt-1 text-cell text-ink-tertiary">Move eligible cascade-revoked devices to a live replacement gateway.</p>
-                </div>
-                {canRestoreRevoked && destinations.length > 0 && <Button size="sm" onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3">
-                <div>
-                  <h3 className="text-cell font-semibold text-danger">Delete gateway record</h3>
-                  <p className="mt-1 text-cell text-ink-tertiary">Permanently remove the revoked record. Audit evidence remains.</p>
-                </div>
-                {canDeleteRevoked && <Button size="sm" variant="danger" onClick={() => openDialog("delete")}>Delete gateway record</Button>}
-              </div>
-            </>
-          )}
-        </Card>
-      )}
+            {!canManage && !canTransfer && !canRestore && <p className="gw-stage-context">You have read-only access to this gateway.</p>}
+          </>}
+          <footer className="gw-detail-footer">
+            {tab !== "overview" ? <Button size="sm" variant="ghost" onClick={() => selectTab(tab === "health" ? "overview" : "health")}>{tab === "health" ? "Back to overview" : "Back to health"}</Button> : <span />}
+            {tab !== "lifecycle" && <Button size="sm" onClick={() => selectTab(tab === "overview" ? "health" : "lifecycle")}>{tab === "overview" ? "View health" : "View lifecycle"}</Button>}
+          </footer>
+        </section>
+      </div>
 
       {dialog === "rename" && (
         <Modal title="Rename gateway" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !draft.trim()} onClick={() => void rename()}>Save name</Button></>}>
@@ -336,8 +258,8 @@ export default function GatewayDetail() {
       {dialog === "transfer" && (
         <Modal title="Move homed devices" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !target} onClick={() => void mutate(() => api.POST("/api/v1/organizations/{orgId}/nodes/{nodeId}/transfer-devices", { params: { path: { orgId: activeOrgId, nodeId: gatewayId } }, body: { target_node_id: target } }), "Could not move the devices.", (data) => `${requiredImpactCount(data, "moved")} moved. ${requiredImpactCount(data, "needs_reissue")} require a configuration re-import. The old gateway remains active until you revoke it separately.`)}>Move devices</Button></>}>
           <ErrorText>{error}</ErrorText>
-          <p className="mb-3 text-cell text-ink-tertiary">Move {homed} device{homed === 1 ? "" : "s"} before revocation. Addresses remain allocated. A different Site changes the policy context those devices inherit.</p>
-          <Field label="Destination gateway"><Select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Choose a live gateway…</option>{destinations.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}{state.siteNames[candidate.site_id ?? ""] ? `, ${state.siteNames[candidate.site_id!]}` : ""}</option>)}</Select></Field>
+          <p className="mb-3 text-cell text-ink-tertiary">Move {homed} device{homed === 1 ? "" : "s"} before revocation. Addresses remain allocated; device owners must re-import new profiles before reconnecting. A different Site changes the policy context those devices inherit.</p>
+          <Field label="Destination gateway"><Select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Choose an active gateway…</option>{destinations.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}{state.siteNames[candidate.site_id ?? ""] ? `, ${state.siteNames[candidate.site_id!]}` : ""}</option>)}</Select></Field>
           {targetNode && node.site_id && targetNode.site_id && node.site_id !== targetNode.site_id && <p className="mt-3 text-cell text-warn">Cross-site move: policy scope may grant or remove access. Review the device rules after transfer.</p>}
         </Modal>
       )}
@@ -353,7 +275,7 @@ export default function GatewayDetail() {
         <Modal title="Restore cascaded devices" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !target} onClick={() => void mutate(() => api.POST("/api/v1/organizations/{orgId}/nodes/{nodeId}/restore-devices", { params: { path: { orgId: activeOrgId, nodeId: gatewayId } }, body: { target_node_id: target } }), "Could not restore this gateway's devices.", (data) => `${requiredImpactCount(data, "restored")} cascade-revoked devices restored. ${requiredImpactCount(data, "readdressed")} require a new configuration because their original address was unavailable.`)}>Restore devices</Button></>}>
           <ErrorText>{error}</ErrorText>
           <p className="mb-3 text-cell text-ink-tertiary">Only devices revoked as a cascade from this gateway are eligible. Deliberately revoked devices stay revoked.</p>
-          <Field label="Replacement gateway"><Select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Choose a live replacement…</option>{destinations.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</Select></Field>
+          <Field label="Replacement gateway"><Select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Choose an active replacement…</option>{destinations.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</Select></Field>
         </Modal>
       )}
 

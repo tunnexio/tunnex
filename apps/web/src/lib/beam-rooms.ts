@@ -12,19 +12,19 @@ const client = createTunnexClient<paths>("/");
 async function request<T>(call: () => Promise<{ data?: T; error?: unknown; response?: Response }>): Promise<BeamResult<T>> {
   try {
     const result = await call();
-    if (result.error || result.data === undefined) return { ok: false, error: apiErrorMessage(result.error, "Could not complete the Beam request."), code: apiErrorCode(result.error) };
+    if (result.error || result.data === undefined) return { ok: false, error: apiErrorMessage(result.error, "Could not complete the Local Sharing request."), code: apiErrorCode(result.error) };
     return { ok: true, data: result.data, server_time: result.response?.headers.get("Date") ?? undefined };
   } catch { return { ok: false, error: "Could not reach the server. Refresh to check the current state before trying again." }; }
 }
 export const beamRoomsApi = {
-  projects: (orgId: string, offset = 0) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/projects", { params: { path: { orgId }, query: { limit: 20, offset } } })),
+  projects: (orgId: string, offset = 0, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/projects", { params: { path: { orgId }, query: { limit, offset } } })),
   saveProject: (orgId: string, input: BeamProjectInput, project?: BeamProject) => project
     ? request(() => client.PUT("/api/v1/organizations/{orgId}/beam/projects/{id}", { params: { path: { orgId, id: project.id } }, body: { ...input, expected_version: project.version } }))
     : request(() => client.POST("/api/v1/organizations/{orgId}/beam/projects", { params: { path: { orgId } }, body: input })),
-  sessions: (orgId: string, id: string, offset = 0, scope?: "active" | "history") => request(() => client.GET("/api/v1/organizations/{orgId}/beam/projects/{id}/sessions", { params: { path: { orgId, id }, query: { limit: 20, offset, ...(scope ? { scope } : {}) } } })),
-  feedback: (orgId: string, id: string, offset = 0) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/feedback", { params: { path: { orgId, id }, query: { limit: 20, offset } } })),
+  sessions: (orgId: string, id: string, offset = 0, scope?: "active" | "history", limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/projects/{id}/sessions", { params: { path: { orgId, id }, query: { limit, offset, ...(scope ? { scope } : {}) } } })),
+  feedback: (orgId: string, id: string, offset = 0, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/feedback", { params: { path: { orgId, id }, query: { limit, offset } } })),
   addFeedback: (orgId: string, id: string, input: BeamFeedbackInput) => request(() => client.POST("/api/v1/organizations/{orgId}/beam/shares/{id}/feedback", { params: { path: { orgId, id } }, body: input })),
-  notifications: (orgId: string, offset = 0) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/notifications", { params: { path: { orgId }, query: { limit: 20, offset } } })),
+  notifications: (orgId: string, offset = 0, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/notifications", { params: { path: { orgId }, query: { limit, offset } } })),
 };
 
 // API-owned authenticated path only. Never load an arbitrary attachment URL.

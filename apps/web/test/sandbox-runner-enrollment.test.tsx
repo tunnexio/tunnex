@@ -215,16 +215,16 @@ it("refreshes existing setup authority after observed Ready without enabling cre
   mocks.get.mockImplementation(async (path: string) => path.endsWith("/sandbox-setup") ? { data: { ...setup, creation_status: { ...setup.creation_status, runtime_ready: ready, blocked_reasons: ready ? ["organization_disabled"] : setup.creation_status.blocked_reasons } } } : { data: { ...list, enrollments: [{ ...enrollment, state: ready ? "ready" : "awaiting_connection" }] } });
   mocks.put.mockResolvedValue({ data: setup });
   render(<MemoryRouter><SandboxSetupPage /></MemoryRouter>);
-  const enable = await screen.findByRole("checkbox", { name: "Enable sandbox creation" });
-  expect((enable as HTMLInputElement).disabled).toBe(true);
+  await screen.findByText("Sandbox creation: Disabled");
+  expect(screen.queryByRole("checkbox", { name: "Enable sandbox creation" })).toBeNull();
   await screen.findByRole("button", { name: "View Team runner" }); ready = true;
+  const priorReads = mocks.get.mock.calls.filter(([path]) => path.endsWith("/sandbox-setup")).length;
   fireEvent.click(screen.getByRole("button", { name: "Refresh runners" }));
-  await waitFor(() => expect((screen.getByRole("checkbox", { name: "Enable sandbox creation" }) as HTMLInputElement).disabled).toBe(false));
-  expect((screen.getByRole("checkbox", { name: "Enable sandbox creation" }) as HTMLInputElement).checked).toBe(false);
+  await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.endsWith("/sandbox-setup")).length).toBeGreaterThan(priorReads));
+  await screen.findByText(/Runtime: Qualified and connected/);
+  expect(screen.getByText("Sandbox creation: Disabled")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Manage feature" }).getAttribute("href")).toBe("/settings?section=features&feature=sandboxes");
   expect(mocks.put).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("checkbox", { name: "Enable sandbox creation" })); fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
-  await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1));
-  expect(mocks.put.mock.calls[0][1].body).toEqual({ expected: setup.settings, settings: { enabled: true, max_per_user: 1, max_total: 1 } });
 });
 
 it("exposes missing native report as a real qualification requirement without an approval control", async () => {

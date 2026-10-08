@@ -16,7 +16,7 @@ describe("Beam operator measured serving checks", () => {
   it("requires verified operator editing permission to execute probes", async () => { render(<BeamDomainReadinessSettings canEdit={false} />); const button = await screen.findByRole("button", { name: "Check DNS and TLS" }); expect((button as HTMLButtonElement).disabled).toBe(true); fireEvent.click(button); expect(beamApi.checkReadiness).not.toHaveBeenCalled(); });
   it("refuses to check unsaved caller edits as arbitrary probe targets", async () => {
     render(<BeamDomainReadinessSettings canEdit />);
-    fireEvent.change(await screen.findByRole("textbox", { name: "Beam connector endpoint" }), { target: { value: "https://different.example.net" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Connector endpoint" }), { target: { value: "https://different.example.net" } });
     expect((screen.getByRole("button", { name: "Check DNS and TLS" }) as HTMLButtonElement).disabled).toBe(true);
     expect(beamApi.checkReadiness).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: /Control-plane portal/ })).toBeNull();
@@ -25,9 +25,9 @@ describe("Beam operator measured serving checks", () => {
     vi.mocked(beamApi.domainSettings).mockResolvedValue({ ok: true, data: { ...settings, affected_active_shares: 2 } });
     vi.mocked(beamApi.saveDomainSettings).mockResolvedValue({ ok: true, data: { ...settings, version: 2, base_domain: "new-beam.example.net" } });
     render(<BeamDomainReadinessSettings canEdit />);
-    fireEvent.change(await screen.findByRole("textbox", { name: "Beam serving domain" }), { target: { value: "new-beam.example.net" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Sharing domain" }), { target: { value: "new-beam.example.net" } });
     fireEvent.click(screen.getByRole("button", { name: "Review serving changes" }));
-    await screen.findByRole("dialog", { name: "Review Beam serving change" });
+    await screen.findByRole("dialog", { name: "Review serving change" });
     expect(beamApi.saveDomainSettings).not.toHaveBeenCalled();
     const submit = screen.getByRole("button", { name: "Save serving configuration" }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
@@ -39,11 +39,11 @@ describe("Beam operator measured serving checks", () => {
   it("preserves serving edits after a conflict and requires saved-state reload", async () => {
     vi.mocked(beamApi.saveDomainSettings).mockResolvedValue({ ok: false, error: "Configuration changed" });
     render(<BeamDomainReadinessSettings canEdit />);
-    fireEvent.change(await screen.findByRole("textbox", { name: "Beam serving domain" }), { target: { value: "new-beam.example.net" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Sharing domain" }), { target: { value: "new-beam.example.net" } });
     fireEvent.click(screen.getByRole("button", { name: "Review serving changes" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save serving configuration" }));
     await screen.findByText(/Configuration changed.*Your edits are still shown/);
-    expect((screen.getByRole("textbox", { name: "Beam serving domain" }) as HTMLInputElement).value).toBe("new-beam.example.net");
+    expect((screen.getByRole("textbox", { name: "Sharing domain" }) as HTMLInputElement).value).toBe("new-beam.example.net");
     expect((screen.getByRole("button", { name: "Review serving changes" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("refuses mismatched settings and readiness versions from overlapping operator changes", async () => {

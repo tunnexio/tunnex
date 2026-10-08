@@ -47,6 +47,16 @@ function active(): components["schemas"]["AppAccessActivePublication"] { return 
 function show(extra: Partial<typeof props> = {}) { return render(<MemoryRouter><AppAccessPublication {...props} {...extra} /></MemoryRouter>); }
 async function publish() { fireEvent.click(await screen.findByRole("button", { name: "Publish application" })); fireEvent.click(screen.getByRole("button", { name: "Confirm publication" })); }
 async function ready() { await waitFor(() => expect(screen.getByRole("button", { name: "Publish application" })).toHaveProperty("disabled", false)); }
+async function openPublicationDisclosure(label: string) {
+  const text = await screen.findByText(label);
+  const summary = text.closest("summary");
+  expect(summary).toBeTruthy();
+  fireEvent.click(summary!);
+  expect(summary?.closest("details")).toHaveProperty("open", true);
+}
+function expectOutsideOptionalDetails(message: HTMLElement) {
+  expect(message.closest("details")).toBeNull();
+}
 const storedKey = `tunnex.appPublication:user-1:org-1:${id}`;
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 beforeEach(() => {
@@ -58,7 +68,10 @@ beforeEach(() => {
 
 it("requires distinct browser capability, the exact checked revision and saved changes", async () => {
   f.view.browser_capability = "unsupported";
-  const page = show(); await screen.findByText(/Upgrade the gateway/);
+  const page = show();
+  const upgrade = await screen.findByText("Upgrade required");
+  expect(upgrade.getAttribute("title")).toBe("Upgrade the gateway to a compatible browser connector.");
+  expectOutsideOptionalDetails(upgrade);
   expect(screen.getByRole("button", { name: "Publish application" })).toHaveProperty("disabled", true);
   f.view.browser_capability = "supported"; fireEvent.click(screen.getByRole("button", { name: "Refresh publication status" })); await ready();
   page.rerender(<MemoryRouter><AppAccessPublication {...props} check={{ ...check, revision: 7 }} /></MemoryRouter>);
@@ -72,15 +85,22 @@ it("publishes only the confirmed review and keeps the old active revision visibl
   show(); await ready(); fireEvent.click(screen.getByRole("button", { name: "Publish application" }));
   expect(api.POST).not.toHaveBeenCalled(); expect(window.sessionStorage.getItem(storedKey)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Confirm publication" }));
-  await screen.findByText(/Publication requested/);
+  const requested = await screen.findByText(/Publication requested/);
+  expectOutsideOptionalDetails(requested);
+  expect(Array.from(document.querySelectorAll("details")).every(detail => !detail.open)).toBe(true);
   expect(api.POST).toHaveBeenCalledWith(expect.stringContaining("/publication-operations"), { params: { path: { orgId: "org-1", appId: id } }, body: { expected_version: 7, revision: 6, digest, check_id: checkId, idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/) } });
-  expect(screen.getByText("Active revision 4")).toBeTruthy(); expect(screen.getByText("Old payroll")).toBeTruthy();
+  expect(screen.getByText("Active revision 4")).toBeTruthy();
+  expect(screen.getByText("old.apps.example.com")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Open published application" }).getAttribute("href")).toBe("https://old.apps.example.com/__tunnex_app/start");
   expect(screen.queryByText("Active revision 6")).toBeNull(); expect(callbacks.onChanged).toHaveBeenCalledTimes(1);
 });
 it("retains unknown outcomes across remount and retries the original key and review", async () => {
   f.outcome = "lost"; const page = show(); await ready(); await publish();
   const original = vi.mocked(api.POST).mock.calls[0][1];
-  await screen.findByText(/previous publication request is retained/); page.unmount();
+  const retained = await screen.findByText(/previous publication request is retained/);
+  expectOutsideOptionalDetails(retained);
+  expect(Array.from(document.querySelectorAll("details")).every(detail => !detail.open)).toBe(true);
+  page.unmount();
   show({ application: { ...application, version: 10, draft: { ...application.draft, revision: 9 } } });
   await screen.findByRole("button", { name: "Retry the same publication request" });
   expect(api.POST).toHaveBeenCalledTimes(1);
@@ -108,11 +128,15 @@ it("a later refusal cannot discard a previously uncertain request", async () => 
 it("reads a retained terminal operation without resubmitting it", async () => {
   const input = { expected_version: 7, revision: 6, digest, check_id: checkId, idempotency_key: id };
   window.sessionStorage.setItem(storedKey, JSON.stringify(input)); f.byKey = true; f.operation.status = "failed"; f.operation.error_code = "public_tls_failed";
-  show(); await screen.findByText(/public application certificate could not be verified/);
+  show();
+  const failed = await screen.findByText(/public application certificate could not be verified/);
+  expectOutsideOptionalDetails(failed);
+  expect(Array.from(document.querySelectorAll("details")).every(detail => !detail.open)).toBe(true);
   await waitFor(() => expect(window.sessionStorage.getItem(storedKey)).toBeNull()); expect(api.POST).not.toHaveBeenCalled();
 });
 it("permits safe disable after license loss and captures both current authority guards", async () => {
   f.view.active = active(); show({ canPublish: false });
+  await openPublicationDisclosure("Manage publication");
   fireEvent.click(await screen.findByRole("button", { name: "Disable application" }));
   expect(api.POST).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Confirm disable" }));
   await screen.findByText(/Routing and stream withdrawal confirmed/);
@@ -121,12 +145,17 @@ it("permits safe disable after license loss and captures both current authority 
 });
 it("unconfirmed withdrawal can be retried but cannot be archived", async () => {
   f.view.active = { ...active(), state: "disabled", withdrawal_confirmed: false }; show();
-  fireEvent.click(await screen.findByRole("button", { name: "Retry withdrawal confirmation" }));
+  const retry = await screen.findByRole("button", { name: "Retry withdrawal confirmation" });
+  expectOutsideOptionalDetails(retry);
+  expect(screen.getByText("Manage publication").closest("details")).toHaveProperty("open", false);
+  await openPublicationDisclosure("Manage publication");
+  fireEvent.click(retry);
   expect(screen.queryByRole("button", { name: "Archive application" })).toBeNull(); fireEvent.click(screen.getByRole("button", { name: "Confirm disable" }));
   await screen.findByRole("button", { name: "Archive application" });
 });
 it("archives only after explicit confirmation of the current application version", async () => {
   f.view.active = { ...active(), state: "disabled", withdrawal_confirmed: true }; show();
+  await openPublicationDisclosure("Manage publication");
   fireEvent.click(await screen.findByRole("button", { name: "Archive application" }));
   expect(api.DELETE).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
   await waitFor(() => expect(callbacks.onArchived).toHaveBeenCalledTimes(1));
@@ -134,6 +163,7 @@ it("archives only after explicit confirmation of the current application version
 });
 it("restores history as a new draft while preserving the current publication", async () => {
   f.view.active = active(); f.view.rollback_revisions = [{ revision: 2, digest: "a".repeat(64), name: "Previous payroll", hostname: "prior.apps.example.com", gateway_id: "gateway-1", activated_at: "2026-10-02T00:00:00Z" }]; show();
+  await openPublicationDisclosure("Publication history");
   fireEvent.change(await screen.findByLabelText("Previously published revision"), { target: { value: "2" } });
   fireEvent.click(screen.getByRole("button", { name: "Create rollback draft" })); fireEvent.click(screen.getByRole("button", { name: "Confirm rollback draft" }));
   await waitFor(() => expect(callbacks.onRollback).toHaveBeenCalledTimes(1)); expect(screen.getByText("Active revision 4")).toBeTruthy();
@@ -163,7 +193,7 @@ it("a poll response arriving after cancellation cannot resurrect the pending rev
 
 it("an expired origin check requires a fresh check rather than a new publication request", async () => {
   show({ check: { ...check, completed_at: new Date(Date.now() - 5 * 60_000 - 1).toISOString() } });
-  await screen.findByText(/gateway supports browser/);
+  await screen.findByRole("button", { name: "Publish application" });
   expect(screen.getByRole("button", { name: "Publish application" })).toHaveProperty("disabled", true);
   expect(screen.getByRole("link", { name: "Check the saved connection" })).toHaveProperty("href", expect.stringContaining("step=connection"));
   expect(api.POST).not.toHaveBeenCalled();
@@ -186,6 +216,7 @@ it("malformed browser recovery identifiers cannot wedge a fresh publication", as
 function currentImpact(): Impact { return { evaluated_at: new Date().toISOString(), application_version: 7, authority_version: 12, matching_user_count: 1000, matching_user_count_is_lower_bound: true, live_app_session_count: 4, live_app_session_count_is_lower_bound: true, session_impact_available: true }; }
 it("impact counts expose lower bounds, exact audit scope and become stale after publication changes", async () => {
   f.view.active = active(); f.impact = currentImpact(); show();
+  await openPublicationDisclosure("Current access impact");
   fireEvent.click(await screen.findByRole("button", { name: "Evaluate current impact" }));
   await screen.findByText("At least 1000 users match current access grants.");
   expect(screen.getByText("At least 4 unexpired app session records.")).toBeTruthy();
@@ -197,8 +228,10 @@ it("impact counts expose lower bounds, exact audit scope and become stale after 
 });
 it("an unavailable impact never blocks confirmed withdrawal or invents a session count", async () => {
   f.view.active = active(); f.impactFail = true; show();
+  await openPublicationDisclosure("Current access impact");
   fireEvent.click(await screen.findByRole("button", { name: "Evaluate current impact" }));
   await screen.findByText("Impact unavailable.");
+  await openPublicationDisclosure("Manage publication");
   const disable = screen.getByRole("button", { name: "Disable application" });
   expect(disable).toHaveProperty("disabled", false); fireEvent.click(disable);
   expect(api.POST).not.toHaveBeenCalled();
@@ -208,6 +241,7 @@ it("an unavailable impact never blocks confirmed withdrawal or invents a session
 });
 it("missing session impact is reported independently from the matching user count", async () => {
   f.view.active = active(); f.impact = { ...currentImpact(), session_impact_available: false, live_app_session_count: 0 }; show();
+  await openPublicationDisclosure("Current access impact");
   fireEvent.click(await screen.findByRole("button", { name: "Evaluate current impact" }));
   await screen.findByText("Unexpired app session records are unavailable.");
   expect(screen.getByText("At least 1000 users match current access grants.")).toBeTruthy();
@@ -231,6 +265,7 @@ it("keeps current publication and request readiness separately labelled", async 
   await screen.findByRole("heading", { name: "Current publication" });
   expect(screen.getByText("Published")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Latest publication request" })).toBeTruthy();
+  await openPublicationDisclosure("Connection diagnostics");
   expect(screen.getByRole("list", { name: "Publication readiness results" })).toBeTruthy();
   expect(screen.getByText("The previous active revision stays available.")).toBeTruthy();
 });

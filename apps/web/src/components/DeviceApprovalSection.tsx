@@ -1,188 +1,97 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api, apiErrorMessage, loadOne, type Device, type DeviceApproval } from "../lib/api";
 import { relativeAge } from "../lib/format";
 import { NO_ADDRESS } from "../lib/postureview";
-import { Badge, Button, Card, DataTable, ErrorText, Loading, Modal } from "./ui";
+import { Button, DataTable, ErrorText, Input, Loading, Modal, Select } from "./ui";
 import { LoadRetry } from "./LoadRetry";
+import AppAccessRowMenu from "./AppAccessRowMenu";
+import AppAccessPagination from "./AppAccessPagination";
+import AppAccessEmptyState from "./AppAccessEmptyState";
+import "../devices-policy-workspace.css";
 
-export function DeviceApprovalSection({
-  orgId,
-  canManage,
-}: {
-  orgId: string;
-  canManage: boolean;
-}) {
+type Props = { orgId: string; canManage: boolean; renderNavigation?: (actions: ReactNode) => ReactNode };
+export function DeviceApprovalSection(props: Props) { return <ApprovalWorkspace key={`${props.orgId}:${props.canManage}`} {...props} />; }
+
+function ApprovalWorkspace({ orgId, canManage, renderNavigation }: Props) {
   const [mode, setMode] = useState<"off" | "on" | null>(null);
   const [modeError, setModeError] = useState<string | null>(null);
   const [pending, setPending] = useState<Device[]>([]);
   const [pendingLoaded, setPendingLoaded] = useState(false);
   const [pendingError, setPendingError] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<{ action: "approve" | "reject"; devices: Device[] } | null>(null);
+  const [err, setErr] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ action: "approve" | "reject"; devices: Device[]; generation: number } | null>(null);
+  const [viewing, setViewing] = useState<Device | null>(null);
   const [busy, setBusy] = useState(false);
-
+  const [query, setQuery] = useState(""), [sort, setSort] = useState("oldest");
+  const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
+  const alive = useRef(true), request = useRef(0), locked = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; request.current++; }; }, []);
   const load = useCallback(async () => {
-    setPendingLoaded(false);
+    const sequence = ++request.current;
+    setPendingLoaded(false); setPendingError(null); setMode(null); setModeError(null); setViewing(null);
     const [dr, pr] = await Promise.all([
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/device-approval", {
-          params: { path: { orgId } },
-        }),
-      ),
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/devices/pending", {
-          params: { path: { orgId } },
-        }),
-      ),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/device-approval", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices/pending", { params: { path: { orgId } } })),
     ]);
-    setModeError(dr.ok ? null : dr.error);
-    if (dr.ok) setMode((dr.data as DeviceApproval).mode);
-    // [3]: a failed pending fetch must NOT render "No devices awaiting approval" — that hides
-    // a device blocked from connecting. Show retry.
-    setPendingError(pr.ok ? null : pr.error);
-    if (pr.ok) setPending(pr.data as Device[]);
+    if (!alive.current || sequence !== request.current) return;
+    const modeValid = dr.ok && dr.data != null && typeof dr.data === "object" && ((dr.data as DeviceApproval).mode === "on" || (dr.data as DeviceApproval).mode === "off");
+    setModeError(!dr.ok ? dr.error : modeValid ? null : "The enrollment approval response was not valid. Retry to reload it.");
+    if (modeValid) setMode((dr.data as DeviceApproval).mode);
+    const pendingValid = pr.ok && Array.isArray(pr.data) && pr.data.every((device) => device && typeof device === "object" && typeof device.id === "string" && device.id.length > 0 && typeof device.name === "string" && typeof device.created_at === "string") && new Set(pr.data.map((device) => device.id)).size === pr.data.length;
+    setPendingError(!pr.ok ? pr.error : pendingValid ? null : "The pending device response was not valid. Retry to reload it.");
+    if (pendingValid) setPending(pr.data as Device[]);
     setPendingLoaded(true);
   }, [orgId]);
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  async function decide() {
-    if (!confirmation) return;
-    const { action, devices } = confirmation;
-    setBusy(true); setErr(null); setNotice(null);
-    const results = await Promise.all(devices.map(async (device) => {
-      const path = action === "approve"
-        ? "/api/v1/organizations/{orgId}/devices/{deviceId}/approve"
-        : "/api/v1/organizations/{orgId}/devices/{deviceId}/reject";
-      const { error } = await api.POST(path, { params: { path: { orgId, deviceId: device.id } } });
-      return { device, error };
-    }));
-    setBusy(false);
-    const failed = results.filter((result) => result.error);
-    const succeeded = results.length - failed.length;
-    if (failed.length) setErr(`${succeeded} of ${results.length} devices ${action === "approve" ? "approved" : "rejected"}. ${failed.map((result) => `${result.device.name}: ${apiErrorMessage(result.error, `Could not ${action} the device.`)}`).join(" ")}`);
-    else setNotice(`${succeeded} device${succeeded === 1 ? "" : "s"} ${action === "approve" ? "approved" : "rejected"}.`);
-    setConfirmation(null);
-    await load();
+  function stage(action: "approve" | "reject", devices: Device[]) {
+    if (!canManage || busy || !pendingLoaded || pendingError) return;
+    const ids = new Set(devices.map((device) => device.id));
+    const targets = pending.filter((device) => ids.has(device.id));
+    if (!targets.length || targets.length !== ids.size) return;
+    setViewing(null); setConfirmation({ action, devices: targets, generation: request.current });
   }
-
-  return (
-    <Card
-      variant="plain"
-      className="tnx-card-surface mt-4 overflow-hidden"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-ink-heading">Enrollment approval</h2>
-            <p className="mt-0.5 text-xs text-ink-tertiary">
-              {mode === "on"
-                ? "New devices wait here before they can connect."
-                : mode === "off"
-                  ? "New devices become active immediately."
-                  : modeError
-                    ? "Status unavailable"
-                    : "Loading status…"}
-            </p>
-          </div>
-          {mode && <Badge tone={mode === "on" ? "ok" : "neutral"}>{mode === "on" ? "On" : "Off"}</Badge>}
-        </div>
-        <Link className="inline-flex min-h-9 items-center text-sm font-medium text-ink-body hover:text-ink-heading" to="/settings?section=access-security">
-          Manage setting →
-        </Link>
-      </div>
-      <div className="px-4">
-        {modeError && <LoadRetry error={modeError} onRetry={load} />}
-        <ErrorText>{err}</ErrorText>
-        {notice && <p role="status" className="py-2 text-sm text-ok">{notice}</p>}
-      </div>
-
-      {/* ⛔ PENDING DEVICES AS A TABLE. A device awaiting approval is the ONE list here where the operator
-          is being asked to make a security decision — and the row gave them a name and an IP with no owner,
-          no platform, no age. Approving a device you cannot attribute is approving a device.
-
-          ⚠ The wait is shown because it is the fact that decides urgency: a request from four minutes ago
-          and one from nine days ago are different situations wearing the same row. */}
-      {!pendingLoaded ? (
-        <div className="py-8"><Loading label="Loading approval requests…" /></div>
-      ) : pendingError ? (
-        <div className="px-4 py-3"><LoadRetry error={pendingError} onRetry={load} /></div>
-      ) : pending.length === 0 ? (
-        <div className="px-4 py-8 text-center">
-          <p className="text-sm font-medium text-ink-heading">No approvals waiting</p>
-          <p className="mt-1 text-xs text-ink-tertiary">New enrollment requests will appear here.</p>
-        </div>
-      ) : (
-        <div className="p-3">
-        <DataTable<Device>
-          caption="Pending devices"
-          rows={pending}
-          rowKey={(d) => d.id}
-          failed={false}
-          pageSize={10}
-          empty="No approvals waiting."
-          rowActions={
-            canManage
-              ? [
-                  {
-                    key: "approve",
-                    label: "Approve",
-                    run: (ds: Device[]) => setConfirmation({ action: "approve", devices: ds }),
-                  },
-                  {
-                    key: "reject",
-                    label: "Reject",
-                    danger: true,
-                    run: (ds: Device[]) => setConfirmation({ action: "reject", devices: ds }),
-                  },
-                ]
-              : undefined
-          }
-          columns={[
-            {
-              key: "name",
-              header: "Device",
-              sortValue: (d) => d.name,
-              cell: (d) => <span className="text-slate-200">{d.name}</span>,
-            },
-            {
-              key: "ip",
-              header: "Address",
-              sortValue: (d) => d.assigned_ip ?? "",
-              cell: (d) => (
-                <span className="font-mono text-xs text-slate-500">
-                  {d.assigned_ip ?? NO_ADDRESS}
-                </span>
-              ),
-            },
-            {
-              key: "owner",
-              header: "Owner",
-              sortValue: (d) => d.owner_email ?? "",
-              cell: (d) => d.owner_email ? (
-                <span className="text-xs text-slate-300">{d.owner_email}</span>
-              ) : (
-                <span className="text-xs text-slate-500">Owner unavailable</span>
-              ),
-            },
-            {
-              key: "waiting",
-              header: "Waiting",
-              sortValue: (d) => Date.parse(d.created_at),
-              cell: (d) => (
-                <span className="text-xs text-slate-500">
-                  {relativeAge(d.created_at)}
-                </span>
-              ),
-            },
-          ]}
-        />
-        </div>
-      )}
-      {confirmation && <Modal title={`${confirmation.action === "approve" ? "Approve" : "Reject"} pending device${confirmation.devices.length === 1 ? "" : "s"}?`} danger={confirmation.action === "reject"} onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation.action === "reject" ? "danger" : "primary"} disabled={busy} onClick={() => void decide()}>{busy ? "Applying…" : confirmation.action === "approve" ? "Approve device" : "Reject device"}</Button></>}><p className="text-cell text-ink-tertiary">{confirmation.action === "approve" ? "Approval allows these pending devices to connect under the organization’s current policy. Recovery is revocation through Devices." : "Rejection keeps these devices from connecting. Recovery requires a fresh new enrollment request."}</p><ul className="mt-3 max-h-40 space-y-1 overflow-auto text-cell text-ink-heading">{confirmation.devices.map((device) => <li key={device.id}>{device.name}{device.assigned_ip ? ` / ${device.assigned_ip}` : " / no assigned address"}{device.owner_email ? ` / ${device.owner_email}` : " / owner unavailable"}</li>)}</ul><p className="mt-3 text-xs text-ink-tertiary">The server is authoritative. If a bulk action partially fails, successful decisions remain applied and each failed device is reported after refresh.</p></Modal>}
-    </Card>
-  );
+  async function decide() {
+    if (!canManage || locked.current || !alive.current || !confirmation || !pendingLoaded || pendingError || confirmation.generation !== request.current) return;
+    const { action, devices } = confirmation;
+    if (!devices.every((device) => pending.some((row) => row.id === device.id))) return;
+    locked.current = true; setBusy(true); setErr(null); setNotice(null);
+    try {
+      const results = await Promise.all(devices.map(async (device) => {
+        const path = action === "approve" ? "/api/v1/organizations/{orgId}/devices/{deviceId}/approve" : "/api/v1/organizations/{orgId}/devices/{deviceId}/reject";
+        try { const { error } = await api.POST(path, { params: { path: { orgId, deviceId: device.id } } }); return { device, error, uncertain: false }; }
+        catch { return { device, error: { error: { message: "Decision was not confirmed. Reload request state before retrying." } }, uncertain: true }; }
+      }));
+      if (!alive.current) return;
+      const failed = results.filter((result) => result.error), succeeded = results.length - failed.length;
+      if (failed.length) setErr(`${succeeded} of ${results.length} devices ${results.some((result) => result.uncertain) ? "confirmed " : ""}${action === "approve" ? "approved" : "rejected"}. ${failed.map((result) => `${result.device.name}: ${apiErrorMessage(result.error, `Could not ${action} the device.`)}`).join(" ")}`);
+      else setNotice(`${succeeded} device${succeeded === 1 ? "" : "s"} ${action === "approve" ? "approved" : "rejected"}.`);
+      setConfirmation(null); await load();
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  const filtered = pending.filter((device) => `${device.name} ${device.owner_email ?? ""} ${device.assigned_ip ?? ""} ${device.platform ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : (Date.parse(a.created_at) - Date.parse(b.created_at)) * (sort === "newest" ? -1 : 1));
+  const current = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
+  const visible = filtered.slice((current - 1) * pageSize, current * pageSize);
+  const refresh = <Button variant="ghost" disabled={busy} onClick={() => { setPage(1); void load(); }}>Refresh requests</Button>;
+  return <>{renderNavigation?.(refresh)}<div className="devices-policy-content">
+    <div className="devices-policy-status"><span><strong>Enrollment approval: {mode === "on" ? "On" : mode === "off" ? "Off" : modeError ? "Unavailable" : "Loading"}</strong>{mode && <span> · {mode === "on" ? "New devices wait before connecting." : "New devices become active immediately."}</span>}</span><Link className="devices-policy-link" to="/settings?section=access-security">Manage setting</Link></div>
+    {modeError && <LoadRetry error={modeError} onRetry={() => void load()} />}
+    <ErrorText>{err}</ErrorText>{notice && <p role="status" className="devices-policy-notice">{notice}</p>}
+    {!pendingLoaded ? <Loading label="Loading approval requests…" /> : pendingError ? <LoadRetry error={pendingError} onRetry={() => void load()} /> : pending.length === 0 ? <AppAccessEmptyState icon={null} title="No approvals waiting" description="New pending enrollment requests will appear here." /> : <>
+      <div className="devices-policy-toolbar"><Input aria-label="Search approval requests" value={query} placeholder="Search device, owner, or address" onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="devices-policy-actions"><Select width="auto" aria-label="Sort approval requests" value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}><option value="oldest">Oldest first</option><option value="newest">Newest first</option><option value="name">Device name</option></Select>{!renderNavigation && refresh}</div></div>
+      <DataTable<Device> variant="flat" caption="Pending devices" rows={visible} rowKey={(device) => device.id} rowLabel={(device) => device.name} failed={false} filterable={false} pageSize={0} selectable={canManage} selectionBar="active" empty={<AppAccessEmptyState icon={null} title="No matching requests" description="Try another device, owner, or address." action={<Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button>} />} bulkActions={canManage ? (keys) => { const selected = new Set(keys); const targets = pending.filter((device) => selected.has(device.id)); return <><Button size="sm" variant="ghost" disabled={busy || !targets.length || targets.length !== selected.size} onClick={() => stage("approve", targets)}>Approve</Button><Button size="sm" variant="danger" disabled={busy || !targets.length || targets.length !== selected.size} onClick={() => stage("reject", targets)}>Reject</Button></>; } : undefined} columns={[
+        { key: "name", header: "Device", cell: (device) => <div className="devices-policy-cell"><button className="devices-policy-name" onClick={() => setViewing(device)}>{device.name}</button><small>{device.platform || "Platform not reported"}</small></div> },
+        { key: "owner", header: "Owner", cell: (device) => device.owner_email || "Owner unavailable" },
+        { key: "address", header: "Address", cell: (device) => <span className="devices-policy-copy">{device.assigned_ip || NO_ADDRESS}</span> },
+        { key: "waiting", header: "Waiting", cell: (device) => <span title={device.created_at}>{relativeAge(device.created_at)}</span> },
+        { key: "actions", header: "Actions", cell: (device) => <AppAccessRowMenu label={`Actions for ${device.name}`} actions={[{ key: "view", label: "Review device", onSelect: () => setViewing(device) }, ...(canManage ? [{ key: "approve", label: "Approve", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => stage("approve", [device]) }, { key: "reject", label: "Reject", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => stage("reject", [device]) }] : [])]} /> },
+      ]} />
+      <AppAccessPagination maxOffset={null} page={current} pageSize={pageSize} count={visible.length} hasNext={current * pageSize < filtered.length} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+    </>}
+    {viewing && <Modal title={viewing.name} placement="right" size="enrollment" showClose onDismiss={() => !busy && setViewing(null)} actions={canManage ? <><Button variant="ghost" disabled={busy} onClick={() => stage("reject", [viewing])}>Reject</Button><Button disabled={busy} onClick={() => stage("approve", [viewing])}>Approve</Button></> : undefined}><div className="devices-policy-editor"><dl className="devices-policy-facts"><ApprovalFact label="Owner" value={viewing.owner_email || "Owner unavailable"} /><ApprovalFact label="Address" value={viewing.assigned_ip || NO_ADDRESS} /><ApprovalFact label="Platform" value={viewing.platform || "Not reported"} /><ApprovalFact label="Requested" value={relativeAge(viewing.created_at)} /><ApprovalFact label="Gateway identity" value={viewing.node_id || "Unavailable"} /><ApprovalFact label="Device identity" value={viewing.id} /></dl><p>These are enrollment facts. Review the device’s owner and source before approving connection.</p></div></Modal>}
+    {confirmation && <Modal title={`${confirmation.action === "approve" ? "Approve" : "Reject"} pending device${confirmation.devices.length === 1 ? "" : "s"}?`} danger={confirmation.action === "reject"} showClose onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation.action === "reject" ? "danger" : "primary"} disabled={busy} onClick={() => void decide()}>{busy ? "Applying…" : confirmation.action === "approve" ? "Approve device" : "Reject device"}</Button></>}><p className="devices-policy-copy">{confirmation.action === "approve" ? "Approval allows these pending devices to connect under the organization’s current policy. Recovery is revocation through Devices." : "Rejection keeps these devices from connecting. Recovery requires a fresh new enrollment request."}</p><ul className="devices-policy-confirm-list">{confirmation.devices.map((device) => <li key={device.id}><span>{device.name}</span><small>{device.owner_email || "Owner unavailable"} · {device.assigned_ip || "No assigned address"} · {device.platform || "Platform not reported"}</small></li>)}</ul><p className="devices-policy-copy">Successful bulk decisions remain applied. Failed or unconfirmed devices are reported individually after refresh.</p></Modal>}
+  </div></>;
 }
+
+function ApprovalFact({ label, value }: { label: string; value: string }) { return <div><dt>{label}</dt><dd>{value}</dd></div>; }

@@ -51,6 +51,7 @@ vi.mock("../src/lib/api", async () => {
     apiErrorMessage: (_e: unknown, f: string) => f,
     api: {
       GET: vi.fn(async (path: string) => {
+        if (path === "/api/v1/auth/me") return { data: { id: "user-a", email: "a@example.test", email_verified: true } };
         if (path === "/api/v1/organizations")
           return { data: [{ id: "org-1", name: "Acme" }] };
         if (path.endsWith("/devices")) return { data: POSTURE_FLEET };
@@ -63,6 +64,7 @@ vi.mock("../src/lib/api", async () => {
 });
 
 import { OrgProvider } from "../src/lib/useOrg";
+import { AuthProvider } from "../src/lib/auth";
 import { GatewayRow } from "../src/pages/Sites";
 import Devices from "../src/pages/Devices";
 import { policyHealthBadge } from "../src/lib/healthview";
@@ -170,9 +172,9 @@ describe("sibling consistency — revoked rows carry NO health/instruction badge
     // it was committed; recorded here because the near-miss is the lesson.
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     await screen.findByText("dev-revoked");

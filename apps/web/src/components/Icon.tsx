@@ -22,6 +22,13 @@ import type { SVGProps } from "react";
 export type IconName = keyof typeof ICON_PATHS;
 
 export const ICON_PATHS = {
+  // Access destinations use distinct browser, terminal and outbound-link silhouettes.
+  passport: '<rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="10" r="4"/><path d="M8 10h8M12 6c2 2 2 6 0 8-2-2-2-6 0-8M9 18h6"/>',
+  chrome: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 8h9.2M8.54 14 3.94 6M14 15.46 9.4 21.66"/>',
+  "browser-access": '<rect x="2" y="3" width="20" height="18" rx="3"/><path d="M2 8h20M6 5.5h.01M9 5.5h.01M10 12l3 3-3 3M13 15h5"/>',
+  "server-access": '<rect x="2" y="4" width="20" height="14" rx="2"/><path d="m6 8 3 3-3 3M12 14h5M8 22h8M12 18v4"/>',
+  "local-sharing": '<rect x="2" y="8" width="12" height="12" rx="2"/><path d="M8 14 21 1M15 1h6v6M18 12v6a4 4 0 0 1-4 4"/>',
+
   "app-grid": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   "shield-check": '<path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/>',
   "alert-triangle":
