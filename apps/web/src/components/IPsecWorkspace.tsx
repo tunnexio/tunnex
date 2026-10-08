@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, loadOne, type Node, type Site, type SiteSubnet } from "../lib/api";
-import { Button, DataTable, ErrorText, Field, Input, Modal, Select } from "./ui";
+import { Button, DataTable, ErrorText, Field, Input, Modal, Select, RefreshButton } from "./ui";
 import AppAccessRowMenu, { type AppAccessRowMenuAction } from "./AppAccessRowMenu";
 import { appAccessPageSizes } from "./AppAccessPagination";
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
@@ -153,7 +153,7 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
           <span className="ipsec-filter-scope">This page</span>
         </div>
         <div className="ipsec-toolbar-actions">
-          <Button variant="ghost" disabled={loading} onClick={() => void refresh()}>Refresh</Button>
+          <RefreshButton label="Refresh" disabled={loading} onClick={() => void refresh()} />
           {manage && settings && !onRequestCreate && <Button disabled={!settings.enabled || loading} onClick={() => setCreating(true)}>New connection</Button>}
         </div>
       </div>

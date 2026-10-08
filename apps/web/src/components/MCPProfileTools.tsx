@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
-import { Button, Card, Select } from "./ui";
+import { Card, Select, RefreshButton } from "./ui";
 
 type Member = components["schemas"]["AgentGroupMember"];
 type Inventory = components["schemas"]["AgentMCPInventory"];
@@ -30,7 +30,7 @@ export function MCPProfileTools({ orgId, endpoint, members }: { orgId: string; e
     <p className="mt-2 text-sm text-ink-tertiary">Tools are discovered by an assigned agent. Discovery does not grant access; each agent has its own tool policy.</p>
     {!deviceId ? <p className="mt-3">Add an agent to this group and enable its runtime to discover this server’s tools.</p> : <>
       <Select aria-label="Reporting agent" value={deviceId} onChange={event => setChosen(event.target.value)} className="mt-3">{members.map(member => <option key={member.device_id} value={member.device_id}>{member.name || member.device_id}</option>)}</Select>
-      <Button variant="ghost" className="mt-2" onClick={() => setReload(value => value + 1)}>Refresh tools</Button>
+      <RefreshButton label="Refresh tools" className="mt-2" onClick={() => setReload(value => value + 1)} />
       {error ? <p role="alert">Could not load tool inventory: {error}</p> : !inventory ? <p role="status">Loading observed tools…</p> : <>
         <p className="mt-2 text-xs text-ink-tertiary">Last observed: {inventory.observed_at}. This is the last agent report, not a live connection check.</p>
         {!servers.length && <p>No tools reported for this endpoint yet. Check the agent runtime and its inherited MCP profile.</p>}

@@ -4,16 +4,7 @@ import type { components } from "@tunnex/shared";
 
 import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
 import { relativeAge } from "../lib/format";
-import {
-  Button,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  SettingRow,
-  SettingValue,
-} from "./ui";
+import { Button, ErrorText, Field, Input, Loading, Modal, SettingRow, SettingValue, RefreshButton } from "./ui";
 
 export const RETENTION_DAYS_MIN = 1;
 export const RETENTION_DAYS_MAX = 3650;
@@ -572,9 +563,7 @@ export function AccessEventRetentionSettings({
           <SettingValue>
             {resource.next_run_at ? dateLabel(resource.next_run_at) : "Not scheduled yet"}
           </SettingValue>
-          <Button size="sm" variant="ghost" disabled={loading || pruneBusy} onClick={() => void load()}>
-            Refresh status
-          </Button>
+          <RefreshButton label="Refresh status" disabled={loading || pruneBusy} onClick={() => void load()} />
         </div>
       </SettingRow>
 

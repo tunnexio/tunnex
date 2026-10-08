@@ -5,7 +5,7 @@ import { api, loadOne } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { relativeAge } from "../lib/format";
-import { Button, ErrorText, Loading } from "../components/ui";
+import { Button, ErrorText, Loading, RefreshButton } from "../components/ui";
 import AccessEventSources from "../components/AccessEventSources";
 import AppAccessPagination from "../components/AppAccessPagination";
 import { ResourceSummary } from "../components/ResourceSummary";
@@ -106,7 +106,7 @@ function ApplicationEventsWorkspace() {
     setRefresh(value => value+1);
   }
   const active=!!appId || !!userId || !!sessionId;
-  const rail=<AccessEventSources source="applications" actions={<Button variant="ghost" disabled={busy || !org || !valid} onClick={() => { epoch.current++; setFeed(null); setRefresh(value => value+1); }}>Refresh</Button>} />;
+  const rail=<AccessEventSources source="applications" actions={<RefreshButton label="Refresh" disabled={busy || !org || !valid} onClick={() => { epoch.current++; setFeed(null); setRefresh(value => value+1); }} />} />;
   if (loading) return <Loading label="Loading application events…" />;
   if (failed || !org) return <section className="application-events-workspace">{rail}<ErrorText>Could not load your organization.</ErrorText></section>;
   return <section className="application-events-workspace">{rail}

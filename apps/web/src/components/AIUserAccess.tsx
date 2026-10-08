@@ -4,7 +4,7 @@ import { api, apiErrorMessage, loadOne } from "../lib/api";
 import { can } from "../lib/rbac";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
-import { Button, Field, Input, Loading, Modal, Select } from "./ui";
+import { Button, Field, Input, Loading, Modal, Select, RefreshButton } from "./ui";
 import { HelpTooltip, modelDisplayName } from "./HelpTooltip";
 import { toast } from "./Toasts";
 import { AIChatPlayground } from "./AIChatPlayground";
@@ -156,7 +156,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
       </div> : <Button variant="ghost" disabled={busy || creationAllowed !== true || groupRefreshFailed} onClick={() => { setCreateGroupOpen(true); setError(""); }}>Create user group</Button>}
       {creationAllowed === false && <p className="text-sm text-ink-tertiary">{emailVerified ? "An owner or administrator must create user groups." : "Verify your email to create a user group."}</p>}
       {creationAllowed === null && <p role="alert">Could not check group creation permissions. <Button variant="ghost" disabled={busy} onClick={() => setPermissionAttempt((n) => n + 1)}>Retry group permissions</Button></p>}
-      {groupRefreshFailed && <Button disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await refreshGroups(); } finally { setBusy(false); } }}>Refresh groups</Button>}
+      {groupRefreshFailed && <RefreshButton label="Refresh groups" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await refreshGroups(); } finally { setBusy(false); } }} />}
       <Field label="Model"><Select value={selection} onChange={(e) => setSelection(e.target.value)} disabled={busy}><option value="">Select a configured model</option>{models.map((m) => <option key={m.key} value={m.key}>{modelDisplayName(m.model)} · {m.name}</option>)}</Select></Field>
       {!data.groups.length && <p>No user groups yet.</p>}
       <p className="ai-access-context">Members use their Tunnex login <HelpTooltip label="How model access works">The provider key stays in the gateway. Removing a grant blocks new requests; accepted requests may finish.</HelpTooltip></p>
@@ -167,7 +167,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   return <section className="ai-model-access ai-secondary-workspace" aria-label="Group model access">
     <div className="ai-secondary-toolbar">
       <Input aria-label="Search model access" placeholder="Search groups or models" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
-      <div className="ai-secondary-actions"><Button variant="ghost" disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Refresh access</Button>{canManage && <Button disabled={!data || busy} onClick={() => setGrantOpen(true)}>Grant access</Button>}</div>
+      <div className="ai-secondary-actions"><RefreshButton label="Refresh access" disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }} />{canManage && <Button disabled={!data || busy} onClick={() => setGrantOpen(true)}>Grant access</Button>}</div>
     </div>
     {error && !grantOpen && <p role="alert">{error}</p>}
     {!data ? !error && <Loading label="Loading groups and models…" /> : visibleGrants.length ? <div className="ai-secondary-table-scroll"><table className="ai-compact-table">
@@ -210,7 +210,7 @@ export function AIUseModel({ orgId }: { orgId: string }) {
   return <section className="ai-playground ai-secondary-workspace" aria-label="Use a model">
     <div className="ai-secondary-toolbar ai-playground-model-toolbar">
       {models && models.length > 0 && <Field label="Model"><Select value={model} onChange={(event) => setModel(event.target.value)}>{models.map((entry) => <option key={entry.model} value={entry.model}>{modelDisplayName(entry.model)} · {entry.mode}</option>)}</Select></Field>}
-      <div className="ai-secondary-actions">{selected && <Button variant="ghost" onClick={() => setDetailsOpen(true)}>Connection &amp; code</Button>}<Button variant="ghost" onClick={() => setAttempt((n) => n + 1)}>Refresh</Button></div>
+      <div className="ai-secondary-actions">{selected && <Button variant="ghost" onClick={() => setDetailsOpen(true)}>Connection &amp; code</Button>}<RefreshButton label="Refresh" onClick={() => setAttempt((n) => n + 1)} /></div>
     </div>
     {error && <p role="alert">{error}</p>}
     {models === null ? !error && <Loading label="Loading your models…" /> : !models.length ? <AppAccessEmptyState icon={null} title="No models available" description="Ask your administrator to grant model access to your user group." /> : <>

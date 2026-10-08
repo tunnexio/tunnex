@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AudiencePicker } from "./BeamAudiencePicker";
 import { BeamCliPublisher } from "./BeamCliPublisher";
-import { Button, ErrorText, Field, Input, Loading, Modal } from "./ui";
+import { Button, ErrorText, Field, Input, Loading, Modal, RefreshButton } from "./ui";
 import { beamApi, beamCanOpen, beamLaunchURL, beamStatus, type BeamAudience, type BeamGrant, type BeamPage, type BeamPolicy, type BeamShare } from "../lib/beam";
 import { beamRoomsApi, type BeamProject, type BeamProjectInput } from "../lib/beam-rooms";
 import { useBeamClock } from "../lib/beam-clock";
@@ -20,7 +20,7 @@ export function BeamRooms({ orgId, policy }: { orgId: string; policy: BeamPolicy
   function edit(project: BeamProject | "new", button: HTMLElement) { opener.current = button; setEditing(project); }
   const canSave = policy.can_publish && policy.enabled && policy.domain_ready;
   return <section className="beam-projects" aria-label="Saved projects">
-    <div className="beam-project-toolbar"><span>{data ? `${data.items.length} saved ${data.items.length === 1 ? "project" : "projects"}` : "Saved projects"}</span><div><button type="button" className="beam-refresh" aria-label="Refresh projects" title="Refresh projects" onClick={() => setReload(n => n + 1)}><Icon name="refresh-cw" size={17} /></button><Button disabled={!canSave} onClick={event => edit("new", event.currentTarget)}>Save a project</Button></div></div>
+    <div className="beam-project-toolbar"><span>{data ? `${data.items.length} saved ${data.items.length === 1 ? "project" : "projects"}` : "Saved projects"}</span><div><RefreshButton label="Refresh projects" type="button" className="beam-refresh" onClick={() => setReload(n => n + 1)} /><Button disabled={!canSave} onClick={event => edit("new", event.currentTarget)}>Save a project</Button></div></div>
     {error ? <div className="beam-error"><ErrorText>{error}</ErrorText><Button onClick={() => setReload(n => n + 1)}>Retry projects</Button></div> : !data ? <Loading label="Loading saved projects…" /> : !data.items.length ? <AppAccessEmptyState icon="globe" title="No saved projects yet" description="Save an app's defaults to reuse them for your next preview. Saving does not publish an app or grant access." /> : <div className="beam-project-list">{data.items.map(project => <ProjectCard key={`${project.id}:${project.version}:${reload}`} orgId={orgId} project={project} policy={policy} onEdit={button => edit(project, button)} />)}</div>}
     {data && <Pagination page={page} count={data.items.length} limit={pageSize} label="projects" onChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(0); }} />}
     {editing && <ProjectEditor orgId={orgId} policy={policy} project={editing === "new" ? undefined : editing} opener={opener.current} onDismiss={() => setEditing(null)} onSaved={() => { setEditing(null); setReload(n => n + 1); }} />}

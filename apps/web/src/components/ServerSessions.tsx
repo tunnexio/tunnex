@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import type { Member } from "../lib/api";
-import { Badge, Button, DataTable, Input, Modal, Select } from "./ui";
+import { Badge, Button, DataTable, Input, Modal, Select, RefreshButton } from "./ui";
 import AppAccessRowMenu, { type AppAccessRowMenuAction } from "./AppAccessRowMenu";
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "./AppAccessPagination";
@@ -24,7 +24,7 @@ export function ServerSessions({sessions,servers,members,disabled,onRefresh,onEn
   ...(session.reason?[{key:"details",label:"Details",icon:<Icon name="circle-alert" size={16}/>,onSelect:()=>setDetails(session)}]:[])
  ];
  return <section className="sa-sessions" aria-label="Server sessions">
-  <div className="sa-list-heading"><h3>Server sessions</h3><Button variant="ghost" disabled={disabled} onClick={onRefresh}>Refresh sessions</Button></div>
+  <div className="sa-list-heading"><h3>Server sessions</h3><RefreshButton label="Refresh sessions" disabled={disabled} onClick={onRefresh} /></div>
   <div className="sa-list-toolbar"><Input aria-label="Search sessions" placeholder="Search sessions…" value={search} onChange={event=>{setSearch(event.target.value);setPage(1)}}/><Select aria-label="Session view" width="auto" value={filter} onChange={event=>{setFilter(event.target.value);setPage(1)}}><option value="sessions">All sessions</option><option value="active">Active sessions</option><option value="ended">Ended sessions</option><option value="checks">Connection checks</option></Select><details className="sa-import"><summary>Import recording</summary><div>{importControl}</div></details></div>
   {!rows.length?<AppAccessEmptyState icon={filter==="checks"?"shield-check":"terminal"} title={search?"No matching sessions":filter==="checks"?"No connection checks":filter==="active"?"No active sessions":filter==="ended"?"No ended sessions":"No server sessions"} description={search?"Try another search.":filter==="checks"?"Checks appear after you test a server account.":"Connect to a server account to start a session."} action={search?<Button variant="ghost" onClick={()=>{setSearch("");setPage(1)}}>Clear session search</Button>:<Link className="text-brand" to="/browser-access/terminal">View servers</Link>}/>:<div className="sa-table sa-session-table"><DataTable caption="Server sessions" rows={visible} rowKey={session=>session.id} rowLabel={session=>`${serverName(session)} · ${session.account}`} pageSize={0} filterable={false} failed={false} empty={null} columns={[
    {key:"server",header:"Server",cell:session=><div className="sa-session-identity"><p title={session.server_id}>{serverName(session)}</p><span>{session.account} · <span title={session.id}>{session.id.slice(0,8)}</span></span>{session.kind==="editor"&&<span>Developer · Recording off</span>}</div>},

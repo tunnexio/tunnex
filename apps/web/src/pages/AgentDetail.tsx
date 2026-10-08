@@ -4,7 +4,7 @@ import "../agent-detail-workspace.css";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
-import { Button, Field, Loading, Modal, Select } from "../components/ui";
+import { Button, Field, Loading, Modal, RefreshButton, Select } from "../components/ui";
 import AppAccessRowMenu, { type AppAccessRowMenuAction } from "../components/AppAccessRowMenu";
 import { AgentProfileEditor, type AgentProfileEditorValue, type AgentProfileStatus } from "../components/AgentProfileEditor";
 import { api, apiErrorCode, loadOne, type Member, type UserGroup } from "../lib/api";
@@ -71,6 +71,13 @@ function ObservedMCP({ data }: { data: MCPInventory }) {
     {servers ? servers.length ? <ul className="agent-detail-observed-servers">{servers.map((server, index) => <li key={index}><div><strong>{typeof server.server_name === "string" && server.server_name ? server.server_name : "Unnamed server"}</strong>{typeof server.endpoint === "string" && server.endpoint && <small>{server.endpoint}</small>}</div><span>{Array.isArray(server.tools) ? `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"}` : "Tools not reported"}</span></li>)}</ul> : <p className="agent-detail-context">No servers observed in this snapshot.</p> : <p className="agent-detail-context">Server inventory was not reported in this snapshot.</p>}
     <details className="agent-detail-disclosure"><summary>View inventory JSON</summary><pre>{JSON.stringify(data.snapshot, null, 2)}</pre></details>
   </Panel>;
+}
+
+function MCPAuthentication({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: MCPInventory; canManage: boolean }) {
+  const discovery = inventory.snapshot.oauth_discovery as { servers?: Array<{ status?: string }> } | undefined;
+  const servers = Array.isArray(discovery?.servers) ? discovery.servers : undefined;
+  const protectedReported = servers?.some(server => server?.status === "protected") ?? false;
+  return <Panel title="MCP OAuth"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "No OAuth-protected MCP server is reported in this inventory." : "OAuth discovery has not been reported in this inventory."}</p>}</Panel>;
 }
 
 function AgentAssignment({ profile, members, groups, busy, onSave }: { profile: AgentProfile; members: State<Member[]>; groups: State<UserGroup[]>; busy: boolean; onSave: (body: Record<string, unknown>) => void }) {
@@ -229,12 +236,15 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
   const tabIndex = tabs.indexOf(tab);
   return <div className="agent-detail-workspace">
     <nav className="agent-detail-breadcrumb" aria-label="AI Agent breadcrumb"><Link to="/agents">AI Agents</Link><span aria-hidden="true">/</span><span aria-current="page">{data?.name ?? "Agent"}</span></nav>
-    {data && <header className="agent-detail-header"><div><h1>{data.name}</h1>{detailSubtitle && <p>{detailSubtitle}</p>}</div><span className={`agent-detail-status agent-detail-status-${data.status}`}>{data.status}</span><Button variant="ghost" size="sm" disabled={busy} aria-label="Refresh agent" onClick={refreshAgent}>Refresh</Button><AppAccessRowMenu label={`Agent actions for ${data.name}`} actions={actions} /></header>}
+    {data && <header className="agent-detail-header"><div><h1>{data.name}</h1>{detailSubtitle && <p>{detailSubtitle}</p>}</div><span className={`agent-detail-status agent-detail-status-${data.status}`}>{data.status}</span><RefreshButton label="Refresh agent" disabled={busy} onClick={refreshAgent} /><AppAccessRowMenu label={`Agent actions for ${data.name}`} actions={actions} /></header>}
     <ReadState state={profile} onRetry={refreshAgent} title="Agent unavailable" retryLabel="Retry agent">{(agent) => <div className="agent-detail-layout">
       <nav role="tablist" aria-label="Agent workspace" aria-orientation="vertical" className="agent-detail-rail" onKeyDown={navigateTabs}>{tabs.map(item => <button key={item} type="button" role="tab" tabIndex={tab === item ? 0 : -1} aria-selected={tab === item} aria-current={tab === item ? "page" : undefined} aria-controls="agent-detail-stage" onClick={() => switchTab(item)}>{tabLabel[item]}</button>)}</nav>
       <section id="agent-detail-stage" className="agent-detail-stage" role="tabpanel" aria-label={tabLabel[tab]}>
-        {tab !== "overview" && tab !== "runtime" && <h2>{tabLabel[tab]}</h2>}
-        {tab === "overview" && <ResourceSummary title="Overview" headingLevel={2}>
+        <ResourceSummary title={tabLabel[tab]} headingLevel={2} className={`agent-detail-summary agent-detail-summary-${tab}`} footer={<>
+          {tabIndex > 0 ? <Button variant="ghost" onClick={() => switchTab(tabs[tabIndex - 1])}>Back to {tabLabel[tabs[tabIndex - 1]].toLowerCase()}</Button> : <Link className="agent-detail-text-link" to="/agents">All agents</Link>}
+          {tabIndex < tabs.length - 1 && <Button variant="ghost" onClick={() => switchTab(tabs[tabIndex + 1])}>View {tabLabel[tabs[tabIndex + 1]].toLowerCase()}</Button>}
+        </>}>
+        {tab === "overview" && <>
           <dl className="agent-detail-facts tnx-resource-facts tnx-resource-facts-three">
             <div><dt>Accountable owner</dt><dd>{agent.owner_email || "Unassigned"}</dd></div>
             <div><dt>Managing group</dt><dd>{agent.managing_group_name || "None"}</dd></div>
@@ -244,8 +254,8 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           </dl>
           <p className="sr-only">Lifecycle comes from the agent profile. Handshake freshness is reported separately.</p>
           <details className="agent-detail-disclosure"><summary>Identity &amp; labels</summary><dl className="agent-detail-facts tnx-resource-facts"><div className="tnx-resource-fact-wide"><dt>Agent ID</dt><dd><code>{agent.device_id}</code></dd></div>{Object.entries(agent.labels).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}{Object.keys(agent.labels).length === 0 && <div><dt>Labels</dt><dd>None</dd></div>}</dl></details>
-        </ResourceSummary>}
-        {tab === "runtime" && <ResourceSummary title="Runtime" headingLevel={2} className="agent-detail-runtime-summary">
+        </>}
+        {tab === "runtime" && <>
           {org.managed_agent_runtime_enabled === false ? <div className="agent-detail-notice" role="status"><h3>Runtime synchronization off</h3><p>Enable synchronization to receive managed runtime reports.</p><Link className="agent-detail-text-link" to="/settings?section=features&feature=agent-runtime">Review runtime settings</Link></div> : <ReadState state={runtime} onRetry={refreshAgent} title="Runtime unavailable" retryLabel="Retry runtime">{(value) => <Panel title="Managed runtime"><dl className="agent-detail-facts tnx-resource-facts">
             <div><dt>Connectivity</dt><dd>{value.connectivity}</dd></div>
             <div><dt>Health</dt><dd>{value.health === "last_good" ? "Last good" : value.health === "ready" ? "Ready" : "Inconclusive"}</dd></div>
@@ -255,13 +265,13 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
             {value.last_error_code && <div><dt>Last apply error</dt><dd>{value.last_error_code}{value.last_error_revision != null && <small>Revision {value.last_error_revision}</small>}</dd></div>}
           </dl><p className="agent-detail-context">Source: agent runtime report. {value.stale ? "The server marks this report stale." : "The server considers this report fresh."}</p></Panel>}</ReadState>}
           <ReadState state={rotation} onRetry={refreshAgent} title="Credential status unavailable" retryLabel="Retry credentials">{(value) => <Panel title="Credential rotation"><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Runtime credential</dt><dd>Revision {value.current_revision} · {value.state}</dd></div><div><dt>WireGuard key</dt><dd>Revision {value.wireguard_current_revision} · {value.wireguard_state}</dd></div>{value.deadline && <div><dt>Deadline</dt><dd>{value.deadline}</dd></div>}</dl>{agent.permissions.rotate_credentials && <div className="agent-detail-panel-actions"><Button variant="ghost" size="sm" disabled={busy || agent.status !== "active" || value.state !== "current" || value.wireguard_state !== "current"} onClick={() => void rotateCredential()}>Rotate credential</Button></div>}</Panel>}</ReadState>
-        </ResourceSummary>}
+        </>}
         {tab === "mcp" && <>
           <ReadState state={effectiveMCP} onRetry={refreshAgent} title="MCP profile unavailable" retryLabel="Retry MCP profile">{(value) => <Panel title="Effective MCP profile">{value.assigned ? <><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Profile</dt><dd>{value.profile_name ?? "MCP profile"}</dd></div><div><dt>Inherited from</dt><dd>{value.group_name ?? "Source group"}</dd></div>{value.endpoint && <div className="tnx-resource-fact-wide"><dt>Endpoint</dt><dd><code>{value.endpoint}</code></dd></div>}</dl><p className="agent-detail-context">Changing the shared group profile affects every member of that group.</p></> : <p className="agent-detail-context">No MCP profile is inherited through this agent’s groups.</p>}<Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP profiles</Link></Panel>}</ReadState>
-          {inventory.kind === "error" && inventory.code === "mcp_inventory_not_found" ? <p className="agent-detail-context" role="status">No MCP inventory reported yet.</p> : <ReadState state={inventory} onRetry={refreshAgent} title="MCP inventory unavailable" retryLabel="Retry MCP inventory">{(value) => <>
+          {inventory.kind === "error" && inventory.code === "mcp_inventory_not_found" ? <div className="agent-detail-empty" role="status"><h3>No MCP inventory reported yet.</h3><p>Tool policy and OAuth controls require a reported inventory.</p></div> : <ReadState state={inventory} onRetry={refreshAgent} title="MCP inventory unavailable" retryLabel="Retry MCP inventory">{(value) => <>
             <ObservedMCP data={value} />
             <Panel title="MCP tool policy"><AgentMCPToolPolicyPanel orgId={org.id} deviceId={agentId} inventory={value} canManage={can(myRole, "agent_mcp_tool_policy:manage")} /></Panel>
-            <Panel title="MCP OAuth"><AgentMCPOAuthPanel orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} /></Panel>
+            <MCPAuthentication orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} />
             <Panel title="Step-up approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} /></Panel>
           </>}</ReadState>}
         </>}
@@ -270,9 +280,9 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           <Panel title="Just-in-time access"><ReadState state={licence} onRetry={refreshAgent} title="Licence status unavailable" retryLabel="Retry licence status">{(status) => status.features.includes("agent_jit_access") ? org.agent_jit_access_enabled ? <><p className="agent-detail-context">Request temporary access, then track approval and expiry.</p><Link className="agent-detail-text-link" to={`/access?agent=${encodeURIComponent(agent.device_id)}#agent-jit-access`}>Manage temporary access</Link></> : <><p className="agent-detail-context">This capability is included in your plan but is not enabled for this organization.</p><Link className="agent-detail-text-link" to="/settings?section=features&feature=agent-jit">Review organization settings</Link></> : <><p className="agent-detail-context">This capability is not included in your current plan.</p><Link className="agent-detail-text-link" to="/settings?section=licence">Licence &amp; Plan</Link></>}</ReadState></Panel>
           <details className="agent-detail-disclosure"><summary><h3>Authority</h3></summary><dl className="agent-detail-facts tnx-resource-facts">{([["Manage", agent.permissions.manage], ["Assign ownership", agent.permissions.assign], ["Grant access", agent.permissions.grant_access], ["Rotate credentials", agent.permissions.rotate_credentials], ["Remove", agent.permissions.revoke]] as const).map(([label, allowed]) => <div key={label}><dt>{label}</dt><dd>{allowed ? "Allowed" : "Not allowed"}</dd></div>)}</dl></details>
         </>}
-        {tab === "activity" && <div className="agent-detail-activity">{provenance.kind === "ready" && provenance.data.length === 0 ? <div className="agent-detail-empty"><h3>No workflow activity recorded</h3><p>Review related events for more context.</p></div> : <ReadState state={provenance} onRetry={refreshAgent} title="Workflow activity unavailable" retryLabel="Retry workflow activity">{items => <Panel title="Workflow history"><p className="sr-only">Signed workflow provenance received by the control plane.</p><AgentWorkflowProvenancePanel records={items} /></Panel>}</ReadState>}<div className="agent-detail-related-links"><Link className="agent-detail-text-link" to="/access-events">Access Events</Link><Link className="agent-detail-text-link" to="/audit">Audit Log</Link></div></div>}
+        {tab === "activity" && <div className="agent-detail-activity">{provenance.kind === "ready" && provenance.data.length === 0 ? <div className="agent-detail-empty" role="status"><h3>No workflow activity recorded</h3><p>Review related events for more context.</p></div> : <ReadState state={provenance} onRetry={refreshAgent} title="Workflow activity unavailable" retryLabel="Retry workflow activity">{items => <Panel title="Workflow history"><p className="sr-only">Signed workflow provenance received by the control plane.</p><AgentWorkflowProvenancePanel records={items} /></Panel>}</ReadState>}<div className="agent-detail-related-links"><Link className="agent-detail-text-link" to="/access-events">Access Events</Link><Link className="agent-detail-text-link" to="/audit">Audit Log</Link></div></div>}
         {mutationError && !profileEditorOpen && !assignmentOpen && !removeOpen && <p role="alert" className="agent-detail-error">{mutationError}</p>}
-        <footer className="agent-detail-footer">{tabIndex > 0 ? <Button variant="ghost" onClick={() => switchTab(tabs[tabIndex - 1])}>Back to {tabLabel[tabs[tabIndex - 1]].toLowerCase()}</Button> : <Link className="agent-detail-text-link" to="/agents">All agents</Link>}{tabIndex < tabs.length - 1 && <Button variant="ghost" onClick={() => switchTab(tabs[tabIndex + 1])}>View {tabLabel[tabs[tabIndex + 1]].toLowerCase()}</Button>}</footer>
+        </ResourceSummary>
       </section>
     </div>}</ReadState>
     {profileEditorOpen && data?.permissions.manage && <Modal title="Edit agent profile" placement="right" size="enrollment" showClose onDismiss={() => !busy && setProfileEditorOpen(false)} actions={<Button variant="ghost" disabled={busy} onClick={() => setProfileEditorOpen(false)}>Close</Button>}><div className="agent-detail-editor agent-detail-profile-editor">{mutationError && <p role="alert" className="agent-detail-error">{mutationError}</p>}<AgentProfileEditor key={`${data.device_id}:${data.status}:${data.environment}:${data.runtime}:${JSON.stringify(data.labels)}`} value={{ environment: data.environment, runtime: data.runtime, labels: data.labels, status: data.status as AgentProfileStatus }} canManageLifecycle={data.permissions.manage} disabled={busy} onSaveMetadata={(value: AgentProfileEditorValue) => void updateProfile(value, "Could not save agent metadata.").then(saved => saved && alive.current && setProfileEditorOpen(false))} onLifecycleChange={status => void updateProfile({ status }, "Could not change the agent lifecycle.").then(saved => saved && alive.current && setProfileEditorOpen(false))} /></div></Modal>}

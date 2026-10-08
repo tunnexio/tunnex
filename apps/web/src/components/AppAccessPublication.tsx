@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
-import { Badge, Button, ErrorText, Loading, Modal, Field, Select } from "./ui";
+import { Badge, Button, ErrorText, Loading, Modal, Field, RefreshButton, Select } from "./ui";
 import { Icon } from "./Icon";
 import { ResourceSummary } from "./ResourceSummary";
 
@@ -46,10 +46,11 @@ function recoverInput(key: string): Input | null {
   } catch { /* optional browser storage */ }
   return null;
 }
-export default function AppAccessPublication({ orgId, userId, application, check, dirty, canManage, canPublish, publishUnavailableReason, onChanged, onArchived, onRollback }: {
+export default function AppAccessPublication({ orgId, userId, application, check, dirty, canManage, canPublish, publishUnavailableReason, onChanged, onArchived, onRollback, children, footer, notice }: {
   orgId: string; userId: string; application: Application; check: Check | null; dirty: boolean; canManage: boolean; canPublish: boolean;
   onChanged: () => void; onArchived: () => void; onRollback: () => void;
   publishUnavailableReason?: string;
+  children?: React.ReactNode; footer?: React.ReactNode; notice?: React.ReactNode;
 }) {
   const appId = application.id;
   const storageKey = `tunnex.appPublication:${userId}:${orgId}:${appId}`;
@@ -194,12 +195,13 @@ export default function AppAccessPublication({ orgId, userId, application, check
   const originReady = checkMatches && checkFresh;
   const connectorLabel = { supported: "Available", unknown: "No report", unsupported: "Upgrade required", unavailable: "Report expired" };
   const withdrawalPending = active?.state === "disabled" && !active.withdrawal_confirmed;
-  return <section className="aa-publication" aria-label="Publication review">
+  return <section className="aa-publication" aria-label="Publication review"><ResourceSummary title="Review & publish" headingLevel={2} className="aa-publication-stage" footer={footer}><div className="aa-publication-content">
+    {notice}
     <div className="aa-publication-live">
       <div className="aa-publication-live-heading"><h3>{error ? "Last observed publication" : "Current publication"}</h3>
         {view && <Badge tone={error ? "unknown" : "neutral"}>{error ? "Last observed" : active?.state === "active" ? "Published" : active ? "Disabled" : "Unpublished"}</Badge>}
       </div>
-      <Button variant="ghost" aria-label="Refresh publication status" title="Refresh publication status" className="aa-publication-refresh" disabled={busy} onClick={() => { setReading(true); setActionError(""); setRefresh(value => value + 1); }}><Icon name="refresh-cw" size={16} /></Button>
+      <RefreshButton label="Refresh publication status" disabled={busy} onClick={() => { setReading(true); setActionError(""); setRefresh(value => value + 1); }} />
       {view && <div className="aa-publication-live-state">
         {active ? <><p role="status">{active.state === "active" ? `Active revision ${active.revision}` : active.withdrawal_confirmed ? "Disabled. Routing and stream withdrawal confirmed." : "Disabled. Waiting for stream withdrawal confirmation."}</p>
           <span className="aa-publication-live-address">{active.hostname}</span>
@@ -207,12 +209,14 @@ export default function AppAccessPublication({ orgId, userId, application, check
         </> : <p role="status">No active publication. This app is not available in the browser yet.</p>}
       </div>}
     </div>
-    <ResourceSummary title="Draft to publish" className="aa-publication-draft" actions={<span className="aa-publication-revision">Revision {application.draft.revision}</span>} footer={<div className="aa-publication-draft-links"><Link to={connectionLink}>Edit connection</Link><Link to={accessLink}>Review access grants</Link></div>}>
+    <section className="aa-publication-draft">
+      <div className="aa-publication-block-heading"><h3>Draft to publish</h3><span className="aa-publication-revision">Revision {application.draft.revision}</span></div>
       <dl className="aa-publication-summary tnx-resource-facts">
         <div><dt>Browser address</dt><dd>{application.draft.public_hostname}</dd></div>
         <div><dt>Private origin</dt><dd>{application.draft.origin_url}</dd></div>
       </dl>
-    </ResourceSummary>
+      <div className="aa-publication-draft-links"><Link to={connectionLink}>Edit connection</Link><Link to={accessLink}>Review access grants</Link></div>
+    </section>
     {error && <ErrorText>{error}</ErrorText>}
     {!view && !error ? <Loading /> : view && <>
       <div className="aa-publication-readiness">
@@ -239,7 +243,7 @@ export default function AppAccessPublication({ orgId, userId, application, check
         {pending(pendingOperation) && pendingOperation && <Button variant="ghost" disabled={busy || reading || !!error} onClick={() => setConfirmation({ kind: "cancel", id: pendingOperation.id, version: pendingOperation.version })}>Cancel pending publication</Button>}
         {withdrawalPending && <Button variant="ghost" disabled={busy || reading || !!error} onClick={() => setConfirmation({ kind: "disable", applicationVersion: view.application_version, authorityVersion: active?.authority_version ?? 0 })}>Retry withdrawal confirmation</Button>}
       </div>}
-      <details className="aa-editor-disclosure aa-publication-limits"><summary>Session limits</summary><div className="aa-editor-disclosure-content"><p>Idle timeout: {application.draft.idle_timeout_seconds / 60} minutes · Maximum session: {application.draft.absolute_timeout_seconds / 3600} hours</p><p>Only users with current access grants can open this app.</p>{checkMatches && check?.completed_at && <p>Origin checked: {new Date(check.completed_at).toLocaleString()}</p>}</div></details>
+      <details className="aa-editor-disclosure aa-publication-limits"><summary>Session limits</summary><div className="aa-editor-disclosure-content aa-publication-session-limits"><dl className="tnx-resource-facts"><div><dt>Idle timeout</dt><dd>{application.draft.idle_timeout_seconds / 60} minutes</dd></div><div><dt>Maximum session</dt><dd>{application.draft.absolute_timeout_seconds / 3600} hours</dd></div>{checkMatches && check?.completed_at && <div className="tnx-resource-fact-wide"><dt>Origin checked</dt><dd>{new Date(check.completed_at).toLocaleString()}</dd></div>}</dl><p>Only users with current access grants can open this app.</p></div></details>
       {canManage && <details className="aa-editor-disclosure"><summary>Current access impact</summary><div className="aa-editor-disclosure-content aa-publication-optional"><p>Current grant matches and unexpired sessions. This does not predict future access or confirm termination.</p><Button variant="ghost" disabled={busy || impactBusy || !!error} onClick={() => void inspectImpact()}>{impactBusy ? "Evaluating impact…" : "Evaluate current impact"}</Button><ErrorText>{impactError}</ErrorText>{impact && (impactCurrent ? <><p>{impact.matching_user_count_is_lower_bound ? "At least " : ""}{impact.matching_user_count} users match current access grants.</p><p>{impact.session_impact_available ? `${impact.live_app_session_count_is_lower_bound ? "At least " : ""}${impact.live_app_session_count} unexpired app session records.` : "Unexpired app session records are unavailable."}</p><p>Evaluated {new Date(impact.evaluated_at).toLocaleString()}. Access may change after this preview.</p></> : <p role="status">The application changed after the impact preview. Evaluate it again.</p>)}</div></details>}
       {canManage && view.rollback_revisions.length > 0 && <details className="aa-editor-disclosure"><summary>Publication history</summary><div className="aa-editor-disclosure-content aa-publication-optional"><Field label="Previously published revision"><Select value={rollbackRevision} onChange={event => setRollbackRevision(event.target.value)}><option value="">Choose a revision</option>{view.rollback_revisions.map(item => <option key={item.revision} value={item.revision}>Revision {item.revision} · {item.name}</option>)}</Select></Field><p>Restore a revision as a new draft. The current publication stays live until the new draft passes checks and is published.</p><Button variant="ghost" disabled={!canPublish || dirty || busy || reading || !!error || !!intent || pending(pendingOperation) || view.application_version !== application.version || !view.rollback_revisions.some(item => item.revision === Number(rollbackRevision))} onClick={() => setConfirmation({ kind: "rollback", applicationVersion: view.application_version, revision: Number(rollbackRevision) })}>Create rollback draft</Button></div></details>}
       {canManage && <details className="aa-editor-disclosure"><summary>Manage publication</summary><div className="aa-editor-disclosure-content aa-publication-optional"><p>Disable browser access or archive an application after routing withdrawal is confirmed.</p><div className="aa-publication-maintenance-actions">
@@ -248,6 +252,8 @@ export default function AppAccessPublication({ orgId, userId, application, check
       </div></div></details>}
     </>}
     <div className="aa-publication-activity-links"><Link to={`/access-events?source=applications&app_id=${encodeURIComponent(appId)}`}>Application access events</Link><Link to={`/audit?target_type=app_access&target_id=${encodeURIComponent(appId)}`}>Application configuration audits</Link></div>
+    {children}
+    </div></ResourceSummary>
     {confirmation && <Modal title={confirmation.kind === "publish" ? "Publish reviewed application" : confirmation.kind === "disable" ? "Disable application" : confirmation.kind === "archive" ? "Archive application" : confirmation.kind === "rollback" ? "Create rollback draft" : "Cancel pending publication"} danger={confirmation.kind !== "publish"} onDismiss={() => setConfirmation(null)} actions={<><Button variant="ghost" onClick={() => setConfirmation(null)}>Keep reviewing</Button><Button onClick={() => void apply(confirmation)}>Confirm {confirmation.kind === "publish" ? "publication" : confirmation.kind === "cancel" ? "cancellation" : confirmation.kind === "rollback" ? "rollback draft" : confirmation.kind}</Button></>}><p>{confirmation.kind === "publish" ? "The reviewed revision becomes active only after the public URL and gateway readiness checks pass. Your previous active revision stays available if the checks fail." : confirmation.kind === "disable" ? "New access will be denied immediately. Live connections may take a few seconds to close. Already delivered content cannot be removed." : confirmation.kind === "archive" ? "The withdrawn application leaves the inventory. Its history and hostname ownership are retained." : confirmation.kind === "rollback" ? `Revision ${confirmation.revision} becomes a new draft. Check the connection and review access before publishing it.` : "This pending revision will not activate. The previous active revision stays available."}</p></Modal>}
   </section>;
 }

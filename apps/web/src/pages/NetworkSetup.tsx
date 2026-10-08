@@ -7,15 +7,7 @@ import { siteGate } from "../lib/sitesview";
 import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
 import "../resource-summary.css";
-import {
-  Button,
-  Card,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  PageHeader,
-} from "../components/ui";
+import { Button, Card, ErrorText, Field, Input, Loading, PageHeader, RefreshButton } from "../components/ui";
 import "../network-setup.css";
 
 type SetupOptions = { embedded?: boolean; onComplete?: () => void; onCancel?: () => void; onBusyChange?: (busy: boolean) => void };
@@ -198,9 +190,7 @@ function NetworkSetupWorkspace({
                         {enrolling ? "Close enrollment" : "Enroll a gateway"}
                       </Button>
                     )}
-                    <Button variant="ghost" onClick={reload}>
-                      Refresh gateways
-                    </Button>
+                    <RefreshButton label="Refresh gateways" onClick={reload} />
                   </div>
                   {enrolling && (
                     <Gateways

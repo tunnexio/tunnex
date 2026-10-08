@@ -15,7 +15,7 @@ import {
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination from "./AppAccessPagination";
 import AppAccessRowMenu from "./AppAccessRowMenu";
-import { Button, Input } from "./ui";
+import { Button, Input, RefreshButton } from "./ui";
 
 export type DevicesInventoryProps = {
   devices: Device[];
@@ -130,7 +130,7 @@ export default function DevicesInventory({ devices, nodes, ownerEmail, busy, can
           ["revoked", "Revoked", counts.revoked],
         ] as Array<[DeviceFilter, string, number]>).map(([key, label, count]) => <button key={key} type="button" aria-pressed={filter === key} onClick={() => { setFilter(key); setPage(1); }}>{label} <span>({count})</span></button>)}
       </nav>
-      <Button size="sm" variant="ghost" aria-label="Refresh devices" title="Refresh devices" disabled={busy} onClick={onRefresh}>Refresh</Button>
+      <RefreshButton label="Refresh devices" disabled={busy} onClick={onRefresh} />
     </div>
     <div className="dm-inventory-toolbar">
       <Input aria-label="Search devices" placeholder="Search devices…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} />

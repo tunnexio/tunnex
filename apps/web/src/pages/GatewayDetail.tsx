@@ -10,6 +10,7 @@ import {
   Input,
   Loading,
   Modal,
+  RefreshButton,
   Select,
 } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
@@ -174,7 +175,7 @@ export default function GatewayDetail() {
         <div className="gw-detail-identity"><h1>{node.name}</h1><p>{row.siteName ?? "No site assigned"}{row.address && <> · <span>{row.address}</span></>}</p></div>
         <div className="gw-detail-header-actions">
           <Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>{statusLabel}</Badge>
-          <Button size="sm" variant="ghost" aria-label="Refresh gateway" title="Refresh gateway" disabled={busy} onClick={() => void reload()}><Icon name="refresh-cw" size={16} /></Button>
+          <RefreshButton label="Refresh gateway" disabled={busy} onClick={() => void reload()} />
           {canManage && node.status !== "revoked" && <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setDraft(node.name); openDialog("rename"); }}>Rename</Button>}
         </div>
       </header>
@@ -190,12 +191,11 @@ export default function GatewayDetail() {
           <p className="gw-detail-rail-note">{node.status === "revoked" ? "Revoked credentials cannot reconnect." : "Check health before making lifecycle changes."}</p>
         </aside>
         <section className="gw-detail-stage" aria-labelledby="gateway-stage-heading">
-          {tab === "lifecycle" && <div className="gw-detail-stage-heading"><h2 id="gateway-stage-heading">Lifecycle</h2></div>}
-          {tab === "overview" && <ResourceSummary title="Overview" headingLevel={2} headingId="gateway-stage-heading" footer={<div className="gw-related-links" aria-label="Related gateway resources">
-              <Link to="/sites"><span>Site topology</span></Link>
-              <Link to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span></Link>
-              <Link to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span></Link>
-            </div>}>
+          <ResourceSummary title={tabs.find(item => item.id === tab)?.label ?? "Overview"} headingLevel={2} headingId="gateway-stage-heading" className="gw-detail-summary" footer={<>
+            {tab !== "overview" ? <Button size="sm" variant="ghost" onClick={() => selectTab(tab === "health" ? "overview" : "health")}>{tab === "health" ? "Back to overview" : "Back to health"}</Button> : <span />}
+            {tab !== "lifecycle" && <Button size="sm" onClick={() => selectTab(tab === "overview" ? "health" : "lifecycle")}>{tab === "overview" ? "View health" : "View lifecycle"}</Button>}
+          </>}>
+          {tab === "overview" && <>
             <dl className="gw-facts tnx-resource-facts tnx-resource-facts-three">
               <Fact label="Endpoint">{node.endpoint ?? "Not reported"}</Fact>
               <Fact label="Site">{row.siteName ?? "No site assigned"}</Fact>
@@ -204,8 +204,13 @@ export default function GatewayDetail() {
               <Fact label="Last seen">{node.last_seen_at ? <><span>{relativeAge(node.last_seen_at)}</span><small>{new Date(node.last_seen_at).toLocaleString()}</small></> : "Never connected"}</Fact>
               <Fact label="Enrolled">{node.enrolled_at ? new Date(node.enrolled_at).toLocaleString() : "Not reported"}</Fact>
             </dl>
-          </ResourceSummary>}
-          {tab === "health" && <ResourceSummary title="Health" headingLevel={2} headingId="gateway-stage-heading">
+            <div className="gw-related-links" aria-label="Related gateway resources">
+              <Link to="/sites"><span>Site topology</span></Link>
+              <Link to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span></Link>
+              <Link to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span></Link>
+            </div>
+          </>}
+          {tab === "health" && <>
             <div className="gw-health-list">
               <section className="gw-health-row"><div><h3>Connectivity</h3><p>{node.last_seen_at ? `Last control-plane observation ${relativeAge(node.last_seen_at)}.` : "This gateway has never reported a successful connection."}</p></div><span className="gw-health-value">{node.status === "revoked" ? "Historical" : !node.last_seen_at ? "Awaiting connection" : row.health?.label === "offline" ? "Offline" : "Reported"}</span></section>
               <section className="gw-health-row"><div><h3>Policy and transit</h3>{groupNotes([row]).map(note => <p key={note}>{note}</p>)}</div><Badge tone={node.status === "revoked" ? "neutral" : row.health?.tone ?? (!node.last_seen_at ? "neutral" : "ok")}>{node.status === "revoked" ? "not evaluated" : row.health?.label ?? (!node.last_seen_at ? "Awaiting first report" : "healthy")}</Badge></section>
@@ -213,7 +218,7 @@ export default function GatewayDetail() {
               <section className="gw-health-row"><div><h3>Egress</h3><p>{gatewayEgressDetail(row)}</p></div></section>
             </div>
             <details className="gw-detail-disclosure"><summary>How health is evaluated</summary><p>Active credentials do not confirm a recent connection. Policy health and OpenVPN are separate service signals; egress capabilities come from verified gateway reports.</p></details>
-          </ResourceSummary>}
+          </>}
           {tab === "lifecycle" && <>
             {node.status === "active" && <p className="gw-stage-context">Move dependent devices, then revoke this gateway.</p>}
             {node.status === "revoked" && <p className="gw-stage-context">This gateway cannot reconnect. Recover eligible devices on an active replacement.</p>}
@@ -225,7 +230,7 @@ export default function GatewayDetail() {
                   {node.status === "active" && homed !== null && homed > 0 && canTransfer && !destinations.length && <p>No active replacement gateway is available. Enroll a replacement before moving devices.</p>}
                 </div>
                 <div className="gw-lifecycle-action">
-                  {homed === 0 && <Badge tone="ok">No dependencies</Badge>}{homed === null && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void reload()}>Refresh impact</Button>}
+                  {homed === 0 && <Badge tone="ok">No dependencies</Badge>}{homed === null && <RefreshButton label="Refresh impact" disabled={busy} onClick={() => void reload()} />}
                   {node.status === "active" && homed !== null && homed > 0 && canTransfer && <Button size="sm" disabled={busy || !destinations.length} onClick={() => openDialog("transfer")}>Move devices</Button>}
                 </div>
               </section>
@@ -240,10 +245,7 @@ export default function GatewayDetail() {
             </div>
             {!canManage && !canTransfer && !canRestore && <p className="gw-stage-context">You have read-only access to this gateway.</p>}
           </>}
-          <footer className="gw-detail-footer">
-            {tab !== "overview" ? <Button size="sm" variant="ghost" onClick={() => selectTab(tab === "health" ? "overview" : "health")}>{tab === "health" ? "Back to overview" : "Back to health"}</Button> : <span />}
-            {tab !== "lifecycle" && <Button size="sm" onClick={() => selectTab(tab === "overview" ? "health" : "lifecycle")}>{tab === "overview" ? "View health" : "View lifecycle"}</Button>}
-          </footer>
+          </ResourceSummary>
         </section>
       </div>
 

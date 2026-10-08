@@ -15,26 +15,32 @@
 .user-detail-path button:hover { color: var(--tnx-text-primary); }
 .user-detail-path button:disabled { cursor: default; opacity: .55; }
 .user-detail-stage { min-width: 0; }
-.user-detail-stage h3 { margin: 3px 0 20px; font-size: 14px; font-weight: 550; color: var(--tnx-text-primary); }
 .user-detail-stage h3:focus, .user-detail-header h2:focus { outline: none; }
 .user-facts { margin: 0; }
 .user-facts:not(.tnx-resource-facts) > div { display: grid; grid-template-columns: 125px minmax(0,1fr); gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--tnx-border); font-size: 13px; }
 .user-facts dt { color: var(--tnx-text-secondary); font-size: 12px; }
 .user-facts dd { margin: 0; color: var(--tnx-text-primary); overflow-wrap: anywhere; }
-.user-detail-footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--tnx-border); }
+.user-detail-stage > .tnx-resource-summary > .tnx-resource-summary-footer { justify-content: space-between; align-items: center; }
 .user-stage-meta { font-size: 12px; line-height: 1.6; color: var(--tnx-text-secondary); margin: 0 0 16px; }
 .user-role-editor fieldset, .user-invite-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-.user-role-editor fieldset { border-top: 1px solid var(--tnx-border); }
-.user-role-editor label { display: flex; align-items: center; gap: 13px; padding: 12px 0; border-bottom: 1px solid var(--tnx-border); cursor: pointer; }
+.user-role-editor fieldset { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 18px; }
+.user-role-editor .user-role-option { display: flex; align-items: flex-start; gap: 10px; padding: 14px 12px; border-radius: 6px; min-width: 0; cursor: pointer; }
+.user-role-option[data-selected=true] { background: var(--tnx-surface-inset); }
+.user-role-editor[data-editable=false] .user-role-option,.user-role-editor fieldset:disabled .user-role-option { cursor: default; }
 .user-role-editor label > span { flex: 1; min-width: 0; }
-.user-role-editor input { flex-shrink: 0; height: 15px; width: 15px; accent-color: var(--tnx-text-primary); }
+.user-role-editor input { flex-shrink: 0; height: 15px; width: 15px; margin-top: 2px; accent-color: var(--tnx-text-primary); }
 .user-role-editor strong { display: block; font-size: 13px; font-weight: 500; color: var(--tnx-text-primary); }
 .user-role-editor small { display: block; margin-top: 3px; font-size: 12px; color: var(--tnx-text-secondary); line-height: 1.4; }
-.user-role-editor em { font-size: 11px; font-style: normal; color: var(--tnx-text-secondary); }
-.user-role-actions { display: flex; gap: 10px; margin-top: 18px; }
-.user-device-list { list-style: none; padding: 0; margin: 0 0 18px; border-top: 1px solid var(--tnx-border); }
-.user-device-list li { display: flex; justify-content: space-between; gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--tnx-border); font-size: 13px; }
-.user-device-list li span:last-child { color: var(--tnx-text-secondary); }
+.user-role-editor em { font-size: 10px; font-style: normal; color: var(--tnx-text-secondary); line-height: 1.6; }
+.user-role-actions { display: flex; align-items: center; gap: 10px; }
+.user-role-note { margin: 18px 0 0; color: var(--tnx-text-secondary); font-size: 12px; line-height: 1.6; }
+.user-device-list { display: grid; gap: 12px; list-style: none; padding: 0; margin: 0; }
+.user-device-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 12px 0; min-width: 0; font-size: 13px; }
+.user-device-name { overflow-wrap: anywhere; color: var(--tnx-text-heading); }
+.user-device-state { flex-shrink: 0; color: var(--tnx-text-secondary); font-size: 12px; }
+.user-device-empty { padding: 16px 0; }
+.user-device-empty h4 { margin: 0 0 8px; color: var(--tnx-text-heading); font-size: 14px; font-weight: 500; }
+.user-device-empty p { margin: 0; color: var(--tnx-text-secondary); font-size: 12px; line-height: 1.7; }
 .user-text-link { color: var(--tnx-text-primary); font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
 .users-empty { padding: 40px 0; }
 .users-empty h3, .users-empty h4 { font-size: 15px; font-weight: 500; margin: 0 0 8px; }

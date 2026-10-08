@@ -10,7 +10,7 @@ import { sandboxConnectCommand } from "../lib/sandboxConnection";
 import { sandboxPublicKeys } from "../lib/sandboxPublicKeys";
 import { SandboxBlockedReasons } from "../components/SandboxAvailability";
 import { Logo } from "../brand";
-import { Button, ErrorText, Field, Input, Loading, Select } from "../components/ui";
+import { Button, ErrorText, Field, Input, Loading, Select, RefreshButton } from "../components/ui";
 
 import { SavedSSHKeyPicker } from "../components/SavedSSHKeyPicker";
 import { SandboxCandidateProfiles } from "../components/SandboxImageProfiles";
@@ -85,7 +85,7 @@ function InventoryView({ data, now, error, reload, loadMore, loadingMore }: { da
  useEffect(() => { if (location.state?.sandboxDialogClosed) { (window.document.querySelector<HTMLElement>('.sb-header-actions a[href="/sandboxes/new"]') ?? window.document.querySelector<HTMLElement>(".sb-header-actions button"))?.focus(); navigate(location.pathname, { replace: true, state: null }); } }, [location, navigate]);
  const canCreate = data.available && data.templates.length > 0;
  return <div className="sb-workspace">
-  <SandboxHeader title="Sandboxes" subtitle="Private workspaces over SSH." actions={<><Button variant="ghost" onClick={reload}>Refresh</Button>{data.status?.can_admin && canCreate && <LinkButton asChild variant="outline"><Link to="/sandboxes/setup">Sandbox setup</Link></LinkButton>}<CreateLink enabled={canCreate} /></>} />
+  <SandboxHeader title="Sandboxes" subtitle="Private workspaces over SSH." actions={<><RefreshButton label="Refresh" onClick={reload} />{data.status?.can_admin && canCreate && <LinkButton asChild variant="outline"><Link to="/sandboxes/setup">Sandbox setup</Link></LinkButton>}<CreateLink enabled={canCreate} /></>} />
   <div className="sb-summary" aria-label="Sandbox inventory summary"><div><strong>{data.items.length}{data.next ? "+" : ""}</strong><span>workspaces loaded</span></div><div><strong>{data.items.filter(item => isConnectable(item, now)).length}</strong><span>connection ready</span></div><div><strong>{data.templates.length}</strong><span>environments</span></div>{canCreate && <span className="sb-summary-gate">Creation enabled</span>}</div>
   {(!data.available || !data.templates.length) && <Availability available={data.available} templates={data.templates.length} status={data.status} />}
   {error && <ErrorText>{error}</ErrorText>}
@@ -200,7 +200,7 @@ function Detail({ orgId, id, inventory, now }: { orgId: string; id: string; inve
   try { const result = await api.POST("/api/v1/organizations/{orgId}/sandboxes/{sandboxId}/actions", { params: { path: { orgId, sandboxId: id } }, body: { generation: item.generation, desired_state: desired } }); if (result.error) setError(apiErrorMessage(result.error, "Sandbox request failed.")); else if (result.data) setItem(result.data); } catch { setError("The action could not be confirmed. Refresh before retrying."); } finally { setPending(false); }
  }
  const template = inventory.templates.find(t => t.id === item?.template_id);
- return <div className="sb-workspace"><SandboxHeader title={item?.name ?? "Sandbox"} subtitle="Private access & lifecycle." actions={<><LinkButton asChild variant="outline"><Link to="/sandboxes">← Workspaces</Link></LinkButton><Button variant="ghost" onClick={() => setRevision(r => r + 1)}>Refresh</Button></>} />
+ return <div className="sb-workspace"><SandboxHeader title={item?.name ?? "Sandbox"} subtitle="Private access & lifecycle." actions={<><LinkButton asChild variant="outline"><Link to="/sandboxes">← Workspaces</Link></LinkButton><RefreshButton label="Refresh" onClick={() => setRevision(r => r + 1)} /></>} />
   {error && <ErrorText>{error}</ErrorText>}
   {!item ? (!error && <Loading />) : <>
    <div className="sb-console-surface sb-detail-console"><div className="sb-detail-grid"><section className="sb-panel sb-terminal-panel"><div className="sb-terminal-bar"><h2>PRIVATE TERMINAL / SSH</h2><SandboxStatus item={item} now={now} /></div>{isConnectable(item, now) ? <Connection connection={item.connection!} /> : <div className="sb-pending-connection"><RuntimeMark template={template} large /><h2 className="text-lg text-ink-heading">{remainingLifetime(item.expires_at, now) === "Expired" ? "Workspace lifetime ended" : "Waiting for private access"}</h2><p>Private connection instructions will appear once current policy and SSH readiness are confirmed.</p><p>Observed state: {item.observed_state}. Requested state: {item.desired_state}. Refresh to check the current response.</p></div>}</section>

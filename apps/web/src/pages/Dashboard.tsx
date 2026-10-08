@@ -14,7 +14,7 @@ import {
   type Device, type Loaded, type Node, type OrgOverview, type Site,
   type HubSet, type PolicyRule, type ZeroTrustMode, type K8sCluster, type K8sService,
 } from "../lib/api";
-import { Button, EmptyState, ErrorText, Loading, Section } from "../components/ui";
+import { EmptyState, ErrorText, Loading, Section, RefreshButton } from "../components/ui";
 import { attributionBadge, gatewayHealthRow, policyHealthBadge } from "../lib/healthview";
 import { agentSummary, type AgentRow } from "../lib/agentview";
 import { isFreshOrg, peerSlices, postureSplit, statFrom, statText, type StatState } from "../lib/overviewview";
@@ -117,7 +117,7 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
       <div className="scan-org">{orgName}<span>Network at a glance</span></div>
       <div className="scan-toolbar-actions">
         <Link to="/setup" className="scan-text-link">Setup guide</Link>
-        <Button aria-label="Refresh overview" variant="ghost" disabled={reading} onClick={() => setAttempt(value => value + 1)}>{reading ? "Refreshing…" : "Refresh"}</Button>
+        <RefreshButton label="Refresh overview" disabled={reading} onClick={() => setAttempt(value => value + 1)} />
       </div>
     </div>
     <UpgradeCenter />

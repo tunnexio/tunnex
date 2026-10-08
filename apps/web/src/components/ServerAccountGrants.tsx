@@ -11,7 +11,7 @@ import { ResourceSummary } from "./ResourceSummary";
 type Grant=components["schemas"]["ServerAccessGrant"];
 type Server=components["schemas"]["ServerAccessServer"];
 type InputGrant=components["schemas"]["ServerAccessGrantInput"];
-export function ServerAccountGrants({grants,servers,members,groups,disabled,onRevoke,onRenew,onRenewDismiss,verification}:{grants:Grant[];servers:Server[];members:Member[];groups:UserGroup[];disabled:boolean;onRevoke:(id:string)=>void;onRenew:(body:InputGrant,done:()=>void)=>Promise<void>;onRenewDismiss?:()=>void;verification?:React.ReactNode}){
+export function ServerAccountGrants({grants,servers,members,groups,disabled,onRevoke,onRenew,onRenewDismiss,verification,embedded=false}:{grants:Grant[];servers:Server[];members:Member[];groups:UserGroup[];disabled:boolean;onRevoke:(id:string)=>void;onRenew:(body:InputGrant,done:()=>void)=>Promise<void>;onRenewDismiss?:()=>void;verification?:React.ReactNode;embedded?:boolean}){
  const [renew,setRenew]=useState<Grant>();const [hours,setHours]=useState(1);
  const [search,setSearch]=useState("");const [status,setStatus]=useState("all");const [page,setPage]=useState(1);const [pageSize,setPageSize]=useState(20);
  const now=Date.now();
@@ -24,11 +24,11 @@ export function ServerAccountGrants({grants,servers,members,groups,disabled,onRe
  const current=Math.min(page,Math.max(1,Math.ceil(rows.length/pageSize)));const visible=rows.slice((current-1)*pageSize,current*pageSize);
  const clear=()=>{setSearch("");setStatus("all");setPage(1)};
  const closeRenew=()=>{if(disabled)return;setRenew(undefined);onRenewDismiss?.()};
- return <section className="sa-grants" aria-label="Account access">
-  <div className="sa-list-heading"><h2>Account grants</h2></div>
+ return <section className={`sa-grants${embedded?" sa-grants-embedded":""}`} aria-label="Account access">
+  {!embedded&&<div className="sa-list-heading"><h2>Account grants</h2></div>}
   <div className="sa-list-toolbar"><Input aria-label="Search account grants" placeholder="Search account access…" value={search} onChange={event=>{setSearch(event.target.value);setPage(1)}}/><Select aria-label="Account grant status" width="auto" value={status} onChange={event=>{setStatus(event.target.value);setPage(1)}}><option value="all">All access</option><option value="active">Active</option><option value="expired">Expired</option></Select></div>
-  {!rows.length?<AppAccessEmptyState icon="users" title={search||status!=="all"?"No matching grants":"No active or expired grants"} description={search||status!=="all"?"Try another search or clear the filters.":"Grant account access from a server's Access step."} action={search||status!=="all"?<Button variant="ghost" onClick={clear}>Clear access filters</Button>:<Link className="text-brand" to="/browser-access/terminal">View servers</Link>}/>:<div className="sa-table sa-grants-table"><DataTable caption="Account grants" rows={visible} rowKey={grant=>grant.id} rowLabel={subject} pageSize={0} filterable={false} failed={false} empty={null} columns={[
-   {key:"server",header:"Server",cell:grant=><div className="sa-grant-identity"><p>{serverName(grant)}</p><span>{grant.account}</span></div>},
+  {!rows.length?<AppAccessEmptyState icon={embedded?null:"users"} title={search||status!=="all"?"No matching grants":"No active or expired grants"} description={search||status!=="all"?"Try another search or clear the filters.":embedded?"Grant account access to a person or group.":"Grant account access from a server's Access step."} action={search||status!=="all"?<Button variant="ghost" onClick={clear}>Clear access filters</Button>:embedded?undefined:<Link className="text-brand" to="/browser-access/terminal">View servers</Link>}/>:<div className="sa-table sa-grants-table"><DataTable variant="flat" caption="Account grants" rows={visible} rowKey={grant=>grant.id} rowLabel={subject} pageSize={0} filterable={false} failed={false} empty={null} columns={[
+   {key:"server",header:embedded?"Account":"Server",cell:grant=><div className="sa-grant-identity"><p>{embedded?grant.account:serverName(grant)}</p>{!embedded&&<span>{grant.account}</span>}</div>},
    {key:"subject",header:"User or group",cell:grant=><div className="sa-grant-subject"><p>{subject(grant)}</p><span>{grant.user_id?"Person":"Group"}</span></div>},
    {key:"status",header:"Status",cell:grant=><Badge tone={Date.parse(grant.expires_at)<=now?"warn":"ok"}>{Date.parse(grant.expires_at)<=now?"Expired":"Active"}</Badge>},
    {key:"expires",header:"Expires",cell:grant=><time dateTime={grant.expires_at}>{new Date(grant.expires_at).toLocaleString()}</time>},

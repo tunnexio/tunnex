@@ -4,7 +4,7 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
-import { Badge, Button, ErrorText, Input, Loading, PageHeader } from "../components/ui";
+import { Badge, Button, ErrorText, Input, Loading, PageHeader, RefreshButton } from "../components/ui";
 
 import { Icon } from "../components/Icon";
 import { AppAccessIcon } from "../components/AppAccessIcon";
@@ -158,7 +158,7 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
       {apps?.availability === "parent_unavailable" && apps.items.length > 0 && <FreshLogin />}
       <div className="app-access-toolbar">
         <div className="app-access-search"><Icon name="search" size={17} /><Input type="search" aria-label="Search applications" placeholder="Search your applications…" maxLength={100} value={search} onChange={event => changeSearch(event.target.value)} /></div>
-        <button type="button" className="app-access-refresh" aria-label="Refresh my applications" title="Refresh my applications" disabled={apps === null && !error} onClick={() => setReload(value => value + 1)}><Icon name="refresh-cw" size={17} /></button>
+        <RefreshButton label="Refresh my applications" type="button" className="app-access-refresh" disabled={apps === null && !error} onClick={() => setReload(value => value + 1)} />
         {apps && <span className="app-access-result-count">{apps.items.length}{apps.items.length === pageSize ? "+" : ""} application{apps.items.length === 1 ? "" : "s"}</span>}
         <Button className="app-access-view-toggle" variant="ghost" onClick={() => changeView(true)}>My sessions</Button>
       </div>

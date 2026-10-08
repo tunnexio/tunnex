@@ -2,6 +2,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "../lib/utils";
 import { Button as ShadcnButton } from "./ui/button";
 import { DateTimeInput } from "./DateTimeInput";
+import { Icon } from "./Icon";
+import "../refresh-button.css";
 import {
   cloneElement,
   Fragment,
@@ -62,6 +64,20 @@ export function Button({
   return <ShadcnButton variant={mappedVariant[variant]} size={size}
     className={variant === "danger" ? `text-danger hover:text-danger ${className}` : className}
     {...props} />;
+}
+
+/** The compact, named refresh action shared by inventories and detail screens. */
+export function RefreshButton({
+  label = "Refresh",
+  className = "",
+  ...props
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & { label?: string }) {
+  return <ShadcnButton type="button" {...props} variant="outline" size="sm"
+    aria-label={props["aria-label"] ?? label} title={props.title ?? label}
+    className={cn("tnx-refresh-button", className)}>
+    <Icon name="refresh-cw" size={16} />
+    <span className="sr-only">{label}</span>
+  </ShadcnButton>;
 }
 
 export function Card({

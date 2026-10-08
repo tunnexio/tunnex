@@ -55,14 +55,17 @@
 .kubernetes-detail-rail button[aria-current=step] { color:var(--tnx-text-heading); background:var(--tnx-surface-inset); }
 .kubernetes-detail-rail button:hover { color:var(--tnx-text-heading); background:var(--tnx-surface-inset); }
 .kubernetes-detail-stage { min-width:0; }
-.kubernetes-stage-header { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:18px; }
-.kubernetes-stage-header h3 { font-size:15px; font-weight:500; color:var(--tnx-text-heading); }
 .kubernetes-stage-count { color:var(--tnx-text-secondary); font-size:11px; }
 .kubernetes-facts dd a { text-decoration:underline; text-underline-offset:3px; }
 .kubernetes-context { margin-block:14px; font-size:11.5px; line-height:1.65; color:var(--tnx-text-secondary); }
 .kubernetes-summary-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-.kubernetes-summary-actions button,.kubernetes-detail-stage .tnx-resource-summary-content > button { min-height:32px; padding:6px 10px; font-size:11.5px; }
-.kubernetes-detail-stage > .k8s-pool-panel { margin-top:26px; }
+.kubernetes-summary-navigation { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; width:100%; }
+.kubernetes-summary-actions button,.kubernetes-summary-navigation button,.kubernetes-connection-context > button { min-height:32px; padding:6px 10px; font-size:11.5px; }
+.kubernetes-detail-summary-connection > .tnx-resource-summary-content { display:grid; gap:28px; }
+.kubernetes-detail-summary .k8s-pool-panel { padding-top:0; border-top:0; }
+.kubernetes-workspace .kubernetes-detail-summary .k8s-pool-panel > dl.k8s-operation-facts { margin:18px 0; }
+.kubernetes-detail-summary-services .kubernetes-list-toolbar { margin:0 0 18px; }
+.kubernetes-detail-summary .kubernetes-empty-state { justify-items:start; padding:14px 0; text-align:left; }
 .kubernetes-service-inspection .tnx-resource-summary-heading p { overflow-wrap:anywhere; }
 .kubernetes-operations .tnx-setting-group { border:0; border-radius:0; background:transparent; box-shadow:none; }
 .kubernetes-workspace .kubernetes-operations .tnx-setting-group { padding:0; }

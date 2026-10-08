@@ -51,6 +51,8 @@ vi.mock("../src/components/ui", () => {
       ),
     Badge: primitive("span"),
     Button: primitive("button"),
+    RefreshButton: ({ label, ...props }: { label: string; [key: string]: unknown }) =>
+      createElement("button", { ...props, "aria-label": label, title: label }, label),
     Card: primitive("section"),
     DataTable: () => null,
     EmptyState: primitive("section"),

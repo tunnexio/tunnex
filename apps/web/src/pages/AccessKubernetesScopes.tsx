@@ -8,17 +8,7 @@ import AppAccessPagination from "../components/AppAccessPagination";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import { ResourceSummary } from "../components/ResourceSummary";
 import { NetworkDetailList } from "../components/NetworkDetailList";
-import {
-  Button,
-  DataTable,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  PageHeader,
-  Select,
-} from "../components/ui";
+import { Button, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
 import {
   api,
   apiErrorCode,
@@ -361,7 +351,7 @@ function KubernetesScopesWorkspace() {
     }
   }
 
-  const header = <><PageHeader navigationTitle title="Kubernetes access scopes" /><AccessTabRail includeKubernetesScopes={canView} actions={permissionState === "allowed" ? <><Button variant="ghost" disabled={busy} onClick={() => { setPage(1); void loadAll(); }}>Refresh scopes</Button>{canCreateScope && settings && scopes && <Button disabled={busy || !settings.effective || Boolean(auxiliaryError) || !clusters || !services} onClick={() => setCreateOpen(true)}>Create scope</Button>}</> : undefined} /></>;
+  const header = <><PageHeader navigationTitle title="Kubernetes access scopes" /><AccessTabRail includeKubernetesScopes={canView} actions={permissionState === "allowed" ? <><RefreshButton label="Refresh scopes" disabled={busy} onClick={() => { setPage(1); void loadAll(); }} />{canCreateScope && settings && scopes && <Button disabled={busy || !settings.effective || Boolean(auxiliaryError) || !clusters || !services} onClick={() => setCreateOpen(true)}>Create scope</Button>}</> : undefined} /></>;
   const shellClass = "network-management access-scopes-workspace space-y-5";
   if (permissionState === "loading") return <div className={shellClass}>{header}<Loading label="Checking Kubernetes scope permissions…" /></div>;
   if (permissionState === "denied") return <div className={shellClass}>{header}<p role="alert" className="access-resource-copy">Kubernetes scope governance is available only to authorized Access administrators.</p><Link className="access-resource-link" to="/access">Return to Access policies</Link></div>;
@@ -421,8 +411,8 @@ function ScopeDetail({ scope, settings, detail, error, clusters, sources, canMan
   const expired = scopeExpired(scope), effective = scope.active && settings.effective && !expired;
   return <div className="access-resource-content">
     <nav aria-label="Breadcrumb" className="access-resource-breadcrumb"><button disabled={busy} onClick={onBack}>Kubernetes scopes</button><span aria-hidden="true">/</span><span aria-current="page">{clusterLabel(scope.cluster_id, clusters)}</span></nav>
-    <div className="access-resource-heading"><div><h2>{clusterLabel(scope.cluster_id, clusters)}</h2></div><div className="access-resource-actions"><Button variant="ghost" disabled={busy} onClick={() => onReload(scope)}>Refresh detail</Button>{canManage && <AppAccessRowMenu label="Scope actions" actions={[{ key: "active", label: scope.active ? "Disable scope" : "Enable scope", disabledReason: busy ? "Wait for the current action." : !scope.active && (!settings.effective || expired) ? "Organization enforcement must be active and the scope unexpired." : undefined, onSelect: () => onActive(scope, !scope.active) }, { key: "delete", label: "Delete scope", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => onDelete(scope) }]} />}</div></div>
-    <ResourceSummary title="Scope settings"><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Source</dt><dd>{sourceLabel(scope.source, sources)}</dd></div><div><dt>State</dt><dd><StatePill tone={effective ? "positive" : expired ? "danger" : scope.active ? "attention" : "neutral"}>{effective ? "Active" : expired ? "Expired and ineffective" : scope.active ? "Active but ineffective" : "Disabled"}</StatePill></dd></div><div><dt>Expiry</dt><dd>{scope.expires_at ? <span title={scope.expires_at}>Expires {relativeAge(scope.expires_at)}</span> : "No expiry"}</dd></div><div><dt>Revision</dt><dd>{scope.revision}</dd></div></dl></ResourceSummary>
+    <div className="access-resource-heading"><div><h2>{clusterLabel(scope.cluster_id, clusters)}</h2></div><div className="access-resource-actions"><RefreshButton label="Refresh detail" disabled={busy} onClick={() => onReload(scope)} />{canManage && <AppAccessRowMenu label="Scope actions" actions={[{ key: "active", label: scope.active ? "Disable scope" : "Enable scope", disabledReason: busy ? "Wait for the current action." : !scope.active && (!settings.effective || expired) ? "Organization enforcement must be active and the scope unexpired." : undefined, onSelect: () => onActive(scope, !scope.active) }, { key: "delete", label: "Delete scope", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => onDelete(scope) }]} />}</div></div>
+    <ResourceSummary title="Scope settings" footer={<Button variant="ghost" disabled={busy} onClick={onBack}>Back to scopes</Button>}><div className="access-scope-detail-content"><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Source</dt><dd>{sourceLabel(scope.source, sources)}</dd></div><div><dt>State</dt><dd><StatePill tone={effective ? "positive" : expired ? "danger" : scope.active ? "attention" : "neutral"}>{effective ? "Active" : expired ? "Expired and ineffective" : scope.active ? "Active but ineffective" : "Disabled"}</StatePill></dd></div><div><dt>Expiry</dt><dd>{scope.expires_at ? <span title={scope.expires_at}>Expires {relativeAge(scope.expires_at)}</span> : "No expiry"}</dd></div><div><dt>Revision</dt><dd>{scope.revision}</dd></div></dl>
     {scope.active && !effective && <p className="access-resource-copy">Stored active state is preserved, but it currently grants nothing because {expired ? "the scope has expired" : "the organization opt-in or entitlement is inactive"}.</p>}
     {error && <ErrorText>{error}</ErrorText>}
     {detail === null ? error ? <Button variant="ghost" onClick={() => onReload(scope)}>Retry detail</Button> : <Loading label="Loading initial evidence and membership history…" /> : <>
@@ -430,7 +420,7 @@ function ScopeDetail({ scope, settings, detail, error, clusters, sources, canMan
       {view === "memberships" ? detail.memberships.length === 0 && !detail.membershipCursor ? <AppAccessEmptyState icon={null} title="No memberships exist for this scope." /> : <ScopeEvidenceList key={`${scope.rule_id}:memberships`} label="Membership history" items={detail.memberships} searchText={(membership) => `${membership.namespace}/${membership.service} ${membership.protocol} ${membership.port} ${membership.status}`} hasMore={Boolean(detail.membershipCursor)} busy={busy} onLoadMore={() => onLoadMore(scope)} renderItem={(membership) => <li key={membership.service_child_id}><MembershipRow membership={membership} canApprove={false} busy={busy} onDecision={() => {}} /></li>} />
       : <><p className="access-resource-copy">Immutable creation-time snapshot. Unselected rows were offered, not rejected.</p>{detail.candidates.length === 0 && !detail.candidateCursor ? <AppAccessEmptyState icon={null} title="No exact children were offered when this scope was created." /> : <ScopeEvidenceList key={`${scope.rule_id}:candidates`} label="Initial candidate evidence" items={detail.candidates} searchText={(candidate) => `${candidate.namespace}/${candidate.service} ${candidate.protocol} ${candidate.port}`} hasMore={Boolean(detail.candidateCursor)} busy={busy} onLoadMore={() => onLoadMore(scope)} renderItem={(candidate) => <li key={candidate.service_child_id} className="access-scope-member"><div><span>{candidate.namespace}/{candidate.service}<small> · {protocolPort(candidate)}</small></span><StatePill tone={candidate.effective ? "positive" : candidate.selected ? "attention" : "neutral"}>{candidate.effective ? "Effective" : candidate.selected ? "Selected · ineffective" : "Not selected"}</StatePill></div>{candidate.current === false && <StatePill tone="danger">Vanished</StatePill>}{candidate.effective === false && candidate.inactive_reason && <p className="access-resource-copy">{inactiveReasonLabel(candidate.inactive_reason)}</p>}</li>} />}</>}
     </>}
-    <details className="access-resource-help"><summary>Scope identity and authority</summary><p>Rule {scope.rule_id}. {scope.initial_candidate_count} initial candidates offered · created {relativeAge(scope.created_at)}. Only individually approved, still-current Service protocol/port children grant access while this scope, organization opt-in, and entitlement are active. Rejected decisions remain permanent.</p></details>
+    <details className="access-resource-help"><summary>Scope identity and authority</summary><p>Rule {scope.rule_id}. {scope.initial_candidate_count} initial candidates offered · created {relativeAge(scope.created_at)}. Only individually approved, still-current Service protocol/port children grant access while this scope, organization opt-in, and entitlement are active. Rejected decisions remain permanent.</p></details></div></ResourceSummary>
   </div>;
 }
 

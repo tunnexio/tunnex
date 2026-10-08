@@ -1,3 +1,4 @@
+import { RefreshButton } from "./ui";
 import { SiOkta, SiOpenid } from "react-icons/si";
 import { useEffect, useState } from "react";
 import { api, apiErrorMessage } from "../lib/api";
@@ -218,9 +219,7 @@ export function SsoConnections({
               ] ?? ssoResultMessages.sso_failed}
             </p>
           )}
-        <button
-          disabled={loading}
-          onClick={() =>
+        <RefreshButton label="Refresh status" disabled={loading} onClick={() =>
             run(async () => {
               const fresh = await transport.list(orgId);
               setItems(fresh);
@@ -232,10 +231,7 @@ export function SsoConnections({
                 }
               }
             })
-          }
-        >
-          Refresh status
-        </button>
+          } />
         {error && (
           <div className="sso-error" role="alert">
             {error}

@@ -134,7 +134,9 @@
 .beam-detail-grid { display:grid; gap:36px; grid-template-columns:minmax(0,1.3fr) minmax(320px,.8fr); padding-top:10px; }
 .beam-detail-main h1,.beam-fixture-detail h1 { font-size:25px; letter-spacing:-.025em; }
 .beam-reviewers { min-width:0; }
-.beam-reviewers > p { font-size:12px; line-height:1.65; }
+.beam-reviewers .tnx-resource-summary-content p { font-size:12px; line-height:1.65; }
+.beam-reviewers { align-self:start; }
+.beam-expiry-form { max-width:440px; }
 .beam-facts dd .text-xs { margin-top:4px; color:var(--tnx-text-secondary); }
 .beam-detail-main .tnx-resource-summary-footer { justify-content:flex-start; }
 .beam-diagnostics-content { display:grid; gap:22px; }

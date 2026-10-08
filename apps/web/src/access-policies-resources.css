@@ -70,3 +70,8 @@
 .access-scope-editor .network-detail-list label small { display: block; font-size: 11px; color: var(--tnx-text-secondary); }
 
 .access-resource-help > dl.tnx-resource-facts { padding:16px 0; }
+
+.access-resource-detail-content,.access-scope-detail-content { display:grid; gap:22px; min-width:0; }
+.access-resource-detail-content > .access-resource-copy,.access-scope-detail-content > .access-resource-copy { margin:0; }
+.access-scope-detail-content .aa-empty-state { padding:24px 0; }
+.access-resource-content > .tnx-resource-summary > .tnx-resource-summary-footer { justify-content:flex-start; }

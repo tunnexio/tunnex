@@ -13,16 +13,7 @@ import { AIGatewaySettings } from "../components/AIGatewaySettings";
 import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
 import { AIWorkloads } from "../components/AIWorkloads";
 import { AIUsageWorkspace } from "../components/AIUsageWorkspace";
-import {
-  Button,
-  Card,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  PageHeader,
-  Select,
-} from "../components/ui";
+import { Button, Card, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import AppAccessPagination from "../components/AppAccessPagination";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
@@ -260,7 +251,7 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
       <button type="button" role="tab" aria-selected={view === "teams"} onClick={() => { setView("teams"); setQuery(""); setPage(1); }}>Group policies</button>
       <button type="button" role="tab" aria-selected={view === "agents"} onClick={() => { setView("agents"); setQuery(""); setPage(1); }}>Agent assignments</button>
     </div>
-    <div className="agents-management-toolbar"><Input aria-label="Search model policies" value={query} placeholder={view === "teams" ? "Search groups or models" : "Search agents or groups"} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="agents-management-actions"><Button variant="ghost" disabled={busy} onClick={() => void reload()}>Refresh</Button><Button variant={view === "teams" ? "primary" : "ghost"} disabled={busy} onClick={() => openTeam()}>Add policy</Button><Button variant={view === "agents" ? "primary" : "ghost"} disabled={busy} onClick={() => openAgent()}>Assign agent</Button></div></div>
+    <div className="agents-management-toolbar"><Input aria-label="Search model policies" value={query} placeholder={view === "teams" ? "Search groups or models" : "Search agents or groups"} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="agents-management-actions"><RefreshButton label="Refresh" disabled={busy} onClick={() => void reload()} /><Button variant={view === "teams" ? "primary" : "ghost"} disabled={busy} onClick={() => openTeam()}>Add policy</Button><Button variant={view === "agents" ? "primary" : "ghost"} disabled={busy} onClick={() => openAgent()}>Assign agent</Button></div></div>
     {error && !editor && <p role="alert">{error}</p>}
     <div className="agents-management-table-scroll">
       {view === "teams" ? matchingTeams.length ? <table className="ai-compact-table"><caption className="sr-only">Group model policies</caption><thead><tr><th scope="col">Agent group</th><th scope="col">Models</th><th scope="col">Revision</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{visibleTeams.map((t) => <tr key={t.team_id}><td><button className="agents-management-name" aria-label={`Edit policy for ${teamName(t.team_id)}`} onClick={() => openTeam(t.team_id)}>{teamName(t.team_id)}</button></td><td title={t.models.map(modelDisplayName).join(", ")}>{t.models.length}</td><td>{t.revision}</td><td><AppAccessRowMenu label={`Actions for policy ${teamName(t.team_id)}`} actions={[{ key: "edit", label: "Edit policy", disabledReason: busy ? "Wait for the current update." : undefined, onSelect: () => openTeam(t.team_id) }]} /></td></tr>)}</tbody></table> : <AppAccessEmptyState icon={null} title={query ? "No matching group policies" : "No team policies yet."} description={query ? "Try another group or model." : "Choose an agent group, its exact models, and owned provider credentials."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />

@@ -4,7 +4,7 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorMessage } from "../lib/api";
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "./AppAccessPagination";
-import { Button, Card, DataTable, ErrorText, Loading, Modal } from "./ui";
+import { Button, Card, DataTable, ErrorText, Loading, Modal, RefreshButton } from "./ui";
 
 type Sessions = components["schemas"]["AppAccessApplicationSessions"];
 type Session = components["schemas"]["AppAccessApplicationSession"];
@@ -40,7 +40,7 @@ export default function AppAccessSessions({ orgId, appId }: { orgId: string; app
     } catch { if (alive.current) setError("Session withdrawal outcome is unknown. Refresh sessions before retrying."); }
     finally { if (alive.current) setBusy(false); }
   }
-  return <Card className="space-y-4"><div className="app-access-panel-header"><div><h3 className="text-lg font-semibold">Application sessions</h3><p className="text-sm text-ink-secondary">Withdraw one user's session without changing the application's grants. Already delivered content cannot be removed.</p></div><Button variant="ghost" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh application sessions</Button></div><ErrorText>{error}</ErrorText>{notice && <p role="status" className="app-access-notice">{notice}</p>}{!sessions && !error ? <Loading /> : sessions && <>{!sessions.items.length ? <AppAccessEmptyState title={page > 1 ? "No more sessions" : "No current sessions"} description={page > 1 ? "Return to the previous page to review earlier sessions." : "No current sessions in this view."} icon="monitor" /> : <DataTable caption="Application sessions" rows={sessions.items} rowKey={session => session.id} failed={false} filterable={false} pageSize={0} empty={null} columns={[
+  return <Card className="space-y-4"><div className="app-access-panel-header"><div><h3 className="text-lg font-semibold">Application sessions</h3><p className="text-sm text-ink-secondary">Withdraw one user's session without changing the application's grants. Already delivered content cannot be removed.</p></div><RefreshButton label="Refresh application sessions" disabled={busy} onClick={() => setRefresh(value => value + 1)} /></div><ErrorText>{error}</ErrorText>{notice && <p role="status" className="app-access-notice">{notice}</p>}{!sessions && !error ? <Loading /> : sessions && <>{!sessions.items.length ? <AppAccessEmptyState title={page > 1 ? "No more sessions" : "No current sessions"} description={page > 1 ? "Return to the previous page to review earlier sessions." : "No current sessions in this view."} icon="monitor" /> : <DataTable caption="Application sessions" rows={sessions.items} rowKey={session => session.id} failed={false} filterable={false} pageSize={0} empty={null} columns={[
     { key: "session", header: "Session", cell: session => <span className="font-mono" title={session.id}>{session.id.slice(0, 8)}</span> },
     { key: "user", header: "User", cell: session => <span title={session.user_id}>{session.user_id.slice(0, 8)}</span> },
     { key: "started", header: "Started", cell: session => <time dateTime={session.created_at}>{new Date(session.created_at).toLocaleString()}</time> },

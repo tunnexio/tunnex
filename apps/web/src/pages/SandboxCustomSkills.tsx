@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import { api, apiErrorMessage } from "../lib/api";
 import type { components } from "@tunnex/shared";
 import { useOrg } from "../lib/useOrg";
-import { Button, ErrorText, Field, Input, Loading, Select } from "../components/ui";
+import { Button, ErrorText, Field, Input, Loading, Select, RefreshButton } from "../components/ui";
 import { SandboxHeader } from "../components/SandboxChrome";
 import { Logo } from "../brand";
 
@@ -99,7 +99,7 @@ function Editor({ orgId, skillId }: { orgId: string; skillId?: string }) {
  const visible = items.filter(item => `${item.name} ${item.description} ${item.generation}`.toLowerCase().includes(query.trim().toLowerCase())).sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
  function add(importing = false) { setOpen(true); setPreview(false); setError(null); if (importing) window.setTimeout(() => fileInput.current?.click(), 0); }
  return <div className="sb-workspace">
-  <SandboxHeader section="skills" title="Skills" subtitle="Private, versioned instructions." actions={<><Button variant="ghost" disabled={loading || pending} onClick={() => setRevision(value => value + 1)}>Refresh</Button><Button variant="ghost" disabled={loading || !!loadError} onClick={() => add(true)}>Import skill</Button><Button className="sb-primary" disabled={loading || !!loadError} onClick={() => add()}>Add custom skill <span aria-hidden>+</span></Button></>} />
+  <SandboxHeader section="skills" title="Skills" subtitle="Private, versioned instructions." actions={<><RefreshButton label="Refresh" disabled={loading || pending} onClick={() => setRevision(value => value + 1)} /><Button variant="ghost" disabled={loading || !!loadError} onClick={() => add(true)}>Import skill</Button><Button className="sb-primary" disabled={loading || !!loadError} onClick={() => add()}>Add custom skill <span aria-hidden>+</span></Button></>} />
   {loading ? <Loading /> : loadError ? <section className="sb-panel sb-error"><h2>Unable to load private skills</h2><ErrorText>{loadError}</ErrorText><p className="sb-help mt-3">Your library could not be verified. Retry to check your current access.</p><Button variant="ghost" className="mt-4" onClick={() => setRevision(value => value + 1)}>Retry</Button></section> : <>
    <div className="sb-skill-toolbar"><div className="sb-summary"><div><strong>{items.length}</strong><span>private skills</span></div><span className="sb-summary-gate">Only you can use these</span></div><div><Input aria-label="Search private skills" placeholder="Search name, description or revision…" value={query} onChange={e => setQuery(e.target.value)} /><Select aria-label="Sort private skills" width="auto" value={sort} onChange={e => setSort(e.target.value)}><option value="recent">Newest first</option><option value="name">Name A–Z</option></Select></div></div>
    <div className="sb-console-surface"><section aria-label="My private skills"><div className="sb-section-title"><h2>My private skills</h2><span>{visible.length} of {items.length}</span></div>

@@ -4,7 +4,6 @@
 .server-access-workspace > .tnx-navigation-header > div { pointer-events:auto; }
 .server-access-workspace > .workspace-tabs { margin-top:0 !important; margin-bottom:0; padding-right:56px; gap:28px; }
 .server-access-workspace > .workspace-tabs a { padding:12px 0 15px; font-size:14px; }
-.server-access-workspace .sa-refresh { width:32px; min-width:32px; height:32px; min-height:32px; padding:7px; }
 .server-access-workspace .sa-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .server-access-workspace .sa-toolbar input { width:260px; max-width:100%; }
 .server-access-workspace .sa-table { margin-top:14px; min-width:0; }
@@ -52,7 +51,10 @@
 .server-access-workspace .sa-stage-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:22px; }
 .server-access-workspace .sa-stage-heading h3 { font-size:15px; font-weight:500; }
 .server-access-workspace .sa-stage-heading p,.server-access-workspace .sa-stage-heading > span { font-size:11.5px; color:var(--tnx-text-secondary); margin-top:5px; }
-.server-access-workspace .sa-stage > .tnx-resource-summary { margin-bottom:24px; }
+.server-access-workspace .sa-stage-content { display:grid; gap:24px; min-width:0; }
+.server-access-workspace .sa-stage-meta { color:var(--tnx-text-secondary); font-size:12px; }
+.server-access-workspace .sa-stage-content > .sa-table { margin-top:0; }
+.server-access-workspace .sa-stage-summary .aa-empty-state { min-height:0; align-items:flex-start; padding:26px 0; border:0; text-align:left; }
 .server-access-workspace .sa-mono { font-family:ui-monospace,SFMono-Regular,monospace; font-size:11px; }
 .server-access-workspace .sa-account-table th:nth-child(2) { width:175px; }
 .server-access-workspace .sa-account-table th:nth-child(3) { width:102px; }
@@ -61,22 +63,23 @@
 .server-access-workspace .sa-account-help { margin:0; font-size:12px; color:var(--tnx-text-secondary); }
 .server-access-workspace .sa-account-help > summary { cursor:pointer; }
 .server-access-workspace .sa-account-help p { margin:12px; max-width:72ch; font-size:12px; line-height:1.65; }
-.server-access-workspace .sa-account-options { margin-block:8px 16px; }
+.server-access-workspace .sa-account-options { margin:0; }
 .server-access-workspace .sa-account-options > details { padding:0; border-top:0; }
 .server-access-workspace .sa-account-options > details + details { border-top:1px solid var(--tnx-border); }
-.server-access-workspace .sa-account-options > details > summary { border-radius:0; padding-inline:14px; }
-.server-access-workspace .sa-account-options .sa-session-summary { margin-top:12px; }
-.server-access-workspace .sa-session-summary .tnx-setting-row { align-items:center; gap:16px; margin-top:22px; padding:18px 0 0; border-top:1px solid var(--tnx-border); }
-.server-access-workspace .sa-session-summary .tnx-setting-row p { margin:0; font-size:12px; line-height:1.6; }
-.server-access-workspace .sa-session-summary .tnx-setting-row p + p { margin-top:4px; font-size:11px; }
+.server-access-workspace .sa-account-options > details > summary { border-radius:0; padding-inline:0; }
+.server-access-workspace .sa-session-options-content { display:grid; gap:22px; padding-bottom:16px; }
+.server-access-workspace .sa-session-options-content .tnx-setting-row { align-items:center; gap:16px; margin:0; padding:0; border:0; }
+.server-access-workspace .sa-session-options-content .tnx-setting-row p { margin:0; font-size:12px; line-height:1.6; }
+.server-access-workspace .sa-session-options-content .tnx-setting-row p + p { margin-top:4px; font-size:11px; }
 .sa-account-help-content { padding:0 14px 12px; }
+.server-access-workspace .sa-stage-summary .sa-account-help-content { padding:0 0 16px; }
 .sa-account-help-content dl { display:grid; gap:8px; }
 .sa-account-help-content dl > div { display:grid; grid-template-columns:120px minmax(0,1fr); gap:14px; font-size:12px; line-height:1.5; }
 .sa-account-help-content dt { color:var(--tnx-text-secondary); }
 .sa-account-help-content dd { color:var(--tnx-text-primary); }
 .server-access-workspace .sa-account-help-content p { margin:12px 0 0; font-size:11px; color:var(--tnx-text-secondary); }
 .server-access-workspace .sa-account-name { font-size:13px; font-weight:500; }
-.server-access-workspace .sa-stage-actions { display:flex; align-items:center; justify-content:flex-end; gap:12px; padding-top:20px; margin-top:16px; border-top:1px solid var(--tnx-border); }
+.server-access-workspace .sa-stage-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; width:100%; padding:0; margin:0; border:0; }
 .server-access-workspace .sa-stage-actions > :first-child { margin-right:auto; }
 .server-access-workspace .sa-disclosure { padding:8px 0; border-top:1px solid var(--tnx-border); font-size:12px; color:var(--tnx-text-secondary); }
 .sa-disclosure > summary { cursor:pointer; color:var(--tnx-text-heading); font-size:12px; }
@@ -84,6 +87,9 @@
 .server-access-workspace .sa-disclosure p { margin:12px; line-height:1.6; }
 .server-access-workspace .sa-disclosure pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; padding:12px; background:var(--tnx-surface-inset); border-radius:6px; }
 .server-access-workspace .sa-setup > details { margin-top:16px; }
+.server-access-workspace .sa-stage-summary .sa-setup { display:grid; gap:20px; }
+.server-access-workspace .sa-stage-summary .sa-setup > details { margin-top:0; }
+.server-access-workspace .sa-stage-summary .sa-disclosure p { margin:0 0 12px; }
 .server-access-workspace .sa-setup > details > section { border:0; padding:0; border-radius:0; }
 .server-access-workspace .sa-setup > details > section > .app-access-panel-header { margin-bottom:14px; }
 .server-access-workspace .sa-setup > details:not(.sa-disclosure) { border:0; border-top:1px solid var(--tnx-border); border-radius:0; padding:16px 0; font-size:12px; }
@@ -153,7 +159,6 @@
 .server-access-workspace .sa-list-heading { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:16px; }
 .server-access-workspace .sa-list-heading h2,.server-access-workspace .sa-list-heading h3 { font-size:15px; font-weight:500; }
 .server-access-workspace .sa-list-heading button { min-height:31px; padding:5px 10px; font-size:11.5px; }
-.server-access-workspace .sa-stage .sa-grants > .sa-list-heading { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
 .server-access-workspace .sa-list-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
 .server-access-workspace .sa-list-toolbar > input { width:260px; max-width:100%; }
 .server-access-workspace .sa-list-toolbar > select { width:auto; min-width:140px; font-size:12px; }
@@ -161,6 +166,10 @@
 .server-access-workspace .sa-grants-table th:nth-child(3),.server-access-workspace .sa-session-table th:nth-child(3) { width:88px; }
 .server-access-workspace .sa-grants-table th:nth-child(4),.server-access-workspace .sa-session-table th:nth-child(4) { width:145px; }
 .server-access-workspace .sa-grants-table th:nth-child(5),.server-access-workspace .sa-session-table th:nth-child(5) { width:40px; font-size:0; }
+.server-access-workspace .sa-grants-embedded { display:grid; gap:18px; }
+.server-access-workspace .sa-grants-embedded .sa-list-toolbar > input { flex:1; min-width:0; width:auto; }
+.server-access-workspace .sa-grants-embedded .sa-list-toolbar > select { min-width:120px; }
+.server-access-workspace .sa-grants-embedded .sa-table { margin:0; }
 .server-access-workspace .sa-grant-identity p,.server-access-workspace .sa-grant-subject p,.server-access-workspace .sa-session-identity p { font-weight:500; color:var(--tnx-text-heading); }
 .server-access-workspace .sa-grant-identity span,.server-access-workspace .sa-grant-subject span,.server-access-workspace .sa-session-identity > span { display:block; margin-top:4px; color:var(--tnx-text-secondary); font-size:11px; }
 .server-access-workspace .sa-import { margin-left:auto; font-size:12px; }

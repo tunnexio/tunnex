@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
-import { Badge, Button, Card, DataTable, Field, Input, Loading, Modal, Select } from "./ui";
+import { Badge, Button, Card, DataTable, Field, Input, Loading, Modal, Select, RefreshButton } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
 import { toast } from "./Toasts";
 import AppAccessRowMenu from "./AppAccessRowMenu";
@@ -76,7 +76,7 @@ function WorkloadsPanel({ orgId, canManage }: { orgId: string; canManage: boolea
     {selected ? <WorkloadDetail key={`${orgId}:${selected.id}`} orgId={orgId} workload={selected} providers={data!.providers} canManage={canManage} refreshing={loading} onBack={() => setSelectedId("")} onEdit={() => setEditor(selected)} onRefresh={async () => { setError(""); await reload(); }} /> : <>
       <div className="ai-secondary-toolbar">
         <Input aria-label="Search workloads" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Workload name or model" />
-        <div className="ai-secondary-actions"><Button variant="ghost" disabled={loading || editor !== null} onClick={() => { setError(""); void reload(); }}>Refresh workloads</Button>{canManage && <Button disabled={!data || loading} onClick={() => setEditor("new")}>Create workload</Button>}</div>
+        <div className="ai-secondary-actions"><RefreshButton label="Refresh workloads" disabled={loading || editor !== null} onClick={() => { setError(""); void reload(); }} />{canManage && <Button disabled={!data || loading} onClick={() => setEditor("new")}>Create workload</Button>}</div>
       </div>
         {loading ? <Loading label="Loading workloads…" /> : data && <><DataTable caption="Workloads" rows={visibleRows} rowKey={(w) => w.id} failed={false} filterable={false} pageSize={0}
           empty={<AppAccessEmptyState icon={null} title={data.workloads.length ? "No workloads match your search." : "No workloads yet"} description={data.workloads.length ? "Try another name or model." : "Create a workload, choose its models, then connect your application."} action={search ? <Button variant="ghost" onClick={() => { setSearch(""); setPage(1); }}>Clear search</Button> : undefined} />}
@@ -257,7 +257,7 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
     <nav aria-label="Breadcrumb" className="ai-workload-breadcrumb"><button aria-label="Back to workloads" disabled={busy || createKey || !!secret || !!revokeKey || !!revokeInstance} onClick={onBack}>Workloads</button><span aria-hidden="true">/</span><span aria-current="page">{workload.name}</span></nav>
     <div className="ai-provider-panel-heading">
       <div className="min-w-0"><h2 className="break-words text-title font-semibold text-ink-heading">{workload.name}</h2><div className="mt-2"><Badge tone="neutral">{stateLabel(workload)}</Badge></div></div>
-      <div className="flex flex-wrap gap-2"><Button variant="ghost" disabled={locked} onClick={() => void refresh()}>Refresh workload</Button>{canManage && <Button disabled={locked} onClick={onEdit}>Edit access</Button>}</div>
+      <div className="flex flex-wrap gap-2"><RefreshButton label="Refresh workload" disabled={locked} onClick={() => void refresh()} />{canManage && <Button disabled={locked} onClick={onEdit}>Edit access</Button>}</div>
     </div>
     {!workload.enabled && <p className="ai-provider-notice">This workload is disabled and its enrollment keys are permanently revoked. After re-enabling, create new enrollment keys for new replicas. Existing instances require fresh tokens.</p>}
     {workload.enabled && stateLabel(workload) !== "Applied" && <p className="ai-provider-notice">The saved policy is not applied. Model access is unavailable until provisioning succeeds. Use Refresh workload to check its state.</p>}

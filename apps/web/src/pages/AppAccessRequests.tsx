@@ -7,8 +7,8 @@ import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import AppAccessDomainSetup from "../components/AppAccessDomainSetup";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
-import { Icon } from "../components/Icon";
-import { Badge, Button, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
+
+import { Badge, Button, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
 
 type Request = components["schemas"]["AppAccessAccessRequest"];
 type Requests = components["schemas"]["AppAccessAccessRequests"];
@@ -34,7 +34,7 @@ export default function AppAccessRequests({ orgId, appId, managed = false, embed
   return <section className={`app-access-workspace network-management aa-requests-workspace${embedded ? " aa-requests-embedded" : " app-access-inventory-workspace"}`} aria-label={managed ? "Managed access requests" : "My access requests"}>
     {!embedded && <><PageHeader title="App Access" navigationTitle actions={<AppAccessDomainSetup />} /><AppAccessMemberTabs orgId={orgId} /></>}
     <div className="aa-requests-panel"><div className="aa-requests-toolbar"><div className="aa-requests-filters"><Select aria-label="Request status" width="auto" value={status} onChange={event => { setStatus(event.target.value as typeof status); setPage(0); }}><option value="">All requests</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></Select>
-      {managed && data && data.pending_count > 0 && <span role="status" className="aa-requests-count">{data.pending_count} pending</span>}</div><Button variant="ghost" aria-label="Refresh requests" title="Refresh requests" onClick={() => setReload(value => value + 1)}><Icon name="refresh-cw" size={16} /></Button></div>
+      {managed && data && data.pending_count > 0 && <span role="status" className="aa-requests-count">{data.pending_count} pending</span>}</div><RefreshButton label="Refresh requests" onClick={() => setReload(value => value + 1)} /></div>
     {error ? <div className="aa-requests-error"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setReload(value => value + 1)}>Retry requests</Button></div> : !data ? <Loading label="Loading requests…" /> : !data.items.length ? <AppAccessEmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} icon={managed && status === "pending" ? "check-circle" : "file-text"} /> : <div className="aa-requests-table"><DataTable failed={false} empty={null} caption="Access requests" rows={data.items} rowKey={request => request.id} rowLabel={request => request.app_name} pageSize={0} filterable={false} columns={[
       { key: "application", header: "Application", cell: request => <div className="aa-requests-application"><p>{request.app_name}</p><p title={new Date(request.created_at).toLocaleString()}>{new Date(request.created_at).toLocaleDateString()}</p></div> },
       ...(managed ? [{ key: "requester", header: "Requested by", cell: (request: Request) => <div className="aa-requests-requester">{request.requester.name || request.requester.email}{request.requester.name && <p>{request.requester.email}</p>}{!request.requester.available && <p>Member unavailable</p>}</div> }] : []),

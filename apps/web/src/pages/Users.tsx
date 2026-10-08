@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type Ref } from "react";
 import { Link } from "react-router-dom";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Device, type Member, type Role } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
@@ -6,7 +6,7 @@ import { useAuth } from "../lib/auth";
 import { can, canManageMembership, HUMAN_ROLES } from "../lib/rbac";
 import { deviceCountFor, deviceCountLabel, deactivationImpactCopy, rosterShape } from "../lib/usersview";
 import { canResend, canRevoke, invitationState, inviteErrorCopy, inviteGate, inviterLabel, orderInvitations, outstandingCount, REVOKED_CAUSE_NOTE, stateLabel, type Invitation } from "../lib/invitationview";
-import { Button, ErrorText, Field, Input, Loading, Modal, Select } from "../components/ui";
+import { Button, ErrorText, Field, Input, Loading, Modal, RefreshButton, Select } from "../components/ui";
 import { UsersTabRail } from "../components/WorkspaceTabs";
 import UsersInventory from "../components/UsersInventory";
 import { ResourceSummary } from "../components/ResourceSummary";
@@ -117,6 +117,7 @@ function UsersWorkspace({ view }: { view: View }) {
   useEffect(() => { setInspectedId(null); setConfirmation(null); setInviteConfirmation(null); setInviteOpen(false); }, [view]);
   useEffect(() => { if (inspectedId) titleRef.current?.focus(); }, [inspectedId]);
   const inspected = members.find(m => m.user_id === inspectedId);
+  const inspectedDevices = devices?.filter(device => device.user_id === inspected?.user_id) ?? [];
   const blocked = busy || membersState !== "ready";
   function unavailable(kind: PersonAction, m: Member): string | null {
     if (!emailVerified) return "Verify your email to manage accounts.";
@@ -188,9 +189,10 @@ function UsersWorkspace({ view }: { view: View }) {
     { key: m.status === "active" ? "deactivate" : "reactivate", label: m.status === "active" ? "Deactivate" : "Reactivate", danger: m.status === "active", disabledReason: blocked ? "Wait for the roster to finish loading." : unavailable(m.status === "active" ? "deactivate" : "reactivate", m), onSelect: () => requestAction(m.status === "active" ? "deactivate" : "reactivate", [m]) },
     { key: "reset", label: "Reset 2FA", disabledReason: blocked ? "Wait for the current operation." : unavailable("reset", m), onSelect: () => requestAction("reset", [m]) },
   ];
-  const actions = <><Button variant="ghost" disabled={busy || orgLoading || !org || membersState === "loading"} onClick={() => { void loadMembers(); void loadDevices(); if (view === "invitations") void loadInvites(); }}>Refresh</Button>{emailVerified && can(myRole, "member:invite") && <Button disabled={blocked} onClick={() => setInviteOpen(true)}>Invite user</Button>}</>;
+  const actions = <><RefreshButton label="Refresh" disabled={busy || orgLoading || !org || membersState === "loading"} onClick={() => { void loadMembers(); void loadDevices(); if (view === "invitations") void loadInvites(); }} />{emailVerified && can(myRole, "member:invite") && <Button disabled={blocked} onClick={() => setInviteOpen(true)}>Invite user</Button>}</>;
   function inspect(id: string, next?: "overview" | "roles") { if (blocked) return; setInspectedId(id); setStage(next ?? (view === "roles" ? "roles" : "overview")); }
   const changeStage = (next: Stage) => { setStage(next); queueMicrotask(() => stageRef.current?.focus()); };
+  const backToPeople = <Button variant="ghost" disabled={busy} onClick={() => setInspectedId(null)}>Back to {view === "roles" ? "roles" : "users"}</Button>;
   return <div className="network-management users-workspace users-management">
     <UsersTabRail actions={actions} />
     <ErrorText>{error}</ErrorText>{notice && <p role="status" className="users-notice">{notice}</p>}
@@ -202,11 +204,12 @@ function UsersWorkspace({ view }: { view: View }) {
       <nav aria-label="Person breadcrumb" className="user-breadcrumb"><button type="button" disabled={busy} onClick={() => setInspectedId(null)}>{view === "roles" ? "Roles" : "Users"}</button><span aria-hidden="true">/</span><span>{inspected.name || inspected.email}</span></nav>
       <header className="user-detail-header"><div><h2 ref={titleRef} tabIndex={-1}>{inspected.name || inspected.email}</h2><p>{inspected.name && inspected.name !== inspected.email ? `${inspected.email} · ` : ""}{memberState(inspected)}{inspected.user_id === actorId ? " · You" : ""}</p></div><AppAccessRowMenu label={`Account actions for ${inspected.email}`} actions={personActions(inspected)} /></header>
       <div className="user-detail-layout"><nav aria-label="Person detail sections" className="user-detail-path">{(["overview", "roles", ...(shape.showDeviceCount ? ["devices"] : [])] as Stage[]).map(item => <button key={item} type="button" disabled={busy} aria-current={stage === item ? "step" : undefined} onClick={() => changeStage(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
-        <div className="user-detail-stage"><h3 className={stage === "overview" ? "sr-only" : undefined} ref={stageRef} tabIndex={-1}>{stage[0].toUpperCase() + stage.slice(1)}</h3>
-          {stage === "overview" && <ResourceSummary title="Account details"><UserFacts summary rows={[["Email", inspected.email], ["Account", memberState(inspected)], ["Email verified", inspected.email_verified ? "Verified" : "Unverified"], ["Joined", dateLabel(inspected.joined_at)], ["Roles", memberRoles(inspected).join(" + ")]]} /></ResourceSummary>}
-          {stage === "roles" && <PersonRoles key={inspected.user_id + ":" + memberRoles(inspected).join(",") + ":" + myRole + ":" + emailVerified} member={inspected} actorRole={myRole} editable={emailVerified && canManageMembership(myRole, inspected.role, "")} soleOwner={inspected.role === "owner" && ownerCount <= 1} busy={busy} onSave={roles => changeRoles(inspected, roles)} />}
-          {stage === "devices" && shape.showDeviceCount && <>{devicesLoading ? <Loading label="Loading devices…" /> : deviceError ? <LoadRetry error={deviceError} onRetry={() => void loadDevices()} /> : devices ? <><p className="user-stage-meta">{deviceCountLabel(deviceCountFor({ role: myRole, devices, userId: inspected.user_id }))}</p>{devices.filter(device => device.user_id === inspected.user_id).length ? <ul className="user-device-list">{devices.filter(device => device.user_id === inspected.user_id).map(device => <li key={device.id}><span>{device.name}</span><span>{device.status}</span></li>)}</ul> : <div className="users-empty"><h4>No devices enrolled</h4><p>This person has no devices in this organization.</p></div>}<Link className="user-text-link" to="/devices">Open device inventory</Link></> : <p>Device counts could not load.</p>}</>}
-          <footer className="user-detail-footer"><Button variant="ghost" disabled={busy} onClick={() => setInspectedId(null)}>Back to {view === "roles" ? "roles" : "users"}</Button></footer>
+        <div className="user-detail-stage">
+          {stage === "overview" && <ResourceSummary title="Account details" headingRef={stageRef} footer={backToPeople}><UserFacts summary rows={[["Email", inspected.email], ["Account", memberState(inspected)], ["Email verified", inspected.email_verified ? "Verified" : "Unverified"], ["Joined", dateLabel(inspected.joined_at)], ["Roles", memberRoles(inspected).join(" + ")]]} /></ResourceSummary>}
+          {stage === "roles" && <PersonRoles key={inspected.user_id + ":" + memberRoles(inspected).join(",") + ":" + myRole + ":" + emailVerified} member={inspected} actorRole={myRole} editable={emailVerified && canManageMembership(myRole, inspected.role, "")} soleOwner={inspected.role === "owner" && ownerCount <= 1} busy={busy} headingRef={stageRef} backAction={backToPeople} onSave={roles => changeRoles(inspected, roles)} />}
+          {stage === "devices" && shape.showDeviceCount && <ResourceSummary title="Devices" headingRef={stageRef} description="Devices enrolled by this person in this organization." footer={<>{backToPeople}{!devicesLoading && !deviceError && devices && <Link className="user-text-link" to="/devices">Open device inventory</Link>}</>}>
+            {devicesLoading ? <Loading label="Loading devices…" /> : deviceError ? <LoadRetry error={deviceError} onRetry={() => void loadDevices()} /> : devices ? <><p className="user-stage-meta">{deviceCountLabel(deviceCountFor({ role: myRole, devices, userId: inspected.user_id }))}</p>{inspectedDevices.length ? <ul className="user-device-list" aria-label={`Devices for ${inspected.email}`}>{inspectedDevices.map(device => <li key={device.id}><span className="user-device-name">{device.name}</span><span className="user-device-state">{device.status}</span></li>)}</ul> : <div className="user-device-empty"><h4>No devices enrolled</h4><p>This person has no devices in this organization.</p></div>}</> : <p className="user-stage-meta" role="status">Device counts could not load.</p>}
+          </ResourceSummary>}
         </div>
       </div>
     </section> : <div className="users-empty"><h3>Person no longer listed</h3><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to users</Button></div>)}
@@ -226,11 +229,13 @@ function UsersWorkspace({ view }: { view: View }) {
 
 function UserFacts({ rows, summary = false }: { rows: Array<[string, ReactNode]>; summary?: boolean }) { return <dl className={summary ? "user-facts tnx-resource-facts tnx-resource-facts-three" : "user-facts"}>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>; }
 
-function PersonRoles({ member, actorRole, editable, soleOwner, busy, onSave }: { member: Member; actorRole: Role | undefined; editable: boolean; soleOwner: boolean; busy: boolean; onSave: (roles: Role[]) => Promise<void> }) {
+function PersonRoles({ member, actorRole, editable, soleOwner, busy, headingRef, backAction, onSave }: { member: Member; actorRole: Role | undefined; editable: boolean; soleOwner: boolean; busy: boolean; headingRef: Ref<HTMLHeadingElement>; backAction: ReactNode; onSave: (roles: Role[]) => Promise<void> }) {
   const saved = memberRoles(member), [selected, setSelected] = useState<Role[]>(saved);
   const options = editable ? HUMAN_ROLES.filter(role => canManageMembership(actorRole, member.role, role)) : saved;
   const unchanged = selected.length === saved.length && saved.every(role => selected.includes(role));
-  return <div className="user-role-editor"><p className="user-stage-meta">Roles control administration. Resource access comes from policies and group grants.</p><fieldset disabled={busy}><legend className="sr-only">Roles for {member.email}</legend>{options.map(role => <label key={role}>{editable && <input type="checkbox" aria-label={role} checked={selected.includes(role)} disabled={soleOwner && role === "owner"} title={soleOwner && role === "owner" ? "An organization must always have at least one owner." : undefined} onChange={event => setSelected(current => event.target.checked ? [...current, role] : current.filter(value => value !== role))} />}<span><strong>{role}</strong><small>{roleHelp[role]}</small></span>{saved.includes(role) && <em>Assigned</em>}</label>)}</fieldset>{soleOwner && editable && <p className="user-stage-meta">Keep at least one owner.</p>}{editable && <div className="user-role-actions"><Button disabled={busy || unchanged || !selected.length} onClick={() => void onSave(selected)}>{busy ? "Saving…" : "Save roles"}</Button>{!unchanged && <Button variant="ghost" disabled={busy} onClick={() => setSelected(saved)}>Discard changes</Button>}</div>}</div>;
+  return <ResourceSummary title="Roles" headingRef={headingRef} description="Roles control administration. Resource access comes from policies and group grants." footer={<>{backAction}{editable && <div className="user-role-actions">{!unchanged && <Button variant="ghost" disabled={busy} onClick={() => setSelected(saved)}>Discard changes</Button>}<Button disabled={busy || unchanged || !selected.length} onClick={() => void onSave(selected)}>{busy ? "Saving…" : "Save roles"}</Button></div>}</>}>
+    <div className="user-role-editor" data-editable={editable}><fieldset disabled={busy}><legend className="sr-only">Roles for {member.email}</legend>{options.map(role => <label key={role} className="user-role-option" data-selected={selected.includes(role)}>{editable && <input type="checkbox" aria-label={role} checked={selected.includes(role)} disabled={soleOwner && role === "owner"} title={soleOwner && role === "owner" ? "An organization must always have at least one owner." : undefined} onChange={event => setSelected(current => event.target.checked ? [...current, role] : current.filter(value => value !== role))} />}<span><strong>{role}</strong><small>{roleHelp[role]}</small></span>{saved.includes(role) && <em>Assigned</em>}</label>)}</fieldset>{soleOwner && editable && <p className="user-role-note">Keep at least one owner.</p>}</div>
+  </ResourceSummary>;
 }
 
 function InvitationsInventory({ rows, busy, emailVerified, actorRole, onAction, onInvite }: { rows: Invitation[]; busy: boolean; emailVerified: boolean; actorRole: Role | undefined; onAction: (kind: "resend" | "revoke", row: Invitation) => void; onInvite?: () => void }) {

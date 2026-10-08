@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api } from "../lib/api";
-import { Button, Field, Input, Select } from "./ui";
+import { Button, Field, Input, Select, RefreshButton } from "./ui";
 import { AIUsageDashboard, formatAIUsageCost } from "./AIUsageDashboard";
 
 import AppAccessPagination from "./AppAccessPagination";
@@ -100,7 +100,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
           const v = e.target.value as Preset; setPreset(v); setRangeError("");
           if (v !== "custom") { invalidate(); setRange(rangeFor(v)); }
         }}><option value="today">Today (UTC)</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="custom">Custom range</option></Select></Field>
-        <Button variant="ghost" disabled={busy} onClick={refresh}>{busy ? "Refreshing…" : "Refresh"}</Button>
+        <RefreshButton label={busy ? "Refreshing…" : "Refresh"} disabled={busy} onClick={refresh} />
       </div>
       {preset === "custom" && <div className="ai-usage-custom-range">
         <Field label="From (UTC)"><Input type="datetime-local" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} /></Field>

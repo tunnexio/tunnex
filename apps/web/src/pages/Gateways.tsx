@@ -9,14 +9,7 @@ import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import { Icon } from "../components/Icon";
-import {
-  Button,
-  DataTable,
-  Loading,
-  Modal,
-  PageHeader,
-  StatusDot,
-} from "../components/ui";
+import { Button, DataTable, Loading, Modal, PageHeader, StatusDot, RefreshButton } from "../components/ui";
 import { CeilingUpgrade, ceilingSentence } from "../components/CeilingUpgrade";
 import { LoadRetry } from "../components/LoadRetry";
 import { relativeAge } from "../lib/format";
@@ -204,7 +197,7 @@ export default function GatewaysPage() {
         </div>}
         <div className="gw-topbar-actions">
           {canEnroll && <Link className="gw-setup-link" to="/network/setup">Set up a network</Link>}
-          <Button size="sm" variant="ghost" aria-label="Refresh gateways" title="Refresh gateways" disabled={state.kind === "loading"} onClick={() => void reload()}><Icon name="refresh-cw" size={16} /></Button>
+          <RefreshButton label="Refresh gateways" disabled={state.kind === "loading"} onClick={() => void reload()} />
           {canEnroll && <Button size="sm" onClick={openEnrollment} disabled={ceilingReached}>Enroll gateway</Button>}
         </div>
       </div>

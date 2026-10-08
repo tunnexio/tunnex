@@ -41,4 +41,8 @@
 .users-groups-help { color: var(--tnx-text-secondary); font-size: 12px; }
 .users-groups-help p { margin-top: 12px; line-height: 1.7; max-width: 75ch; }
 
-.group-saved-summary { margin:0 0 22px; }
+.group-saved-summary { margin:0; }
+.group-detail-content { display:grid; gap:22px; min-width:0; }
+.group-detail-content > .users-groups-copy { margin:0; }
+.group-detail-content .aa-empty-state { padding:24px 0; }
+.group-saved-summary > .tnx-resource-summary-footer { justify-content:flex-start; }

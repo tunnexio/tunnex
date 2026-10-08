@@ -23,7 +23,7 @@
 .device-stage-note,.device-stage-warning { margin:18px 0 0; font-size:11.5px; line-height:1.7; color:var(--tnx-text-secondary); }
 .device-stage-warning { color:var(--tnx-warn); }
 .device-stage-note a,.device-stage-warning a { text-decoration:underline; text-underline-offset:3px; }
-.device-detail-footer { margin-top:26px; padding-top:17px; border-top:1px solid var(--tnx-border); }
+.device-detail-stage .tnx-resource-summary-footer { justify-content:flex-start; }
 .device-detail-footer button { min-height:34px; padding:7px 12px; font-size:12px; }
 .device-detail-disclosure { margin-top:24px; }
 .device-detail-disclosure > summary { display:flex; align-items:center; justify-content:space-between; padding:14px 0; cursor:pointer; list-style:none; font-size:12px; }

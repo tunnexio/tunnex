@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, ErrorText, Field, Input, Loading } from "./ui";
+import { Button, ErrorText, Field, Input, Loading, RefreshButton } from "./ui";
 import AppAccessPagination from "./AppAccessPagination";
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import { beamApi, type BeamEvent, type BeamEventFilters, type BeamPage } from "../lib/beam";
@@ -14,7 +14,7 @@ export function BeamEvents({ orgId, permitted, shareId, revision }: { orgId: str
     return () => { current = false; };
   }, [orgId, permitted, shareId, page, pageSize, reload, filters, revision]);
   if (!permitted) return <ErrorText>You do not have permission to view Local Sharing events.</ErrorText>;
-  return <section className="beam-events beam-section space-y-4"><div className={`beam-section-heading ${shareId ? "" : "beam-events-toolbar"}`}><h2 className={shareId ? "font-semibold" : "sr-only"}>{shareId ? "Share history" : "Local Sharing events"}</h2><Button variant="ghost" onClick={() => setReload(n => n + 1)}>Refresh events</Button></div>
+  return <section className="beam-events beam-section space-y-4"><div className={`beam-section-heading ${shareId ? "" : "beam-events-toolbar"}`}><h2 className={shareId ? "font-semibold" : "sr-only"}>{shareId ? "Share history" : "Local Sharing events"}</h2><RefreshButton label="Refresh events" onClick={() => setReload(n => n + 1)} /></div>
     {shareId && <p className="text-sm text-ink-secondary">Sharing and access outcomes. App bodies, cookies and request query strings are never shown.</p>}
     <form className="beam-event-filters" onSubmit={event => { event.preventDefault(); setPage(0); setFilters({ ...draft, q: draft.q?.trim() || undefined }); }}>
       <Field label="Search events"><Input type="search" maxLength={200} value={draft.q ?? ""} onChange={event => setDraft(d => ({ ...d, q: event.target.value }))} placeholder="Action or reason" /></Field>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
-import { Badge, Button, ErrorText, Loading } from "./ui";
+import { Badge, Button, ErrorText, Loading, RefreshButton } from "./ui";
 import { ResourceSummary } from "./ResourceSummary";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 
@@ -25,8 +25,8 @@ const failures: Record<Check["error_code"], string> = {
   connector_failed: "The connector could not complete this check.",
 };
 
-export default function AppAccessConnection({ orgId, appId, gatewayId, version, revision = version, canCheck, dirty, onCheck }: {
-  orgId: string; appId: string; gatewayId: string; version: number; revision?: number; canCheck: boolean; dirty: boolean; onCheck?: (check: Check | null) => void;
+export default function AppAccessConnection({ orgId, appId, gatewayId, version, revision = version, canCheck, dirty, onCheck, embedded = false }: {
+  orgId: string; appId: string; gatewayId: string; version: number; revision?: number; canCheck: boolean; dirty: boolean; onCheck?: (check: Check | null) => void; embedded?: boolean;
 }) {
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
@@ -68,10 +68,11 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
   };
   const pending = check?.status === "queued" || check?.status === "running";
   const outdated = check !== null && (check.revision !== revision || dirty);
-  return <ResourceSummary title="Connection check" className="aa-connection-summary" description="Verify the saved origin through its gateway." actions={runtime && <Badge tone={runtime.status === "supported" ? "neutral" : runtime.status === "unsupported" ? "warn" : "unknown"}>{runtime.status === "supported" ? "Supported" : runtime.status === "unsupported" ? "Unsupported" : runtime.status === "unavailable" ? "Unavailable" : "Not reported"}</Badge>}><div className="space-y-4">
+  const capability = runtime && <Badge tone={runtime.status === "supported" ? "neutral" : runtime.status === "unsupported" ? "warn" : "unknown"}>{runtime.status === "supported" ? "Supported" : runtime.status === "unsupported" ? "Unsupported" : runtime.status === "unavailable" ? "Unavailable" : "Not reported"}</Badge>;
+  const content = <div className="space-y-4">
     {runtime ? <p role="status" className="text-sm">{gatewayLabels[runtime.status]}</p> : !error && <Loading size="inline" label="Loading gateway capability…" />}
     {runtime?.reported_at && <p className="text-sm text-ink-secondary">Gateway report: {new Date(runtime.reported_at).toLocaleString()}</p>}
-    <div className="app-access-toolbar"><Button variant="ghost" onClick={() => setRefresh(n => n + 1)}>Refresh gateway status</Button>
+    <div className="app-access-toolbar"><RefreshButton label="Refresh gateway status" onClick={() => setRefresh(n => n + 1)} />
       {canCheck && <Button disabled={busy || pending || dirty || runtime?.status !== "supported"} onClick={() => void request()}>{busy ? "Requesting check…" : pending ? "Checking connection…" : "Check saved connection"}</Button>}</div>
     {dirty && <p className="text-sm">Save your changes before checking the connection.</p>}
     <ErrorText>{error}</ErrorText>
@@ -83,5 +84,6 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
       {error && pending && <Button variant="ghost" onClick={() => setCheck(current => current ? { ...current } : null)}>Retry check status</Button>}
     </div>}
     <p className="text-sm text-ink-secondary">Checks cover the saved origin connection. Connection checks do not change the active publication.</p>
-  </div></ResourceSummary>;
+  </div>;
+  return embedded ? <section className="aa-connection-embedded" aria-label="Connection check"><div className="aa-connection-heading"><div><h3>Connection check</h3><p>Verify the saved origin through its gateway.</p></div>{capability}</div>{content}</section> : <ResourceSummary title="Connection check" className="aa-connection-summary" description="Verify the saved origin through its gateway." actions={capability}>{content}</ResourceSummary>;
 }

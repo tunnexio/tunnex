@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, apiErrorMessage, loadOne, type Device, type DeviceApproval } from "../lib/api";
 import { relativeAge } from "../lib/format";
 import { NO_ADDRESS } from "../lib/postureview";
-import { Button, DataTable, ErrorText, Input, Loading, Modal, Select } from "./ui";
+import { Button, DataTable, ErrorText, Input, Loading, Modal, Select, RefreshButton } from "./ui";
 import { ResourceSummary } from "./ResourceSummary";
 import { LoadRetry } from "./LoadRetry";
 import AppAccessRowMenu from "./AppAccessRowMenu";
@@ -74,7 +74,7 @@ function ApprovalWorkspace({ orgId, canManage, renderNavigation }: Props) {
   const filtered = pending.filter((device) => `${device.name} ${device.owner_email ?? ""} ${device.assigned_ip ?? ""} ${device.platform ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : (Date.parse(a.created_at) - Date.parse(b.created_at)) * (sort === "newest" ? -1 : 1));
   const current = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
   const visible = filtered.slice((current - 1) * pageSize, current * pageSize);
-  const refresh = <Button variant="ghost" disabled={busy} onClick={() => { setPage(1); void load(); }}>Refresh requests</Button>;
+  const refresh = <RefreshButton label="Refresh requests" disabled={busy} onClick={() => { setPage(1); void load(); }} />;
   return <>{renderNavigation?.(refresh)}<div className="devices-policy-content">
     <div className="devices-policy-status"><span><strong>Enrollment approval: {mode === "on" ? "On" : mode === "off" ? "Off" : modeError ? "Unavailable" : "Loading"}</strong>{mode && <span> · {mode === "on" ? "New devices wait before connecting." : "New devices become active immediately."}</span>}</span><Link className="devices-policy-link" to="/settings?section=access-security">Manage setting</Link></div>
     {modeError && <LoadRetry error={modeError} onRetry={() => void load()} />}

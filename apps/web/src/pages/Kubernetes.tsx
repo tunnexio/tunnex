@@ -17,20 +17,7 @@ import {
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { ResourceSummary } from "../components/ResourceSummary";
-import {
-  Badge,
-  Button,
-  DataTable,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  Select,
-  SettingGroup,
-  SettingRow,
-  SettingValue,
-} from "../components/ui";
+import { Badge, Button, DataTable, ErrorText, Field, Input, Loading, Modal, Select, SettingGroup, SettingRow, SettingValue, RefreshButton } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
 import { roleFromMembers } from "../lib/policyview";
 import { can } from "../lib/rbac";
@@ -444,7 +431,7 @@ kubectl wait --for=condition=Established --timeout=120s \\
         <nav aria-label="Kubernetes workspace" className="kubernetes-tabs">
           {([["clusters", "Clusters"], ["services", "Exposed services"], ["operations", "Operations"]] as const).map(([id, label]) => <button type="button" key={id} aria-current={section === id ? "page" : undefined} onClick={() => updateQuery({ section: id, cluster: null, detail: null, q: null })}>{label}</button>)}
         </nav>
-        <div className="kubernetes-toolbar-actions"><Button variant="ghost" size="sm" aria-label="Refresh Kubernetes" onClick={() => void reload()}>Refresh</Button>{currentRaw && gate.canManage && (currentRaw.sites?.length ?? 0) > 0 && <Button size="sm" onClick={() => setRegistering(true)}>Register cluster</Button>}</div>
+        <div className="kubernetes-toolbar-actions"><RefreshButton label="Refresh Kubernetes" onClick={() => void reload()} />{currentRaw && gate.canManage && (currentRaw.sites?.length ?? 0) > 0 && <Button size="sm" onClick={() => setRegistering(true)}>Register cluster</Button>}</div>
       </div>
       {scopeCurrent && loadError && <LoadRetry error={loadError} onRetry={reload} />}
       {(!scopeCurrent || (!loadError && currentRaw === null)) && <Loading size="inline" label="Loading Kubernetes services…" />}
@@ -462,21 +449,26 @@ kubectl wait --for=condition=Established --timeout=120s \\
             <header className="kubernetes-entity-header"><div><h2>{selected.name}</h2><p>{selectedProviderContext ? `${selectedProviderContext.providerLabel} · ${selectedProviderContext.platformLabel}` : "Provider not recorded"}{selected.managedByOperator ? " · GitOps" : ""}</p></div>{clusterMenu(selected, false)}</header>
             <div className="kubernetes-detail-layout">
               <nav className="kubernetes-detail-rail" aria-label="Cluster detail sections">{clusterSteps.map(step => <button type="button" key={step} aria-current={detail === step ? "step" : undefined} onClick={() => updateQuery({ detail: step === "overview" ? null : step, q: null })}>{step[0].toUpperCase() + step.slice(1)}</button>)}</nav>
-              <section className="kubernetes-detail-stage" aria-labelledby="kubernetes-stage-heading">{detail === "services" && <header className="kubernetes-stage-header"><h3 id="kubernetes-stage-heading">Services</h3></header>}
-                {detail === "overview" && <ResourceSummary title="Overview" headingId="kubernetes-stage-heading" actions={<span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>} footer={<div className="kubernetes-summary-actions"><Button variant="ghost" onClick={() => updateQuery({ detail: "connection", q: null })}>View connection</Button><Button variant="ghost" onClick={() => updateQuery({ section: "services", cluster: selected.id, detail: null, q: null })}>View services</Button></div>}>
+              <section className="kubernetes-detail-stage" aria-labelledby="kubernetes-stage-heading">
+                <ResourceSummary title={detail[0].toUpperCase() + detail.slice(1)} headingId="kubernetes-stage-heading" className={`kubernetes-detail-summary kubernetes-detail-summary-${detail}`} actions={detail !== "services" && <span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>} footer={detail === "overview" ? <div className="kubernetes-summary-actions"><Button variant="ghost" onClick={() => updateQuery({ detail: "connection", q: null })}>View connection</Button><Button variant="ghost" onClick={() => updateQuery({ section: "services", cluster: selected.id, detail: null, q: null })}>View services</Button></div> : <div className="kubernetes-summary-navigation">
+                  <Button variant="ghost" onClick={() => updateQuery({ detail: clusterSteps[clusterSteps.indexOf(detail) - 1] === "overview" ? null : clusterSteps[clusterSteps.indexOf(detail) - 1], q: null })}>Back to {clusterSteps[clusterSteps.indexOf(detail) - 1]}</Button>
+                  {detail !== "network" && <Button variant="ghost" onClick={() => updateQuery({ detail: clusterSteps[clusterSteps.indexOf(detail) + 1], q: null })}>View {clusterSteps[clusterSteps.indexOf(detail) + 1]}</Button>}
+                </div>}>
+                {detail === "overview" && <>
                   <dl className="kubernetes-facts tnx-resource-facts"><div><dt>Network</dt><dd>{siteName.has(selected.siteId) ? <Link to={`/sites?section=overview&site=${selected.siteId}`}>{siteName.get(selected.siteId)}</Link> : "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{connectorCell(selected)}</dd></div><div><dt>Managed by</dt><dd aria-label={selected.managedByOperator ? managedEditWarning("cluster") : undefined}>{selected.managedByOperator ? "GitOps operator" : "Dashboard"}</dd></div></dl>
                   {selected.managedByOperator && <p className="kubernetes-context">Edit the cluster CR to change its configuration.</p>}
-                </ResourceSummary>}
+                </>}
                 {detail === "connection" && <>
-                  <ResourceSummary title="Connection" headingId="kubernetes-stage-heading" actions={<span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>}>
+                  <div className="kubernetes-connection-context">
                   <dl className="kubernetes-facts tnx-resource-facts"><div><dt>Network</dt><dd>{siteName.get(selected.siteId) ?? "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{selectedBinding?.kind === "pool" ? `Pool active: ${nodeName.get(selectedBinding.nodeId) ?? "Unavailable"}` : selectedBinding?.kind === "direct" ? nodeName.get(selectedBinding.nodeId) ?? "Unavailable" : selectedBinding?.kind === "missing" ? "Not selected" : "Pool state unavailable"}</dd></div></dl>
                   {raw?.nodes !== null && selectedBinding?.kind !== "unavailable" && <p className="kubernetes-context">{clusterConnectorState({ connectorNodeId: selectedBinding?.nodeId ?? null, gateways }).why ?? "Connector configuration is available. Service readiness is reported separately."}</p>}
                   {connectorControls(selected) && <Button variant="ghost" size="sm" onClick={() => setConnectorFor(selected)}>{selectedBinding?.kind === "missing" ? "Select connector" : "Change connector"}</Button>}
-                  </ResourceSummary>
+                  </div>
                   {orgId && <K8sConnectorPoolPanel orgId={orgId} cluster={selected} nodes={currentRaw.nodes} role={myRole} emailVerified={emailVerified} onChanged={reload} />}
                 </>}
                 {detail === "services" && servicesList}
-                {detail === "network" && <ResourceSummary title="Network" headingId="kubernetes-stage-heading" actions={<span className="kubernetes-stage-count">{selected.services.length} exposed service{selected.services.length === 1 ? "" : "s"}</span>}><dl className="kubernetes-facts tnx-resource-facts">{[["VIP range", selected.vipRange], ["Service CIDR", selected.serviceCidr], ["DNS zone", selected.dnsZone || "Not configured"], ["DNS VIP", selected.dnsVip ?? "Not allocated"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></ResourceSummary>}
+                {detail === "network" && <dl className="kubernetes-facts tnx-resource-facts">{[["VIP range", selected.vipRange], ["Service CIDR", selected.serviceCidr], ["DNS zone", selected.dnsZone || "Not configured"], ["DNS VIP", selected.dnsVip ?? "Not allocated"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+                </ResourceSummary>
               </section>
             </div>
           </section>}

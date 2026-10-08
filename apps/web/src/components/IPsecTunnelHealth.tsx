@@ -2,7 +2,7 @@ import "../resource-summary.css";
 import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
-import { Button } from "./ui";
+import { RefreshButton } from "./ui";
 
 type Report = components["schemas"]["IPsecConnectionStatus"];
 type Tunnel = { outside_address: string; inside_cidr: string; customer_inside_address: string; cloud_inside_address: string };
@@ -52,7 +52,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels }: { orgId: str
   return <section aria-label="Tunnel status" className="space-y-3">
     <div className="flex items-center justify-between gap-3">
       <div><h4 className="font-medium text-ink-heading">Tunnel status</h4><p className="text-xs text-ink-secondary">{unavailable ? "Status unavailable" : fresh ? "Live gateway report · updates every 10s" : "Waiting for a fresh gateway report"}</p></div>
-      <Button size="sm" variant="ghost" onClick={() => setRefresh(v => v + 1)}>Refresh tunnel status</Button>
+      <RefreshButton label="Refresh tunnel status" onClick={() => setRefresh(v => v + 1)} />
     </div>
     <div className="overflow-x-auto rounded border border-line">
       <table className="w-full text-left text-sm" aria-label="IPsec tunnel state">

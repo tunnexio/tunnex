@@ -261,6 +261,7 @@ function DevicesWorkspace() {
   if (orgLoading) return <div className="devices-workspace"><Loading label="Loading your organization…" /></div>;
   if (!org) return <div className="devices-workspace"><ErrorText>{orgFailed ? "Could not load your organizations." : "You are not a member of any organization yet."}</ErrorText></div>;
 
+  const detailFooter = <div className="device-detail-footer"><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to devices</Button></div>;
   return <div className="network-management devices-workspace devices-management">
     <h1 className="sr-only">Devices</h1>
     <DevicesTabRail actions={emailVerified ? <Button disabled={nodesLoading || Boolean(nodesError) || busy} onClick={() => { setCreateError(null); setCreating(true); }}>Add device</Button> : undefined} />
@@ -278,14 +279,14 @@ function DevicesWorkspace() {
       <div className="device-detail-layout">
         <nav aria-label="Device detail sections" className="device-detail-path">{(["overview", "connection", "posture"] as DeviceStage[]).map(value => <button key={value} type="button" aria-current={stage === value ? "step" : undefined} onClick={() => setStage(value)}>{value === "overview" ? "Overview" : value === "connection" ? "Connection" : "Posture"}</button>)}</nav>
         <section className="device-detail-stage" aria-labelledby="device-stage-heading"><h3 className="sr-only" ref={stageHeading} tabIndex={-1} id="device-stage-heading">{stage === "overview" ? "Overview" : stage === "connection" ? "Connection" : "Posture"}</h3>
-          {stage === "overview" && <><ResourceSummary title="Device settings"><DeviceFacts summary facts={[
+          {stage === "overview" && <ResourceSummary title="Device settings" footer={detailFooter}><DeviceFacts summary facts={[
             ["Owner", ownerEmail.get(inspected.user_id) ?? inspected.owner_email ?? "Owner record unavailable"],
             ["Lifecycle", inspected.status],
             ["Platform", inspected.platform || "Not reported"],
             ["Enrolled", displayTime(inspected.created_at)],
             ["Address", addressLabel(inspected.assigned_ip)],
-          ]} /><details className="device-detail-disclosure"><summary>Device identity</summary><DeviceFacts summary facts={[["Device ID", inspected.id], ["Gateway ID", inspected.node_id], ["Owner ID", inspected.user_id]]} /></details></ResourceSummary></>}
-          {stage === "connection" && <><ResourceSummary title="Connection settings"><DeviceFacts summary facts={[
+          ]} /><details className="device-detail-disclosure"><summary>Device identity</summary><DeviceFacts summary facts={[["Device ID", inspected.id], ["Gateway ID", inspected.node_id], ["Owner ID", inspected.user_id]]} /></details></ResourceSummary>}
+          {stage === "connection" && <ResourceSummary title="Connection settings" footer={detailFooter}><DeviceFacts summary facts={[
             ["Gateway", nodes.find(node => node.id === inspected.node_id)?.name || "Gateway record unavailable"],
             ["Address", addressLabel(inspected.assigned_ip)],
             ["Protocol", deviceProtocol(inspected.public_key)],
@@ -293,14 +294,13 @@ function DevicesWorkspace() {
             ["Last activity", inspected.status === "active" ? inspected.public_key ? lastSeen(inspected.last_handshake_at) : "liveness not reported" : "Not evaluated for " + inspected.status + " devices"],
             ["Received", inspected.rx_bytes === undefined ? "Not reported" : formatBytes(inspected.rx_bytes)],
             ["Sent", inspected.tx_bytes === undefined ? "Not reported" : formatBytes(inspected.tx_bytes)],
-          ]} /></ResourceSummary>{inspected.status === "pending" && <p className="device-stage-note">Waiting for enrollment approval before connecting. <Link to="/devices/approvals">Review approvals</Link></p>}{inspected.status === "active" && inspected.needs_reexport && <p className="device-stage-warning">Re-export needed. The issued configuration no longer matches current network settings.</p>}{inspected.status === "active" && inspected.health_blocked && <p className="device-stage-warning">Access is blocked by posture checks.</p>}</>}
-          {stage === "posture" && <><ResourceSummary title="Posture report"><DeviceFacts summary facts={[
+          ]} />{inspected.status === "pending" && <p className="device-stage-note">Waiting for enrollment approval before connecting. <Link to="/devices/approvals">Review approvals</Link></p>}{inspected.status === "active" && inspected.needs_reexport && <p className="device-stage-warning">Re-export needed. The issued configuration no longer matches current network settings.</p>}{inspected.status === "active" && inspected.health_blocked && <p className="device-stage-warning">Access is blocked by posture checks.</p>}</ResourceSummary>}
+          {stage === "posture" && <ResourceSummary title="Posture report" footer={detailFooter}><DeviceFacts summary facts={[
             ["Evaluation", inspected.status !== "active" ? "Not evaluated for " + inspected.status + " devices" : !posturePlatformSupported(inspected.platform) ? "Not supported" : postureBadge(inspected)?.label ?? "No posture evaluation reported"],
             ["Last report", displayTime(inspected.health_reported_at)],
             ["Reported OS", inspected.health_os_version || "Not reported"],
             ["Disk encryption", diskFactLabel(inspected.health_disk_encrypted)],
-          ]} /></ResourceSummary>{inspected.status === "active" && postureFailureSummary(inspected.health_failed_checks) && <p className="device-stage-warning">{postureFailureSummary(inspected.health_failed_checks)}</p>}<p className="device-stage-note">These checks use the device’s latest client report.</p></>}
-          <footer className="device-detail-footer"><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to devices</Button></footer>
+          ]} />{inspected.status === "active" && postureFailureSummary(inspected.health_failed_checks) && <p className="device-stage-warning">{postureFailureSummary(inspected.health_failed_checks)}</p>}<p className="device-stage-note">These checks use the device’s latest client report.</p></ResourceSummary>}
         </section>
       </div>
     </section> : <section className="device-detail-missing"><h2>Device no longer listed</h2><p>This device is absent from the current inventory.</p><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to devices</Button></section>)}

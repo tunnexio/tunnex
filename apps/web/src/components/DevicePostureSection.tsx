@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, apiErrorMessage, loadOne, type HealthCheck } from "../lib/api";
-import { Button, DataTable, ErrorText, Field, Input, Loading, Modal, Select } from "./ui";
+import { Button, DataTable, ErrorText, Field, Input, Loading, Modal, Select, RefreshButton } from "./ui";
 import { LoadRetry } from "./LoadRetry";
 import AppAccessRowMenu from "./AppAccessRowMenu";
 import { POSTURE_HONESTY_LINE, buildOsVersionParam, checkModeOf, osVersionCoverage, osVersionMins, wouldFailCopy, type CheckMode } from "../lib/postureview";
@@ -93,7 +93,7 @@ function PostureWorkspace({ orgId, canManage, renderNavigation }: Props) {
     } finally { locked.current = false; if (alive.current) setBusy(false); }
   }
 
-  const refresh = <Button variant="ghost" disabled={busy} onClick={() => { setEditor(null); setErr(null); setSaved(null); setSaveNote(null); void load(); }}>Refresh checks</Button>;
+  const refresh = <RefreshButton label="Refresh checks" disabled={busy} onClick={() => { setEditor(null); setErr(null); setSaved(null); setSaveNote(null); void load(); }} />;
   const editorName = checkRows.find((row) => row.kind === editor?.kind)?.name;
   const coverage = editor && editor.mode !== "off" ? osVersionCoverage({ macos: editor.macos, windows: editor.windows }) : [];
   return <>

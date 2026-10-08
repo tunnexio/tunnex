@@ -4,7 +4,7 @@ import "../kubernetes-operations.css";
 import "../resource-summary.css";
 import { api, apiErrorMessage, type K8sConnectorPoolHAStatus, type K8sHASettings, type Role } from "../lib/api";
 import { can } from "../lib/rbac";
-import { Badge, Button, ErrorText, Modal, SettingRow, SettingValue } from "./ui";
+import { Badge, Button, ErrorText, Modal, SettingRow, SettingValue, RefreshButton } from "./ui";
 import { NetworkDetailList } from "./NetworkDetailList";
 
 type HAActivationProps = { orgId: string; role: Role | readonly Role[] | undefined; emailVerified: boolean; central?: boolean };
@@ -126,7 +126,7 @@ function HAActivationForScope({ orgId, role, emailVerified, central = false }: H
         <p>Availability and requested modes are configuration. Only the reported actual state shows whether fenced activation or a safe drain completed.</p>
       </div></details>
     </>}
-    {!central && reviewing && <Modal title="Connector pools" placement="right" size="wide" showClose onDismiss={busy ? () => {} : () => setReviewing(false)} actions={<><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void load()}>Refresh HA status</Button><Button variant="ghost" disabled={busy !== null} onClick={() => setReviewing(false)}>Done</Button></>}>
+    {!central && reviewing && <Modal title="Connector pools" placement="right" size="wide" showClose onDismiss={busy ? () => {} : () => setReviewing(false)} actions={<><RefreshButton label="Refresh HA status" disabled={busy !== null} onClick={() => void load()} /><Button variant="ghost" disabled={busy !== null} onClick={() => setReviewing(false)}>Done</Button></>}>
       <div className="k8s-ha-review">
         <p className="k8s-operation-note">Requested mode and reported ownership state are separate. A request alone does not verify failover or traffic.</p>
         <ErrorText>{error}</ErrorText>

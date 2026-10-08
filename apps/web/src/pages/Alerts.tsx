@@ -4,7 +4,7 @@ import { AlertManagement, isAlertEventKey } from "../components/AlertManagement"
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import { ResourceSummary } from "../components/ResourceSummary";
 import AppAccessPagination from "../components/AppAccessPagination";
-import { Button, ErrorText, Input, Loading, Modal } from "../components/ui";
+import { Button, ErrorText, Input, Loading, Modal, RefreshButton } from "../components/ui";
 import { api, loadOne, type AlertOccurrence, type AlertOccurrenceState, type Role } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { relativeAge } from "../lib/format";
@@ -127,7 +127,7 @@ function AlertsWorkspace() {
   if (orgFailed || !org) return <ErrorText>Could not load the organization for alerts.</ErrorText>;
   return <div className="network-management alerts-workspace">
     {view === "management" && canManage ? <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={myRole === "owner"} renderNavigation={navigation} onRefreshAuthority={loadRole} /> : <>
-      {navigation(<Button variant="ghost" disabled={currentRows === null && !error} onClick={() => { void load(); void loadRole(); }}>Refresh</Button>)}
+      {navigation(<RefreshButton label="Refresh" disabled={currentRows === null && !error} onClick={() => { void load(); void loadRole(); }} />)}
       {view === "management" ? <Loading label="Checking alert permissions…" /> : error ? <section className="alerts-read-state" role="alert"><h2>Could not load alerts.</h2>{error !== "Could not load alerts." && <p>{error}</p>}<Button variant="ghost" onClick={() => void load()}>Retry</Button></section> : currentRows === null ? <Loading label={`Loading ${view} alerts…`} /> : <section className="alerts-inventory" aria-label={view === "active" ? "Active alert inventory" : "Resolved alert inventory"}>
         <div className="alerts-inventory-toolbar"><Input type="search" aria-label="Search alerts" placeholder="Search alerts…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} /><div className="alerts-filters" aria-label="Filter severity">{["all", "critical", "warning", "info"].map(value => <button type="button" key={value} aria-pressed={severity === value} onClick={() => { setSeverity(value); setPage(1); }}>{value === "all" ? "All severities" : value}</button>)}</div><span className="alerts-result-count">{filtered.length} {view === "active" ? "active" : "resolved"}</span></div>
         {shown.length > 0 ? <div className="alerts-table-scroll"><table className="alerts-native-table alerts-occurrence-table"><caption className="sr-only">{view === "active" ? "Active alerts" : "Resolved alert history"}</caption><thead><tr><th>Severity</th><th>Condition</th><th>Resource</th><th>{view === "active" ? "Last observed" : "Resolved"}</th></tr></thead><tbody>{shown.map(row => {
@@ -139,8 +139,8 @@ function AlertsWorkspace() {
       </section>}
       {roleError && <p className="alerts-permission-note">Management permissions could not be checked. <button type="button" onClick={() => void loadRole()}>Retry permissions</button></p>}
     </>}
-    {inspected && view !== "management" && <Modal title={inspected.subject} placement="right" size="enrollment" onDismiss={() => setInspectedId(null)} actions={<Button variant="ghost" onClick={() => setInspectedId(null)}>Close</Button>}><div className="alert-occurrence-detail"><div className="alert-detail-state"><span className="alert-severity" data-severity={inspected.severity}>{inspected.severity}</span><span>{inspected.state === "firing" ? "Active condition" : "Resolved"}</span></div><ResourceSummary title="Recorded condition"><dl className="alert-detail-facts tnx-resource-facts">{[
+    {inspected && view !== "management" && <Modal title={inspected.subject} placement="right" size="enrollment" onDismiss={() => setInspectedId(null)} actions={<Button variant="ghost" onClick={() => setInspectedId(null)}>Close</Button>}><div className="alert-occurrence-detail"><ResourceSummary title="Recorded condition" actions={<div className="alert-detail-state"><span className="alert-severity" data-severity={inspected.severity}>{inspected.severity}</span><span>{inspected.state === "firing" ? "Active condition" : "Resolved"}</span></div>} footer={resourceHref(inspected) ? <Link className="alert-detail-link" to={resourceHref(inspected)!}>Open {productLabel(inspected).toLowerCase()}</Link> : undefined}><dl className="alert-detail-facts tnx-resource-facts">{[
       ["Resource", inspected.resource_name || inspected.resource_id], ["Product", productLabel(inspected)], ["First observed", dateLabel(inspected.first_observed_at)], ["Last observed", dateLabel(inspected.last_observed_at)], ["Occurrences", inspected.occurrence_count], ["Signal", inspected.event_key], ...(inspected.state === "resolved" ? [["Resolved", dateLabel(inspected.resolved_at)]] : []),
-    ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></ResourceSummary>{resourceHref(inspected) && <Link className="alert-detail-link" to={resourceHref(inspected)!}>Open {productLabel(inspected).toLowerCase()}</Link>}</div></Modal>}
+    ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></ResourceSummary></div></Modal>}
   </div>;
 }

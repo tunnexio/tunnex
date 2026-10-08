@@ -13,7 +13,7 @@ import {
   livenessLabel,
   type AgentRow,
 } from "../lib/agentview";
-import { Button, DataTable, Input, Loading, Select, StatusDot } from "../components/ui";
+import { Button, DataTable, Input, Loading, Select, StatusDot, RefreshButton } from "../components/ui";
 import { AddAgentFlow } from "../components/AddAgentFlow";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
@@ -194,7 +194,7 @@ function AgentsIndexWorkspace({ fixture }: { fixture?: AgentsIndexFixture }) {
   return (
     <div className="network-management agents-workspace agents-index">
       <AgentsTabRail actions={<>
-        <Button variant="ghost" disabled={state.kind === "loading"} onClick={() => setReadAttempt(attempt => attempt + 1)}>Refresh</Button>
+        <RefreshButton label="Refresh" disabled={state.kind === "loading"} onClick={() => setReadAttempt(attempt => attempt + 1)} />
         {state.kind === "ready" && state.canEnroll && <Button onClick={() => update({ add: "1" })}>Add agent</Button>}
       </>} />
       {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow key={org.id} orgId={org.id} runtimeEnabled={Boolean(org.managed_agent_runtime_enabled)} enabled onDismiss={() => update({ add: null })} />}

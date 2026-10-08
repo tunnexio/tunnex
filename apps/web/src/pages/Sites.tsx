@@ -29,18 +29,7 @@ import { hubSetView, type HubMemberRow } from "../lib/hubsetview";
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
 import { toast } from "../components/Toasts";
-import {
-  Badge,
-  Button,
-  DataTable,
-  EmptyState,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  Select,
-} from "../components/ui";
+import { Badge, Button, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, Select, RefreshButton } from "../components/ui";
 import { NodeLink } from "../components/viz";
 import { LoadRetry } from "../components/LoadRetry";
 import { badgeClass } from "../lib/healthview";
@@ -380,7 +369,7 @@ export default function Sites() {
       {!selectedCard && <h1 className="sr-only">Site-to-site</h1>}
       <div className="s2s-networks-topbar">
         <SiteToSiteNavigation active="networks" />
-        {view === "body" && <div className="s2s-networks-actions"><Button size="sm" variant="ghost" aria-label="Refresh networks" onClick={() => void reload()}>Refresh</Button>{gate.canManage && <Link className="sites-primary-action" to="/network/setup">Set up a network</Link>}</div>}
+        {view === "body" && <div className="s2s-networks-actions"><RefreshButton label="Refresh networks" onClick={() => void reload()} />{gate.canManage && <Link className="sites-primary-action" to="/network/setup">Set up a network</Link>}</div>}
       </div>
 
       {view === "load_retry" && (
