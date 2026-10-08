@@ -3,6 +3,8 @@ import NetworkSetup from "../pages/NetworkSetup";
 import { SitePairReview, SitePairDetails } from "./SitePairReview";
 import { api, loadOne, type Site } from "../lib/api";
 import { Button, Modal } from "./ui";
+import { ProviderMark } from "./ProviderMarks";
+import "../connection-chooser.css";
 
 export function ConnectionChooser({ sites, orgId, onClose, onAWS }: {
   sites: Site[]; orgId?: string; onClose: () => void; onAWS: () => void;
@@ -34,8 +36,12 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS }: {
       <button className="sts-chooser-choice" onClick={() => setStep("ipsec")}><span className="sts-chooser-choice-copy"><strong>Cloud VPN / Firewall</strong><span>Configure an external VPN endpoint.</span></span><span className="sts-chooser-choice-meta">IPsec</span></button>
     </div>}
     {step === "ipsec" && <div className="sts-chooser-choices">
-      <button className="sts-chooser-choice" onClick={onAWS}><span className="sts-chooser-choice-copy"><strong>AWS</strong><span>Site-to-Site VPN · Static IPv4</span></span><span className="sts-chooser-choice-meta">Configure</span></button>
-      {["Azure", "Google Cloud", "On-premises / Other"].map(provider => <button key={provider} disabled className="sts-chooser-choice"><span className="sts-chooser-choice-copy"><strong>{provider}</strong></span><span className="sts-chooser-choice-meta">Not available yet</span></button>)}
+      <button className="sts-chooser-choice" onClick={onAWS}><span className="sts-chooser-provider-identity"><ProviderMark provider="aws" className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>AWS</strong><span>Site-to-Site VPN · Static IPv4</span></span></span><span className="sts-chooser-choice-meta">Configure</span></button>
+      {([
+        { name: "Azure", mark: "azure" },
+        { name: "Google Cloud", mark: "gcp" },
+        { name: "On-premises / Other", mark: "self_managed" },
+      ] as const).map(provider => <button key={provider.mark} disabled className="sts-chooser-choice"><span className="sts-chooser-provider-identity"><ProviderMark provider={provider.mark} className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>{provider.name}</strong></span></span><span className="sts-chooser-choice-meta">Not available yet</span></button>)}
     </div>}
     {step === "wireguard" && <div className="sts-chooser-wireguard">
       {adding ? <NetworkSetup embedded onBusyChange={setBusy} onCancel={() => setAdding(false)} onComplete={() => void reloadNetworks()} /> : <>

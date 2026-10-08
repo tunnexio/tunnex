@@ -40,6 +40,16 @@ describe("ProviderFirstEnrollmentModal", () => {
     renderModal({ onSubmit: submit });
     expect(screen.getAllByRole("radio")).toHaveLength(4);
     expect(screen.getByRole("radio", { name: /Amazon Web Services/i })).toBeTruthy();
+    for (const [name, provider] of [
+      ["Amazon Web Services", "aws"], ["Microsoft Azure", "azure"],
+      ["Google Cloud", "gcp"], ["Self-managed", "self_managed"],
+    ]) {
+      const radio = screen.getByRole("radio", { name });
+      const logo = radio.closest("label")?.querySelector(`[data-provider-mark="${provider}"]`);
+      expect(logo?.getAttribute("aria-hidden")).toBe("true");
+      expect(logo?.getAttribute("focusable")).toBe("false");
+      if (provider !== "self_managed") expect(logo?.querySelector("image")?.getAttribute("href")).toMatch(/^data:image\/(?:svg\+xml|png);base64,/);
+    }
     expect(screen.getAllByRole("radio").every(radio => !(radio as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByRole("button", { name: "1. Provider" }).getAttribute("aria-current")).toBe("step");
     expect(screen.getByRole("button", { name: "Continue" })).toHaveProperty("disabled", true);

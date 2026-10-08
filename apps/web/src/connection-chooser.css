@@ -1,0 +1,12 @@
+.sts-chooser .sts-chooser-provider-identity {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+}
+.sts-chooser .sts-chooser-provider-mark {
+  display:block;
+  width:24px;
+  height:24px;
+  flex:none;
+}

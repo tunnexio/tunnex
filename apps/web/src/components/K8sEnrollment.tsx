@@ -13,6 +13,7 @@ import {
   type EnrollmentProvider,
 } from "../lib/k8senrollment";
 import { Button, ErrorText, Field, Input, Modal, Select } from "./ui";
+import { ProviderMark } from "./ProviderMarks";
 import "../kubernetes-enrollment.css";
 
 export type EnrollmentSubmitResult =
@@ -344,6 +345,7 @@ function ProviderOptions({
         {K8S_PROVIDER_CATALOG.map((entry) => (
           <label key={entry.provider} className="k8s-provider-option">
             <input type="radio" name="k8s-provider" aria-label={entry.providerLabel} value={entry.provider} checked={value === entry.provider} disabled={disabled} onChange={() => onChange(entry.provider)} />
+            <ProviderMark provider={entry.provider} className="k8s-provider-mark" />
             <span>
               <strong>{entry.provider === "aws" ? "AWS" : entry.provider === "azure" ? "Azure" : entry.providerLabel}</strong>
               <small>{entry.platform === "gke_standard" ? "GKE Standard" : entry.platform === "kubernetes" ? "Kubernetes" : entry.platform.toUpperCase()}</small>

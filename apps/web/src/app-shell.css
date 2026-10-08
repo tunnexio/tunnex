@@ -1,0 +1,39 @@
+/* The destination rail remains a native scroll container for wheel and keyboard input. */
+.tnx-sidebar-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tnx-sidebar-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.tnx-sidebar-scroll:focus-visible {
+  outline: 1px solid var(--tnx-focus);
+  outline-offset: -1px;
+}
+.tnx-sidebar-version {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin: 8px 6px 0;
+  color: var(--tnx-text-secondary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.tnx-sidebar-version-label {
+  flex-shrink: 0;
+}
+.tnx-sidebar-version-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tnx-sidebar-version[data-collapsed] {
+  justify-content: center;
+  margin-inline: 0;
+}

@@ -98,6 +98,7 @@
 .k8s-provider-option:has(input:disabled) { cursor:default; opacity:.6; }
 .k8s-provider-option:has(input:focus-visible) { outline:2px solid var(--tnx-focus); outline-offset:2px; }
 .k8s-provider-option input { width:14px; height:14px; flex-shrink:0; accent-color:var(--tnx-focus); }
+.k8s-provider-option > .k8s-provider-mark { display:block; width:24px; height:24px; flex:none; }
 .k8s-provider-option > span { display:flex; min-width:0; flex-direction:column; gap:2px; }
 .k8s-provider-option strong { font-size:12px; font-weight:500; color:var(--tnx-text-heading); }
 .k8s-provider-option small { font-size:11px; color:var(--tnx-text-secondary); }

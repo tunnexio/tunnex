@@ -185,6 +185,17 @@ it("routes AWS through provider selection and does not reopen a cancelled draft 
   render(app());
   fireEvent.click(await screen.findByRole("button", { name: "Create connection" }));
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /IPsec/ }));
+  const providerDialog = screen.getByRole("dialog", { name: "Choose IPsec provider" });
+  for (const [name, provider] of [
+    [/AWS Site-to-Site/, "aws"], [/Azure/, "azure"],
+    [/Google Cloud/, "gcp"], [/On-premises/, "self_managed"],
+  ] as const) {
+    const choice = within(providerDialog).getByRole("button", { name });
+    const logo = choice.querySelector(`[data-provider-mark="${provider}"]`);
+    expect(logo?.getAttribute("aria-hidden")).toBe("true");
+    expect(logo?.getAttribute("focusable")).toBe("false");
+    if (provider !== "self_managed") expect(logo?.querySelector("image")?.getAttribute("href")).toMatch(/^data:image\/(?:svg\+xml|png);base64,/);
+  }
   for (const name of [/Azure/, /Google Cloud/, /On-premises/]) {
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   }
