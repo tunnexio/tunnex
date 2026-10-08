@@ -7,3 +7,5 @@ services:
   api:
     environment:
       SMTP_FROM: ${SMTP_FROM:-tunnex@localhost}
+      # Server Access stays opt-in, including during local development.
+      TUNNEX_SERVER_ACCESS_ENABLED: ${TUNNEX_SERVER_ACCESS_ENABLED:-false}

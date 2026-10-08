@@ -1,0 +1,48 @@
+{
+  "encryption_key": "env.BIFROST_ENCRYPTION_KEY",
+  "client": {
+    "enforce_auth_on_inference": true,
+    "enable_logging": true,
+    "disable_content_logging": true,
+    "max_request_body_size_mb": 1,
+    "log_retention_days": 7
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "/app/data/config.db" }
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "/app/data/logs/logs.db" },
+    "retention_days": 7
+  },
+  "governance": {
+    "auth_config": {
+      "is_enabled": true,
+      "admin_username": "env.BIFROST_ADMIN_USER",
+      "admin_password": "env.BIFROST_ADMIN_PASSWORD",
+      "disable_auth_on_inference": false
+    },
+    "virtual_keys": []
+  },
+  "providers": {
+    "openrouter": {
+      "network_config": {
+        "base_url": "http://ai-fixture-provider:8090",
+        "allow_private_network": true,
+        "max_retries": 0
+      },
+      "keys": []
+    }
+  },
+  "framework": {
+    "pricing": {
+      "pricing_url": "file:///app/catalog/bifrost-pricing.json",
+      "model_parameters_url": "file:///app/catalog/bifrost-model-parameters.json",
+      "live_models_sync_interval": 0,
+      "mcp_library_sync_interval": 0
+    }
+  }
+}
