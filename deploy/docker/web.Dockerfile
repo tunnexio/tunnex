@@ -5,7 +5,7 @@
 # package-manager release lag. Downloads remain behind the CP HTTPS authority.
 # Cross-compile this same client set once on the build host, rather than
 # repeating it under QEMU for each nginx runtime architecture.
-FROM --platform=$BUILDPLATFORM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS editor-client
+FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS editor-client
 WORKDIR /src/apps/cli
 COPY apps/cli/ ./
 COPY packages/apptransport/ /src/packages/apptransport/

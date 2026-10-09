@@ -33,13 +33,14 @@ record "Makefile GO_IMAGE" "$v"
 # 3. Every Dockerfile build stage (what actually ships in the images).
 # The immutable Bifrost dependency builds separately from the first-party modules.
 # Its transport/core/framework go.mod at 9537b2fadf42af90eb34ed47d3d4252e1beff4a0
-# requires Go 1.27.0. It has its own exact, blocking pin; it is not exempt from drift.
+# requires at least Go 1.27.0. Its patched builder has its own exact, blocking pin;
+# the immutable upstream source is not changed by a toolchain patch.
 for df in deploy/docker/*.Dockerfile apps/*/Dockerfile; do
   [ -f "$df" ] || continue
-  grep -q 'FROM golang:' "$df" || continue
-  v=$(awk -F'golang:' '/FROM golang:/{split($2,a,"-"); print a[1]; exit}' "$df")
+  grep -Eq '^FROM([[:space:]]+--[^[:space:]]+)*[[:space:]]+golang:' "$df" || continue
+  v=$(awk -F'golang:' '/^FROM([[:space:]]+--[^[:space:]]+)*[[:space:]]+golang:/{split($2,a,"-"); print a[1]; exit}' "$df")
   if [ "$df" = "apps/ai-engine/Dockerfile" ]; then
-    upstream_expected="1.27.0"
+    upstream_expected="1.27.2"
     note "$df (pinned upstream)" "$v"
     if [ "$v" != "$upstream_expected" ]; then
       echo "ERROR: $df requires pinned upstream Go $upstream_expected, got $v" >&2

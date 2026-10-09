@@ -55,7 +55,7 @@ proxies, send control credentials/cookies, or return bodies/headers/raw errors.
 A bounded HTTP response is required; 401 and 302 demonstrate connectivity without
 claiming application authorization or following the redirect.
 
-Run shared tests with Go 1.26.8: `go test -race ./...`. Node adapter tests live in
+Run shared tests with Go 1.26.9: `go test -race ./...`. Node adapter tests live in
 `apps/node/internal/appaccess`; command builds target Linux. Loopback HTTP/TLS tests
 need permission to listen locally. Tests prove mTLS identity rotation, selected
 outbound channels, exact bindings, cancellation, TLS chain/hostname/downgrade

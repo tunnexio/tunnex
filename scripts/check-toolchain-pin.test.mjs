@@ -42,10 +42,10 @@ test('first-party and immutable upstream pins both pass', (t) => {
 });
 test('upstream builder drift remains blocking', (t) => {
   const dir = fixture(t);
-  replace(dir, 'apps/ai-engine/Dockerfile', 'golang:1.27.0', 'golang:1.26.0');
+  replace(dir, 'apps/ai-engine/Dockerfile', 'golang:1.27.2', 'golang:1.26.0');
   const result = check(dir);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /requires pinned upstream Go 1\.27\.0/);
+  assert.match(result.stderr, /requires pinned upstream Go 1\.27\.2/);
 });
 test('first-party module drift remains blocking', (t) => {
   const dir = fixture(t);
@@ -68,8 +68,19 @@ test('other Docker builders cannot opt into the upstream exception', (t) => {
   const dir = fixture(t);
   const file = 'deploy/docker/api.Dockerfile';
   const original = readFileSync(join(dir, file), 'utf8').match(/golang:[^-\s]+/)[0];
-  replace(dir, file, original, 'golang:1.27.0');
+  replace(dir, file, original, 'golang:1.27.2');
   const result = check(dir);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /MISMATCH.*deploy\/docker\/api\.Dockerfile/);
 });
+
+for (const file of ['apps/operator/Dockerfile', 'deploy/docker/web.Dockerfile']) {
+  test(`platform-qualified builder drift remains blocking: ${file}`, (t) => {
+    const dir = fixture(t);
+    const original = readFileSync(join(dir, file), 'utf8').match(/golang:[^-\s]+/)[0];
+    replace(dir, file, original, 'golang:1.0.0');
+    const result = check(dir);
+    assert.notEqual(result.status, 0);
+    assert.ok(result.stderr.includes(`MISMATCH  ${file} = 1.0.0`), result.stdout + result.stderr);
+  });
+}

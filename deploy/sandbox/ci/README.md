@@ -10,7 +10,7 @@ a source/architecture manifest and checksums. No credentials, actual operator
 configuration, qualification receipts, fixed-host units or runtime state
 are included. CI never executes these binaries or starts a provider.
 
-From a clean source checkout with pinned Go 1.26.8, `make test-sandbox-package`
+From a clean source checkout with pinned Go 1.26.9, `make test-sandbox-package`
 builds `dist/sandbox/{amd64,arm64}/tunnex-sandbox-linux-<arch>.tar.gz`. The normal
 main/tag release job publishes these bundles using the existing source-ledger
 guard and artifact provenance. Downloaded bundle checksums use bare filenames;
@@ -93,7 +93,7 @@ native runtime qualification false for both architectures.
 
 The binary bundles include the six public Ubuntu producer/input/lock files.
 The required `test-sandbox-image` entry in the existing tooling matrix produces
-the AMD64 Ubuntu workload archive separately. It uses pinned Go 1.26.8 and a
+the AMD64 Ubuntu workload archive separately. It uses pinned Go 1.26.9 and a
 readonly build-time module cache, fetches the committed package closure and
 preloads the immutable official Ubuntu base with anonymous registry settings.
 Final image assembly uses no network or pull and includes only verified locked

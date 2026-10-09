@@ -14,8 +14,8 @@ if ! awk '/^SA_RECORDING_AZURITE_ACCOUNT=/ {found=1} END {exit !found}' .runtime
  printf 'SA_RECORDING_AZURITE_ACCOUNT=sa0store:%s\n' "$recording_key" >> .runtime/env
 fi
 root=$(cd ../.. && pwd)
-task_go=${SA0_GO:-/Users/pawangupta/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.darwin-arm64/bin/go}
-[ -x "$task_go" ] || { echo "Cached Go 1.26.8 required; no download attempted" >&2; exit 1; }
+task_go=${SA0_GO:-/Users/pawangupta/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go}
+[ -x "$task_go" ] || { echo "Cached Go 1.26.9 required; no download attempted" >&2; exit 1; }
 arch=$(./docker-local.sh info --format '{{.Architecture}}')
 case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=amd64 ;; *) exit 1 ;; esac
 (cd "$root/apps/api" && GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly CGO_ENABLED=0 GOOS=linux GOARCH="$arch" "$task_go" build -o "$root/tests/server-access-local/.runtime/bin/tunnex-api" ./cmd/server)

@@ -43,5 +43,5 @@ helper only. The source checkout remains untouched; builds use a fresh archive,
 compile its extended core through an explicit local module replacement, and keep
 other module dependencies read-only.
 
-The upstream modules require Go 1.27.0. The image uses its independently pinned
-builder; Tunnex first-party modules keep their shared toolchain pin.
+The upstream modules require at least Go 1.27.0. The image uses its independently
+pinned Go 1.27.2 builder; Tunnex first-party modules keep their shared toolchain pin.

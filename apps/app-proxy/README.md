@@ -15,9 +15,9 @@ authority and do not demonstrate a published application in the live product.
 
 ## Build and configure
 
-`go test -race ./...` and `go build ./cmd/app-proxy` use pinned Go 1.26.8.
+`go test -race ./...` and `go build ./cmd/app-proxy` use pinned Go 1.26.9.
 Dependencies are the local stdlib-only `packages/apptransport` and the
-repository-pinned `golang.org/x/net v0.57.0` public-suffix data/helper.
+repository-pinned `golang.org/x/net v0.60.0` public-suffix data/helper.
 Private authority wire models are generated from the central OpenAPI schema;
 run the root `make generate-app-proxy` / contract check target after changes.
 
