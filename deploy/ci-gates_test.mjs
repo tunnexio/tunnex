@@ -229,7 +229,7 @@ test.skip('Ubuntu image delivery is a required existing tooling target with exac
   const { jobs } = JSON.parse(parsed.stdout);
   const setup = jobs.tooling.steps.find(step => step.name?.startsWith('Set up pinned host Go'));
   assert.equal(setup.if, "matrix.target == 'test-sandbox-image'");
-  assert.equal(setup.with['go-version'], '1.26.8');
+  assert.equal(setup.with['go-version'], '1.26.9');
   const upload = jobs.tooling.steps.find(step => step.name?.startsWith('Retain public Ubuntu AMD64'));
   assert.ok(upload.if.includes("matrix.target == 'test-sandbox-image'"));
   assert.ok(upload.if.includes("github.ref == 'refs/heads/main'"));
@@ -278,6 +278,35 @@ for (const [workflow, stepId, expected] of [
   const values = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
   assert.deepEqual(values, expected);
 });
+
+for (const [workflow, stepId] of [['ci', 'scope'], ['security', 'c']]) {
+  for (const file of ['scripts/check-toolchain-pin.sh', 'scripts/check-toolchain-pin.test.mjs', '.devcontainer/devcontainer.json']) {
+    test(`${workflow} keeps Go checks for standalone toolchain control change: ${file}`, (t) => {
+      const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',
+        'puts JSON.generate(YAML.load_file(ARGV[0]))', `.github/workflows/${workflow}.yml`], { encoding: 'utf8' });
+      assert.equal(parsed.status, 0, parsed.stderr);
+      const { jobs } = JSON.parse(parsed.stdout);
+      const classify = jobs.scope.steps.find(step => step.id === stepId).run
+        .replaceAll('${{ github.event_name }}', 'pull_request')
+        .replaceAll('${{ github.event.pull_request.base.sha }}', 'fixture-base');
+      const dir = mkdtempSync(join(tmpdir(), 'tunnex-toolchain-scope-'));
+      t.after(() => rmSync(dir, { recursive: true, force: true }));
+      const output = join(dir, 'outputs');
+      const fakeGit = `git() {
+        if [ "$1" = "cat-file" ]; then return 0; fi
+        if [ "$1" != "diff" ]; then return 1; fi
+        case "$*" in *--diff-filter=D*) return 0;; esac
+        printf '%s\\n' '${file}'
+      }\n`;
+      const result = spawnSync('bash', ['-c', fakeGit + classify], {
+        encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      const values = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
+      assert.equal(values.go, 'true');
+    });
+  }
+}
 
 test('integration lanes run alongside unit gates but publication still requires all gates', () => {
   const parsed = spawnSync('ruby', ['-ryaml', '-rjson', '-e',

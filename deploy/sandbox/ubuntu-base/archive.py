@@ -182,7 +182,7 @@ def build(lock_path, cache, output, engine, go):
     source = command(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).decode().strip()
     delivery.need(re.fullmatch(r"[0-9a-f]{40}", source), "committed source identity required")
     version = command([go, "version"]).decode().strip()
-    delivery.need(version.startswith("go version go1.26.8 "), "pinned Go1.26.8 required")
+    delivery.need(version.startswith("go version go1.26.9 "), "pinned Go1.26.9 required")
     lock_raw = Path(lock_path).read_bytes()
     lock = delivery.read_json(lock_path)
     arch = delivery.validate_lock(lock)

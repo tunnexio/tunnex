@@ -3,10 +3,9 @@ module github.com/tunnexio/tunnex/apps/node
 // GUARD: builds/tests use GOFLAGS=-mod=readonly so dependency resolution cannot
 // silently rewrite go.mod/go.sum. The module path matches the canonical repository.
 
-go 1.26.8
+go 1.26.9
 
 require (
-	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
 	github.com/florianl/go-conntrack v0.7.0
 	github.com/florianl/go-nflog/v2 v2.3.0
 	github.com/google/uuid v1.6.0
@@ -14,8 +13,10 @@ require (
 	github.com/pion/ice/v4 v4.4.2
 	github.com/pion/logging v0.2.4
 	github.com/pion/stun/v4 v4.0.0
-	golang.org/x/net v0.57.0
-	golang.org/x/sys v0.47.0
+	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.60.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
@@ -27,7 +28,6 @@ require (
 	github.com/pion/transport/v4 v4.1.0 // indirect
 	github.com/pion/turn/v5 v5.1.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )

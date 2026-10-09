@@ -92,7 +92,7 @@ class PackageTests(unittest.TestCase):
                 self.assertFalse(go_called.exists(), "dirty-source validation must run before Go")
 
     def bundle(self, arch="amd64"):
-        return package.make_bundle(payload(arch), SOURCE, arch, "go version go1.26.8 linux/amd64")
+        return package.make_bundle(payload(arch), SOURCE, arch, "go version go1.26.9 linux/amd64")
 
     def write_architecture_bundles(self, root, mutate=None):
         for arch in package.ARCHITECTURES:
@@ -352,7 +352,7 @@ class PackageTests(unittest.TestCase):
                 if args[:2] == ["git", "diff"]:
                     return b""
                 if args[:2] == ["go", "version"]:
-                    return b"go version go1.26.8 linux/amd64\n"
+                    return b"go version go1.26.9 linux/amd64\n"
                 if args[:2] == ["git", "archive"]:
                     return source.getvalue()
                 if args[:2] == ["git", "show"]:

@@ -3,10 +3,9 @@ module github.com/tunnexio/tunnex/apps/api
 // GUARD: builds/tests use GOFLAGS=-mod=readonly so dependency resolution cannot
 // silently rewrite go.mod/go.sum. The module path matches the canonical repository.
 
-go 1.26.8
+go 1.26.9
 
 require (
-	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/getkin/kin-openapi v0.144.0
@@ -21,10 +20,12 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/redis/go-redis/v9 v9.21.0
+	github.com/tunnexio/tunnex/packages/apptransport v0.0.0
 	github.com/wneessen/go-mail v0.8.1
-	golang.org/x/crypto v0.56.0
-	golang.org/x/net v0.57.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.60.0
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
@@ -48,9 +49,8 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 

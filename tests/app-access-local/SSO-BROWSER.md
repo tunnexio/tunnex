@@ -4,7 +4,7 @@ This nonshipping `_test` fixture uses a disposable fully migrated child PostgreS
 
 The UI hostname is exactly `sso.127.0.0.1.nip.io:15186`. Cookies are host scoped: using `localhost` or `127.0.0.1` for this console would collide with other fixtures despite different ports. macOS rejected binding `127.0.0.2` with `EADDRNOTAVAIL`; no OS alias was installed. All three published/listening ports remain bound to loopback.
 
-From `apps/api`, compile with the pinned Go1.26.8 toolchain:
+From `apps/api`, compile with the pinned Go1.26.9 toolchain:
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly go test -c -o ../../tests/app-access-local/.runtime/http-sso-browser.test ./internal/http

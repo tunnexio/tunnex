@@ -100,7 +100,7 @@ jobs:
             --env GOWORK=off \
             --env GOFLAGS=-mod=readonly \
             --env GOTOOLCHAIN=local \
-            golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c \
+            golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 \
             sh -ec '
               apk add --no-cache build-base python3
               test "$(sha256sum "$AI0_BIFROST_BINARY" | awk "{print \$1}")" = "$AI0_BIFROST_BUILT_SHA256"

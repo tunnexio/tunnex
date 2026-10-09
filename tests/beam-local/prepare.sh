@@ -11,8 +11,8 @@ if [ ! -f .runtime/env ]; then
   printf 'BEAM_JOIN_TOKEN=%s\nBEAM_JOIN_HASH=%s\nBEAM_DB_PASSWORD=%s\n' "$token" "$hash" "$password" > .runtime/env
 fi
 root=$(cd ../.. && pwd)
-task_go=${BEAM_LOCAL_GO:-/Users/pawangupta/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8.darwin-arm64/bin/go}
-[ -x "$task_go" ] || { echo 'Go 1.26.8 required' >&2; exit 1; }
+task_go=${BEAM_LOCAL_GO:-/Users/pawangupta/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go}
+[ -x "$task_go" ] || { echo 'Go 1.26.9 required' >&2; exit 1; }
 arch=$(sh ./docker-local.sh info --format '{{.Architecture}}')
 case "$arch" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=amd64 ;; *) exit 1 ;; esac
 for pair in 'api server' 'node agent'; do

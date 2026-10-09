@@ -165,8 +165,8 @@ def build(arch, output):
     run(["git", "diff", "--quiet"])
     run(["git", "diff", "--cached", "--quiet"])
     go_version = run(["go", "version"]).decode().strip()
-    if not re.match(r"^go version go1\.26\.8 ", go_version):
-        raise ValueError("pinned Go 1.26.8 required")
+    if not re.match(r"^go version go1\.26\.9 ", go_version):
+        raise ValueError("pinned Go 1.26.9 required")
     output = Path(output)
     if not output.is_absolute() or ".." in output.parts:
         raise ValueError("new absolute output directory required")

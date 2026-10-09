@@ -51,8 +51,8 @@ def build(cache, output, go):
         raise ValueError("exact source commit required")
     run(["git", "diff", "--quiet"])
     run(["git", "diff", "--cached", "--quiet"])
-    if not run([go, "version"]).decode().startswith("go version go1.26.8 "):
-        raise ValueError("pinned Go 1.26.8 required")
+    if not run([go, "version"]).decode().startswith("go version go1.26.9 "):
+        raise ValueError("pinned Go 1.26.9 required")
     lock = PRODUCER / "ubuntu26-amd64.lock.json"
     if lock.read_bytes() != run(["git", "show", source + ":" + LOCK_SOURCE]):
         raise ValueError("committed dependency lock required")

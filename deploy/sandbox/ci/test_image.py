@@ -103,7 +103,7 @@ class ImageWiringTests(unittest.TestCase):
                 if args[:2] == ["git", "diff"]:
                     return b""
                 if args == ["pinned-go", "version"]:
-                    return b"go version go1.26.8 linux/amd64\n"
+                    return b"go version go1.26.9 linux/amd64\n"
                 if args[:2] == ["git", "show"]:
                     return LOCK
                 return b""

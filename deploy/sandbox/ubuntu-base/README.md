@@ -19,7 +19,7 @@ Official sources: [Ubuntu snapshot service](https://snapshot.ubuntu.com/),
 
 ## Build and distribute once
 
-Maintainers need Python stdlib, Git, Go **1.26.8** with the checked-in CLI module
+Maintainers need Python stdlib, Git, Go **1.26.9** with the checked-in CLI module
 cache already populated, and a local Linux Docker BuildKit/Podman Buildah engine
 supporting read-only `RUN --mount=type=bind`. A build-context bind keeps downloaded
 `.deb` archives out of the final image layers. This
