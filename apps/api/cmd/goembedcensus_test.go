@@ -33,7 +33,7 @@ var (
 	reEmbed = regexp.MustCompile(`(?m)^\s*//go:embed\s+(.+)$`)
 	// The classifier's own regex, transcribed. Kept as a literal on purpose: if someone edits ci.yml and not
 	// this line, `TestClassifierPatternMatchesTheWorkflow` below fails and names the drift.
-	classifierPattern = `(^deploy/test-api-edition\.sh$|^deploy/ci-active-go-packages(\.sh|_test\.mjs)$|^deploy/sandbox/|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|packages/apptransport/bootstrap/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/|apps/api/internal/sandboxes/image_profiles\.json$)`
+	classifierPattern = `(^scripts/check-toolchain-pin\.(sh|test\.mjs)$|^\.devcontainer/devcontainer\.json$|^deploy/test-api-edition\.sh$|^deploy/ci-active-go-packages(\.sh|_test\.mjs)$|^deploy/sandbox/|\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|packages/apptransport/bootstrap/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/|apps/api/internal/sandboxes/image_profiles\.json$)`
 )
 
 // ⛔ THE ONE EXEMPTION, AND WHY IT IS NARROWER THAN IT LOOKS.
