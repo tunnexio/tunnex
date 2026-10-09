@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
-import { Badge, Button, Card, ErrorText, Loading } from "./ui";
+import { Badge, Button, ErrorText, Loading, RefreshButton } from "./ui";
+import { ResourceSummary } from "./ResourceSummary";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 
 type Check = components["schemas"]["AppAccessCheck"];
@@ -24,8 +25,8 @@ const failures: Record<Check["error_code"], string> = {
   connector_failed: "The connector could not complete this check.",
 };
 
-export default function AppAccessConnection({ orgId, appId, gatewayId, version, revision = version, canCheck, dirty, onCheck }: {
-  orgId: string; appId: string; gatewayId: string; version: number; revision?: number; canCheck: boolean; dirty: boolean; onCheck?: (check: Check | null) => void;
+export default function AppAccessConnection({ orgId, appId, gatewayId, version, revision = version, canCheck, dirty, onCheck, embedded = false }: {
+  orgId: string; appId: string; gatewayId: string; version: number; revision?: number; canCheck: boolean; dirty: boolean; onCheck?: (check: Check | null) => void; embedded?: boolean;
 }) {
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
@@ -67,20 +68,22 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
   };
   const pending = check?.status === "queued" || check?.status === "running";
   const outdated = check !== null && (check.revision !== revision || dirty);
-  return <Card className="space-y-4"><div className="app-access-panel-header"><div><h3 className="font-semibold">Connection check</h3><p className="text-sm text-ink-secondary">Verify the saved origin through its gateway.</p></div>{runtime && <Badge tone={runtime.status === "supported" ? "neutral" : runtime.status === "unsupported" ? "warn" : "unknown"}>{runtime.status === "supported" ? "Supported" : runtime.status === "unsupported" ? "Unsupported" : runtime.status === "unavailable" ? "Unavailable" : "Not reported"}</Badge>}</div>
+  const capability = runtime && <Badge tone={runtime.status === "supported" ? "neutral" : runtime.status === "unsupported" ? "warn" : "unknown"}>{runtime.status === "supported" ? "Supported" : runtime.status === "unsupported" ? "Unsupported" : runtime.status === "unavailable" ? "Unavailable" : "Not reported"}</Badge>;
+  const content = <div className="space-y-4">
     {runtime ? <p role="status" className="text-sm">{gatewayLabels[runtime.status]}</p> : !error && <Loading size="inline" label="Loading gateway capability…" />}
     {runtime?.reported_at && <p className="text-sm text-ink-secondary">Gateway report: {new Date(runtime.reported_at).toLocaleString()}</p>}
-    <div className="app-access-toolbar"><Button variant="ghost" onClick={() => setRefresh(n => n + 1)}>Refresh gateway status</Button>
+    <div className="app-access-toolbar"><RefreshButton label="Refresh gateway status" onClick={() => setRefresh(n => n + 1)} />
       {canCheck && <Button disabled={busy || pending || dirty || runtime?.status !== "supported"} onClick={() => void request()}>{busy ? "Requesting check…" : pending ? "Checking connection…" : "Check saved connection"}</Button>}</div>
     {dirty && <p className="text-sm">Save your changes before checking the connection.</p>}
     <ErrorText>{error}</ErrorText>
-    {check && <div className="space-y-3 border-t border-line pt-4"><p role="status" className="font-medium">{check.status === "succeeded" ? "Origin connection succeeded." : check.status === "failed" ? "Origin connection failed." : check.status === "expired" ? "Connection check expired." : check.status === "withdrawn" ? "Connection check was withdrawn." : "Connection check is pending."}</p>
-      <p className="text-sm">Saved revision {check.revision} · Requested {new Date(check.created_at).toLocaleString()}</p>
+    {check && <div className="aa-connection-result space-y-4"><p role="status" className="font-medium">{check.status === "succeeded" ? "Origin connection succeeded." : check.status === "failed" ? "Origin connection failed." : check.status === "expired" ? "Connection check expired." : check.status === "withdrawn" ? "Connection check was withdrawn." : "Connection check is pending."}</p>
+      <dl className="tnx-resource-facts" aria-label="Connection check details"><div><dt>Saved revision</dt><dd>{check.revision}</dd></div><div><dt>Requested</dt><dd>{new Date(check.created_at).toLocaleString()}</dd></div></dl>
       {outdated && <p className="text-sm">This result does not cover your current unsaved changes.</p>}
-      <ul className="app-access-data-list text-sm" aria-label="Origin check results">{[["DNS", check.dns_status], ["Connection", check.connect_status], ["TLS", check.tls_status]].map(([label, status]) => <li key={label} className="app-access-data-row"><span>{label}: {status}</span><Badge tone={status === "passed" ? "neutral" : status === "failed" ? "danger" : "neutral"}>{status}</Badge></li>)}</ul>
+      <dl className="tnx-resource-facts aa-connection-results" aria-label="Origin check results">{[["DNS", check.dns_status], ["Connection", check.connect_status], ["TLS", check.tls_status]].map(([label, status]) => <div key={label}><dt>{label}</dt><dd><Badge tone={status === "passed" ? "neutral" : status === "failed" ? "danger" : "neutral"}>{status}</Badge></dd></div>)}</dl>
       {failures[check.error_code] && <p>{failures[check.error_code]}</p>}
       {error && pending && <Button variant="ghost" onClick={() => setCheck(current => current ? { ...current } : null)}>Retry check status</Button>}
     </div>}
     <p className="text-sm text-ink-secondary">Checks cover the saved origin connection. Connection checks do not change the active publication.</p>
-  </Card>;
+  </div>;
+  return embedded ? <section className="aa-connection-embedded" aria-label="Connection check"><div className="aa-connection-heading"><div><h3>Connection check</h3><p>Verify the saved origin through its gateway.</p></div>{capability}</div>{content}</section> : <ResourceSummary title="Connection check" className="aa-connection-summary" description="Verify the saved origin through its gateway." actions={capability}>{content}</ResourceSummary>;
 }

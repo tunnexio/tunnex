@@ -12,9 +12,10 @@ const toggle = () => screen.getByRole("switch", { name: "Cross-gateway client co
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
 
-it("defaults off and explains agents, organization scope and retained policy", () => {
+it("defaults off and explains connectivity prerequisites and retained policy", () => {
   show(); expect(toggle().getAttribute("aria-checked")).toBe("false");
-  expect(screen.getByText(/human clients and enrolled agents/).textContent).toContain("Existing Zero Trust rules still apply");
+  expect(screen.getByText(/Connect clients across gateways/).textContent).toContain("Zero Trust rules still apply");
+  expect(screen.getByText(/a reachable WireGuard endpoint is required/)).toBeTruthy();
   expect(api.PUT).not.toHaveBeenCalled();
 });
 it("requires permission to change the setting", () => {
@@ -29,9 +30,12 @@ it("uses server acknowledgement and disables duplicate saves while pending", asy
   await act(async () => complete({ data: { enabled: true } }));
   expect(saved).toHaveBeenCalledWith({ ...org, cross_gateway_clients_enabled: true });
 });
-it("can disable and keeps the saved state after a failure", async () => {
+it("withholds the switch after an unconfirmed disable and offers authoritative reload", async () => {
   api.PUT.mockResolvedValue({ error: { error: { message: "Save failed" } } });
   show(true, true); fireEvent.click(toggle()); await screen.findByText("Save failed");
   expect(api.PUT.mock.calls[0][1].body.enabled).toBe(false);
-  expect(toggle().getAttribute("aria-checked")).toBe("true"); expect(saved).not.toHaveBeenCalled();
+  expect(screen.queryByRole("switch", { name: "Cross-gateway client connectivity" })).toBeNull();
+  expect(screen.getByText("Unavailable")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Reload connectivity setting" })).toBeTruthy();
+  expect(saved).not.toHaveBeenCalled();
 });

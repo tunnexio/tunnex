@@ -55,7 +55,7 @@ describe("cross-product alerts workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /Gateway edge-west is offline/ }));
     const dialog = screen.getByRole("dialog", { name: active.subject });
     expect(within(dialog).getByText("gateway.offline")).toBeTruthy();
-    expect(within(dialog).getByRole("link", { name: "Open gateway →" }).getAttribute("href")).toBe("/gateways/g-1");
+    expect(within(dialog).getByRole("link", { name: "Open gateway" }).getAttribute("href")).toBe("/gateways/g-1");
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -64,7 +64,7 @@ describe("cross-product alerts workspace", () => {
     get.mockResolvedValue({ data: [] });
     render(<MemoryRouter><Alerts /></MemoryRouter>);
     await screen.findByText(/No active conditions/);
-    fireEvent.click(screen.getByRole("tab", { name: "history" }));
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
     await waitFor(() => expect(get).toHaveBeenCalledWith(
       "/api/v1/organizations/{orgId}/alert-occurrences",
       { params: { path: { orgId: "org-a" }, query: { state: "resolved" } } },
@@ -82,7 +82,7 @@ describe("cross-product alerts workspace", () => {
       return { data: [] };
     });
     render(<MemoryRouter><Alerts /></MemoryRouter>);
-    const tab = await screen.findByRole("tab", { name: "management" });
+    const tab = await screen.findByRole("tab", { name: "Management" });
     fireEvent.click(tab);
     expect(await screen.findByTestId("alert-management")).toBeTruthy();
     expect(screen.getByRole("button", { name: "New routing policy" })).toBeTruthy();
@@ -102,27 +102,35 @@ describe("cross-product alerts workspace", () => {
         severity_floor: "warning",
         cooldown_seconds: 900,
         archived: false,
+        allow_private: false,
+        created_at: "2026-09-01T00:00:00Z",
+        updated_at: "2026-09-01T00:00:00Z",
       }] };
       if (path.endsWith("/subscriptions")) return { data: ["gateway.offline", "device.offline"] };
       if (path.endsWith("/alert-deliveries")) return { data: [] };
       return { data: [] };
     });
     render(<MemoryRouter><Alerts /></MemoryRouter>);
-    fireEvent.click(await screen.findByRole("tab", { name: "management" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Management" }));
     expect(await screen.findByText("Platform on-call")).toBeTruthy();
     expect(screen.getByText("2 signals")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New routing policy" }));
     const dialog = screen.getByRole("dialog", { name: "New routing policy" });
     expect(dialog).toBeTruthy();
-    expect(within(dialog).getByText("Gateways")).toBeTruthy();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Policy name" }), { target: { value: "Test routing" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Endpoint" }), { target: { value: "https://hooks.example.com/secret" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
+    expect(within(dialog).getByRole("button", { name: "Gateways" })).toBeTruthy();
     expect(within(dialog).getByText("Site-to-site")).toBeTruthy();
+    expect(within(dialog).getByLabelText("Gateway offline")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Site-to-site" }));
     expect(within(dialog).getByLabelText("IPsec tunnel down")).toBeTruthy();
     expect(within(dialog).getByLabelText("IPsec connection down")).toBeTruthy();
     expect(within(dialog).getByLabelText("IPsec status unavailable")).toBeTruthy();
     expect(within(dialog).getByText("Devices")).toBeTruthy();
     expect(within(dialog).getByText("Kubernetes")).toBeTruthy();
     expect(within(dialog).getByText("AI agents")).toBeTruthy();
-    expect(within(dialog).getByLabelText("Gateway offline")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Devices" }));
     expect(within(dialog).getByLabelText("Device posture blocked")).toBeTruthy();
   });
 

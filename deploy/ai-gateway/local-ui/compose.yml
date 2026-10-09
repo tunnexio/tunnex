@@ -1,0 +1,84 @@
+# Optional local UI fixture. Use after docker-compose.yml and docker-compose.dev.yml.
+# Explicitly opt in with --profile ai-fixture; never include this file in a deployment.
+services:
+  api:
+    environment:
+      # Optional, real private engine backed by a zero-spend local provider.
+      # The fixture profile and matching credentials are prepared by local-ui/prepare.py.
+      TUNNEX_AI_GATEWAY_URL: ${TUNNEX_AI_GATEWAY_URL:-}
+      TUNNEX_AI_GATEWAY_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?Run local-ui/prepare.py first}
+      TUNNEX_AI_GATEWAY_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?Run local-ui/prepare.py first}
+      TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: ${TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED:-false}
+      TUNNEX_AI_BOOTSTRAP_VERSION: ${TUNNEX_AI_BOOTSTRAP_VERSION:-}
+    networks:
+      default: {}
+      ai_ui_fixture: {}
+
+  ai-fixture-init:
+    image: alpine:3.23
+    profiles: [ai-fixture]
+    network_mode: none
+    command: [sh, -ec, "chown 1000:1000 /fixture-config /fixture-logs"]
+    volumes:
+      - ai_ui_fixture_config:/fixture-config
+      - ai_ui_fixture_logs:/fixture-logs
+
+  ai-fixture-provider:
+    image: python:3.12.13-slim-bookworm
+    profiles: [ai-fixture]
+    restart: unless-stopped
+    command: [python3, /fixture/provider.py]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      AI_FIXTURE_KEY: ${TUNNEX_DEV_AI_FIXTURE_PROVIDER_KEY:?Run local-ui/prepare.py first}
+    volumes:
+      - ./deploy/ai-gateway/local-ui/provider.py:/fixture/provider.py:ro
+    networks: [ai_ui_fixture]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  bifrost:
+    image: ${TUNNEX_DEV_AI_ENGINE_IMAGE:?Set a compatible pinned local AI engine image}
+    profiles: [ai-fixture]
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8080"
+      APP_DIR: /app/data
+      LOG_LEVEL: error
+      BIFROST_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?Run local-ui/prepare.py first}
+      BIFROST_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?Run local-ui/prepare.py first}
+      BIFROST_ENCRYPTION_KEY: ${TUNNEX_DEV_AI_FIXTURE_ENCRYPTION_KEY:?Run local-ui/prepare.py first}
+    volumes:
+      - ai_ui_fixture_config:/app/data
+      - ai_ui_fixture_logs:/app/data/logs
+      - ./deploy/ai-gateway/local-ui/config.json:/app/data/config.json:ro
+    networks: [ai_ui_fixture]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      ai-fixture-init:
+        condition: service_completed_successfully
+      ai-fixture-provider:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+networks:
+  # Engine and fixture provider have no default network or host ports. Neither
+  # can reach an external provider. The API keeps its existing default network.
+  ai_ui_fixture:
+    internal: true
+
+volumes:
+  ai_ui_fixture_config: {}
+  ai_ui_fixture_logs: {}

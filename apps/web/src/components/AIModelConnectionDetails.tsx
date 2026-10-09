@@ -10,7 +10,7 @@ import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { api, loadOne } from "../lib/api";
 import { aiLanguageExamples } from "../lib/aiLanguageExamples";
-import { Button } from "./ui";
+import { Button, RefreshButton } from "./ui";
 
 const languageIcons: Record<string, IconType> = { python: SiPython, javascript: SiJavascript, typescript: SiTypescript, go: SiGo, php: SiPhp, ruby: SiRuby, shell: VscTerminal, csharp: SiDotnet, java: DiJava, http: VscGlobe };
 type UserModel = components["schemas"]["AIUserModel"];
@@ -70,7 +70,7 @@ export function AIModelConnectionDetails({ orgId, model, mode = "chat" }: { orgI
     : "Checking your VPN endpoint…";
   return <section className="ai-connection-details space-y-4" aria-label={`Connection details for ${model}`}>
     <div className="ai-connect-context"><span>{organization?.name ?? "Selected organization"}</span><HelpTooltip label="Connection requirements">Connect your Tunnex client to this organization's gateway. Every example uses your VPN device identity and model access policy; no API key is needed. These endpoints are reachable only through the VPN.</HelpTooltip></div>
-    {!base ? <div className="space-y-3"><p role={current?.failed ? "alert" : "status"}>{unavailable}</p>{mode === "chat" && userId && <Button disabled={!current} onClick={() => setAttempt(n => n + 1)}>Refresh VPN endpoint</Button>}</div> : <>
+    {!base ? <div className="space-y-3"><p role={current?.failed ? "alert" : "status"}>{unavailable}</p>{mode === "chat" && userId && <RefreshButton label="Refresh VPN endpoint" disabled={!current} onClick={() => setAttempt(n => n + 1)} />}</div> : <>
       <p className="text-sm text-ink-secondary">Connect your Tunnex client before running these examples. Access uses your VPN identity and model policy.</p>
       <div className="ai-connect-fields">{[["Base URL", base], ["Model ID", model], ["Org ID", orgId]].map(([label, value]) => <div className="ai-connect-field" key={label}><label>{label}</label><div><code title={value} tabIndex={0}>{value}</code><button type="button" aria-label={`Copy ${label}`} title={`Copy ${label}`} onClick={() => void copy(label, value)}><svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></svg></button></div></div>)}</div>
       <div className="ai-connect-example">

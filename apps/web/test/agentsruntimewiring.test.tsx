@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const { get, post, patch, del, put } = vi.hoisted(() => ({
   get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn(), put: vi.fn(),
 }));
-let org = { id: "org-a", name: "Acme", max_agent_identities: null as number | null, managed_agent_runtime_enabled: false };
+let org = { id: "org-a", name: "Acme", max_agent_identities: null as number | null, managed_agent_runtime_enabled: false as boolean | undefined };
 
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email: "owner@example.test", email_verified: true } } }) }));
@@ -52,17 +52,21 @@ function seed() {
 function renderDetail(tab = "overview") {
   return render(<MemoryRouter initialEntries={[`/agents/agent-a?tab=${tab}`]}><AgentDetail agentIdOverride="agent-a" /></MemoryRouter>);
 }
+function agentAction(label: string) {
+  fireEvent.click(screen.getByRole("button", { name: "Agent actions for builder" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: label }));
+}
 afterEach(() => { cleanup(); get.mockReset(); post.mockReset(); patch.mockReset(); put.mockReset(); del.mockReset(); org = { id: "org-a", name: "Acme", max_agent_identities: null, managed_agent_runtime_enabled: false }; });
 
 describe("active Agent detail mutation ownership", () => {
   it("owns metadata, managing-group assignment, lifecycle and revoke-then-remove on Overview", async () => {
     seed(); renderDetail();
-    await screen.findByText("Profile and lifecycle");
-    fireEvent.click(screen.getByRole("button", { name: "Edit profile" }));
+    await screen.findByRole("heading", { name: "builder" });
+    agentAction("Edit profile");
     fireEvent.change(screen.getByLabelText("Environment"), { target: { value: "staging" } });
     fireEvent.click(screen.getByRole("button", { name: "Save metadata" }));
     await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agents/{deviceId}", expect.objectContaining({ params: { path: { orgId: "org-a", deviceId: "agent-a" } } })));
-    fireEvent.click(screen.getByRole("button", { name: "Remove agent" }));
+    agentAction("Remove agent");
     expect(screen.getByText(/This first revokes the agent’s tunnel credential/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Revoke and remove" }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/devices/{deviceId}/revoke", expect.anything()));
@@ -145,6 +149,83 @@ describe("active Agent detail mutation ownership", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve once" }));
     expect(await screen.findByText("Could not approve this step-up request. It may already have expired or been consumed. Refresh and try again.")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "Approve read once?" })).toBeTruthy();
+  });
+
+  it("navigates the agent workspace by keyboard without mutating its profile or permissions", async () => {
+    seed(); renderDetail();
+    await screen.findByRole("heading", { name: "builder" });
+    const breadcrumb = within(screen.getByRole("navigation", { name: "AI Agent breadcrumb" }));
+    expect(breadcrumb.getByRole("link", { name: "AI Agents" }).getAttribute("href")).toBe("/agents");
+    expect(breadcrumb.getByText("builder").getAttribute("aria-current")).toBe("page");
+    const tabs = within(screen.getByRole("tablist", { name: "Agent workspace" }));
+    const overview = tabs.getByRole("tab", { name: "Overview" });
+    expect(overview.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(overview, { key: "ArrowDown" });
+    const runtimeTab = tabs.getByRole("tab", { name: "Runtime" });
+    expect(runtimeTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(runtimeTab);
+    expect(screen.getByRole("tabpanel", { name: "Runtime" })).toBeTruthy();
+    fireEvent.keyDown(runtimeTab, { key: "End" });
+    const activity = tabs.getByRole("tab", { name: "Activity" });
+    expect(activity.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel", { name: "Activity" })).toBeTruthy();
+    fireEvent.keyDown(activity, { key: "Home" });
+    expect(overview.getAttribute("aria-selected")).toBe("true");
+    expect(post).not.toHaveBeenCalled(); expect(patch).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled(); expect(del).not.toHaveBeenCalled();
+  });
+
+  it("does not continue a prior organization's revoke into a roster deletion after switching organization", async () => {
+    seed(); let complete!: (value: unknown) => void;
+    post.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    const page = renderDetail(); await screen.findByRole("heading", { name: "builder" });
+    agentAction("Remove agent");
+    fireEvent.click(screen.getByRole("button", { name: "Revoke and remove" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/devices/{deviceId}/revoke", expect.objectContaining({ params: { path: { orgId: "org-a", deviceId: "agent-a" } } })));
+    org = { ...org, id: "org-b", name: "Organization B" };
+    page.rerender(<MemoryRouter><AgentDetail agentIdOverride="agent-a" /></MemoryRouter>);
+    expect(screen.queryByRole("dialog", { name: "Remove builder?" })).toBeNull();
+    await act(async () => complete({ data: {} }));
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes runtime synchronization explicitly off from an unknown setting with an unreadable report", async () => {
+    seed(); const original = get.getMockImplementation()!;
+    get.mockImplementation((path: string) => path.endsWith("/runtime-status") ? Promise.resolve({ error: { error: { code: "unavailable" } } }) : original(path));
+    const page = renderDetail("runtime");
+    await screen.findByRole("heading", { name: "Runtime synchronization off" });
+    expect(screen.getByRole("link", { name: "Review runtime settings" }).getAttribute("href")).toBe("/settings?section=features&feature=agent-runtime");
+    expect(screen.queryByRole("heading", { name: "Runtime unavailable" })).toBeNull();
+    page.unmount(); org = { ...org, managed_agent_runtime_enabled: undefined };
+    renderDetail("runtime");
+    await screen.findByRole("heading", { name: "Runtime unavailable" });
+    expect(screen.getByRole("button", { name: "Retry runtime" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Runtime synchronization off" })).toBeNull();
+    expect(screen.queryByText("The server considers this report fresh.")).toBeNull();
+  });
+
+  it.each(["mcp_inventory_not_found", "mcp_inventory_unavailable"])("keeps MCP inventory %s distinct from an observed empty snapshot", async code => {
+    seed(); const original = get.getMockImplementation()!;
+    get.mockImplementation((path: string) => path.endsWith("/mcp-inventory") ? Promise.resolve({ error: { error: { code } } }) : original(path));
+    renderDetail("mcp");
+    if (code === "mcp_inventory_not_found") {
+      await screen.findByText("No MCP inventory reported yet.");
+      expect(screen.queryByRole("button", { name: "Retry MCP inventory" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "MCP inventory unavailable" })).toBeNull();
+    } else {
+      await screen.findByRole("heading", { name: "MCP inventory unavailable" });
+      expect(screen.getByRole("button", { name: "Retry MCP inventory" })).toBeTruthy();
+      expect(screen.queryByText("No MCP inventory reported yet.")).toBeNull();
+    }
+    expect(screen.queryByText("No servers observed in this snapshot.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save tool policy" })).toBeNull();
+    expect(get.mock.calls.some(([path]) => String(path).endsWith("/mcp-tool-policy"))).toBe(false);
+    expect(put).not.toHaveBeenCalled();
+    if (code === "mcp_inventory_unavailable") {
+      get.mockImplementation(original);
+      fireEvent.click(screen.getByRole("button", { name: "Retry MCP inventory" }));
+      await screen.findByRole("button", { name: "Save tool policy" });
+      expect(screen.queryByRole("heading", { name: "MCP inventory unavailable" })).toBeNull();
+    }
   });
 });
 

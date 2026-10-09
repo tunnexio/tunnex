@@ -30,7 +30,8 @@ async function login(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+  await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
 }
 
 test("the actor filter is org-scoped (offers only this org's members)", async ({
@@ -53,7 +54,7 @@ test("the actor filter is org-scoped (offers only this org's members)", async ({
   ).toBeAttached();
 });
 
-test("the feed renders actions + resolved actors + secret-free details, with keyset Load more", async ({
+test("the feed renders actions + resolved actors + secret-free details across bounded keyset pages", async ({
   page,
 }) => {
   const OWNER_ID = "01900000-0000-7000-8000-000000000002"; // seeddata.DemoOwnerUserID
@@ -82,7 +83,7 @@ test("the feed renders actions + resolved actors + secret-free details, with key
     } as Record<string, unknown>,
   } as (typeof all)[number];
 
-  let sawCursorReq = false;
+  const cursorRequests: string[] = [];
   await page.route("**/api/v1/organizations/*/audit-logs**", (route) => {
     const q = new URL(route.request().url()).searchParams;
     const limit = Number(q.get("limit"));
@@ -90,11 +91,11 @@ test("the feed renders actions + resolved actors + secret-free details, with key
     const cid = q.get("cursor_id");
     let rows = all;
     if (cts && cid) {
-      sawCursorReq = true;
-      // The cursor MUST be the last row the client is currently showing (row 49,
-      // the 50th displayed — row 50 was the undisplayed has-more probe).
-      expect(cts).toBe(all[49].created_at);
-      expect(cid).toBe(all[49].id);
+      cursorRequests.push(cid);
+      const boundary = cursorRequests.length === 1 ? all[19] : all[39];
+      // Cursor is the final visible row, never the undisplayed probe.
+      expect(cts).toBe(boundary.created_at);
+      expect(cid).toBe(boundary.id);
       // Row-value keyset: rows strictly older than the cursor.
       rows = all.filter(
         (r) => r.created_at < cts || (r.created_at === cts && r.id < cid),
@@ -113,41 +114,35 @@ test("the feed renders actions + resolved actors + secret-free details, with key
   await page
     .getByRole("button", { name: "Inspect sso.config_updated audit event" })
     .click();
-  await expect(page.getByRole("dialog", { name: "Audit evidence" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Audit evidence" })).toBeVisible();
   await expect(page.getByText(/a1b2c3d4e5f6/)).toBeHidden();
-  await page.getByRole("dialog", { name: "Audit evidence" }).getByText("Recorded details & IDs", { exact: true }).click();
+  await page.getByRole("region", { name: "Audit evidence" }).getByText("Recorded details & IDs", { exact: true }).click();
   await expect(page.getByText(/a1b2c3d4e5f6/)).toBeVisible();
   await expect(page.getByText(/client_secret/i)).toHaveCount(0);
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Back to audit log" }).click();
   // RE-POINTED IN S14.3 SLICE A. The actor used to be rendered as the inline string "actor <name>"; the log
   // is now a table with an "Actor" COLUMN, so the label lives in the header and the cell carries the name
   // alone. Asserting the bare name is the stronger claim anyway — it survives the label being reworded.
   await expect(
     page.getByRole("cell", { name: "Demo Owner" }).first(),
   ).toBeVisible();
-  // Page 1 shows 50 rows (of the 51 fetched); the probe row means "more".
-  //
-  // `main ul > li` was a DOM-STRUCTURE selector and it broke the moment the list became a table — which is
-  // the point: until slice A there was no `<table>` in the app, so neither this spec nor the unit tier had a
-  // role to ask for, and both were coupled to markup. +1 for the header row, which `role="row"` includes.
-  const rows = page
-    .getByRole("table", { name: "Audit events" })
-    .getByRole("row");
-  await expect(rows).toHaveCount(51);
-  const loadMore = page.getByRole("button", { name: "Load more" });
-  await expect(loadMore).toBeVisible();
-  await loadMore.click();
-
-  // After paging: exactly 53 EVENTS — all stitched in with NO overlap and NO gap (53 distinct events → 53
-  // data rows; a re-served/skipped row would change this). The undisplayed page-1 probe (row 50) is correctly
-  // re-served on page 2, and the last displayed page-1 row (49) is the cursor, not re-appended.
-  //
-  // 54 = 53 events + the header row. `role="row"` counts the header, so the +1 is carried here too; leaving
-  // it at 53 would have made this assertion silently off by one in the SAFE-LOOKING direction — it would have
-  // failed, but for a reason that reads like a paging bug rather than a counting convention.
-  await expect(rows).toHaveCount(54);
-  expect(sawCursorReq).toBe(true);
-  await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(0); // short last page → end
+  const rows = page.getByRole("table", { name: "Audit events" }).getByRole("row");
+  await expect(rows).toHaveCount(21); // 20 events and one header.
+  const next = page.getByRole("button", { name: "Next audit events" });
+  await next.click();
+  await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+  await expect(rows).toHaveCount(21);
+  await page.getByRole("button", { name: "Previous audit events" }).click();
+  await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("sso.config_updated", { exact: true })).toBeVisible();
+  expect(cursorRequests).toHaveLength(1); // Prior page restored from cache.
+  await next.click();
+  await next.click();
+  await expect(page.getByText("Page 3", { exact: true })).toBeVisible();
+  await expect(rows).toHaveCount(14); // The exact 13-event last page replaces earlier rows.
+  expect(cursorRequests).toEqual([all[19].id, all[39].id]);
+  await expect(next).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Previous audit events" })).toBeEnabled();
 });
 
 // ⛔ THE INVARIANT WITH THE WEAKEST COVERAGE, DRIVEN END TO END (S12.11).
@@ -193,7 +188,8 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+  await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
 
   const row = page
     .getByRole("row")
@@ -220,7 +216,10 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
-  await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+  await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
+  // Wait for a successful list/empty state before asserting that the foreign event is absent.
+  await expect(page.getByRole("table", { name: "Audit events", exact: true }).or(page.getByRole("heading", { name: "No audit events yet.", exact: true }))).toBeVisible();
   await expect(
     page.getByRole("row").filter({ hasText: "member.role_granted_by_cp_admin" }),
   ).toHaveCount(0);

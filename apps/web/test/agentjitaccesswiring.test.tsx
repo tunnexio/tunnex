@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+
+import { MemoryRouter } from "react-router-dom";
 
 let role: "admin" | "member" | "operator" = "admin";
 let currentOrg = {
@@ -15,6 +17,8 @@ let nextRequests: Array<Record<string, unknown>> = [];
 let destinationDelay: Promise<void> | undefined;
 let pagedAgents = false;
 let failAgentPage = false;
+let requestInventoryFails = false;
+let firstRequestHasNext = false;
 
 const now = "2026-08-16T10:00:00Z";
 const requestRow = (state: string) => ({
@@ -63,11 +67,12 @@ vi.mock("../src/lib/api", async () => {
         if (path.endsWith("/agent-access-requests/{requestId}")) return { data: { request: requests[0], events: [{ id: "event-a", state: requests[0]?.state ?? "pending", created_at: now }] } };
         if (path.endsWith("/agent-access-requests")) {
           requestReads.push(`${orgId}:requests`);
+          if (requestInventoryFails) return { error: { error: { message: "Request inventory unavailable" } } };
           if (role === "member" && !profileAllowed && requests.length === 0)
             return { error: { error: { code: "forbidden" } } };
           const query = input?.params?.query;
           const rows = query?.before_id ? nextRequests : requests;
-          return { data: { items: orgId === "org-a" ? rows.filter(row => !query?.state || row.state === query.state) : [], ...(!query?.before_id && nextRequests.length ? { next_before_id: "cursor-a", next_before_requested_at: now } : {}) } };
+          return { data: { items: orgId === "org-a" ? rows.filter(row => !query?.state || row.state === query.state) : [], ...(!query?.before_id && (nextRequests.length || firstRequestHasNext) ? { next_before_id: "cursor-a", next_before_requested_at: now } : {}) } };
         }
         if (path.endsWith("/policies")) return { data: requests[0]?.state === "approved" ? [{ id: "rule-a", org_id: "org-a", src_kind: "agent", src_device_id: "agent-a", dst_kind: "resource", dst_resource_id: "resource-a", created_at: now, expires_at: "2026-08-16T11:00:00Z", enabled: true, managed_by_operator: false, managed_by_agent_template: false, managed_by_agent_access: true, agent_access_request_id: "request-a", cidr_outside_org_ranges: false, dst_k8s_service_vanished: false }] : [] };
         if (path.endsWith("/resources")) return { data: [{ id: "resource-a", name: "database", cidr: "10.20.0.0/24" }] };
@@ -102,6 +107,8 @@ beforeEach(() => {
   destinationDelay = undefined;
   pagedAgents = false;
   failAgentPage = false;
+  requestInventoryFails = false;
+  firstRequestHasNext = false;
   vi.mocked(api.GET).mockClear();
   vi.mocked(api.POST).mockClear();
   vi.stubGlobal("crypto", { randomUUID: () => "00000000-0000-4000-8000-000000000001" });
@@ -112,10 +119,23 @@ afterEach(() => {
   cleanup();
 });
 
+async function openRequest() {
+  fireEvent.click(await screen.findByText("Request temporary access", { exact: false }));
+}
+async function openRequestMenu(id = "request-a") {
+  const row = await screen.findByTestId(`jit-request-${id}`);
+  fireEvent.click(within(row).getByRole("button", { name: /Request actions for/ }));
+}
+async function requestAction(action: string, id = "request-a") {
+  await openRequestMenu(id);
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+}
+
 describe("released F10 JIT agent access workflow", () => {
   it("creates, approves, shows history, revokes, and refetches server state", async () => {
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByRole("heading", { name: "Just-in-time agent access" });
+    await openRequest();
     fireEvent.change(screen.getByPlaceholderText("Why is access needed?"), { target: { value: "ship release" } });
     fireEvent.click(screen.getByRole("button", { name: "Request access" }));
     await screen.findByText(/ship release · pending/);
@@ -124,76 +144,118 @@ describe("released F10 JIT agent access workflow", () => {
       expect.objectContaining({ body: expect.objectContaining({ duration_seconds: 3600, destination_id: "resource-a" }) }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    await requestAction("History");
     await screen.findByText("pending");
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await requestAction("Approve");
     await screen.findByText(/ship release · approved/);
     await screen.findByRole("link", { name: "JIT access" });
-    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await requestAction("Revoke");
     await screen.findByText(/ship release · revoked/);
     await waitFor(() => expect(screen.queryByRole("link", { name: "JIT access" })).toBeNull());
   });
 
   it("shows an exact expiry instead of treating a future deadline as a last-seen age", async () => {
     requests = [requestRow("approved")];
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByText(`Expires ${new Date("2026-08-16T11:00:00Z").toLocaleString()}`);
   });
 
   it("loads older requests using both cursor fields and resets on state filter", async () => {
     requests = [requestRow("approved")];
     nextRequests = [{ ...requestRow("pending"), id: "older", reason: "older request" }];
-    render(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load more requests" }));
+    render(<MemoryRouter><Access /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Next page" }));
     await screen.findByText(/older request · pending/);
-    expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("agent-access-requests"), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ before_id: "cursor-a", before_requested_at: now }) }) }));
+    expect(screen.queryByText(/ship release · approved/)).toBeNull();
+    expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("agent-access-requests"), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ before_id: "cursor-a", before_requested_at: now, page_size: 20 }) }) }));
+    const reads = requestReads.length;
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await screen.findByText(/ship release · approved/);
+    expect(screen.queryByText(/older request · pending/)).toBeNull();
+    expect(requestReads).toHaveLength(reads);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await screen.findByText(/older request · pending/);
+    expect(requestReads).toHaveLength(reads);
     fireEvent.change(screen.getByLabelText("Request state"), { target: { value: "pending" } });
     await waitFor(() => expect(screen.queryByText(/ship release · approved/)).toBeNull());
-    await waitFor(() => expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("agent-access-requests"), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ state: "pending", page_size: 50 }) }) })));
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("agent-access-requests"), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ state: "pending", page_size: 20 }) }) })));
+  });
+
+  it("keeps a way back from an empty later cursor page and changes the actual request limit", async () => {
+    requests = [requestRow("pending")];
+    firstRequestHasNext = true;
+    render(<MemoryRouter><Access /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(screen.queryByTestId("jit-request-request-a")).toBeNull());
+    expect((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText("No temporary access requests.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    await screen.findByText(/ship release · pending/);
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await screen.findByTestId("jit-request-request-a");
+    const calls = (vi.mocked(api.GET).mock.calls as unknown as Array<[string, { params?: { query?: Record<string, unknown> } }]>).filter(([path]) => path.endsWith("/agent-access-requests"));
+    expect(calls.at(-1)?.[1].params?.query).toMatchObject({ page_size: 10 });
+    expect(calls.at(-1)?.[1].params?.query?.before_id).toBeUndefined();
+    expect((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not describe a failed request read as empty or allow a request write", async () => {
+    requestInventoryFails = true;
+    render(<MemoryRouter><Access /></MemoryRouter>);
+    await screen.findByText("Request inventory unavailable");
+    expect(screen.queryByText("No temporary access requests.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Request access" })).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+    requestInventoryFails = false;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText("No temporary access requests.");
   });
 
   it("does not expose a cursor before refreshed first-page rows are committed", async () => {
     requests = [requestRow("pending")];
     nextRequests = [{ ...requestRow("pending"), id: "older" }];
-    render(<Access />);
-    await screen.findByRole("button", { name: "Load more requests" });
+    render(<MemoryRouter><Access /></MemoryRouter>);
+    await screen.findByRole("button", { name: "Next page" });
     let release!: () => void;
     destinationDelay = new Promise<void>(resolve => { release = resolve; });
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Load more requests" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Next page" })).toBeNull());
     release();
-    await screen.findByRole("button", { name: "Load more requests" });
+    await screen.findByRole("button", { name: "Next page" });
   });
 
   it("keeps a retry visible when the second agent page fails", async () => {
     pagedAgents = true; failAgentPage = true;
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     const retry = await screen.findByRole("button", { name: "Retry temporary access" });
     expect(screen.queryByRole("button", { name: "Request access" })).toBeNull();
     failAgentPage = false;
     fireEvent.click(retry);
+    await openRequest();
     await screen.findByRole("button", { name: "Request access" });
   });
 
   it("includes agents from later inventory pages", async () => {
     pagedAgents = true;
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByLabelText("Requests for agent");
+    await openRequest();
     expect(screen.getAllByRole("option", { name: "later-agent" }).length).toBe(2);
     expect(api.GET).toHaveBeenCalledWith(expect.stringContaining("/agents"), expect.objectContaining({ params: expect.objectContaining({ query: {cursor: "agent-cursor", limit: 100} }) }));
   });
 
   it("allows admins to cancel their own pending request", async () => {
     requests = [{ ...requestRow("pending"), requested_by_user_id: "admin-a" }];
-    render(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    render(<MemoryRouter><Access /></MemoryRouter>);
+    await requestAction("Cancel");
     await screen.findByText(/cancelled/);
   });
 
   it("requires a reason in the rejection dialog", async () => {
     requests = [requestRow("pending")];
-    render(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    render(<MemoryRouter><Access /></MemoryRouter>);
+    await requestAction("Reject");
     expect(screen.getByRole("button", { name: "Reject request" }).hasAttribute("disabled")).toBe(true);
     fireEvent.change(screen.getByLabelText("Rejection reason"), { target: { value: "Not needed" } });
     fireEvent.click(screen.getByRole("button", { name: "Reject request" }));
@@ -204,20 +266,21 @@ describe("released F10 JIT agent access workflow", () => {
 
   it("lets a scoped operator request and cancel but never approve", async () => {
     role = "operator";
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByRole("heading", { name: "Just-in-time agent access" });
+    await openRequest();
     fireEvent.change(screen.getByPlaceholderText("Why is access needed?"), { target: { value: "debug incident" } });
     fireEvent.click(screen.getByRole("button", { name: "Request access" }));
-    await screen.findByRole("button", { name: "Cancel" });
-    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await openRequestMenu();
+    expect(screen.queryByRole("menuitem", { name: "Approve" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Cancel" }));
     await screen.findByText(/cancelled/);
   });
 
   it("makes no F10 calls or DOM for an unrelated member", async () => {
     role = "member";
     profileAllowed = false;
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByText("Access policies are managed by owners and admins.");
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Just-in-time agent access" })).toBeNull());
     expect(requestReads).toEqual([]);
@@ -228,20 +291,20 @@ describe("released F10 JIT agent access workflow", () => {
     role = "operator";
     profileAllowed = false;
     requests = [requestRow("pending")];
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByText(/ship release · pending/);
     expect(screen.queryByPlaceholderText("Why is access needed?")).toBeNull();
     expect(requestReads).toEqual(["org-a:requests"]);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await requestAction("Cancel");
     await screen.findByText(/ship release · cancelled/);
   });
 
   it("withdraws prior-organization JIT facts synchronously", async () => {
     requests = [requestRow("pending")];
-    const view = render(<Access />);
+    const view = render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByText(/ship release · pending/);
     currentOrg = { id: "org-b", name: "Organization B", agent_jit_access_enabled: true, agent_policy_templates_enabled: false };
-    view.rerender(<Access />);
+    view.rerender(<MemoryRouter><Access /></MemoryRouter>);
     expect(screen.queryByText(/ship release · pending/)).toBeNull();
     expect(screen.getByText("Loading rules…")).toBeTruthy();
   });

@@ -162,6 +162,14 @@ export function cpEndpoints(
   };
 }
 
+function EnrollmentSteps({ current }: { current: "details" | "command" }) {
+  return <ol className="gw-enroll-steps" aria-label="Gateway setup steps">
+    {([ ["details", "Gateway details"], ["command", "Run command"] ] as const).map(([step, label], index) => <li key={step} className="gw-enroll-step" data-current={current === step} aria-current={current === step ? "step" : undefined}>
+      <span className="gw-enroll-step-number" aria-hidden="true">{index + 1}</span><span>{label}</span>
+    </li>)}
+  </ol>;
+}
+
 /**
  * Gateways renders a org's enrolled tunnex-node agents and the enroll ceremony
  * (S4.7). Enrolling mints a ONE-TIME join token — a secret with the same handling
@@ -359,7 +367,7 @@ export function Gateways({
   }
 
   return (
-    <Card variant={hideHeader ? "plain" : "glass"}>
+    <Card className="gw-enroll" variant={hideHeader ? "plain" : "glass"}>
       {!hideHeader && <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-300">Gateways</h2>
         <Button variant="ghost" onClick={() => setOpen((v) => !v)}>
@@ -368,12 +376,10 @@ export function Gateways({
       </div>}
 
       {open && (
-        <div className={`${hideHeader ? "" : "mt-3 border-t border-white/5 pt-3"}`}>
-          <div className="mb-3">
-            <h3 className="text-cell font-semibold text-ink-heading">Gateway</h3>
-            <p className="mt-1 text-micro text-ink-tertiary">Name the host. Add a public endpoint only when peers can dial it directly.</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <div className={hideHeader ? "" : "mt-3 border-t border-white/5 pt-3"}>
+          <EnrollmentSteps current="details" />
+          <p className="gw-enroll-intro">Create a one-time command for a Linux gateway host with Docker installed.</p>
+          <div className="gw-enroll-fields">
             <Field label="Gateway name (optional)">
               <Input
                 value={nodeName}
@@ -382,46 +388,38 @@ export function Gateways({
                 maxLength={100}
               />
             </Field>
-            <Field label="Public endpoint (optional)">
-              <Input
-                value={endpoint}
-                onChange={(e) => setEndpoint(e.target.value)}
-                placeholder="203.0.113.7:51820"
-                maxLength={100}
-              />
-            </Field>
           </div>
-          {!hideHeader && <div className="mt-4 flex justify-end">
-            <Button onClick={issue} disabled={busy || !metaLoaded || !gatewayEndpointReady}>
-              {busy
-                ? "Generating…"
-                : !metaLoaded || !gatewayEndpointSettled
-                  ? "Checking Tunnex Server…"
-                  : "Generate join token"}
-            </Button>
-          </div>}
+          <details className="gw-enroll-advanced">
+            <summary>Advanced connectivity</summary>
+            <div className="gw-enroll-advanced-body">
+              <Field label="Public endpoint (optional)">
+                <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="203.0.113.7:51820" maxLength={100} />
+              </Field>
+              <p>Add an IP address and port only when peers can dial this gateway directly. Leave blank for a NAT'd spoke that dials the hub.</p>
+            </div>
+          </details>
         </div>
       )}
 
       {open && showGatewayEndpointSettings && gatewayEndpointState === "loading" && (
-        <p className="mt-3 text-micro text-ink-tertiary">Checking control connection…</p>
+        <p className="gw-enroll-message text-ink-tertiary">Checking control connection…</p>
       )}
       {open && showGatewayEndpointSettings && gatewayEndpointState === "error" && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2">
+        <div className="gw-enroll-message flex items-center justify-between gap-3">
           <ErrorText>{gatewayEndpointReadError}</ErrorText>
           <Button size="sm" variant="ghost" onClick={() => void loadGatewayEndpoint()}>Retry</Button>
         </div>
       )}
       {open && showGatewayEndpointSettings && gatewayEndpointState !== "loading" && gatewayEndpointState !== "error" && !gatewayEndpointEditing && (gatewayEndpointState === "authorized" || Boolean(gatewayControlURL)) && (
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[.08] pt-3">
-          <div className="min-w-0">
-            <p className="text-micro font-medium uppercase tracking-wide text-ink-faint">Control connection</p>
-            <p className="mt-0.5 truncate text-cell text-ink-body">
+        <div className="gw-enroll-connection">
+          <div className="gw-enroll-connection-copy">
+            <span className="gw-enroll-connection-label">Control connection</span>
+            <span className="gw-enroll-connection-value" title={gatewayControlURL}>
               {gatewayControlURL ? controlEndpointHostname(gatewayControlURL) : "Automatic from Tunnex Server URL"}
-              <span className={`ml-2 text-micro ${gatewayControlURL ? "text-ok" : "text-ink-faint"}`}>
+              <span className={`gw-enroll-connection-status ${gatewayControlURL ? "text-ok" : "text-ink-faint"}`}>
                 {gatewayControlURL ? "Configured" : "Default"}
               </span>
-            </p>
+            </span>
           </div>
           {gatewayEndpointState === "authorized" && (
             <Button size="sm" variant="ghost" onClick={() => setGatewayEndpointEditing(true)}>
@@ -431,16 +429,16 @@ export function Gateways({
         </div>
       )}
       {open && showGatewayEndpointSettings && gatewayEndpointState === "restricted" && !gatewayControlURL && (
-        <div className="mt-3 rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-cell text-amber-200">
+        <div className="gw-enroll-message text-amber-200">
           A deployment admin must configure the control endpoint before enrollment.
         </div>
       )}
       {open && showGatewayEndpointSettings && gatewayEndpointState === "authorized" && gatewayEndpointEditing && (
-        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-          <div className="flex items-start justify-between gap-3">
+        <div className="gw-enroll-endpoint-editor">
+          <div className="gw-enroll-editor-heading">
             <div>
               <div className="text-cell font-semibold text-ink-heading">Custom control endpoint</div>
-              <p className="mt-0.5 text-micro text-ink-tertiary">Advanced: override the raw mTLS endpoint with a DNS hostname on port 8443.</p>
+              <p className="mt-0.5 text-micro text-ink-tertiary">Override the deployment-wide raw mTLS endpoint with a DNS hostname on port 8443.</p>
             </div>
             <Button
               size="sm"
@@ -454,7 +452,7 @@ export function Gateways({
               {gatewayEndpointConfigured ? "Keep current" : "Use automatic"}
             </Button>
           </div>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="gw-enroll-editor-controls">
             <div className="flex-1">
               <Field label="Gateway control URL (DNS hostname)">
                 <Input value={gatewayEndpointDraft} onChange={(e) => setGatewayEndpointDraft(e.target.value)} placeholder="https://agent.example.com:8443" maxLength={300} />
@@ -477,7 +475,7 @@ export function Gateways({
         </ErrorText>
       )}
       {open && ep.ok && ep.usedFallback && metaError && (
-        <p className="mt-2 text-xs text-amber-400">
+        <p className="gw-enroll-message text-amber-400">
           Couldn't confirm the Tunnex Server's public URL (metadata unavailable)
           so the command below uses this dashboard's origin. Verify the gateway
           can reach <span className="font-mono">{ep.apiURL}</span>.
@@ -493,8 +491,8 @@ export function Gateways({
         <ErrorText>{error}</ErrorText>
       )}
 
-      {open && hideHeader && (
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-white/[.08] pt-4">
+      {open && (
+        <div className="gw-enroll-actions">
           {onCancel && <Button variant="ghost" onClick={onCancel}>Cancel</Button>}
           <Button onClick={issue} disabled={busy || !metaLoaded || !gatewayEndpointReady}>
             {busy
@@ -512,34 +510,19 @@ export function Gateways({
           token on first connect. */}
       {token && ep.ok && (
         <OneTimeSecretModal
-          title="Enroll your gateway: run this once"
+          title="Run the gateway command"
           caption={
             <>
-              Paste this <span className="font-semibold">single command</span>{" "}
-              on the gateway VM (Docker installed) to bring it online. It pulls
-              the agent and comes up on real WireGuard with{" "}
-              <span className="font-semibold">no edits</span>. Shown{" "}
-              <span className="font-semibold">exactly once</span>, single-use:
-              copy it now.
+              Run this single command on the Linux gateway host with Docker installed. The join token is single-use and shown{" "}
+              <span className="font-semibold">exactly once</span>; copy it before closing.
               {pinnedName && (
                 <>
                   {" "}
-                  Pinned to the name{" "}
+                  Gateway name is pinned to{" "}
                   <span className="font-mono">{pinnedName}</span>. The agent
-                  enrolls under exactly that or the server refuses it.
+                  must use that exact name or enrollment is refused.
                 </>
               )}
-              {!pinnedEndpoint && (
-                <>
-                  {" "}
-                  No public endpoint set → this gateway is treated as a{" "}
-                  <span className="font-semibold">NAT'd spoke</span> (it dials
-                  the hub; other peers can't dial it).
-                </>
-              )}{" "}
-              (Installing on the SAME host as Tunnex Server? See{" "}
-              <span className="font-mono">docs/deploy-cloud-gateway.md</span>{" "}
-              for the co-located compose form. It carries this same token.)
             </>
           }
           // D4: the ONE true remote-gateway docker run — single line, host networking + wgctrl baked in.
@@ -563,7 +546,18 @@ export function Gateways({
             setPinnedEndpoint(null);
             onEnrollmentAcknowledged?.();
           }}
-        />
+        >
+          <EnrollmentSteps current="command" />
+          <p className="gw-enroll-secret-next">After running the command, return to Gateways and refresh. The gateway appears after the agent redeems its token; connection status comes from the agent's reports.</p>
+          <details className="gw-enroll-secret-details">
+            <summary>Network and installation details</summary>
+            <div>
+              {!pinnedEndpoint && <p>No public endpoint is set. This gateway is a NAT'd spoke: it dials the hub, and other peers cannot dial it directly.</p>}
+              {pinnedEndpoint && <p>Public endpoint: <code>{pinnedEndpoint}</code>. Peers must be able to reach this address.</p>}
+              <p>Installing on the same host as Tunnex Server? Use the co-located compose form in <code>docs/deploy-cloud-gateway.md</code> with this same token.</p>
+            </div>
+          </details>
+        </OneTimeSecretModal>
       )}
     </Card>
   );

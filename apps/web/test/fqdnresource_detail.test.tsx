@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 let orgId = "org-a";
 let role = "admin";
@@ -30,6 +30,7 @@ function page(path = "/access/resources/fqdn/fqdn-1?q=orders&status=stale&sort=n
   return render(<MemoryRouter initialEntries={[{ pathname, search: query ? `?${query}` : "", state }]}><Routes><Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} /></Routes></MemoryRouter>);
 }
 function Navigator() { const navigate = useNavigate(); return <><button onClick={() => navigate("/access/resources/fqdn/b")}>B</button><FQDNResourceDetail /></>; }
+function Location() { const location = useLocation(); return <output aria-label="Resource route">{location.pathname}{location.search}</output>; }
 
 beforeEach(() => {
   orgId = "org-a"; role = "admin"; members = allowed();
@@ -41,11 +42,11 @@ afterEach(cleanup);
 
 describe("FQDN resource detail route", () => {
   it("opens the stable detail workspace from a narrow-summary View action with its full back query", async () => {
-    render(<MemoryRouter initialEntries={["/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc"]}><Routes><Route path="/access/resources" element={<AccessResources />} /><Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} /></Routes></MemoryRouter>);
-    const view = await screen.findByRole("link", { name: "View Orders" });
-    expect(view.getAttribute("href")).toBe("/access/resources/fqdn/fqdn-1?type=fqdn&q=orders&status=stale&sort=name&dir=asc");
-    fireEvent.click(view);
+    render(<MemoryRouter initialEntries={["/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc"]}><Routes><Route path="/access/resources" element={<AccessResources />} /><Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} /></Routes><Location /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Orders" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "View Orders" }));
     expect(await screen.findByRole("heading", { name: "Orders" })).toBeTruthy();
+    expect(screen.getByLabelText("Resource route").textContent).toBe("/access/resources/fqdn/fqdn-1?type=fqdn&q=orders&status=stale&sort=name&dir=asc");
     expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Resources" }).getAttribute("href")).toBe("/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc");
   });
 

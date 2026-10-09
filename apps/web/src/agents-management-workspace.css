@@ -1,0 +1,61 @@
+.agents-management .workspace-tabs { margin-top: 0 !important; }
+.agents-management-content { display: grid; gap: 16px; min-width: 0; }
+.agents-management-toolbar, .agents-management-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.agents-management-toolbar > input { width: min(340px, 42%); }
+.agents-management-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.agents-management-heading h2 { font-size: 18px; font-weight: 600; color: var(--tnx-text-heading); overflow-wrap: anywhere; }
+.agents-management-toolbar h3 { font-size: 13px; font-weight: 600; color: var(--tnx-text-heading); }
+.agents-management-name, .agents-management-link { font-size: 13px; color: var(--tnx-text-heading); text-align: left; }
+.agents-management-name:hover, .agents-management-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.agents-management-name:focus-visible, .agents-management-link:focus-visible { outline: 2px solid var(--tnx-focus); outline-offset: 4px; }
+.agents-management-name { font-weight: 500; }
+.agents-management-breadcrumb { display: flex; align-items: center; gap: 9px; color: var(--tnx-text-secondary); font-size: 12px; }
+.agents-management-breadcrumb button { color: var(--tnx-text-secondary); }
+.agents-management-breadcrumb button:hover { color: var(--tnx-text-heading); text-decoration: underline; }
+.agents-management-breadcrumb [aria-current] { color: var(--tnx-text-heading); overflow-wrap: anywhere; }
+.agents-management-assignment-fields { display: grid; grid-template-columns: minmax(130px, 210px) minmax(180px, 310px) auto; align-items: end; gap: 12px; justify-content: start; }
+.agents-management-notice { font-size: 12px; color: var(--tnx-ok); }
+.agents-management-inline-empty { padding: 18px 0; color: var(--tnx-text-secondary); font-size: 13px; }
+.agents-management-help { margin-top: 8px; color: var(--tnx-text-secondary); font-size: 12px; }
+.agents-management-help p { margin: 12px 0; line-height: 1.6; max-width: 76ch; }
+.agents-management-editor, .agents-group-editor, .agents-model-editor { display: grid; gap: 16px; }
+.agents-management-editor p, .agents-group-editor p, .agents-model-editor > p { color: var(--tnx-text-secondary); font-size: 12px; line-height: 1.6; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.agents-management-editor),
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.agents-group-editor),
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.agents-model-editor) { width: min(560px, calc(100vw - 32px)) !important; max-width: min(560px, calc(100vw - 32px)) !important; }
+.agents-management .ai-compact-table { width: 100%; font-size: 13px; }
+.agents-management .ai-compact-table th { padding: 10px 12px; background: transparent; font-size: 11px; font-weight: 500; color: var(--tnx-text-secondary); }
+.agents-management .ai-compact-table td { padding: 13px 12px; vertical-align: middle; border-top: 1px solid var(--tnx-divider); }
+.agents-management .ai-compact-table th:first-child, .agents-management .ai-compact-table td:first-child { padding-left: 0; }
+.agents-management .ai-compact-table th:last-child, .agents-management .ai-compact-table td:last-child { text-align: right; padding-right: 0; }
+.agents-management-table-scroll { overflow-x: auto; min-width: 0; }
+.agents-management-view-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--tnx-divider); }
+.agents-management-view-tabs button { padding: 12px 0; color: var(--tnx-text-secondary); font-size: 13px; border-bottom: 2px solid transparent; }
+.agents-management-view-tabs [aria-selected="true"] { color: var(--tnx-text-heading); border-bottom-color: var(--tnx-text-heading); }
+.agents-management-view-tabs button:hover { color: var(--tnx-text-heading); }
+.agents-model-editor .ai-config-editor { display: grid; gap: 16px; padding: 0; }
+.agents-model-editor .ai-config-provider-options { display: grid; gap: 8px; padding: 0; border: 0; background: transparent; }
+.agents-model-editor .ai-config-sync { border-radius: 0; border: 0; border-bottom: 1px solid var(--tnx-divider); padding: 0 0 12px; background: transparent; }
+.agents-model-editor .ai-config-sync p { font-size: 11px; color: var(--tnx-text-secondary); }
+.agents-model-editor .ai-config-membership { padding: 0; border: 0; background: transparent; font-size: 12px; }
+.agents-model-editor .ai-config-model-summary { font-size: 12px; overflow-wrap: anywhere; }
+.agents-model-editor .ai-config-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.agents-group-member-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--tnx-divider); padding: 12px 0; font-size: 13px; }
+.agents-group-context { color: var(--tnx-text-secondary); font-size: 12px; }
+
+.agents-management .tnx-datatable thead tr { background: transparent !important; }
+.agents-workspace.agents-management .tnx-datatable table { width: 100%; min-width: 0 !important; }
+.agents-workspace.agents-management .tnx-datatable th:last-child,
+.agents-workspace.agents-management .tnx-datatable td:last-child { width: 56px; padding-right: 0; text-align: right; }
+.agents-workspace.agents-management .tnx-datatable th:first-child,
+.agents-workspace.agents-management .tnx-datatable td:first-child { padding-left: 0; }
+.agents-workspace.agents-management .tnx-datatable td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.agents-management .tnx-datatable th { font-size: 11px; font-weight: 500; color: var(--tnx-text-secondary); }
+.agents-model-editor .ai-config-editor { margin-top: 0; padding-top: 0; border-top: 0; }
+.agents-model-editor .ai-config-pill { border: 0; border-radius: 0; padding: 0; background: transparent; }
+.agents-model-editor .ai-config-model-summary { padding: 0; background: transparent; border: 0; }
+
+.agents-group-editor .network-detail-list ul, .agents-model-editor .network-detail-list ul { padding: 0; margin: 0; list-style: none; }
+.agents-group-editor .network-detail-list li, .agents-model-editor .network-detail-list li { border-bottom: 1px solid var(--tnx-divider); }
+.agents-group-editor .network-detail-list li label, .agents-model-editor .network-detail-list li label { display: flex; align-items: center; gap: 10px; padding: 10px 0; cursor: pointer; font-size: 13px; }
+.agents-group-editor .network-detail-list li small, .agents-model-editor .network-detail-list li small { display: block; color: var(--tnx-text-secondary); font-size: 11px; }

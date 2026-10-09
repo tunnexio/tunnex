@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import "../users-groups-workspace.css";
 
 export function WorkspaceTabs({ label, items, activeHref }: {
   label: string;
@@ -14,11 +16,11 @@ export function WorkspaceTabs({ label, items, activeHref }: {
   </nav>;
 }
 
-export function UsersTabRail() {
-  return <WorkspaceTabs label="Users and groups sections" items={[
+export function UsersTabRail({ actions }: { actions?: ReactNode } = {}) {
+  return <div className="users-workspace-nav"><WorkspaceTabs label="User sections" items={[
     { href: "/users", label: "Users" },
     { href: "/users/groups", label: "Groups" },
     { href: "/users/roles", label: "Roles" },
     { href: "/users/invitations", label: "Invitations" },
-  ]} />;
+  ]} />{actions && <div className="users-workspace-nav-actions">{actions}</div>}</div>;
 }

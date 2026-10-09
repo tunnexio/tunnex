@@ -25,6 +25,14 @@ async function openWorkload(tab = "Overview") {
   await waitFor(() => expect(screen.getByRole("button", { name: "Refresh workload" })).toHaveProperty("disabled", false));
   if (tab !== "Overview") fireEvent.click(screen.getByRole("tab", { name: tab }));
 }
+async function chooseKeyAction(name: string, action: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Actions for enrollment key ${name}` }));
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+}
+async function chooseInstanceAction(id: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Actions for instance ${id}` }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Revoke instance" }));
+}
 
 describe("Workload model access", () => {
   it("starts with a searchable list and opens only the selected detail tab", async () => {
@@ -116,7 +124,7 @@ describe("Workload model access", () => {
     mock.post.mockResolvedValue({ response: new Response(null, { status: 204 }) });
     render(<AIWorkloads orgId="org" canManage />);
     await openWorkload("Enrollment keys");
-    fireEvent.click(await screen.findByRole("button", { name: "Revoke enrollment key Production key" }));
+    await chooseKeyAction("Production key", "Revoke key");
     const checkbox = screen.getByLabelText("Also revoke every instance enrolled with this key") as HTMLInputElement;
     expect(checkbox.checked).toBe(false);
     if (revokeInstances) fireEvent.click(checkbox);
@@ -133,7 +141,7 @@ describe("Workload model access", () => {
     expect(await screen.findByRole("columnheader", { name: "Enrollment key" })).toBeTruthy();
     expect(screen.getByRole("cell", { name: "Production key key" })).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "Load more instances" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Revoke instance instance-2" }));
+    await chooseInstanceAction("instance-2");
     fireEvent.click(screen.getByRole("button", { name: "Confirm revocation" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(`${root}/{workloadId}/instances/{instanceId}/revoke`, { params: { path: { orgId: "org", workloadId: "workload", instanceId: "instance-2" } } }));
     expect(mock.get).toHaveBeenCalledWith(`${root}/{workloadId}/instances`, { params: { path: { orgId: "org", workloadId: "workload" }, query: { after: "cursor-instance", limit: 50 } } });
@@ -169,9 +177,9 @@ describe("Workload model access", () => {
     mock.post.mockImplementation(() => { revoked = true; return Promise.resolve({ response: new Response(null, { status: 204 }) }); });
     render(<AIWorkloads orgId="org" canManage />);
     await openWorkload("Enrollment keys");
-    fireEvent.click(await screen.findByRole("button", { name: "Revoke enrollment key Production key" }));
+    await chooseKeyAction("Production key", "Revoke key");
     fireEvent.click(screen.getByRole("button", { name: "Confirm revocation" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Revoke instances from Production key" }));
+    await chooseKeyAction("Production key", "Revoke instances");
     expect(screen.getByText(/This enrollment key is already revoked/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Confirm revocation" }));
     await waitFor(() => expect(mock.post).toHaveBeenNthCalledWith(2, `${root}/{workloadId}/enrollment-keys/{keyId}/revoke`, { params: { path: { orgId: "org", workloadId: "workload", keyId: "key" } }, body: { revoke_instances: true } }));
@@ -232,6 +240,58 @@ describe("Workload model access", () => {
     expect(save).toHaveProperty("disabled", false);
     fireEvent.click(save);
     await waitFor(() => expect(mock.put).toHaveBeenCalledWith(`${root}/{workloadId}`, expect.objectContaining({ body: { name: "Support bot", enabled: false, models: [{ ...models[0], mode: "chat" }], daily_usd_threshold: null, expected_revision: 3 } })));
+  });
+
+  it("slices the workload inventory and resets pages for search and page-size changes", async () => {
+    const workloads = Array.from({ length: 55 }, (_, index) => ({ ...workload, id: `workload-${index + 1}`, name: `Bot ${String(index + 1).padStart(2, "0")}` }));
+    mock.get.mockImplementation((path: string) => path === root ? Promise.resolve({ data: workloads }) : defaultGet(path));
+    render(<AIWorkloads orgId="org" canManage />);
+    const table = () => screen.getByRole("table", { name: "Workloads" });
+    await screen.findByRole("button", { name: "Open Bot 01" });
+    expect(within(table()).getAllByRole("row")).toHaveLength(21);
+    expect(screen.queryByRole("button", { name: "Open Bot 21" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByRole("button", { name: "Open Bot 21" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(within(table()).getAllByRole("row")).toHaveLength(16);
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search workloads" }), { target: { value: "Bot 01" } });
+    expect(screen.getByRole("button", { name: "Open Bot 01" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search workloads" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    expect(within(table()).getAllByRole("row")).toHaveLength(51);
+    expect(screen.getByRole("button", { name: "Open Bot 01" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", true);
+    expect(mock.post).not.toHaveBeenCalled(); expect(mock.put).not.toHaveBeenCalled();
+  });
+
+  it("pages only loaded instance rows and retains cursor authority when loading more", async () => {
+    const instances = Array.from({ length: 55 }, (_, index) => ({ ...instance, id: `instance-${index + 1}` }));
+    mock.get.mockImplementation((path: string, options: { params: { query?: { after?: string } } }) => path.endsWith("/instances") ? Promise.resolve({ data: options.params.query?.after ? { items: instances.slice(50) } : { items: instances.slice(0, 50), next_cursor: "actual-instance-cursor" } }) : defaultGet(path));
+    mock.post.mockResolvedValue({ response: new Response(null, { status: 204 }) });
+    render(<AIWorkloads orgId="org" canManage />);
+    await openWorkload("Instances");
+    const table = () => screen.getByRole("table", { name: "Workload instances" });
+    await screen.findByRole("table", { name: "Workload instances" });
+    expect(within(table()).getAllByRole("row")).toHaveLength(21);
+    expect(mock.get).toHaveBeenCalledWith(`${root}/{workloadId}/instances`, { params: { path: { orgId: "org", workloadId: "workload" }, query: { limit: 50 } } });
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(within(table()).getAllByRole("row")).toHaveLength(11);
+    expect(screen.queryByRole("button", { name: "Actions for instance instance-55" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Load more instances" }));
+    await screen.findByRole("button", { name: "Actions for instance instance-55" });
+    expect(within(table()).getAllByRole("row")).toHaveLength(16);
+    expect(mock.get).toHaveBeenCalledWith(`${root}/{workloadId}/instances`, { params: { path: { orgId: "org", workloadId: "workload" }, query: { after: "actual-instance-cursor", limit: 50 } } });
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
+    await chooseInstanceAction("instance-55");
+    expect(mock.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm revocation" }));
+    await waitFor(() => expect(mock.post).toHaveBeenCalledExactlyOnceWith(`${root}/{workloadId}/instances/{instanceId}/revoke`, { params: { path: { orgId: "org", workloadId: "workload", instanceId: "instance-55" } } }));
   });
 
   it.each(["models", "credentials"] as const)("enforces the %s limit before saving", async (limit) => {

@@ -213,7 +213,7 @@ export function causeFor(
   e: AccessEvent,
   ruleName: (id: string) => string | null,
 ): string {
-  if (e.beam) return e.beam.reason.replace(/_/g, " ") || "Beam access outcome recorded";
+  if (e.beam) return e.beam.reason.replace(/_/g, " ") || "Local Sharing access outcome recorded";
   if (e.decision === "gap") {
     const n = e.deny_count ?? 0;
     return n > 0
@@ -236,7 +236,7 @@ export function causeFor(
 
 /** DESTINATION — address plus port, protocol only where it adds something. */
 export function destinationFor(e: AccessEvent): string {
-  if (e.beam) return `Beam share ${e.beam.share_id.slice(0, 8)}`;
+  if (e.beam) return `Share ${e.beam.share_id.slice(0, 8)}`;
   const port = e.dst_port ? `:${e.dst_port}` : "";
   return `${e.dst_ip}${port}`;
 }
@@ -280,7 +280,7 @@ export const ATTRIBUTION_NOTE =
   "Source device and AI-agent IDs come from the successfully applied gateway policy; the recorded person comes from org-scoped ownership verified at ingest. Names are current labels only, and a recorded person is accountability, not proof that they initiated the traffic. Identity is never inferred from an IP address.";
 
 export function eventTimeline(e: AccessEvent): string[] {
-  if (e.beam) return [`Authenticated browser reviewer ${e.src_user_id ?? "not recorded"}`, `Beam share ${e.beam.share_id}`, `${e.beam.action} · ${e.beam.reason || "reason not recorded"}`, `Control-plane audit recorded at ${e.created_at}`];
+  if (e.beam) return [`Authenticated browser reviewer ${e.src_user_id ?? "not recorded"}`, `Share ${e.beam.share_id}`, `${e.beam.action} · ${e.beam.reason || "reason not recorded"}`, `Control-plane audit recorded at ${e.created_at}`];
   const reason = e.decision_reason?.replace(/_/g, " ") ?? "reason unavailable";
   const agentID = e.src_agent_id ??
     (e.src_kind === "agent" ? e.src_device_id ?? undefined : undefined);

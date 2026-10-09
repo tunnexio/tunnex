@@ -1,26 +1,23 @@
 import "../network-workspaces.css";
 import "../agents-workspace.css";
+import "../agents-management-workspace.css";
 import "../components/ai-gateway-configuration.css";
+import "../ai-gateway-workspace.css";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
-import { HelpTooltip, modelDisplayName } from "../components/HelpTooltip";
+import { modelDisplayName } from "../components/HelpTooltip";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
 import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
 import { AIWorkloads } from "../components/AIWorkloads";
 import { AIUsageWorkspace } from "../components/AIUsageWorkspace";
-import {
-  Button,
-  Card,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  PageHeader,
-  Select,
-} from "../components/ui";
+import { Button, Card, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import AppAccessPagination from "../components/AppAccessPagination";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import { NetworkDetailList } from "../components/NetworkDetailList";
 import { api } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
@@ -66,7 +63,7 @@ export default function AgentsAIGateway() {
   const [search] = useSearchParams();
   useEffect(() => setGrant(null), [org?.id, pathname]);
   const page = pathname.split("/")[2] || "models";
-  return <div className="network-management ai-workspace space-y-5">
+  return <div className="network-management ai-workspace ai-gateway-workspace space-y-5">
     <AIAccessGate key={org?.id}>{(orgId, access) => {
       if (pathname === "/ai-gateway" || pathname === "/ai-gateway/") return <Navigate to={access.view ? "/ai-gateway/models" : "/ai-gateway/my-models"} replace />;
       if (!access.view && page !== "my-models") return <Navigate to="/ai-gateway/my-models" replace />;
@@ -88,9 +85,9 @@ export default function AgentsAIGateway() {
             view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
             onViewChange={(view) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? "/ai-gateway/models/new" : "/ai-gateway/models")}
             onGrantAccess={(connection, model) => setGrant({ connection, model })} />
-          : <div className="ai-gateway-configuration"><div className="ai-config-heading"><div><h2>Gateway settings</h2></div></div>
+          : <div className="ai-gateway-configuration"><h2 className="sr-only">Gateway settings</h2>
             <AIGatewaySettings orgId={orgId} canEdit={access.manage} />
-            {access.agents && <Card className="ai-setting-card"><div className="ai-setting-row"><div className="ai-setting-copy"><h3>Agent model access</h3><p>Choose which models your managed agents can use.</p></div><Link className="network-setup-link" to="/agents/model-access">Manage access →</Link></div></Card>}
+            {access.agents && <Card className="ai-setting-card"><div className="ai-setting-row"><div className="ai-setting-copy"><h3>Agent model access</h3><p>Choose which models your managed agents can use.</p></div><Link className="network-setup-link" to="/agents/model-access">Manage access</Link></div></Card>}
           </div>}
       </>;
     }}</AIAccessGate>
@@ -98,17 +95,20 @@ export default function AgentsAIGateway() {
 }
 export function AgentModelAccess() {
   const { org } = useOrg();
-  return <div className="network-management agents-workspace ai-workspace space-y-5">
-    <PageHeader title="Agent model access" subtitle={org?.name} />
+  return <div className="network-management agents-workspace agents-management ai-workspace space-y-5">
+    <PageHeader navigationTitle title="Agent model access" subtitle={org?.name} />
     <AgentsTabRail />
     <AIAccessGate key={org?.id}>{(orgId, access) => !access.agents ? <Card><p role="alert">You do not have permission to manage agent model access.</p></Card>
-      : !org?.agent_policy_templates_enabled ? <Card><h2>Agent groups are turned off</h2><Link to="/settings?section=ai-agents">Configure Agent Group settings</Link></Card>
+      : !org?.agent_policy_templates_enabled ? <AppAccessEmptyState icon={null} title="Agent groups are turned off" description="Enable this organization’s opt-in before assigning group model policies." action={<Link className="agents-management-link" to="/settings?section=features&feature=agent-templates">Configure Agent Group settings</Link>} />
       : <div className="ai-gateway-configuration"><AIGatewayWorkspace key={orgId} orgId={orgId} /></div>}
     </AIAccessGate>
   </div>;
 }
 export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
   const [editor, setEditor] = useState<"team" | "agent" | null>(null);
+  const [view, setView] = useState<"teams" | "agents">("teams");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
   const [data, setData] = useState<Inventory | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -237,135 +237,49 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
   const teamName = (id: string) =>
     data.groups.find((g) => g.id === id)?.name ??
     `Archived/unavailable group (${id})`;
-  return (
-    <div className="ai-config-workspace ai-agent-access">
-      <div className="ai-config-workspace-summary"><Button size="sm" disabled={busy} onClick={() => void reload()}>Refresh</Button><span><strong>{data.teams.length}</strong> {data.teams.length === 1 ? "team policy" : "team policies"}</span><span><strong>{data.assignments.length}</strong> {data.assignments.length === 1 ? "agent assignment" : "agent assignments"}</span><span><strong>{data.devices.length}</strong> loaded agents{data.nextAgentCursor ? " · more available" : ""}</span></div>
-      {error && !editor && (
-        <p role="alert" className="ai-config-error">
-          {error}
-        </p>
-      )}
-      <Card><div className="ai-inventory-toolbar"><h2>Team policies <HelpTooltip>Set models and provider credentials for each agent group.</HelpTooltip></h2><Button onClick={() => { setTeamID(""); setEditor("team"); }}>Add policy</Button></div><table className="ai-compact-table"><thead><tr><th>Group</th><th>Models</th><th>Revision</th></tr></thead><tbody>{data.teams.map(t => <tr key={t.team_id}><td><button className="ai-access-name" aria-label={`Edit policy for ${teamName(t.team_id)}`} onClick={() => { setTeamID(t.team_id); setEditor("team"); }}>{teamName(t.team_id)}</button></td><td>{t.models.map(modelDisplayName).join(", ")}</td><td>{t.revision}</td></tr>)}</tbody></table>{!data.teams.length && <p>No team policies yet.</p>}</Card>
-      <Card><div className="ai-inventory-toolbar"><h2>Agent assignments <HelpTooltip>Each agent uses one team policy. Open an assignment to manage its models and synchronization.</HelpTooltip></h2><Button onClick={() => { setDeviceID(""); setEditor("agent"); }}>Assign agent</Button></div><table className="ai-compact-table"><thead><tr><th>Agent</th><th>Status</th></tr></thead><tbody>{data.assignments.map(a => <tr key={a.device_id}><td><button className="ai-access-name" aria-label={`Manage access for ${data.devices.find(d => d.id === a.device_id)?.name ?? a.device_id}`} onClick={() => { setDeviceID(a.device_id); setEditor("agent"); }}>{data.devices.find(d => d.id === a.device_id)?.name ?? a.device_id}</button></td><td>{a.status}</td></tr>)}</tbody></table>{!data.assignments.length && <p>No agent assignments yet.</p>}</Card>
-      {editor === "team" && <Modal title="Team model policy" size="wide" showClose onDismiss={() => !busy && setEditor(null)}>{error && <p role="alert">{error}</p>}
-      <Card className="ai-config-card">
-        <div className="ai-config-section-heading"><span className="ai-config-section-number" aria-hidden="true">01</span><div><p className="ai-config-eyebrow">MODEL ACCESS</p><h2 className="text-sm font-semibold">Team model policy</h2></div><span className="ai-config-pill">Team scope</span></div>
-        <p className="my-2 text-sm">
-          Use exact models and provider key IDs, never provider secrets.
-        </p>
-        {data.groups.length === 0 ? (
-          <p>
-            No Agent Groups yet.{" "}
-            <Link to="/agents/groups">Create a group</Link> first.
-          </p>
-        ) : (
-          <>
-            <Field label="Policy team">
-              <Select
-                value={teamID}
-                disabled={busy}
-                onChange={(e) => setTeamID(e.target.value)}
-              >
-                <option value="">Choose a group</option>
-                {data.groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            {!teamID && <div className="ai-config-selection-note"><span className="ai-config-note-symbol" aria-hidden="true">↗</span><h3>Select a team to configure its models</h3><p>Set exact models, provider key IDs and an optional daily soft threshold.</p></div>}
-            {teamID && (
-              <TeamEditor
-                key={`${teamID}:${team?.revision ?? 0}`}
-                team={team}
-                providers={data.providers}
-                busy={busy}
-                save={(body) =>
-                  mutate(() =>
-                    api.PUT(
-                      "/api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}",
-                      { params: { path: { orgId, teamId: teamID } }, body },
-                    ),
-                  )
-                }
-              />
-            )}
-          </>
-        )}
-        {data.teams
-          .filter((t) => !data.groups.some((g) => g.id === t.team_id))
-          .map((t) => (
-            <p key={t.team_id}>
-              {teamName(t.team_id)} , retained policy revision {t.revision}.
-            </p>
-          ))}
-      </Card></Modal>}
-      {editor === "agent" && <Modal title="Agent access" size="wide" showClose onDismiss={() => !busy && setEditor(null)}>{error && <p role="alert">{error}</p>}<Card className="ai-config-card">
-        <div className="ai-config-section-heading"><span className="ai-config-section-number" aria-hidden="true">02</span><div><p className="ai-config-eyebrow">WORKLOAD ACCESS</p><h2 className="text-sm font-semibold">Agent access</h2></div><span className="ai-config-pill">One team per agent</span></div>
-        <p className="my-2 text-sm">
-          Disabling blocks new requests. Accepted streams may finish within 30
-          seconds.
-        </p>
-        {data.devices.length === 0 ? (
-          <p>No enrolled agents are available.</p>
-        ) : (
-          <Field label="Agent">
-            <Select
-              value={deviceID}
-              disabled={busy}
-              onChange={(e) => setDeviceID(e.target.value)}
-            >
-              <option value="">Choose an agent</option>
-              {data.devices.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.status})
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        {data.nextAgentCursor && <Button disabled={busy || loadingAgents} onClick={() => void loadMoreAgents()}>{loadingAgents ? "Loading more agents…" : "Load more agents"}</Button>}
-        {!deviceID && data.devices.length > 0 && <div className="ai-config-selection-note"><span className="ai-config-note-symbol" aria-hidden="true">↗</span><h3>Select an agent to manage access</h3><p>Choose its team, narrow model access and review synchronization.</p></div>}
-        {deviceID && (
-          <AssignmentEditor
-            key={`${deviceID}:${assignment?.revision ?? 0}`}
-            orgId={orgId}
-            deviceID={deviceID}
-            assignment={assignment}
-            inventory={data}
-            busy={busy}
-            save={(body) =>
-              mutate(() =>
-                api.PUT(
-                  "/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}",
-                  { params: { path: { orgId, deviceId: deviceID } }, body },
-                ),
-              )
-            }
-            reconcile={() =>
-              mutate(() =>
-                api.POST(
-                  "/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}/reconcile",
-                  { params: { path: { orgId, deviceId: deviceID } } },
-                ),
-              )
-            }
-          />
-        )}
-        {data.assignments
-          .filter((a) => !data.devices.some((d) => d.id === a.device_id))
-          .map((a) => (
-            <p key={a.device_id}>
-              Agent not in loaded inventory ({a.device_id}): {a.status}; retained
-              usage history.
-            </p>
-          ))}
-      </Card></Modal>}
-
+  const agentName = (id: string) => data.devices.find((d) => d.id === id)?.name ?? id;
+  const matchingTeams = data.teams.filter((t) => `${teamName(t.team_id)} ${t.models.join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const matchingAssignments = data.assignments.filter((a) => `${agentName(a.device_id)} ${teamName(a.team_id)} ${a.status}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const count = view === "teams" ? matchingTeams.length : matchingAssignments.length;
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(count / pageSize)));
+  const first = (currentPage - 1) * pageSize;
+  const visibleTeams = matchingTeams.slice(first, first + pageSize), visibleAssignments = matchingAssignments.slice(first, first + pageSize);
+  const openTeam = (id = "") => { setTeamID(id); setView("teams"); setEditor("team"); };
+  const openAgent = (id = "") => { setDeviceID(id); setView("agents"); setEditor("agent"); };
+  return <div className="agents-management agents-management-content ai-agent-access">
+    <div className="agents-management-view-tabs" role="tablist" aria-label="Agent model policy views">
+      <button type="button" role="tab" aria-selected={view === "teams"} onClick={() => { setView("teams"); setQuery(""); setPage(1); }}>Group policies</button>
+      <button type="button" role="tab" aria-selected={view === "agents"} onClick={() => { setView("agents"); setQuery(""); setPage(1); }}>Agent assignments</button>
     </div>
-  );
+    <div className="agents-management-toolbar"><Input aria-label="Search model policies" value={query} placeholder={view === "teams" ? "Search groups or models" : "Search agents or groups"} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="agents-management-actions"><RefreshButton label="Refresh" disabled={busy} onClick={() => void reload()} /><Button variant={view === "teams" ? "primary" : "ghost"} disabled={busy} onClick={() => openTeam()}>Add policy</Button><Button variant={view === "agents" ? "primary" : "ghost"} disabled={busy} onClick={() => openAgent()}>Assign agent</Button></div></div>
+    {error && !editor && <p role="alert">{error}</p>}
+    <div className="agents-management-table-scroll">
+      {view === "teams" ? matchingTeams.length ? <table className="ai-compact-table"><caption className="sr-only">Group model policies</caption><thead><tr><th scope="col">Agent group</th><th scope="col">Models</th><th scope="col">Revision</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{visibleTeams.map((t) => <tr key={t.team_id}><td><button className="agents-management-name" aria-label={`Edit policy for ${teamName(t.team_id)}`} onClick={() => openTeam(t.team_id)}>{teamName(t.team_id)}</button></td><td title={t.models.map(modelDisplayName).join(", ")}>{t.models.length}</td><td>{t.revision}</td><td><AppAccessRowMenu label={`Actions for policy ${teamName(t.team_id)}`} actions={[{ key: "edit", label: "Edit policy", disabledReason: busy ? "Wait for the current update." : undefined, onSelect: () => openTeam(t.team_id) }]} /></td></tr>)}</tbody></table> : <AppAccessEmptyState icon={null} title={query ? "No matching group policies" : "No team policies yet."} description={query ? "Try another group or model." : "Choose an agent group, its exact models, and owned provider credentials."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />
+      : matchingAssignments.length ? <table className="ai-compact-table"><caption className="sr-only">Agent model assignments</caption><thead><tr><th scope="col">Agent</th><th scope="col">Policy group</th><th scope="col">Synchronization</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{visibleAssignments.map((a) => <tr key={a.device_id}><td><button className="agents-management-name" aria-label={`Manage access for ${agentName(a.device_id)}`} onClick={() => openAgent(a.device_id)}>{agentName(a.device_id)}</button></td><td>{teamName(a.team_id)}</td><td>{a.enabled ? a.status : "Disabled"}</td><td><AppAccessRowMenu label={`Actions for model access ${agentName(a.device_id)}`} actions={[{ key: "manage", label: "Manage access", disabledReason: busy ? "Wait for the current update." : undefined, onSelect: () => openAgent(a.device_id) }]} /></td></tr>)}</tbody></table> : <AppAccessEmptyState icon={null} title={query ? "No matching agent assignments" : "No agent assignments yet."} description={query ? "Try another agent or policy group." : "Assign an active group member to one model policy."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />}
+    </div>
+    <AppAccessPagination maxOffset={null} page={currentPage} pageSize={pageSize} count={view === "teams" ? visibleTeams.length : visibleAssignments.length} hasNext={currentPage * pageSize < count} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+    <details className="agents-management-help"><summary>How agent model policies work</summary><p>Each agent uses one group policy and must remain an active member. Model overrides can only narrow that policy. Network templates and MCP tool permissions are configured separately. Provider credentials stay in the private backend.</p><Link className="agents-management-link" to="/ai-gateway/usage">View observed model usage</Link></details>
+    {editor === "team" && <Modal title="Team model policy" placement="right" size="enrollment" showClose onDismiss={() => !busy && setEditor(null)}><div className="agents-model-editor">
+      {error && <p role="alert">{error}</p>}
+      {data.groups.length === 0 ? <p>No Agent Groups yet. <Link to="/agents/groups">Create a group</Link> first.</p> : <>
+        <Field label="Policy team"><Select value={teamID} disabled={busy} onChange={(event) => setTeamID(event.target.value)}><option value="">Choose a group</option>{data.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></Field>
+        {!teamID && <p>Select a group to configure exact models and provider credentials.</p>}
+        {teamID && <TeamEditor key={`${teamID}:${team?.revision ?? 0}`} team={team} providers={data.providers} busy={busy} save={(body) => mutate(() => api.PUT("/api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}", { params: { path: { orgId, teamId: teamID } }, body }))} />}
+      </>}
+      {data.teams.some((t) => !data.groups.some((g) => g.id === t.team_id)) && <details><summary>Retained policies</summary>{data.teams.filter((t) => !data.groups.some((g) => g.id === t.team_id)).map((t) => <p key={t.team_id}>{teamName(t.team_id)}, retained policy revision {t.revision}.</p>)}</details>}
+    </div></Modal>}
+    {editor === "agent" && <Modal title="Agent access" placement="right" size="enrollment" showClose onDismiss={() => !busy && setEditor(null)}><div className="agents-model-editor">
+      {error && <p role="alert">{error}</p>}
+      {data.devices.length === 0 ? <p>No enrolled agents are available.</p> : data.devices.length > 10 ? <fieldset><legend className="mb-2 text-sm text-ink-heading">Agent</legend><NetworkDetailList label="Available model agents" items={data.devices} searchText={(d) => `${d.name} ${d.status}`} renderItem={(d) => <li key={d.id}><label><input type="radio" name="agent-model-candidate" aria-label={`Select ${d.name}`} checked={deviceID === d.id} disabled={busy || loadingAgents} onChange={() => setDeviceID(d.id)} /><span>{d.name}<small>{d.status}</small></span></label></li>} /></fieldset> : <Field label="Agent"><Select value={deviceID} disabled={busy} onChange={(event) => setDeviceID(event.target.value)}><option value="">Choose an agent</option>{data.devices.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.status})</option>)}</Select></Field>}{data.devices.length > 10 && deviceID && <p>Selected: {agentName(deviceID)}</p>}
+      {data.nextAgentCursor && <Button variant="ghost" disabled={busy || loadingAgents} onClick={() => void loadMoreAgents()}>{loadingAgents ? "Loading more agents…" : "Load more agents"}</Button>}
+      {!deviceID && data.devices.length > 0 && <p>Select an agent, choose its group policy, then review model scope and synchronization.</p>}
+      {deviceID && <AssignmentEditor key={`${deviceID}:${assignment?.revision ?? 0}`} orgId={orgId} deviceID={deviceID} assignment={assignment} inventory={data} busy={busy} save={(body) => mutate(() => api.PUT("/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}", { params: { path: { orgId, deviceId: deviceID } }, body }))} reconcile={() => mutate(() => api.POST("/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}/reconcile", { params: { path: { orgId, deviceId: deviceID } } }))} />}
+      <p>Disabling blocks new requests. Accepted streams may finish within 30 seconds.</p>
+      {data.assignments.some((a) => !data.devices.some((d) => d.id === a.device_id)) && <details><summary>Agents outside loaded inventory</summary>{data.assignments.filter((a) => !data.devices.some((d) => d.id === a.device_id)).map((a) => <p key={a.device_id}>Agent not in loaded inventory ({a.device_id}): {a.status}; retained usage history.</p>)}</details>}
+    </div></Modal>}
+  </div>;
 }
+
 function TeamEditor({
   team,
   providers,
@@ -409,7 +323,7 @@ function TeamEditor({
         {providers.items.map((c) => <label key={c.id}><input type="checkbox" checked={lines(keys).includes(c.key_id)} disabled={busy || (!lines(keys).includes(c.key_id) && (!c.enabled || c.status !== "applied" || c.applied_revision !== c.revision || lines(keys).length >= 8))} onChange={(e) => setKeys((e.target.checked ? [...lines(keys), c.key_id] : lines(keys).filter((key) => key !== c.key_id)).join("\n"))} /><span>{c.name}<small>{providers.definitions?.find((d) => d.id === c.provider)?.name ?? c.provider} · {c.status} · {c.models.length} models</small></span></label>)}
         {providers.legacy_key_ids.map((id) => <label key={id}><input type="checkbox" checked={lines(keys).includes(id)} disabled={busy || (!lines(keys).includes(id) && lines(keys).length >= 8)} onChange={(e) => setKeys((e.target.checked ? [...lines(keys), id] : lines(keys).filter((key) => key !== id)).join("\n"))} /><span>{id}<small>Legacy operator-managed reference</small></span></label>)}
         {lines(keys).filter((id) => !providers.items.some((c) => c.key_id === id) && !providers.legacy_key_ids.includes(id)).map((id) => <label key={id}><input type="checkbox" checked disabled={busy} onChange={() => setKeys(lines(keys).filter((key) => key !== id).join("\n"))} /><span>Unavailable policy reference ({id})<small>Remove this reference or refresh provider inventory.</small></span></label>)}
-        {!providers.items.length && !providers.legacy_key_ids.length && <p>No owned provider connections are available. Add one in Providers &amp; models.</p>}
+        {!providers.items.length && !providers.legacy_key_ids.length && <p>No owned provider connections are available. Add one in Models &amp; endpoints.</p>}
       </div><p className="mt-2 text-xs text-ink-secondary">Choose up to eight applied connections. Selected models must be covered by the chosen connections.</p></fieldset>
       <Field label="Daily USD soft threshold (optional)">
         <Input

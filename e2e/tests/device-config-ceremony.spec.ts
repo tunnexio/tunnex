@@ -66,10 +66,10 @@ test("the config-download ceremony renders once with the amber one-time callout 
     .getByLabel("Main")
     .getByRole("link", { name: "Devices" })
     .click();
-  await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
+  await expect(page).toHaveURL(/\/devices$/);
+  await expect(page.getByRole("navigation", { name: "Device sections" }).getByRole("link", { name: "Devices", exact: true })).toHaveAttribute("aria-current", "page");
 
-  // ⚠ ONE CLICK ADDED, NOTHING ELSE CHANGED. The create form moved into a modal; the ceremony it opens is
-  // the same ceremony, so every assertion below is untouched.
+  // The compact inventory opens creation in a drawer; the one-time ceremony remains protected.
   await page.getByRole("button", { name: "Add device" }).click();
   await page.getByLabel("Device name").fill("my-laptop");
   await page.getByRole("button", { name: "Create device" }).click();
@@ -81,14 +81,19 @@ test("the config-download ceremony renders once with the amber one-time callout 
   await expect(page.getByText("TEST_PRIVATE_KEY_SHOWN_ONCE")).toBeVisible();
   await expect(page.getByRole("button", { name: /Download/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Your configuration, shown once")).toBeVisible();
 
   // Explicit acknowledgement gate: "I've saved it" dismisses it.
   await page.getByRole("button", { name: /I.?ve saved it/ }).click();
   await expect(page.getByText("Your configuration, shown once")).toBeHidden();
+  await expect(page.getByText("TEST_PRIVATE_KEY_SHOWN_ONCE")).toHaveCount(0);
 
   // No route back: the config exists only in page state and is never re-fetched.
   // Reloading the devices page must NOT resurrect it.
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Device sections" }).getByRole("link", { name: "Devices", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "Add device" })).toBeEnabled();
   await expect(page.getByText("Your configuration, shown once")).toBeHidden();
+  await expect(page.getByText("TEST_PRIVATE_KEY_SHOWN_ONCE")).toHaveCount(0);
 });

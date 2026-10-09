@@ -142,9 +142,13 @@ describe("S20 Gateway inventory", () => {
 
     expect(screen.getAllByRole("button", { name: "Enroll gateway" })).toHaveLength(1);
     expect(screen.getByText(/No gateways are enrolled/)).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Gateway inventory" })).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it("renders server-owned egress modes and an explicit stable detail affordance for every row", () => {
+  it("renders server-owned egress modes and read-only section links for every row", () => {
     const nodes = [
       { ...readyState.nodes[0], id: "gw-dual", name: "gw-us-east", egress_mode: "dual_stack" },
       { ...readyState.nodes[0], id: "gw-v4", name: "gw-eu-west", egress_mode: "ipv4_only" },
@@ -158,11 +162,71 @@ describe("S20 Gateway inventory", () => {
     expect(screen.getByText("Checking")).toBeTruthy();
     for (const node of nodes) {
       expect(screen.getByRole("link", { name: node.name }).getAttribute("href")).toBe(`/gateways/${node.id}`);
-      expect(screen.getByRole("link", { name: `Open details for ${node.name}` }).getAttribute("href")).toBe(`/gateways/${node.id}`);
+      const trigger = screen.getByRole("button", { name: `Actions for ${node.name}` });
+      fireEvent.click(trigger);
+      const menu = screen.getByRole("menu", { name: `Actions for ${node.name}` });
+      expect(within(menu).getByRole("menuitem", { name: "Overview" }).getAttribute("href")).toBe(`/gateways/${node.id}`);
+      expect(within(menu).getByRole("menuitem", { name: "Health" }).getAttribute("href")).toBe(`/gateways/${node.id}?tab=health`);
+      expect(within(menu).getByRole("menuitem", { name: "Lifecycle" }).getAttribute("href")).toBe(`/gateways/${node.id}?tab=lifecycle`);
+      fireEvent.keyDown(menu, { key: "Escape" });
+      expect(screen.queryByRole("menu")).toBeNull();
     }
     expect(screen.queryByRole("button", { name: /rename gateway/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /revoke gateway/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /delete gateway/i })).toBeNull();
+    expect(apiPatch).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(apiDelete).not.toHaveBeenCalled();
+  });
+
+  it("pages the filtered inventory and resets URL paging when size, search or health changes", () => {
+    const nodes = Array.from({ length: 55 }, (_, index) => ({
+      ...readyState.nodes[0],
+      id: `gw-${index}`,
+      name: `Gateway ${String(index).padStart(3, "0")}`,
+      status: index === 54 ? "revoked" : "active",
+    }));
+    hookResult = { ...hookResult, state: { ...readyState, nodes } };
+    render(<MemoryRouter initialEntries={["/gateways"]}>
+      <Routes><Route path="/gateways" element={<><Gateways /><Location /></>} /></Routes>
+    </MemoryRouter>);
+    expect(within(screen.getByRole("table", { name: "Gateway inventory" })).getAllByRole("row")).toHaveLength(21);
+    expect(screen.getByRole("link", { name: "Gateway 000" })).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+    fireEvent.click(screen.getByRole("button", { name: "Next gateways" }));
+    expect(screen.getByRole("link", { name: "Gateway 010" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Gateway 000" })).toBeNull();
+    expect(screen.getByLabelText("location").textContent).toContain("page=2");
+    expect(screen.getByLabelText("location").textContent).toContain("page_size=10");
+    fireEvent.change(screen.getByRole("textbox", { name: "Search gateways" }), { target: { value: "Gateway 054" } });
+    expect(screen.getByRole("link", { name: "Gateway 054" })).toBeTruthy();
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByLabelText("location").textContent).not.toContain("page=2");
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search gateways" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next gateways" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    expect(screen.getByLabelText("location").textContent).not.toContain("page=2");
+    expect(screen.getByLabelText("location").textContent).toContain("page_size=50");
+    expect(screen.getAllByRole("row")).toHaveLength(51);
+    fireEvent.click(screen.getByRole("button", { name: "Next gateways" }));
+    expect(screen.getAllByRole("row")).toHaveLength(6);
+    expect(screen.getByRole("link", { name: "Gateway 050" })).toBeTruthy();
+    expect(screen.getByText("51–55 shown")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next gateways" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Previous gateways" })).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: /^Revoked / }));
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Gateway 054" })).toBeTruthy();
+    expect(screen.getByLabelText("location").textContent).toContain("health=revoked");
+    expect(screen.getByLabelText("location").textContent).not.toContain("page=2");
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^All / }));
+    expect(screen.getAllByRole("row")).toHaveLength(51);
+    fireEvent.click(screen.getByRole("button", { name: "Next gateways" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous gateways" }));
+    expect(screen.getByRole("link", { name: "Gateway 000" })).toBeTruthy();
     expect(apiPatch).not.toHaveBeenCalled();
     expect(apiPost).not.toHaveBeenCalled();
     expect(apiDelete).not.toHaveBeenCalled();
@@ -204,6 +268,36 @@ describe("S20 Gateway inventory", () => {
 });
 
 describe("S20 Gateway detail lifecycle", () => {
+  it("keeps the gateway context while section navigation stays read-only", () => {
+    render(<MemoryRouter initialEntries={["/gateways/gw-1?context=network"]}>
+      <Routes><Route path="/gateways/:gatewayId" element={<><GatewayDetail /><Location /></>} /></Routes>
+    </MemoryRouter>);
+    const breadcrumb = screen.getByRole("navigation", { name: "Gateway breadcrumb" });
+    expect(within(breadcrumb).getByRole("link", { name: "Gateways" }).getAttribute("href")).toBe("/gateways");
+    expect(within(breadcrumb).getByText("edge-london").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { level: 1, name: "edge-london" })).toBeTruthy();
+    const sections = screen.getByRole("navigation", { name: "Gateway detail sections" });
+    expect(within(sections).getByRole("button", { name: "Overview" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "View health" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Health" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2, name: "Overview" })).toBeNull();
+    expect(within(sections).getByRole("button", { name: "Health" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByLabelText("location").textContent).toContain("tab=health");
+    expect(screen.getByLabelText("location").textContent).toContain("context=network");
+    fireEvent.click(screen.getByRole("button", { name: "View lifecycle" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Lifecycle" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2, name: "Health" })).toBeNull();
+    expect(screen.getByLabelText("location").textContent).toContain("tab=lifecycle");
+    fireEvent.click(screen.getByRole("button", { name: "Back to health" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to overview" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Overview" })).toBeTruthy();
+    expect(screen.getByLabelText("location").textContent).not.toContain("tab=");
+    expect(screen.getByLabelText("location").textContent).toContain("context=network");
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(apiPatch).not.toHaveBeenCalled();
+    expect(apiDelete).not.toHaveBeenCalled();
+  });
+
   it("explains dual-stack, IPv4-only, and unreported egress from the Node projection", () => {
     const cases = [
       ["dual_stack", "IPv4 and IPv6 verified"],

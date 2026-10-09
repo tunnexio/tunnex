@@ -1,1012 +1,277 @@
-import { UsersTabRail } from "../components/WorkspaceTabs";
-import { RoleAssignment } from "../components/RoleAssignment";
-import { HUMAN_ROLES } from "../lib/rbac";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react";
-import {
-  api,
-  apiErrorCode,
-  apiErrorMessage,
-  type Device,
-  type Member,
-  type Org,
-  type Role,
-} from "../lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type Ref } from "react";
+import { Link } from "react-router-dom";
+import { api, apiErrorCode, apiErrorMessage, loadOne, type Device, type Member, type Role } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
-import { can, canManageMembership } from "../lib/rbac";
 import { useAuth } from "../lib/auth";
-import {
-  Button,
-  Card,
-  DataTable,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  PageHeader,
-} from "../components/ui";
+import { can, canManageMembership, HUMAN_ROLES } from "../lib/rbac";
+import { deviceCountFor, deviceCountLabel, deactivationImpactCopy, rosterShape } from "../lib/usersview";
+import { canResend, canRevoke, invitationState, inviteErrorCopy, inviteGate, inviterLabel, orderInvitations, outstandingCount, REVOKED_CAUSE_NOTE, stateLabel, type Invitation } from "../lib/invitationview";
+import { Button, ErrorText, Field, Input, Loading, Modal, RefreshButton, Select } from "../components/ui";
+import { UsersTabRail } from "../components/WorkspaceTabs";
+import UsersInventory from "../components/UsersInventory";
+import { ResourceSummary } from "../components/ResourceSummary";
 import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
-import { toast } from "../components/Toasts";
-import {
-  REVOKED_CAUSE_NOTE,
-  canResend,
-  canRevoke,
-  invitationState,
-  inviteErrorCopy,
-  inviteGate,
-  inviterLabel,
-  orderInvitations,
-  outstandingCount,
-  stateLabel,
-  type Invitation,
-} from "../lib/invitationview";
-import {
-  deviceCountFor,
-  deviceCountLabel,
-  deactivationImpactCopy,
-  rosterShape,
-} from "../lib/usersview";
-
+import AppAccessPagination from "../components/AppAccessPagination";
+import AppAccessRowMenu, { type AppAccessRowMenuAction } from "../components/AppAccessRowMenu";
 import "../network-workspaces.css";
+import "../app-access-workspace.css";
 import "../users-workspace.css";
+import "../user-detail-workspace.css";
 
-const selectCls =
-  "rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 disabled:opacity-50";
+type View = "users" | "roles" | "invitations";
+type PersonAction = "deactivate" | "reactivate" | "reset";
+type Stage = "overview" | "roles" | "devices";
+const roleHelp: Record<string, string> = {
+  owner: "Organization ownership and all administration.",
+  admin: "Manage people and infrastructure, except ownership.",
+  member: "Use resources allowed by access policies.",
+  "ai-admin": "Manage AI models, credentials, and access.",
+  "ai-view": "View AI configuration and usage.",
+};
+const memberRoles = (m: Member): Role[] => m.roles ?? [m.role];
+const memberSignature = (m: Member) => `${m.user_id}:${m.status}:${memberRoles(m).join(",")}:${m.machine_credentials ?? "unknown"}:${m.managed_agent_delegations ?? "unknown"}`;
+const memberState = (m: Member) => m.status === "deactivated" ? "Deactivated" : m.email_verified ? "Active" : "Email unverified";
+const dateLabel = (date?: string | null) => date && Number.isFinite(new Date(date).getTime()) ? new Date(date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "Not reported";
 
-export default function Users({ view = "users" }: { view?: "users" | "roles" | "invitations" }) {
-  // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
-  // fetched itself, which is what made a second organization unreachable.
-  const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
+export default function Users({ view = "users" }: { view?: View }) {
+  const { org } = useOrg();
   const { state } = useAuth();
-  const myId = state.status === "authed" ? state.user.id : "";
-  // The server gates every MUTATING permission on the actor's verified email
-  // (authorize() -> email_not_verified 403), separately from RBAC. Mirror that
-  // here so we don't offer invite/role/deactivate controls that would only 403.
-  // The global VerifyEmailBanner (AppShell) is the standing explanation, so we
-  // hide rather than repeat a per-control message.
-  const emailVerified = state.status === "authed" && state.user.email_verified;
-  const [org, setOrg] = useState<Org | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [membersState, setMembersState] = useState<"loading" | "ready" | "error">("loading");
-  const [membersLoadError, setMembersLoadError] = useState<string | null>(null);
-  const [resetTarget, setResetTarget] = useState<Member | null>(null);
-  const [resetBusy, setResetBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isEnterprise, setIsEnterprise] = useState(false);
-  const [invites, setInvites] = useState<Invitation[] | null>(null);
-  const [inviteErr, setInviteErr] = useState<string | null>(null);
-  const [inviteBusy, setInviteBusy] = useState<string | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  // ⛔ `null` MEANS "NOT LOADED", AND IT IS NOT THE SAME AS `[]`. An empty array is a fetched answer; null is
-  // the absence of one, and deviceCountFor has a distinct arm for it. Initialising
-  // these to `[]` would make a page that has not finished loading claim every member owns nothing.
-  const [devices, setDevices] = useState<Device[] | null>(null);
-
-  // My role in this org comes from my own row in the roster — no extra endpoint.
-  const myRole = useMemo(
-    () => {
-      const mine = members.find((m) => m.user_id === myId);
-      const roles = mine?.roles ?? (mine ? [mine.role] : []);
-      return roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : mine?.role;
-    },
-    [members, myId],
-  );
-  // Owner count drives the last-owner disable (mirrors the server's CountOwners).
-  //
-  // ⛔ AND IT MIRRORS THE SERVER'S FLAW, DELIBERATELY. `CountOwners` is
-  //   SELECT count(*) FROM memberships WHERE org_id=$1 AND role='owner'
-  // with NO join to `users`, so a DEACTIVATED owner counts as an owner. Proven reachable (S14.11 probe,
-  // docs/probes/lockout_probe_test.go.txt): deactivate owner A, then deactivate owner B — the guard permits
-  // both because two owner ROWS exist, and the org ends with 2 owner rows and 0 accounts that can sign in
-  // and act. Recovery needs direct database access.
-  //
-  // ⛔ DO NOT ADD `&& m.status === "active"` HERE. It would make the client a SECOND AUTHORITY that disagrees
-  // with the server about who the last owner is — the control would grey out while the server still permits
-  // the change, or the reverse. The S4.7 precedent is that the server owns the refusal.
-  //
-  // THIS LINE FOLLOWS THE SERVER FIX. When CountOwners learns to join `users.status`, this changes with it,
-  // in the same change, not before.
-  const ownerCount = useMemo(
-    () => members.filter((m) => m.role === "owner").length,
-    [members],
-  );
-
-  async function loadMembers(orgId: string) {
-    setMembersState("loading");
-    setMembersLoadError(null);
-    const { data, error } = await api.GET(
-      "/api/v1/organizations/{orgId}/members",
-      { params: { path: { orgId } } },
-    );
-    if (error) {
-      setMembersLoadError(apiErrorMessage(error, "Could not load members."));
-      setMembersState("error");
-      return;
-    }
-    setMembers(data ?? []);
-    setMembersState("ready");
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // Edition comes from /meta, the same source Access.tsx uses — never inferred from whether an
-        // enterprise call happened to 403 (which conflates edition with permission, the bug this screen's
-        // view-model was fixed for).
-        const { data: meta } = await api.GET("/api/v1/meta");
-        if (cancelled) return;
-        setIsEnterprise(meta?.edition === "enterprise");
-        // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
-        // OrgProvider reads the list once for the whole shell; a page that re-fetched it would not merely
-        // waste a request, it would pick an org the switcher has no way to change.
-        const orgErr = null;
-        if (cancelled) return;
-        if (orgErr)
-          return setError(
-            apiErrorMessage(orgErr, "Could not load your organizations."),
-          );
-        // ⛔ LOADING IS NOT ABSENCE (S12.5). The provider resolves the org list asynchronously, so this
-        // effect runs once with currentOrg === null before the answer exists. Treating that as "you have no
-        // organization" renders a confident, false statement — and because the second pass only sets the
-        // data, the stale error stayed on screen BESIDE the correct org name.
-        //
-        // ⚠ THREE STATES, NOT TWO: still loading (say nothing), the read failed (say THAT), genuinely no
-        // membership (say that). Collapsing the first into the third is how a slow network becomes an
-        // accusation that the user does not belong here.
-        if (orgLoading) return;
-        const first = currentOrg;
-        if (!first) {
-          setMembersLoadError(
-            orgFailed
-              ? "Could not load your organizations."
-              : "You are not a member of any organization yet.",
-          );
-          setMembersState("error");
-          return;
-        }
-        setOrg(first);
-        if (!cancelled) await loadMembers(first.id);
-      } catch {
-        if (!cancelled) setError("Could not reach the API.");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // ⛔ currentOrg IS A DEPENDENCY, AND ITS ABSENCE WAS A REAL BUG THE TESTS CAUGHT (S12.5).
-    //
-    // The provider resolves the org list ASYNCHRONOUSLY, so on this effect's first run `currentOrg` is still
-    // null. With `[]` deps the effect never ran again: the page rendered "You are not a member of any
-    // organization yet" — a confident, wrong statement — and stayed there forever, for every user.
-    //
-    // ⚠ THE SAME DEPENDENCY ALSO MAKES THE SWITCHER WORK. One line, two properties: without it the page
-    // either never loads at all, or loads once and then lies about which tenant it is showing.
-  }, [currentOrg]);
-
-  // Load device counts only for membership administrators. Wait for the current
-  // member's role so ordinary members do not receive an avoidable 403.
-  useEffect(() => {
-    let cancelled = false;
-    if (!org || !myRole) return;
-    (async () => {
-      if (can(myRole, "member:manage")) {
-        const { data, error } = await api.GET(
-          "/api/v1/organizations/{orgId}/devices",
-          { params: { path: { orgId: org.id } } },
-        );
-        // A failure leaves `devices` NULL on purpose — deviceCountFor renders "could not load", which is
-        // honest, rather than a zero that would read as "this person has no devices".
-        if (!cancelled && !error) setDevices(data ?? []);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [org, myRole, isEnterprise]);
-
-  // The last-owner invariant is deterministic client-side: disable the control
-  // that would demote/deactivate the sole owner. The server refusal (409
-  // last_owner) stays the real enforcement — see mutate()'s refetch-on-error,
-  // which self-corrects a stale roster after a lost race.
-  const isSoleOwner = (m: Member) => m.role === "owner" && ownerCount <= 1;
-
-  async function mutate(
-    fn: () => Promise<{ error?: unknown }>,
-    fallback: string,
-    successMsg?: string,
-  ) {
-    if (!org) return;
-    setError(null);
-    const { error } = await fn();
-    if (error) {
-      const msg = apiErrorMessage(error, fallback);
-      setError(msg);
-      toast.error(msg);
-    } else if (successMsg) {
-      toast.success(successMsg);
-    }
-    // Always refetch: on success to reflect the change, on error (esp. 409
-    // last_owner) so the disabled-control state self-corrects if the roster
-    // changed underneath us.
-    await loadMembers(org.id);
-  }
-
-  const changeRoles = (m: Member, roles: Role[]) =>
-    mutate(
-      () =>
-        api.PUT("/api/v1/organizations/{orgId}/members/{userId}/roles", {
-          params: { path: { orgId: org!.id, userId: m.user_id } },
-          body: { roles },
-        }),
-      "Could not change the roles.",
-      "Roles updated",
-    );
-
-  /**
-   * ⛔ THE WARNING THE DEACTIVATE PATH DID NOT HAVE (D23).
-   *
-   * Returns false when the operator declines. ⚠ Silent when nobody selected owns a credential — a confirm
-   * that always fires is one people click through, and this one has to be read.
-   */
-  function confirmDeactivationImpact(ms: Member[]): boolean {
-    const copy = deactivationImpactCopy(ms);
-    return copy === null || window.confirm(copy);
-  }
-
-  const setActive = (m: Member, activate: boolean) => {
-    const path = {
-      params: { path: { orgId: org!.id, userId: m.user_id } },
-    } as const;
-    return mutate(
-      () =>
-        activate
-          ? api.POST(
-              "/api/v1/organizations/{orgId}/members/{userId}/reactivate",
-              path,
-            )
-          : api.POST(
-              "/api/v1/organizations/{orgId}/members/{userId}/deactivate",
-              path,
-            ),
-      activate
-        ? "Could not reactivate the member."
-        : "Could not deactivate the member.",
-      activate ? "Member reactivated" : "Member deactivated",
-    );
-  };
-
-  // ⛔ THE READ THAT MAKES RESEND AND REVOKE REACHABLE. Both are keyed by EMAIL, and until S14.15
-  // nothing served the addresses — so an invitation could be created and then never seen, resent or
-  // revoked. Gated on the same permission as the verbs it serves.
-  const loadInvites = useCallback(async () => {
-    if (!org || !myRole || inviteGate(myRole).kind !== "ready") return;
-    const { data, error } = await api.GET(
-      "/api/v1/organizations/{orgId}/invitations",
-      { params: { path: { orgId: org.id } } },
-    );
-    if (error) return setInviteErr(inviteErrorCopy(apiErrorCode(error)));
-    setInviteErr(null);
-    setInvites((data as Invitation[] | undefined) ?? []);
-  }, [org, myRole]);
-
-  useEffect(() => {
-    void loadInvites();
-  }, [loadInvites]);
-
-  async function inviteAction(kind: "resend" | "revoke", email: string) {
-    setInviteBusy(email + kind);
-    setInviteErr(null);
-    const path =
-      kind === "resend"
-        ? ("/api/v1/organizations/{orgId}/invitations/resend" as const)
-        : ("/api/v1/organizations/{orgId}/invitations/revoke" as const);
-    const { error } = await api.POST(path, {
-      params: { path: { orgId: org!.id } },
-      body: { email },
-    });
-    setInviteBusy(null);
-    if (error) {
-      const errText = inviteErrorCopy(apiErrorCode(error));
-      setInviteErr(errText);
-      toast.error(errText);
-      return;
-    }
-    toast.success(
-      kind === "resend"
-        ? `Invitation resent to ${email}`
-        : `Invitation revoked for ${email}`,
-    );
-    await loadInvites();
-  }
-
-  const shape = rosterShape({ role: myRole, isEnterprise });
-  // ⛔ ACTIONS IS ABSENT WHEN NO ROW HAS ONE — the same rule as the Devices column, for the same reason.
-  //
-  // A COLUMN HEADER IS A CLAIM THAT THE COLUMN HAS CONTENT. On the member view every ACTIONS cell was empty,
-  // which tells a member there are actions they cannot see when there are none for them AT ALL. If Devices is
-  // absent for lack of permission, ACTIONS is absent for the same reason; shipping one and not the other
-  // would undercut the rule the screen is built on.
-  //
-  // ⛔ AND THE TEST IS "DOES ANY ROW HAVE AN ACTION", NOT "DOES THE VIEWER HOLD A ROLE". An admin on a roster
-  // of owners can act on nobody — `canManageMembership(admin, owner, …)` is false — and a role-based test
-  // would keep an empty column for them. It mirrors the CELL's own condition exactly, so the two cannot drift.
-  const anyRowHasAction = members.some(
-    (m) =>
-      emailVerified &&
-      canManageMembership(myRole, m.role, "") &&
-      m.user_id !== myId,
-  );
-  // The table filters now, so the page hands it the whole roster.
-  const shown = members;
-
-  if (membersState === "loading") {
-    return (
-      <div>
-        <PageHeader title="Users" subtitle={org ? org.name : "Loading organization…"} />
-        <Card>
-          <Loading label="Loading members…" />
-        </Card>
-      </div>
-    );
-  }
-
-  if (membersState === "error") {
-    return (
-      <div>
-        <PageHeader title="Users" subtitle={org ? org.name : "Organization unavailable"} />
-        <Card>
-          <LoadRetry
-            error={membersLoadError ?? "Could not load members."}
-            onRetry={() =>
-              org ? void loadMembers(org.id) : window.location.reload()
-            }
-          />
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="network-management users-workspace">
-      <PageHeader
-        title="Users & Groups"
-        subtitle={
-          org
-            ? `${org.name} · ${members.length} ${members.length === 1 ? "person" : "people"}`
-            : "…"
-        }
-        actions={
-          can(myRole, "member:invite") && emailVerified && org ? (
-            <Button onClick={() => setInviteOpen(true)}>Invite user</Button>
-          ) : undefined
-        }
-      />
-      <UsersTabRail />
-      <ErrorText>{error}</ErrorText>
-
-      {/* S14.3 slice A: a real <table>. The roster is tabular — person, role, state, actions per row — and as
-          <li> blocks the tier could only find a member by matching their email as free text. The role control
-          and the action buttons keep their own accessible names, so they stay queryable INSIDE a cell. */}
-      <div className="users-content">
-        {view === "roles" && <p className="mb-4 text-sm text-ink-secondary">Assign multiple roles to each person. Roles control administration; user group grants control which AI models they can call.</p>}
-        {view === "invitations" && inviteGate(myRole).kind !== "ready" && <Card><p role="alert">You do not have permission to manage invitations.</p></Card>}
-        {view === "invitations" && invites === null && inviteGate(myRole).kind === "ready" && <Card>{inviteErr ? <p role="alert">{inviteErr}</p> : <Loading label="Loading invitations…" />}</Card>}
-        {/* ⛔ ONE FILTER, AND IT IS THE TABLE'S NOW. The page carried a separate "Filter members" field
-            floating above the roster in its own box — disconnected from the thing it narrowed, and a second
-            search input the moment the table grew one.
-
-            ⚠ THE SURVIVOR IS THE ONE THAT SEARCHES MORE. `filterMembers` matched name, email and role; the
-            table's search runs over every column's `sortValue`, which is those three PLUS state — so
-            "deactivated" now finds the deactivated members, which the old box could not. Swapping to the
-            weaker control to preserve a helper would have been keeping the test, not the capability. */}
-        {view !== "invitations" && <><div className="tnx-card-surface users-inventory">
-          <div className="users-inventory-heading">
-            <h2>{view === "roles" ? "Role assignments" : "People"}</h2>
-            <span>{anyRowHasAction ? "Select people to manage their accounts" : "Organization members"}</span>
-          </div>
-        <DataTable
-          caption="Members"
-          selectionBar="active"
-          // ⛔ THE VERBS LEAVE THE ROWS. Deactivate / Reactivate / Reset 2FA were redrawn on every row —
-          // three buttons per member, the same three words down the page, crowding out who the member IS.
-          //
-          // ⚠ `unavailable` carries every rule the per-row version encoded in whether a button RENDERED at
-          // all. That was the quieter design: a row with no controls said nothing about why. Now the bar
-          // names the reason — you cannot deactivate yourself, you cannot deactivate the last owner, and a
-          // member you may not manage says so instead of silently offering nothing.
-          // ⛔ GATED ON anyRowHasAction, NOT ON emailVerified — the rule the ACTIONS COLUMN already earned,
-          // carried onto the selection bar. The test is "does ANY row have an action", not "does the viewer
-          // hold a role": an admin on a roster of owners can act on nobody, and a role-based test would give
-          // them checkboxes and a bar of permanently-disabled verbs. Offering a selection you can do nothing
-          // with is the same lie the empty Actions column was, wearing a different control.
-          rowActions={
-            anyRowHasAction
-              ? [
-                  {
-                    key: "deactivate",
-                    label: "Deactivate",
-                    danger: true,
-                    unavailable: (m: Member) =>
-                      m.user_id === myId
-                        ? // Never on self — it would log you out, which is a footgun, not a feature.
-                          "You cannot deactivate your own account."
-                        : !canManageMembership(myRole, m.role, "")
-                          ? "You cannot manage this member's role."
-                          : m.status !== "active"
-                            ? "Already deactivated."
-                            : isSoleOwner(m)
-                              ? "An organization must always have at least one owner."
-                              : null,
-                    run: (ms: Member[]) => {
-                      // ⛔ D23 — SAY WHAT THIS BREAKS, AT THE MOMENT OF THE ACT. A machine credential dies
-                      // with its owner's deactivation, and nothing in the product used to say so: a routine
-                      // offboarding took down a GitOps pipeline and nobody connected the two acts.
-                      //
-                      // ⚠ THE COUNT IS SERVED WITH THE ROSTER rather than fetched here, so the sentence
-                      // cannot be shown against a stale or missing number. The server refuses the
-                      // credentials either way — this exists so the refusal is not a surprise.
-                      if (!confirmDeactivationImpact(ms)) return;
-                      void Promise.all(ms.map((m) => setActive(m, false)));
-                    },
-                  },
-                  {
-                    key: "reactivate",
-                    label: "Reactivate",
-                    unavailable: (m: Member) =>
-                      !canManageMembership(myRole, m.role, "")
-                        ? "You cannot manage this member's role."
-                        : m.status === "active"
-                          ? "Already active."
-                          : null,
-                    run: (ms: Member[]) => {
-                      void Promise.all(ms.map((m) => setActive(m, true)));
-                    },
-                  },
-                  {
-                    key: "reset2fa",
-                    label: "Reset 2FA",
-                    // ⚠ Disenroll-only — it clears the member's 2FA and never signs in as them. One at a
-                    // time: the confirm names the person, and a bulk 2FA reset is a different dialog.
-                    arity: "single",
-                    unavailable: (m: Member) =>
-                      m.user_id === myId
-                        ? "Reset your own 2FA from your account settings."
-                        : !canManageMembership(myRole, m.role, "")
-                          ? "You cannot manage this member's role."
-                          : null,
-                    run: (ms: Member[]) => setResetTarget(ms[0]),
-                  },
-                ]
-              : undefined
-          }
-          rows={shown}
-          rowKey={(m) => m.user_id}
-          // ⛔ THE FILTER'S EMPTY STATE IS NOT THE ROSTER'S — "No members yet" under an active query would
-          // tell an admin their org is empty when they simply typed a name that does not match. That
-          // distinction now lives in DataTable, which owns the search and therefore owns the third
-          // emptiness; this prop is the GENUINE zero and nothing else.
-          empty="No members yet."
-          failed={error != null}
-          columns={[
-            {
-              key: "person",
-              header: "Member",
-              // ⚠ NAME AND EMAIL BOTH, because the cell shows whichever exists — searching for the one it
-              // chose not to display must still find the row.
-              sortValue: (m) => `${m.name ?? ""} ${m.email}`,
-              cell: (m) => {
-                // The primary label falls back to the email; the secondary line then has nothing to add.
-                const primary = m.name || m.email;
-                return (
-                  // ⛔ CAPPED AND TRUNCATED. One member with a 70-character address
-                  // (oluwaseun.adebayo-contractor.external@a-very-long-subdomain…) stretched the Member
-                  // column across half the table and pushed STATE, DEVICES and ROLE into a huddle at the far
-                  // right — every other row then read as mostly empty space. A column sized by its worst row
-                  // is a column sized by an outlier.
-                  //
-                  // ⛔ IT WRAPS, IT DOES NOT TRUNCATE — and that is a ruling, not a preference. A doubled
-                  // string HIDES behind an ellipsis: the second copy clips out of view and reads as one copy,
-                  // which is the exact defect this cell was fixed for and which its test still guards. So the
-                  // column is capped and the address WRAPS onto a second line, where it stays fully readable
-                  // and a duplicate would still be visible.
-                  //
-                  // ⚠ STACKED, NOT INLINE: name over email spends the width twice instead of end to end.
-                  <span className="flex max-w-[24rem] flex-col">
-                    <span className="break-all text-sm text-white">
-                      {primary}
-                      {m.user_id === myId && (
-                        <span className="ml-2 text-xs text-slate-500">
-                          (you)
-                        </span>
-                      )}
-                    </span>
-                    {/* ⛔ THE EMAIL IS THE SECONDARY LINE ONLY WHEN A NAME TOOK THE PRIMARY ONE. Unconditionally
-                      it rendered the address TWICE for a nameless member — and that is not a corner case:
-                      `users.name` is `NOT NULL DEFAULT ''` and `acceptInvitation.name` is OPTIONAL, so 144 of
-                      241 users in the review database have an empty name.
-                      Found because a MOCK omitted `name` while every seeded member had one — the fixture was
-                      LESS representative than the double. The inverse of S14.10, where the double was more
-                      permissive than the substrate; the lesson is the same one from the other side. */}
-                    {primary !== m.email && (
-                      <span className="break-all font-sans text-xs text-ink-secondary">
-                        {m.email}
-                      </span>
-                    )}
-                  </span>
-                );
-              },
-            },
-            {
-              key: "state",
-              header: "State",
-              sortValue: (m) =>
-                m.status === "deactivated" ? "deactivated" : "active",
-              cell: (m) => (
-                <>
-                  {m.status === "active" && m.email_verified && (
-                    <span className="tnx-status text-ok">Active</span>
-                  )}
-                  {m.status === "deactivated" && (
-                    <span className="tnx-status text-warn">Deactivated</span>
-                  )}
-                  {!m.email_verified && m.status === "active" && (
-                    <span className="tnx-status text-warn">Email unverified</span>
-                  )}
-                </>
-              ),
-            },
-            // ⛔ SPLICED IN, NOT DIMMED. `...(cond ? [col] : [])` means a viewer without member:manage gets
-            // NO <th> and NO cell — nothing in the DOM, nothing announced, nothing keyboard-reachable. An
-            // `opacity-40` column would be "gone only to a sighted mouse user".
-            //
-            // And the reason it is gated at all is the FALSE ZERO: /devices is audience-scoped at the handler
-            // (ListForOrg for member:manage, ListForUser otherwise), so a member's list holds only their own
-            // devices and a group-by over it would print `0 devices` against every colleague. Measured live:
-            // owner@ sees 13 devices / 2 owners, member@ sees 6 / 1.
-            ...(shape.showDeviceCount
-              ? [
-                  {
-                    key: "devices",
-                    header: "Devices",
-                    numeric: true,
-                    cell: (m: Member) => {
-                      const c = deviceCountFor({
-                        role: myRole,
-                        devices,
-                        userId: m.user_id,
-                      });
-                      return (
-                        <span
-                          className={
-                            c.kind === "count"
-                              ? "text-sm text-white"
-                              : "text-xs text-slate-500"
-                          }
-                        >
-                          {c.kind === "count" ? c.n : deviceCountLabel(c)}
-                        </span>
-                      );
-                    },
-                  },
-                ]
-              : []),
-            {
-              key: "role",
-              header: "Roles",
-              // ⚠ NOT `numeric`. The role control sits directly after the right-aligned DEVICES count, so
-              // without its own left padding a "0" and a <select> render touching — see the numeric padding
-              // in DataTable. This column is left-aligned and takes the gap from that side.
-              sortValue: (m) => m.role,
-              cell: (m) => {
-                // Role is editable on any target the actor may manage — INCLUDING self (an owner handing off
-                // ownership). The last-owner disable therefore surfaces on the sole owner's OWN role control.
-                const canManage =
-                  emailVerified && canManageMembership(myRole, m.role, "");
-                const assignable = HUMAN_ROLES.filter((r) =>
-                  canManageMembership(myRole, m.role, r),
-                );
-                if (!canManage || assignable.length === 0)
-                  return (
-                    <span className="text-xs capitalize text-ink-secondary">
-                      {(m.roles ?? [m.role]).join(" + ")}
-                    </span>
-                  );
-                return (
-                  <RoleAssignment email={m.email} roles={m.roles ?? [m.role]} options={assignable}
-                    soleOwner={isSoleOwner(m)} onSave={(roles) => changeRoles(m, roles)} />
-                );
-              },
-            },
-          ]}
-        />
-
-        </div>
-        <details className="users-role-guide" open={view === "roles" ? true : undefined}>
-          <summary>Understand roles <span aria-hidden="true">＋</span></summary>
-          <div className="users-role-grid">
-            <div><h3>Owner</h3><p>Manages the organization and its members, including other owners.</p></div>
-            <div><h3>Admin</h3><p>Manages members and configuration. Cannot manage or appoint owners.</p></div>
-            <div><h3>Member</h3><p>Uses access granted by policy. Cannot manage organization membership.</p></div>
-            <div><h3>AI admin</h3><p>Manages AI models, credentials and group access. No VPN or user administration.</p></div>
-            <div><h3>AI view</h3><p>Views AI configuration and usage. Cannot change settings or credentials.</p></div>
-          </div>
-        </details></>}
-
-        {/* ⚠ CONTEXT, BELOW THE SUBJECT, AND SIDE BY SIDE — two short cards stacked full-width were a screen
-          of scrolling to reach a roster. Columns, so a wider display adds a column rather than stretching
-          either card. */}
-        {view === "invitations" && invites !== null && inviteGate(myRole).kind === "ready" && (
-          <details open className="group mt-5 border-y border-white/10 py-1">
-            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-ink-heading focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent-400">
-              <span>Invitation history</span>
-              <span className="flex items-center gap-3 text-xs font-normal text-ink-tertiary">
-                {outstandingCount(invites, new Date())} outstanding
-                <span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span>
-              </span>
-            </summary>
-          {/* ── Pending invitations ───────────────────────────────────────────────────────────────────────────
-          ⛔ THE ONLY WRITE-ONLY STATE IN THE PRODUCT THAT IS ITSELF AN ACCESS GRANT. `resendInvitation` and
-          `revokeInvitation` are keyed by EMAIL and nothing served the addresses, so an invitation could be
-          created and then never seen, resent or revoked — while remaining redeemable into a membership.
-          The other write-only items are CONFIGURATION whose effect shows up elsewhere; this one has no
-          observable effect until the moment it becomes a member. */}
-            <div className="pb-4 pt-2">
-              <Card>
-                {/* ⛔ A TABLE, BECAUSE THE ROW WAS WRAPPING. Email + badge + role + inviter + two buttons on
-                  one flex line meant a long address pushed Resend/Revoke onto a second row for SOME
-                  invitations and not others — the controls sat in a different place on every row, which is
-                  the one thing a list of identical actions must not do.
-
-                  ⚠ EVERY STATE STILL RENDERS, including accepted and revoked. They are the audit trail of
-                  who was let in and who was withdrawn, and the "N outstanding" count above already keeps
-                  them from inflating the number that matters. */}
-                <div>
-                  <DataTable<Invitation>
-                    caption="Invitations"
-                    selectionBar="active"
-                    rows={orderInvitations(invites, new Date())}
-                    rowKey={(inv) => inv.id}
-                    rowAttrs={(inv) => ({
-                      "data-testid": `invite-${inv.id}`,
-                      "data-state": invitationState(inv, new Date()),
-                    })}
-                    failed={false}
-                    pageSize={10}
-                    empty="No invitations have been created for this organization."
-                    // ⛔ CONTROLS APPEAR ONLY WHERE THE SERVER WOULD ACT. Revoke matches
-                    // `accepted_at IS NULL AND revoked_at IS NULL`, so on a terminal row it would change
-                    // nothing and report success — worse than absent. `unavailable` now says WHICH, where the
-                    // old design just omitted the button and left the operator to infer it.
-                    rowActions={[
-                      {
-                        key: "resend",
-                        // ⚠ THE IN-FLIGHT STATE SURVIVED THE MOVE. The per-row button read "Resending…" while
-                        // the request was open; a bar button that stays enabled and silent invites a second
-                        // click and a second email to the same person.
-                        label: inviteBusy?.endsWith("resend")
-                          ? "Resending…"
-                          : "Resend",
-                        arity: "single",
-                        unavailable: (inv) =>
-                          inviteBusy === inv.email + "resend"
-                            ? "Resending…"
-                            : !canManageMembership(myRole, "member", inv.role)
-                              ? "Only an owner can resend an owner invitation."
-                            : canResend(invitationState(inv, new Date()))
-                              ? null
-                              : "Only a pending or expired invitation can be resent.",
-                        run: (is) => void inviteAction("resend", is[0].email),
-                      },
-                      {
-                        key: "revoke",
-                        label: inviteBusy?.endsWith("revoke")
-                          ? "Revoking…"
-                          : "Revoke",
-                        danger: true,
-                        arity: "single",
-                        unavailable: (inv) =>
-                          inviteBusy === inv.email + "revoke"
-                            ? "Revoking…"
-                            : canRevoke(invitationState(inv, new Date()))
-                              ? null
-                              : "This invitation is already accepted or revoked.",
-                        run: (is) => void inviteAction("revoke", is[0].email),
-                      },
-                    ]}
-                    columns={[
-                      {
-                        key: "email",
-                        header: "Invitee",
-                        sortValue: (inv) => inv.email,
-                        cell: (inv) => (
-                          <span
-                            className="block max-w-[22rem] truncate text-slate-200"
-                            title={inv.email}
-                          >
-                            {inv.email}
-                          </span>
-                        ),
-                      },
-                      {
-                        key: "state",
-                        header: "State",
-                        sortValue: (inv) =>
-                          stateLabel(invitationState(inv, new Date())),
-                        cell: (inv) => {
-                          const st = invitationState(inv, new Date());
-                          return (
-                            <span
-                              className={
-                                "tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
-                                (st === "pending"
-                                  ? "border-accent-500/40 bg-accent-500/10 text-accent-400"
-                                  : st === "expired"
-                                    ? "border-warn/40 bg-warn/10 text-warn"
-                                    : "border-slate-700 bg-slate-900 text-slate-500")
-                              }
-                            >
-                              {stateLabel(st)}
-                            </span>
-                          );
-                        },
-                      },
-                      {
-                        key: "role",
-                        header: "Roles",
-                        sortValue: (inv) => inv.role,
-                        cell: (inv) => (
-                          <span className="text-xs text-slate-500">
-                            {inv.role}
-                          </span>
-                        ),
-                      },
-                      {
-                        key: "inviter",
-                        header: "Invited by",
-                        // The inviter can be GONE — invited_by_user_id is ON DELETE SET NULL, and the LEFT
-                        // JOIN keeps the row rather than hiding an outstanding invitation because its sender
-                        // left.
-                        sortValue: (inv) => inviterLabel(inv),
-                        cell: (inv) => (
-                          <span className="text-xs text-slate-600">
-                            {inviterLabel(inv)}
-                          </span>
-                        ),
-                      },
-                    ]}
-                  />
-                </div>
-                {/* A revocation the operator may not have performed — SupersedePendingInvites clears pending
-                invites on a domain-capture JIT join, and the table records no cause. Named, not claimed. */}
-                {invites.some((i) => i.revoked_at) && (
-                  <p className="mt-3 text-xs text-slate-600">
-                    {REVOKED_CAUSE_NOTE}
-                  </p>
-                )}
-                <ErrorText>{inviteErr}</ErrorText>
-              </Card>
-            </div>
-
-          </details>
-        )}
-
-        {/* ⛔ §2.5 OF THE COMMIT-ONE SAID "NO CLIENT-SIDE OWNER COUNT" AND THE SCREEN ALREADY HAD ONE, with a
-            written rationale (see isSoleOwner). I ruled on this screen's behaviour without reading the screen
-            — the same method error as grepping `Member` and concluding the product did not know.
-            Reconciled rather than overwritten, because the existing design is right and the ruling's CONCERN
-            is also right, and they are about different things:
-              the DISABLE is client-side  — it stops a pointless round-trip and the tooltip teaches WHY
-              the REFUSAL is the server's — mutate() surfaces apiErrorMessage(error, fallback), server text
-                                            first, and refetches so a lost race self-corrects
-            What §2.5 must forbid is PREDICTING THE REFUSAL TEXT, not disabling a control. */}
-      </div>
-      {inviteOpen && org && (
-        <InviteForm
-          orgId={org.id}
-          actorRole={myRole}
-          // Creating an invitation does not change the member roster until it is accepted.
-          // Refreshing members here put the whole page into its loading state, unmounting
-          // InviteForm before its one-time link could be shown. Refresh invitation history
-          // instead so the security-sensitive link remains visible for the operator to copy.
-          onInvited={() => void loadInvites()}
-          onDismiss={() => setInviteOpen(false)}
-        />
-      )}
-      {resetTarget && (
-        <Modal
-          title="Reset two-factor authentication"
-          danger
-          onDismiss={() => setResetTarget(null)}
-          actions={
-            <>
-              <Button variant="ghost" onClick={() => setResetTarget(null)}>
-                Cancel
-              </Button>
-              <Button variant="danger" onClick={doReset} disabled={resetBusy}>
-                {resetBusy ? "Resetting…" : "Reset 2FA"}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm text-slate-300">
-            Remove two-factor authentication for{" "}
-            <span className="font-semibold">{resetTarget.email}</span>?
-          </p>
-          <p className="mt-2 text-xs text-slate-400">
-            Their 2FA and recovery codes are cleared and they will be notified
-            by email. If your organization requires MFA, they will be asked to
-            set it up again at their next sign-in. This does not sign you in as
-            them.
-          </p>
-        </Modal>
-      )}
-    </div>
-  );
-
-  async function doReset() {
-    if (!org || !resetTarget) return;
-    const target = resetTarget;
-    setResetBusy(true);
-    await mutate(
-      () =>
-        api.POST("/api/v1/organizations/{orgId}/members/{userId}/mfa-reset", {
-          params: { path: { orgId: org.id, userId: target.user_id } },
-        }),
-      "Could not reset the member’s two-factor authentication.",
-    );
-    setResetBusy(false);
-    setResetTarget(null);
-  }
+  const actor = state.status === "authed" ? `${state.user.id}:${state.user.email_verified}` : state.status;
+  return <UsersWorkspace key={`${org?.id ?? "no-organization"}:${actor}`} view={view} />;
 }
 
-// InviteForm is enumeration-resistant by construction: the server returns the
-// same 202 whether the email is new, already a member, or already has an
-// account, and we render one fixed confirmation regardless. Reactivating a
-// frozen member is a DIFFERENT verb (the row's Reactivate button) — invite is
-// only ever for bringing in a new address.
-function InviteForm({
-  orgId,
-  actorRole,
-  onInvited,
-  onDismiss,
-}: {
-  orgId: string;
-  actorRole: Role | undefined;
-  onInvited: () => void;
-  onDismiss: () => void;
-}) {
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<(typeof HUMAN_ROLES)[number]>("member");
+function UsersWorkspace({ view }: { view: View }) {
+  const { org, loading: orgLoading, failed: orgFailed } = useOrg();
+  const { state } = useAuth();
+  const actorId = state.status === "authed" ? state.user.id : "";
+  const emailVerified = state.status === "authed" && state.user.email_verified;
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersState, setMembersState] = useState<"loading" | "ready" | "error">("loading");
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [membersError, setMembersError] = useState("");
+  const [devices, setDevices] = useState<Device[] | null>(null);
+  const [deviceError, setDeviceError] = useState("");
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [stage, setStage] = useState<Stage>("overview");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  // ⛔ WHETHER THIS DEPLOYMENT CAN SEND MAIL AT ALL, ASKED BEFORE THE OPERATOR TYPES AN ADDRESS.
-  //
-  // `/meta.smtp_configured` has existed for a while and had ZERO web consumers — the third
-  // producer-without-consumer this cycle. That absence is exactly how the founder lost a session: the API
-  // reported the invitation created, the log said mail was not sent, and no screen anywhere mentioned that
-  // mail was off. He found out by not receiving an email.
-  //
-  // ⚠ THREE STATES, NOT TWO (loading is not absence). `null` means the read has not landed or failed —
-  // rendered as silence, never as "mail is off", because a fetch blip must not accuse a working deployment.
-  const [mailOn, setMailOn] = useState<boolean | null>(null);
-  useEffect(() => {
-    let alive = true;
-    void api.GET("/api/v1/meta").then(({ data }) => {
-      if (alive && data && typeof data.smtp_configured === "boolean")
-        setMailOn(data.smtp_configured);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    const { data, error } = await api.POST(
-      "/api/v1/organizations/{orgId}/invitations",
-      {
-        params: { path: { orgId } },
-        body: { email, role },
-      },
-    );
-    setBusy(false);
-    if (error || !data) {
-      const msg = apiErrorMessage(error, "Could not create the invitation.");
-      setErr(msg);
-      toast.error(msg);
-      return;
+  const [confirmation, setConfirmation] = useState<{ kind: PersonAction; targets: Member[] } | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invites, setInvites] = useState<Invitation[] | null>(null);
+  const [inviteError, setInviteError] = useState("");
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [inviteConfirmation, setInviteConfirmation] = useState<{ kind: "resend" | "revoke"; row: Invitation } | null>(null);
+  const alive = useRef(true), rosterRequest = useRef(0), devicesRequest = useRef(0), invitesRequest = useRef(0), locked = useRef(false), ready = useRef(false), roster = useRef<Member[]>([]);
+  const titleRef = useRef<HTMLHeadingElement>(null), stageRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; ready.current = false; rosterRequest.current++; devicesRequest.current++; invitesRequest.current++; }; }, []);
+  const myRole = useMemo(() => {
+    const mine = members.find(m => m.user_id === actorId);
+    const roles = mine ? memberRoles(mine) : [];
+    return roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : mine?.role;
+  }, [members, actorId]);
+  // Mirrors the backend CountOwners contract, including deactivated owner rows.
+  const ownerCount = members.filter(m => m.role === "owner").length;
+  const shape = rosterShape({ role: myRole, isEnterprise: false });
+  const loadMembers = useCallback(async () => {
+    if (!org) return;
+    const request = ++rosterRequest.current;
+    ready.current = false; setMembersState("loading"); setMembersError("");
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: org.id } } }));
+    if (!alive.current || request !== rosterRequest.current) return;
+    if (!result.ok || !Array.isArray(result.data) || result.data.some(m => !m || typeof m.user_id !== "string" || typeof m.email !== "string") || new Set(result.data.map(m => m.user_id)).size !== result.data.length) {
+      setMembersError(result.ok ? "Could not load members." : result.error); setMembersState("error"); return;
     }
-    toast.success(
-      data.delivered === false
-        ? "Invitation created. Copy the one-time link now."
-        : `Invitation sent to ${email}`,
-    );
-    setEmail("");
-    // Build the accept link from THIS origin (correct host regardless of the API's
-    // APP_BASE_URL) and show it once for the admin to copy + hand to the invitee —
-    // the delivery path when email isn't configured. The email is best-effort on top.
-    setInviteLink(
-      `${window.location.origin}/accept-invite?token=${data.invite_token}`,
-    );
-    onInvited();
-  }
-
-  if (inviteLink) {
-    return (
-      <OneTimeSecretModal
-        title="Invitation link"
-        caption={
-          mailOn === false
-            ? "Copy this one-time link and share it securely. Email delivery is not configured, so this is the invitee's only delivery path."
-            : "Copy this one-time link if you want to hand it over directly. The invitee may also receive it by email."
-        }
-        secret={inviteLink}
-        copyLabel="Copy link"
-        onDismiss={() => {
-          setInviteLink(null);
-          onDismiss();
-        }}
-      />
-    );
-  }
-
-  return (
-    <Modal
-      title="Invite user"
-      onDismiss={onDismiss}
-      actions={
-        <>
-          <Button variant="ghost" onClick={onDismiss}>Cancel</Button>
-          <Button type="submit" form="invite-user-form" disabled={busy}>
-            {busy ? "Creating…" : "Create invite"}
-          </Button>
-        </>
+    roster.current = result.data; setMembers(result.data); ready.current = true; setMembersLoaded(true); setMembersState("ready");
+  }, [org?.id]);
+  useEffect(() => { if (!orgLoading && org) void loadMembers(); }, [org?.id, orgLoading, loadMembers]);
+  const loadDevices = useCallback(async () => {
+    const request = ++devicesRequest.current;
+    setDevices(null); setDeviceError("");
+    if (!org || !can(myRole, "member:manage")) { setDevicesLoading(false); return; }
+    setDevicesLoading(true);
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices", { params: { path: { orgId: org.id } } }));
+    if (!alive.current || request !== devicesRequest.current) return;
+    setDevicesLoading(false);
+    if (!result.ok || !Array.isArray(result.data)) { setDeviceError(result.ok ? "Could not load devices." : result.error); return; }
+    setDevices(result.data);
+  }, [org?.id, myRole]);
+  useEffect(() => { void loadDevices(); }, [loadDevices]);
+  const loadInvites = useCallback(async () => {
+    const request = ++invitesRequest.current;
+    if (!org || inviteGate(myRole).kind !== "ready") { setInvites(null); setInvitesLoading(false); return; }
+    setInvitesLoading(true); setInviteError("");
+    try {
+      const { data, error: err } = await api.GET("/api/v1/organizations/{orgId}/invitations", { params: { path: { orgId: org.id } } });
+      if (!alive.current || request !== invitesRequest.current) return;
+      setInvitesLoading(false);
+      if (err || !Array.isArray(data) || data.some(row => !row || typeof row.id !== "string" || !row.id || typeof row.email !== "string" || !HUMAN_ROLES.includes(row.role) || typeof row.created_at !== "string" || !Number.isFinite(Date.parse(row.created_at)) || typeof row.expires_at !== "string" || !Number.isFinite(Date.parse(row.expires_at))) || new Set(data.map(row => row.id)).size !== data.length) {
+        setInviteError(err ? inviteErrorCopy(apiErrorCode(err)) : "Could not load invitations."); return;
       }
-    >
-      <p className="text-cell text-ink-tertiary">
-        Add a person to this organization and choose their starting role.
-      </p>
-      <form id="invite-user-form" onSubmit={submit} className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
-        <Field label="Email address">
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoFocus
-            placeholder="name@company.com"
-          />
-        </Field>
-        <Field label="Role">
-          <select
-            className={`${selectCls} min-h-11 w-full px-3 py-2`}
-            value={role}
-            onChange={(e) => setRole(e.target.value as (typeof HUMAN_ROLES)[number])}
-            aria-label="Role"
-          >
-            {HUMAN_ROLES.filter((r) => canManageMembership(actorRole, "member", r)).map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </Field>
-      </form>
-      {mailOn === false && (
-        <p className="mt-4 border-t border-white/5 pt-4 text-xs text-warn">
-          Email delivery is off. After creating the invitation, copy its one-time link and share it securely.
-        </p>
-      )}
-      <ErrorText>{err}</ErrorText>
-    </Modal>
-  );
+      setInvites(data as Invitation[]);
+    } catch { if (alive.current && request === invitesRequest.current) { setInvitesLoading(false); setInviteError("Could not load invitations."); } }
+  }, [org?.id, myRole]);
+  useEffect(() => { void loadInvites(); }, [loadInvites]);
+  useEffect(() => { setInspectedId(null); setConfirmation(null); setInviteConfirmation(null); setInviteOpen(false); }, [view]);
+  useEffect(() => { if (inspectedId) titleRef.current?.focus(); }, [inspectedId]);
+  const inspected = members.find(m => m.user_id === inspectedId);
+  const inspectedDevices = devices?.filter(device => device.user_id === inspected?.user_id) ?? [];
+  const blocked = busy || membersState !== "ready";
+  function unavailable(kind: PersonAction, m: Member): string | null {
+    if (!emailVerified) return "Verify your email to manage accounts.";
+    if (!canManageMembership(myRole, m.role, "")) return "You cannot manage this member's role.";
+    if (kind !== "reactivate" && m.user_id === actorId) return kind === "reset" ? "Reset your own 2FA from your account settings." : "You cannot deactivate your own account.";
+    if (kind === "deactivate" && m.status !== "active") return "Already deactivated.";
+    if (kind === "deactivate" && m.role === "owner" && ownerCount <= 1) return "An organization must always have at least one owner.";
+    if (kind === "reactivate" && m.status === "active") return "Already active.";
+    return null;
+  }
+  function requestAction(kind: PersonAction, targets: Member[]) {
+    if (blocked || locked.current || !ready.current || !targets.length || (kind === "reset" && targets.length !== 1)) return;
+    const current = targets.map(m => roster.current.find(row => row.user_id === m.user_id));
+    if (current.some(m => !m || unavailable(kind, m))) return;
+    setError(""); setNotice(""); setConfirmation({ kind, targets: current as Member[] });
+  }
+  async function decide() {
+    if (!org || !confirmation || locked.current || !ready.current) return;
+    const { kind, targets } = confirmation;
+    if (targets.some(target => { const current = roster.current.find(m => m.user_id === target.user_id); return !current || memberSignature(current) !== memberSignature(target) || unavailable(kind, current); })) {
+      setConfirmation(null); setError("The roster changed. Review the current accounts before continuing."); return;
+    }
+    locked.current = true; setBusy(true); setError("");
+    const outcomes = await Promise.all(targets.map(async target => {
+      try {
+        const path = kind === "deactivate" ? "/api/v1/organizations/{orgId}/members/{userId}/deactivate" as const : kind === "reactivate" ? "/api/v1/organizations/{orgId}/members/{userId}/reactivate" as const : "/api/v1/organizations/{orgId}/members/{userId}/mfa-reset" as const;
+        const result = await api.POST(path, { params: { path: { orgId: org.id, userId: target.user_id } } });
+        return { target, error: result.error ? apiErrorMessage(result.error, "Could not update the account.") : "" };
+      } catch { return { target, error: "Could not confirm the result. Refresh before trying again." }; }
+    }));
+    if (!alive.current) return;
+    const failed = outcomes.filter(result => result.error);
+    const succeeded = outcomes.length - failed.length;
+    setConfirmation(null);
+    setNotice(succeeded ? `${succeeded} ${succeeded === 1 ? "account" : "accounts"} ${kind === "reset" ? "had 2FA reset" : kind === "deactivate" ? "deactivated" : "reactivated"}.` : "");
+    setError(failed.map(result => `${result.target.email}: ${result.error}`).join(" "));
+    await loadMembers();
+    if (alive.current) { locked.current = false; setBusy(false); }
+  }
+  async function changeRoles(target: Member, roles: Role[]) {
+    const current = roster.current.find(m => m.user_id === target.user_id);
+    if (!org || !current || locked.current || !ready.current || !emailVerified || memberSignature(current) !== memberSignature(target) || !roles.length || roles.some(role => !HUMAN_ROLES.includes(role) || !canManageMembership(myRole, current.role, role)) || (current.role === "owner" && ownerCount <= 1 && !roles.includes("owner"))) return;
+    locked.current = true; setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api.PUT("/api/v1/organizations/{orgId}/members/{userId}/roles", { params: { path: { orgId: org.id, userId: current.user_id } }, body: { roles } });
+      if (!alive.current) return;
+      if (result.error) setError(apiErrorMessage(result.error, "Could not change the roles.")); else setNotice("Roles updated.");
+    } catch { if (alive.current) setError("Could not confirm the role update. Refresh before trying again."); }
+    if (!alive.current) return;
+    await loadMembers();
+    if (alive.current) { locked.current = false; setBusy(false); }
+  }
+  async function decideInvitation() {
+    if (!org || !inviteConfirmation || locked.current || blocked || !emailVerified || invitesLoading || inviteError || inviteGate(myRole).kind !== "ready") return;
+    const { kind, row } = inviteConfirmation;
+    const current = invites?.find(inv => inv.id === row.id);
+    if (!current || current.email !== row.email || current.role !== row.role || !(kind === "resend" ? canResend(invitationState(current, new Date())) && canManageMembership(myRole, "member", current.role) : canRevoke(invitationState(current, new Date())))) { setInviteConfirmation(null); setError("The invitation changed. Refresh before continuing."); return; }
+    locked.current = true; setBusy(true); setInviteError(""); setNotice("");
+    try {
+      const result = await api.POST(kind === "resend" ? "/api/v1/organizations/{orgId}/invitations/resend" : "/api/v1/organizations/{orgId}/invitations/revoke", { params: { path: { orgId: org.id } }, body: { email: current.email } });
+      if (!alive.current) return;
+      if (result.error) setError(inviteErrorCopy(apiErrorCode(result.error))); else setNotice(kind === "resend" ? "Invitation renewed." : "Invitation revoked.");
+    } catch { if (alive.current) setError("Could not confirm the result. Refresh before trying again."); }
+    if (!alive.current) return;
+    setInviteConfirmation(null); await loadInvites();
+    if (alive.current) { locked.current = false; setBusy(false); }
+  }
+  const personActions = (m: Member): AppAccessRowMenuAction[] => !emailVerified || !canManageMembership(myRole, m.role, "") || m.user_id === actorId ? [] : [
+    { key: m.status === "active" ? "deactivate" : "reactivate", label: m.status === "active" ? "Deactivate" : "Reactivate", danger: m.status === "active", disabledReason: blocked ? "Wait for the roster to finish loading." : unavailable(m.status === "active" ? "deactivate" : "reactivate", m), onSelect: () => requestAction(m.status === "active" ? "deactivate" : "reactivate", [m]) },
+    { key: "reset", label: "Reset 2FA", disabledReason: blocked ? "Wait for the current operation." : unavailable("reset", m), onSelect: () => requestAction("reset", [m]) },
+  ];
+  const actions = <><RefreshButton label="Refresh" disabled={busy || orgLoading || !org || membersState === "loading"} onClick={() => { void loadMembers(); void loadDevices(); if (view === "invitations") void loadInvites(); }} />{emailVerified && can(myRole, "member:invite") && <Button disabled={blocked} onClick={() => setInviteOpen(true)}>Invite user</Button>}</>;
+  function inspect(id: string, next?: "overview" | "roles") { if (blocked) return; setInspectedId(id); setStage(next ?? (view === "roles" ? "roles" : "overview")); }
+  const changeStage = (next: Stage) => { setStage(next); queueMicrotask(() => stageRef.current?.focus()); };
+  const backToPeople = <Button variant="ghost" disabled={busy} onClick={() => setInspectedId(null)}>Back to {view === "roles" ? "roles" : "users"}</Button>;
+  return <div className="network-management users-workspace users-management">
+    <UsersTabRail actions={actions} />
+    <ErrorText>{error}</ErrorText>{notice && <p role="status" className="users-notice">{notice}</p>}
+    {orgLoading ? <Loading label="Loading organization…" /> : !org ? <p role="alert">{orgFailed ? "Could not load your organizations." : "You are not a member of any organization yet."}</p> : membersState === "loading" ? <Loading label="Loading members…" /> : membersState === "error" ? <LoadRetry error={membersError} onRetry={() => void loadMembers()} /> : null}
+    {membersLoaded && view !== "invitations" && <div hidden={membersState !== "ready" || inspectedId !== null}>
+      <UsersInventory members={members} devices={devices} actorId={actorId} actorRole={myRole} emailVerified={emailVerified} busy={blocked} view={view} ownerCount={ownerCount} onInspect={inspect} onRequestAction={requestAction} />
+    </div>}
+    {membersState === "ready" && view !== "invitations" && inspectedId && (inspected ? <section className="user-detail" aria-label="Person details">
+      <nav aria-label="Person breadcrumb" className="user-breadcrumb"><button type="button" disabled={busy} onClick={() => setInspectedId(null)}>{view === "roles" ? "Roles" : "Users"}</button><span aria-hidden="true">/</span><span>{inspected.name || inspected.email}</span></nav>
+      <header className="user-detail-header"><div><h2 ref={titleRef} tabIndex={-1}>{inspected.name || inspected.email}</h2><p>{inspected.name && inspected.name !== inspected.email ? `${inspected.email} · ` : ""}{memberState(inspected)}{inspected.user_id === actorId ? " · You" : ""}</p></div><AppAccessRowMenu label={`Account actions for ${inspected.email}`} actions={personActions(inspected)} /></header>
+      <div className="user-detail-layout"><nav aria-label="Person detail sections" className="user-detail-path">{(["overview", "roles", ...(shape.showDeviceCount ? ["devices"] : [])] as Stage[]).map(item => <button key={item} type="button" disabled={busy} aria-current={stage === item ? "step" : undefined} onClick={() => changeStage(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
+        <div className="user-detail-stage">
+          {stage === "overview" && <ResourceSummary title="Account details" headingRef={stageRef} footer={backToPeople}><UserFacts summary rows={[["Email", inspected.email], ["Account", memberState(inspected)], ["Email verified", inspected.email_verified ? "Verified" : "Unverified"], ["Joined", dateLabel(inspected.joined_at)], ["Roles", memberRoles(inspected).join(" + ")]]} /></ResourceSummary>}
+          {stage === "roles" && <PersonRoles key={inspected.user_id + ":" + memberRoles(inspected).join(",") + ":" + myRole + ":" + emailVerified} member={inspected} actorRole={myRole} editable={emailVerified && canManageMembership(myRole, inspected.role, "")} soleOwner={inspected.role === "owner" && ownerCount <= 1} busy={busy} headingRef={stageRef} backAction={backToPeople} onSave={roles => changeRoles(inspected, roles)} />}
+          {stage === "devices" && shape.showDeviceCount && <ResourceSummary title="Devices" headingRef={stageRef} description="Devices enrolled by this person in this organization." footer={<>{backToPeople}{!devicesLoading && !deviceError && devices && <Link className="user-text-link" to="/devices">Open device inventory</Link>}</>}>
+            {devicesLoading ? <Loading label="Loading devices…" /> : deviceError ? <LoadRetry error={deviceError} onRetry={() => void loadDevices()} /> : devices ? <><p className="user-stage-meta">{deviceCountLabel(deviceCountFor({ role: myRole, devices, userId: inspected.user_id }))}</p>{inspectedDevices.length ? <ul className="user-device-list" aria-label={`Devices for ${inspected.email}`}>{inspectedDevices.map(device => <li key={device.id}><span className="user-device-name">{device.name}</span><span className="user-device-state">{device.status}</span></li>)}</ul> : <div className="user-device-empty"><h4>No devices enrolled</h4><p>This person has no devices in this organization.</p></div>}</> : <p className="user-stage-meta" role="status">Device counts could not load.</p>}
+          </ResourceSummary>}
+        </div>
+      </div>
+    </section> : <div className="users-empty"><h3>Person no longer listed</h3><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to users</Button></div>)}
+    {membersState === "ready" && view === "invitations" && (inviteGate(myRole).kind !== "ready" ? <p role="alert">You do not have permission to manage invitations.</p> : <>
+      {invitesLoading ? <Loading label="Loading invitations…" /> : inviteError ? <LoadRetry error={inviteError} onRetry={() => void loadInvites()} /> : invites && <InvitationsInventory rows={invites} busy={blocked} emailVerified={emailVerified} actorRole={myRole} onAction={(kind, row) => { if (!blocked && !locked.current) setInviteConfirmation({ kind, row }); }} onInvite={emailVerified ? () => setInviteOpen(true) : undefined} />}
+    </>)}
+    {inviteOpen && org && membersState === "ready" && emailVerified && can(myRole, "member:invite") && <InviteForm key={`${org.id}:${myRole}:${emailVerified}`} orgId={org.id} actorRole={myRole} onInvited={() => void loadInvites()} onDismiss={() => setInviteOpen(false)} />}
+    {confirmation && <Modal title={confirmation.kind === "reset" ? "Reset two-factor authentication" : `${confirmation.kind === "deactivate" ? "Deactivate" : "Reactivate"} ${confirmation.targets.length === 1 ? "account" : "accounts"}?`} danger={confirmation.kind !== "reactivate"} placement="right" size="enrollment" onDismiss={() => { if (!busy) setConfirmation(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation.kind === "reactivate" ? "primary" : "danger"} disabled={busy || !ready.current} onClick={() => void decide()}>{busy ? "Updating…" : confirmation.kind === "reset" ? "Reset 2FA" : confirmation.kind === "deactivate" ? "Deactivate" : "Reactivate"}</Button></>}><div className="user-account-confirm">
+      <p>{confirmation.kind === "reset" ? "Clear this person's 2FA and recovery codes. They must enroll again if your organization requires MFA. Email notification is best effort." : confirmation.kind === "deactivate" ? "Prevent these accounts from signing in and using organization resources." : "Restore sign-in for these accounts. Existing organization roles remain."}</p>
+      <ul>{confirmation.targets.map(m => <li key={m.user_id}><strong>{m.name || m.email}</strong>{m.name && <span>{m.email}</span>}<span>{memberState(m)} · {memberRoles(m).join(" + ")}</span></li>)}</ul>
+      {confirmation.kind === "deactivate" && deactivationImpactCopy(confirmation.targets) && <div className="user-deactivation-impact" role="note"><strong>{confirmation.targets.reduce((n, m) => n + (m.machine_credentials ?? 0), 0)} machine credentials stop working. {confirmation.targets.reduce((n, m) => n + (m.managed_agent_delegations ?? 0), 0)} managed-agent delegations are withdrawn.</strong><p>This takes effect immediately across all organizations. Reactivating restores them; team assignments remain.</p></div>}
+      {confirmation.kind === "reset" && <p>This resets enrollment only; it does not sign you in as them.</p>}
+    </div></Modal>}
+    {inviteConfirmation && <Modal title={inviteConfirmation.kind === "resend" ? "Renew invitation?" : "Revoke invitation?"} danger={inviteConfirmation.kind === "revoke"} placement="right" size="enrollment" onDismiss={() => { if (!busy) setInviteConfirmation(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setInviteConfirmation(null)}>Cancel</Button><Button variant={inviteConfirmation.kind === "revoke" ? "danger" : "primary"} disabled={busy} onClick={() => void decideInvitation()}>{busy ? "Updating…" : inviteConfirmation.kind === "resend" ? "Resend invitation" : "Revoke invitation"}</Button></>}><div className="user-account-confirm"><strong>{inviteConfirmation.row.email}</strong><UserFacts rows={[["Starting role", inviteConfirmation.row.role], ["Current state", stateLabel(invitationState(inviteConfirmation.row, new Date()))]]} /><p>{inviteConfirmation.kind === "resend" ? "Create a new invitation token and invalidate the previous link. Delivery follows this installation's email configuration." : "Invalidate the pending invitation link. An accepted membership is unaffected."}</p></div></Modal>}
+  </div>;
+}
+
+function UserFacts({ rows, summary = false }: { rows: Array<[string, ReactNode]>; summary?: boolean }) { return <dl className={summary ? "user-facts tnx-resource-facts tnx-resource-facts-three" : "user-facts"}>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>; }
+
+function PersonRoles({ member, actorRole, editable, soleOwner, busy, headingRef, backAction, onSave }: { member: Member; actorRole: Role | undefined; editable: boolean; soleOwner: boolean; busy: boolean; headingRef: Ref<HTMLHeadingElement>; backAction: ReactNode; onSave: (roles: Role[]) => Promise<void> }) {
+  const saved = memberRoles(member), [selected, setSelected] = useState<Role[]>(saved);
+  const options = editable ? HUMAN_ROLES.filter(role => canManageMembership(actorRole, member.role, role)) : saved;
+  const unchanged = selected.length === saved.length && saved.every(role => selected.includes(role));
+  return <ResourceSummary title="Roles" headingRef={headingRef} description="Roles control administration. Resource access comes from policies and group grants." footer={<>{backAction}{editable && <div className="user-role-actions">{!unchanged && <Button variant="ghost" disabled={busy} onClick={() => setSelected(saved)}>Discard changes</Button>}<Button disabled={busy || unchanged || !selected.length} onClick={() => void onSave(selected)}>{busy ? "Saving…" : "Save roles"}</Button></div>}</>}>
+    <div className="user-role-editor" data-editable={editable}><fieldset disabled={busy}><legend className="sr-only">Roles for {member.email}</legend>{options.map(role => <label key={role} className="user-role-option" data-selected={selected.includes(role)}>{editable && <input type="checkbox" aria-label={role} checked={selected.includes(role)} disabled={soleOwner && role === "owner"} title={soleOwner && role === "owner" ? "An organization must always have at least one owner." : undefined} onChange={event => setSelected(current => event.target.checked ? [...current, role] : current.filter(value => value !== role))} />}<span><strong>{role}</strong><small>{roleHelp[role]}</small></span>{saved.includes(role) && <em>Assigned</em>}</label>)}</fieldset>{soleOwner && editable && <p className="user-role-note">Keep at least one owner.</p>}</div>
+  </ResourceSummary>;
+}
+
+function InvitationsInventory({ rows, busy, emailVerified, actorRole, onAction, onInvite }: { rows: Invitation[]; busy: boolean; emailVerified: boolean; actorRole: Role | undefined; onAction: (kind: "resend" | "revoke", row: Invitation) => void; onInvite?: () => void }) {
+  const [query, setQuery] = useState(""), [filter, setFilter] = useState<"all" | "outstanding" | "history">("all"), [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
+  const now = new Date(), outstanding = outstandingCount(rows, now);
+  const visible = orderInvitations(rows, now).filter(row => (filter === "all" || (filter === "outstanding" ? canResend(invitationState(row, now)) : !canResend(invitationState(row, now)))) && `${row.email} ${row.role} ${inviterLabel(row)} ${stateLabel(invitationState(row, now))}`.toLowerCase().includes(query.toLowerCase()));
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(visible.length / pageSize))), shown = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  return <section className="users-invitations" aria-label="Invitation inventory"><div className="user-invitation-tools"><div className="user-invitation-filters">{(["all", "outstanding", "history"] as const).map(value => <button type="button" key={value} disabled={busy} aria-pressed={filter === value} onClick={() => { setFilter(value); setPage(1); }}>{value === "all" ? "All" : value === "outstanding" ? "Outstanding" : "History"}<span>({value === "all" ? rows.length : value === "outstanding" ? outstanding : rows.length - outstanding})</span></button>)}</div><span>{visible.length} invitations</span></div><Input type="search" aria-label="Search invitations" placeholder="Search invitations…" value={query} disabled={busy} onChange={event => { setQuery(event.target.value); setPage(1); }} />
+    {shown.length ? <table className="users-native-table" aria-label="Invitation history"><thead><tr><th>Email</th><th>State</th><th>Roles</th><th>Invited by</th>{emailVerified && <th className="user-menu-column">Actions</th>}</tr></thead><tbody>{shown.map(row => { const status = invitationState(row, now); return <tr key={row.id} data-testid={`invite-${row.id}`} data-state={status}><td><span className="user-invitation-email">{row.email}</span><small>{status === "pending" ? `Expires ${dateLabel(row.expires_at)}` : `Created ${dateLabel(row.created_at)}`}</small></td><td><span className={`user-invitation-state is-${status}`}>{stateLabel(status)}</span></td><td>{row.role}</td><td>{inviterLabel(row)}</td>{emailVerified && <td className="user-menu-column">{canResend(status) && <AppAccessRowMenu label={`Invitation actions for ${row.email}`} actions={[
+      { key: "resend", label: "Resend", disabledReason: busy ? "Wait for the current operation." : !canManageMembership(actorRole, "member", row.role) ? "Only an owner can resend an owner invitation." : !canResend(status) ? "Only pending or expired invitations can be renewed." : null, onSelect: () => onAction("resend", row) },
+      { key: "revoke", label: "Revoke", danger: true, disabledReason: busy ? "Wait for the current operation." : !canRevoke(status) ? "Only pending or expired invitations can be revoked." : null, onSelect: () => onAction("revoke", row) },
+    ]} />}</td>}</tr>; })}</tbody></table> : <div className="users-empty"><h3>{query || filter !== "all" ? "No matching invitations" : "No invitations yet"}</h3><p>{query || filter !== "all" ? "Try another search or view all invitations." : "Invite a person with the role they need to get started."}</p>{query || filter !== "all" ? <Button variant="ghost" onClick={() => { setQuery(""); setFilter("all"); setPage(1); }}>Clear filters</Button> : onInvite && <Button variant="ghost" onClick={onInvite}>Invite a person</Button>}</div>}
+    <AppAccessPagination page={currentPage} pageSize={pageSize} count={shown.length} hasNext={currentPage * pageSize < visible.length} maxOffset={null} busy={busy} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
+    {rows.some(row => row.revoked_at) && <details className="user-disclosure"><summary>About revoked invitations</summary><p>{REVOKED_CAUSE_NOTE}</p></details>}
+  </section>;
+}
+
+// The API is enumeration-resistant: invite creation is never a claim that the address was a new account.
+function InviteForm({ orgId, actorRole, onInvited, onDismiss }: { orgId: string; actorRole: Role | undefined; onInvited: () => void; onDismiss: () => void }) {
+  const [email, setEmail] = useState(""), [role, setRole] = useState<Role>("member"), [busy, setBusy] = useState(false), [inviteLink, setInviteLink] = useState<string | null>(null), [err, setErr] = useState("");
+  const [mailOn, setMailOn] = useState<boolean | null>(null), [delivered, setDelivered] = useState<boolean | null>(null);
+  const alive = useRef(true), locked = useRef(false);
+  useEffect(() => { alive.current = true; void api.GET("/api/v1/meta").then(({ data }) => { if (alive.current && typeof data?.smtp_configured === "boolean") setMailOn(data.smtp_configured); }).catch(() => {}); return () => { alive.current = false; }; }, []);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (locked.current || !canManageMembership(actorRole, "member", role) || !email.trim()) return;
+    locked.current = true; setBusy(true); setErr("");
+    try {
+      const result = await api.POST("/api/v1/organizations/{orgId}/invitations", { params: { path: { orgId } }, body: { email, role } });
+      if (!alive.current) return;
+      if (result.error || !result.data || typeof result.data.invite_token !== "string" || !result.data.invite_token) { setErr(result.error ? apiErrorMessage(result.error, "Could not create the invitation.") : "Could not confirm the invitation link. Refresh the invitation list before trying again."); return; }
+      setDelivered(typeof result.data.delivered === "boolean" ? result.data.delivered : null);
+      setInviteLink(`${window.location.origin}/accept-invite?token=${result.data.invite_token}`); setEmail(""); onInvited();
+    } catch { if (alive.current) setErr("Could not confirm the invitation. Refresh before trying again."); }
+    finally { if (alive.current) { locked.current = false; setBusy(false); } }
+  }
+  if (inviteLink) return <OneTimeSecretModal title="Invitation link" caption={delivered === false ? "Email was not delivered. Copy this one-time link and share it securely." : delivered === true ? "An email was sent. You can also copy this one-time link and share it securely." : mailOn === false ? "Email delivery is not configured. Copy this one-time link and share it securely." : "Copy this one-time link and share it securely. Email delivery could not be confirmed."} secret={inviteLink} copyLabel="Copy link" onDismiss={() => { setInviteLink(null); onDismiss(); }} />;
+  return <Modal title="Invite user" placement="right" size="enrollment" onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button type="submit" form="invite-user-form" disabled={busy}>{busy ? "Creating…" : "Create invite"}</Button></>}><div className="user-invite-editor"><form id="invite-user-form" onSubmit={submit}><fieldset disabled={busy}><Field label="Email address"><Input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoFocus placeholder="name@company.com" /></Field><Field label="Role"><Select aria-label="Role" value={role} onChange={event => setRole(event.target.value as Role)}>{HUMAN_ROLES.filter(value => canManageMembership(actorRole, "member", value)).map(value => <option key={value} value={value}>{value}</option>)}</Select></Field><p className="user-stage-meta">{roleHelp[role]}</p></fieldset></form>{mailOn === false && <p className="user-invite-warning">Email delivery is off. Copy the one-time link after creating the invitation.</p>}<ErrorText>{err}</ErrorText></div></Modal>;
 }

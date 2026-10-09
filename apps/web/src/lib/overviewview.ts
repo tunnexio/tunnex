@@ -90,6 +90,7 @@ export function sortGateways(rows: GatewayRow[]): GatewayRow[] {
 // rather than the assistant (docs/laws.md).
 
 import type { Device } from "./api";
+import { deviceProtocol, posturePlatformSupported } from "./postureview";
 
 export interface PeerSlice {
   label: string;
@@ -106,40 +107,51 @@ export interface PeerSlice {
 }
 
 /**
- * The device donut the design actually shows: "129 devices", split Connected / Idle / Posture-blocked /
- * Revoked-offline.
+ * Device state and reported WireGuard handshake recency, with no OpenVPN liveness claim.
  *
  * ⚠ RE-SOURCED. The first build counted GATEWAYS, which is a different population and a smaller one — the
  * panel is titled "Peer Connection Status" and peers are devices. A chart can be perfectly honest about the
  * wrong denominator.
  *
- * The four buckets are DISJOINT and ordered by precedence, so every device lands in exactly one: revoked
- * first (a revoked device is not "idle"), then posture-blocked (blocked is not "connected"), then liveness.
+ * The buckets are disjoint. Credential state precedes posture blocking and recency; a saved
+ * handshake on an inactive credential does not establish current access.
  */
 export function peerSlices(devices: Device[]): PeerSlice[] {
   let revoked = 0,
+    pending = 0,
+    suspended = 0,
     blocked = 0,
     connected = 0,
-    idle = 0;
+    idle = 0,
+    unreported = 0;
   for (const d of devices) {
     if (d.status === "revoked") revoked++;
-    else if (d.health_blocked) blocked++;
-    else if (d.online) connected++;
+    else if (d.status === "pending") pending++;
+    else if (d.status === "suspended") suspended++;
+    else if (d.health_blocked === true) blocked++;
+    else if (d.status !== "active") unreported++;
+    else if (deviceProtocol(d.public_key) === "OpenVPN" || typeof d.online !== "boolean") unreported++;
+    else if (d.online === true) connected++;
     else idle++;
   }
   return [
-    { label: "Connected", value: connected, tone: "ok" },
-    { label: "Idle", value: idle, tone: "neutral" },
+    { label: "Recent handshake", value: connected, tone: "ok" },
+    { label: "No recent handshake", value: idle, tone: "neutral" },
     { label: "Posture-blocked", value: blocked, tone: "warn" },
-    { label: "Revoked / offline", value: revoked, tone: "danger" },
+    { label: "Liveness not reported", value: unreported, tone: "neutral" },
+    { label: "Pending approval", value: pending, tone: "neutral" },
+    { label: "Suspended", value: suspended, tone: "warn" },
+    { label: "Revoked", value: revoked, tone: "danger" },
   ];
 }
 
 export interface PostureSplit {
   compliant: number;
+  /** A reported failed evaluation whose access is not posture-blocked (for example, Warn mode). */
+  noncompliant: number;
   blocked: number;
   unknown: number;
-  /** Percent compliant of those that HAVE reported. `null` when nothing has reported at all. */
+  /** Percent compliant among known evaluations/blocking facts; unknown is excluded. */
   percent: number | null;
 }
 
@@ -152,17 +164,22 @@ export interface PostureSplit {
  */
 export function postureSplit(devices: Device[]): PostureSplit {
   let compliant = 0,
+    noncompliant = 0,
     blocked = 0,
     unknown = 0;
   for (const d of devices) {
     if (d.status === "revoked") continue; // a revoked device has no posture worth reporting
-    if (d.health_state === undefined || d.health_state === null) unknown++;
-    else if (d.health_blocked) blocked++;
-    else compliant++;
+    // Access blocking is an independent server fact, including when the evaluation is stale.
+    if (d.health_blocked === true) blocked++;
+    else if (!posturePlatformSupported(d.platform)) unknown++;
+    else if (d.health_state === "noncompliant") noncompliant++;
+    else if (d.status === "active" && d.health_state === "compliant") compliant++;
+    else unknown++;
   }
-  const reported = compliant + blocked;
+  const reported = compliant + noncompliant + blocked;
   return {
     compliant,
+    noncompliant,
     blocked,
     unknown,
     percent: reported === 0 ? null : Math.round((compliant / reported) * 100),

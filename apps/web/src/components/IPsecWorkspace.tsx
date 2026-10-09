@@ -1,9 +1,13 @@
 import "../network-workspaces.css";
 import "../ipsec-workspace.css";
+import { ResourceSummary } from "./ResourceSummary";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, loadOne, type Node, type Site, type SiteSubnet } from "../lib/api";
-import { Button, Card, DataTable, ErrorText, Field, Input, Modal, Select } from "./ui";
+import { Button, DataTable, ErrorText, Field, Input, Modal, Select, RefreshButton } from "./ui";
+import AppAccessRowMenu, { type AppAccessRowMenuAction } from "./AppAccessRowMenu";
+import { appAccessPageSizes } from "./AppAccessPagination";
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
 import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
 
@@ -12,8 +16,27 @@ type Settings = components["schemas"]["IPsecSettings"];
 type Configuration = components["schemas"]["IPsecConfigurationCheckInput"];
 type CreateInput = components["schemas"]["IPsecProviderCreateInput"];
 type Provider = components["schemas"]["IPsecProviderConfiguration"];
+type ConnectionPage = components["schemas"]["IPsecConnectionPage"];
 type Eligibility = { eligible: boolean; reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale" };
 type Props = { createRequest?: number; onCreateHandled?: () => void; onRequestCreate?: () => void; orgId: string; userId: string; emailVerified: boolean; role?: string; sites: Site[] };
+const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+const nullableString = (value: unknown) => value === null || typeof value === "string";
+function validSettings(value: unknown): value is Settings {
+  return object(value) && typeof value.enabled === "boolean" && typeof value.revision === "number" && Number.isSafeInteger(value.revision) && value.revision >= 0;
+}
+function validConnectionPage(value: unknown, orgId: string): value is ConnectionPage {
+  return object(value) && Array.isArray(value.items) && nullableString(value.next_cursor) && value.next_cursor !== "" && value.items.every(item =>
+    object(item) && typeof item.id === "string" && item.id.length > 0 && item.org_id === orgId && typeof item.name === "string"
+    && nullableString(item.site_id) && nullableString(item.gateway_node_id)
+    && typeof item.historical_site_id === "string" && typeof item.historical_gateway_node_id === "string"
+    && typeof item.desired_revision === "number" && Number.isSafeInteger(item.desired_revision) && item.desired_revision >= 1
+    && ["disabled", "enabled", "deleted"].includes(String(item.desired_intent))
+    && ["not_applied", "pending", "applied"].includes(String(item.application_state))
+    && ["not_required", "pending", "retained_guard"].includes(String(item.cleanup_state))
+    && nullableString(item.deleted_at) && nullableString(item.finalized_at)
+    && typeof item.created_at === "string" && Number.isFinite(Date.parse(item.created_at))
+    && typeof item.updated_at === "string" && Number.isFinite(Date.parse(item.updated_at)));
+}
 function connectionStatus(item: Connection): string {
   if (item.cleanup_state === "pending") return "Cleanup pending";
   if (item.desired_intent === "deleted") return item.cleanup_state === "retained_guard" ? "Removed · guard retained" : item.finalized_at ? "Removed" : "Cleanup pending";
@@ -40,14 +63,17 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
   const [settings, setSettings] = useState<Settings | null>(null);
   const [items, setItems] = useState<Connection[]>([]);
   const [next, setNext] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(20);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const requestSequence = useRef(0);
+  const failedPage = useRef<{ cursor: string | undefined; limit: number; history: (string | undefined)[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(createRequest > 0);
   useEffect(() => { if (createRequest > 0) { setCreating(true); onCreateHandled?.(); } }, [createRequest, onCreateHandled]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState<Connection | null>(null);
   const [rotating, setRotating] = useState<Connection | null>(null);
   const [notice, setNotice] = useState("");
@@ -62,39 +88,43 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
     })).then(values => { if (!cancelled) setReady(Object.fromEntries(values)); });
     return () => { cancelled = true; };
   }, [orgId, items, manage, settings?.enabled]);
-  const refresh = useCallback(async () => {
+  const loadPage = useCallback(async (cursor: string | undefined, limit: number, history: (string | undefined)[]) => {
+    const request = ++requestSequence.current;
+    failedPage.current = null;
     setLoading(true); setError("");
     const [setting, page] = await Promise.all([
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/settings", { params: { path: { orgId } } })),
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId }, query: { limit: 50 } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId }, query: { limit, ...(cursor ? { after: cursor } : {}) } } })),
     ]);
-    if (!alive.current) return;
+    if (!alive.current || request !== requestSequence.current) return;
     setLoading(false);
-    setSettings(setting.ok ? setting.data : null);
-    if (page.ok) { setItems(page.data.items); setNext(page.data.next_cursor ?? null); }
-    if (!setting.ok || !page.ok) setError("Could not load IPsec configuration. Try again.");
+    const settingValid = setting.ok && validSettings(setting.data);
+    const pageValid = page.ok && validConnectionPage(page.data, orgId);
+    const cursorAdvances = pageValid && (!page.data.next_cursor || !history.includes(page.data.next_cursor));
+    setSettings(settingValid ? setting.data : null);
+    if (pageValid && cursorAdvances) {
+      setItems(page.data.items.filter((item, index, pageItems) => pageItems.findIndex(other => other.id === item.id) === index));
+      setNext(page.data.next_cursor ?? null);
+      setCursors(history);
+    }
+    if (!settingValid || !pageValid || !cursorAdvances) {
+      failedPage.current = { cursor, limit, history };
+      setError(setting.ok && page.ok ? "The server returned incomplete or non-advancing IPsec inventory. Retry to reload this page." : "Could not load IPsec configuration. Try again.");
+    }
   }, [orgId, alive]);
+  const refresh = useCallback(() => loadPage(undefined, pageSize, [undefined]), [loadPage, pageSize]);
   useEffect(() => { void refresh(); }, [refresh]);
-  async function enable() {
-    if (!manage || !settings || busy) return;
-    setBusy(true); setError("");
-    try {
-      const result = await api.PUT("/api/v1/organizations/{orgId}/ipsec/settings", { params: { path: { orgId } }, body: { enabled: true, expected_revision: settings.revision } });
-      if (!alive.current) return;
-      if (result.error || !result.data) { await refresh(); if (alive.current) setError("Settings changed or could not be saved. Review and try again."); }
-      else setSettings(result.data);
-    } catch { if (alive.current) setError("Could not confirm the setting change. Refresh before retrying."); }
-    finally { if (alive.current) setBusy(false); }
+  function changePage(direction: "previous" | "next") {
+    if (loading || (direction === "next" ? !next : cursors.length <= 1)) return;
+    const history = direction === "next" ? [...cursors, next!] : cursors.slice(0, -1);
+    void loadPage(history.at(-1), pageSize, history);
   }
-  async function more() {
-    if (!next || busy) return;
-    setBusy(true);
-    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId }, query: { limit: 50, after: next } } }));
-    if (!alive.current) return;
-    setBusy(false);
-    if (!result.ok) { setError("Could not load more connections. Try again."); return; }
-    setItems(old => [...old, ...result.data.items.filter(item => !old.some(previous => previous.id === item.id))]);
-    setNext(result.data.next_cursor ?? null);
+  function changePageSize(size: number) {
+    if (loading || !appAccessPageSizes.includes(size as typeof appAccessPageSizes[number]) || size === pageSize) return;
+    // Withdraw an in-flight old-page response before React runs the size-change effect.
+    requestSequence.current += 1;
+    setLoading(true);
+    setPageSize(size);
   }
   const groups = [
     { key: "all", label: "All connections", matches: (_item: Connection) => true },
@@ -103,48 +133,58 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
     { key: "deleted", label: "Removed", matches: (item: Connection) => item.desired_intent === "deleted" },
   ];
   const visible = items.filter(item => groups.find(group => group.key === filter)!.matches(item) && `${item.name} ${sites.find(site => site.id === item.site_id)?.name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()));
-  const applied = items.filter(item => item.desired_intent === "enabled" && item.application_state === "applied" && item.cleanup_state !== "pending").length;
-  const pending = items.filter(item => item.cleanup_state === "pending" || (item.desired_intent === "enabled" && item.application_state !== "applied")).length;
-  return <div className="network-management ipsec-workspace space-y-5">
-    <div className="ipsec-heading">
-      <div className="ipsec-overview">
-        <h2 className={onRequestCreate ? "sr-only" : "text-lg font-semibold text-ink-heading"}>IPsec VPN connections</h2>
-        {!loading && !error && items.length > 0 && <dl className="ipsec-summary" aria-label="Loaded configuration summary">
-          {[{ label: "loaded", value: `${items.length}${next ? "+" : ""}`, hint: "Loaded AWS IPsec connections" }, { label: "applied", value: applied, hint: "Gateway accepted configuration; tunnel health is reported separately" }, { label: "pending", value: pending, hint: "Applying or awaiting cleanup" }, { label: "disabled", value: items.filter(item => item.desired_intent === "disabled").length, hint: "Administratively disabled configurations" }].map(metric => <div key={metric.label} title={metric.hint}><dt>{metric.label}</dt><dd>{metric.value}</dd></div>)}
-        </dl>}
-      </div>
-      <div className="flex gap-2">
-        <Button variant="ghost" disabled={loading || busy} onClick={() => void refresh()}>Refresh</Button>
-        {manage && settings && !onRequestCreate && <Button disabled={!settings.enabled || busy} onClick={() => setCreating(true)}>New connection</Button>}
-      </div>
-    </div>
-    {settings && !settings.enabled && <Card><div className="flex items-center justify-between gap-4"><div><h3 className="font-semibold text-ink-heading">Enable cloud connectivity</h3><p className="mt-1 text-sm text-ink-secondary">IPsec is off for this organization.</p><p className="mt-1 text-sm text-ink-secondary">Enable IPsec to configure an AWS VPN with two redundant tunnels.</p></div>{manage && <Button disabled={busy} onClick={() => void enable()}>Enable IPsec</Button>}</div></Card>}
-    <ErrorText>{error}</ErrorText>
+  const hasOtherPages = cursors.length > 1 || Boolean(next);
+  function rowActions(item: Connection): AppAccessRowMenuAction[] {
+    const actions: AppAccessRowMenuAction[] = [{ key: "details", label: "Connection details", onSelect: () => setSelected({ id: item.id, name: item.name }) }];
+    if (manage && item.desired_intent === "enabled") actions.push({ key: "disable", label: `Disable ${item.name}`, onSelect: () => setChanging(item) });
+    if (manage && item.desired_intent === "disabled" && item.cleanup_state !== "pending" && ready[item.id]) actions.push({ key: "enable", label: `Enable ${item.name}`, onSelect: () => setChanging(item) });
+    if (manage && canRotateIPsecKeys(item)) actions.push({ key: "rotate", label: `Rotate keys for ${item.name}`, onSelect: () => { setNotice(""); setRotating(item); } });
+    if (manage && item.desired_intent !== "deleted") actions.push({ key: "delete", label: `Delete ${item.name}`, danger: true, onSelect: () => setDeleting(item) });
+    return actions;
+  }
+  return <div className="network-management ipsec-workspace">
+    <h2 className="sr-only">IPsec VPN connections</h2>
     {notice && <p role="status" className="text-sm text-ink-secondary">{notice}</p>}
-    {loading ? <p role="status" className="text-sm text-ink-secondary">Loading IPsec configurations…</p> : <>
-      {!error && items.length === 0 && <Card className="ipsec-empty"><span className="ipsec-empty-icon" aria-hidden="true">↔</span><h3 className="text-lg font-semibold text-ink-heading">Connect your first cloud network</h3><p className="text-sm text-ink-secondary">No IPsec connections configured.</p><p className="text-sm text-ink-secondary">Choose a local gateway, add your AWS VPN details, then review before enabling traffic.</p>{manage && settings?.enabled && <Button onClick={() => onRequestCreate ? onRequestCreate() : setCreating(true)}>Create IPsec connection</Button>}</Card>}
-      {items.length > 0 && <Card className="ipsec-inventory space-y-4">
+    {selected ? <ProviderReadback key={selected.id} orgId={orgId} id={selected.id} name={selected.name} onClose={() => setSelected(null)} /> : <>
+      <div className="ipsec-toolbar">
         <div className="ipsec-inventory-toolbar">
-          <Input aria-label="Search VPN connections" placeholder="Search connections or networks…" value={search} onChange={event => setSearch(event.target.value)} />
+          <Input aria-label="Search VPN connections" placeholder="Search this page…" value={search} onChange={event => setSearch(event.target.value)} />
           <Select aria-label="Connection status" value={filter} onChange={event => setFilter(event.target.value)}>{groups.map(group => <option key={group.key} value={group.key}>{group.label} ({items.filter(group.matches).length})</option>)}</Select>
+          <span className="ipsec-filter-scope">This page</span>
         </div>
-        <DataTable<Connection> caption="IPsec connections" rows={visible} pageSize={0} rowAttrs={item => ({ "data-selected": String(selected === item.id) })} rowKey={item => item.id} failed={!!error} filterable={false} empty={<span className="block py-6 text-center"><span className="block">No connections match your filters.</span><Button variant="ghost" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</Button></span>} columns={[
-          { key: "name", header: "Connection", cell: item => <button aria-pressed={selected === item.id} className={`text-left font-medium hover:underline ${selected === item.id ? "text-accent" : "text-ink-heading"}`} onClick={() => setSelected(item.id)}>{item.name}</button> },
+        <div className="ipsec-toolbar-actions">
+          <RefreshButton label="Refresh" disabled={loading} onClick={() => void refresh()} />
+          {manage && settings && !onRequestCreate && <Button disabled={!settings.enabled || loading} onClick={() => setCreating(true)}>New connection</Button>}
+        </div>
+      </div>
+      {settings && <div className="ipsec-opt-in features-referral"><p>IPsec is {settings.enabled ? "enabled" : "off"} for this organization.</p>{manage && <Link to="/settings?section=features&feature=ipsec">Manage in Features</Link>}</div>}
+      <ErrorText>{error}</ErrorText>
+      {error && <Button variant="ghost" disabled={loading} onClick={() => { const failed = failedPage.current; void (failed ? loadPage(failed.cursor, failed.limit, failed.history) : refresh()); }}>Retry connections</Button>}
+      {loading ? <p role="status" className="text-sm text-ink-secondary">Loading IPsec configurations…</p> : !error && <>
+      {visible.length === 0 ? <div className="ipsec-empty" role="status">
+        <h3>{search || filter !== "all" ? "No connections match your filters." : cursors.length > 1 ? "No connections on this page" : "No IPsec connections configured."}</h3>
+        {search || filter !== "all" ? <Button variant="ghost" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</Button> : <>
+          <p>{cursors.length > 1 ? "Return to the previous page or refresh the inventory." : !manage ? "An administrator can configure a cloud VPN." : !settings?.enabled ? "Enable IPsec to add a cloud VPN." : onRequestCreate ? "Use Create connection to choose an IPsec provider." : "Choose a local gateway and enter your AWS VPN details. New connections are saved disabled."}</p>
+          {manage && settings?.enabled && !onRequestCreate && <Button variant="ghost" onClick={() => setCreating(true)}>Create IPsec connection</Button>}
+        </>}
+      </div> : <div className="ipsec-inventory">
+        <DataTable<Connection> caption="IPsec connections" variant="flat" rows={visible} pageSize={0} rowKey={item => item.id} failed={false} filterable={false} empty="No connections on this page." columns={[
+          { key: "name", header: "Connection", cell: item => <button className="ipsec-connection-name" onClick={() => setSelected({ id: item.id, name: item.name })}>{item.name}</button> },
           { key: "network", header: "Local network", cell: item => sites.find(site => site.id === item.site_id)?.name ?? "Network unavailable" },
           { key: "state", header: "Configuration", cell: item => <><span title={item.cleanup_state === "retained_guard" ? "Tunnel traffic is stopped. Safety guard remains; network ranges stay reserved." : item.application_state === "applied" ? "Gateway applied this revision. End-to-end traffic is not verified." : undefined} className={`ipsec-state ${item.cleanup_state === "pending" || (item.desired_intent === "enabled" && item.application_state !== "applied") ? "ipsec-state-pending" : item.desired_intent === "enabled" ? "ipsec-state-applied" : ""}`}>{connectionStatus(item)}</span></> },
-          { key: "actions", header: "Actions", cell: item => <div className="flex flex-wrap justify-end gap-2">
-        {manage && item.desired_intent === "enabled" && <Button variant="ghost" size="sm" aria-label={`Disable ${item.name}`} onClick={() => setChanging(item)}>Disable</Button>}
-        {manage && item.desired_intent === "disabled" && item.cleanup_state !== "pending" && ready[item.id] && <Button variant="ghost" size="sm" aria-label={`Enable ${item.name}`} onClick={() => setChanging(item)}>Enable</Button>}
-        {manage && canRotateIPsecKeys(item) && <Button variant="ghost" size="sm" aria-label={`Rotate keys for ${item.name}`} onClick={() => { setNotice(""); setRotating(item); }}>Rotate keys</Button>}
-        {manage && item.desired_intent !== "deleted" && <Button variant="ghost" size="sm" aria-label={`Delete ${item.name}`} onClick={() => setDeleting(item)}>Delete</Button>}
-          </div> },
+          { key: "actions", header: "Actions", cell: item => <div className="ipsec-row-actions"><AppAccessRowMenu label={`Connection actions for ${item.name}`} actions={rowActions(item)} /></div> },
         ]} />
-        <p className="ipsec-inventory-note">Configuration applied confirms gateway setup. Open tunnel details to check live tunnel health.</p>
-      </Card>}
-      {next && <Button variant="ghost" disabled={busy} onClick={() => void more()}>Load more</Button>}
+        <p className="ipsec-inventory-note">Applied describes gateway configuration. Open connection details for reported tunnel health.</p>
+      </div>}
+      {(hasOtherPages || items.length > 10) && <nav className="ipsec-pagination" aria-label="IPsec connection pagination">
+        <span>{visible.length} of {items.length} on this page</span>
+        <div className="ipsec-pagination-controls"><span>Rows per page</span><Select aria-label="Rows per page" width="auto" value={String(pageSize)} disabled={loading} onChange={event => changePageSize(Number(event.target.value))}>{appAccessPageSizes.map(size => <option key={size} value={size}>{size}</option>)}</Select>
+          {hasOtherPages && <><span>Page {cursors.length}</span><Button variant="ghost" aria-label="Previous connections" disabled={loading || cursors.length <= 1} onClick={() => changePage("previous")}>Previous</Button><Button variant="ghost" aria-label="Next connections" disabled={loading || !next} onClick={() => changePage("next")}>Next</Button></>}
+        </div>
+      </nav>}
+      </>}
     </>}
-    {selected && <ProviderReadback key={selected} orgId={orgId} id={selected} name={items.find(item => item.id === selected)?.name ?? "Connection details"} onClose={() => setSelected(null)} />}
-    {manage && creating && settings?.enabled && <ConnectionForm orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={id => { if (!alive.current) return; setCreating(false); setSelected(id); void refresh(); }} />}
+    {manage && creating && settings?.enabled && <ConnectionForm orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={(id, name) => { if (!alive.current) return; setCreating(false); setSelected({ id, name }); void refresh(); }} />}
     {manage && changing && <ChangeIntent orgId={orgId} connection={changing} onClose={() => setChanging(null)} onChanged={() => { if (!alive.current) return; setChanging(null); void refresh(); }} />}
     {manage && rotating && <IPsecRotateKeys key={rotating.id} orgId={orgId} connection={rotating} onClose={() => setRotating(null)} onSaved={() => { if (!alive.current) return; setRotating(null); setNotice("Keys saved. Update your remote VPN, then enable this connection."); void refresh(); }} />}
     {manage && deleting && <DeleteConnection orgId={orgId} connection={deleting} onClose={() => setDeleting(null)} onDeleted={() => { if (!alive.current) return; setDeleting(null); setSelected(null); void refresh(); }} />}
@@ -153,15 +193,19 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
 function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: string; name: string; onClose: () => void }) {
   const [result, setResult] = useState<Provider | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { let cancelled = false; void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: id } } })).then(value => { if (cancelled) return; if (value.ok) setResult(value.data); else setError("No provider configuration could be loaded for this record."); }); return () => { cancelled = true; }; }, [orgId, id]);
-  return <Card className="ipsec-details"><div className="mb-3 flex justify-between gap-3"><div><p className="ipsec-eyebrow">Connection overview</p><h3 className="text-lg font-semibold text-ink-heading">{name}</h3></div><Button size="sm" variant="ghost" onClick={onClose}>Close details</Button></div>
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { let cancelled = false; setResult(null); setError(""); void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: id } } })).then(value => { if (cancelled) return; if (value.ok) setResult(value.data); else setError("No provider configuration could be loaded for this record."); }); return () => { cancelled = true; }; }, [orgId, id, attempt]);
+  return <section className="ipsec-details" aria-label={`${name} details`}>
+    <nav className="ipsec-breadcrumbs" aria-label="IPsec connection breadcrumb"><button onClick={onClose}>Back to connections</button><span aria-hidden="true">/</span><span aria-current="page">{name}</span></nav>
+    <div className="ipsec-detail-heading"><h3>{name}</h3>{result && <span>AWS · IPv4 static · revision {result.configuration_revision}</span>}</div>
     <ErrorText>{error}</ErrorText>{!result && !error && <p role="status">Loading configuration…</p>}
-    {result && <><p className="mb-3 text-xs text-ink-secondary">AWS · IPv4 static · revision {result.configuration_revision}</p>
+    {error && <Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry configuration</Button>}
+    {result && <>
       {!result.configuration ? <p className="text-sm text-ink-secondary">Configuration removed. Identity retained.</p> : <div className="space-y-4">
-        <details className="ipsec-routing"><summary>Stored configuration</summary><dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3"><div><dt className="text-ink-secondary">Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt className="text-ink-secondary">Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt className="text-ink-secondary">Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></details>
+        <ResourceSummary title="Stored configuration" headingLevel={4}><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt>Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt>Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></ResourceSummary>
         <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} /></div>
       </div>}</>}
-  </Card>;
+  </section>;
 }
 function ChangeIntent({ orgId, connection, onClose, onChanged }: { orgId: string; connection: Connection; onClose: () => void; onChanged: () => void }) {
   const alive = useLifetime(); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
@@ -198,7 +242,7 @@ function DeleteConnection({ orgId, connection, onClose, onDeleted }: { orgId: st
   return <Modal title="Delete connection?" onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="danger" disabled={busy || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void remove()}>Delete connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">Removes the tunnel and credentials after gateway cleanup. Safety guards and reserved ranges remain for previously delivered tunnels.</p><ErrorText>{error}</ErrorText></Modal>;
 }
 const blankTunnel = (): Configuration["tunnels"][number] => ({ outside_address: "", inside_cidr: "", customer_inside_address: "", cloud_inside_address: "", psk: "" });
-function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string) => void }) {
+function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string, name: string) => void }) {
   const alive = useLifetime();
   const [ids] = useState(() => ({ id: crypto.randomUUID(), tunnels: [crypto.randomUUID(), crypto.randomUUID()] }));
   const [step, setStep] = useState(1); const [name, setName] = useState(""); const [site, setSite] = useState(""); const [gateway, setGateway] = useState("");
@@ -219,7 +263,7 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
   async function recover(id: string) {
     const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId, connectionId: id } } }));
     if (!alive.current) return false;
-    if (result.ok) { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onSaved(id); return true; }
+    if (result.ok) { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onSaved(id, result.data.name); return true; }
     return false;
   }
   async function save() {
@@ -241,7 +285,7 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
       frozen.current = input; posted = true;
       const result = await api.POST("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId } }, body: input });
       if (!alive.current) return;
-      if (result.data && !result.error) { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onSaved(result.data.id); return; }
+      if (result.data && !result.error) { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onSaved(result.data.id, result.data.name); return; }
       if (result.response?.status === 409 && await recover(input.id)) return;
       if (!uncertain && result.response && result.response.status < 500 && result.response.status !== 409) { frozen.current = null; setUncertain(false); setError("Configuration was not saved. Review gateway support, network ownership and conflicts."); }
       else { setUncertain(true); setError("Save result unknown. Retry uses the same connection ID."); }
@@ -252,22 +296,23 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
     } finally { saving.current = false; if (alive.current) setBusy(false); }
   }
   return <Modal title="New IPsec connection" size="workspace" onDismiss={cancel}>
-    <form onSubmit={event => { event.preventDefault(); if (step === 1) { if (prepared) setStep(2); } else void save(); }} autoComplete="off" className="space-y-5">
-      <div className="flex gap-3 text-sm"><span className={step === 1 ? "font-semibold text-ink-heading" : "text-ink-secondary"}>1 · Networks</span><span className={step === 2 ? "font-semibold text-ink-heading" : "text-ink-secondary"}>2 · Tunnels</span></div>
-      <fieldset disabled={busy || uncertain} className="space-y-4">
+    <form onSubmit={event => { event.preventDefault(); if (step === 1) { if (prepared) setStep(2); } else void save(); }} autoComplete="off" className="ipsec-setup-form">
+      <ol className="ipsec-setup-steps" aria-label="IPsec setup steps"><li aria-current={step === 1 ? "step" : undefined}><span aria-hidden="true">1</span>Networks</li><li aria-current={step === 2 ? "step" : undefined}><span aria-hidden="true">2</span>Tunnels</li></ol>
+      <p className="ipsec-setup-intro">{step === 1 ? "Choose an approved local range and an AWS VPN endpoint." : "Enter both tunnel configurations from your AWS VPN. This connection will be saved disabled."}</p>
+      <fieldset disabled={busy || uncertain} className="ipsec-setup-fields">
         {step === 1 ? <>
           <Field label="Name"><Input required value={name} maxLength={255} onChange={event => setName(event.target.value)} placeholder="Office to AWS" /></Field>
-          <div className="grid grid-cols-2 gap-4"><Field label="Local network"><Select required value={site} onChange={event => { setSite(event.target.value); setGateway(""); setLocal([]); setSubnets([]); setEligibility(null); }}><option value="">Choose a network</option>{sites.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</Select></Field>
+          <div className="ipsec-setup-grid"><Field label="Local network"><Select required value={site} onChange={event => { setSite(event.target.value); setGateway(""); setLocal([]); setSubnets([]); setEligibility(null); }}><option value="">Choose a network</option>{sites.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</Select></Field>
             <Field label="Gateway"><Select required value={gateway} onChange={event => { setGateway(event.target.value); setEligibility(null); }}><option value="">Choose a gateway</option>{selectedGateways.map(node => <option key={node.id} value={node.id}>{node.name}</option>)}</Select></Field></div>
-          <fieldset><legend className="mb-2 text-sm text-ink-secondary">Approved local ranges</legend><div className="flex flex-wrap gap-3">{subnets.map(subnet => <label key={subnet.id} className="flex items-center gap-2 rounded border border-line px-3 py-2 text-sm"><input type="checkbox" checked={local.includes(subnet.cidr)} onChange={event => setLocal(old => event.target.checked ? [...old, subnet.cidr] : old.filter(value => value !== subnet.cidr))} />{subnet.cidr}</label>)}</div>{site && subnets.length === 0 && <p className="text-xs text-ink-secondary">No approved ranges available.</p>}</fieldset>
-          <div className="grid grid-cols-2 gap-4"><Field label="Customer public IP"><Input required value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Public gateway or NAT IP" /></Field><Field label="Remote network ranges"><Input required value={remote} onChange={event => setRemote(event.target.value)} placeholder="CIDRs, separated by commas" /></Field></div>
-        </> : <div className="grid grid-cols-2 gap-4">{tunnels.map((tunnel, i) => <div key={i} className="space-y-3 rounded border border-line p-4"><h3 className="font-semibold">Tunnel {i + 1}</h3>{([
+          <fieldset className="ipsec-local-ranges"><legend>Approved local ranges</legend><div>{subnets.map(subnet => <label key={subnet.id}><input type="checkbox" checked={local.includes(subnet.cidr)} onChange={event => setLocal(old => event.target.checked ? [...old, subnet.cidr] : old.filter(value => value !== subnet.cidr))} />{subnet.cidr}</label>)}</div>{site && subnets.length === 0 && <p className="text-xs text-ink-secondary">No approved ranges available.</p>}</fieldset>
+          <div className="ipsec-setup-grid"><Field label="Customer public IP"><Input required value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Public gateway or NAT IP" /></Field><Field label="Remote network ranges"><Input required value={remote} onChange={event => setRemote(event.target.value)} placeholder="CIDRs, separated by commas" /></Field></div>
+        </> : <div className="ipsec-setup-grid">{tunnels.map((tunnel, i) => <div key={i} className="ipsec-tunnel-fields"><h3>Tunnel {i + 1}</h3>{([
           ["outside_address", "outside IP"], ["inside_cidr", "inside CIDR"], ["customer_inside_address", "customer IP"], ["cloud_inside_address", "cloud IP"], ["psk", "PSK"],
         ] as const).map(([field, label]) => <Field key={field} label={`Tunnel ${i + 1} ${label}`}><Input required type={field === "psk" ? "password" : "text"} autoComplete={field === "psk" ? "new-password" : "off"} spellCheck={false} value={tunnel[field]} onChange={event => setTunnels(old => old.map((value, n) => n === i ? { ...value, [field]: event.target.value } : value))} /></Field>)}</div>)}</div>}
       </fieldset>
-      <div className="flex items-center justify-between gap-3 text-sm"><p role="status" className="text-ink-secondary">{checking ? "Checking gateway support…" : currentEligibility ? eligibilityText[currentEligibility.reason] : "Choose a network and gateway to check support."}</p>{site && gateway && <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => setCheckAttempt(value => value + 1)}>Check support</Button>}</div>
+      <div className="ipsec-setup-readiness"><p role="status" className="text-ink-secondary">{checking ? "Checking gateway support…" : currentEligibility ? eligibilityText[currentEligibility.reason] : "Choose a network and gateway to check support."}</p>{site && gateway && <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => setCheckAttempt(value => value + 1)}>Check support</Button>}</div>
       <ErrorText>{error}</ErrorText>
-      <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy}>Next: tunnels</Button> : <Button type="submit" disabled={busy || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}</div>
+      <div className="ipsec-setup-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy}>Next: tunnels</Button> : <Button type="submit" disabled={busy || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}</div>
     </form>
   </Modal>;
 }

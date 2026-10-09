@@ -10,8 +10,8 @@
 .settings-search-empty { font-size:12px; color:var(--tnx-text-secondary); padding:12px 0; }
 .settings-content { display:flex; flex-direction:column; gap:16px; min-width:0; }
 .settings-section-hint { font-size:13px; line-height:1.6; color:var(--tnx-text-secondary); margin:0; padding:10px 0 4px; }
-.settings-workspace .tnx-setting-group { padding:24px!important; }
-.settings-workspace .tnx-setting-group > h2 { font-size:19px; font-weight:550; letter-spacing:-.02em; margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--tnx-divider); }
+.settings-workspace .tnx-setting-group { padding:24px 22px!important; border-radius:8px; background:color-mix(in srgb,var(--tnx-surface-inset) 35%,var(--tnx-surface)); }
+.settings-workspace .tnx-setting-group:not(.feature-setting-group) > h2 { font-size:16px; font-weight:600; line-height:1.5; margin:-24px -22px 4px; padding:18px 22px; border-radius:7px 7px 0 0; border-bottom:1px solid var(--tnx-border); background:color-mix(in srgb,var(--tnx-surface-inset) 65%,var(--tnx-surface)); }
 .settings-workspace .tnx-setting-row { padding:20px 0; gap:16px 28px; align-items:center; }
 .settings-workspace .tnx-setting-row > div:first-child { flex-basis:240px; }
 .settings-workspace .tnx-setting-row > div:first-child > p:first-child { font-size:14px; font-weight:500; color:var(--tnx-text-heading); }
@@ -19,4 +19,4 @@
 .settings-workspace .tnx-setting-row > div:last-child { max-width:100%; font-size:13px; }
 .settings-workspace .tnx-setting-group .tnx-card-surface { box-shadow:none; background:#0b0d10; }
 .settings-workspace .tnx-setting-group .font-mono { font-family:inherit; }
-@media(max-width:760px) { .settings-layout { grid-template-columns:1fr; gap:20px; } .settings-navigation { position:static; } .settings-navigation [role=tablist] { flex-direction:row; flex-wrap:wrap; gap:5px; } .settings-navigation [role=tab] { min-height:36px; padding:7px 10px; } .settings-navigation #danger-tab { margin-top:0; border:1px solid transparent; border-radius:7px; } .settings-workspace .tnx-setting-group { padding:18px!important; } }
+@media(max-width:760px) { .settings-layout { grid-template-columns:1fr; gap:20px; } .settings-navigation { position:static; } .settings-navigation [role=tablist] { flex-direction:row; flex-wrap:wrap; gap:5px; } .settings-navigation [role=tab] { min-height:36px; padding:7px 10px; } .settings-navigation #danger-tab { margin-top:0; border:1px solid transparent; border-radius:7px; } }

@@ -4,8 +4,7 @@ import { api, loadOne, type Loaded, type Node, type Site, type SiteSubnet, type 
 import { policyHealthBadge, siteLinkNote } from "../lib/healthview";
 import "../site-pair.css";
 import { NetworkDetailList } from "./NetworkDetailList";
-import { Icon } from "./Icon";
-import { Badge, Button, Card, Field, Select } from "./ui";
+import { Badge, Button, Field, Select } from "./ui";
 
 export function SitePairReview({ sites, renderDetails }: {
   sites: Site[];
@@ -15,11 +14,11 @@ export function SitePairReview({ sites, renderDetails }: {
   const [secondId, setSecondId] = useState("");
   const first = sites.find(site => site.id === firstId);
   const second = sites.find(site => site.id === secondId);
-  return <section aria-labelledby="pair-heading" className="site-pair-review space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 id="pair-heading" className="text-lg font-semibold">Inspect two networks</h2><p className="mt-1 text-xs text-ink-secondary">See their gateways, IP ranges and reported status. Selecting networks makes no changes.</p></div>
+  return <section aria-labelledby="pair-heading" className="site-pair-review">
+    <div className="pair-review-heading">
+      <div><h2 id="pair-heading">Inspect two networks</h2><p>Reported gateways and ranges. Selecting networks makes no changes.</p></div>
       <div className="flex gap-2">
-        {first && second && <button className="pair-text-action" onClick={() => { setFirstId(secondId); setSecondId(firstId); }}><Icon name="arrow-right-left" size={14} />Swap networks</button>}
+        {first && second && <button className="pair-text-action" onClick={() => { setFirstId(secondId); setSecondId(firstId); }}>Swap networks</button>}
         {(first || second) && <button className="pair-text-action" onClick={() => { setFirstId(""); setSecondId(""); }}>Reset</button>}
       </div>
     </div>
@@ -29,7 +28,6 @@ export function SitePairReview({ sites, renderDetails }: {
           setFirstId(event.target.value);
           if (event.target.value === secondId) setSecondId("");
         }}><option value="">Choose a network</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</Select></Field>
-        <span className="pair-selector-link" aria-hidden="true"><Icon name="arrow-right-left" size={18} /></span>
         <Field label="Second network"><Select value={second?.id ?? ""} onChange={event => setSecondId(event.target.value)}>
           <option value="">Choose another network</option>{sites.filter(site => site.id !== firstId).map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
         </Select></Field>
@@ -70,8 +68,8 @@ export function SitePairConfigurationView({ first, second, data, onRetry }: {
   first: Site; second: Site; data: SitePairConfiguration; onRetry: () => void;
 }) {
   const incomplete = !data.nodes.ok || !data.firstRanges.ok || !data.secondRanges.ok || !data.hubSet.ok;
-  return <div className="site-pair-configuration space-y-4">
-    <div className="pair-context"><span className="pair-protocol"><Icon name="network" size={14} />WireGuard</span><span>Traffic not verified</span></div>
+  return <div className="site-pair-configuration">
+    <div className="pair-context"><span className="pair-protocol">WireGuard</span><span>Traffic not verified</span></div>
     <div className="pair-endpoints">
       <SiteConfiguration key={first.id} site={first} nodes={data.nodes} ranges={data.firstRanges} />
       <SiteConfiguration key={second.id} site={second} nodes={data.nodes} ranges={data.secondRanges} />
@@ -94,7 +92,7 @@ export function SitePairConfigurationView({ first, second, data, onRetry }: {
     </details>
     {incomplete && <Button onClick={onRetry}>Retry configuration</Button>}
     <div className="pair-footer">
-      <p className="text-xs text-ink-secondary">Traffic between these networks has not been verified. This review makes no connection changes.</p>
+      <p className="text-xs text-ink-secondary">Traffic between these networks has not been verified.</p>
       <div className="flex flex-wrap gap-4">
         <Link className="pair-text-action" to="/sites?section=topology">View network topology</Link>
         <Link className="pair-text-action" to="/access">Review access policies</Link>
@@ -105,8 +103,8 @@ export function SitePairConfigurationView({ first, second, data, onRetry }: {
 
 function SiteConfiguration({ site, nodes, ranges }: { site: Site; nodes: Loaded<Node[]>; ranges: Loaded<SiteSubnet[]> }) {
   const gateways = nodes.ok ? nodes.data.filter(node => node.site_id === site.id) : [];
-  return <Card className="pair-endpoint"><section aria-label={`${site.name} configuration`} className="space-y-3 break-words">
-    <div className="pair-endpoint-heading"><span className="pair-network-icon" aria-hidden="true"><Icon name="network" size={20} /></span><h3 className="font-semibold">{site.name}</h3><Link aria-label={`Settings for ${site.name}`} className="pair-settings" to={`/sites?site=${encodeURIComponent(site.id)}`}><Icon name="settings" size={16} /></Link></div>
+  return <section aria-label={`${site.name} configuration`} className="pair-endpoint">
+    <div className="pair-endpoint-heading"><h3>{site.name}</h3><Link aria-label={`Settings for ${site.name}`} className="pair-settings" to={`/sites?site=${encodeURIComponent(site.id)}`}>Settings</Link></div>
     <h4 className="pair-section-label">Gateways</h4>
     {!nodes.ok ? <p role="alert">Could not load gateways. {nodes.error}</p> : gateways.length === 0 ? <p>No gateway assigned.</p> : <NetworkDetailList label={`${site.name} gateways`} items={gateways} searchText={node => node.name} renderItem={node => {
       const health = policyHealthBadge(node);
@@ -125,5 +123,5 @@ function SiteConfiguration({ site, nodes, ranges }: { site: Site; nodes: Loaded<
     }} />}
     <h4 className="pair-section-label">Network ranges</h4>
     {!ranges.ok ? <p role="alert">Could not load ranges. {ranges.error}</p> : ranges.data.length === 0 ? <p>No network ranges advertised.</p> : <div className="pair-ranges"><NetworkDetailList label={`${site.name} ranges`} items={ranges.data} searchText={range => `${range.cidr} ${range.status}`} renderItem={range => <li key={range.id}><span className="font-mono">{range.cidr}</span><span className={range.status === "approved" ? "text-ink-secondary" : "text-warn"}>{range.status === "approved" ? "Approved" : "Pending approval"}</span></li>} /></div>}
-  </section></Card>;
+  </section>;
 }

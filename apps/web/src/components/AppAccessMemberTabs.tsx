@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import AppAccessWorkspaceTabs from "./AppAccessWorkspaceTabs";
-import { Loading } from "./ui";
 
 type Navigation = { orgId: string; viewApplications: boolean; grantAccess: boolean; manageAssigned: boolean; pending: number };
 export default function AppAccessMemberTabs({ orgId }: { orgId: string }) {
@@ -41,6 +40,6 @@ export default function AppAccessMemberTabs({ orgId }: { orgId: string }) {
     return () => { cancelled = true; window.removeEventListener("focus", onRefresh); window.removeEventListener("app-access-requests-changed", onRefresh); };
   }, [orgId]);
   const current = navigation?.orgId === orgId ? navigation : null;
-  if (loading || settledOrg !== orgId) return <Loading label="Loading application navigation…" />;
-  return <AppAccessWorkspaceTabs viewApplications={current?.viewApplications === true} manageGrants={current?.grantAccess === true} manageAssigned={current?.manageAssigned === true} pending={current?.pending ?? 0} />;
+  const resolving = loading || settledOrg !== orgId;
+  return <><AppAccessWorkspaceTabs viewApplications={current?.viewApplications === true} manageGrants={current?.grantAccess === true} manageAssigned={current?.manageAssigned === true} pending={current?.pending ?? 0} resolving={resolving} />{resolving && <span className="sr-only" role="status">Loading application navigation…</span>}</>;
 }

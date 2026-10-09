@@ -7,6 +7,7 @@ import {
   fireEvent,
   within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 // SLICE 4 — Access. Last of the four ranked screens, and the only one whose case is CONSEQUENCE-based rather
 // than finding-based. So the consequence is stated here, because it is the decision under test:
@@ -70,8 +71,10 @@ let groupsForTest = [
   { id: "g1", name: "Engineering" },
   { id: "g2", name: "Operations" },
 ];
-let resourcesForTest = [{ id: "res1", name: "10.0.0.0/24" }];
+let resourcesForTest: Array<{ id: string; name: string; cidr?: string; protocol?: string; port_low?: number | null; port_high?: number | null }> = [{ id: "res1", name: "10.0.0.0/24" }];
 let fqdnResourcesForTest: Array<Record<string, unknown>> = [];
+let servicesForTest: Array<Record<string, unknown>> = [];
+let resourceReadsFail = false;
 let sitesForTest: Array<{ id: string; name: string }> = [];
 let agentsForTest: Array<{
   device_id: string;
@@ -89,7 +92,6 @@ vi.mock("../src/lib/api", async () => {
     await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return {
     ...actual,
-    apiErrorMessage: (_e: unknown, f: string) => f,
     api: {
       GET: vi.fn(async (path: string) => {
         if (path === "/api/v1/auth/me")
@@ -141,7 +143,8 @@ vi.mock("../src/lib/api", async () => {
           return { data: [] };
         }
         if (path.endsWith("/groups")) return { data: groupsForTest };
-        if (path.endsWith("/resources")) return { data: resourcesForTest };
+        if (path.endsWith("/resources")) return resourceReadsFail ? { error: { error: { message: "resource inventory unavailable" } } } : { data: resourcesForTest };
+        if (path.endsWith("/k8s/services")) return { data: servicesForTest };
         if (path.endsWith("/fqdn-resources")) return { data: fqdnResourcesForTest };
         if (path.endsWith("/sites")) return { data: sitesForTest };
         if (path.endsWith("/agents")) {
@@ -155,14 +158,19 @@ vi.mock("../src/lib/api", async () => {
         return { data: { id: `created-${postedBodies.length}` } };
       }),
       PATCH: vi.fn(async () => ({ data: {} })),
+      PUT: vi.fn(async (_path: string, request?: { body?: { mode?: "off" | "enforcing" } }) => {
+        if (request?.body?.mode) mode = request.body.mode;
+        return { data: { mode } };
+      }),
       DELETE: vi.fn(async () => ({ data: {} })),
     },
   };
 });
 
 import { OrgProvider } from "../src/lib/useOrg";
-import Access from "../src/pages/Access";
+import Access, { ModeSection } from "../src/pages/Access";
 import { AuthProvider } from "../src/lib/auth";
+import { api } from "../src/lib/api";
 
 // The REAL AuthProvider. Stubbing the context would put the TEST's copy of the role gate under assertion
 // instead of the PRODUCT's — fixture-restates-production at the seam that most invites it (docs/laws.md).
@@ -172,7 +180,7 @@ const withAuth = (ui: React.ReactElement) =>
   // test that quietly rendered without an org would be exercising a state production never reaches.
   render(
     <AuthProvider>
-      <OrgProvider>{ui}</OrgProvider>
+      <OrgProvider><MemoryRouter>{ui}</MemoryRouter></OrgProvider>
     </AuthProvider>,
   );
 
@@ -190,6 +198,8 @@ beforeEach(() => {
   ];
   resourcesForTest = [{ id: "res1", name: "10.0.0.0/24" }];
   fqdnResourcesForTest = [];
+  servicesForTest = [];
+  resourceReadsFail = false;
   sitesForTest = [];
   agentsForTest = [];
   postedBodies = [];
@@ -197,6 +207,10 @@ beforeEach(() => {
   agentTemplatesEnabled = false;
   agentGroupReads = 0;
   agentGroupReadsFail = false;
+  vi.mocked(api.PUT).mockClear();
+  vi.mocked(api.POST).mockClear();
+  vi.mocked(api.DELETE).mockClear();
+  vi.mocked(api.PATCH).mockClear();
 });
 
 function setDistinctFlowRules() {
@@ -212,6 +226,294 @@ function setDistinctFlowRules() {
     dst_resource_id: "res1",
   }));
 }
+
+describe("Access enforcement changes require current evidence and confirmation", () => {
+  const changed = vi.fn();
+  const centralEnforcement = () => withAuth(<ModeSection orgId="org-1" central canManage onPolicyChange={changed} />).container;
+
+  it("keeps enforcement readable in Access Policies and sends activation to its central feature", async () => {
+    withAuth(<Access />);
+    const enforcement = await screen.findByRole("region", { name: "Policy enforcement" });
+    await within(enforcement).findByText("On · Default-deny");
+    expect(within(enforcement).getByRole("link", { name: "Manage in Features" }).getAttribute("href")).toBe("/settings?section=features&feature=zero-trust");
+    expect(within(enforcement).queryByRole("button", { name: /Disable|Enable enforcing/ })).toBeNull();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("does not disable enforcement until the explicit security-impact confirmation", async () => {
+    changed.mockClear();
+    const enforcement = centralEnforcement();
+    fireEvent.click(await within(enforcement).findByRole("button", { name: "Disable" }));
+    const dialog = screen.getByRole("dialog", { name: "Disable enforcement?" });
+    expect(within(dialog).getByText(/every other device without an allow rule/)).toBeTruthy();
+    expect(api.PUT).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(api.PUT).not.toHaveBeenCalled();
+    fireEvent.click(within(enforcement).getByRole("button", { name: "Disable" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Disable enforcement?" })).getByRole("button", { name: "Disable enforcement" }));
+    await waitFor(() => expect(api.PUT).toHaveBeenCalledTimes(1));
+    expect(api.PUT).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/zero-trust-mode", {
+      params: { path: { orgId: "org-1" } }, body: { mode: "off" },
+    });
+    await within(enforcement).findByText("Off · Open mesh");
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to confirm enabling when a fresh rule count fails", async () => {
+    mode = "off";
+    const enforcement = centralEnforcement();
+    const enable = await within(enforcement).findByRole("button", { name: "Enable enforcing" });
+    rulesFail = true;
+    fireEvent.click(enable);
+    await within(enforcement).findByText("Couldn't verify the current rule count. retry.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.PUT).not.toHaveBeenCalled();
+    expect(within(enforcement).getByText("Off · Open mesh")).toBeTruthy();
+  });
+
+  it("requires an explicit zero-rule warning and does not treat a missing response as enforcement", async () => {
+    mode = "off";
+    rulesForTest = [];
+    const enforcement = centralEnforcement();
+    fireEvent.click(await within(enforcement).findByRole("button", { name: "Enable enforcing" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/denies ALL traffic\. including your own access/)).toBeTruthy();
+    vi.mocked(api.PUT).mockResolvedValueOnce({ data: undefined } as never);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Enable anyway" }));
+    await screen.findAllByText("The server did not confirm enforcement. Refresh its state before trying again.");
+    expect(within(enforcement).getByText("Off · Open mesh")).toBeTruthy();
+    expect(within(enforcement).queryByText("On · Default-deny")).toBeNull();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps transport uncertainty visible and never changes the known enforcement state", async () => {
+    const enforcement = centralEnforcement();
+    fireEvent.click(await within(enforcement).findByRole("button", { name: "Disable" }));
+    vi.mocked(api.PUT).mockRejectedValueOnce(new Error("connection lost"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Disable enforcement" }));
+    await screen.findAllByText("Could not confirm enforcement. Refresh its state before trying again.");
+    expect(within(enforcement).getByText("On · Default-deny")).toBeTruthy();
+    expect(within(enforcement).queryByText("Off · Open mesh")).toBeNull();
+  });
+});
+
+describe("Access replacement edits preserve active-rule warnings", () => {
+  it.each([
+    { field: "src_group_id", label: "Source", current: /Engineering/, unavailable: "Source unavailable" },
+    { field: "dst_resource_id", label: "Destination", current: /10\.0\.0\.0\/24/, unavailable: "Destination unavailable" },
+  ])("requires a readable current identity before reviewing a saved $label", async ({ field, label, current, unavailable }) => {
+    rulesForTest = [{ ...RULES[0], [field]: "missing-identity" }];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit rule" });
+    expect(within(dialog).getByText(unavailable)).toBeTruthy();
+    expect(within(dialog).getByText("Scope not reported. Choose a current source and destination before reviewing this rule.")).toBeTruthy();
+    const review = within(dialog).getByRole("button", { name: "Review rule" }) as HTMLButtonElement;
+    expect(review.disabled).toBe(true);
+    fireEvent.click(review);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+    fireEvent.focus(within(dialog).getByRole("combobox", { name: label }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: current }));
+    expect(review.disabled).toBe(false);
+    fireEvent.click(review);
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it("continues to review a valid literal source CIDR without needing a saved identity", async () => {
+    rulesForTest = [{ ...RULES[0], src_kind: "cidr", src_group_id: undefined, src_cidr: "10.99.0.0/24" }];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit rule" });
+    const review = within(dialog).getByRole("button", { name: "Review rule" }) as HTMLButtonElement;
+    expect(review.disabled).toBe(false);
+    fireEvent.click(review);
+    expect(within(dialog).getByText("10.99.0.0/24")).toBeTruthy();
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing id", "transport rejection"])("does not remove the original after an unconfirmed replacement: %s", async outcome => {
+    rulesForTest = [RULES[0]];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Engineering" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit rule" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review rule" }));
+    if (outcome === "missing id") vi.mocked(api.POST).mockResolvedValueOnce({ data: {} } as never);
+    else vi.mocked(api.POST).mockRejectedValueOnce(new Error("connection lost"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await within(dialog).findByText("Could not confirm rule creation. The original rule was not removed. Refresh the rule list before trying again.");
+    expect(api.POST).toHaveBeenCalledTimes(1);
+    expect(api.DELETE).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Edit rule" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back to builder" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("checkbox", { name: "Select Engineering" })).toBeTruthy();
+  });
+
+  it.each([
+    { low: 443, high: null, expected: "TCP · port 443" },
+    { low: 443, high: 445, expected: "TCP · ports 443–445" },
+    { low: null, high: null, expected: "TCP · all ports" },
+  ])("reviews the actual saved destination scope: $expected", async ({ low, high, expected }) => {
+    resourcesForTest = [{ id: "res1", name: "Production TLS", cidr: "10.90.0.0/24", protocol: "tcp", port_low: low, port_high: high }];
+    withAuth(<Access />);
+    const add = await screen.findByRole("button", { name: "Add rule" });
+    await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(add);
+    const dialog = screen.getByRole("dialog", { name: "Add rule" });
+    fireEvent.focus(within(dialog).getByRole("combobox", { name: "Destination" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: /Production TLS/ }));
+    expect(within(dialog).queryByRole("button", { name: "Create" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review rule" }));
+    expect(within(dialog).getByText("10.90.0.0/24")).toBeTruthy();
+    expect(within(dialog).getByText(expected)).toBeTruthy();
+    expect(api.POST).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(postedBodies).toHaveLength(1));
+    expect(postedBodies[0]).toMatchObject({ src_kind: "group", src_group_id: "g1", dst_kind: "resource", dst_resource_id: "res1" });
+  });
+
+  it("keeps the original active rule and a durable partial-swap warning when removal fails", async () => {
+    rulesForTest = [RULES[0]];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Engineering" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit rule" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review rule" }));
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+    vi.mocked(api.DELETE).mockResolvedValueOnce({ error: { error: { message: "remove refused" } } } as never);
+    rulesFail = true;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await screen.findByText(/New rule created, but the old rule \(r-enable\) could not be removed\. it is still active/);
+    expect(api.POST).toHaveBeenCalledTimes(1);
+    expect(api.DELETE).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/policies/{ruleId}", { params: { path: { orgId: "org-1", ruleId: "r-enabled" } } });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await screen.findByRole("button", { name: "Retry" });
+    expect(screen.queryByText(/No rules yet/)).toBeNull();
+    expect(screen.getByText(/old rule \(r-enable\) could not be removed/)).toBeTruthy();
+    rulesFail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByRole("checkbox", { name: "Select Engineering" });
+    expect(screen.getByText(/old rule \(r-enable\) could not be removed/)).toBeTruthy();
+  });
+});
+
+describe("Access rule paging preserves authoritative inventory and selection", () => {
+  it("inspects the saved Kubernetes service address and exact port without a navigation request", async () => {
+    rulesForTest = [{ ...RULES[0], dst_kind: "k8s_service", dst_resource_id: undefined, dst_k8s_service_id: "svc-1" }];
+    servicesForTest = [{ id: "svc-1", name: "dns", namespace: "platform", fqdn: "dns.platform.svc.example.test", vip: "100.64.0.8", protocol: "udp", port_low: 53, port_high: 53 }];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "View details" }));
+    const reads = vi.mocked(api.GET).mock.calls.length;
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Rule sections" })).getByRole("button", { name: "Impact" }));
+    const impact = screen.getByRole("region", { name: "Impact" });
+    expect(within(impact).getByText("Service endpoint").nextElementSibling?.textContent).toBe("dns.platform.svc.example.test");
+    expect(within(impact).getByText("Service VIP").nextElementSibling?.textContent).toBe("100.64.0.8");
+    expect(within(impact).getByText("UDP · port 53")).toBeTruthy();
+    expect(vi.mocked(api.GET).mock.calls).toHaveLength(reads);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("does not infer all-port authority when the destination inventory failed", async () => {
+    rulesForTest = [RULES[0]];
+    resourceReadsFail = true;
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "View details" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Rule sections" })).getByRole("button", { name: "Impact" }));
+    const impact = screen.getByRole("region", { name: "Impact" });
+    expect(within(impact).getByText("Destination CIDR").nextElementSibling?.textContent).toMatch(/^Not reported/);
+    expect(within(impact).getByText("Protocol & ports").nextElementSibling?.textContent).toMatch(/^Not reported/);
+    expect(within(impact).getByText("Resource inventory unavailable.")).toBeTruthy();
+    expect(within(impact).queryByText(/all ports/)).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it.each(["managed_by_operator", "managed_by_agent_template", "managed_by_agent_access"])("withholds ordinary row mutations for %s rules", async managedField => {
+    rulesForTest = [{ ...RULES[0], [managedField]: true }];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    const menu = screen.getByRole("menu", { name: "Rule actions for r-enabled" });
+    for (const name of ["Edit", "Extend", "Disable", "Delete"]) {
+      const action = within(menu).getByRole("menuitem", { name }) as HTMLButtonElement;
+      expect(action.disabled).toBe(true);
+      fireEvent.click(action);
+    }
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("slices real 20/10/50 pages, preserves off-page selections, and resets a filter to its first page", async () => {
+    groupsForTest = Array.from({ length: 55 }, (_, i) => ({ id: `source-${i + 1}`, name: `Source ${String(i + 1).padStart(2, "0")}` }));
+    rulesForTest = groupsForTest.map((group, i) => ({ ...RULES[0], id: `rule-${i + 1}`, src_group_id: group.id }));
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Source 01" }));
+    expect(screen.getByRole("checkbox", { name: "Select Source 20" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Select Source 21" })).toBeNull();
+    const reads = vi.mocked(api.GET).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Next rules page" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Source 21" }));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    expect(screen.getByText("1 outside this page")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next rules page" }));
+    expect(screen.getByRole("checkbox", { name: "Select Source 55" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Select all 15 on this page" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Next rules page" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Previous rules page" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    expect((screen.getByRole("checkbox", { name: "Select Source 01" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("checkbox", { name: "Select Source 10" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Select Source 11" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    expect((screen.getByRole("checkbox", { name: "Select Source 21" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("checkbox", { name: "Select Source 50" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next rules page" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search rules" }), { target: { value: "Source 55" } });
+    expect(screen.getByRole("checkbox", { name: "Select Source 55" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Previous rules page" })).toBeNull();
+    expect(screen.getByText("2 outside this page")).toBeTruthy();
+    expect(vi.mocked(api.GET).mock.calls).toHaveLength(reads);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("keeps map eligibility based on all matching rules when the table displays only ten", async () => {
+    rulesForTest = Array.from({ length: 21 }, (_, i) => ({ ...RULES[0], id: `rule-${i + 1}` }));
+    withAuth(<Access />);
+    await screen.findByRole("button", { name: "Rule actions for rule-1" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    expect(screen.getByTestId("visualization-count").textContent).toContain("21 matching rules");
+    expect((screen.getByRole("button", { name: "View access map" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Rule actions for rule-11" })).toBeNull();
+    expect(screen.queryByTestId("access-flow-panel")).toBeNull();
+  });
+
+  it("opens a disabled rule's impact without implying access or performing a write", async () => {
+    rulesForTest = [RULES[1]];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-disabled" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "View details" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Rule sections" })).getByRole("button", { name: "Impact" }));
+    expect(screen.getByText("This rule is disabled and does not grant access.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to overview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to rules" }));
+    expect(screen.getByRole("button", { name: "Rule actions for r-disabled" })).toBeTruthy();
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+});
 
 describe("Access — F06 agent sources are first-class", () => {
   const agentRule = {

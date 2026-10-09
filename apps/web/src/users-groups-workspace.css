@@ -1,0 +1,48 @@
+.users-workspace-nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 18px; border-bottom: 1px solid var(--tnx-divider); margin-top: 0 !important; }
+.users-workspace-nav > .workspace-tabs { flex: 1; min-width: 0; border-bottom: 0; margin-top: 0 !important; }
+.users-workspace-nav-actions, .users-groups-actions { display: flex; align-items: center; gap: 8px; }
+.users-workspace-nav-actions { flex-shrink: 0; margin-left: auto; padding-bottom: 8px; }
+.users-groups-workspace { min-width: 0; }
+.users-groups-content { display: grid; gap: 18px; min-width: 0; }
+.users-groups-toolbar, .users-groups-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.users-groups-toolbar input { width: min(340px, 50%); }
+.users-groups-toolbar select { width: auto; min-width: 150px; }
+.users-groups-heading h1 { font-size: 21px; color: var(--tnx-text-heading); font-weight: 500; line-height: 1.4; }
+.users-groups-heading p, .users-groups-copy { font-size: 12px; color: var(--tnx-text-secondary); line-height: 1.6; }
+.users-groups-heading p { margin-top: 5px; }
+.users-groups-breadcrumb { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--tnx-text-secondary); }
+.users-groups-breadcrumb button, .users-groups-link { color: var(--tnx-text-heading); font-size: 12px; }
+.users-groups-name { color: var(--tnx-text-heading); font-size: 13px; text-align: left; font-weight: 500; }
+.users-groups-name:hover, .users-groups-link:hover, .users-groups-breadcrumb button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.users-groups-name:focus-visible, .users-groups-link:focus-visible, .users-groups-breadcrumb button:focus-visible { outline: 2px solid var(--tnx-focus); outline-offset: 3px; }
+.users-groups-cell { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.users-groups-cell small { font-size: 11px; color: var(--tnx-text-secondary); }
+.users-groups-workspace .tnx-datatable table { min-width: 0 !important; width: 100%; }
+.users-groups-workspace .tnx-datatable thead tr { background: transparent !important; }
+.users-groups-workspace .tnx-datatable th { color: var(--tnx-text-secondary); font-size: 11px; font-weight: 500; }
+.users-groups-workspace .tnx-datatable td { white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
+.users-groups-workspace .tnx-datatable td button.users-groups-name:not(:disabled) { text-decoration: none; }
+.users-groups-workspace .tnx-datatable td button.users-groups-name:not(:disabled):hover { text-decoration: underline; }
+.users-groups-workspace .tnx-datatable th:first-child, .users-groups-workspace .tnx-datatable td:first-child { padding-left: 0; }
+.users-groups-workspace .tnx-datatable th:last-child, .users-groups-workspace .tnx-datatable td:last-child { width: 52px; padding-right: 0; text-align: right; }
+.users-groups-readonly .tnx-datatable th:last-child, .users-groups-readonly .tnx-datatable td:last-child { width: auto; text-align: left; }
+.users-groups-readonly .tnx-datatable th:first-child, .users-groups-readonly .tnx-datatable td:first-child { width: 75%; }
+.users-groups-members .tnx-datatable th:nth-child(2), .users-groups-members .tnx-datatable td:nth-child(2) { width: 130px; }
+.users-groups-notice { font-size: 12px; color: var(--tnx-ok); line-height: 1.6; }
+.users-groups-editor { display: grid; gap: 18px; }
+.users-groups-editor p, .users-groups-confirm p { font-size: 12px; color: var(--tnx-text-secondary); line-height: 1.7; }
+.users-groups-editor fieldset legend { color: var(--tnx-text-heading); font-size: 13px; margin-bottom: 12px; }
+.users-groups-editor .network-detail-list > ul { padding: 0; list-style: none; }
+.users-groups-editor .network-detail-list > ul li { border-bottom: 1px solid var(--tnx-divider); }
+.users-groups-candidate { display: flex; align-items: center; gap: 11px; min-height: 46px; padding: 9px 0; font-size: 13px; cursor: pointer; }
+.users-groups-candidate span { display: grid; gap: 4px; }
+.users-groups-candidate small { font-size: 11px; color: var(--tnx-text-secondary); }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.users-groups-editor) { width: min(560px, calc(100vw - 32px)) !important; max-width: min(560px, calc(100vw - 32px)) !important; }
+.users-groups-help { color: var(--tnx-text-secondary); font-size: 12px; }
+.users-groups-help p { margin-top: 12px; line-height: 1.7; max-width: 75ch; }
+
+.group-saved-summary { margin:0; }
+.group-detail-content { display:grid; gap:22px; min-width:0; }
+.group-detail-content > .users-groups-copy { margin:0; }
+.group-detail-content .aa-empty-state { padding:24px 0; }
+.group-saved-summary > .tnx-resource-summary-footer { justify-content:flex-start; }

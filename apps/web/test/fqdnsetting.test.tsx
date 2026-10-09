@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 let enabled = false;
 let entitled = true;
@@ -43,8 +44,8 @@ vi.mock("../src/lib/api", async () => {
 import { FQDNEnforcementSetting } from "../src/components/FQDNEnforcementSetting";
 import { api } from "../src/lib/api";
 
-function panel() {
-  return render(<FQDNEnforcementSetting orgId="org-a" role={role} />);
+function panel(central = true) {
+  return render(<MemoryRouter><FQDNEnforcementSetting orgId="org-a" role={role} central={central} canEdit /></MemoryRouter>);
 }
 
 beforeEach(() => {
@@ -62,7 +63,7 @@ afterEach(cleanup);
 describe("organization FQDN enforcement setting", () => {
   it("loads disabled state, previews impact, and enables with the server token", async () => {
     panel();
-    expect(await screen.findByText("DISABLED · NO FQDN TRAFFIC")).toBeTruthy();
+    expect(await screen.findByText("Off · FQDN traffic denied")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Review and enable" }));
     expect(await screen.findByText(/Server preview:/)).toBeTruthy();
     expect(screen.getByText("rule-a")).toBeTruthy();
@@ -74,13 +75,13 @@ describe("organization FQDN enforcement setting", () => {
         body: { enabled: true, expected_impact_token: "impact-token-a" },
       },
     ));
-    expect(await screen.findByText("ENABLED")).toBeTruthy();
+    expect(await screen.findByText("Enabled")).toBeTruthy();
   });
 
   it("previews a disable and sends an explicit false setting", async () => {
     enabled = true;
     panel();
-    expect(await screen.findByText("ENABLED")).toBeTruthy();
+    expect(await screen.findByText("Enabled")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Review and disable" }));
     expect(await screen.findByText(/will stop authorizing FQDN traffic/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Disable FQDN enforcement" }));
@@ -96,7 +97,7 @@ describe("organization FQDN enforcement setting", () => {
   it("fails closed when the entitlement or impact preview is unavailable", async () => {
     entitled = false;
     panel();
-    await screen.findByText("DISABLED · NO FQDN TRAFFIC");
+    await screen.findByText("Off · FQDN traffic denied");
     fireEvent.click(screen.getByRole("button", { name: "Review and enable" }));
     expect(await screen.findByText(/does not have the fqdn_resources licence entitlement/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Enable FQDN enforcement" }) as HTMLButtonElement).disabled).toBe(true);
@@ -106,7 +107,7 @@ describe("organization FQDN enforcement setting", () => {
     entitled = true;
     impactError = "preview unavailable";
     panel();
-    await screen.findByText("DISABLED · NO FQDN TRAFFIC");
+    await screen.findByText("Off · FQDN traffic denied");
     fireEvent.click(screen.getByRole("button", { name: "Review and enable" }));
     expect(await screen.findByText("preview unavailable")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry preview" })).toBeTruthy();
@@ -115,7 +116,7 @@ describe("organization FQDN enforcement setting", () => {
   it("requires a fresh preview after a stale-token mutation failure", async () => {
     putError = "the setting impact preview is missing or stale";
     panel();
-    await screen.findByText("DISABLED · NO FQDN TRAFFIC");
+    await screen.findByText("Off · FQDN traffic denied");
     fireEvent.click(screen.getByRole("button", { name: "Review and enable" }));
     await screen.findByText(/Server preview:/);
     fireEvent.click(screen.getByRole("button", { name: "Enable FQDN enforcement" }));
@@ -135,7 +136,15 @@ describe("organization FQDN enforcement setting", () => {
   it("shows the authoritative setting without mutation controls to read-only roles", async () => {
     role = "member";
     const rendered = panel();
-    expect(rendered.container.childElementCount).toBe(0);
+    expect(rendered.container.textContent).toBe("");
     expect(vi.mocked(api.GET)).not.toHaveBeenCalled();
+  });
+
+  it("keeps the product workspace read-only and points to the exact central feature", async () => {
+    panel(false);
+    await screen.findByText("FQDN enforcement: Off · FQDN traffic denied");
+    expect(screen.getByRole("link", { name: "Manage in Features" }).getAttribute("href")).toBe("/settings?section=features&feature=fqdn");
+    expect(screen.queryByRole("button", { name: /Review and enable|Review and disable/ })).toBeNull();
+    expect(vi.mocked(api.PUT)).not.toHaveBeenCalled();
   });
 });

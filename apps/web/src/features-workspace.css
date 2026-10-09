@@ -1,0 +1,42 @@
+.settings-workspace.is-feature-view .settings-layout { grid-template-columns:180px minmax(0,1fr); gap:28px; }
+.settings-workspace.is-feature-view .settings-section-hint { display:none; }
+.settings-workspace .tnx-setting-group.feature-setting-group { border:0; background:transparent; padding:0!important; box-shadow:none; }
+.feature-setting-group > h2 { position:absolute; width:1px; height:1px; padding:0!important; margin:-1px!important; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0!important; }
+.features-workspace { min-width:0; }
+.features-toolbar { display:flex; align-items:center; gap:20px; padding:0 0 18px; }
+.features-toolbar > input { width:280px; max-width:100%; min-height:38px; font-size:13px; }
+.features-count { margin-left:auto; color:var(--tnx-text-secondary); font-size:12px; white-space:nowrap; }
+.features-categories { display:flex; flex-wrap:wrap; gap:22px; border-bottom:1px solid var(--tnx-divider); }
+.features-categories > button { padding:0 0 13px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--tnx-text-secondary); font-size:12px; }
+.features-categories > button[aria-pressed=true] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-text-heading); }
+.features-categories > button:hover { color:var(--tnx-text-heading); }
+.features-categories > button:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:4px; }
+.features-entry { min-width:0; border-bottom:1px solid var(--tnx-divider); scroll-margin-top:24px; }
+.features-entry[hidden] { display:none; }
+.features-entry:focus { outline:none; }
+.features-entry.is-requested { box-shadow:inset 2px 0 var(--tnx-focus); padding-left:14px; }
+.settings-workspace .features-entry .tnx-setting-row { padding:21px 0; align-items:center; gap:16px 24px; }
+.settings-workspace .features-entry .tnx-setting-row > div:first-child { flex:1 1 260px; min-width:0; }
+.settings-workspace .features-entry .tnx-setting-row > div:first-child > p:first-child { font-size:13px; }
+.settings-workspace .features-entry .tnx-setting-row > div:first-child > p + p { max-width:58ch; font-size:12px; line-height:1.55; }
+.features-entry .tnx-setting-row > div:last-child { flex:0 0 auto; }
+.features-entry .tnx-setting-row button { font-size:12px; }
+.features-entry .tnx-card-surface { border:0; padding:20px 0!important; background:transparent!important; box-shadow:none; }
+.feature-control-state { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; font-size:12px; }
+.features-control { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; font-size:12px; }
+.features-note { max-width:58ch; margin:0 0 16px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.55; }
+.features-review { display:grid; gap:16px; font-size:13px; line-height:1.65; }
+.features-review .features-note { margin:0; }
+.features-link { color:var(--tnx-text-heading); font-size:12px; text-decoration:underline; text-underline-offset:3px; }
+.features-referral { display:flex; align-items:center; flex-wrap:wrap; gap:12px; color:var(--tnx-text-secondary); font-size:12px; }
+.features-referral > a { color:var(--tnx-text-heading); text-decoration:underline; text-underline-offset:3px; }
+.feature-control-note { margin:0 0 16px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.5; }
+.workspace-feature-control > p { max-width:65ch; margin:0 0 12px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.55; }
+.workspace-feature-control > a { display:inline-block; margin:0 0 16px; color:var(--tnx-text-heading); font-size:12px; text-decoration:underline; text-underline-offset:3px; }
+.features-entry > div > .feature-control-note + .feature-control-note { margin-top:-10px; }
+.features-entry .tnx-setting-row > div:last-child > div { flex-wrap:wrap; justify-content:flex-end; }
+.features-entry .features-control > .tnx-setting-value { font-size:12px; }
+.feature-control-link { color:var(--tnx-text-heading); font-size:12px; text-decoration:underline; text-underline-offset:3px; }
+.features-empty { padding:38px 0; }
+.features-empty h3 { font-size:14px; font-weight:500; }
+.features-empty p { margin:8px 0 15px; color:var(--tnx-text-secondary); font-size:12px; }

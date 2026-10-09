@@ -110,16 +110,7 @@
   padding-top: 20px;
   justify-content: flex-end;
 }
-.network-review {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  margin: 24px 0;
-  font-size: 14px;
-}
-.network-review dt {
-  color: var(--tnx-text-secondary);
-}
+.network-review.tnx-resource-facts { margin:24px 0; }
 .network-preview {
   padding: 24px 10px;
   text-align: center;

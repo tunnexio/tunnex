@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 let role: "admin" | "member" | "operator" = "admin";
+let emailVerified = true;
 let currentOrg = { id: "org-a", name: "Organization A", agent_policy_templates_enabled: true };
 let groups: Array<Record<string, unknown>> = [];
 let peopleGroups: Array<Record<string, unknown>> = [];
@@ -18,7 +19,7 @@ vi.mock("../src/lib/useOrg", () => ({
 }));
 
 vi.mock("../src/lib/auth", () => ({
-  useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email: "owner@example.test", email_verified: true } } }),
+  useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email: "owner@example.test", email_verified: emailVerified } } }),
 }));
 
 vi.mock("../src/lib/api", async () => {
@@ -95,6 +96,7 @@ import AgentsPolicyTemplates from "../src/pages/AgentsPolicyTemplates";
 
 beforeEach(() => {
   role = "admin";
+  emailVerified = true;
   currentOrg = { id: "org-a", name: "Organization A", agent_policy_templates_enabled: true };
   groups = [];
   peopleGroups = [];
@@ -106,6 +108,8 @@ beforeEach(() => {
   groupInventoryFail = false;
   vi.mocked(api.GET).mockClear();
   vi.mocked(api.POST).mockClear();
+  vi.mocked(api.PATCH).mockClear();
+  vi.mocked(api.PUT).mockClear();
   vi.mocked(api.DELETE).mockClear();
   vi.spyOn(window, "confirm").mockReturnValue(true);
 });
@@ -124,7 +128,7 @@ describe("released F09 agent group and template workflow", () => {
 
     expect(await screen.findByText("Operators")).toBeTruthy();
     expect(screen.queryByText("Could not load the group inventory.")).toBeNull();
-    expect(screen.getByRole("button", { name: "Create people group" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create group" })).toBeTruthy();
     expect(f09Reads).toEqual([]);
   });
 
@@ -134,7 +138,7 @@ describe("released F09 agent group and template workflow", () => {
     render(<MemoryRouter><AgentsPolicyTemplates /></MemoryRouter>);
 
     expect(await screen.findByRole("heading", { name: "Agent groups and policy templates are turned off" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Configure AI Agent settings" }).getAttribute("href")).toBe("/settings?section=ai-agents");
+    expect(screen.getByRole("link", { name: "Configure AI Agent settings" }).getAttribute("href")).toBe("/settings?section=features&feature=agent-templates");
     expect(screen.queryByText("Could not load policy templates. Refresh to retry.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Create template" })).toBeNull();
     expect(f09Reads).toEqual([]);
@@ -163,7 +167,7 @@ describe("released F09 agent group and template workflow", () => {
 
     groupInventoryFail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("button", { name: "Create people group" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Create group" })).toBeTruthy();
   });
 
   it("renders exact valid member counts and refuses a stale or malformed count contract", async () => {
@@ -218,7 +222,16 @@ describe("released F09 agent group and template workflow", () => {
     await screen.findByText(/1 agents, 1 new rules/);
     fireEvent.click(screen.getByRole("button", { name: "Apply template" }));
     await screen.findByText(/workers.*v1/);
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(api.POST).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/agent-policy-template-assignments",
+      expect.objectContaining({ params: { path: { orgId: "org-a" } }, body: {
+        group_id: "group-a", template_version_id: "version-a", preview_digest: "a".repeat(64), idempotency_key: expect.any(String),
+      } }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Actions for assignment to workers" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    expect(api.DELETE).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove template assignment?" })).getByRole("button", { name: "Remove assignment" }));
     await screen.findByText("No active assignments.");
     expect(vi.mocked(api.DELETE)).toHaveBeenCalledWith(
       "/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}",
@@ -257,5 +270,149 @@ describe("released F09 agent group and template workflow", () => {
     expect(screen.queryByText("old-template")).toBeNull();
     await screen.findByRole("heading", { name: "Agent groups" });
     expect(screen.queryByText("old-agent-group")).toBeNull();
+  });
+
+  it("withdraws an open template draft synchronously when the same actor loses email verification", async () => {
+    templates = [{ id: "template-a", name: "saved-template" }];
+    const view = render(<MemoryRouter initialEntries={["/agents/policies"]}><AgentsPolicyTemplates /></MemoryRouter>);
+    await screen.findByRole("button", { name: "saved-template" });
+    fireEvent.click(screen.getByRole("button", { name: "Create template" }));
+    const dialog = screen.getByRole("dialog", { name: "Create policy template" });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "unsubmitted-template" } });
+    const oldSave = within(dialog).getByRole("button", { name: "Create template" });
+    expect(oldSave).toHaveProperty("disabled", false);
+    const inventoryReads = [...f09Reads];
+
+    emailVerified = false;
+    view.rerender(<MemoryRouter initialEntries={["/agents/policies"]}><AgentsPolicyTemplates /></MemoryRouter>);
+
+    expect(screen.queryByRole("dialog", { name: "Create policy template" })).toBeNull();
+    expect(screen.queryByDisplayValue("unsubmitted-template")).toBeNull();
+    expect(screen.queryByRole("button", { name: "saved-template" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create template" })).toBeNull();
+    fireEvent.click(oldSave);
+    expect(await screen.findByText("Verify your email before managing AI Agent groups or policy templates.")).toBeTruthy();
+    expect(f09Reads).toEqual(inventoryReads);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+    expect(api.PUT).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("withdraws an agent-group archive confirmation without presenting an empty inventory after verification loss", async () => {
+    groups = [{ id: "group-a", name: "saved-agent-group", member_count: 0 }];
+    const view = render(<MemoryRouter initialEntries={["/agents/groups"]}><AccessGroups scope="agents" /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "saved-agent-group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Actions for saved-agent-group" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+    const dialog = screen.getByRole("dialog", { name: "Archive group" });
+    const oldConfirm = within(dialog).getByRole("button", { name: "Archive group" });
+    expect(api.DELETE).not.toHaveBeenCalled();
+    const inventoryReads = [...f09Reads];
+
+    emailVerified = false;
+    view.rerender(<MemoryRouter initialEntries={["/agents/groups"]}><AccessGroups scope="agents" /></MemoryRouter>);
+
+    expect(screen.queryByRole("dialog", { name: "Archive group" })).toBeNull();
+    expect(screen.queryByText("saved-agent-group")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create agent group" })).toBeNull();
+    fireEvent.click(oldConfirm);
+    expect(await screen.findByText("Verify your email before managing AI Agent groups.")).toBeTruthy();
+    expect(screen.queryByText("No agent groups yet")).toBeNull();
+    expect(f09Reads).toEqual(inventoryReads);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+    expect(api.PUT).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("pages loaded templates and resets to the first page when searching", async () => {
+    templates = Array.from({ length: 43 }, (_, index) => ({ id: `template-${index + 1}`, name: `Template ${String(index + 1).padStart(2, "0")}` }));
+    render(<MemoryRouter initialEntries={["/agents/policies"]}><AgentsPolicyTemplates /></MemoryRouter>);
+    const table = await screen.findByRole("table", { name: "Agent policy templates" });
+    expect(within(table).getAllByRole("row")).toHaveLength(21);
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(4);
+    expect(within(table).getByRole("button", { name: "Template 43" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search policy templates" }), { target: { value: "Template 01" } });
+    expect(within(table).getByRole("button", { name: "Template 01" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Table pagination" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search policy templates" }), { target: { value: "" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(44);
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
+    expect(f09Reads.filter(read => read.endsWith(":templates"))).toHaveLength(1);
+  });
+
+  it("retains the exact preview target, digest and idempotency key when retrying assignment", async () => {
+    groups = [{ id: "group-a", name: "workers", member_count: 1 }];
+    templates = [{ id: "template-a", name: "database-access" }];
+    versions = [{ id: "version-a", version: 1 }];
+    vi.mocked(api.POST)
+      .mockResolvedValueOnce({ data: { digest: "b".repeat(64), affected_agents: 1, created_rules: 1, reused_rules: 0, removed_rules: 0, changed_gateways: 1, added: [], removed: [] } } as never)
+      .mockResolvedValueOnce({ error: { error: { code: "unavailable", message: "Assignment unavailable" } } } as never)
+      .mockResolvedValueOnce({ data: { assignment_id: "assignment-a", no_op: false } } as never);
+    render(<MemoryRouter initialEntries={["/agents/policies?template=template-a&group=group-a"]}><AgentsPolicyTemplates /></MemoryRouter>);
+    await screen.findByRole("option", { name: "v1" });
+    fireEvent.click(screen.getByRole("button", { name: "Preview impact" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm template assignment" });
+    expect(api.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-policy-template-preview", expect.objectContaining({ body: { group_id: "group-a", template_version_id: "version-a" } }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply template" }));
+    await screen.findAllByText("Assignment unavailable");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Apply template" })).toHaveProperty("disabled", false));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply template" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(3));
+    const calls = vi.mocked(api.POST).mock.calls as unknown as Array<[string, { body: { group_id: string; template_version_id: string; preview_digest: string; idempotency_key: string } }]>;
+    const attempts = calls.filter(([path]) => path === "/api/v1/organizations/{orgId}/agent-policy-template-assignments");
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0][1]).toEqual(attempts[1][1]);
+    expect(attempts[0][1]?.body).toMatchObject({ group_id: "group-a", template_version_id: "version-a", preview_digest: "b".repeat(64), idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+  });
+
+  it("keeps a failed assignment removal open for an explicit retry", async () => {
+    groups = [{ id: "group-a", name: "workers", member_count: 1 }];
+    templates = [{ id: "template-a", name: "database-access" }];
+    assignments = [{ id: "assignment-a", group_id: "group-a", group_name: "workers", template_id: "template-a", template_version_id: "version-a", version: 1, rule_count: 1, applied_at: "2026-10-08T00:00:00Z" }];
+    vi.mocked(api.DELETE).mockResolvedValueOnce({ error: { error: { code: "unavailable", message: "Assignment removal unavailable" } } } as never);
+    render(<MemoryRouter initialEntries={["/agents/policies?template=template-a"]}><AgentsPolicyTemplates /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for assignment to workers" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove template assignment?" });
+    expect(api.DELETE).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove assignment" }));
+    await within(dialog).findByText("Assignment removal unavailable");
+    expect(screen.getByRole("dialog", { name: "Remove template assignment?" })).toBeTruthy();
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Remove assignment" })).toHaveProperty("disabled", false));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove assignment" }));
+    await screen.findByText("No active assignments.");
+    expect(api.DELETE).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.DELETE).mock.calls[0][1]).toEqual(vi.mocked(api.DELETE).mock.calls[1][1]);
+    expect(api.DELETE).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}", expect.objectContaining({ params: { path: { orgId: "org-a", assignmentId: "assignment-a" } } }));
+  });
+
+  it("retries an unavailable version read without claiming that the template has no versions", async () => {
+    templates = [{ id: "template-a", name: "database-access" }];
+    versions = [{ id: "version-a", version: 1 }];
+    let failed = true;
+    const getMock = api.GET as unknown as Mock<(path: string, request?: unknown) => Promise<unknown>>;
+    const original = getMock.getMockImplementation()!;
+    getMock.mockImplementation((path, request) => path.endsWith("/agent-policy-templates/{templateId}/versions") && failed ? Promise.resolve({ error: { error: { code: "unavailable", message: "Version inventory unavailable" } } }) : original(path, request));
+    render(<MemoryRouter initialEntries={["/agents/policies?template=template-a"]}><AgentsPolicyTemplates /></MemoryRouter>);
+    await screen.findByText("Version inventory unavailable");
+    expect(screen.queryByText("Loading versions…")).toBeNull();
+    expect(screen.queryByRole("option", { name: "No versions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Preview impact" })).toHaveProperty("disabled", true);
+    failed = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByRole("option", { name: "v1" });
+    expect(screen.queryByText("Version inventory unavailable")).toBeNull();
+    expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", expect.objectContaining({ params: { path: { orgId: "org-a", templateId: "template-a" } } }));
+    expect(f09Reads.filter(read => read.endsWith(":templates"))).toHaveLength(1);
+    expect(api.POST).not.toHaveBeenCalled();
+    getMock.mockImplementation(original);
   });
 });

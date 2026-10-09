@@ -16,12 +16,13 @@ import { Button } from "./ui";
 import { SetupReturn } from "./SetupReturn";
 import { IdentityBadges } from "./IdentityBadges";
 import { useLayoutCapability } from "./ComposeGate";
-import { useSandboxModuleState } from "../lib/deploymentMeta";
+import { useDeploymentMeta, useSandboxModuleState } from "../lib/deploymentMeta";
 import { SANDBOX_PRODUCT_SHELVED } from "../lib/sandboxProduct";
 import { CommandPalette } from "./CommandPalette";
 import { useNavCounts } from "../lib/useNavCounts";
 import { Icon, type IconName } from "./Icon";
 import { badgeText, gatewayBadgeText, type NavCounts } from "../lib/navcounts";
+import "../app-shell.css";
 
 // S14.2 — THE NAV, GROUPED. The wireframe groups destinations NETWORK / ACCESS / OBSERVE / OPERATE / SETTINGS,
 // and that grouping is preserved at EVERY width; only its PRESENTATION changes.
@@ -78,16 +79,13 @@ export const NAV_GROUPS: Array<{
     ],
   },
   {
-    group: "Tunnex Shield",
- icon: "shield-check",
- items: [
-   { to: "/app-access", label: "Applications", icon: "app-grid" },
-   { to: "/browser-access/terminal", label: "Servers", icon: "server" },
- ],
- },
- {
-    group: "DEVELOPERS",
-    items: [{ to: "/beam", label: "Tunnex Beam", icon: "globe" }],
+    group: "Access & Sharing",
+    icon: "passport",
+    items: [
+      { to: "/app-access", label: "App Access", icon: "chrome" },
+      { to: "/browser-access/terminal", label: "Server Access", icon: "browser-access" },
+      { to: "/beam", label: "Local Sharing", icon: "local-sharing" },
+    ],
   },
   {
  group: "OBSERVE",
@@ -239,6 +237,14 @@ function SidebarFooterProfile({
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { loaded, meta } = useDeploymentMeta();
+  const reportedVersion = meta?.upgrade?.current_version;
+  const controlPlaneVersion = loaded && typeof reportedVersion === "string" && reportedVersion.trim()
+    ? reportedVersion.trim()
+    : null;
+  const versionTitle = controlPlaneVersion
+    ? `Control plane version ${controlPlaneVersion}`
+    : loaded ? "Control plane version not reported" : "Loading control plane version";
   const initials = useMemo(() => {
     if (!email) return "DA";
     const namePart = email.split("@")[0] || "";
@@ -365,6 +371,14 @@ function SidebarFooterProfile({
           />
         </button>
       )}
+      <p
+        className="tnx-sidebar-version"
+        data-collapsed={collapsed || undefined}
+        title={versionTitle}
+      >
+        <span className={collapsed ? "sr-only" : "tnx-sidebar-version-label"}>Control plane<span className="sr-only"> version</span>{" "}</span>
+        <span className="tnx-sidebar-version-value">{controlPlaneVersion ?? (loaded ? "Not reported" : "Loading")}</span>
+      </p>
     </div>
   );
 }
@@ -434,7 +448,9 @@ function SidebarNav({
             }
           }}
         >
-          <NavGroups onNavigate={() => setDrawerOpen(false)} counts={counts} />
+          <div className="tnx-sidebar-scroll min-h-0 flex-1 overflow-y-auto" tabIndex={0} role="group" aria-label="Pages">
+            <NavGroups onNavigate={() => setDrawerOpen(false)} counts={counts} />
+          </div>
           {email && onLogout && (
             <SidebarFooterProfile
               email={email}
@@ -503,7 +519,8 @@ function SidebarNav({
       <nav
         id="main-nav"
         aria-label="Main"
-        className="min-h-0 flex-1 overflow-y-auto"
+        tabIndex={0}
+        className="tnx-sidebar-scroll min-h-0 flex-1 overflow-y-auto"
       >
         <NavGroups counts={counts} collapsed={collapsed} />
       </nav>

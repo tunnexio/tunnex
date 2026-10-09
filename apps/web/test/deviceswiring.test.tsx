@@ -106,10 +106,10 @@ const DEVICES = [
     health_reported_at: "2026-07-16T00:00:00Z",
   },
   {
-    id: "d-blocked",
-    name: "blocked-device",
+    id: "d-blocked-second",
+    name: "blocked-secondary",
     status: "active",
-    assigned_ip: "10.99.0.18",
+    assigned_ip: "10.99.0.20",
     health_state: "noncompliant",
     health_blocked: true,
   },
@@ -123,7 +123,8 @@ vi.mock("../src/lib/api", async () => {
     apiErrorMessage: (_e: unknown, fallback: string) => fallback,
     api: {
       GET: vi.fn(async (path: string) => {
-        if (path === "/api/v1/organizations")
+        if (path === "/api/v1/auth/me") return { data: { id: "user-1", email: "owner@example.test", email_verified: true } };
+      if (path === "/api/v1/organizations")
           return { data: [{ id: "org-1", name: "Acme" }] };
         if (path.endsWith("/devices")) {
           // THE FAILURE PATH under test: the load REFUSES. The page must not render this as "no devices".
@@ -153,6 +154,7 @@ vi.mock("../src/lib/api", async () => {
 });
 
 import { OrgProvider } from "../src/lib/useOrg";
+import { AuthProvider } from "../src/lib/auth";
 import Devices, { lastSeen } from "../src/pages/Devices";
 
 beforeEach(() => {
@@ -184,9 +186,9 @@ describe("Devices — wiring", () => {
   it("a REVOKED device carries no posture badge and no re-export instruction; an active one carries both", async () => {
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     await waitFor(() =>
@@ -220,9 +222,9 @@ describe("Devices — wiring", () => {
   it("both devices are listed — suppression hides BADGES, never the row itself", async () => {
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     const table = await waitFor(() =>
@@ -253,9 +255,9 @@ describe("Devices — wiring", () => {
     expect(lastSeen(undefined, false)).toBe("liveness not reported");
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     await waitFor(() =>
@@ -264,7 +266,7 @@ describe("Devices — wiring", () => {
     // ⚠ "Actions" left this list because the verbs left the ROWS — Approve / Reject / Revoke now live in
     // the selection bar. The claim is unchanged (every column a reader sees is named); the affordance it
     // used to head is asserted below, where it now lives.
-    for (const h of ["Device", "Address", "State", "Posture"]) {
+    for (const h of ["Device", "Connection", "State", "Posture", "Actions"]) {
       expect(screen.getByRole("columnheader", { name: h }), h).toBeTruthy();
     }
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
@@ -279,14 +281,14 @@ describe("Devices — failure path", () => {
     devicesFail = true;
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
 
     await waitFor(() =>
-      expect(screen.getByText("Could not load devices.")).toBeTruthy(),
+      expect(screen.getByText("nope")).toBeTruthy(),
     );
   });
 
@@ -295,16 +297,16 @@ describe("Devices — failure path", () => {
     DEVICES.length = 0; // an org with no devices — a FACT, not a failure
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     await waitFor(() =>
       expect(screen.getByText("No devices yet.")).toBeTruthy(),
     );
     // And with no failure, no error line is present — the two states must stay distinguishable.
-    expect(screen.queryByText("Could not load devices.")).toBeNull();
+    expect(screen.queryByText("nope")).toBeNull();
     DEVICES.push(
       {
         id: "d-revoked",
@@ -354,9 +356,9 @@ describe("Devices — pending-device ownership", () => {
     ]);
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     await waitFor(() =>
@@ -380,9 +382,9 @@ describe("Devices — pending-device ownership", () => {
     ]);
     render(
       <MemoryRouter>
-        <OrgProvider>
+        <AuthProvider><OrgProvider>
           <Devices />
-        </OrgProvider>
+        </OrgProvider></AuthProvider>
       </MemoryRouter>,
     );
     await waitFor(() =>

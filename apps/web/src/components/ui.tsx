@@ -2,6 +2,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "../lib/utils";
 import { Button as ShadcnButton } from "./ui/button";
 import { DateTimeInput } from "./DateTimeInput";
+import { Icon } from "./Icon";
+import "../refresh-button.css";
 import {
   cloneElement,
   Fragment,
@@ -62,6 +64,20 @@ export function Button({
   return <ShadcnButton variant={mappedVariant[variant]} size={size}
     className={variant === "danger" ? `text-danger hover:text-danger ${className}` : className}
     {...props} />;
+}
+
+/** The compact, named refresh action shared by inventories and detail screens. */
+export function RefreshButton({
+  label = "Refresh",
+  className = "",
+  ...props
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & { label?: string }) {
+  return <ShadcnButton type="button" {...props} variant="outline" size="sm"
+    aria-label={props["aria-label"] ?? label} title={props.title ?? label}
+    className={cn("tnx-refresh-button", className)}>
+    <Icon name="refresh-cw" size={16} />
+    <span className="sr-only">{label}</span>
+  </ShadcnButton>;
 }
 
 export function Card({
@@ -651,11 +667,18 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  navigationTitle = false,
 }: {
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  /** The active navigation already names this section; retain its accessible heading and actions. */
+  navigationTitle?: boolean;
 }) {
+  if (navigationTitle) return <div className={actions ? "tnx-navigation-header flex w-full min-w-0 flex-wrap justify-end gap-3" : "tnx-navigation-header tnx-navigation-header-empty sr-only"}>
+    <h1 className="sr-only">{title}</h1>
+    {actions && <div className="max-w-full shrink-0">{actions}</div>}
+  </div>;
   return (
     <div className="flex w-full min-w-0 flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">

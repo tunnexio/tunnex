@@ -1,0 +1,74 @@
+.k8s-operation-panel {
+  border-top: 1px solid var(--tnx-border);
+  padding-top: 14px;
+  min-width: 0;
+}
+
+.k8s-operation-heading,
+.k8s-operation-actions,
+.k8s-operation-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.k8s-operation-heading { margin-bottom: 10px; }
+.k8s-operation-heading h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--tnx-text-heading); }
+.k8s-operation-actions { justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.k8s-operation-note,
+.k8s-operation-muted,
+.k8s-operation-disclosure {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--tnx-text-secondary);
+}
+.k8s-operation-note { margin: 8px 0; }
+.k8s-operation-warning { color: var(--tnx-warn); }
+.k8s-operation-status { padding: 4px 0; font-size: 12px; color: var(--tnx-text-secondary); }
+.k8s-operation-panel dl.k8s-operation-facts { margin-block:18px; }
+.k8s-operation-disclosure dl.k8s-operation-facts { margin-bottom:16px; }
+.k8s-operation-disclosure { border-top: 1px solid var(--tnx-border); margin-top: 12px; }
+.k8s-operation-disclosure > div { padding: 0 0 10px; }
+.k8s-operation-disclosure > div > p { margin: 8px 0 0; }
+
+.k8s-pool-panel .network-detail-list > ul,
+.k8s-pool-editor .network-detail-list > ul,
+.k8s-ha-review .network-detail-list > ul { margin: 0; padding: 0; list-style: none; }
+.k8s-pool-panel .network-detail-list > input,
+.k8s-pool-editor .network-detail-list > input,
+.k8s-ha-review .network-detail-list > input { margin-bottom: 10px; }
+.k8s-pool-member { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--tnx-border); font-size: 13px; color: var(--tnx-text-body); }
+.k8s-pool-member > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.k8s-pool-member > span:last-child { flex-shrink: 0; }
+.k8s-pool-member:last-child { border-bottom: 0; }
+.k8s-pool-candidate-columns { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 12px; padding: 12px 0 6px 30px; font-size: 11px; color: var(--tnx-text-secondary); border-bottom: 1px solid var(--tnx-border); }
+.k8s-pool-candidate { display: grid; grid-template-columns: 16px minmax(0, 1fr) 88px; align-items: center; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--tnx-border); }
+.k8s-pool-candidate:last-child { border-bottom: 0; }
+.k8s-pool-candidate > input[type="checkbox"] { width: 15px; height: 15px; accent-color: currentColor; color: var(--tnx-text-body); }
+.k8s-pool-candidate > input[type="number"] { min-height: 32px; padding: 5px 8px; font-size: 12px; }
+.k8s-pool-candidate-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.k8s-pool-candidate-name strong { font-size: 13px; font-weight: 500; color: var(--tnx-text-heading); overflow-wrap: anywhere; }
+.k8s-pool-candidate-name span { font-size: 11px; color: var(--tnx-text-secondary); }
+.k8s-pool-editor,
+.k8s-ha-review,
+.k8s-ha-drain { min-width: 0; }
+.k8s-ha-context { margin-top: 0; }
+.k8s-ha-pool { padding: 13px 0; border-bottom: 1px solid var(--tnx-border); }
+.k8s-ha-pool:last-child { border-bottom: 0; }
+.k8s-ha-pool-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.k8s-ha-pool-heading strong { font-size: 13px; font-weight: 500; color: var(--tnx-text-heading); }
+.k8s-ha-pool-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 5px; font-size: 12px; color: var(--tnx-text-secondary); }
+.k8s-ha-pool-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+.k8s-ha-drain > p { margin: 0 0 14px; font-size: 13px; line-height: 1.6; color: var(--tnx-text-secondary); }
+.k8s-inventory-status { min-width: 0; }
+.k8s-inventory-card { border-top: 1px solid var(--tnx-border); padding-top: 12px; }
+.k8s-inventory-content { margin-top: 12px; }
+
+/* Keep operational drawers aligned with the Kubernetes setup and report panels. */
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.k8s-pool-editor),
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.k8s-ha-review),
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.k8s-ha-drain) {
+  width: min(100%, 560px);
+  max-width: 560px;
+}

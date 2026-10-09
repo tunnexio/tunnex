@@ -33,7 +33,7 @@ describe("AI usage dashboard requests", () => {
     expect(span).toBeGreaterThanOrEqual(6 * 86400000);
     expect(span).toBeLessThanOrEqual(7 * 86400000);
     expect(request.params.query.from).toMatch(/T00:00:00.000Z$/);
-    expect(screen.getByText(/Older activity may no longer be available/)).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Time range" })).toHaveProperty("value", "7");
   });
   it("clears data immediately and ignores a late response after changing team", async () => {
     let resolve!: (v: unknown) => void;
@@ -124,5 +124,24 @@ describe("AI usage dashboard requests", () => {
     await screen.findByRole("alert");
     expect(screen.queryByRole("region", { name: "Workload usage" })).toBeNull();
     expect(screen.queryByText("No workload usage recorded in this period.")).toBeNull();
+  });
+  it("keeps fully unpriced workload spend unavailable while paging loaded attribution", async () => {
+    const workloads = Array.from({ length: 55 }, (_, index) => ({ id: `workload-${index + 1}`, name: `Worker ${String(index + 1).padStart(2, "0")}`, requests: 1, tokens: 10, cost: index === 0 ? 0 : 0.00001, uncosted_requests: index === 0 ? 1 : 0 }));
+    mocks.GET.mockResolvedValue({ data: { ...report, dashboard: { ...report.dashboard, workloads } } });
+    render(show());
+    const table = await screen.findByRole("table", { name: "Spend by workload" });
+    const region = within(screen.getByRole("region", { name: "Workload usage" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(21);
+    fireEvent.click(region.getByRole("button", { name: "Next page" }));
+    fireEvent.click(region.getByRole("button", { name: "Next page" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(16);
+    const unpriced = within(within(table).getByRole("rowheader", { name: "Worker 01" }).closest("tr")!);
+    expect(unpriced.getByRole("cell", { name: "Unavailable" })).toBeTruthy();
+    expect(unpriced.queryByRole("cell", { name: "$0.00" })).toBeNull();
+    expect(region.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    expect(region.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
+    const props = mocks.dashboard.mock.lastCall![0] as AIUsageDashboardProps;
+    expect(props.totals).toMatchObject({ requests: 8, tokens: 56, cost: 0.00017 });
+    expect(mocks.GET).toHaveBeenCalledTimes(1);
   });
 });

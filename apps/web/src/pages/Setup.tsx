@@ -10,7 +10,7 @@ import { setupStep } from "../lib/setuproute";
 import { can } from "../lib/rbac";
 import { Gateways } from "../components/Gateways";
 import { Icon, type IconName } from "../components/Icon";
-import { Button, Card, ErrorText, Loading, PageHeader } from "../components/ui";
+import { Button, Card, ErrorText, Loading, PageHeader, RefreshButton } from "../components/ui";
 import "../setup-guide.css";
 
 const purposes = [
@@ -107,7 +107,7 @@ export default function Setup() {
               {networkTask && <p>Use a gateway at each location, or a supported cloud VPN.</p>}
               <div className="setup-actions">
                 {inventory.canEnroll && !enrolling && <Button variant={gateways.length ? "ghost" : "primary"} onClick={() => setEnrolling(true)}>{gateways.length ? "Add another gateway" : "Register a gateway"}</Button>}
-                {!enrolling && <Button variant="ghost" onClick={refresh}>Refresh gateway status</Button>}
+                {!enrolling && <RefreshButton label="Refresh gateway status" onClick={refresh} />}
               </div>
               {enrolling && inventory.canEnroll && <Gateways key={orgId} org={inventory.org as Org} initiallyOpen hideHeader showGatewayEndpointSettings={false} onCancel={() => setEnrolling(false)} onEnrollmentAcknowledged={() => { setEnrolling(false); refresh(); }} />}
             </>}
@@ -132,7 +132,7 @@ export default function Setup() {
                 <details className="setup-details"><summary>Connection status</summary>
                   {devices === null ? <p>Device status unavailable. Refresh to check again.</p> : observed.length ? <p>Handshake observed on {observed.length} active device{observed.length === 1 ? "" : "s"}. Latest observation: {relativeAge(observed.map(device => device.last_handshake_at!).sort().at(-1)!)}.</p> : <p>No client handshake observed yet.</p>}
                   <p>Private-resource access: not verified. Test an allowed resource from the connected client.</p>
-                  <div className="setup-actions"><Link className="setup-text-link" to={destination("/devices")}>View devices and connection status →</Link><Button variant="ghost" onClick={refresh}>Refresh connection status</Button></div>
+                  <div className="setup-actions"><Link className="setup-text-link" to={destination("/devices")}>View devices and connection status →</Link><RefreshButton label="Refresh connection status" onClick={refresh} /></div>
                 </details>
               </>}
             </>}

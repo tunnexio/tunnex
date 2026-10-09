@@ -15,6 +15,11 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+function openIconPicker() {
+  const summary = screen.getByText("Application icon");
+  fireEvent.click(summary);
+  expect(summary.closest("details")).toHaveProperty("open", true);
+}
 
 it("rejects active formats, empty/oversized files, unreadable images, and excessive dimensions", async () => {
   await expect(readAppIcon(new File(["<svg/>"], "icon.svg", { type: "image/svg+xml" }))).rejects.toThrow("PNG or JPEG");
@@ -33,6 +38,7 @@ it("previews a chosen image, replaces it, and removes it without losing the defa
     return <AppAccessIconPicker icon="globe" image={image} onIconChange={vi.fn()} onImageChange={value => { changed(value); setImage(value); }} onReadingChange={reading} />;
   }
   render(<Editor />);
+  openIconPicker();
   fireEvent.change(screen.getByLabelText("Upload application icon"), { target: { files: [new File(["first"], "first.png", { type: "image/png" })] } });
   await screen.findByLabelText("Replace application icon");
   expect(changed).toHaveBeenLastCalledWith("data:image/png;base64,Zmlyc3Q=");
@@ -63,11 +69,13 @@ it("releases the editor when leaving the icon step during an unfinished read", a
     return <><button onClick={() => setVisible(value => !value)}>Switch step</button><button disabled={reading}>Save draft</button>{visible && <AppAccessIconPicker icon="app" onIconChange={vi.fn()} onImageChange={vi.fn()} onReadingChange={setReading} />}</>;
   }
   render(<Steps />);
+  openIconPicker();
   fireEvent.change(screen.getByLabelText("Upload application icon"), { target: { files: [new File(["pending"], "icon.png", { type: "image/png" })] } });
   expect(screen.getByRole("button", { name: "Save draft" })).toHaveProperty("disabled", true);
   fireEvent.click(screen.getByRole("button", { name: "Switch step" }));
   expect(screen.getByRole("button", { name: "Save draft" })).toHaveProperty("disabled", false);
   fireEvent.click(screen.getByRole("button", { name: "Switch step" }));
+  openIconPicker();
   expect(screen.getByLabelText("Upload application icon")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Save draft" })).toHaveProperty("disabled", false);
 });

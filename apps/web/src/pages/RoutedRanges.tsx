@@ -293,7 +293,7 @@ export default function RoutedRangesPage() {
 
   return (
     <div className="network-management routed-workspace flex flex-col gap-6">
-      <PageHeader title="Routed ranges" subtitle="Your networks. Their routes." actions={<div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link><Link className="text-sm text-ink-secondary" to="/sites?section=approvals">Review approvals →</Link></div>} />
+      <PageHeader navigationTitle title="Routed ranges" subtitle="Your networks. Their routes." actions={<div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link><Link className="text-sm text-ink-secondary" to="/sites?section=approvals">Review approvals →</Link></div>} />
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
       {loading && <Loading size="inline" label="Loading routed ranges…" />}

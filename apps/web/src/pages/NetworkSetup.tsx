@@ -6,15 +6,8 @@ import { useGatewayInventory } from "../lib/useGatewayInventory";
 import { siteGate } from "../lib/sitesview";
 import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
-import {
-  Button,
-  Card,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  PageHeader,
-} from "../components/ui";
+import "../resource-summary.css";
+import { Button, Card, ErrorText, Field, Input, Loading, PageHeader, RefreshButton } from "../components/ui";
 import "../network-setup.css";
 
 type SetupOptions = { embedded?: boolean; onComplete?: () => void; onCancel?: () => void; onBusyChange?: (busy: boolean) => void };
@@ -197,9 +190,7 @@ function NetworkSetupWorkspace({
                         {enrolling ? "Close enrollment" : "Enroll a gateway"}
                       </Button>
                     )}
-                    <Button variant="ghost" onClick={reload}>
-                      Refresh gateways
-                    </Button>
+                    <RefreshButton label="Refresh gateways" onClick={reload} />
                   </div>
                   {enrolling && (
                     <Gateways
@@ -249,13 +240,17 @@ function NetworkSetupWorkspace({
                   <p className="network-hint">
                     {existingSite ? "This adds the private range to the gateway’s existing site and approves it for distribution to devices." : "This creates a site, assigns the gateway, and approves the private route for distribution to devices."}
                   </p>
-                  <dl className="network-review">
+                  <dl className="network-review tnx-resource-facts">
+                    <div>
                     <dt>Network</dt>
                     <dd>{siteName}</dd>
+                    </div><div>
                     <dt>Gateway</dt>
                     <dd>{selected?.name || "Gateway no longer available"}</dd>
+                    </div><div>
                     <dt>Private range</dt>
                     <dd>{cidr}</dd>
+                    </div>
                   </dl>
                   <p className="network-hint">
                     Existing access policies still apply. This step does not

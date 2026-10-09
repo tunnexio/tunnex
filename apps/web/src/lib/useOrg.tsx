@@ -42,6 +42,8 @@ type OrgState = {
   org: Org | null;
   /** Switch. ⚠ Ignores an id the caller is not a member of — the picker cannot invent a tenant. */
   setOrg: (id: string) => void;
+  /** Reconcile an authoritative saved row without changing the selected tenant. */
+  updateOrg: (org: Org) => void;
   loading: boolean;
   /** True when the org list could not be read at all. ⚠ NOT the same as "no organizations". */
   failed: boolean;
@@ -119,14 +121,20 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateOrg = useCallback((saved: Org) => {
+    setOrgs(list => list.some(item => item.id === saved.id)
+      ? list.map(item => item.id === saved.id ? saved : item)
+      : list);
+  }, []);
+
   const org = useMemo(
     () => orgs.find((o) => o.id === currentId) ?? null,
     [orgs, currentId],
   );
 
   const value = useMemo<OrgState>(
-    () => ({ orgs, org, setOrg, loading, failed }),
-    [orgs, org, setOrg, loading, failed],
+    () => ({ orgs, org, setOrg, updateOrg, loading, failed }),
+    [orgs, org, setOrg, updateOrg, loading, failed],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

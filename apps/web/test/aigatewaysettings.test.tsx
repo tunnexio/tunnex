@@ -1,10 +1,12 @@
-import { createElement } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { WorkspaceFeatureControl } from "../src/components/WorkspaceFeatureControl";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIGatewaySettings } from "../src/components/AIGatewaySettings";
 
 const api = vi.hoisted(() => ({ GET: vi.fn(), PUT: vi.fn() }));
-vi.mock("../src/lib/api", () => ({ api }));
+vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api }));
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "actor-a", email_verified: true } } }) }));
 type Result = { data: { enabled: boolean; available: boolean; revision: number } };
 function result(enabled: boolean, available = true): Result {
   return { data: { enabled, available, revision: 1 } };
@@ -14,11 +16,11 @@ function deferred() {
   const promise = new Promise<Result>((done) => { resolve = done; });
   return { promise, resolve };
 }
-function view(orgId = "org-a", canEdit = true) {
-  return createElement(AIGatewaySettings, { orgId, canEdit });
+function view(orgId = "org-a", canEdit = true, central = true) {
+  return <MemoryRouter>{central ? <WorkspaceFeatureControl feature="ai-gateway" orgId={orgId} canEdit={canEdit} roles={["admin"]} serverAdmin={false} /> : <AIGatewaySettings orgId={orgId} canEdit={canEdit} />}</MemoryRouter>;
 }
-async function state(enabled: boolean) {
-  await waitFor(() => expect(screen.getByRole("status").textContent).toContain(enabled ? "Enabled" : "Disabled"));
+async function state(enabled: boolean, central = true) {
+  await waitFor(() => central ? expect(screen.getByRole("switch", { name: "AI Gateway" }).getAttribute("aria-checked")).toBe(String(enabled)) : expect(screen.getByRole("status").textContent).toContain(enabled ? "Enabled" : "Disabled"));
 }
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
@@ -28,7 +30,7 @@ describe("AI gateway organization settings", () => {
     api.GET.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(result(false));
     render(view());
     await screen.findByRole("alert");
-    fireEvent.click(screen.getByRole("button", { name: "Retry AI gateway settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload AI Gateway setting" }));
     await state(false);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(api.GET).toHaveBeenCalledTimes(2);
@@ -38,7 +40,7 @@ describe("AI gateway organization settings", () => {
     api.GET.mockResolvedValue(result(false, false));
     render(view());
     await state(false);
-    const button = screen.getByRole("button", { name: "Enable AI gateway" }) as HTMLButtonElement;
+    const button = screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     fireEvent.click(button);
     expect(api.PUT).not.toHaveBeenCalled();
@@ -48,7 +50,7 @@ describe("AI gateway organization settings", () => {
     api.PUT.mockResolvedValue(result(false, false));
     render(view());
     await state(true);
-    const button = screen.getByRole("button", { name: "Disable AI gateway" }) as HTMLButtonElement;
+    const button = screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
     await state(false);
@@ -62,23 +64,26 @@ describe("AI gateway organization settings", () => {
     api.PUT.mockReturnValue(saving.promise);
     render(view());
     await state(false);
-    fireEvent.click(screen.getByRole("button", { name: "Enable AI gateway" }));
-    expect(screen.getByRole("status").textContent).toContain("Disabled");
-    expect((screen.getByRole("button", { name: "Saving…" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("switch", { name: "AI Gateway" }));
+    expect(screen.getByRole("switch", { name: "AI Gateway" }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { saving.resolve(result(false)); });
     await state(false);
-    expect(screen.getByRole("button", { name: "Enable AI gateway" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "AI Gateway" })).toBeTruthy();
   });
   it("preserves the setting when saving fails over the network", async () => {
     api.GET.mockResolvedValue(result(true));
     api.PUT.mockRejectedValue(new Error("network unavailable"));
     render(view());
     await state(true);
-    fireEvent.click(screen.getByRole("button", { name: "Disable AI gateway" }));
+    fireEvent.click(screen.getByRole("switch", { name: "AI Gateway" }));
     await screen.findByRole("alert");
-    expect(screen.getByRole("alert").textContent).toBe("Could not update AI gateway access.");
+    expect(screen.getByRole("alert").textContent).toContain("Could not confirm the change");
+    expect(screen.queryByRole("switch", { name: "AI Gateway" })).toBeNull();
+    expect(screen.getByText("Last reported: Enabled.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reload AI Gateway setting" }));
     await state(true);
-    expect((screen.getByRole("button", { name: "Disable AI gateway" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
   });
   it("ignores stale organization loads", async () => {
     const oldLoad = deferred();
@@ -87,8 +92,8 @@ describe("AI gateway organization settings", () => {
     page.rerender(view("org-b"));
     await state(false);
     await act(async () => { oldLoad.resolve(result(true)); });
-    expect(screen.getByRole("status").textContent).toContain("Disabled");
-    expect((screen.getByRole("button", { name: "Enable AI gateway" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("switch", { name: "AI Gateway" }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement).disabled).toBe(true);
     expect(api.GET).toHaveBeenLastCalledWith("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId: "org-b" } } });
   });
   it("ignores stale organization saves", async () => {
@@ -97,33 +102,41 @@ describe("AI gateway organization settings", () => {
     api.PUT.mockReturnValue(oldSave.promise);
     const page = render(view());
     await state(false);
-    fireEvent.click(screen.getByRole("button", { name: "Enable AI gateway" }));
+    fireEvent.click(screen.getByRole("switch", { name: "AI Gateway" }));
     page.rerender(view("org-b"));
     await state(false);
     await act(async () => { oldSave.resolve(result(true)); });
     await state(false);
-    expect(screen.getByRole("button", { name: "Enable AI gateway" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "AI Gateway" })).toBeTruthy();
     expect(api.PUT).toHaveBeenCalledTimes(1);
     expect(api.PUT.mock.calls[0][1].params.path.orgId).toBe("org-a");
   });
   it("points the HTTPS prerequisite to the administrator transport setting", async () => {
     api.GET.mockResolvedValue({ data: { ...result(false, false).data, engine_installed: true, unavailable_reason: "https_required", http_allowed: false } });
-    render(view()); await state(false);
+    render(view("org-a", true, false)); await state(false, false);
     expect(screen.getByText(/Settings → AI Gateway transport/)).toBeTruthy();
     expect(screen.getByText(/Allow AI Gateway over HTTP/)).toBeTruthy();
     expect(screen.queryByText(/endpoint restricted to your private or VPN network/)).toBeNull();
   });
   it("reports the saved HTTP exception without claiming private-only access", async () => {
     api.GET.mockResolvedValue({ data: { ...result(false).data, http_allowed: true, private_http_allowed: false } });
-    render(view()); await state(false);
+    render(view("org-a", true, false)); await state(false, false);
     expect(screen.getByText("Configured · HTTP allowed")).toBeTruthy();
     expect(screen.getByText(/HTTP does not encrypt credentials or requests/)).toBeTruthy();
   });
   it("hides mutation controls when editing is forbidden", async () => {
     api.GET.mockResolvedValue(result(true));
-    render(view("org-a", false));
-    await state(true);
+    render(view("org-a", false, false));
+    await state(true, false);
     expect(screen.queryByRole("button", { name: /Enable AI gateway|Disable AI gateway/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Manage feature" })).toBeNull();
     expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("keeps activation in Features while the product workspace shows saved state", async () => {
+    api.GET.mockResolvedValue(result(false));
+    render(view("org-a", true, false)); await state(false, false);
+    expect(screen.getByRole("link", { name: "Manage feature" }).getAttribute("href")).toBe("/settings?section=features&feature=ai-gateway");
+    expect(screen.queryByRole("switch")).toBeNull(); expect(api.PUT).not.toHaveBeenCalled();
   });
 });

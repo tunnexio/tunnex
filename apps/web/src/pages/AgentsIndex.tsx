@@ -1,5 +1,5 @@
-import { HelpTooltip } from "../components/HelpTooltip";
 import "../network-workspaces.css";
+import "../app-access-workspace.css";
 import "../agents-workspace.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -13,20 +13,13 @@ import {
   livenessLabel,
   type AgentRow,
 } from "../lib/agentview";
-import {
-  Badge,
-  Button,
-  Card,
-  DataTable,
-  EmptyState,
-  Input,
-  Loading,
-  PageHeader,
-  Select,
-  StatusDot,
-} from "../components/ui";
+import { Button, DataTable, Input, Loading, Select, StatusDot, RefreshButton } from "../components/ui";
 import { AddAgentFlow } from "../components/AddAgentFlow";
 import { AgentsTabRail } from "../components/AgentsTabRail";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
+import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import { relativeAge } from "../lib/format";
 
 type AgentsPage = {
   items: AgentRow[];
@@ -43,7 +36,6 @@ type ViewState =
 /** Development-gallery input only. Production routes never supply it. */
 export type AgentsIndexFixture = { state: ViewState };
 
-const LIMIT = 50;
 const filters = [
   ["lifecycle", "All lifecycle states", ["active", "pending", "suspended", "revoked"]],
   ["runtime", "All runtime states", ["not_configured", "pending", "healthy", "degraded"]],
@@ -70,10 +62,21 @@ function labelForStatus(agent: AgentRow) {
  */
 export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture }) {
   const { org } = useOrg();
+  const { state } = useAuth();
+  const actor = state.status === "authed" ? `${state.user.id}:${state.user.email_verified}` : state.status;
+  return <AgentsIndexWorkspace key={`${org?.id ?? "no-organization"}:${actor}`} fixture={fixture} />;
+}
+
+function AgentsIndexWorkspace({ fixture }: { fixture?: AgentsIndexFixture }) {
+  const { org } = useOrg();
   const { state: authState } = useAuth();
   const [params, setParams] = useSearchParams();
   const [state, setState] = useState<ViewState>(fixture?.state ?? { kind: "loading" });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const pageSize = appAccessPageSize(params.get("page_size"));
+  const cursorHistory = params.getAll("previous_cursor");
+  const pageNumber = cursorHistory.length + (params.get("cursor") && !cursorHistory.length ? 2 : 1);
 
   const query = useMemo(() => ({
     q: params.get("q") ?? "",
@@ -122,11 +125,6 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
       await api.GET("/api/v1/license");
       if (cancelled) return;
       const canEnroll = can(role, "agent:enroll");
-      if (!canEnroll && params.get("add") === "1") {
-        const next = new URLSearchParams(params);
-        next.delete("add");
-        setParams(next, { replace: true });
-      }
 
       const result = await api.GET("/api/v1/organizations/{orgId}/agents", {
         params: {
@@ -140,7 +138,7 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
             gateway_id: query.gateway_id ? [query.gateway_id] : undefined,
             sort: "name",
             dir: query.dir === "desc" ? "desc" : "asc",
-            limit: LIMIT,
+            limit: pageSize,
             cursor: query.cursor || undefined,
           },
         },
@@ -157,95 +155,86 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
       if (!cancelled) setState({ kind: "failed", message: "Could not reach the API." });
     });
     return () => { cancelled = true; };
-  }, [authState, fixture, org?.id, params, query, setParams]);
+  }, [authState, fixture, org?.id, pageSize, query.q, query.lifecycle, query.runtime, query.mcp, query.access, query.gateway_id, query.dir, query.cursor, readAttempt]);
+
+  useEffect(() => {
+    if (state.kind !== "ready" || state.canEnroll || params.get("add") !== "1") return;
+    const next = new URLSearchParams(params);
+    next.delete("add");
+    setParams(next, { replace:true });
+  }, [state, params, setParams]);
 
   function update(values: Record<string, string | null>, replace = false) {
     const next = new URLSearchParams(params);
     for (const [key, value] of Object.entries(values)) {
       if (value) next.set(key, value); else next.delete(key);
     }
-    if (!("cursor" in values)) next.delete("cursor");
+    if (Object.keys(values).some(key => ["q", "lifecycle", "runtime", "mcp", "access", "gateway_id", "sort", "dir", "page_size"].includes(key))) { next.delete("cursor"); next.delete("previous_cursor"); }
     setParams(next, { replace });
+  }
+
+  function changePage(nextPage: number) {
+    const next = new URLSearchParams(params);
+    const history = [...cursorHistory];
+    if (nextPage > pageNumber && state.kind === "ready" && state.page.next_cursor) {
+      history.push(query.cursor);
+      next.set("cursor", state.page.next_cursor);
+    } else if (nextPage < pageNumber) {
+      const previous = history.pop();
+      if (previous) next.set("cursor", previous); else next.delete("cursor");
+    } else return;
+    next.delete("previous_cursor");
+    history.forEach(cursor => next.append("previous_cursor", cursor));
+    setParams(next);
   }
 
   const rows = state.kind === "ready" ? state.page.items : [];
   const activeFilterCount = filters.reduce((count, [key]) => count + (query[key] ? 1 : 0), 0);
+  const filtered = activeFilterCount > 0 || Boolean(query.q || query.gateway_id);
   return (
-    <div className="network-management agents-workspace flex flex-col gap-5">
-      <PageHeader
-        title="AI Agents"
-        subtitle={org?.name ?? "Agent inventory and access"}
-        actions={state.kind === "ready" && state.canEnroll ? <Button onClick={() => update({ add: "1" })}>Add agent</Button> : undefined}
-      />
-      <AgentsTabRail />
-      {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow orgId={org.id} runtimeEnabled={Boolean(org.managed_agent_runtime_enabled)} enabled onDismiss={() => update({ add: null })} />}
-
-      {state.kind === "loading" && <Card><Loading label="Loading AI agents…" /></Card>}
-      {state.kind === "denied" && <Card><EmptyState>You do not have permission to view AI Agents in this organization.</EmptyState></Card>}
-      {state.kind === "failed" && <Card><div role="alert" className="py-6 text-sm text-danger">{state.message} <Button variant="ghost" onClick={() => update({}, true)}>Retry</Button></div></Card>}
-      {state.kind === "ready" && (
-        <>
-        <section className="tnx-card-surface agents-result-summary" aria-label="Agent result summary">
-          <div><span>Current results</span><strong>{rows.length}</strong><small>{state.page.next_cursor ? "More agents on the next page" : "Agents in this result"}</small></div>
-          <div><span>Connected</span><strong className="text-ok">{rows.filter(a => agentLiveness(a) === "online").length}</strong><HelpTooltip>Reported by their gateways</HelpTooltip></div>
-          <div><span>Connectivity unknown</span><strong>{rows.filter(a => agentLiveness(a) === "unknown").length}</strong><HelpTooltip>Gateway is not reporting</HelpTooltip></div>
-          <div><span>Ownership missing</span><strong>{rows.filter(a => a.unattributable || !a.owner_email).length}</strong><HelpTooltip>Review agent attribution</HelpTooltip></div>
-        </section>
-        <Card>
-          <div className="agents-inventory-heading"><h2>Agent inventory</h2><HelpTooltip label="About agents">Open an agent to manage its runtime and access.</HelpTooltip></div>
-          <div className="agents-inventory-toolbar">
-            <div className="min-w-[14rem] flex-1">
-              <Input aria-label="Search AI agents" placeholder="Search name, owner, address" value={query.q} onChange={(event) => update({ q: event.target.value }, true)} />
-            </div>
-            <Button size="sm" variant="ghost" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
-              Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
-            </Button>
-            <Select aria-label="Sort AI agents" width="auto" value={`${query.sort}:${query.dir}`} onChange={(event) => {
-              const [sort, dir] = event.target.value.split(":");
-              update({ sort, dir });
-            }}><option value="name:asc">Name, A–Z</option><option value="name:desc">Name, Z–A</option></Select>
-          </div>
-          {(filtersOpen || activeFilterCount > 0) && <div className="mb-3 grid gap-2 border-t border-white/[0.08] pt-3 sm:grid-cols-2 xl:grid-cols-4">
-            {filters.map(([key, label, options]) => (
-              <Select key={key} aria-label={label} value={query[key]} onChange={(event) => update({ [key]: event.target.value })}>
-                <option value="">{label}</option>
-                {options.map((option) => <option key={option} value={option}>{option.replace(/_/g, " ")}</option>)}
-              </Select>
-            ))}
-          </div>}
-          {(activeFilterCount > 0 || query.q || query.gateway_id) && <Button size="sm" variant="ghost" className="mb-3" onClick={() => update({q:null,lifecycle:null,runtime:null,mcp:null,access:null,gateway_id:null})}>Clear filters</Button>}
-          {state.page.partial && <p role="status" className="mb-3 rounded-md border border-warn/40 px-3 py-2 text-xs text-warn">Some agent posture data is unavailable. Rows below include the latest complete inventory data.</p>}
-          <DataTable<AgentRow>
-            caption="AI Agents"
-            rows={rows}
-            rowKey={(agent) => agent.device_id}
-            failed={false}
-            filterable={false}
-            pageSize={0}
-            empty={<EmptyState>No AI agents match this query. {state.canEnroll ? "Clear a filter or add an agent." : "Clear a filter or ask an organization administrator to enroll one."}</EmptyState>}
-            rowAttrs={(agent) => ({ "data-liveness": agentLiveness(agent) })}
-            columns={[
-              {
-                key: "name", header: "Agent", sortValue: (agent) => agent.name,
-                cell: (agent) => {
-                  const status = labelForStatus(agent);
-                  return <Link className="inline-flex items-center gap-2 text-white hover:underline" to={`/agents/${agent.device_id}`}><StatusDot tone={status.tone === "ok" ? "on" : status.tone === "warn" ? "warn" : "off"} /><span>{agent.name}</span><span aria-hidden="true" className="agent-open-arrow">↗</span></Link>;
-                },
-              },
-              { key: "status", header: "Status", sortValue: (agent) => labelForStatus(agent).label, cell: (agent) => { const status = labelForStatus(agent); return <Badge tone={status.tone}>{status.label}</Badge>; } },
-              { key: "owner", header: "Owner", sortValue: (agent) => agent.owner_email ?? "", cell: (agent) => { const note = attributionNote(agent); return note ? <Badge tone={note.tone}>{note.label}</Badge> : <span>{agent.owner_email ?? "Not available"}</span>; } },
-              { key: "gateway", header: "Gateway", sortValue: (agent) => agent.gateway_name, cell: (agent) => <span>{agent.gateway_name || "Not available"}</span> },
-              { key: "address", header: "Address", sortValue: (agent) => agent.address ?? "", cell: (agent) => <span className="font-sans text-xs">{agent.address ?? "Not available"}</span> },
-              { key: "last_seen", header: "Last seen", sortValue: (agent) => agent.last_handshake_at ?? "", cell: (agent) => <span>{agent.last_handshake_at ? new Date(agent.last_handshake_at).toLocaleString() : "Never reported"}</span> },
-            ]}
-          />
-          <div className="agents-pagination">
-            <span className="text-xs text-ink-secondary">{state.page.next_cursor ? `Up to ${LIMIT} results shown` : "End of results"}</span>
-            <Button variant="ghost" disabled={!state.page.next_cursor} onClick={() => update({ cursor: state.page.next_cursor ?? null })}>Next</Button>
-          </div>
-        </Card>
-        </>
-      )}
+    <div className="network-management agents-workspace agents-index">
+      <AgentsTabRail actions={<>
+        <RefreshButton label="Refresh" disabled={state.kind === "loading"} onClick={() => setReadAttempt(attempt => attempt + 1)} />
+        {state.kind === "ready" && state.canEnroll && <Button onClick={() => update({ add: "1" })}>Add agent</Button>}
+      </>} />
+      {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow key={org.id} orgId={org.id} runtimeEnabled={Boolean(org.managed_agent_runtime_enabled)} enabled onDismiss={() => update({ add: null })} />}
+      {state.kind === "loading" && <div className="agents-inventory-state"><Loading label="Loading AI agents…" /></div>}
+      {state.kind === "denied" && <AppAccessEmptyState icon={null} title="Agent access required" description="Ask an organization administrator for access to this workspace." />}
+      {state.kind === "failed" && <div className="agents-load-error"><p role="alert">{state.message}</p><Button variant="ghost" onClick={() => setReadAttempt(attempt => attempt + 1)}>Retry</Button></div>}
+      {state.kind === "ready" && <section className="agents-inventory" aria-label="Agent inventory">
+        <div className="agents-inventory-toolbar">
+          <Input aria-label="Search AI agents" placeholder="Search name, owner, address" value={query.q} onChange={event => update({ q: event.target.value }, true)} />
+          <Button size="sm" variant="ghost" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(open => !open)}>Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</Button>
+          <Select aria-label="Sort AI agents" width="auto" value={`${query.sort}:${query.dir}`} onChange={event => {
+            const [sort, dir] = event.target.value.split(":"); update({ sort, dir });
+          }}><option value="name:asc">Name, A–Z</option><option value="name:desc">Name, Z–A</option></Select>
+          <section className="agents-result-context" aria-label="Agent result summary">{rows.length} {rows.length === 1 ? "agent" : "agents"}{state.page.next_cursor && <span> · more available</span>}</section>
+        </div>
+        {(filtersOpen || activeFilterCount > 0) && <div className="agents-inventory-filters">
+          {filters.map(([key, label, options]) => <Select key={key} aria-label={label} value={query[key]} onChange={event => update({ [key]: event.target.value })}>
+            <option value="">{label}</option>{options.map(option => <option key={option} value={option}>{option.replace(/_/g, " ")}</option>)}
+          </Select>)}
+        </div>}
+        {filtered && <Button size="sm" variant="ghost" className="agents-clear-filters" onClick={() => update({ q:null,lifecycle:null,runtime:null,mcp:null,access:null,gateway_id:null })}>Clear filters</Button>}
+        {state.page.partial && <p role="status" className="agents-partial-note">Some posture data is unavailable. Showing the latest inventory.</p>}
+        <div className="agents-inventory-table"><DataTable<AgentRow>
+          caption="AI Agents" rows={rows} rowKey={agent => agent.device_id} failed={false} filterable={false} pageSize={0}
+          empty={<AppAccessEmptyState icon={null} title={filtered ? "No matching agents" : pageNumber > 1 ? "No agents on this page" : "No agents yet"} description={filtered ? "Try another search or clear the filters." : pageNumber > 1 ? "Return to the previous page or refresh the inventory." : "Connect an agent to start managing its runtime and access."} action={filtered ? <Button variant="ghost" onClick={() => update({ q:null,lifecycle:null,runtime:null,mcp:null,access:null,gateway_id:null })}>Clear filters</Button> : pageNumber === 1 && state.canEnroll ? <Button onClick={() => update({ add:"1" })}>Add agent</Button> : undefined} />}
+          rowAttrs={agent => ({ "data-liveness": agentLiveness(agent) })}
+          columns={[
+            { key:"name", header:"Agent", cell:agent => <div><Link className="agents-name-link" to={`/agents/${agent.device_id}`}>{agent.name}</Link><span className="agents-secondary agents-address">{agent.address ?? "Address not reported"}</span></div> },
+            { key:"status", header:"Connectivity", cell:agent => { const status=labelForStatus(agent); return <div><span className="agents-liveness" data-tone={status.tone} title={status.detail}><StatusDot tone={status.tone === "ok" ? "on" : status.tone === "warn" ? "warn" : "off"} />{status.label}</span><span className="agents-secondary">{agent.last_handshake_at ? relativeAge(agent.last_handshake_at) : "Never reported"}</span></div>; } },
+            { key:"owner", header:"Owner", cell:agent => { const note=attributionNote(agent); return <span className={note ? "agents-attribution-note" : undefined} title={note?.detail}>{note?.label ?? agent.owner_email ?? "Unassigned"}</span>; } },
+            { key:"gateway", header:"Gateway", cell:agent => agent.gateway_name || "Not reported" },
+            { key:"actions", header:"Actions", cell:agent => <AppAccessRowMenu label={`Agent actions for ${agent.name}`} actions={[
+              { key:"runtime", label:"View runtime", href:`/agents/${agent.device_id}?tab=runtime` },
+              { key:"access", label:"Manage access", href:`/agents/${agent.device_id}?tab=access` },
+              { key:"activity", label:"View activity", href:`/agents/${agent.device_id}?tab=activity` },
+            ]} /> },
+          ]}
+        /></div>
+        <AppAccessPagination page={pageNumber} pageSize={pageSize} count={rows.length} hasNext={Boolean(state.page.next_cursor)} maxOffset={null} onPageChange={changePage} onPageSizeChange={size => update({ page_size:String(size) })} />
+      </section>}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import "../resource-summary.css";
 import { useEffect, useState } from "react";
 import { api, type LicenseStatus } from "../lib/api";
 import { useLicenceResource } from "../lib/licenceResource";
@@ -253,20 +254,23 @@ export function LicenceCard({
                 : status.state}
             </span>
           </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-cell">
+          <dl className="tnx-resource-facts">
+            <div>
             <dt className="text-ink-tertiary">Gateways</dt>
             <dd className="text-ink-body">
               {ceiling(status.gateway_ceiling)}
             </dd>
+            </div><div>
             <dt className="text-ink-tertiary">Organizations</dt>
             <dd className="text-ink-body">{ceiling(status.org_ceiling)}</dd>
+            </div>
             {status.expires_at && (
-              <>
+              <div>
                 <dt className="text-ink-tertiary">Expires</dt>
                 <dd className="text-ink-body">
                   {status.expires_at.slice(0, 10)}
                 </dd>
-              </>
+              </div>
             )}
           </dl>
         </>

@@ -58,7 +58,6 @@ let zeroTrustFailure = false;
 let approvalModes: Record<string, "on" | "off"> = { "org-1": "off", "org-2": "off" };
 let deferNewOrgSecurityLoad = false;
 let resolveDeferredApproval: (() => void) | null = null;
-let resolveDeferredLicence: (() => void) | null = null;
 let approvalMutations: string[] = [];
 let alertingEnabled = false;
 let alertDestinations: Array<{
@@ -97,7 +96,6 @@ vi.mock("../src/lib/api", async () => {
         if (path === "/api/v1/admin/ai-transport-settings") return { data: { allow_http: false, revision: 1 } };
         if (path === "/api/v1/admin/app-access/domains") return { data: { portal_url: "https://internal.tunnex.app", app_base_domain: "internal.tunnex.app", version: 0, source: "environment", configuration_ready: true } };
         if (path === "/api/v1/license") {
-          if (deferNewOrgSecurityLoad) return new Promise((resolve) => { resolveDeferredLicence = () => resolve({ data: { features: ["agent_jit_access"] } }); });
           return { data: { features: ["agent_jit_access"] } };
         }
         if (path === "/api/v1/organizations") {
@@ -107,6 +105,9 @@ vi.mock("../src/lib/api", async () => {
                 id: "org-1",
                 name: "Acme",
                 ovpn_enabled: ovpnEnabled,
+                cross_gateway_clients_enabled: false,
+                managed_agent_runtime_enabled: false,
+                agent_jit_access_enabled: jitAccessEnabled,
                 agent_policy_templates_enabled: agentTemplatesEnabled,
                 mfa_required: false,
               },
@@ -114,6 +115,9 @@ vi.mock("../src/lib/api", async () => {
                 id: "org-2",
                 name: "Beta",
                 ovpn_enabled: false,
+                cross_gateway_clients_enabled: false,
+                managed_agent_runtime_enabled: false,
+                agent_jit_access_enabled: false,
                 agent_policy_templates_enabled: false,
                 mfa_required: false,
               },
@@ -126,6 +130,9 @@ vi.mock("../src/lib/api", async () => {
               id: "org-1",
               name: "Acme",
               ovpn_enabled: ovpnEnabled,
+                cross_gateway_clients_enabled: false,
+                managed_agent_runtime_enabled: false,
+                agent_jit_access_enabled: jitAccessEnabled,
               agent_policy_templates_enabled: agentTemplatesEnabled,
               mfa_required: false,
             },
@@ -196,6 +203,7 @@ vi.mock("../src/lib/api", async () => {
         return { data: {} };
       }),
       PUT: vi.fn(async (path: string, request: { params?: { path?: { orgId?: string } }; body?: { enabled?: boolean; mode?: "on" | "off" } }) => {
+        if (path.endsWith("/ovpn-settings")) ovpnEnabled = request.body?.enabled === true;
         if (path.endsWith("/agent-policy-template-settings"))
           agentTemplatesEnabled = request.body?.enabled === true;
         if (path.endsWith("/agent-jit-access-settings"))
@@ -264,9 +272,9 @@ const withAuth = (ui: React.ReactElement) =>
   // stands in for it. A page rendered without it throws — deliberately: `useOrg()` refuses to guess, and a
   // test that quietly rendered without an org would be exercising a state production never reaches.
   render(
-    <AuthProvider>
+    <BrowserRouter><AuthProvider>
       <OrgProvider>{ui}</OrgProvider>
-    </AuthProvider>,
+    </AuthProvider></BrowserRouter>,
   );
 
 const withAuthAndRouter = (ui: React.ReactElement) =>
@@ -284,9 +292,9 @@ function SwitchOrganization() {
 }
 
 const withAuthAndSwitch = () => render(
-  <AuthProvider>
+  <BrowserRouter><AuthProvider>
     <OrgProvider><SwitchOrganization /><Settings /></OrgProvider>
-  </AuthProvider>,
+  </AuthProvider></BrowserRouter>,
 );
 
 const defaultGetImplementation = vi.mocked(api.GET).getMockImplementation()!;
@@ -314,7 +322,6 @@ beforeEach(() => {
   approvalModes = { "org-1": "off", "org-2": "off" };
   deferNewOrgSecurityLoad = false;
   resolveDeferredApproval = null;
-  resolveDeferredLicence = null;
   approvalMutations = [];
   alertingEnabled = false;
   alertDestinations = [];
@@ -325,6 +332,7 @@ beforeEach(() => {
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
   ssoFail = false;
+  vi.spyOn(beamApi, "policy").mockResolvedValue({ ok: true, data: { version: 1, enabled: false, domain_ready: false, can_manage_policy: true, max_duration_seconds: 3600, max_shares: 3, require_mfa: false, publisher_group_ids: [], reviewer_user_ids: [], reviewer_group_ids: [] } } as never);
   window.history.replaceState({}, "", "/settings");
 });
 
@@ -339,7 +347,7 @@ async function openSection(name: RegExp) {
 describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders default-off truth, writes once, and refetches persisted state", async () => {
     withAuth(<Settings />);
-    await openSection(/Access & security/);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Just-in-time agent access",
     });
@@ -359,7 +367,7 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders persisted enabled state without defaulting it off", async () => {
     jitAccessEnabled = true;
     withAuth(<Settings />);
-    await openSection(/Access & security/);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Just-in-time agent access",
     });
@@ -368,7 +376,7 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
 
   it("withdraws prior-organization JIT settings synchronously", async () => {
     withAuthAndSwitch();
-    await openSection(/Access & security/);
+    await openSection(/Features/);
     await screen.findByRole("switch", { name: "Just-in-time agent access" });
     fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
     expect(
@@ -391,13 +399,11 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
     expect(screen.getByText("Loading settings…")).toBeTruthy();
     await waitFor(() => {
       expect(resolveDeferredApproval).not.toBeNull();
-      expect(resolveDeferredLicence).not.toBeNull();
     });
     expect(
       screen.getAllByRole("status").some((status) => status.textContent?.startsWith("Loading ")),
     ).toBe(true);
     resolveDeferredApproval?.();
-    resolveDeferredLicence?.();
     deferNewOrgSecurityLoad = false;
     const current = await screen.findByRole("switch", { name: "Require device approval" });
     expect(current.getAttribute("aria-checked")).toBe("false");
@@ -455,7 +461,8 @@ describe("Settings — URL-backed section rail", () => {
     expect(
       screen.queryByText("Organization settings are managed by owners and admins."),
     ).toBeNull();
-    expect(screen.getByText("Manage your account security and view your plan.")).toBeTruthy();
+    expect(screen.queryByText("Manage your account security and view your plan.")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
   });
 
   it("opens a permitted direct section URL and keeps rail selection in the URL", async () => {
@@ -530,7 +537,7 @@ describe("Settings — URL-backed section rail", () => {
     withAuth(<Settings />);
     await openSection(/Access & security/);
     expect(await screen.findByText("Enforcing")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Manage in Access Policies" }).getAttribute("href")).toBe("/access");
+    expect(screen.getAllByRole("link", { name: "Manage in Features" }).some(link => link.getAttribute("href") === "/settings?section=features&feature=zero-trust")).toBe(true);
     cleanup();
     zeroTrustFailure = true;
     withAuth(<Settings />);
@@ -544,7 +551,7 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders default-off truth and refetches the persisted enabled state", async () => {
     agentTemplatesEnabled = false;
     withAuth(<Settings />);
-    await openSection(/AI Agents/);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Agent groups & policy templates",
     });
@@ -563,7 +570,7 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders persisted enabled state without defaulting it off", async () => {
     agentTemplatesEnabled = true;
     withAuth(<Settings />);
-    await openSection(/AI Agents/);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Agent groups & policy templates",
     });
@@ -915,7 +922,7 @@ describe("Settings — Beam installation checks stay operator scoped", () => {
       window.history.replaceState({}, "", "/settings?section=beam-serving");
       withAuth(<Settings />);
       await screen.findByRole("tab", { name: "Organization" });
-      expect(screen.queryByRole("tab", { name: "Beam serving setup" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Local Sharing setup" })).toBeNull();
       expect(read).not.toHaveBeenCalled();
     } finally { read.mockRestore(); }
   });
@@ -943,7 +950,7 @@ describe("Settings — Applications belongs under Features", () => {
     currentRole = "admin"; currentRoles = ["admin", "member"];
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
-    const toggle = await screen.findByRole("switch", { name: "Applications" });
+    const toggle = await screen.findByRole("switch", { name: "App Access" });
     expect(screen.getByRole("tabpanel").id).toBe("features");
     expect(screen.getByRole("tab", { name: "Features" }).getAttribute("aria-selected")).toBe("true");
     expect(toggle.getAttribute("aria-checked")).toBe("false");
@@ -955,7 +962,7 @@ describe("Settings — Applications belongs under Features", () => {
     });
     await openSection(/^Organization$/);
     await openSection(/^Features$/);
-    expect((await screen.findByRole("switch", { name: "Applications" })).getAttribute("aria-checked")).toBe("true");
+    expect((await screen.findByRole("switch", { name: "App Access" })).getAttribute("aria-checked")).toBe("true");
     expect(api.PATCH).toHaveBeenCalledTimes(1);
   });
 
@@ -963,7 +970,7 @@ describe("Settings — Applications belongs under Features", () => {
     currentRole = "admin"; emailVerified = false;
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
-    const toggle = await screen.findByRole("switch", { name: "Applications" });
+    const toggle = await screen.findByRole("switch", { name: "App Access" });
     expect(toggle).toHaveProperty("disabled", true);
     fireEvent.click(toggle);
     expect(api.PATCH).not.toHaveBeenCalled();
@@ -973,8 +980,9 @@ describe("Settings — Applications belongs under Features", () => {
     currentRole = "admin"; membershipStatus = "deactivated";
     window.history.replaceState({}, "", "/settings?section=features");
     withAuth(<Settings />);
-    await screen.findByRole("switch", { name: "OpenVPN" });
-    expect(screen.queryByRole("switch", { name: "Applications" })).toBeNull();
+    await screen.findByRole("tab", { name: "Authentication" });
+    expect(screen.queryByRole("tab", { name: "Features" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
     const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
     expect(reads.some(([path]) => path === "/api/v1/organizations/{orgId}/app-access/settings")).toBe(false);
     expect(api.PATCH).not.toHaveBeenCalled();
@@ -986,7 +994,7 @@ describe("Settings — Applications belongs under Features", () => {
     withAuth(<Settings />);
     await screen.findByRole("tab", { name: "Email delivery" });
     expect(screen.queryByRole("tab", { name: "Features" })).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Applications" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "App Access" })).toBeNull();
     const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
     expect(reads.some(([path]) => path === "/api/v1/organizations/{orgId}/app-access/settings")).toBe(false);
     expect(api.PATCH).not.toHaveBeenCalled();

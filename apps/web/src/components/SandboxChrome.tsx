@@ -29,8 +29,8 @@ export function RuntimeMark({ template, large = false }: { template?: SandboxTem
   </span>;
 }
 
-export function RuntimeSpecs({ template, lifetime }: { template?: SandboxTemplate; lifetime?: string }) {
-  return <><dl className="sb-specs">
+export function RuntimeSpecs({ template, lifetime, summary = false }: { template?: SandboxTemplate; lifetime?: string; summary?: boolean }) {
+  return <><dl className={`sb-specs${summary ? " tnx-resource-facts" : ""}`}>
     <div><dt>Memory</dt><dd>{template ? `${template.memory_mib} MiB` : "Not specified"}</dd></div>
     <div><dt>CPU / storage</dt><dd className="sb-unspecified">Not specified</dd></div>
     <div><dt>{lifetime ? "Lifetime" : "Max lifetime"}</dt><dd>{lifetime ?? (template ? `${Math.floor(template.max_ttl_seconds / 60)} min` : "Not specified")}</dd></div>

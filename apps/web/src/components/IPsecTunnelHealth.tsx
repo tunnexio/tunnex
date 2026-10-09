@@ -1,7 +1,8 @@
+import "../resource-summary.css";
 import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
-import { Button } from "./ui";
+import { RefreshButton } from "./ui";
 
 type Report = components["schemas"]["IPsecConnectionStatus"];
 type Tunnel = { outside_address: string; inside_cidr: string; customer_inside_address: string; cloud_inside_address: string };
@@ -51,7 +52,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels }: { orgId: str
   return <section aria-label="Tunnel status" className="space-y-3">
     <div className="flex items-center justify-between gap-3">
       <div><h4 className="font-medium text-ink-heading">Tunnel status</h4><p className="text-xs text-ink-secondary">{unavailable ? "Status unavailable" : fresh ? "Live gateway report · updates every 10s" : "Waiting for a fresh gateway report"}</p></div>
-      <Button size="sm" variant="ghost" onClick={() => setRefresh(v => v + 1)}>Refresh tunnel status</Button>
+      <RefreshButton label="Refresh tunnel status" onClick={() => setRefresh(v => v + 1)} />
     </div>
     <div className="overflow-x-auto rounded border border-line">
       <table className="w-full text-left text-sm" aria-label="IPsec tunnel state">
@@ -80,7 +81,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels }: { orgId: str
       return <details key={i} className="rounded border border-line text-sm">
         <summary aria-label={`Tunnel ${i + 1} troubleshooting`} className="cursor-pointer px-4 py-3 font-medium text-ink-heading focus-visible:outline focus-visible:outline-2">Tunnel {i + 1} details</summary>
         <div className="border-t border-line px-4 py-4">
-          <dl className="grid grid-cols-2 gap-4"><div><dt className="text-xs text-ink-secondary">Customer inside IP</dt><dd className="mt-1 font-mono text-xs">{tunnel.customer_inside_address}</dd></div><div><dt className="text-xs text-ink-secondary">Cloud inside IP</dt><dd className="mt-1 font-mono text-xs">{tunnel.cloud_inside_address}</dd></div></dl>
+          <dl className="tnx-resource-facts"><div><dt>Customer inside IP</dt><dd className="font-mono">{tunnel.customer_inside_address}</dd></div><div><dt>Cloud inside IP</dt><dd className="font-mono">{tunnel.cloud_inside_address}</dd></div></dl>
           <ul className="mt-4 space-y-1 text-xs text-ink-secondary">{troubleshooting[status].map(check => <li key={check}>{check}</li>)}</ul>
         </div>
       </details>;

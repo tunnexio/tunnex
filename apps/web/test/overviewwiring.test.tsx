@@ -8,7 +8,10 @@ import {
   waitFor,
   cleanup,
   within,
+  act,
+  fireEvent,
 } from "@testing-library/react";
+import { Profiler } from "react";
 
 // S14.4 — OVERVIEW. THE FAILURE PATHS ARE THE TEST; the happy path is the easy half.
 //
@@ -23,6 +26,16 @@ let nodesFail = false;
 let empty = false;
 let preEnrolledGateway = false;
 let edition: string | null = "enterprise";
+let orgs = [{ id: "org-1", name: "Acme" }];
+type OverviewResult = {
+  data?: ReturnType<typeof OV>;
+  error?: { code: string; message: string };
+};
+let overviewReads = new Map<string, OverviewResult | Promise<OverviewResult>>();
+let zeroTrustResponse: unknown = { mode: "off" };
+let devicesResponse: unknown = [];
+let agentsResponse: unknown = { items: [], next_cursor: null };
+let inventoryResponses = new Map<string, unknown>();
 
 const OV = () => ({
   members: empty ? 0 : 4,
@@ -42,7 +55,7 @@ vi.mock("../src/lib/api", async () => {
     ...actual,
     apiErrorMessage: (_e: unknown, f: string) => f,
     api: {
-      GET: vi.fn(async (path: string) => {
+      GET: vi.fn(async (path: string, request?: { params?: { path?: { orgId?: string } } }) => {
         if (path === "/api/v1/auth/me")
           return { data: { id: "u1", email: "a@b.c", email_verified: true } };
         if (path === "/api/v1/meta")
@@ -50,15 +63,22 @@ vi.mock("../src/lib/api", async () => {
             ? { data: undefined, ...err }
             : { data: { edition } };
         if (path === "/api/v1/organizations")
-          return { data: [{ id: "org-1", name: "Acme" }] };
-        if (path.endsWith("/overview"))
+          return { data: orgs };
+        const replacement = [...inventoryResponses].find(([suffix]) => path.endsWith(suffix));
+        if (replacement) return { data: replacement[1] };
+        if (path.endsWith("/overview")) {
+          const savedRead = overviewReads.get(request?.params?.path?.orgId ?? "org-1");
+          if (savedRead) return savedRead;
           return overviewFail ? { data: undefined, ...err } : { data: OV() };
+        }
+        if (path.endsWith("/zero-trust-mode")) return { data: zeroTrustResponse };
         if (path.endsWith("/sites"))
           return sitesFail
             ? { data: undefined, ...err }
             : { data: empty ? [] : [{ id: "s1" }] };
         if (path.endsWith("/devices/pending")) return { data: [] };
-        if (path.endsWith("/devices")) return { data: [] };
+        if (path.endsWith("/devices")) return { data: devicesResponse };
+        if (path.endsWith("/agents")) return { data: agentsResponse };
         if (path.endsWith("/k8s/clusters"))
           return {
             data: empty
@@ -166,9 +186,10 @@ vi.mock("../src/lib/api", async () => {
 });
 
 import { MemoryRouter } from "react-router-dom";
-import { OrgProvider } from "../src/lib/useOrg";
+import { OrgProvider, useOrg } from "../src/lib/useOrg";
 import Dashboard from "../src/pages/Dashboard";
-import { AuthProvider } from "../src/lib/auth";
+import { AuthProvider, useAuth } from "../src/lib/auth";
+import { api } from "../src/lib/api";
 
 // MemoryRouter is required: the get-started panel links to /devices, and a bare render throws
 // "Cannot destructure property 'basename'" — which surfaced as an UNHANDLED ERROR rather than a clean
@@ -185,12 +206,20 @@ const show = () =>
   );
 
 beforeEach(() => {
+  window.localStorage.clear();
+  vi.mocked(api.GET).mockClear();
   overviewFail = false;
   edition = "enterprise";
   sitesFail = false;
   nodesFail = false;
   empty = false;
   preEnrolledGateway = false;
+  orgs = [{ id: "org-1", name: "Acme" }];
+  overviewReads = new Map();
+  zeroTrustResponse = { mode: "off" };
+  devicesResponse = [];
+  agentsResponse = { items: [], next_cursor: null };
+  inventoryResponses = new Map();
 });
 
 describe("the six cards resolve INDEPENDENTLY — one failure degrades one card", () => {
@@ -317,7 +346,7 @@ describe("the populated Overview consolidates operational state into four cards"
     expect(within(kubernetes).getByText("gitops-platform")).toBeTruthy();
     expect(within(kubernetes).getByText("payments")).toBeTruthy();
     expect(
-      within(kubernetes).getByRole("link", { name: /Open Kubernetes/ }),
+      within(infrastructure).getByRole("link", { name: /Open Kubernetes/ }),
     ).toBeTruthy();
   });
 });
@@ -455,5 +484,228 @@ describe("HA Hub Set un-reporting member rendering", () => {
     expect(
       screen.queryByRole("listitem", { name: /gw-a \(primary\): hs n\/a/i }),
     ).toBeNull();
+  });
+});
+
+describe("Overview scope and refresh boundaries", () => {
+  it("withdraws old tenant facts at every commit and ignores a superseded pending response", async () => {
+    orgs = [
+      { id: "org-1", name: "Acme" },
+      { id: "org-2", name: "Waiting organization" },
+      { id: "org-3", name: "Unavailable organization" },
+    ];
+    let resolveWaiting!: (result: OverviewResult) => void;
+    overviewReads.set("org-2", new Promise(resolve => { resolveWaiting = resolve; }));
+    overviewReads.set("org-3", { error: { code: "unavailable", message: "Unavailable" } });
+    let selectedOrg = "org-1";
+    const leakedCommits: boolean[] = [];
+    function ScopeControls() {
+      const { setOrg } = useOrg();
+      return <>{orgs.map(org => <button key={org.id} onClick={() => {
+        selectedOrg = org.id;
+        setOrg(org.id);
+      }}>Switch to {org.name}</button>)}</>;
+    }
+    render(<MemoryRouter><OrgProvider><AuthProvider><ScopeControls />
+      <Profiler id="overview-tenant" onRender={() => {
+        if (selectedOrg !== "org-1") leakedCommits.push(Boolean(screen.queryByRole("region", { name: "Fleet summary" }) || screen.queryByText("gitops-platform")));
+      }}><Dashboard /></Profiler>
+    </AuthProvider></OrgProvider></MemoryRouter>);
+    await screen.findByText("gitops-platform");
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Waiting organization" }));
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    expect(screen.queryByText("gitops-platform")).toBeNull();
+    await waitFor(() => {
+      const reads = vi.mocked(api.GET).mock.calls as Array<[string, { params?: { path?: { orgId?: string } } }?]>;
+      expect(reads.some(([path, request]) => path.endsWith("/overview") && request?.params?.path?.orgId === "org-2")).toBe(true);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Unavailable organization" }));
+    await screen.findByText("Could not load the overview.");
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    expect(screen.queryByText("Get started")).toBeNull();
+
+    await act(async () => resolveWaiting({ data: { ...OV(), members: 91, devices: 92 } }));
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    expect(screen.queryByText("91")).toBeNull();
+    expect(screen.getByText("Could not load the overview.")).toBeTruthy();
+    expect(leakedCommits.length).toBeGreaterThan(0);
+    expect(leakedCommits).not.toContain(true);
+  });
+
+  it("withdraws committed facts when the actor changes in the same organization", async () => {
+    let switchedActor = false;
+    const leakedCommits: boolean[] = [];
+    function ActorControls() {
+      const { state, setUser } = useAuth();
+      return <button onClick={() => {
+        if (state.status !== "authed") return;
+        switchedActor = true;
+        overviewReads.set("org-1", { error: { code: "forbidden", message: "Forbidden" } });
+        setUser({ ...state.user, id: "u2" });
+      }}>Switch actor</button>;
+    }
+    render(<MemoryRouter><OrgProvider><AuthProvider><ActorControls />
+      <Profiler id="overview-actor" onRender={() => {
+        if (switchedActor) leakedCommits.push(Boolean(screen.queryByRole("region", { name: "Fleet summary" }) || screen.queryByText("gitops-platform")));
+      }}><Dashboard /></Profiler>
+    </AuthProvider></OrgProvider></MemoryRouter>);
+    await screen.findByText("gitops-platform");
+    fireEvent.click(screen.getByRole("button", { name: "Switch actor" }));
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    await screen.findByText("Could not load the overview.");
+    expect(leakedCommits.length).toBeGreaterThan(0);
+    expect(leakedCommits).not.toContain(true);
+  });
+
+  it("refreshes a failed overview without retaining its error after recovery", async () => {
+    overviewFail = true;
+    show();
+    await screen.findByText("Could not load the overview.");
+    overviewFail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh overview" }));
+    const fleet = await screen.findByRole("region", { name: "Fleet summary" });
+    expect(within(fleet).getByText("4")).toBeTruthy();
+    expect(within(fleet).getByText("7")).toBeTruthy();
+    expect(screen.queryByText("Could not load the overview.")).toBeNull();
+  });
+
+  it("withdraws stale figures while refresh is pending, then exposes failure rather than old counts", async () => {
+    show();
+    await screen.findByText("gitops-platform");
+    let finishRefresh!: (result: OverviewResult) => void;
+    overviewReads.set("org-1", new Promise(resolve => { finishRefresh = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh overview" }));
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    expect(screen.queryByText("gitops-platform")).toBeNull();
+    await act(async () => finishRefresh({ error: { code: "unavailable", message: "Unavailable" } }));
+    await screen.findByText("Could not load the overview.");
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    expect(screen.queryByText("Get started")).toBeNull();
+  });
+
+  it("refreshes independently failed gateway and site sources after the API recovers", async () => {
+    sitesFail = true;
+    nodesFail = true;
+    show();
+    await screen.findByText("Gateway health is unavailable.");
+    expect(within(screen.getByRole("group", { name: "Sites" })).queryByText("0")).toBeNull();
+    sitesFail = false;
+    nodesFail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh overview" }));
+    await screen.findByRole("figure", { name: "Gateway health summary" });
+    await waitFor(() => expect(within(screen.getByRole("group", { name: "Sites" })).getByText("1")).toBeTruthy());
+    expect(screen.queryByText("Gateway health is unavailable.")).toBeNull();
+    expect(screen.queryByText("could not load")).toBeNull();
+  });
+
+  it.each([undefined, -1, Number.NaN, 1.5])("refuses an unreadable overview count (%s) instead of rendering a fleet", async members => {
+    overviewReads.set("org-1", { data: { ...OV(), members: members as number } });
+    show();
+    await screen.findByText("Could not load the overview.");
+    expect(screen.queryByRole("region", { name: "Fleet summary" })).toBeNull();
+    expect(screen.queryByText("Get started")).toBeNull();
+  });
+
+  it.each([null, {}, { mode: "unrecognized-mode" }])("does not infer disabled enforcement from an unreadable mode (%j)", async response => {
+    zeroTrustResponse = response;
+    show();
+    const rules = await screen.findByRole("group", { name: "Access Rules" });
+    expect(within(rules).getByText("0")).toBeTruthy();
+    expect(within(rules).queryByText(/not enforced|enforcing/i)).toBeNull();
+  });
+
+  it("qualifies a paginated agent count as loaded rather than claiming a full fleet total", async () => {
+    agentsResponse = {
+      items: [
+        { device_id: "a1", name: "First agent", status: "active", unattributable: false },
+        { device_id: "a2", name: "Second agent", status: "active", unattributable: false },
+      ],
+      next_cursor: "next-agent-page",
+    };
+    show();
+    const agents = await screen.findByRole("group", { name: "AI Agents" });
+    expect(within(agents).getByText("2+")).toBeTruthy();
+    expect(within(agents).getByText("Loaded agents")).toBeTruthy();
+    const reads = vi.mocked(api.GET).mock.calls as Array<[string, unknown?]>;
+    expect(reads.filter(([path]) => path.endsWith("/agents"))).toHaveLength(1);
+  });
+
+  it("keeps warn-mode posture failures and unreported OpenVPN liveness separate from passing devices", async () => {
+    devicesResponse = [
+      { id: "warn", name: "Warn device", status: "active", public_key: "wg-key", platform: "macos", online: true, health_state: "noncompliant", health_blocked: false },
+      { id: "ovpn", name: "OpenVPN device", status: "active", public_key: "", platform: "windows", online: true, health_state: "unknown", health_blocked: false },
+      { id: "revoked", name: "Revoked device", status: "revoked", public_key: "wg-key", platform: "macos", online: true, health_state: "compliant", health_blocked: false },
+    ];
+    show();
+    const connection = await screen.findByRole("figure", { name: "Peer connection status" });
+    const count = (scope: HTMLElement, label: string, expected: string) => {
+      const row = within(scope).getByText(label).closest("li");
+      expect(row && within(row).getByText(expected)).toBeTruthy();
+    };
+    count(connection, "Recent handshake", "1");
+    count(connection, "Liveness not reported", "1");
+    count(connection, "Revoked", "1");
+    const posture = screen.getByRole("figure", { name: "Device posture" });
+    count(posture, "Compliant", "0");
+    count(posture, "Noncompliant", "1");
+    count(posture, "Blocked", "0");
+    count(posture, "Unknown", "1");
+  });
+
+  it.each([
+    { suffix: "/nodes", message: "Gateway health is unavailable.", figure: "Gateway health summary", data: {} },
+    { suffix: "/devices", message: "Device health is unavailable.", figure: "Device posture", data: {} },
+    { suffix: "/nodes", message: "Gateway health is unavailable.", figure: "Gateway health summary", data: [null] },
+    { suffix: "/devices", message: "Device health is unavailable.", figure: "Device posture", data: [null] },
+  ])("treats an unreadable $suffix inventory as unavailable without affecting authoritative fleet counts", async ({ suffix, message, figure, data }) => {
+    inventoryResponses.set(suffix, data);
+    show();
+    await screen.findByText(message);
+    expect(screen.queryByRole("figure", { name: figure })).toBeNull();
+    expect(within(screen.getByRole("group", { name: "Members" })).getByText("4")).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Devices" })).getByText("7")).toBeTruthy();
+  });
+
+  it("keeps unreadable site inventory distinct from a confirmed empty network", async () => {
+    inventoryResponses.set("/sites", {});
+    show();
+    const sites = await screen.findByRole("group", { name: "Sites" });
+    await waitFor(() => expect(within(sites).getByText("could not load")).toBeTruthy());
+    expect(within(sites).queryByText("0")).toBeNull();
+    expect(screen.queryByText("Get started")).toBeNull();
+  });
+
+  it.each([
+    { generation: 1, members: {} },
+    { generation: 1, members: [null] },
+    { generation: 1, members: [{ node_id: "n1" }] },
+    { generation: 1, members: [{ node_id: "n1", role: "unreported-role" }] },
+  ])("does not turn an unreadable HA hub set into a missing configuration (%j)", async response => {
+    inventoryResponses.set("/hub-set", response);
+    show();
+    await screen.findByText("The hub set is unavailable.");
+    expect(screen.queryByText("No HA hub set. Pin two or more gateways to create one.")).toBeNull();
+  });
+
+  it("does not report zero Kubernetes services when that independent inventory is unreadable", async () => {
+    inventoryResponses.set("/k8s/services", {});
+    show();
+    await screen.findByText("Service inventory is unavailable.");
+    expect(screen.queryByRole("group", { name: "Kubernetes summary" })).toBeNull();
+    expect(within(screen.getByRole("group", { name: "Devices" })).getByText("7")).toBeTruthy();
+  });
+
+  it.each([
+    ["off", "not enforced"],
+    ["enforcing", "enforcing"],
+  ])("reports the saved %s enforcement mode without changing policy", async (mode, expected) => {
+    zeroTrustResponse = { mode };
+    show();
+    const rules = await screen.findByRole("group", { name: "Access Rules" });
+    expect(within(rules).getByText(expected)).toBeTruthy();
+    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.PATCH).not.toHaveBeenCalled();
+    expect(api.DELETE).not.toHaveBeenCalled();
   });
 });

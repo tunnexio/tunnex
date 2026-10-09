@@ -1,10 +1,14 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
-import { Badge, Button, Card, DataTable, Field, Input, Loading, Modal, Select } from "./ui";
+import { Badge, Button, Card, DataTable, Field, Input, Loading, Modal, Select, RefreshButton } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
 import { toast } from "./Toasts";
+import AppAccessRowMenu from "./AppAccessRowMenu";
+import AppAccessPagination from "./AppAccessPagination";
+import AppAccessEmptyState from "./AppAccessEmptyState";
 import "./ai-provider-workspace.css";
+import "./ai-gateway-access.css";
 
 type S = components["schemas"];
 type Workload = S["AIWorkload"];
@@ -37,6 +41,7 @@ function WorkloadsPanel({ orgId, canManage }: { orgId: string; canManage: boolea
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
   const [editor, setEditor] = useState<Workload | "new" | null>(null);
   const alive = useRef(true), generation = useRef(0);
   async function reload() {
@@ -63,25 +68,28 @@ function WorkloadsPanel({ orgId, canManage }: { orgId: string; canManage: boolea
   }, [orgId]);
   const selected = data?.workloads.find((w) => w.id === selectedId);
   const rows = data?.workloads.filter((w) => `${w.name} ${w.models.map((m) => m.model).join(" ")} ${stateLabel(w)}`.toLowerCase().includes(search.trim().toLowerCase())) ?? [];
-  return <section aria-label="Workload model access" className="space-y-5">
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)));
+  const visibleRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  return <section aria-label="Workload model access" className="ai-secondary-workspace space-y-5">
     {error && <p role="alert" className="ai-provider-alert">{error}</p>}
     {!canManage && <p className="text-sm text-ink-secondary">Read-only access. An AI administrator manages workloads and enrollment.</p>}
     {selected ? <WorkloadDetail key={`${orgId}:${selected.id}`} orgId={orgId} workload={selected} providers={data!.providers} canManage={canManage} refreshing={loading} onBack={() => setSelectedId("")} onEdit={() => setEditor(selected)} onRefresh={async () => { setError(""); await reload(); }} /> : <>
-      <div className="ai-provider-panel-heading">
-        <div><h2 className="text-title font-semibold text-ink-heading">Workloads</h2><p className="mt-1 text-sm text-ink-secondary">Model access for your applications and their replicas.</p></div>
-        <div className="flex flex-wrap gap-2"><Button disabled={loading || editor !== null} onClick={() => { setError(""); void reload(); }}>Refresh workloads</Button>{canManage && <Button disabled={!data || loading} onClick={() => setEditor("new")}>Create workload</Button>}</div>
+      <div className="ai-secondary-toolbar">
+        <Input aria-label="Search workloads" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Workload name or model" />
+        <div className="ai-secondary-actions"><RefreshButton label="Refresh workloads" disabled={loading || editor !== null} onClick={() => { setError(""); void reload(); }} />{canManage && <Button disabled={!data || loading} onClick={() => setEditor("new")}>Create workload</Button>}</div>
       </div>
-      <Card>
-        <div className="mb-4 max-w-md"><Field label="Search workloads"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Workload name or model" /></Field></div>
-        {loading ? <Loading label="Loading workloads…" /> : data && <DataTable caption="Workloads" rows={rows} rowKey={(w) => w.id} failed={false} filterable={false}
-          empty={data.workloads.length ? "No workloads match your search." : "No workloads yet. Create one, choose its models, then connect your application."}
+        {loading ? <Loading label="Loading workloads…" /> : data && <><DataTable caption="Workloads" rows={visibleRows} rowKey={(w) => w.id} failed={false} filterable={false} pageSize={0}
+          empty={<AppAccessEmptyState icon={null} title={data.workloads.length ? "No workloads match your search." : "No workloads yet"} description={data.workloads.length ? "Try another name or model." : "Create a workload, choose its models, then connect your application."} action={search ? <Button variant="ghost" onClick={() => { setSearch(""); setPage(1); }}>Clear search</Button> : undefined} />}
           columns={[
-            { key: "name", header: "Workload", sortValue: (w) => w.name, cell: (w) => <button className="text-left font-medium text-ink-heading underline decoration-ink-secondary underline-offset-4" aria-label={`Open ${w.name}`} onClick={() => setSelectedId(w.id)}>{w.name}</button> },
-            { key: "models", header: "Models", sortValue: (w) => w.models.length, cell: (w) => w.models.length },
-            { key: "state", header: "Access state", sortValue: stateLabel, cell: (w) => <Badge tone="neutral">{stateLabel(w)}</Badge> },
+            { key: "name", header: "Workload", cell: (w) => <button className="text-left font-medium text-ink-heading underline decoration-ink-secondary underline-offset-4" aria-label={`Open ${w.name}`} onClick={() => setSelectedId(w.id)}>{w.name}</button> },
+            { key: "models", header: "Models", cell: (w) => w.models.length },
+            { key: "state", header: "Access state", cell: (w) => <Badge tone="neutral">{stateLabel(w)}</Badge> },
             { key: "threshold", header: "Daily soft threshold", cell: (w) => w.daily_usd_threshold == null ? "None" : `$${w.daily_usd_threshold}` },
-          ]} />}
-      </Card>
+            { key: "actions", header: "Actions", cell: (w) => <AppAccessRowMenu label={`Actions for ${w.name}`} actions={[
+              { key: "view", label: "Connection details", disabledReason: loading ? "Wait for the inventory to finish loading." : undefined, onSelect: () => setSelectedId(w.id) },
+              ...(canManage ? [{ key: "edit", label: "Edit access", disabledReason: loading || editor !== null ? "Finish the current action first." : undefined, onSelect: () => setEditor(w) }] : []),
+            ]} /> },
+          ]} /><AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleRows.length} hasNext={currentPage * pageSize < rows.length} maxOffset={null} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /></>}
     </>}
     {editor && data && canManage && <WorkloadEditor orgId={orgId} workload={editor === "new" ? undefined : editor} providers={data.providers} onDismiss={() => setEditor(null)} onConflict={() => {
       if (!alive.current) return;
@@ -138,14 +146,14 @@ function WorkloadEditor({ orgId, workload, providers, onDismiss, onSaved, onConf
     finally { if (alive.current) setBusy(false); }
   }
   return <Modal title={workload ? "Edit workload access" : "Create workload"} placement="right" size="wide" showClose onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button type="button" disabled={busy} onClick={onDismiss}>Cancel</Button><Button type="submit" form={formId} disabled={busy || !valid}>{busy ? "Saving…" : workload ? "Save workload" : "Create workload"}</Button></>}>
-    <form id={formId} onSubmit={(event) => void save(event)} className="ai-provider-editor">
+    <form id={formId} onSubmit={(event) => void save(event)} className="ai-provider-editor ai-workload-editor">
       <Field label="Workload name"><Input autoFocus maxLength={100} required value={name} disabled={busy} placeholder="production/support-bot" onChange={(event) => setName(event.target.value)} /></Field>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => setEnabled(event.target.checked)} />Enable workload access</label>
       {!enabled && <p className="ai-provider-notice">Disabling blocks new enrollments and model calls, and permanently revokes every enrollment key. To connect new replicas, create new enrollment keys after re-enabling. Existing instances need fresh tokens; old tokens stay invalid. Accepted requests may finish.</p>}
       <fieldset className="space-y-3"><legend className="mb-2 text-sm font-semibold">Allowed configured models</legend><p className="text-xs text-ink-secondary">Choose up to 32 models across 8 credentials. Each model uses one credential. With none selected, model calls are denied.</p>
         <Field label="Search models"><Input value={search} disabled={busy} onChange={(event) => setSearch(event.target.value)} placeholder="Model ID or credential name" /></Field>
         <p className="text-xs text-ink-secondary">{models.length} / 32 models · {credentials.size} / 8 credentials</p>
-        <div className="ai-config-provider-options max-h-64 overflow-y-auto">{visibleChoices.map((m) => {
+        <div className="ai-workload-model-picker max-h-64 overflow-y-auto">{visibleChoices.map((m) => {
           const selected = models.find((v) => modelKey(v) === modelKey(m));
           const checked = !!selected;
           const currentMode = configuredMode(m) ?? m.mode;
@@ -178,6 +186,9 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
 }) {
   const tabs = ["Overview", "Enrollment keys", "Instances"] as const;
   const [tab, setTab] = useState<typeof tabs[number]>("Overview");
+  const [modelPage, setModelPage] = useState(1), [modelPageSize, setModelPageSize] = useState(20);
+  const [keyPage, setKeyPage] = useState(1), [keyPageSize, setKeyPageSize] = useState(20);
+  const [instancePage, setInstancePage] = useState(1), [instancePageSize, setInstancePageSize] = useState(20);
   const tabId = useId();
   const [keys, setKeys] = useState<S["AIWorkloadKeyPage"] | null>(null), [instances, setInstances] = useState<S["AIWorkloadInstancePage"] | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -236,18 +247,25 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
   const config = JSON.stringify({ server: window.location.origin, enrollment_key_file: "/run/secrets/tunnex/enrollment-key", state_directory: "/var/lib/tunnex-workload" }, null, 2) + "\n";
   const instructions = `Connect ${workload.name}\n\nProvision workload.json and the enrollment-key file as regular, non-symlink files with permissions 0600, owned by the application user. Each replica needs its own private writable state directory (0700); never share or image instance keys. If your deployment secret store provides symlinks, provision protected regular files before starting the CLI.\n\n${config}\n${command}\n\nPermitted configured models:\n${workload.models.map((m) => `${m.model} (${m.mode})`).join("\n")}\n\nUse a reusable enrollment key for autoscaling. Before expiry, create a replacement, update the provisioned secret, verify a fresh replica enrolls, then revoke the previous key. Revoking an enrollment key alone does not revoke existing instances. Disabling the workload permanently revokes every enrollment key; create replacement keys after re-enabling.\n`;
   const locked = busy || loading || refreshing || createKey || !!secret || !!revokeKey || !!revokeInstance;
-  return <section aria-label={`Connection details for ${workload.name}`} className="space-y-5">
-    <Button aria-label="Back to workloads" disabled={busy || createKey || !!secret || !!revokeKey || !!revokeInstance} onClick={onBack}>← Back to workloads</Button>
+  const currentModelPage = Math.min(modelPage, Math.max(1, Math.ceil(workload.models.length / modelPageSize)));
+  const currentKeyPage = Math.min(keyPage, Math.max(1, Math.ceil((keys?.items.length ?? 0) / keyPageSize)));
+  const currentInstancePage = Math.min(instancePage, Math.max(1, Math.ceil((instances?.items.length ?? 0) / instancePageSize)));
+  const visibleModels = workload.models.slice((currentModelPage - 1) * modelPageSize, currentModelPage * modelPageSize);
+  const visibleKeys = keys?.items.slice((currentKeyPage - 1) * keyPageSize, currentKeyPage * keyPageSize) ?? [];
+  const visibleInstances = instances?.items.slice((currentInstancePage - 1) * instancePageSize, currentInstancePage * instancePageSize) ?? [];
+  return <section aria-label={`Connection details for ${workload.name}`} className="ai-workload-detail">
+    <nav aria-label="Breadcrumb" className="ai-workload-breadcrumb"><button aria-label="Back to workloads" disabled={busy || createKey || !!secret || !!revokeKey || !!revokeInstance} onClick={onBack}>Workloads</button><span aria-hidden="true">/</span><span aria-current="page">{workload.name}</span></nav>
     <div className="ai-provider-panel-heading">
       <div className="min-w-0"><h2 className="break-words text-title font-semibold text-ink-heading">{workload.name}</h2><div className="mt-2"><Badge tone="neutral">{stateLabel(workload)}</Badge></div></div>
-      <div className="flex flex-wrap gap-2"><Button disabled={locked} onClick={() => void refresh()}>Refresh workload</Button>{canManage && <Button disabled={locked} onClick={onEdit}>Edit access</Button>}</div>
+      <div className="flex flex-wrap gap-2"><RefreshButton label="Refresh workload" disabled={locked} onClick={() => void refresh()} />{canManage && <Button disabled={locked} onClick={onEdit}>Edit access</Button>}</div>
     </div>
     {!workload.enabled && <p className="ai-provider-notice">This workload is disabled and its enrollment keys are permanently revoked. After re-enabling, create new enrollment keys for new replicas. Existing instances require fresh tokens.</p>}
     {workload.enabled && stateLabel(workload) !== "Applied" && <p className="ai-provider-notice">The saved policy is not applied. Model access is unavailable until provisioning succeeds. Use Refresh workload to check its state.</p>}
     {error && <p role="alert" className="ai-provider-alert">{error}</p>}
-    <div className="ai-provider-view-tabs" role="tablist" aria-label="Workload details">
+    <div className="ai-workload-layout">
+    <div className="ai-provider-view-tabs" role="tablist" aria-label="Workload details" aria-orientation="vertical">
       {tabs.map((label, index) => <button key={label} type="button" role="tab" id={`${tabId}-tab-${index}`} aria-controls={`${tabId}-panel-${index}`} aria-selected={tab === label} tabIndex={tab === label ? 0 : -1} onClick={() => setTab(label)} onKeyDown={(event) => {
-        const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+        const next = event.key === "ArrowRight" || event.key === "ArrowDown" ? (index + 1) % tabs.length : event.key === "ArrowLeft" || event.key === "ArrowUp" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
         if (next >= 0) { event.preventDefault(); setTab(tabs[next]); document.getElementById(`${tabId}-tab-${next}`)?.focus(); }
       }}>{label}</button>)}
     </div>
@@ -255,16 +273,17 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
       {tab === "Overview" && <>
         <Card>
           <div className="mb-4"><h3 className="font-semibold text-ink-heading">Model access</h3><p className="mt-1 text-sm text-ink-secondary">Every replica inherits these models.{workload.daily_usd_threshold != null && ` Daily soft threshold: $${workload.daily_usd_threshold}, shared across replicas.`}</p></div>
-          <DataTable caption="Allowed workload models" rows={workload.models} rowKey={modelKey} failed={false} filterable={false} empty="No models selected. Model calls are denied." columns={[
+          <DataTable caption="Allowed workload models" rows={visibleModels} rowKey={modelKey} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title="No models selected" description="Model calls are denied." />} columns={[
             { key: "model", header: "API model ID", cell: (m) => <code className="break-all text-xs">{m.model}</code> },
             { key: "credential", header: "Credential", cell: (m) => providers.find((p) => p.id === m.connection_id)?.name ?? "Unavailable credential" },
             { key: "mode", header: "Mode", cell: (m) => m.mode.replace(/_/g, " ") },
           ]} />
+          <AppAccessPagination page={currentModelPage} pageSize={modelPageSize} count={visibleModels.length} hasNext={currentModelPage * modelPageSize < workload.models.length} maxOffset={null} onPageChange={setModelPage} onPageSizeChange={(size) => { setModelPageSize(size); setModelPage(1); }} />
         </Card>
         <Card>
           <h3 className="font-semibold text-ink-heading">Connect application</h3>
           <p className="mt-1 text-sm text-ink-secondary">Create an enrollment key, download the configuration, then start your application with the Tunnex CLI.</p>
-          <div className="my-4 flex flex-wrap gap-2"><Button onClick={() => setTab("Enrollment keys")}>Manage enrollment keys</Button><Button onClick={() => download("workload.json", config)}>Download configuration</Button><Button onClick={() => download("workload-instructions.txt", instructions)}>Download instructions</Button></div>
+          <div className="my-4 flex flex-wrap gap-2"><Button onClick={() => setTab("Enrollment keys")}>Manage enrollment keys</Button><Button variant="ghost" onClick={() => download("workload.json", config)}>Download configuration</Button><Button variant="ghost" onClick={() => download("workload-instructions.txt", instructions)}>Download instructions</Button></div>
           <pre className="overflow-x-auto rounded-md border border-line bg-surface-inset p-3 text-xs text-ink-body">{command}</pre>
           <details className="mt-4 text-sm text-ink-secondary"><summary className="cursor-pointer text-ink-heading">Deployment setup</summary><div className="mt-3 space-y-3">
             <p>Provision configuration and enrollment secrets as regular files owned by the application user (0600). Give each replica its own private state directory (0700); never share or copy instance keys.</p>
@@ -276,14 +295,15 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
       {tab === "Enrollment keys" && <Card>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold text-ink-heading">Enrollment keys</h3><p className="mt-1 text-sm text-ink-secondary">Introduce new replicas. Existing instances keep their own credentials.</p></div>{canManage && <Button disabled={locked || !workload.enabled} onClick={() => setCreateKey(true)}>Create enrollment key</Button>}</div>
         {loading ? <Loading label="Loading enrollment keys…" /> : keys && <>
-          <DataTable caption="Enrollment keys" rows={keys.items} rowKey={(k) => k.id} failed={false} filterable={false} pageSize={0} empty="No enrollment keys yet." columns={[
-            { key: "name", header: "Name", cell: (k) => <><span className="font-medium text-ink-heading">{k.name}</span><code className="mt-1 block break-all text-xs text-ink-secondary">{k.id}</code></> },
+          <DataTable caption="Enrollment keys" rows={visibleKeys} rowKey={(k) => k.id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title="No enrollment keys yet." description="Create a key to enroll your application's replicas." />} columns={[
+            { key: "name", header: "Name", cell: (k) => <span className="font-medium text-ink-heading" title={k.id}>{k.name}</span> },
             { key: "type", header: "Type", cell: (k) => <>{k.reusable ? "Reusable" : "Single-use"}<span className="block text-xs text-ink-secondary">{k.ephemeral ? "Ephemeral instances" : "Durable instances"}</span></> },
             { key: "uses", header: "Uses", cell: (k) => `${k.uses} / ${k.max_uses === 0 ? "Unlimited" : k.max_uses}` },
             { key: "expiry", header: "Expires", cell: (k) => date(k.expires_at) },
             { key: "state", header: "State", cell: (k) => <Badge tone="neutral">{k.revoked_at ? "Revoked" : new Date(k.expires_at).getTime() <= Date.now() ? "Expired" : k.max_uses > 0 && k.uses >= k.max_uses ? "Exhausted" : "Active"}</Badge> },
-            ...(canManage ? [{ key: "actions", header: "Actions", cell: (k: EnrollmentKey) => <Button size="sm" variant="danger" disabled={busy || refreshing} aria-label={k.revoked_at ? `Revoke instances from ${k.name}` : `Revoke enrollment key ${k.name}`} onClick={() => { setRevokeInstances(!!k.revoked_at); setRevokeKey(k); }}>{k.revoked_at ? "Revoke instances" : "Revoke key"}</Button> }] : []),
+            ...(canManage ? [{ key: "actions", header: "Actions", cell: (k: EnrollmentKey) => <AppAccessRowMenu label={`Actions for enrollment key ${k.name}`} actions={[{ key: "revoke", label: k.revoked_at ? "Revoke instances" : "Revoke key", danger: true, disabledReason: busy || refreshing ? "Wait for the current action to finish." : undefined, onSelect: () => { setRevokeInstances(!!k.revoked_at); setRevokeKey(k); } }]} /> }] : []),
           ]} />
+          <AppAccessPagination page={currentKeyPage} pageSize={keyPageSize} count={visibleKeys.length} hasNext={currentKeyPage * keyPageSize < keys.items.length} maxOffset={null} busy={locked || moreKeys} onPageChange={setKeyPage} onPageSizeChange={(size) => { setKeyPageSize(size); setKeyPage(1); }} />
           {keys.next_cursor && <Button className="mt-3" disabled={moreKeys || busy} onClick={() => void nextKeys()}>{moreKeys ? "Loading keys…" : "Load more keys"}</Button>}
         </>}
         <details className="mt-4 text-sm text-ink-secondary"><summary className="cursor-pointer text-ink-heading">Rotate an enrollment key</summary><p className="mt-3">Before expiry, create a replacement key, update your deployment secret, verify a fresh replica, then revoke the old key. Total uses count successful enrollments, not active replicas.</p></details>
@@ -291,17 +311,19 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
       {tab === "Instances" && <Card>
         <div className="mb-4"><h3 className="font-semibold text-ink-heading">Instances</h3><p className="mt-1 text-sm text-ink-secondary">Each replica has its own identity. Offline reports contact state; revocation blocks its next authentication and request.</p></div>
         {loading ? <Loading label="Loading instances…" /> : instances && <>
-          <DataTable caption="Workload instances" rows={instances.items} rowKey={(i) => i.id} failed={false} filterable={false} pageSize={0} empty="Awaiting enrollment. No instances have joined this workload." columns={[
+          <DataTable caption="Workload instances" rows={visibleInstances} rowKey={(i) => i.id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title="No instances enrolled" description="Awaiting enrollment. No instances have joined this workload." />} columns={[
             { key: "id", header: "Instance", cell: (i) => <code className="break-all text-xs">{i.id}</code> },
             { key: "origin", header: "Enrollment key", cell: (i) => <>{keys?.items.find((k) => k.id === i.enrollment_key_id)?.name}<code className="mt-1 block break-all text-xs text-ink-secondary">{i.enrollment_key_id}</code></> },
             { key: "lifecycle", header: "Lifecycle", cell: (i) => i.ephemeral ? "Ephemeral" : "Durable" },
             { key: "state", header: "State", cell: (i) => <Badge tone="neutral">{i.state}</Badge> },
             { key: "contact", header: "Last authenticated contact", cell: (i) => date(i.last_contact_at) },
-            ...(canManage ? [{ key: "actions", header: "Actions", cell: (i: S["AIWorkloadInstance"]) => (i.state === "active" || i.state === "offline") ? <Button size="sm" variant="danger" disabled={busy || refreshing} aria-label={`Revoke instance ${i.id}`} onClick={() => setRevokeInstance(i)}>Revoke</Button> : null }] : []),
+            ...(canManage ? [{ key: "actions", header: "Actions", cell: (i: S["AIWorkloadInstance"]) => (i.state === "active" || i.state === "offline") ? <AppAccessRowMenu label={`Actions for instance ${i.id}`} actions={[{ key: "revoke", label: "Revoke instance", danger: true, disabledReason: busy || refreshing ? "Wait for the current action to finish." : undefined, onSelect: () => setRevokeInstance(i) }]} /> : null }] : []),
           ]} />
+          <AppAccessPagination page={currentInstancePage} pageSize={instancePageSize} count={visibleInstances.length} hasNext={currentInstancePage * instancePageSize < instances.items.length} maxOffset={null} busy={locked || moreInstances} onPageChange={setInstancePage} onPageSizeChange={(size) => { setInstancePageSize(size); setInstancePage(1); }} />
           {instances.next_cursor && <Button className="mt-3" disabled={moreInstances || busy} onClick={() => void nextInstances()}>{moreInstances ? "Loading instances…" : "Load more instances"}</Button>}
         </>}
       </Card>}
+    </div>
     </div>
     {createKey && canManage && <EnrollmentKeyEditor orgId={orgId} workloadId={workload.id} onDismiss={() => setCreateKey(false)} onCreated={(value) => { if (!alive.current) return; setSecret(value); setCreateKey(false); void reload(); }} />}
     {secret && canManage && <OneTimeSecretModal title="Save enrollment key" caption="Shown once. Deliver it through your deployment’s secret store. Never put it in command arguments, logs or an image." secret={secret.secret} downloadFilename="enrollment-key" copyLabel="Copy key" requireAck="I saved this key securely." onDismiss={() => setSecret(null)}><p className="mt-3 text-xs text-ink-secondary">{secret.key.name} · expires {date(secret.key.expires_at)}. The configuration references /run/secrets/tunnex/enrollment-key.</p></OneTimeSecretModal>}
@@ -337,7 +359,7 @@ function EnrollmentKeyEditor({ orgId, workloadId, onDismiss, onCreated }: { orgI
     } catch { if (alive.current) setError("Could not confirm key creation. Refresh enrollment keys before creating another."); }
     finally { if (alive.current) setBusy(false); }
   }
-  return <Modal title="Create enrollment key" placement="right" showClose onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button type="button" disabled={busy} onClick={onDismiss}>Cancel</Button><Button type="submit" form={formId} disabled={busy || !valid}>{busy ? "Creating…" : "Create key"}</Button></>}><form id={formId} onSubmit={(event) => void create(event)} className="space-y-4">
+  return <Modal title="Create enrollment key" placement="right" showClose onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button type="button" disabled={busy} onClick={onDismiss}>Cancel</Button><Button type="submit" form={formId} disabled={busy || !valid}>{busy ? "Creating…" : "Create key"}</Button></>}><form id={formId} onSubmit={(event) => void create(event)} className="ai-workload-key-editor space-y-4">
     <Field label="Key name"><Input maxLength={100} required value={name} disabled={busy} onChange={(event) => setName(event.target.value)} /></Field>
     <Field label="Enrollment type"><Select value={reusable ? "reusable" : "single"} disabled={busy} onChange={(event) => { const value = event.target.value === "reusable"; setReusable(value); setDays(value ? "30" : "1"); setName(value ? "Autoscaling deployment" : "Single instance"); }}><option value="reusable">Autoscaling deployment · reusable</option><option value="single">Single instance · one use</option></Select></Field>
     {reusable ? <><Field label="Validity in days"><Input type="number" min={1} max={90} step={1} required value={days} disabled={busy} onChange={(event) => setDays(event.target.value)} /></Field><Field label="Total enrollment limit (optional)"><Input type="number" min={0} step={1} value={maxUses} disabled={busy} placeholder="Unlimited" onChange={(event) => setMaxUses(event.target.value)} /></Field><p className="text-xs text-ink-secondary">Leave empty or use zero for unlimited successful enrollments during the key lifetime. This is not a concurrent replica limit.</p></> : <p className="text-sm">Expires in 24 hours and permits one successful enrollment. Use a reusable key for autoscaling.</p>}

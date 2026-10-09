@@ -1,53 +1,26 @@
 import "../network-workspaces.css";
 import "../devices-workspace.css";
-import { useEffect, useState, type FormEvent } from "react";
-import { useOrg } from "../lib/useOrg";
+import "../device-detail-workspace.css";
+import "../app-access-workspace.css";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { PRODUCT_NAME } from "../brand";
-import {
-  api,
-  apiErrorMessage,
-  type Device,
-  type Node,
-  type Org,
-} from "../lib/api";
+import { api, apiErrorMessage, loadOne, type Device, type Node } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { useOrg } from "../lib/useOrg";
 import { relativeAge } from "../lib/format";
-import {
-  defaultDeviceNode,
-  requiresGatewayChoice,
-  selectableNodes,
-} from "../lib/nodepick";
-import {
-  Badge,
-  Button,
-  DataTable,
-  ErrorText,
-  Field,
-  Input,
-  Loading,
-  Modal,
-  PageHeader,
-  Select,
-  StatusDot,
-} from "../components/ui";
+import { formatBytes } from "../lib/hubsetview";
+import { defaultDeviceNode, requiresGatewayChoice, selectableNodes } from "../lib/nodepick";
+import { Button, ErrorText, Field, Input, Loading, Modal, Select } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import { DevicesTabRail } from "../components/DevicesTabRail";
-import {
-  addressLabel,
-  applyDeviceFilter,
-  deviceFilterCounts,
-  deviceProtocol,
-  postureBadge,
-  postureFailureSummary,
-  posturePlatformSupported,
-  type DeviceFilter,
-} from "../lib/postureview";
-import {
-  exportCeremony,
-  shouldRenderQR,
-  type ExportKind,
-} from "../lib/deviceexport";
+import DevicesInventory from "../components/DevicesInventory";
+import { ResourceSummary } from "../components/ResourceSummary";
+import AppAccessRowMenu from "../components/AppAccessRowMenu";
+import { addressLabel, deviceProtocol, diskFactLabel, postureBadge, postureFailureSummary, posturePlatformSupported } from "../lib/postureview";
+import { exportCeremony, shouldRenderQR, type ExportKind } from "../lib/deviceexport";
 
 // lastSeen renders honest recency ("last seen 42s ago"), never a faked live claim
 // — WireGuard only knows the last handshake time (online is derived from it). The
@@ -70,453 +43,286 @@ export function deviceModeLabel(fullTunnel?: boolean): string {
 }
 
 export default function Devices() {
-  // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
-  // fetched itself, which is what made a second organization unreachable.
-  const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
-  const [org, setOrg] = useState<Org | null>(null);
+  const { org } = useOrg();
+  const { state } = useAuth();
+  const actor = state.status === "authed" ? state.user.id + ":" + state.user.email_verified : state.status;
+  return <DevicesWorkspace key={(org?.id ?? "no-organization") + ":" + actor} />;
+}
+
+type DeviceAction = "revoke" | "remove";
+type DeviceStage = "overview" | "connection" | "posture";
+
+function DevicesWorkspace() {
+  const { state } = useAuth();
+  const emailVerified = state.status === "authed" && state.user.email_verified;
+  const { org, loading: orgLoading, failed: orgFailed } = useOrg();
   const [nodes, setNodes] = useState<Node[]>([]);
+  const [nodesLoading, setNodesLoading] = useState(true);
+  const [nodesError, setNodesError] = useState<string | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [inspectedId, setInspectedId] = useState<string | null>(null);
-  const inspected = devices.find(device => device.id === inspectedId);
   const [devicesLoading, setDevicesLoading] = useState(true);
+  const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [devicesLoadError, setDevicesLoadError] = useState<string | null>(null);
-  // OWNER sub-line. A SECOND-CLASS read: `Device` serves `user_id` and no email, so the roster supplies the
-  // label. An empty map means the sub-line is simply absent — never an id, never "unknown owner".
   const [ownerEmail, setOwnerEmail] = useState<Map<string, string>>(new Map());
-  // ⛔ CLIENT-SIDE FILTER over rows ALREADY LOADED — no new request, no server round-trip, and the counts come
-  // from the SAME array the table renders so the chip and the table can never disagree.
-  const [filter, setFilter] = useState<DeviceFilter>("all");
-  const counts = deviceFilterCounts(devices);
-  const shown = applyDeviceFilter(devices, filter);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [stage, setStage] = useState<DeviceStage>("overview");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ action: DeviceAction; devices: Device[] } | null>(null);
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [nodeId, setNodeId] = useState("");
   const [fullTunnel, setFullTunnel] = useState(false);
-  // ⛔ S14.21b: the operator's gateway choice. Empty means "not chosen yet", which is DIFFERENT from
-  // "no gateway available" — the form renders those two as different sentences.
-  const [nodeId, setNodeId] = useState<string>("");
-  // The one-time export secret (a WireGuard .conf or an OpenVPN .ovpn) + which kind it is (so the
-  // ceremony renders a QR for WG only). Cleared on dismiss — never re-fetched (D2).
+  const [kind, setKind] = useState<ExportKind>("wireguard");
+  const [createError, setCreateError] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [secretKind, setSecretKind] = useState<ExportKind>("wireguard");
-  // WF-OVPN-5: an exported profile for a device that enrolled PENDING (enterprise device approval) is a
-  // working-LOOKING file that cannot connect until an admin approves — the reassuring-success trap. Surface
-  // it at issuance (the export response already carries the device status).
   const [pendingExport, setPendingExport] = useState(false);
-  // The device transport the user is creating. OpenVPN is offered ONLY when the org has opted in
-  // (D-S9.5-OPTIN(a): absent, not disabled — no dead affordance).
-  const [kind, setKind] = useState<ExportKind>("wireguard");
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
-  // ⛔ THE DIALOG'S OWN ERROR. A create failure was written to the PAGE-level error, which renders behind
-  // the modal — the operator sees a dialog that did nothing, with the explanation on the obscured page. A
-  // message about a dialog belongs in the dialog.
-  const [createError, setCreateError] = useState<string | null>(null);
+  const alive = useRef(true);
+  const readEpoch = useRef(0);
+  const nodeEpoch = useRef(0);
+  const mutation = useRef(false);
+  const ready = useRef(false);
+  const gatewayReady = useRef(false);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const stageHeading = useRef<HTMLHeadingElement>(null);
+  const snapshot = useRef(devices);
+  snapshot.current = devices;
+  const inspected = devices.find(device => device.id === inspectedId);
   const ovpnEnabled = org?.ovpn_enabled === true;
+  const orgId = org?.id ?? "";
 
-  async function loadDevices(orgId: string) {
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; readEpoch.current++; nodeEpoch.current++; ready.current = false; gatewayReady.current = false; };
+  }, []);
+
+  const loadDevices = useCallback(async () => {
+    if (!orgId) return;
+    const attempt = ++readEpoch.current;
+    ready.current = false;
     setDevicesLoading(true);
     setDevicesLoadError(null);
-    const { data, error } = await api.GET(
-      "/api/v1/organizations/{orgId}/devices",
-      { params: { path: { orgId } } },
-    );
-    if (error) {
-      setDevicesLoadError(apiErrorMessage(error, "Could not load devices."));
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices", { params: { path: { orgId } } }));
+    if (!alive.current || attempt !== readEpoch.current) return;
+    if (!result.ok || !Array.isArray(result.data)) {
+      setDevicesLoadError(result.ok ? "The server did not return a device inventory." : result.error);
       setDevicesLoading(false);
       return;
     }
-    setDevices(data ?? []);
+    const current = result.data as Device[];
+    snapshot.current = current;
+    setDevices(current);
+    ready.current = true;
+    setDevicesLoaded(true);
     setDevicesLoading(false);
-    // Fired after the devices land, awaited separately: a failed roster read degrades the OWNER sub-line and
-    // nothing else. The device list is this screen's subject; the owner's email is a courtesy.
-    const m = await api.GET("/api/v1/organizations/{orgId}/members", {
-      params: { path: { orgId } },
-    });
-    if (!m.error && m.data)
-      setOwnerEmail(
-        new Map(
-          (m.data as Array<{ user_id: string; email?: string }>)
-            .filter((x) => x.email)
-            .map((x) => [x.user_id, x.email as string]),
-        ),
-      );
+    setOwnerEmail(new Map());
+    // Owner labels are optional; a failed roster does not turn a loaded fleet into an error.
+    const members = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId } } }));
+    if (!alive.current || attempt !== readEpoch.current) return;
+    if (members.ok && Array.isArray(members.data)) {
+      setOwnerEmail(new Map(members.data.filter(member => member.email).map(member => [member.user_id, member.email])));
+    }
+  }, [orgId]);
+
+  const loadNodes = useCallback(async () => {
+    if (!orgId) return;
+    const attempt = ++nodeEpoch.current;
+    gatewayReady.current = false;
+    setNodesLoading(true);
+    setNodesError(null);
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/nodes", { params: { path: { orgId } } }));
+    if (!alive.current || attempt !== nodeEpoch.current) return;
+    if (!result.ok || !Array.isArray(result.data)) {
+      setNodes([]);
+      setNodesError(result.ok ? "The server did not return the gateway list." : result.error);
+      setNodesLoading(false);
+      return;
+    }
+    setNodes(result.data as Node[]);
+    gatewayReady.current = true;
+    setNodesLoading(false);
+  }, [orgId]);
+
+  useEffect(() => { void loadDevices(); void loadNodes(); }, [loadDevices, loadNodes]);
+  useEffect(() => { if (!ovpnEnabled) setKind("wireguard"); }, [ovpnEnabled]);
+  useEffect(() => { if (inspectedId) detailHeading.current?.focus(); }, [inspectedId]);
+  useEffect(() => { if (inspectedId) stageHeading.current?.focus(); }, [stage]);
+
+  function requestAction(action: DeviceAction, targets: Device[]) {
+    if (!emailVerified || !alive.current || mutation.current || !ready.current || !targets.length) return;
+    const current = targets.map(target => snapshot.current.find(device => device.id === target.id));
+    if (current.some(device => !device || (action === "revoke" ? device.status !== "active" : device.status !== "revoked"))) {
+      setError("The selected device state changed. Refresh the list before trying again.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setConfirmation({ action, devices: current as Device[] });
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  async function decide() {
+    if (!emailVerified || !alive.current || mutation.current || !ready.current || !confirmation || !orgId) return;
+    const { action, devices: targets } = confirmation;
+    if (targets.some(target => !snapshot.current.some(device => device.id === target.id && device.status === target.status && (action === "revoke" ? device.status === "active" : device.status === "revoked")))) {
+      setConfirmation(null);
+      setError("The selected device state changed. Review the current list before trying again.");
+      return;
+    }
+    mutation.current = true;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const results = await Promise.all(targets.map(async device => {
       try {
-        // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
-        // OrgProvider reads the list once for the whole shell; a page that re-fetched it would not merely
-        // waste a request, it would pick an org the switcher has no way to change.
-        const orgErr = null;
-        if (cancelled) return;
-        if (orgErr) {
-          setError(
-            apiErrorMessage(orgErr, "Could not load your organizations."),
-          );
-          return;
-        }
-        // ⛔ LOADING IS NOT ABSENCE (S12.5). The provider resolves the org list asynchronously, so this
-        // effect runs once with currentOrg === null before the answer exists. Treating that as "you have no
-        // organization" renders a confident, false statement — and because the second pass only sets the
-        // data, the stale error stayed on screen BESIDE the correct org name.
-        //
-        // ⚠ THREE STATES, NOT TWO: still loading (say nothing), the read failed (say THAT), genuinely no
-        // membership (say that). Collapsing the first into the third is how a slow network becomes an
-        // accusation that the user does not belong here.
-        if (orgLoading) return;
-        const first = currentOrg;
-        if (!first) {
-          setError(
-            orgFailed
-              ? "Could not load your organizations."
-              : "You are not a member of any organization yet.",
-          );
-          return;
-        }
-        setOrg(first);
-        setDevicesLoading(true);
-        setDevicesLoadError(null);
-        const { data: ns, error: nodeErr } = await api.GET(
-          "/api/v1/organizations/{orgId}/nodes",
-          {
-            params: { path: { orgId: first.id } },
-          },
-        );
-        if (cancelled) return;
-        if (nodeErr) {
-          setError(apiErrorMessage(nodeErr, "Could not load gateway nodes."));
-          return;
-        }
-        setNodes(ns ?? []);
-        if (!cancelled) await loadDevices(first.id);
+        const result = action === "revoke"
+          ? await api.POST("/api/v1/organizations/{orgId}/devices/{deviceId}/revoke", { params: { path: { orgId, deviceId: device.id } } })
+          : await api.DELETE("/api/v1/organizations/{orgId}/devices/{deviceId}", { params: { path: { orgId, deviceId: device.id } } });
+        return { device, error: result.error ? apiErrorMessage(result.error, "Could not " + action + " the device.") : null };
       } catch {
-        if (!cancelled) setError("Could not reach the API.");
+        return { device, error: "Could not confirm " + (action === "revoke" ? "revocation" : "removal") + ". Refresh its state before trying again." };
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // ⛔ currentOrg IS A DEPENDENCY, AND ITS ABSENCE WAS A REAL BUG THE TESTS CAUGHT (S12.5).
-    //
-    // The provider resolves the org list ASYNCHRONOUSLY, so on this effect's first run `currentOrg` is still
-    // null. With `[]` deps the effect never ran again: the page rendered "You are not a member of any
-    // organization yet" — a confident, wrong statement — and stayed there forever, for every user.
-    //
-    // ⚠ THE SAME DEPENDENCY ALSO MAKES THE SWITCHER WORK. One line, two properties: without it the page
-    // either never loads at all, or loads once and then lies about which tenant it is showing.
-  }, [currentOrg]);
+    }));
+    if (!alive.current) return;
+    const failed = results.filter(result => result.error);
+    const succeeded = results.length - failed.length;
+    const verb = action === "revoke" ? "revoked" : "removed";
+    setConfirmation(null);
+    if (failed.length) setError(succeeded + " of " + results.length + " devices " + verb + ". " + failed.map(result => result.device.name + ": " + result.error).join(" "));
+    else setNotice(succeeded + " device" + (succeeded === 1 ? "" : "s") + " " + verb + ".");
+    if (action === "remove" && results.some(result => !result.error && result.device.id === inspectedId)) setInspectedId(null);
+    await loadDevices();
+    mutation.current = false;
+    if (alive.current) setBusy(false);
+  }
 
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    // ⛔ S13.1 — RE-APPLIED ACROSS THE EPIC 14 REWRITE. The target gateway is chosen by ONE rule
-    // (lib/nodepick), which excludes REVOKED gateways. This was `nodes[0]`, indexing a list that
-    // includes revoked rows ordered by created_at — so on any deployment whose oldest gateway had
-    // been revoked, every new device was homed on a dead one and handed a one-time config that
-    // could never connect. Refusing beats falling back: a one-time secret cannot be re-issued.
-    //
-    // ⚠ THE REWRITE ADDED A THIRD CALL SITE. The fix was written against two; `main` now has three,
-    // and a conflict resolution that took either side wholesale would have dropped it silently.
-    // ⛔ S14.21b: the CHOSEN gateway wins; the default applies only when there is exactly one.
-    // `defaultDeviceNode` returns null when several are eligible — it will not pick for the operator,
-    // because nothing in the payload lets it pick correctly (see lib/nodepick).
-    const chosen = selectableNodes(nodes).find((n) => n.id === nodeId);
-    const target = chosen ?? defaultDeviceNode(nodes);
-    if (!org || !target) return;
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    const target = selectableNodes(nodes).find(node => node.id === nodeId) ?? defaultDeviceNode(nodes);
+    if (!emailVerified || !alive.current || mutation.current || !gatewayReady.current || !orgId || !target || (kind === "openvpn" && !ovpnEnabled)) return;
+    mutation.current = true;
     setBusy(true);
     setCreateError(null);
     setSecret(null);
-    if (kind === "openvpn") {
-      // OpenVPN export: mint an OVPN device + its one-time .ovpn (opt-in gated server-side).
-      const { data, error } = await api.POST(
-        "/api/v1/organizations/{orgId}/ovpn-profiles",
-        {
-          params: { path: { orgId: org.id } },
-          body: { name, node_id: target.id, full_tunnel: fullTunnel },
-        },
-      );
-      setBusy(false);
-      if (error || !data) {
-        setCreateError(
-          apiErrorMessage(error, "Could not create the OpenVPN profile."),
-        );
+    try {
+      const result = kind === "openvpn"
+        ? await api.POST("/api/v1/organizations/{orgId}/ovpn-profiles", { params: { path: { orgId } }, body: { name, node_id: target.id, full_tunnel: fullTunnel } })
+        : await api.POST("/api/v1/organizations/{orgId}/devices", { params: { path: { orgId } }, body: { name, node_id: target.id, full_tunnel: fullTunnel, provisioning: "static" } });
+      if (!alive.current) return;
+      if (result.error) {
+        setCreateError(apiErrorMessage(result.error, kind === "openvpn" ? "Could not create the OpenVPN profile." : "Could not create the device."));
         return;
       }
+      if (!result.data) {
+        setCreateError("Could not confirm device creation. Its one-time configuration was not returned. Refresh the device list before trying again.");
+        await loadDevices();
+        return;
+      }
+      const data = result.data;
+      const exported = "profile" in data ? data.profile : data.config;
+      if (typeof exported !== "string" || !exported) {
+        setCreateError(data.device?.id ? "The device was created, but its one-time configuration was not returned. Refresh the device list before trying again." : "Could not confirm device creation or retrieve its one-time configuration. Refresh the device list before trying again.");
+        await loadDevices();
+        return;
+      }
+      setCreating(false);
       setName("");
-      setSecretKind("openvpn");
-      setPendingExport(data.device?.status === "pending"); // WF-OVPN-5: warn if it won't connect until approved
-      setSecret(data.profile); // shown once — the client key is never re-served
-      await loadDevices(org.id);
-      return;
+      setSecretKind(kind);
+      setPendingExport(data.device?.status === "pending");
+      setSecret(exported);
+      await loadDevices();
+    } catch {
+      if (alive.current) setCreateError("Could not confirm device creation. Refresh the device list before trying again.");
+    } finally {
+      mutation.current = false;
+      if (alive.current) setBusy(false);
     }
-    // WireGuard export: a web download/QR is a STATIC export (its client can't poll routed ranges),
-    // so provisioning="static" bakes the approved ranges + DNS (Part-2) and records the snapshot.
-    const { data, error } = await api.POST(
-      "/api/v1/organizations/{orgId}/devices",
-      {
-        params: { path: { orgId: org.id } },
-        body: {
-          name,
-          node_id: target.id,
-          full_tunnel: fullTunnel,
-          provisioning: "static",
-        },
-      },
-    );
-    setBusy(false);
-    if (error || !data) {
-      setCreateError(apiErrorMessage(error, "Could not create the device."));
-      return;
-    }
-    setCreating(false);
-    setName("");
-    setSecretKind("wireguard");
-    setSecret(data.config ?? null); // shown once — the private key is never re-served
-    await loadDevices(org.id);
-  }
-
-  async function revoke(id: string) {
-    if (!org) return;
-    setError(null);
-    const { error } = await api.POST(
-      "/api/v1/organizations/{orgId}/devices/{deviceId}/revoke",
-      {
-        params: { path: { orgId: org.id, deviceId: id } },
-      },
-    );
-    if (error) {
-      setError(apiErrorMessage(error, "Could not revoke the device."));
-      return;
-    }
-  }
-
-  /**
-   * ⛔ REMOVE IS NOT REVOKE, AND THE ORDER MATTERS. Revoke kills the credential; remove takes the dead row
-   * off the roster. The server refuses to remove anything that is not already revoked, because removing a
-   * LIVE device would leave a working credential with no surface to revoke it from.
-   *
-   * ⚠ AND IT IS A SOFT DELETE SERVER-SIDE — the revocation record and the OpenVPN CRL entry survive. A hard
-   * delete would cascade into `ovpn_client_certs` and drop the serial out of the CRL, un-revoking the
-   * credential on the wire.
-   */
-  async function remove(id: string) {
-    if (!org) return;
-    setError(null);
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/devices/{deviceId}",
-      { params: { path: { orgId: org.id, deviceId: id } } },
-    );
-    if (error) {
-      setError(apiErrorMessage(error, "Could not remove the device."));
-      return;
-    }
-  }
-
-  /**
-   * ⛔ ONE REFETCH AFTER THE BATCH, NOT ONE PER ROW — this is the "I have to reload the page" defect.
-   *
-   * Each mutation used to refetch on its own, so a bulk action on N rows fired N identical GETs
-   * CONCURRENTLY. They resolve in arbitrary order and the LAST to land wins — which may be a snapshot taken
-   * before the later mutations committed. The list then shows a state that was briefly true and is not any
-   * more, and the only way out is a manual reload.
-   *
-   * > **N CONCURRENT READS OF A CHANGING RESOURCE DO NOT CONVERGE ON THE NEWEST ONE.** They converge on
-   * > whichever the network happened to deliver last.
-   *
-   * ⚠ THE SELECTION IS DELIBERATELY *NOT* CLEARED. It self-corrects: once the rows are approved, `Approve`
-   * reports "only a device awaiting approval can be approved" and disables itself. Force-clearing would mean
-   * remounting the table, which would also discard the operator's filter, sort and page — throwing away
-   * three things to fix one that was not broken.
-   */
-  async function runBatch(fn: () => Promise<unknown>) {
-    await fn();
-    if (org) await loadDevices(org.id);
   }
 
   function download() {
     if (!secret) return;
-    // The private key is served exactly once, so this download must not fail:
-    // the anchor is attached to the DOM (Firefox ignores clicks on detached
-    // anchors) and the object URL is revoked on the next tick (not synchronously,
-    // which can abort the save before the browser reads the Blob).
     const url = URL.createObjectURL(new Blob([secret], { type: "text/plain" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${PRODUCT_NAME}.${exportCeremony(secretKind).ext}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = PRODUCT_NAME + "." + exportCeremony(secretKind).ext;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
-  return (
-    <div className="network-management devices-workspace">
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "14px" }}>
-        <div style={{ flex: 1 }}>
-          <PageHeader
-            title="Devices"
-            subtitle={org ? `${org.name} · Remote-access VPN` : "Remote-access VPN"}
-          />
-        </div>
-        {/* ⛔ THE CREATE FORM MOVES INTO A MODAL, matching Add rule. Inline, it was a permanently-open
-            four-control card sitting between the page title and the roster — the roster is what this screen
-            is FOR, and it began below a form most visits do not use. A trigger costs one click on the rare
-            visit and gives the list the top of the page on every other one. */}
-        <Button
-          onClick={() => {
-            setCreateError(null);
-            setCreating(true);
-          }}
-        >
-          Add device
-        </Button>
+  function inspect(id: string) { if (ready.current && !mutation.current) { setInspectedId(id); setStage("overview"); } }
+  const deviceActions = inspected && emailVerified ? [
+    { key: "revoke", label: "Revoke", danger: true, disabledReason: busy || devicesLoading ? "Wait for the current request." : inspected.status === "active" ? null : "A " + inspected.status + " device cannot be revoked.", onSelect: () => requestAction("revoke", [inspected]) },
+    { key: "remove", label: "Remove", danger: true, disabledReason: busy || devicesLoading ? "Wait for the current request." : inspected.status === "revoked" ? null : "Only a revoked device can be removed. Revoke it first.", onSelect: () => requestAction("remove", [inspected]) },
+  ] : [];
+
+  if (orgLoading) return <div className="devices-workspace"><Loading label="Loading your organization…" /></div>;
+  if (!org) return <div className="devices-workspace"><ErrorText>{orgFailed ? "Could not load your organizations." : "You are not a member of any organization yet."}</ErrorText></div>;
+
+  const detailFooter = <div className="device-detail-footer"><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to devices</Button></div>;
+  return <div className="network-management devices-workspace devices-management">
+    <h1 className="sr-only">Devices</h1>
+    <DevicesTabRail actions={emailVerified ? <Button disabled={nodesLoading || Boolean(nodesError) || busy} onClick={() => { setCreateError(null); setCreating(true); }}>Add device</Button> : undefined} />
+    <ErrorText>{error}</ErrorText>
+    {notice && <p role="status" className="device-action-notice">{notice}</p>}
+    {devicesLoading && <Loading label="Loading devices…" />}
+    {devicesLoadError && <LoadRetry error={devicesLoadError} onRetry={loadDevices} />}
+    {nodesError && <LoadRetry error={nodesError} onRetry={loadNodes} />}
+    {devicesLoaded && <div hidden={devicesLoading || Boolean(devicesLoadError) || inspectedId !== null}>
+      <DevicesInventory canMutate={emailVerified} devices={devices} nodes={nodes} ownerEmail={ownerEmail} busy={busy || devicesLoading} lastSeenLabel={device => lastSeen(device.last_handshake_at, !!device.public_key)} onInspect={inspect} onRequestAction={requestAction} onRefresh={() => { void loadDevices(); void loadNodes(); }} />
+    </div>}
+    {inspectedId && !devicesLoading && !devicesLoadError && (inspected ? <section className="device-detail" aria-label={inspected.name}>
+      <nav aria-label="Breadcrumb" className="device-breadcrumb"><button type="button" onClick={() => setInspectedId(null)}>Devices</button><span aria-hidden="true">/</span><span>{inspected.name}</span></nav>
+      <header className="device-detail-header"><div><h2 ref={detailHeading} tabIndex={-1}>{inspected.name}</h2><p>{inspected.platform || "Platform not reported"} · {deviceProtocol(inspected.public_key)} · {inspected.status}</p></div><AppAccessRowMenu label={"Device actions for " + inspected.name} actions={deviceActions} /></header>
+      <div className="device-detail-layout">
+        <nav aria-label="Device detail sections" className="device-detail-path">{(["overview", "connection", "posture"] as DeviceStage[]).map(value => <button key={value} type="button" aria-current={stage === value ? "step" : undefined} onClick={() => setStage(value)}>{value === "overview" ? "Overview" : value === "connection" ? "Connection" : "Posture"}</button>)}</nav>
+        <section className="device-detail-stage" aria-labelledby="device-stage-heading"><h3 className="sr-only" ref={stageHeading} tabIndex={-1} id="device-stage-heading">{stage === "overview" ? "Overview" : stage === "connection" ? "Connection" : "Posture"}</h3>
+          {stage === "overview" && <ResourceSummary title="Device settings" footer={detailFooter}><DeviceFacts summary facts={[
+            ["Owner", ownerEmail.get(inspected.user_id) ?? inspected.owner_email ?? "Owner record unavailable"],
+            ["Lifecycle", inspected.status],
+            ["Platform", inspected.platform || "Not reported"],
+            ["Enrolled", displayTime(inspected.created_at)],
+            ["Address", addressLabel(inspected.assigned_ip)],
+          ]} /><details className="device-detail-disclosure"><summary>Device identity</summary><DeviceFacts summary facts={[["Device ID", inspected.id], ["Gateway ID", inspected.node_id], ["Owner ID", inspected.user_id]]} /></details></ResourceSummary>}
+          {stage === "connection" && <ResourceSummary title="Connection settings" footer={detailFooter}><DeviceFacts summary facts={[
+            ["Gateway", nodes.find(node => node.id === inspected.node_id)?.name || "Gateway record unavailable"],
+            ["Address", addressLabel(inspected.assigned_ip)],
+            ["Protocol", deviceProtocol(inspected.public_key)],
+            ["Routing", deviceModeLabel(inspected.full_tunnel)],
+            ["Last activity", inspected.status === "active" ? inspected.public_key ? lastSeen(inspected.last_handshake_at) : "liveness not reported" : "Not evaluated for " + inspected.status + " devices"],
+            ["Received", inspected.rx_bytes === undefined ? "Not reported" : formatBytes(inspected.rx_bytes)],
+            ["Sent", inspected.tx_bytes === undefined ? "Not reported" : formatBytes(inspected.tx_bytes)],
+          ]} />{inspected.status === "pending" && <p className="device-stage-note">Waiting for enrollment approval before connecting. <Link to="/devices/approvals">Review approvals</Link></p>}{inspected.status === "active" && inspected.needs_reexport && <p className="device-stage-warning">Re-export needed. The issued configuration no longer matches current network settings.</p>}{inspected.status === "active" && inspected.health_blocked && <p className="device-stage-warning">Access is blocked by posture checks.</p>}</ResourceSummary>}
+          {stage === "posture" && <ResourceSummary title="Posture report" footer={detailFooter}><DeviceFacts summary facts={[
+            ["Evaluation", inspected.status !== "active" ? "Not evaluated for " + inspected.status + " devices" : !posturePlatformSupported(inspected.platform) ? "Not supported" : postureBadge(inspected)?.label ?? "No posture evaluation reported"],
+            ["Last report", displayTime(inspected.health_reported_at)],
+            ["Reported OS", inspected.health_os_version || "Not reported"],
+            ["Disk encryption", diskFactLabel(inspected.health_disk_encrypted)],
+          ]} />{inspected.status === "active" && postureFailureSummary(inspected.health_failed_checks) && <p className="device-stage-warning">{postureFailureSummary(inspected.health_failed_checks)}</p>}<p className="device-stage-note">These checks use the device’s latest client report.</p></ResourceSummary>}
+        </section>
       </div>
-      <DevicesTabRail />
-      {inspected && <Modal title={inspected.name} size="wide" onDismiss={() => setInspectedId(null)} actions={<Button variant="ghost" onClick={() => setInspectedId(null)}>Close</Button>}>
-        <dl className="device-detail-facts">{[
-          ["Owner", ownerEmail.get(inspected.user_id) ?? "Owner record unavailable"],
-          ["Lifecycle", inspected.status],
-          ["Address", addressLabel(inspected.assigned_ip)],
-          ["Protocol", deviceProtocol(inspected.public_key)],
-          ["Routing", deviceModeLabel(inspected.full_tunnel)],
-          ["Last handshake", lastSeen(inspected.last_handshake_at, !!inspected.public_key)],
-          ["Platform", inspected.platform || "Not reported"],
-          ["Posture", inspected.status === "revoked" ? "Not evaluated for revoked devices" : !posturePlatformSupported(inspected.platform) ? "Not supported" : postureBadge(inspected)?.label ?? "Not reported"],
-        ].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-        {inspected.status === "pending" && <a className="network-setup-link mt-4" href="/devices/approvals">Review device approvals →</a>}
-        {postureFailureSummary(inspected.health_failed_checks) && <p className="mt-4 text-sm text-warn">{postureFailureSummary(inspected.health_failed_checks)}</p>}
-      </Modal>}
+    </section> : <section className="device-detail-missing"><h2>Device no longer listed</h2><p>This device is absent from the current inventory.</p><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to devices</Button></section>)}
 
-      <ErrorText>{error}</ErrorText>
+    {confirmation && <Modal placement="right" title={(confirmation.action === "revoke" ? "Revoke" : "Remove") + " device" + (confirmation.devices.length === 1 ? "?" : "s?")} danger onDismiss={() => { if (!busy) setConfirmation(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant="danger" disabled={busy || !ready.current} onClick={() => void decide()}>{busy ? "Applying…" : confirmation.action === "revoke" ? "Revoke device" : "Remove device"}</Button></>}>
+      <div className="device-confirmation"><p>{confirmation.action === "revoke" ? "Disconnect these devices and invalidate their credentials. To connect again, enroll a new device." : "Remove these revoked devices from the inventory. Their credentials remain revoked."}</p><ul>{confirmation.devices.map(device => <li key={device.id}><strong>{device.name}</strong><span>{ownerEmail.get(device.user_id) ?? device.owner_email ?? "Owner record unavailable"} · {addressLabel(device.assigned_ip)}</span></li>)}</ul></div>
+    </Modal>}
 
-      {creating && (
-        <Modal
-          title="Add device"
-          size="wide"
-          onDismiss={() => setCreating(false)}
-          actions={
-            <>
-              <Button variant="ghost" onClick={() => setCreating(false)}>
-                Cancel
-              </Button>
-              {/* ⚠ THE SUBMIT LIVES IN THE MODAL'S ACTION ROW, so the form is driven by `form=` rather than
-                  by a nested button — the disabled rules and the busy/OpenVPN labels are unchanged. */}
-              {/* ⚠ THE DISABLED CONDITION IS THE FORM'S OWN, CARRIED VERBATIM. My first version added
-                  `!name.trim()` — a rule this form never had. Moving a control is not licence to change what
-                  it permits, and an invented guard is indistinguishable from a real one once it ships. */}
-              <Button
-                type="submit"
-                form="add-device-form"
-                disabled={
-                  busy ||
-                  selectableNodes(nodes).length === 0 ||
-                  // Several eligible and none chosen: the button must not act on a guess.
-                  (requiresGatewayChoice(nodes) && nodeId === "")
-                }
-              >
-                {busy
-                  ? "Creating…"
-                  : kind === "openvpn"
-                    ? "Export OpenVPN profile"
-                    : "Create device"}
-              </Button>
-            </>
-          }
-        >
-          <form id="add-device-form" onSubmit={create} className="space-y-5">
-            <div>
-              <p className="text-sm text-ink-secondary">
-                Create a one-time configuration for a device and its gateway path.
-              </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
-              <div>
-                <Field label="Device name">
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="my-laptop"
-                  />
-                </Field>
-              </div>
-              {/* The transport selector is present ONLY when the org has opted into OpenVPN
-                (D-S9.5-OPTIN(a): absent, not a disabled affordance). Otherwise WireGuard is implicit. */}
-              {ovpnEnabled ? (
-                <Field label="Protocol">
-                  <Select
-                    value={kind}
-                    onChange={(e) => setKind(e.target.value as ExportKind)}
-                  >
-                    <option value="wireguard">WireGuard</option>
-                    <option value="openvpn">OpenVPN</option>
-                  </Select>
-                </Field>
-              ) : (
-                <div className="rounded-md border border-white/10 bg-white/[.025] px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[.12em] text-ink-tertiary">Protocol</p>
-                  <p className="mt-1 text-sm text-ink-heading">WireGuard</p>
-                </div>
-              )}
-              {/* WF-OVPN-3: full tunnel is a per-device choice for BOTH transports. For WireGuard it shapes
-                the exported config's AllowedIPs; for OpenVPN the server pushes redirect-gateway per client.
-                Either way the gateway must be able to source-NAT egress (gateway_no_egress refuses otherwise). */}
-            </div>
-            <label className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[.025] px-3 py-3 text-sm text-slate-300 hover:border-white/20">
-                <input
-                  type="checkbox"
-                  checked={fullTunnel}
-                  onChange={(e) => setFullTunnel(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="block font-medium text-ink-heading">Route all traffic through Tunnex</span>
-                  <span className="mt-0.5 block text-xs text-ink-tertiary">
-                    Leave off for private-network access only.
-                  </span>
-                </span>
-              </label>
-            {/* ⛔ S14.21b: ASK, DO NOT GUESS. The old rule was "the first active gateway in created_at
-              order", which on a real fleet homed a laptop onto an in-cluster Kubernetes gateway
-              because it happened to be enrolled first. Nothing in the payload distinguishes a gateway
-              that can serve a laptop from one that cannot — so the product stops pretending it can. */}
-            {requiresGatewayChoice(nodes) && (
-              <Field label="Gateway">
-                <Select
-                  id="device-gateway"
-                  value={nodeId}
-                  onChange={(e) => setNodeId(e.target.value)}
-                >
-                  <option value="">Choose a gateway…</option>
-                  {selectableNodes(nodes).map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.name}
-                    </option>
-                  ))}
-                </Select>
-                <p className="mt-1 text-xs text-ink-secondary">
-                  The exported configuration is bound to this gateway and is shown once.
-                </p>
-              </Field>
-            )}
-
-            {/* Counts SELECTABLE gateways, not all rows: a fleet whose only gateway is revoked showed no
-              warning at all and offered an enabled button. */}
-            {selectableNodes(nodes).length === 0 && (
-              <p className="mt-3 text-xs text-amber-400">
-                No gateway node is enrolled yet - enroll one to create devices.
-              </p>
-            )}
-          </form>
-          {/* ⛔ IN THE DIALOG, WHERE THE ACTION WAS TAKEN. This is the exact message the founder saw
-              rendered on the page BEHIND the modal — "this gateway can't route full-tunnel internet traffic
-              yet; use split tunnel" — a refusal the operator could not read without dismissing the thing
-              that caused it. */}
-          <ErrorText>{createError}</ErrorText>
-        </Modal>
-      )}
-
+    {creating && <Modal title="Add device" placement="right" onDismiss={() => { if (!busy) setCreating(false); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setCreating(false)}>Cancel</Button><Button type="submit" form="add-device-form" disabled={busy || nodesLoading || Boolean(nodesError) || selectableNodes(nodes).length === 0 || (requiresGatewayChoice(nodes) && !nodeId)}>{busy ? "Creating…" : kind === "openvpn" ? "Export OpenVPN profile" : "Create device"}</Button></>}>
+      <form id="add-device-form" onSubmit={create} className="device-enrollment">
+        <fieldset disabled={busy} className="device-enrollment-fields">
+        <p>Export a one-time configuration for this device.</p>
+        <Field label="Device name"><Input value={name} onChange={event => setName(event.target.value)} required placeholder="my-laptop" /></Field>
+        {ovpnEnabled ? <Field label="Protocol"><Select value={kind} onChange={event => setKind(event.target.value as ExportKind)}><option value="wireguard">WireGuard</option><option value="openvpn">OpenVPN</option></Select></Field> : <DeviceFacts facts={[["Protocol", "WireGuard"]]} />}
+        {requiresGatewayChoice(nodes) ? <Field label="Gateway"><Select id="device-gateway" value={nodeId} onChange={event => setNodeId(event.target.value)}><option value="">Choose a gateway…</option>{selectableNodes(nodes).map(node => <option key={node.id} value={node.id}>{node.name}</option>)}</Select></Field> : defaultDeviceNode(nodes) ? <DeviceFacts facts={[["Gateway", defaultDeviceNode(nodes)!.name]]} /> : null}
+        <label className="device-routing-choice"><input type="checkbox" checked={fullTunnel} onChange={event => setFullTunnel(event.target.checked)} /><span><strong>Route all traffic through Tunnex</strong><small>Leave off for private-network access only.</small></span></label>
+        {selectableNodes(nodes).length === 0 && <p className="device-stage-warning">No active gateway is available. <Link to="/gateways">Manage gateways</Link></p>}
+        <p className="device-stage-note">The exported configuration is bound to this gateway and is shown once.</p>
+        </fieldset>
+        <ErrorText>{createError}</ErrorText>
+      </form>
+    </Modal>}
       {/* The one-time config CEREMONY: the most security-sensitive moment in the
           app. The shared OneTimeSecretModal shows it exactly once (amber, blocks
           the page); the config lives only in page state, is never re-fetched, and
@@ -570,221 +376,14 @@ export default function Devices() {
         </OneTimeSecretModal>
       )}
 
-      {devicesLoading ? (
-        <div className="mt-6">
-          <Loading label="Loading devices…" />
-        </div>
-      ) : devicesLoadError ? (
-        <div className="mt-6">
-          <LoadRetry
-            error={devicesLoadError}
-            onRetry={() => org && void loadDevices(org.id)}
-          />
-        </div>
-      ) : (
-        <>
-      {/* S14.3 slice A: a real <table>. Devices are the most tabular surface in the product — name, address,
-          state, posture are the same four facts per row — and rendering them as <li> blocks meant the tier
-          could only find a device by matching its name as free text. Now: getByRole("row") / ("cell").
-          Every badge keeps its TEXT: the status was never carried by colour alone and must not start now. */}
-      {/* The chips. Counts derive from the SAME function the table filters with, so the two cannot disagree. */}
-      <section className="tnx-card-surface devices-summary" aria-label="Device inventory summary">
-        <div><span>Enrolled</span><strong>{counts.all}</strong></div>
-        <div><span>Needs attention</span><strong>{counts.attention}</strong></div>
-        <div><span>Awaiting approval</span><a href="/devices/approvals">{devices.filter(d => d.status === "pending").length}<span aria-hidden="true"> →</span></a></div>
-      </section>
-      <section className="tnx-card-surface devices-inventory" aria-label="Device inventory">
-      <div className="devices-filter-row">
-        <div className="devices-filters">
-        {(
-          [
-            ["all", "All", counts.all],
-            ["attention", "Needs attention", counts.attention],
-            ["revoked", "Revoked", counts.revoked],
-          ] as Array<[DeviceFilter, string, number]>
-        ).map(([key, label, n]) => (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={filter === key}
-            onClick={() => setFilter(key)}
-            className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
-              filter === key
-                ? "bg-white/[.14] text-white shadow-sm"
-                : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-            }`}
-          >
-            {label} ({n})
-          </button>
-        ))}
-        </div>
-        {counts.revoked > 0 && filter === "all" && (
-          // Stated rather than left to arithmetic: `All` includes revoked and the other two do not, so
-          // attention + revoked < all, which reads as a bug unless the screen says why.
-          <span className="text-xs text-slate-500">
-            All includes {counts.revoked} revoked
-          </span>
-        )}
-      </div>
+  </div>;
+}
 
-      <div className="mt-3">
-        <DataTable
-          caption="Devices"
-          rows={shown}
-          rowKey={(d) => d.id}
-          rowActions={[
-            {
-              key: "revoke",
-              label: "Revoke",
-              danger: true,
-              // ⚠ Revoking a REVOKED device is a no-op the server would report as success — worse than
-              // absent. Pending is rejected, not revoked; the two words are different decisions.
-              unavailable: (d) =>
-                d.status === "active"
-                  ? null
-                  : `A ${d.status} device cannot be revoked.`,
-              run: (ds) => {
-                void runBatch(() => Promise.all(ds.map((d) => revoke(d.id))));
-              },
-            },
-            {
-              key: "remove",
-              label: "Remove",
-              danger: true,
-              // ⚠ REVOKED ONLY, mirroring the server's own refusal. The reason is stated rather than the
-              // control silently missing: "why can I not remove this" is exactly the question a blank
-              // disabled button leaves an operator holding.
-              unavailable: (d) =>
-                d.status === "revoked"
-                  ? null
-                  : "Only a revoked device can be removed. Revoke it first.",
-              run: (ds) => {
-                void runBatch(() => Promise.all(ds.map((d) => remove(d.id))));
-              },
-            },
-          ]}
-          empty="No devices yet."
-          failed={error != null}
-          columns={[
-            {
-              key: "name",
-              header: "Device",
-              // ⚠ THE OWNER'S EMAIL IS SEARCHABLE EVEN WHEN THE SUB-LINE IS ABSENT. The cell hides it when
-              // the members read failed; the search key does not, so "find every device of this person"
-              // keeps working on a page that could not render the label.
-              sortValue: (d) => `${d.name} ${ownerEmail.get(d.user_id) ?? ""}`,
-              cell: (d) => (
-                <span className="flex flex-col gap-0.5">
-                  <button type="button" className="device-open" onClick={() => setInspectedId(d.id)}>{d.name}<span aria-hidden="true"> ↗</span></button>
-                  {/* ⛔ OWNER. `Device` serves `user_id`, never an email, so this is a client-side join over the
-                      members roster. NON-FATAL: a failed members read leaves the sub-line ABSENT rather than
-                      rendering an id — an opaque uuid is worse than no line, and worse still is "unknown owner",
-                      which would claim the device is unowned. */}
-                  {ownerEmail.get(d.user_id) !== undefined && (
-                    <span className="text-[12px] text-ink-secondary">
-                      {ownerEmail.get(d.user_id)}
-                    </span>
-                  )}
-                </span>
-              ),
-            },
-            {
-              key: "connection",
-              header: "Connection",
-              sortValue: (d) => `${deviceProtocol(d.public_key)} ${d.full_tunnel ? "full tunnel" : "split tunnel"}`,
-              cell: (d) => (
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-xs text-ink-body">{deviceProtocol(d.public_key)}</span>
-                  <span className="text-[11px] text-ink-tertiary">{deviceModeLabel(d.full_tunnel)}</span>
-                </span>
-              ),
-            },
-            {
-              key: "address",
-              header: "Address",
-              sortValue: (d) => addressLabel(d.assigned_ip),
-              cell: (d) => (
-                <span
-                  className={`font-sans text-xs ${
-                    d.assigned_ip ? "text-slate-500" : "text-slate-600 italic"
-                  }`}
-                >
-                  {addressLabel(d.assigned_ip)}
-                </span>
-              ),
-            },
-            {
-              key: "state",
-              header: "State",
-              // ⛔ THE SEARCH KEY CARRIES THE STATE AS TEXT, because the cell renders it as a Badge and a
-              // coloured dot. Without this a search for "revoked" would miss every revoked device — the row
-              // would be invisible to a search for the very state its badge is announcing.
-              sortValue: (d) =>
-                d.status === "revoked"
-                  ? "revoked"
-                  : d.status === "pending"
-                    ? "pending"
-                    : lastSeen(d.last_handshake_at, !!d.public_key),
-              cell: (d) =>
-                d.status === "revoked" ? (
-                  <Badge tone="danger">revoked</Badge>
-                ) : d.status === "pending" ? (
-                  <Badge tone="warn">pending</Badge>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-                    <StatusDot tone={d.online ? "on" : "off"} />
-                    {lastSeen(d.last_handshake_at, !!d.public_key)}
-                  </span>
-                ),
-            },
-            {
-              key: "posture",
-              header: "Posture",
-              cell: (d) => {
-                if (d.status === "revoked") return null;
-                // S7.5.3: present only when the org has posture checks configured. "not reported"/"stale"
-                // render distinctly from ok — an admin must never read unknown as a pass, because absence is
-                // not compliance.
-                // ⛔ N/A IS NOT "NOT REPORTED", AND THE DIFFERENCE IS ACTIONABLE. "not reported" is a device
-                // that COULD report and has not — an admin should chase it. N/A is a platform with no reporting
-                // client at all, so there is nothing to chase. Rendering an iPad as "not reported" invites a
-                // hunt for a report that will never exist.
-                if (!posturePlatformSupported(d.platform))
-                  return (
-                    <span className="text-xs text-slate-600 italic">
-                      Not supported
-                    </span>
-                  );
-                const pb = postureBadge(d);
-                const failure = postureFailureSummary(d.health_failed_checks);
-                return (
-                  <>
-                    {pb && <Badge tone={pb.tone}>{pb.label}</Badge>}
-                    {failure && (
-                      <div className="mt-1 text-xs text-ink-secondary" data-posture-failure={d.id}>
-                        {failure}
-                      </div>
-                    )}
-                    {/* S9.1 Part-2: a static profile whose baked site routes no longer match the org's current
-                        ranges — the never-silently-broken law, made visible. */}
-                    {d.needs_reexport && (
-                      <span
-                        className="ml-2 text-xs text-amber-400"
-                        title="This device's exported profile predates a site-range change - re-export and re-import it."
-                      >
-                        re-export needed
-                      </span>
-                    )}
-                  </>
-                );
-              },
-            },
-          ]}
-        />
-      </div>
-      </section>
-        </>
-      )}
-    </div>
-  );
+function displayTime(value?: string) {
+  if (!value || !Number.isFinite(Date.parse(value))) return "Not reported";
+  return new Date(value).toLocaleString();
+}
+
+function DeviceFacts({ facts, summary = false }: { facts: Array<[string, string | undefined]>; summary?: boolean }) {
+  return <dl className={summary ? "device-saved-facts tnx-resource-facts tnx-resource-facts-three" : "device-saved-facts"}>{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "Not reported"}</dd></div>)}</dl>;
 }

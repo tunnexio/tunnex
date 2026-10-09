@@ -25,7 +25,20 @@ async function loginAs(page: Page, who: { email: string; pass: string }) {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Users & Groups" }).click();
-  await expect(page.getByRole("heading", { name: "Users & Groups", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/users$/);
+  await expect(page.getByRole("navigation", { name: "User sections" }).getByRole("link", { name: "Users", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("table", { name: "Members", exact: true })).toBeVisible();
+}
+
+async function openRoles(page: Page, email: string) {
+  const row = page.getByRole("table", { name: "Members", exact: true }).getByRole("row").filter({ hasText: email });
+  await row.getByRole("button", { name: `User actions for ${email}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "Edit roles", exact: true }).click();
+  const detail = page.getByRole("region", { name: "Person details" });
+  await expect(detail.getByRole("navigation", { name: "Person detail sections" }).getByRole("button", { name: "Roles", exact: true })).toHaveAttribute("aria-current", "step");
+  const roles = detail.getByRole("group", { name: `Roles for ${email}`, exact: true });
+  await expect(roles).toBeVisible();
+  return roles;
 }
 
 // (a) DENY view: a plain member may see the roster but is offered NO management
@@ -43,11 +56,19 @@ test("a member sees the roster but no management controls", async ({
     page.getByRole("row").filter({ hasText: MEMBER.email }),
   ).toBeVisible();
   // No invitation or role editor, including hidden role controls.
-  await expect(page.getByRole("button", { name: "Invite user" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Invite user", exact: true, includeHidden: true })).toHaveCount(0);
   await expect(page.getByLabel("Email address")).toHaveCount(0);
-  await expect(page.locator('summary[aria-label^="Roles for "]')).toHaveCount(0);
-  await expect(page.getByRole("group", { name: /^Roles for /, includeHidden: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Deactivate" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^User actions for /, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save roles", exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Deactivate", exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("table", { name: "Members" }).getByRole("checkbox", { includeHidden: true })).toHaveCount(0);
+  // Inspection remains available, while the focused Roles view has no authoring controls.
+  await page.getByRole("table", { name: "Members" }).getByRole("row").filter({ hasText: MEMBER.email }).getByRole("button", { name: "Demo Member", exact: true }).click();
+  const detail = page.getByRole("region", { name: "Person details" });
+  await detail.getByRole("navigation", { name: "Person detail sections" }).getByRole("button", { name: "Roles", exact: true }).click();
+  await expect(detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true })).toContainText("member");
+  await expect(detail.getByRole("checkbox", { includeHidden: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Save roles", exact: true, includeHidden: true })).toHaveCount(0);
 });
 
 // (a) ALLOW view: an owner gets the invite form and per-member controls.
@@ -58,23 +79,23 @@ test("an owner sees the invite form and per-member controls", async ({
   await page.getByRole("button", { name: "Invite user" }).click();
   await expect(page.getByLabel("Email address")).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
-  // ⚠ SCOPED TO THE MEMBERS TABLE. The page now renders a second table — Invitations — and the seeded
-  // roster member also has an ACCEPTED invitation, so an unscoped row filter matches both and trips strict
-  // mode. Naming the table is the fix; loosening the filter would have made the assertion ambiguous.
+  // Role editing now uses the member's row menu and focused detail panel.
   const memberRow = page
     .getByRole("table", { name: "Members" })
     .getByRole("row")
     .filter({ hasText: MEMBER.email });
-  await memberRow.locator('summary[aria-label^="Roles for "]').click();
-  const roles = memberRow.getByRole("group", { name: `Roles for ${MEMBER.email}` });
+  await memberRow.getByRole("button", { name: `User actions for ${MEMBER.email}`, exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Deactivate", exact: true })).toBeEnabled();
+  await expect(page.getByRole("menuitem", { name: "Reset 2FA", exact: true })).toBeEnabled();
+  await page.getByRole("menuitem", { name: "Edit roles", exact: true }).click();
+  const detail = page.getByRole("region", { name: "Person details" });
+  const roles = detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true });
   await expect(roles.getByRole("checkbox", { name: "member", exact: true })).toBeChecked();
   await expect(roles.getByRole("checkbox", { name: "admin", exact: true })).toBeEnabled();
-  await memberRow.locator('summary[aria-label^="Roles for "]').click();
-  // ⚠ THE VERBS MOVED FROM THE ROW TO THE SELECTION BAR (S15.4 tidy-up): three buttons redrawn on every
-  // row crowded out who the member IS. The CLAIM is unchanged — an owner can manage this member — so the
-  // affordance asserted is the one that now carries it: tick the row, and Deactivate is offered and enabled.
-  await memberRow.getByRole("checkbox").check();
-  await expect(page.getByRole("button", { name: "Deactivate" })).toBeEnabled();
+  await detail.getByRole("button", { name: "Back to users", exact: true }).click();
+  // Bulk account management remains separate from role authoring.
+  await memberRow.getByRole("checkbox", { name: `Select ${MEMBER.email}`, exact: true }).check();
+  await expect(page.getByRole("group", { name: "Selected member actions" }).getByRole("button", { name: "Deactivate", exact: true })).toBeEnabled();
 });
 
 // (a) Verified-gate: an admin has the ROLE to invite/manage, but with an
@@ -87,11 +108,18 @@ test("an unverified admin is offered no mutating controls despite the role", asy
   await expect(
     page.getByRole("row").filter({ hasText: MEMBER.email }),
   ).toBeVisible(); // can still read the roster
-  await expect(page.getByRole("button", { name: "Invite user" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Invite user", exact: true, includeHidden: true })).toHaveCount(0);
   await expect(page.getByLabel("Email address")).toHaveCount(0);
-  await expect(page.locator('summary[aria-label^="Roles for "]')).toHaveCount(0);
-  await expect(page.getByRole("group", { name: /^Roles for /, includeHidden: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Deactivate" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^User actions for /, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save roles", exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Deactivate", exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole("table", { name: "Members" }).getByRole("checkbox", { includeHidden: true })).toHaveCount(0);
+  await page.getByRole("table", { name: "Members" }).getByRole("row").filter({ hasText: MEMBER.email }).getByRole("button", { name: "Demo Member", exact: true }).click();
+  const detail = page.getByRole("region", { name: "Person details" });
+  await detail.getByRole("navigation", { name: "Person detail sections" }).getByRole("button", { name: "Roles", exact: true }).click();
+  await expect(detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true })).toContainText("member");
+  await expect(detail.getByRole("checkbox", { includeHidden: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Save roles", exact: true, includeHidden: true })).toHaveCount(0);
 });
 
 // (a) The verified-gate is a SERVER control, not just a UI one: a direct API
@@ -123,9 +151,8 @@ test("the sole owner's own role control is disabled with an explanation", async 
   page,
 }) => {
   await loginAs(page, OWNER);
-  const ownerRow = page.getByRole("row").filter({ hasText: OWNER.email });
-  await ownerRow.locator('summary[aria-label^="Roles for "]').click();
-  const ownerRole = ownerRow.getByRole("checkbox", { name: "owner", exact: true });
+  const roles = await openRoles(page, OWNER.email);
+  const ownerRole = roles.getByRole("checkbox", { name: "owner", exact: true });
   await expect(ownerRole).toBeChecked();
   await expect(ownerRole).toBeDisabled();
   await expect(ownerRole).toHaveAttribute("title", /at least one owner/i);
@@ -188,22 +215,24 @@ test("a role change in the UI appears in the audit log", async ({ page }) => {
   const MEMBER_ID = "01900000-0000-7000-8000-000000000003"; // seeddata.DemoMemberUserID
   await loginAs(page, OWNER);
   try {
-    const memberRow = page.getByRole("row").filter({ hasText: MEMBER.email });
-    await memberRow.locator('summary[aria-label^="Roles for "]').click();
-    const roles = memberRow.getByRole("group", { name: `Roles for ${MEMBER.email}` });
+    const roles = await openRoles(page, MEMBER.email);
     await roles.getByRole("checkbox", { name: "admin", exact: true }).check();
     const saved = page.waitForResponse((response) =>
       response.url().endsWith(`/members/${MEMBER_ID}/roles`) &&
       response.request().method() === "PUT",
     );
-    await roles.getByRole("button", { name: "Save roles" }).click();
+    await page.getByRole("region", { name: "Person details" }).getByRole("button", { name: "Save roles", exact: true }).click();
     expect((await saved).status()).toBe(204);
-    await expect(memberRow.locator('summary[aria-label^="Roles for "]')).toHaveText("admin + member");
+    await expect(roles.getByRole("checkbox", { name: "admin", exact: true })).toBeChecked();
+    await expect(roles.getByRole("checkbox", { name: "member", exact: true })).toBeChecked();
+    await expect(page.getByText("Roles updated.", { exact: true })).toBeVisible();
+    await page.getByRole("region", { name: "Person details" }).getByRole("button", { name: "Back to users", exact: true }).click();
+    const memberRow = page.getByRole("table", { name: "Members", exact: true }).getByRole("row").filter({ hasText: MEMBER.email });
+    await expect(memberRow.getByRole("cell", { name: "admin + member", exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "Audit Log" }).click();
-    await expect(
-      page.getByRole("heading", { name: "Audit log" }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/audit(?:\?|$)/);
+    await expect(page.getByRole("combobox", { name: "Actor" })).toBeVisible();
     await expect(page.getByText("member.role_changed").first()).toBeVisible();
   } finally {
     // ALWAYS restore the exact role set so a mid-test failure can't leave the shared

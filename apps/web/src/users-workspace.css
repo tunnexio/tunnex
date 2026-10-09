@@ -18,7 +18,6 @@
 .users-role-guide summary { display:flex; justify-content:space-between; align-items:center; list-style:none; cursor:pointer; padding:16px 0; font-size:13px; color:var(--tnx-text-heading); }
 .users-role-guide summary::-webkit-details-marker { display:none; }
 .users-role-guide summary:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:4px; }
-.users-role-guide[open] summary > span { transform:rotate(45deg); }
 .users-role-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; padding:8px 0 24px; }
 .users-role-grid h3 { font-size:14px; font-weight:500; color:var(--tnx-text-heading); margin-bottom:8px; }
 .users-role-grid p { font-size:13px; line-height:1.65; color:var(--tnx-text-secondary); }

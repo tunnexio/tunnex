@@ -23,7 +23,7 @@ export type BeamResult<T> = { ok: true; data: T; server_time?: string } | { ok: 
 async function request<T>(call: () => Promise<{ data?: T; error?: unknown; response?: Response }>): Promise<BeamResult<T>> {
   try {
     const result = await call();
-    if (result.error || result.data === undefined) return { ok: false, error: apiErrorMessage(result.error, "Could not complete the Beam request."), code: apiErrorCode(result.error) };
+    if (result.error || result.data === undefined) return { ok: false, error: apiErrorMessage(result.error, "Could not complete the Local Sharing request."), code: apiErrorCode(result.error) };
     const server_time = result.response?.headers.get("Date") ?? undefined;
     return { ok: true, data: result.data, ...(server_time && Number.isFinite(Date.parse(server_time)) ? { server_time } : {}) };
   } catch { return { ok: false, error: "Could not reach the server. Refresh to check the current state before trying again." }; }
@@ -35,7 +35,7 @@ export const beamApi = {
   checkReadiness: (configuration_version: string) => request(() => client.POST("/api/v1/admin/beam/readiness", { body: { expected_configuration_version: configuration_version } })),
   policy: (orgId: string) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/policy", { params: { path: { orgId } } })),
   audience: (orgId: string) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/audience", { params: { path: { orgId } } })),
-  shares: (orgId: string, shared: boolean, offset = 0, q?: string, filters: BeamShareFilters = {}) => request(() => client.GET(shared ? "/api/v1/organizations/{orgId}/beam/shared" : "/api/v1/organizations/{orgId}/beam/shares", { params: { path: { orgId }, query: { limit: 20, offset, ...(q ? { q } : {}), ...filters } } })),
+  shares: (orgId: string, shared: boolean, offset = 0, q?: string, filters: BeamShareFilters = {}, limit = 20) => request(() => client.GET(shared ? "/api/v1/organizations/{orgId}/beam/shared" : "/api/v1/organizations/{orgId}/beam/shares", { params: { path: { orgId }, query: { limit, offset, ...(q ? { q } : {}), ...filters } } })),
   share: (orgId: string, id: string) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}", { params: { path: { orgId, id } } })),
   action: (orgId: string, share: BeamShare, action: "pause" | "resume" | "stop" | "extend", expires_at?: string) => request(() => client.POST("/api/v1/organizations/{orgId}/beam/shares/{id}/actions", { params: { path: { orgId, id: share.id } }, body: { expected_version: share.version, action, ...(expires_at ? { expires_at } : {}) } })),
   grants: (orgId: string, share: BeamShare, grants: BeamGrant[], confirm_reviewer_removal = false) => request(() => client.PUT("/api/v1/organizations/{orgId}/beam/shares/{id}/grants", { params: { path: { orgId, id: share.id } }, body: { expected_version: share.version, grants, confirm_reviewer_removal } })),
@@ -44,8 +44,8 @@ export const beamApi = {
   savePolicy: (orgId: string, policy: BeamPolicy, confirm_end_active_shares = false) => request(() => client.PUT("/api/v1/organizations/{orgId}/beam/policy", { params: { path: { orgId } }, body: { expected_version: policy.version, enabled: policy.enabled, open_for_all_users: policy.open_for_all_users, max_duration_seconds: policy.max_duration_seconds, max_shares: policy.max_shares, publisher_group_ids: policy.publisher_group_ids, reviewer_user_ids: policy.reviewer_user_ids, reviewer_group_ids: policy.reviewer_group_ids, require_mfa: policy.require_mfa, confirm_end_active_shares } })),
   policyImpact: (orgId: string, policy: BeamPolicy) => request(() => client.POST("/api/v1/organizations/{orgId}/beam/policy/impact", { params: { path: { orgId } }, body: { expected_version: policy.version, enabled: policy.enabled, open_for_all_users: policy.open_for_all_users, max_duration_seconds: policy.max_duration_seconds, max_shares: policy.max_shares, publisher_group_ids: policy.publisher_group_ids, reviewer_user_ids: policy.reviewer_user_ids, reviewer_group_ids: policy.reviewer_group_ids, require_mfa: policy.require_mfa, confirm_end_active_shares: false } })),
   diagnostics: (orgId: string, id: string) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/diagnostics", { params: { path: { orgId, id } } })),
-  shareEvents: (orgId: string, id: string, offset = 0, filters: BeamEventFilters = {}) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/events", { params: { path: { orgId, id }, query: { limit: 20, offset, ...filters } } })),
-  events: (orgId: string, offset = 0, filters: BeamEventFilters = {}) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/events", { params: { path: { orgId }, query: { limit: 20, offset, ...filters } } })),
+  shareEvents: (orgId: string, id: string, offset = 0, filters: BeamEventFilters = {}, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/events", { params: { path: { orgId, id }, query: { limit, offset, ...filters } } })),
+  events: (orgId: string, offset = 0, filters: BeamEventFilters = {}, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/events", { params: { path: { orgId }, query: { limit, offset, ...filters } } })),
 };
 export function beamIsTerminal(share: BeamShare, now = Date.now()): boolean { return ["stopped", "expired", "revoked"].includes(share.state) || !Number.isFinite(Date.parse(share.expires_at)) || Date.parse(share.expires_at) <= now; }
 export function beamCanOpen(share: BeamShare, now = Date.now()): boolean { return share.can_open && !beamIsTerminal(share, now) && share.state === "active" && share.connectivity === "online"; }

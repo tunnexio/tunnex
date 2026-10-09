@@ -21,7 +21,7 @@ describe("Applications workspace navigation authority", () => {
     expect(link()).toBeNull();
     expect(screen.queryByRole("link", { name: "Applications" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Access" })).toBeNull();
-    expect(screen.getAllByRole("link").map(item => item.textContent)).toEqual(["My access", "Company apps", "My requests"]);
+    expect(screen.getAllByRole("link").map(item => item.textContent)).toEqual(["My Applications", "Company apps", "My requests"]);
     expect(get).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/app-access/managed-apps", { params: { path: { orgId: "org" }, query: { limit: 1, offset: 0 } } });
   });
   it("shows only scoped Manage access for an assigned member, with the authoritative pending count", async () => {
@@ -30,7 +30,7 @@ describe("Applications workspace navigation authority", () => {
     expect(await screen.findByRole("link", { name: "Manage access · 2 pending" })).toHaveProperty("pathname", "/app-access/managed-applications");
     expect(screen.queryByRole("link", { name: "Applications" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Access" })).toBeNull();
-    expect(screen.getAllByRole("link").map(item => item.textContent)).toEqual(["My access", "Company apps", "My requests", "Manage access · 2 pending"]);
+    expect(screen.getAllByRole("link").map(item => item.textContent)).toEqual(["My Applications", "Company apps", "My requests", "Manage access · 2 pending"]);
     expect(get.mock.calls.every(([path]) => path.endsWith("/managed-apps") || path.endsWith("/access-requests"))).toBe(true);
   });
   it("keeps Applications and grant administration discoverable from actual global capabilities even with no apps", async () => {
@@ -65,6 +65,7 @@ describe("Applications workspace navigation authority", () => {
     failing = true; fireEvent(window, new Event("app-access-requests-changed"));
     await act(async () => {});
     expect(link()).toBeNull(); expect(screen.queryByRole("link", { name: "Applications" })).toBeNull();
+    expect(screen.getByRole("link", { name: "My Applications" }).getAttribute("aria-current")).toBe("page");
   });
   it("fails closed for a network error and makes no directory or full-application fallback request", async () => {
     get.mockRejectedValue(new Error("network"));
@@ -96,6 +97,22 @@ describe("Applications workspace navigation authority", () => {
   });
 });
 
+it("keeps My Applications selected and visible while current permissions are refreshed", async () => {
+  let resolveRefresh!: (value: unknown) => void;
+  let refreshing = false;
+  get.mockImplementation(path => path.endsWith("/managed-apps") ? refreshing ? new Promise(resolve => { resolveRefresh = resolve; }) : Promise.resolve(managed([], true, true)) : Promise.resolve(requests));
+  mount();
+  await screen.findByRole("link", { name: "Applications" });
+  refreshing = true;
+  fireEvent(window, new Event("focus"));
+  expect(screen.getByRole("link", { name: "My Applications" }).getAttribute("aria-current")).toBe("page");
+  expect(screen.queryByRole("link", { name: "Applications" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Company apps" })).toBeNull();
+  await act(async () => { resolveRefresh(managed([], true, true)); });
+  expect(screen.getByRole("link", { name: "My Applications" }).getAttribute("aria-current")).toBe("page");
+  expect(screen.getAllByRole("link").map(item => item.textContent)).toEqual(["Applications", "Access", "Requests", "My Applications"]);
+});
+
 it("keeps Requests present and selected on the safe managed-request route", async () => {
   get.mockImplementation(async path => path.endsWith("/managed-apps") ? managed([], true, true) : requests);
   mount("org", "/app-access/requests");
@@ -111,6 +128,7 @@ it("does not briefly present the member tab set while global capabilities are un
   mount("org", "/app-access/requests");
   expect(screen.getByText("Loading application navigation…")).toBeTruthy();
   expect(screen.queryByRole("link", { name: "Company apps" })).toBeNull();
+  expect(screen.getByRole("link", { name: "My Applications" })).toBeTruthy();
   await act(async () => { resolveCapabilities(managed([], true, true)); });
   expect(screen.getByRole("link", { name: "Requests" }).getAttribute("aria-current")).toBe("page");
 });

@@ -4,12 +4,15 @@ import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { Button, Loading, SettingRow, Switch } from "./ui";
 
 type Settings = components["schemas"]["AppAccessSettings"];
+const validSettings = (value: Settings | undefined): value is Settings => !!value
+  && typeof value.enabled === "boolean" && typeof value.entitlement_available === "boolean"
+  && typeof value.domain_ready === "boolean" && Number.isSafeInteger(value.version) && value.version >= 0;
 
 export function AppAccessFeatureSettings({ orgId, permitted, canEdit }: {
   orgId: string; permitted: boolean; canEdit: boolean;
 }) {
   if (!permitted) return null;
-  return <FeatureToggle key={orgId} orgId={orgId} canEdit={canEdit} />;
+  return <FeatureToggle key={`${orgId}:${canEdit}`} orgId={orgId} canEdit={canEdit} />;
 }
 
 function FeatureToggle({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
@@ -30,14 +33,15 @@ function FeatureToggle({ orgId, canEdit }: { orgId: string; canEdit: boolean }) 
       params: { path: { orgId } },
     })).then(result => {
       if (cancelled) return;
-      if (result.ok) setSettings(result.data);
+      if (result.ok && validSettings(result.data)) setSettings(result.data);
+      else if (result.ok) setError("The saved App Access setting is unavailable. Reload before changing it.");
       else setError(result.error);
     });
     return () => { cancelled = true; };
   }, [orgId, attempt]);
 
   async function toggle(enabled: boolean) {
-    if (!settings || !canEdit || changing.current || error ||
+    if (!mounted.current || !settings || !canEdit || changing.current || error ||
       (enabled && (!settings.entitlement_available || !settings.domain_ready))) return;
     changing.current = true; setBusy(true); setError("");
     try {
@@ -46,7 +50,7 @@ function FeatureToggle({ orgId, canEdit }: { orgId: string; canEdit: boolean }) 
         body: { enabled, expected_version: settings.version },
       });
       if (!mounted.current) return;
-      if (result.error || !result.data) {
+      if (result.error || !validSettings(result.data)) {
         setError(["version_conflict", "stale_version"].includes(apiErrorCode(result.error) ?? "")
           ? "Applications settings changed. Reload the setting before trying again."
           : apiErrorMessage(result.error, "Could not update Applications. Reload to check its current state."));
@@ -61,15 +65,15 @@ function FeatureToggle({ orgId, canEdit }: { orgId: string; canEdit: boolean }) 
   const enableBlocked = settings && !settings.enabled &&
     (!settings.entitlement_available || !settings.domain_ready);
   return <div>
-    <SettingRow label="Applications"
+    <SettingRow label="App Access"
       description="Open private web apps in a browser. Turning this off blocks access; saved apps and grants stay."
       error={error}>
-      {settings ? <Switch label="Applications" checked={settings.enabled}
+      {settings && !error ? <Switch label="App Access" checked={settings.enabled}
         disabled={!canEdit || busy || !!error || !!enableBlocked} onChange={next => void toggle(next)} />
-        : error ? <span className="text-sm text-ink-secondary">Unavailable</span> : <Loading size="inline" label="Loading Applications…" />}
+        : error ? <span className="text-sm text-ink-secondary">Unavailable</span> : <Loading size="inline" label="Loading App Access…" />}
     </SettingRow>
-    {settings && !settings.entitlement_available && <p className="text-sm text-ink-secondary">An eligible licence is required to enable Applications.</p>}
-    {settings && !settings.domain_ready && <p className="text-sm text-ink-secondary">Configure Applications domains before enabling it.</p>}
-    {error && <Button variant="ghost" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Reload Applications setting</Button>}
+    {settings && !settings.entitlement_available && <p className="feature-control-note">Enablement requires an eligible licence.</p>}
+    {settings && !settings.domain_ready && <p className="feature-control-note">Application domains need setup before enabling access.</p>}
+    {error && <Button variant="ghost" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Reload App Access setting</Button>}
   </div>;
 }

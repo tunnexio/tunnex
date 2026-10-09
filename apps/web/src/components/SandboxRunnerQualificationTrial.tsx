@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, apiErrorMessage, loadOne, type SandboxRunnerEnrollment, type SandboxRunnerQualificationTrial as Trial } from "../lib/api";
 import { sandboxConnectCommand } from "../lib/sandboxConnection";
 import { sandboxPublicKeys } from "../lib/sandboxPublicKeys";
-import { Button, ErrorText } from "./ui";
+import { Button, ErrorText, RefreshButton } from "./ui";
 import { SavedSSHKeyPicker } from "./SavedSSHKeyPicker";
 import { SandboxTerminalPicker, type SandboxTerminalSelection } from "./SandboxTerminalPicker";
 import { SandboxRunnerCommand } from "./SandboxRunnerCommand";
@@ -105,7 +105,7 @@ export function SandboxRunnerQualificationTrial({ orgId, enrollmentId, terminalG
     try { await navigator.clipboard.writeText(connectionCommand); setCopied(true); setCopyFailed(false); }
     catch { setCopyFailed(true); }
   }
-  return <section className="sb-runner-trial" aria-label="Native qualification trial"><div className="sb-runner-qualification-heading"><h3>Verify this machine</h3>{trial && <Button type="button" size="sm" variant="ghost" disabled={reading || pending} onClick={() => void refresh()}>Refresh trial</Button>}</div>
+  return <section className="sb-runner-trial" aria-label="Native qualification trial"><div className="sb-runner-qualification-heading"><h3>Verify this machine</h3>{trial && <RefreshButton label="Refresh trial" type="button" disabled={reading || pending} onClick={() => void refresh()} />}</div>
     <p className="sb-help">Run a controlled native trial before reviewing the runner. It uses the one retained sandbox slot and its original expiry deadline, at most 15 minutes. Installation and an online heartbeat do not replace this proof.</p>
     {!trial && <p className="sb-help mt-2">The trial verifies private SSH readiness, stop/resume, expiry while the control connection is offline, and actual runtime and network cleanup.</p>}
     {!terminalGatewayId && <ErrorText>The approved profile has no terminal gateway. An operator must configure its terminal binding before this machine can be verified.</ErrorText>}

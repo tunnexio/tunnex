@@ -3,10 +3,10 @@ import { decisionLabel, type AccessEvent } from "../lib/flowlogview";
 
 export function BeamAccessEvidence({ event, reviewerLabel }: { event: AccessEvent; reviewerLabel?: string | null }) {
   if (!event.beam) return null;
-  return <div className="space-y-4">
-    <p className="text-sm text-ink-secondary">Beam browser access evidence records the authenticated reviewer and share at the control plane. Gateway addresses, flow sequence and applied network policy do not apply to this record.</p>
+  return <div className="event-review-content">
+    <p className="text-sm text-ink-secondary">Local Sharing access evidence records the authenticated reviewer and share at the control plane. Gateway addresses, flow sequence and applied network policy do not apply to this record.</p>
     <p role="status" className="font-semibold">{decisionLabel(event.decision)}</p>
-    <dl className="grid gap-4 sm:grid-cols-2">
+    <dl className="tnx-resource-facts">
       <div><dt className="text-xs text-ink-faint">Reviewer</dt><dd>{reviewerLabel ? `${reviewerLabel} (current member label)` : event.src_user_id || "Not recorded"}</dd></div>
       <div><dt className="text-xs text-ink-faint">Recorded at the control plane</dt><dd>{new Date(event.created_at).toLocaleString()}</dd></div>
       <div><dt className="text-xs text-ink-faint">Share ID</dt><dd className="break-all">{event.beam.share_id}</dd></div>

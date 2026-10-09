@@ -1,66 +1,57 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  api,
-  apiErrorMessage,
-  type AuditLogEntry,
-  type Member,
-  type Org,
-} from "../lib/api";
+import { api, loadOne, type AuditLogEntry, type Member } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { relativeAge } from "../lib/format";
-import {
-  UNATTRIBUTED_NOTE,
-  resolveActor,
-  unattributedCount,
-} from "../lib/auditview";
-import {
-  Button,
-  DataTable,
-  ErrorText,
-  Input,
-  Modal,
-  PageHeader,
-} from "../components/ui";
-
+import { UNATTRIBUTED_NOTE, resolveActor, unattributedCount } from "../lib/auditview";
+import { Button, DataTable, ErrorText, Input, Loading, Select, RefreshButton } from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
+import { ResourceSummary } from "../components/ResourceSummary";
+import AppAccessPagination from "../components/AppAccessPagination";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import { beamAuditDetails } from "../lib/beam";
 import { TerminalReplay } from "../components/TerminalReplay";
 import "../network-workspaces.css";
+import "../app-access-workspace.css";
 import "../audit-workspace.css";
 
-const PAGE = 50;
-
-const selectCls =
-  "rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400";
-
-// Filters applied to the feed. Empty string = unset.
 type Filters = { actor: string; action: string; from: string; to: string; targetType: string; targetId: string };
 const NO_FILTERS: Filters = { actor: "", action: "", from: "", to: "", targetType: "", targetId: "" };
-
-// A type=date value is a calendar day ("YYYY-MM-DD"); parse it in the user's LOCAL
-// zone (no trailing Z) and cover the whole day so `created_at <= to` is inclusive.
-const dayStart = (d: string) => new Date(`${d}T00:00:00`).toISOString();
-const dayEnd = (d: string) => new Date(`${d}T23:59:59.999`).toISOString();
-
-function actionLabel(action: string): string {
+type Cursor = Pick<AuditLogEntry, "id" | "created_at">;
+type AuditPage = { rows: AuditLogEntry[]; hasNext: boolean };
+type PageRequest = { filters: Filters; size: number; page: number; cursor?: Cursor };
+const targetUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Calendar days use the viewer's local zone; the end includes the complete selected day.
+const dayStart = (day: string) => new Date(`${day}T00:00:00`).toISOString();
+const dayEnd = (day: string) => new Date(`${day}T23:59:59.999`).toISOString();
+function validCalendarDay(day: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const date = new Date(`${day}T00:00:00`);
+  return Number.isFinite(date.getTime()) && date.getFullYear() === Number(day.slice(0, 4)) && date.getMonth() + 1 === Number(day.slice(5, 7)) && date.getDate() === Number(day.slice(8, 10));
+}
+function filterError(filters: Filters) {
+  if ((filters.from && !validCalendarDay(filters.from)) || (filters.to && !validCalendarDay(filters.to))) return "Choose valid calendar dates.";
+  if (filters.from && filters.to && filters.from > filters.to) return "Choose an end date on or after the start date.";
+  if (filters.targetId && !targetUUID.test(filters.targetId)) return "Choose a valid target UUID.";
+  return null;
+}
+function validAuditRows(value: unknown): value is AuditLogEntry[] {
+  return Array.isArray(value) && value.every((row) => row && typeof row === "object" && typeof row.id === "string" && row.id.length > 0 && typeof row.action === "string" && typeof row.created_at === "string" && Number.isFinite(Date.parse(row.created_at)) && (row.actor_id == null || typeof row.actor_id === "string") && (row.actor_system == null || typeof row.actor_system === "string") && (row.target_type == null || typeof row.target_type === "string") && (row.target_id == null || typeof row.target_id === "string") && (row.details == null || (typeof row.details === "object" && !Array.isArray(row.details)))) && new Set(value.map((row) => row.id)).size === value.length;
+}
+function validRoster(value: unknown): value is Member[] {
+  return Array.isArray(value) && value.every((member) => member && typeof member.user_id === "string" && typeof member.name === "string" && typeof member.email === "string" && typeof member.role === "string" && (member.roles === undefined || (Array.isArray(member.roles) && member.roles.every((role: unknown) => typeof role === "string")))) && new Set(value.map((member) => member.user_id)).size === value.length;
+}
+function actionLabel(action: string) {
   const leaf = action.split(".").at(-1) ?? action;
   const words = leaf.replace(/[_-]+/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
-
-function actionArea(action: string): string {
-  const area = action.split(".")[0] || "system";
-  return area.replace(/[_-]+/g, " ");
-}
-
-function targetLabel(entry: AuditLogEntry): string {
+function targetLabel(entry: AuditLogEntry) {
   if (!entry.target_type) return "No target recorded";
-  return entry.target_id
-    ? `${entry.target_type} · ${(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(entry.target_id) ? entry.target_id.slice(0, 8) : entry.target_id)}`
-    : entry.target_type;
+  const label = entry.target_type === "beam_share" ? "Local share" : entry.target_type.replace(/[_-]+/g, " ");
+  return entry.target_id ? `${label} · ${(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(entry.target_id) ? `${entry.target_id.slice(0, 4)}…${entry.target_id.slice(-8)}` : entry.target_id)}` : label;
 }
-
 function detailValue(value: unknown): string {
   if (value == null) return "null";
   if (typeof value === "string") return value;
@@ -69,458 +60,133 @@ function detailValue(value: unknown): string {
 }
 
 export default function AuditLog() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const targetType = searchParams.get("target_type") ?? "";
-  const targetId = searchParams.get("target_id") ?? "";
-  // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
-  // fetched itself, which is what made a second organization unreachable.
-  const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
-  const { state: authState } = useAuth();
-  const [org, setOrg] = useState<Org | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [replay,setReplay]=useState<string>();
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
-  // `filters` is the editing state; `applied` is the set that produced the current
-  // list — "Load more" must page with `applied`, never mid-edit `filters`, or the
-  // keyset cursor (from the applied list) mixes with a different filter set.
-  const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, targetType, targetId });
-  const [applied, setApplied] = useState<Filters>(NO_FILTERS);
-  const [more, setMore] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [memberScoped, setMemberScoped] = useState(true);
-  const [selected, setSelected] = useState<AuditLogEntry | null>(null);
-  // Generation token: each fetch bumps it; a response whose token is stale (a
-  // newer fetch started, or the component unmounted) is discarded — so out-of-
-  // order responses can't leave a stale page as the final list.
-  const reqSeq = useRef(0);
-
-  // fetchPage loads from the top (cursor omitted) or appends after `cursor` (the
-  // last entry's created_at + id — keyset, not offset). It fetches PAGE+1 and
-  // shows PAGE: the extra row is how we know there's a next page without a count
-  // (page.length === PAGE would dead-click at exact multiples).
-  async function fetchPage(orgId: string, f: Filters, cursor?: AuditLogEntry) {
-    const seq = ++reqSeq.current;
-    if (f.targetId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(f.targetId)) { setError("Choose a valid target UUID."); setBusy(false); return; }
-    setBusy(true);
-    setError(null);
-    const { data, error } = await api.GET(
-      "/api/v1/organizations/{orgId}/audit-logs",
-      {
-        params: {
-          path: { orgId },
-          query: {
-            actor: f.actor || undefined,
-            action: f.action || undefined,
-            target_type: f.targetType || undefined,
-            target_id: f.targetId || undefined,
-            from: f.from ? dayStart(f.from) : undefined,
-            to: f.to ? dayEnd(f.to) : undefined,
-            cursor_ts: cursor?.created_at,
-            cursor_id: cursor?.id,
-            limit: PAGE + 1,
-          },
-        },
-      },
-    );
-    if (seq !== reqSeq.current) return; // superseded by a newer fetch / unmounted
-    setBusy(false);
-    if (error)
-      return setError(apiErrorMessage(error, "Could not load the audit log."));
-    const fetched = data ?? [];
-    const page = fetched.slice(0, PAGE); // drop the has-more probe row
-    setEntries((prev) => (cursor ? [...prev, ...page] : page));
-    setMore(fetched.length > PAGE);
-    setApplied(f); // this filter set now owns the displayed list + its cursor
-  }
-
-  useEffect(() => {
-    reqSeq.current++; // invalidate any in-flight fetch on unmount
-    let cancelled = false;
-    (async () => {
-      setSelected(null);
-      setMemberScoped(true);
-      // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
-      // OrgProvider reads the list once for the whole shell; a page that re-fetched it would not merely
-      // waste a request, it would pick an org the switcher has no way to change.
-      const orgErr = null;
-      if (cancelled) return;
-      if (orgErr)
-        return setError(
-          apiErrorMessage(orgErr, "Could not load your organizations."),
-        );
-      // ⛔ LOADING IS NOT ABSENCE (S12.5). The provider resolves the org list asynchronously, so this
-      // effect runs once with currentOrg === null before the answer exists. Treating that as "you have no
-      // organization" renders a confident, false statement — and because the second pass only sets the
-      // data, the stale error stayed on screen BESIDE the correct org name.
-      //
-      // ⚠ THREE STATES, NOT TWO: still loading (say nothing), the read failed (say THAT), genuinely no
-      // membership (say that). Collapsing the first into the third is how a slow network becomes an
-      // accusation that the user does not belong here.
-      if (orgLoading) return;
-      const first = currentOrg;
-      if (!first)
-        return setError(
-          orgFailed
-            ? "Could not load your organizations."
-            : "You are not a member of any organization yet.",
-        );
-      setOrg(first);
-      // Actor filter is org-scoped BY CONSTRUCTION: the dropdown offers only this
-      // org's members (the server enforces org-scoping too).
-      const { data: ms } = await api.GET(
-        "/api/v1/organizations/{orgId}/members",
-        { params: { path: { orgId: first.id } } },
-      );
-      if (!cancelled) setMembers(ms ?? []);
-      if (!cancelled && authState.status === "authed") {
-        const member = (ms ?? []).find((m) => m.user_id === authState.user.id);
-        setMemberScoped(
-          !(member?.roles ?? (member ? [member.role] : [])).some(
-            (role) => role === "owner" || role === "admin",
-          ),
-        );
-      }
-      if (!cancelled) {
-        const linked = { ...NO_FILTERS, targetType, targetId };
-        setFilters(linked); setApplied(linked);
-        if (targetId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
-          setEntries([]); setMore(false); setBusy(false); setError("Choose a valid target UUID.");
-        } else await fetchPage(first.id, linked);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      reqSeq.current++; // discard a fetchPage response that resolves post-unmount
-    };
-    // ⛔ currentOrg IS A DEPENDENCY, AND ITS ABSENCE WAS A REAL BUG THE TESTS CAUGHT (S12.5).
-    //
-    // The provider resolves the org list ASYNCHRONOUSLY, so on this effect's first run `currentOrg` is still
-    // null. With `[]` deps the effect never ran again: the page rendered "You are not a member of any
-    // organization yet" — a confident, wrong statement — and stayed there forever, for every user.
-    //
-    // ⚠ THE SAME DEPENDENCY ALSO MAKES THE SWITCHER WORK. One line, two properties: without it the page
-    // either never loads at all, or loads once and then lies about which tenant it is showing.
-  }, [currentOrg, authState, targetType, targetId]);
-
-  function applyFilters(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSelected(null);
-    if (filters.from && filters.to && filters.from > filters.to) { setError("Choose an end date on or after the start date."); return; }
-    if (filters.targetId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.targetId)) { setError("Choose a valid target UUID."); return; }
-    if (org) void fetchPage(org.id, filters); // from the top with the new filters
-  }
-
-  const activeFilterCount = Object.values(applied).filter(Boolean).length;
-  const resolvedActors = entries.map((entry) => resolveActor(entry, members));
-  const humanCount = resolvedActors.filter((actor) =>
-    actor.kind === "human" || actor.kind === "unknown_human" || actor.kind === "cp_admin",
-  ).length;
-  const systemCount = resolvedActors.filter((actor) => actor.kind === "system").length;
-  const gapCount = unattributedCount(entries);
-  const actionAreaCount = new Set(entries.map((entry) => actionArea(entry.action))).size;
-
-  return (
-    <div className="network-management audit-workspace">
-      <PageHeader
-        title="Audit log"
-        subtitle={org?.name ?? "…"}
-        actions={<Button variant="ghost" disabled={busy || !org} onClick={() => org && void fetchPage(org.id, applied)}>Refresh</Button>}
-      />
-      {memberScoped && (
-        <p className="mt-1 text-sm text-ink-tertiary">
-          Showing your activity only. Organization-wide activity is visible to admins and owners.
-        </p>
-      )}
-      <ErrorText>{error}</ErrorText>
-
-      <section className="tnx-card-surface audit-inventory">
-        <div className="audit-metrics">
-          {[
-            { label: "Loaded changes", value: entries.length, tone: "text-white" },
-            { label: "Human actions", value: humanCount, tone: "text-ink-body" },
-            { label: "System actions", value: systemCount, tone: "text-accent-400" },
-            { label: "Attribution gaps", value: gapCount, tone: gapCount > 0 ? "text-warn" : "text-ink-body" },
-          ].map((metric) => (
-            <div key={metric.label} className="flex min-w-0 items-baseline gap-2 border-b border-line-row px-4 py-2.5 odd:border-r sm:border-b-0 sm:border-r sm:last:border-r-0">
-              <div className={`font-sans text-lg font-semibold tabular-nums ${metric.tone}`}>{metric.value}</div>
-              <div className="truncate text-micro font-medium uppercase tracking-[0.1em] text-ink-faint">{metric.label}</div>
-            </div>
-          ))}
-        </div>
-
-        <form onSubmit={applyFilters} className="audit-filters">
-          <div className="audit-filter-grid">
-            <label className="min-w-0 text-sm text-ink-tertiary lg:w-52">
-              <span>Actor</span>
-              <select
-                aria-label="Actor"
-                disabled={memberScoped}
-                className={`min-h-9 w-full ${selectCls}`}
-                value={filters.actor}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, actor: e.target.value }))
-                }
-              >
-                <option value="">{memberScoped ? "Your activity" : "Anyone"}</option>
-                {!memberScoped && members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.name || m.email}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="min-w-0 flex-1 text-sm text-ink-tertiary">
-              <span>Action</span>
-              <input
-                aria-label="Action"
-                list="audit-action-options"
-                value={filters.action}
-                onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
-                placeholder="All actions or enter an action key"
-                className="min-h-9 w-full rounded-md border border-white/10 bg-ink-900 px-3 text-sm text-white placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
-              />
-            </label>
-            <label className="min-w-0 text-sm text-ink-tertiary"><span>Target type</span><Input aria-label="Target type" list="audit-target-options" value={filters.targetType} onChange={(e) => setFilters((f) => ({ ...f, targetType: e.target.value }))} /></label>
-            <label className="min-w-0 text-sm text-ink-tertiary"><span>Target UUID</span><Input aria-label="Target UUID" value={filters.targetId} onChange={(e) => setFilters((f) => ({ ...f, targetId: e.target.value }))} /></label>
-            <datalist id="audit-target-options"><option value="beam_share">Tunnex Beam shares</option></datalist>
-            <datalist id="audit-action-options">{Array.from(new Set([...entries.map(entry => entry.action), "beam.share.created", "beam.share.pause", "beam.share.resume", "beam.share.stop", "beam.share.extend", "beam.grants.updated", "beam.policy.updated", "beam.connector.issued", "beam.access.allowed", "beam.access.denied"])).sort().map(action => <option key={action} value={action}>{actionLabel(action)}</option>)}</datalist>
-            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
-              <span>From</span>
-              <Input
-                aria-label="From"
-                type="date"
-                className={`min-h-9 min-w-0 ${selectCls}`}
-                value={filters.from}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, from: e.target.value }))
-                }
-              />
-            </label>
-            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
-              <span>To</span>
-              <Input
-                aria-label="To"
-                type="date"
-                className={`min-h-9 min-w-0 ${selectCls}`}
-                value={filters.to}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, to: e.target.value }))
-                }
-              />
-            </label>
-            <div className="flex items-center gap-2">
-              <Button type="button" size="sm" variant="ghost" disabled={busy || !org} onClick={() => { const next = { ...NO_FILTERS, targetType: "beam_share" }; setFilters(next); setSelected(null); setEntries([]); if (org) void fetchPage(org.id, next); }}>Beam activity</Button>
-              <Button size="sm" type="submit" disabled={busy}>{busy ? "Applying…" : "Apply"}</Button>
-              {(Object.values(filters).some(Boolean) || activeFilterCount > 0) && (
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    if (targetType || targetId) { setSearchParams({}); return; }
-                    setFilters(NO_FILTERS);
-                    setSelected(null);
-                    if (org) void fetchPage(org.id, NO_FILTERS);
-                  }}
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-          </div>
-        </form>
-
-      {/* S14.3 slice A: a real <table>. The audit log IS tabular — action, actor, target, age are the same
-          four facts on every row — and rendering it as <li> blocks meant the tier could only find rows by
-          matching their text. Now: getByRole("table", { name: "Audit events" }) and getAllByRole("row"). */}
-      {/* ⛔ THE GAP IS COUNTED AND NAMED, not folded into the actor column. "not recorded" reads as a
-          property of the EVENT; it is a property of OUR WRITE PATH — four system-initiated actions use
-          the human insert path with a NULL actor instead of InsertSystemAuditLog. Saying so stops an
-          operator hunting for a person who was never recorded. Registered server-side; until it is
-          fixed this screen must surface it rather than hide it. */}
-      {unattributedCount(entries) > 0 && (
-        <p className="border-b border-warn/20 bg-warn/[.06] px-4 py-3 text-xs text-warn">
-          {unattributedCount(entries)} of {entries.length} events on this page
-          have no recorded actor. {UNATTRIBUTED_NOTE}
-        </p>
-      )}
-
-      <div className="audit-table">
-        {/* ⛔ NO CLIENT PAGER HERE: this page ALREADY pages server-side with a keyset cursor behind
-                "Load more". Two paging controls on one screen disagree — "Load more" appends rows the
-                operator cannot see without advancing a second pager, and the count then describes neither
-                the fetch nor the view. The server's cursor is the one that must win, because it is the one
-                that bounds the query. */}
-        {/* ⛔ TWO PAGERS, AND THEY ARE NOT RIVALS ONCE THEY ARE NAMED. This page pages SERVER-SIDE with a
-                keyset cursor; the table pages the rows already FETCHED. I first disabled the client pager to
-                avoid the collision, which meant this screen dumped everything loaded at once — the one thing
-                the pager exists to stop, and the founder saw it immediately.
-
-                They compose as long as each says which set it is talking about: the table's count reads
-                "of N" where N is what has been LOADED, and the server control says so on its face. Silence
-                about which set a number describes is what makes two pagers contradict each other. */}
-        <DataTable
-          // ⛔ NO CLIENT PAGER: THIS SURFACE'S PAGING PROOF COUNTS DOM ROWS. The e2e asserts 51 rows,
-          // then 54 after "Load more", to prove the keyset cursor stitches pages with NO OVERLAP and NO
-          // GAP — a re-served or skipped row changes the count. A client pager renders 25 of whatever is
-          // fetched, so the count stops meaning what the proof needs it to mean.
-          //
-          // ⚠ Restored deliberately after the founder asked these surfaces to paginate. The server
-          // ALREADY bounds them at 50 per fetch, so "everything at once" is 50 rows, not unbounded —
-          // and re-expressing a paging proof is a decide-item, not a fold.
-          pageSize={0}
-          caption="Audit events"
-          rows={entries}
-          rowKey={(a) => a.id}
-          empty={busy ? "Loading audit events…" : activeFilterCount ? "No audit events match these filters." : "No audit events yet."}
-          failed={error != null}
-          columns={[
-            {
-              key: "action",
-              header: "Change",
-              sortValue: (a) => a.action,
-              cell: (a) => (
-                <button
-                  type="button"
-                  aria-label={`Inspect ${a.action} audit event`}
-                  onClick={() => setSelected(a)}
-                  className="group block min-w-0 text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white"
-                >
-                  <span className="block text-sm font-medium text-ink-body group-hover:text-white">{actionLabel(a.action)} <span aria-hidden="true">↗</span></span>
-                  <span className="mt-1 block font-sans text-micro text-ink-faint">{a.action}</span>
-                </button>
-              ),
-            },
-            {
-              key: "actor",
-              header: "Actor",
-              // ⛔ FOUR ARMS, NOT TWO. This cell used to read
-              //     {a.actor_id ? actorName(members, a.actor_id) : "system"}
-              // which rendered the SAME WORD for a NAMED subsystem (26 of 100 served rows) and for a
-              // row with no actor at all (34 of 100). The named actor was discarded, and discarding it
-              // hid an attribution gap behind the word already used for "known, and here is its name".
-              cell: (a) => {
-                const actor = resolveActor(a, members);
-                return (
-                  <span
-                    data-testid="audit-actor"
-                    data-actor-kind={actor.kind}
-                    className={
-                      "text-xs font-medium " +
-                      (actor.gap
-                        ? "text-warn"
-                        : actor.kind === "system"
-                          ? "font-sans text-accent-400"
-                          : // ⛔ A DEPLOYMENT ADMINISTRATOR DOES NOT READ AS A COLLEAGUE. They acted
-                            // inside this tenant from outside it, which is the fact the row exists to
-                            // convey — rendering them in the same grey as a member would bury it.
-                            actor.kind === "cp_admin"
-                            ? "text-accent-400"
-                            : "text-ink-tertiary")
-                    }
-                  >
-                    {actor.label}
-                  </span>
-                );
-              },
-            },
-            {
-              key: "target",
-              header: "Target",
-              cell: (a) => (
-                <span className="font-sans text-xs text-ink-tertiary">{targetLabel(a)}</span>
-              ),
-            },
-            {
-              key: "age",
-              header: "When",
-              numeric: true,
-              // ⚠ SORTS BY THE INSTANT, not by the rendered phrase — "3h ago" and "17m ago" order wrongly
-              // as text, and an audit log ordered wrongly by time is worse than one not ordered at all.
-              sortValue: (a) => Date.parse(a.created_at),
-              cell: (a) => (
-                <span className="whitespace-nowrap font-sans text-xs text-ink-tertiary">{relativeAge(a.created_at)}</span>
-              ),
-            },
-          ]}
-        />
-      </div>
-
-      <div className="flex flex-col gap-2 border-t border-line-row px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="font-sans text-micro text-ink-faint">
-          {entries.length} loaded · {actionAreaCount} {actionAreaCount === 1 ? "area" : "areas"} · newest first
-          {activeFilterCount > 0 ? ` · ${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}` : ""}
-        </span>
-        {more && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() =>
-              org && fetchPage(org.id, applied, entries[entries.length - 1])
-            }
-          >
-            {busy ? "Loading…" : "Load more from server"}
-          </Button>
-        )}
-      </div>
-      </section>
-
-      {org&&replay&&<TerminalReplay orgId={org.id} sessionId={replay} onClose={()=>setReplay(undefined)}/>}
-      {selected && (() => {
-        const actor = resolveActor(selected, members);
-        const details = selected.action.startsWith("beam.") ? beamAuditDetails(selected.details ?? {}) : Object.entries(selected.details ?? {});
-        return (
-          <Modal title="Audit evidence" size="wide" showClose onDismiss={() => setSelected(null)}>
-            <div className="flex flex-col gap-5">
-{selected.target_type==="server_access"&&selected.target_id&&["server_access.session_started","server_access.session_ended"].includes(selected.action)&&<Button onClick={()=>{setReplay(selected.target_id!);setSelected(null)}}>Review session recording</Button>}
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line-row pb-4">
-                <div>
-                  <div className="text-lg font-semibold text-white">{actionLabel(selected.action)}</div>
-                  <div className="mt-1 font-sans text-xs text-ink-faint">{selected.action}</div>
-                </div>
-                <div className="text-right">
-                  <div className={`text-sm font-medium ${actor.gap ? "text-warn" : actor.kind === "system" ? "text-accent-400" : "text-ink-body"}`}>{actor.label}</div>
-                  <div className="mt-1 text-xs text-ink-faint">{actor.kind.replace("_", " ")}</div>
-                </div>
-              </div>
-
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
-                  <dt className="text-xs font-medium text-ink-faint">Target</dt>
-                  <dd className="mt-2 break-all font-sans text-sm text-white">{targetLabel(selected)}</dd>
-                </div>
-                <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
-                  <dt className="text-xs font-medium text-ink-faint">Recorded</dt>
-                  <dd className="mt-2 font-sans text-sm text-white">{new Date(selected.created_at).toLocaleString()}</dd>
-                </div>
-              </dl>
-
-              {selected.target_type === "beam_share" && selected.target_id && /^beam\.(share|grants|connector|access)\./.test(selected.action) && <Link className="text-brand text-sm" to={`/beam/shares/${encodeURIComponent(selected.target_id)}`}>Share history and health</Link>}
-              {selected.action.startsWith("beam.") && <p className="text-xs text-ink-secondary">Beam evidence excludes app bodies, cookies, credential material and request URLs with query strings.</p>}
-              <details className="audit-evidence"><summary id="audit-details-title">Recorded details & IDs</summary>
-                <dl className="audit-record-ids"><div><dt>Event ID</dt><dd>{selected.id}</dd></div><div><dt>Target ID</dt><dd>{selected.target_id || "Not recorded"}</dd></div><div><dt>Recorded timestamp</dt><dd>{selected.created_at}</dd></div></dl>
-                {details.length === 0 ? (
-                  <p className="mt-3 text-sm text-ink-tertiary">No additional details were recorded for this change.</p>
-                ) : (
-                  <dl className="mt-3 divide-y divide-line-row rounded-md border border-line">
-                    {details.map(([key, value]) => (
-                      <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
-                        <dt className="font-sans text-xs text-ink-faint">{key}</dt>
-                        <dd className="break-all whitespace-pre-wrap font-sans text-xs text-ink-body">{detailValue(value)}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-              </details>
-
-              {actor.gap && <p className="rounded-md border border-warn/20 bg-warn/[.06] px-3 py-2 text-xs text-warn">{UNATTRIBUTED_NOTE}</p>}
-            </div>
-          </Modal>
-        );
-      })()}
-    </div>
-  );
+  const { org, loading, failed } = useOrg();
+  const { state } = useAuth();
+  const [search] = useSearchParams();
+  const actor = state.status === "authed" ? `${state.user.id}:${state.user.email_verified}` : state.status;
+  const targetType = search.get("target_type") ?? "", targetId = search.get("target_id") ?? "";
+  // Tenant, actor and linked-target changes withdraw all prior evidence synchronously.
+  return <AuditWorkspace key={`${org?.id ?? ""}:${actor}:${targetType}:${targetId}`} targetType={targetType} targetId={targetId} orgLoading={loading} orgFailed={failed} />;
 }
+
+function AuditWorkspace({ targetType, targetId, orgLoading, orgFailed }: { targetType: string; targetId: string; orgLoading: boolean; orgFailed: boolean }) {
+  const { org } = useOrg();
+  const { state } = useAuth();
+  const [, setSearch] = useSearchParams();
+  const [filters, setFilters] = useState<Filters>({ ...NO_FILTERS, targetType, targetId });
+  const [applied, setApplied] = useState<Filters>({ ...NO_FILTERS, targetType, targetId });
+  const [pages, setPages] = useState<AuditPage[]>([]), [page, setPage] = useState(0), [pageSize, setPageSize] = useState(20);
+  const [busy, setBusy] = useState(false), [readError, setReadError] = useState<string | null>(null), [validationError, setValidationError] = useState<string | null>(null);
+  const [members, setMembers] = useState<Member[]>([]), [rosterKnown, setRosterKnown] = useState(false), [rosterError, setRosterError] = useState<string | null>(null), [memberScoped, setMemberScoped] = useState<boolean | null>(null);
+  const [selected, setSelected] = useState<AuditLogEntry | null>(null), [replay, setReplay] = useState<string>();
+  const [moreFilters, setMoreFilters] = useState(Boolean(targetType || targetId));
+  const request = useRef(0), rosterRequest = useRef(0), alive = useRef(true), retry = useRef<PageRequest | null>(null), detailHeading = useRef<HTMLHeadingElement>(null);
+  const orgId = org?.id ?? "", actorId = state.status === "authed" ? state.user.id : "";
+  useEffect(() => { alive.current = true; return () => { alive.current = false; request.current++; rosterRequest.current++; }; }, []);
+  useEffect(() => { if (selected) detailHeading.current?.focus(); }, [selected?.id]);
+
+  async function loadRoster() {
+    if (!orgId || !actorId) return;
+    const sequence = ++rosterRequest.current;
+    setRosterKnown(false); setMemberScoped(null); setMembers([]); setRosterError(null);
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId } } }));
+    if (!alive.current || sequence !== rosterRequest.current) return;
+    if (!result.ok || !validRoster(result.data)) { setRosterError(!result.ok ? result.error : "The actor roster was not returned correctly."); return; }
+    setMembers(result.data); setRosterKnown(true);
+    const mine = result.data.find((member) => member.user_id === actorId);
+    setMemberScoped(!(mine?.roles ?? (mine ? [mine.role] : [])).some((role) => role === "owner" || role === "admin"));
+  }
+  async function fetchPage(next: PageRequest, reset = false) {
+    if (!orgId || !actorId) return;
+    const invalid = filterError(next.filters);
+    if (invalid) { setValidationError(invalid); return; }
+    const sequence = ++request.current;
+    const snapshot = { ...next, filters: { ...next.filters } };
+    retry.current = snapshot;
+    setBusy(true); setReadError(null); setValidationError(null); setSelected(null); setReplay(undefined); setPage(next.page); setApplied(snapshot.filters);
+    if (reset) setPages([]);
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/audit-logs", { params: {
+      path: { orgId }, query: { actor: snapshot.filters.actor || undefined, action: snapshot.filters.action || undefined, target_type: snapshot.filters.targetType || undefined, target_id: snapshot.filters.targetId || undefined, from: snapshot.filters.from ? dayStart(snapshot.filters.from) : undefined, to: snapshot.filters.to ? dayEnd(snapshot.filters.to) : undefined, cursor_ts: snapshot.cursor?.created_at, cursor_id: snapshot.cursor?.id, limit: snapshot.size + 1 },
+    } }));
+    if (!alive.current || sequence !== request.current) return;
+    setBusy(false);
+    if (!result.ok || !validAuditRows(result.data)) { setReadError(!result.ok ? `Could not load the audit log. ${result.error}` : "The audit page was not returned correctly. Retry or refresh to restart."); return; }
+    const rows = result.data.slice(0, snapshot.size);
+    const earlier = new Set(pages.slice(0, snapshot.page).flatMap((previous) => previous.rows.map((row) => row.id)));
+    if (!reset && rows.some((row) => earlier.has(row.id))) { setReadError("The audit page overlapped earlier events. Refresh to restart from the newest event."); return; }
+    setPages((previous) => [...(reset ? [] : previous.slice(0, snapshot.page)), { rows, hasNext: result.data.length > snapshot.size }]);
+  }
+  useEffect(() => {
+    if (!orgId || !actorId) return;
+    void loadRoster();
+    const linked = { ...NO_FILTERS, targetType, targetId };
+    const invalid = filterError(linked);
+    if (invalid) setValidationError(invalid);
+    else void fetchPage({ filters: linked, size: 20, page: 0 }, true);
+  }, [orgId, actorId]);
+
+  function start(next: Filters, size = pageSize) {
+    const invalid = filterError(next);
+    if (invalid) { setValidationError(invalid); return; }
+    void fetchPage({ filters: { ...next }, size, page: 0 }, true);
+  }
+  function applyFilters(event: FormEvent) { event.preventDefault(); start(filters); }
+  function clearFilters() {
+    if (targetType || targetId) { setSearch({}); return; }
+    setFilters({ ...NO_FILTERS }); setMoreFilters(false); start(NO_FILTERS);
+  }
+  const current = pages[page];
+  const entries = current?.rows ?? [];
+  const activeFilterCount = Object.values(applied).filter(Boolean).length;
+  const gapCount = unattributedCount(entries);
+  const firstItem = pages.slice(0, page).reduce((count, item) => count + item.rows.length, 0) + 1;
+  function move(nextPage: number) {
+    const index = nextPage - 1;
+    if (busy || index < 0 || index === page) return;
+    if (pages[index]) { request.current++; setPage(index); setReadError(null); setValidationError(null); setSelected(null); return; }
+    const cursor = current?.rows.at(-1);
+    if (index === page + 1 && current?.hasNext && cursor) void fetchPage({ filters: applied, size: pageSize, page: index, cursor });
+  }
+  const actor = selected ? resolveActor(selected, members, rosterKnown) : null;
+  const details = selected ? selected.action.startsWith("beam.") ? beamAuditDetails(selected.details ?? {}) : Object.entries(selected.details ?? {}) : [];
+  const scopeNotice = memberScoped === true ? "Showing your activity only. Organization-wide activity is visible to admins and owners." : null;
+
+  return <div className="network-management audit-workspace">
+    {selected && actor ? <section aria-label="Audit evidence" className="audit-detail">
+      <nav aria-label="Audit breadcrumb" className="audit-breadcrumb"><button onClick={() => setSelected(null)}>Audit log</button><span aria-hidden="true">/</span><span aria-current="page" title={selected.id}>{actionLabel(selected.action)} · {selected.id.slice(-8)}</span></nav>
+      <div className="audit-detail-heading"><div><h1 ref={detailHeading} tabIndex={-1}>{actionLabel(selected.action)}</h1><p>{selected.action}</p></div><Button variant="ghost" onClick={() => setSelected(null)}>Back to audit log</Button></div>
+      <ResourceSummary title="Recorded event"><dl className="audit-facts tnx-resource-facts tnx-resource-facts-three"><AuditFact label="Actor"><ActorLabel entry={selected} members={members} rosterKnown={rosterKnown} /><small>{actor.kind.replace(/_/g, " ")}</small></AuditFact><AuditFact label="Target"><span title={selected.target_id}>{targetLabel(selected)}</span></AuditFact><AuditFact label="Recorded">{new Date(selected.created_at).toLocaleString()}</AuditFact></dl></ResourceSummary>
+      {rosterError && <LoadRetry error={`Actor names are unavailable: ${rosterError}`} onRetry={() => void loadRoster()} />}
+      {actor.gap && <p className="audit-attribution-note">{UNATTRIBUTED_NOTE}</p>}
+      <div className="audit-detail-actions">{selected.target_type === "server_access" && selected.target_id && ["server_access.session_started", "server_access.session_ended"].includes(selected.action) && <Button variant="ghost" onClick={() => setReplay(selected.target_id!)}>Review session recording</Button>}{selected.target_type === "beam_share" && selected.target_id && /^beam\.(share|grants|connector|access)\./.test(selected.action) && <Link className="audit-link" to={`/beam/shares/${encodeURIComponent(selected.target_id)}`}>Share history and health</Link>}</div>
+      {selected.action.startsWith("beam.") && <p className="audit-copy">Local Sharing evidence excludes app bodies, cookies, credential material and request URLs with query strings.</p>}
+      <details className="audit-evidence"><summary id="audit-details-title">Recorded details &amp; IDs</summary><ResourceSummary title="Recorded identifiers" headingLevel={3}><dl className="audit-record-ids tnx-resource-facts tnx-resource-facts-three"><AuditFact label="Event ID">{selected.id}</AuditFact><AuditFact label="Actor ID">{selected.actor_id || "Not recorded"}</AuditFact><AuditFact label="System actor">{selected.actor_system || "Not recorded"}</AuditFact><AuditFact label="Target type">{selected.target_type || "Not recorded"}</AuditFact><AuditFact label="Target ID">{selected.target_id || "Not recorded"}</AuditFact><AuditFact label="Recorded timestamp">{selected.created_at}</AuditFact></dl></ResourceSummary>{details.length === 0 ? <p className="audit-copy">No additional details were recorded for this change.</p> : <dl className="audit-record-details tnx-resource-facts tnx-resource-facts-single">{details.map(([key, value]) => <AuditFact key={key} label={key}><span className="audit-detail-value">{detailValue(value)}</span></AuditFact>)}</dl>}</details>
+    </section> : <>
+      <form onSubmit={applyFilters} className="audit-filters">
+        <div className="audit-filter-main"><label><span>Actor</span><Select aria-label="Actor" value={filters.actor} disabled={memberScoped !== false} onChange={(event) => setFilters((current) => ({ ...current, actor: event.target.value }))}><option value="">{memberScoped === true ? "Your activity" : memberScoped === false ? "Anyone" : "Recorded actors"}</option>{memberScoped === false && members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name || member.email}</option>)}</Select></label><label><span>Action</span><Input aria-label="Action" list="audit-action-options" value={filters.action} placeholder="All actions or an action key" onChange={(event) => setFilters((current) => ({ ...current, action: event.target.value }))} /></label><div className="audit-filter-actions"><Button type="submit" disabled={busy || !org || !actorId}>Apply</Button>{(Object.values(filters).some(Boolean) || activeFilterCount > 0) && <Button type="button" variant="ghost" disabled={busy || !org} onClick={clearFilters}>Clear</Button>}<RefreshButton label="Refresh" type="button" disabled={busy || !org || !actorId} onClick={() => start(applied)} /></div></div>
+        <details className="audit-filter-extra" open={moreFilters} onToggle={(event) => setMoreFilters(event.currentTarget.open)}><summary>More filters{activeFilterCount > 0 && <span className="audit-filter-count">{activeFilterCount} applied</span>}</summary><div className="audit-filter-grid"><label><span>Target type</span><Input aria-label="Target type" list="audit-target-options" value={filters.targetType} onChange={(event) => setFilters((current) => ({ ...current, targetType: event.target.value }))} /></label><label><span>Target UUID</span><Input aria-label="Target UUID" value={filters.targetId} onChange={(event) => setFilters((current) => ({ ...current, targetId: event.target.value }))} placeholder="Exact target identity" /></label><label><span>From</span><Input aria-label="From" type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></label><label><span>To</span><Input aria-label="To" type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></label></div><div className="audit-filter-quick"><Button type="button" variant="ghost" disabled={busy || !org || !actorId} onClick={() => { const next = { ...NO_FILTERS, targetType: "beam_share" }; setFilters(next); start(next); }}>Local Sharing activity</Button></div></details>
+        <datalist id="audit-target-options"><option value="beam_share">Local shares</option></datalist><datalist id="audit-action-options">{Array.from(new Set([...entries.map((entry) => entry.action), "beam.share.created", "beam.share.pause", "beam.share.resume", "beam.share.stop", "beam.share.extend", "beam.grants.updated", "beam.policy.updated", "beam.connector.issued", "beam.access.allowed", "beam.access.denied"])).sort().map((action) => <option key={action} value={action}>{actionLabel(action)}</option>)}</datalist>
+      </form>
+      {scopeNotice && <p className="audit-copy">{scopeNotice}</p>}
+      {rosterError && <LoadRetry error={`Actor names are unavailable: ${rosterError}`} onRetry={() => void loadRoster()} />}
+      <ErrorText>{validationError}</ErrorText>
+      {orgLoading ? <Loading label="Loading your organization…" /> : !org ? <p role="alert" className="audit-copy">{orgFailed ? "Could not load your organizations." : "You are not a member of any organization yet."}</p> : !actorId ? <p role="alert" className="audit-copy">Sign in to view audit events.</p> : readError ? <LoadRetry error={readError} onRetry={() => retry.current && void fetchPage(retry.current, retry.current.page === 0)} /> : busy ? <Loading label="Loading audit events…" /> : current ? <>
+        {gapCount > 0 && <p className="audit-attribution-note">{gapCount} of {entries.length} events on this page have no recorded actor. {UNATTRIBUTED_NOTE}</p>}
+        <DataTable variant="flat" caption="Audit events" rows={entries} rowKey={(entry) => entry.id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={page > 0 ? "No events on this page" : activeFilterCount ? "No audit events match these filters." : "No audit events yet."} description={page > 0 ? "Older events may have expired. Use Previous to review earlier pages, or Refresh to restart from the newest event." : activeFilterCount ? "Clear or adjust the applied filters to review other events." : "Recorded activity will appear here."} action={activeFilterCount ? <Button variant="ghost" onClick={clearFilters}>Clear filters</Button> : undefined} />} columns={[
+          { key: "action", header: "Change", cell: (entry) => <button className="audit-open" aria-label={`Inspect ${entry.action} audit event`} onClick={() => setSelected(entry)}><span>{actionLabel(entry.action)}</span><small>{entry.action}</small></button> },
+          { key: "actor", header: "Actor", cell: (entry) => <ActorLabel entry={entry} members={members} rosterKnown={rosterKnown} /> },
+          { key: "target", header: "Target", cell: (entry) => <span className="audit-copy" title={entry.target_id}>{targetLabel(entry)}</span> },
+          { key: "when", header: "When", cell: (entry) => <span className="audit-copy" title={entry.created_at}>{relativeAge(entry.created_at)}</span> },
+        ]} />
+      </> : !validationError ? <Loading label="Loading audit events…" /> : null}
+      {(current || readError) && <AppAccessPagination maxOffset={null} page={page + 1} pageSize={pageSize} count={busy || readError ? 0 : entries.length} hasNext={!readError && !!current?.hasNext} busy={busy} firstItem={firstItem} previousLabel="Previous audit events" nextLabel="Next audit events" onPageChange={move} onPageSizeChange={(size) => { setPageSize(size); start(applied, size); }} />}
+    </>}
+    {org && replay && <TerminalReplay orgId={org.id} sessionId={replay} onClose={() => setReplay(undefined)} />}
+  </div>;
+}
+
+function ActorLabel({ entry, members, rosterKnown }: { entry: AuditLogEntry; members: Member[]; rosterKnown: boolean }) {
+  const actor = resolveActor(entry, members, rosterKnown);
+  return <span data-testid="audit-actor" data-actor-kind={actor.kind} className={`audit-actor${actor.gap ? " audit-actor-gap" : actor.kind === "system" || actor.kind === "cp_admin" ? " audit-actor-named" : ""}`}>{actor.label}</span>;
+}
+function AuditFact({ label, children }: { label: string; children: React.ReactNode }) { return <div><dt>{label}</dt><dd>{children}</dd></div>; }

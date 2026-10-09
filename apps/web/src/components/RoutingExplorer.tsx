@@ -1,4 +1,5 @@
 import { RoutingPath } from "./RoutingPath";
+import { ResourceSummary } from "./ResourceSummary";
 import {Fragment,useMemo,useState} from "react";
 import {Link} from "react-router-dom";
 import type {Allocation,RangeRow,SubnetFetch} from "../lib/routedrangesview";
@@ -21,7 +22,7 @@ export function RoutingExplorer({allocations,rows,sites,fanOut,complete,initialF
  const pendingCount=entries.filter(entry=>entry.kind==="pending").length;
  const details = active && <aside className="routing-inspector" aria-label="Range details"><button className="routing-detail-close" aria-label="Close range details" onClick={()=>setSelected("")}>×</button>
     <RoutingPath key={active.key} kind={active.kind} destination={active.siteId ? active.owner : "Network not identified"} range={active.cidr} />
-    <details className="route-more"><summary>Details & next steps</summary><dl><dt>Owner</dt><dd>{active.owner}</dd><dt>Routing</dt><dd>{active.kind==="approved" ? "Published to split-tunnel devices" : active.kind==="pending" ? "Withheld until approved" : "Reserved allocation; not a published route by itself"}</dd></dl>
+    <details className="route-more"><summary>Details & next steps</summary><ResourceSummary title="Range configuration" headingLevel={4}><dl className="tnx-resource-facts"><div><dt>Owner</dt><dd>{active.owner}</dd></div><div><dt>Routing</dt><dd>{active.kind==="approved" ? "Published to split-tunnel devices" : active.kind==="pending" ? "Withheld until approved" : "Reserved allocation; not a published route by itself"}</dd></div></dl></ResourceSummary>
     <div className="routing-context"><strong>{active.kind==="pending" ? "Before you approve" : active.kind==="approved" ? "If the destination cannot be reached" : "Why this is reserved"}</strong><p>{active.kind==="pending" ? "Confirm that this range belongs to the intended network and does not overlap another location. Approval publishes it to devices; access policies still control access." : active.kind==="approved" ? "This route is advertised, but reachability is not tested here. Check the site's gateway status, then the access policy for the device or user." : active.kind==="pool" ? "These addresses are assigned to devices. Keep them separate from the ranges used by your networks." : "These addresses are reserved for Kubernetes services. Avoid assigning them to another network."}</p></div></details>
     {active.siteId && <Link to={`/sites?site=${encodeURIComponent(active.siteId)}${active.kind==="pending" ? "&section=approvals":""}`}>{active.kind==="pending" ? "Review approvals":"Open site"} →</Link>}
     {!active.siteId && active.kind==="approved" && <small className="routing-owner-note">Network ownership unavailable</small>}

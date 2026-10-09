@@ -40,6 +40,7 @@ describe("Add Agent flow", () => {
     ));
     await screen.findByText(/Step 3 of 3/);
     expect(screen.getByText(/no agent is claimed as enrolled/i)).toBeTruthy();
+    fireEvent.click(screen.getByText("Host requirements", { selector: "summary" }));
     expect(screen.getByText(/Missing host dependencies are installed automatically/i)).toBeTruthy();
     expect(screen.getByText(/older release requires a preinstalled release verifier/i)).toBeTruthy();
     fireEvent.click(within(screen.getByText(/Step 3 of 3/).closest("div.fixed")!).getByRole("button", { name: /I.ve saved it/ }));

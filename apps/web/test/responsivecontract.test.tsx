@@ -58,17 +58,20 @@ import { AppShell, NAV_DESTINATIONS } from "../src/components/AppShell";
 import { LayoutCapabilityProvider } from "../src/components/ComposeGate";
 import { capabilityFor, type LayoutIntent } from "../src/lib/layout";
 import { AuthProvider } from "../src/lib/auth";
+import type { Meta } from "../src/lib/api";
 import Access from "../src/pages/Access";
 
 const INTENTS: LayoutIntent[] = ["triage", "compose", "operate", "wide", "max"];
 
-function renderShell(intent: LayoutIntent) {
+const deploymentMeta: Meta = { edition: "open", protocol_version: 1, sso_providers: [], sandbox_module_state: "enabled" };
+
+function renderShell(intent: LayoutIntent, meta: Meta = deploymentMeta) {
   return render(
     <MemoryRouter initialEntries={["/dashboard"]}>
       <LayoutCapabilityProvider value={capabilityFor(intent)}>
         <AuthProvider>
           <OrgProvider>
-            <DeploymentMetaProvider value={{ edition: "open", protocol_version: 1, sso_providers: [], sandbox_module_state: "enabled" }}><AppShell /></DeploymentMetaProvider>
+            <DeploymentMetaProvider value={meta}><AppShell /></DeploymentMetaProvider>
           </OrgProvider>
         </AuthProvider>
       </LayoutCapabilityProvider>
@@ -180,6 +183,52 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     renderShell("operate");
     await screen.findByRole("navigation", { name: "Main" });
     expect(screen.queryByRole("navigation", { name: "Triage" })).toBeNull();
+  });
+});
+
+describe("sidebar deployment version and keyboard access", () => {
+  const metadata: Meta = {
+    ...deploymentMeta,
+    protocol_version: 19,
+    upgrade: {
+      available: true,
+      verified: true,
+      current_version: "v7.41.2+fleet",
+      current_source_sha: "a".repeat(64),
+      version: "v99.9.9",
+      reason: "upgrade_available",
+    },
+  };
+
+  it.each(["operate", "compose"] as const)("[%s] reports the installed version near the profile, preserving its full accessible text", async intent => {
+    renderShell(intent, metadata);
+    const version = await screen.findByTitle("Control plane version v7.41.2+fleet");
+    expect(version.textContent).toBe("Control plane version v7.41.2+fleet");
+    expect(version.parentElement?.querySelector('[aria-controls="account-menu"]')).not.toBeNull();
+    expect(version.hasAttribute("data-collapsed")).toBe(intent === "compose");
+    expect(screen.queryByText("v99.9.9")).toBeNull();
+  });
+
+  it.each([undefined, "", "   ", 19])("shows an honest unreported placeholder when installed metadata is absent or malformed (%s)", async currentVersion => {
+    renderShell("operate", currentVersion === undefined
+      ? deploymentMeta
+      : { ...metadata, upgrade: { ...metadata.upgrade!, current_version: currentVersion } } as unknown as Meta);
+    const version = await screen.findByTitle("Control plane version not reported");
+    expect(version.textContent).toBe("Control plane version Not reported");
+    expect(screen.getByText("Not reported", { exact: true }).hasAttribute("aria-hidden")).toBe(false);
+    expect(version.textContent).not.toContain("19");
+    expect(screen.queryByText("v99.9.9")).toBeNull();
+  });
+
+  it("keeps the destination scroll container keyboard focusable with every page link available", async () => {
+    renderShell("operate");
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(nav.tabIndex).toBe(0);
+    nav.focus();
+    expect(document.activeElement).toBe(nav);
+    expect(nav.classList.contains("overflow-y-auto")).toBe(true);
+    expect(within(nav).getAllByRole("link").map(link => link.getAttribute("href")).sort())
+      .toEqual(NAV_DESTINATIONS.map(destination => destination.to).sort());
   });
 });
 

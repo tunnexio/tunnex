@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { K8sServiceInventoryStatus } from "../src/components/K8sServiceInventoryStatus";
 
 afterEach(cleanup);
@@ -7,6 +7,8 @@ afterEach(cleanup);
 describe("connected-agent Kubernetes inventory status", () => {
   it("keeps unavailable distinct from an authenticated empty result", () => {
     const { rerender } = render(<K8sServiceInventoryStatus state={{ kind: "unavailable" }} />);
+    expect(screen.getByRole("status").textContent).toContain("Authenticated inventory is unavailable");
+    fireEvent.click(screen.getByText("Inventory source"));
     expect(screen.getByText(/dropdowns are unavailable/i)).toBeTruthy();
     expect(screen.getByText(/No cluster objects or zero counts are inferred/i)).toBeTruthy();
 
@@ -23,7 +25,7 @@ describe("connected-agent Kubernetes inventory status", () => {
 
     rerender(<K8sServiceInventoryStatus state={{ kind: "error", message: "Inventory read failed." }} />);
     expect(screen.getByRole("alert").textContent).toContain("Inventory read failed.");
-    expect(screen.queryByText("VERIFIED REPORT")).toBeNull();
+    expect(screen.queryByText("Authenticated report")).toBeNull();
   });
 
   it("shows verified content only for the ready arm", () => {
@@ -32,7 +34,7 @@ describe("connected-agent Kubernetes inventory status", () => {
         state={{ kind: "ready", content: <label>Namespace<select><option>payments</option></select></label> }}
       />,
     );
-    expect(screen.getByText("VERIFIED REPORT")).toBeTruthy();
+    expect(screen.getByText("Authenticated report")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Namespace" })).toBeTruthy();
   });
 });

@@ -1,3 +1,4 @@
+vi.mock("../src/components/TerminalReplay", () => ({ TerminalReplay: () => null }));
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
@@ -30,6 +31,7 @@ afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup n
 // Every audit-log request, captured at the NETWORK boundary — the query is the assertion target.
 const queries: Array<Record<string, unknown>> = [];
 let logFail = false;
+let emptyLaterPage = false;
 let viewerRoles = ["owner"];
 
 // ⛔ `actor_id`, NOT `actor_user_id`. The mock sent a field the spec does not have — and ActivityEntry is
@@ -41,9 +43,9 @@ let viewerRoles = ["owner"];
 //
 //   A FALLBACK THAT IS NEVER EXERCISED DELIBERATELY IS A FALLBACK THAT IS ALWAYS EXERCISED ACCIDENTALLY.
 const ENTRY = (id: string) => ({
-  id,
+  id: `01900000-0000-7000-8000-${Number(id).toString().padStart(12, "0")}`,
   action: "device.created",
-  created_at: `2026-08-01T10:00:0${id}Z`,
+  created_at: new Date(Date.UTC(2026, 7, 1, 10) - Number(id) * 1000).toISOString(),
   actor_id: "u1",
   target_type: "device",
   target_id: "d1",
@@ -87,10 +89,11 @@ vi.mock("../src/lib/api", async () => {
                 data: undefined,
                 error: { error: { code: "boom", message: "nope" } },
               };
-            // PAGE+1 rows so the has-more probe trips and "Load more" is offered.
-            return {
-              data: Array.from({ length: 51 }, (_, i) => ENTRY(String(i))),
-            };
+            // Honor the real keyset and size probe, including the undisplayed probe on the next page.
+            const query = opts?.params?.query ?? {};
+            if (query.cursor_id && emptyLaterPage) return { data: [] };
+            const first = query.cursor_id ? Number(String(query.cursor_id).slice(-12)) + 1 : 0;
+            return { data: Array.from({ length: 53 }, (_, i) => ENTRY(String(i))).slice(first, first + Number(query.limit ?? 21)) };
           }
           return { data: [] };
         },
@@ -118,6 +121,7 @@ const withAuth = (ui: React.ReactElement, initialEntry = "/audit") =>
 beforeEach(() => {
   queries.length = 0;
   logFail = false;
+  emptyLaterPage = false;
   viewerRoles = ["owner"];
 });
 
@@ -138,11 +142,11 @@ describe("AuditLog — AI roles keep a self-activity view", () => {
 });
 
 describe("AuditLog — wiring: paging must use the APPLIED filter set, not the one being edited", () => {
-  it("'Load more' pages with the filters that produced the list, ignoring an un-applied edit", async () => {
+  it("pages with applied filters while a draft filter is edited", async () => {
     withAuth(<AuditLog />);
 
     const loadMore = await waitFor(() =>
-      screen.getByRole("button", { name: "Load more from server" }),
+      screen.getByRole("button", { name: "Next audit events" }),
     );
     expect(queries.at(-1)?.action).toBeUndefined(); // the initial page: no filters applied
 
@@ -170,7 +174,7 @@ describe("AuditLog — failure path", () => {
     logFail = true;
     withAuth(<AuditLog />);
 
-    await waitFor(() => screen.getByText("Could not load the audit log."));
+    await waitFor(() => screen.getByText(/Could not load the audit log\./));
   });
 });
 
@@ -213,58 +217,47 @@ describe("AuditLog — the actor column names the human", () => {
         name: "Inspect device.created audit event",
       }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Audit evidence" });
+    const dialog = screen.getByRole("region", { name: "Audit evidence" });
     expect(dialog).toBeTruthy();
     expect(within(dialog).getByText("device · d1")).toBeTruthy();
   });
 });
 
-/**
- * ⛔ TWO PAGERS ON ONE SCREEN, AND THE FIX WAS TO NAME THEM RATHER THAN DELETE ONE.
- *
- * This page fetches with a keyset cursor (server-side) AND renders a table that pages what has been fetched
- * (client-side). Fearing the collision, I first disabled the client pager here — which made this the one
- * screen that dumped every loaded row at once, the exact thing pagination exists to prevent. The founder saw
- * it on sight.
- *
- * > **TWO PAGERS CONTRADICT EACH OTHER ONLY WHILE THEY ARE SILENT ABOUT WHICH SET THEY DESCRIBE.** The
- * > table's count says "of N loaded"; the server control says "from server" on its face.
- */
-/**
- * ⛔ THIS SURFACE PAGES ON THE SERVER, AND ITS PROOF COUNTS DOM ROWS.
- *
- * `e2e/tests/audit.spec.ts` asserts 51 rows, then 54 after "Load more", to show the keyset cursor stitches
- * pages with NO OVERLAP and NO GAP — a re-served or skipped row changes the count. A CLIENT pager renders 25
- * of whatever was fetched, so that count stops meaning what the proof needs it to mean.
- *
- * ⚠ THESE TWO TESTS ONCE ASSERTED THE OPPOSITE, and that is worth recording rather than quietly deleting.
- * The founder asked the log surfaces to paginate, so a client pager was added here and pinned. The e2e then
- * red-lined, the pager was reverted — and THESE TESTS WERE LEFT BEHIND, still asserting a pager that no
- * longer exists. They passed locally only because the suite was not re-run after that revert, and CI caught
- * them. Re-expressing the keyset proof to survive client paging is a decide-item, not a fold.
- */
-describe("AuditLog — the server is its pager", () => {
-  it("⛔ EVERY FETCHED ROW RENDERS — the e2e's stitching proof counts them", async () => {
-    // The fixture serves PAGE+1 = 51 so the has-more probe trips; the page displays PAGE = 50.
-    // 50 body rows + 1 header. The precise number matters: "at least some" would also pass on a component
-    // that rendered one row, which is a different defect wearing the same result.
+describe("AuditLog — bounded server pages", () => {
+  it("shows exactly the requested page and advances from its final displayed row", async () => {
     withAuth(<AuditLog />);
-    const table = await waitFor(() =>
-      screen.getByRole("table", { name: "Audit events" }),
-    );
-    expect(within(table).getAllByRole("row")).toHaveLength(51);
+    const table = await screen.findByRole("table", { name: "Audit events" });
+    expect(within(table).getAllByRole("row")).toHaveLength(21);
+    expect(queries[0]?.limit).toBe(21);
+    fireEvent.click(screen.getByRole("button", { name: "Next audit events" }));
+    await waitFor(() => expect(queries).toHaveLength(2));
+    expect(queries[1]).toMatchObject({ cursor_id: ENTRY("19").id, cursor_ts: ENTRY("19").created_at, limit: 21 });
+    await waitFor(() => expect(within(screen.getByRole("table", { name: "Audit events" })).getAllByRole("row")).toHaveLength(21));
+    const requests = queries.length;
+    fireEvent.click(screen.getByRole("button", { name: "Previous audit events" }));
+    expect(queries).toHaveLength(requests);
+    expect(within(screen.getByRole("table", { name: "Audit events" })).getAllByRole("row")).toHaveLength(21);
+    fireEvent.click(screen.getByRole("button", { name: "Next audit events" }));
+    expect(queries).toHaveLength(requests);
+    fireEvent.click(screen.getByRole("button", { name: "Next audit events" }));
+    await waitFor(() => expect(queries).toHaveLength(3));
+    expect(queries[2]).toMatchObject({ cursor_id: ENTRY("39").id, cursor_ts: ENTRY("39").created_at });
+    await waitFor(() => expect(within(screen.getByRole("table", { name: "Audit events" })).getAllByRole("row")).toHaveLength(14));
+    expect((screen.getByRole("button", { name: "Next audit events" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Previous audit events" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("⚠ AND THE SERVER CONTROL IS THE ONLY PAGER — no client one beside it", async () => {
-    // Its absence would cap the log at one fetch forever; a client pager beside it would put two paging
-    // controls on one screen that disagree about which set they describe.
+  it("changes the real server limit and resets the cursor when the page size changes", async () => {
     withAuth(<AuditLog />);
-    await waitFor(() => screen.getByRole("table", { name: "Audit events" }));
-    expect(
-      screen.getByRole("button", { name: "Load more from server" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
-    expect(screen.queryByLabelText("Rows per page")).toBeNull();
+    await screen.findByRole("table", { name: "Audit events" });
+    fireEvent.click(screen.getByRole("button", { name: "Next audit events" }));
+    await waitFor(() => expect(queries).toHaveLength(2));
+    fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
+    await waitFor(() => expect(queries).toHaveLength(3));
+    expect(queries[2].limit).toBe(11);
+    expect(queries[2].cursor_id).toBeUndefined();
+    expect(queries[2].cursor_ts).toBeUndefined();
+    await waitFor(() => expect(within(screen.getByRole("table", { name: "Audit events" })).getAllByRole("row")).toHaveLength(11));
   });
 });
 
@@ -275,7 +268,7 @@ it("application audit links scope the initial query and preserve that scope whil
   await screen.findByRole("table", { name: "Audit events" });
   expect(queries[0]).toMatchObject({ target_type: "app_access", target_id: appId });
   fireEvent.change(screen.getByLabelText("Target UUID"), { target: { value: "22222222-2222-4222-8222-222222222222" } });
-  fireEvent.click(await screen.findByRole("button", { name: "Load more from server" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Next audit events" }));
   await waitFor(() => expect(queries.length).toBe(2));
   expect(queries[1]).toMatchObject({ target_type: "app_access", target_id: appId, cursor_id: expect.any(String) });
 });
@@ -287,4 +280,21 @@ it("an invalid deep-link target refuses an audit read until corrected", async ()
   fireEvent.change(screen.getByLabelText("Target UUID"), { target: { value: "11111111-1111-4111-8111-111111111111" } });
   fireEvent.click(screen.getByRole("button", { name: "Apply" }));
   await waitFor(() => expect(queries).toHaveLength(1));
+});
+
+
+it("retries the failed audit keyset unchanged and preserves Previous when the later page is empty", async () => {
+  withAuth(<AuditLog />); await screen.findByRole("table", { name: "Audit events" });
+  logFail = true;
+  fireEvent.click(screen.getByRole("button", { name: "Next audit events" }));
+  await screen.findByText(/Could not load the audit log\./);
+  const failed = queries[1];
+  logFail = false; emptyLaterPage = true;
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await screen.findByText("No events on this page");
+  expect(queries[2]).toEqual(failed);
+  expect(screen.getByText("0 results")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Previous audit events" }));
+  expect(within(screen.getByRole("table", { name: "Audit events" })).getAllByRole("row")).toHaveLength(21);
+  expect(queries).toHaveLength(3);
 });
