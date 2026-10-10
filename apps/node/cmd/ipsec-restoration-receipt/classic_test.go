@@ -50,6 +50,17 @@ func TestAssemblyClassicWholeJournalAndStoppedIdentity(t *testing.T) {
 		lastJournal, lastEvidence = j, raw
 		return assemble(j, raw, p.Snapshot.Boot, ns)
 	}
+	t.Run("existing restored Classic epoch is whole-journal validated", func(t *testing.T) {
+		old := e
+		next := e
+		next.Allocation.Generation = uuid.New()
+		next.Allocation.Tunnels[0].Alias = ipsec.KernelTunnelAlias(next.Allocation.Generation, tunnel)
+		next.Restoration = &ipsec.RuntimeRestoration{BootID: p.Snapshot.Boot, Epoch: 1}
+		next.Restoration.Retired = []ipsec.RuntimeRetiredEpoch{{Entry: old, NewBootID: p.Snapshot.Boot, NewNamespace: next.Allocation.Namespace, NewGeneration: next.Allocation.Generation, Termination: "supervisor-confirmed-runtime-stop", EvidenceDigest: strings.Repeat("c", 64)}}
+		if _, err := run(next, "net:[42]"); err != nil {
+			t.Fatal("valid existing Classic restoration epoch refused by helper", err)
+		}
+	})
 	raw, err := run(e, "net:[42]")
 	if err != nil {
 		t.Fatal("valid Classic stopped obligation refused", err)
