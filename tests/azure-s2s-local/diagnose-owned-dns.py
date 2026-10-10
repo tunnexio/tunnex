@@ -54,7 +54,7 @@ def main():
   pid=int(command('docker','inspect','--format','{{.State.Pid}}',cid))
   if pid<=0:raise ValueError('running namespace')
   ns=os.readlink('/proc/%d/ns/net'%pid)
-  entries=[e for e in journal['Payload']['Entries'] if e['DeliveryID']==material['id'] and e['Phase']=='applied']
+  entries=[e for e in journal['Payload']['Entries'] if e['DeliveryID']==material['delivery_id'] and e['Phase']=='applied']
   if len(entries)!=1 or entries[0]['Allocation']['Namespace']!=ns:raise ValueError('exact applied namespace')
   entry=entries[0]
   def native(*args):return command('nsenter','-t',str(pid),'-n',*args)
