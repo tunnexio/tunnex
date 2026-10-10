@@ -13,7 +13,7 @@ import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
 
 type Connection = components["schemas"]["IPsecConnection"];
 type Settings = components["schemas"]["IPsecSettings"];
-type Configuration = components["schemas"]["IPsecConfigurationCheckInput"] & { profile_id?: "gcp-ha-bgp-ipv4-v1" | "gcp-classic-static-ipv4-v1" };
+type Configuration = components["schemas"]["IPsecConfigurationCheckInput"];
 type CreateInput = components["schemas"]["IPsecProviderCreateInput"];
 type Provider = components["schemas"]["IPsecProviderConfiguration"];
 type ConnectionPage = components["schemas"]["IPsecConnectionPage"];
@@ -27,7 +27,8 @@ function privateASN(value: string): boolean {
   const n = Number(value);
   return /^\d+$/.test(value) && Number.isSafeInteger(n) && ((n >= 64512 && n <= 65534) || (n >= 4200000000 && n <= 4294967294));
 }
-type Props = { createRequest?: number; onCreateHandled?: () => void; onRequestCreate?: () => void; orgId: string; userId: string; emailVerified: boolean; role?: string; sites: Site[] };
+export type IPsecCreateProfile = "aws" | "gcp-ha-bgp-ipv4-v1" | "gcp-classic-static-ipv4-v1";
+type Props = { initialProfile?: IPsecCreateProfile; createRequest?: number; onCreateHandled?: () => void; onRequestCreate?: () => void; orgId: string; userId: string; emailVerified: boolean; role?: string; sites: Site[] };
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const nullableString = (value: unknown) => value === null || typeof value === "string";
 function validSettings(value: unknown): value is Settings {
@@ -66,7 +67,7 @@ function useLifetime() {
 export function IPsecWorkspace(props: Props) {
   return <IPsecSession key={`${props.orgId}:${props.userId}:${props.emailVerified}:${props.role ?? ""}`} {...props} />;
 }
-function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, onRequestCreate, onCreateHandled }: Props) {
+function IPsecSession({ orgId, emailVerified, role, sites, initialProfile = "aws", createRequest = 0, onRequestCreate, onCreateHandled }: Props) {
   const manage = emailVerified && (role === "owner" || role === "admin");
   const alive = useLifetime();
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -196,7 +197,7 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
       </nav>}
       </>}
     </>}
-    {manage && creating && settings?.enabled && <ConnectionForm orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={(id, name) => { if (!alive.current) return; setCreating(false); setSelected({ id, name }); void refresh(); }} />}
+    {manage && creating && settings?.enabled && <ConnectionForm initialProfile={initialProfile} orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={(id, name) => { if (!alive.current) return; setCreating(false); setSelected({ id, name }); void refresh(); }} />}
     {manage && changing && <ChangeIntent orgId={orgId} connection={changing} onClose={() => setChanging(null)} onChanged={() => { if (!alive.current) return; setChanging(null); void refresh(); }} />}
     {manage && rotating && <IPsecRotateKeys key={rotating.id} orgId={orgId} connection={rotating} onClose={() => setRotating(null)} onSaved={() => { if (!alive.current) return; setRotating(null); setNotice("Keys saved. Update your remote VPN, then enable this connection."); void refresh(); }} />}
     {manage && deleting && <DeleteConnection orgId={orgId} connection={deleting} onClose={() => setDeleting(null)} onDeleted={() => { if (!alive.current) return; setDeleting(null); setSelected(null); void refresh(); }} />}
@@ -261,16 +262,16 @@ function DeleteConnection({ orgId, connection, onClose, onDeleted }: { orgId: st
   return <Modal title="Delete connection?" onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="danger" disabled={busy || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void remove()}>Delete connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">Removes the tunnel and credentials after gateway cleanup. Safety guards and reserved ranges remain for previously delivered tunnels.</p><ErrorText>{error}</ErrorText></Modal>;
 }
 const blankTunnel = (): Configuration["tunnels"][number] => ({ outside_address: "", inside_cidr: "", customer_inside_address: "", cloud_inside_address: "", psk: "" });
-function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string, name: string) => void }) {
+function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSaved }: { initialProfile?: IPsecCreateProfile; orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string, name: string) => void }) {
   const alive = useLifetime();
   const [ids] = useState(() => ({ id: crypto.randomUUID(), tunnels: [crypto.randomUUID(), crypto.randomUUID()] }));
   const [step, setStep] = useState(1); const [name, setName] = useState(""); const [site, setSite] = useState(""); const [gateway, setGateway] = useState("");
   const [nodes, setNodes] = useState<Node[]>([]); const [subnets, setSubnets] = useState<SiteSubnet[]>([]); const [local, setLocal] = useState<string[]>([]);
   const [customer, setCustomer] = useState(""); const [remote, setRemote] = useState(""); const [tunnels, setTunnels] = useState(() => [blankTunnel(), blankTunnel()]);
-  const [profile, setProfile] = useState<"aws" | "gcp-ha-bgp-ipv4-v1" | "gcp-classic-static-ipv4-v1">("aws");
+  const [profile, setProfile] = useState<IPsecCreateProfile>(initialProfile);
   const gcp = profile !== "aws";
   const classic = profile === "gcp-classic-static-ipv4-v1";
-  const [mode, setMode] = useState<Configuration["mode"]>("ipv4-static");
+  const [mode, setMode] = useState<Configuration["mode"]>(initialProfile === "gcp-ha-bgp-ipv4-v1" ? "ipv4-bgp" : "ipv4-static");
   const [localASN, setLocalASN] = useState("65000"); const [remoteASN, setRemoteASN] = useState("64512");
   const [routerID, setRouterID] = useState(""); const [maximumPrefixes, setMaximumPrefixes] = useState("64");
   const [eligibility, setEligibility] = useState<{ key: string; value: Eligibility } | null>(null); const [checking, setChecking] = useState(false); const [checkAttempt, setCheckAttempt] = useState(0);

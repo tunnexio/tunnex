@@ -2,7 +2,7 @@ import "../network-workspaces.css";
 import "../app-access-workspace.css";
 import "../site-to-site-workspace.css";
 import { Button as ActionButton } from "../components/ui/button";
-import { IPsecWorkspace } from "../components/IPsecWorkspace";
+import { IPsecWorkspace, type IPsecCreateProfile } from "../components/IPsecWorkspace";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, loadOne, type Site, type Member } from "../lib/api";
@@ -54,11 +54,12 @@ export default function SiteToSite() {
     });
     return () => { cancelled = true; };
   }, [key, org?.id, loading, failed, userId, verified]);
-  return <SiteToSiteView orgId={org?.id} renderIPsecWorkspace={(createRequest, onRequestCreate, onCreateHandled) => !loading && org && result.key === key && result.value.kind === "ready" ? <IPsecWorkspace onCreateHandled={onCreateHandled} createRequest={createRequest} onRequestCreate={onRequestCreate} orgId={org.id} userId={userId} emailVerified={verified} role={result.value.role} sites={result.value.sites} /> : undefined} key={key} renderDetails={(first, second) => org ? <SitePairDetails orgId={org.id} first={first} second={second} /> : null} state={result.key === key && !loading ? result.value : initial} onRetry={() => retry(value => value + 1)} />;
+  return <SiteToSiteView orgId={org?.id} renderIPsecWorkspace={(createRequest, onRequestCreate, onCreateHandled, initialProfile) => !loading && org && result.key === key && result.value.kind === "ready" ? <IPsecWorkspace initialProfile={initialProfile} onCreateHandled={onCreateHandled} createRequest={createRequest} onRequestCreate={onRequestCreate} orgId={org.id} userId={userId} emailVerified={verified} role={result.value.role} sites={result.value.sites} /> : undefined} key={key} renderDetails={(first, second) => org ? <SitePairDetails orgId={org.id} first={first} second={second} /> : null} state={result.key === key && !loading ? result.value : initial} onRetry={() => retry(value => value + 1)} />;
 }
 
-export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWorkspace, renderIPsecWorkspace }: { orgId?: string; ipsecWorkspace?: ReactNode; renderIPsecWorkspace?: (request: number, onCreate: () => void, onHandled: () => void) => ReactNode; state: SiteToSiteState; onRetry: () => void; renderDetails?: (first: Site, second: Site) => ReactNode }) {
+export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWorkspace, renderIPsecWorkspace }: { orgId?: string; ipsecWorkspace?: ReactNode; renderIPsecWorkspace?: (request: number, onCreate: () => void, onHandled: () => void, profile?: IPsecCreateProfile) => ReactNode; state: SiteToSiteState; onRetry: () => void; renderDetails?: (first: Site, second: Site) => ReactNode }) {
   const [params, setParams] = useSearchParams();
+  const [createProfile, setCreateProfile] = useState<IPsecCreateProfile>("aws");
   const method = params.get("method") === "ipsec" ? "ipsec" : "wireguard";
   const setMethod = (value: "wireguard" | "ipsec") => setParams(previous => { const next = new URLSearchParams(previous); next.set("method", value); return next; });
   const [choosing, setChoosing] = useState(false);
@@ -80,10 +81,10 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
       </label>
       <label className={`connection-purpose-option ${method === "ipsec" ? "is-selected" : ""}`}>
         <input type="radio" name="connection-purpose" value="ipsec" checked={method === "ipsec"} onChange={() => setMethod("ipsec")} />
-        <span><strong>To a cloud VPN</strong><small>IPsec · AWS</small></span>
+        <span><strong>To a cloud VPN</strong><small>IPsec · AWS / Google Cloud</small></span>
       </label>
     </fieldset>
-    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0)) : ipsecWorkspace) ?? <section className="s2s-connection-state"><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></section> : <>
+    {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0), createProfile) : ipsecWorkspace) ?? <section className="s2s-connection-state"><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></section> : <>
     <section className="s2s-connection-content">
       {state.kind === "loading" && <Loading label="Loading networks…" />}
       {state.kind === "error" && <div role="alert"><p>{state.error}</p><Button onClick={state.reloadPage ? () => window.location.reload() : onRetry}>{state.reloadPage ? "Reload page" : "Retry networks"}</Button></div>}
@@ -98,6 +99,6 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
       <p className="mt-2">A gateway and approved ranges at each location, one reachable public WireGuard hub, access policies and return routes. Links are configured automatically.</p>
     </details>
     </>}
-    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onAWS={() => { setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
+    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
   </div>;
 }
