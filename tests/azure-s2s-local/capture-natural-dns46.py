@@ -52,6 +52,26 @@ def live_journal(path, device, inode):
   finally: os.close(file_fd)
  finally: os.close(fd)
 
+def listening_acknowledged(raw,interface):
+ pattern=rb'(?m)^tcpdump: listening on '+re.escape(interface.encode())+rb', link-type [^\r\n]+$'
+ matches=re.findall(pattern,raw)
+ if len(matches)>1: raise ValueError('capture_readiness_ambiguous')
+ return len(matches)==1
+
+def await_readiness(processes,interfaces,read_log,deadline):
+ acknowledged={}
+ while time.monotonic()<deadline:
+  for i,(process,interface) in enumerate(zip(processes,interfaces)):
+   if process.poll()is not None: raise ValueError('capture_readiness_exit')
+   if i not in acknowledged and listening_acknowledged(read_log(i),interface):
+    # Poll-observation time is conservatively later than the actual acknowledgement.
+    acknowledged[i]=time.time()
+  if len(acknowledged)==len(interfaces):
+   if any(process.poll()is not None for process in processes): raise ValueError('capture_readiness_exit')
+   return max(acknowledged.values())
+  time.sleep(.05)
+ raise ValueError('capture_readiness_timeout')
+
 def capture_health(log,returncode):
  captured=re.findall(rb'(?m)^(\d+) packets captured$',log)
  received=re.findall(rb'(?m)^(\d+) packets received by filter$',log)
@@ -132,7 +152,7 @@ def correlate(rows,diagnostics,rpcs,complete=False,coverage=None):
    item['reply_xfrm_count']=len(reply_indices)
    item['same_tunnel_reply_observed']=bool(outgoing_indices & reply_indices)
    item['opposite_tunnel_reply_observed']=bool(reply_indices-outgoing_indices) and len(outgoing_indices)==1
-   if not complete or coverage is not None and not (coverage[0]<=start and end<=coverage[1]): item['classification']='indeterminate'
+   if not complete or coverage is not None and not (coverage[0]<=start and end<=coverage[1]) or not item['reply_observed'] and len(outgoing_indices)!=1: item['classification']='indeterminate'
   result.append(item)
  return result
 
@@ -164,12 +184,13 @@ def run(args):
   for i,interface in enumerate(interfaces):
    log=open(directory/f'capture-{i}.log','xb');os.chmod(log.name,0o600);streams.append(log)
    proc=subprocess.Popen(['nsenter','-t',str(initial[0]),'-n','tcpdump','-U','-Z','root','-n','-i',interface,'-s','160','-C','8','-W','1','-w',str(directory/f'capture-{i}.pcap'),'host',SOURCE,'and','(','host','10.231.2.4','or','host','10.231.2.20',')','and','port','53'],stdout=subprocess.DEVNULL,stderr=log);processes.append(proc)
-  capture_ready=time.time();capture_stopped=[]
+  capture_stopped=[]
   def end_capture():
    capture_stopped.append(time.time())
    for p in processes:
     if p.poll()is None:p.send_signal(signal.SIGINT)
   timer=threading.Timer(max(0,40-(time.monotonic()-capture_started)),end_capture);timer.daemon=True;timer.start()
+  capture_ready=await_readiness(processes,interfaces,lambda i:private(str(directory/f'capture-{i}.log'),65536),min(capture_started+40,time.monotonic()+5))
   stop=capture_started+39;index=0
   while time.monotonic()<stop:
    if identity()!=initial or any(p.poll()is not None for p in processes): raise ValueError('capture_identity')

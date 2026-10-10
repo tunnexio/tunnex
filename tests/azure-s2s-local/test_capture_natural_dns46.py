@@ -13,6 +13,21 @@ class Correlation(unittest.TestCase):
   self.assertEqual(m.correlate(rows,[diagnostic],[rpc],True)[0]['classification'],'indeterminate')
  def test_no_rpc_no_correlation(self):
   self.assertEqual(m.correlate([],[],[]),[])
+ def test_readiness_exact_interface(self):
+  raw=b'tcpdump: listening on tx123, link-type RAW (Raw IP), snapshot length 160 bytes\n'
+  self.assertTrue(m.listening_acknowledged(raw,'tx123'))
+  self.assertFalse(m.listening_acknowledged(raw,'tx124'))
+  with self.assertRaises(ValueError):m.listening_acknowledged(raw+raw,'tx123')
+ def test_readiness_waits_for_all_and_refuses_exit(self):
+  from unittest.mock import Mock,patch
+  processes=[Mock(),Mock()]
+  for p in processes:p.poll.return_value=None
+  raw=[b'tcpdump: listening on tx1, link-type RAW\n',b'tcpdump: listening on tx2, link-type RAW\n']
+  with patch.object(m.time,'time',side_effect=[100.,101.]):
+   self.assertEqual(m.await_readiness(processes,['tx1','tx2'],lambda i:raw[i],m.time.monotonic()+1),101.)
+  processes[1].poll.return_value=1
+  with self.assertRaises(ValueError):m.await_readiness(processes,['tx1','tx2'],lambda i:raw[i],m.time.monotonic()+1)
+  with self.assertRaises(ValueError):m.await_readiness(processes,['tx1','tx2'],lambda i:b'',m.time.monotonic()-1)
  def test_capture_loss_and_failure(self):
   log=b'2 packets captured\n2 packets received by filter\n1 packets dropped by kernel\n'
   self.assertEqual(m.capture_health(log,0)['dropped'],1)
