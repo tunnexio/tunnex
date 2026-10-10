@@ -52,7 +52,7 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("root required")
 	}
-	raw, _, e := remediationRead("/run/azure-cleanup15-v2-baseline.json")
+	raw, _, e := remediationRead("/run/azure-cleanup15-v3-baseline.json")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -67,7 +67,7 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 	}
 	attestationOnly := os.Getenv("TUNNEX_AZURE_DISABLED15_ATTESTATION_ONLY") == "1"
 	verifyNormalRead := func() {
-		raw, st, err := remediationRead("/run/azure-cleanup15-v2-normal-read.json")
+		raw, st, err := remediationRead("/run/azure-cleanup15-v3-normal-read.json")
 		if err != nil || uint64(st.Dev) != b.NormalReadDevice || st.Ino != b.NormalReadInode || remediationSHA(raw) != b.NormalReadSHA256 {
 			t.Fatal("normal API read evidence changed")
 		}

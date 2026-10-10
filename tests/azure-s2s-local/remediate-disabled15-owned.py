@@ -91,17 +91,17 @@ def main():
         config,cst=private_read(root/'run/tunnex-ipsec/strongswan.conf'); sst=(root/'run/tunnex-ipsec/charon.vici').lstat()
         if sst.st_uid!=0 or stat.S_IMODE(sst.st_mode)!=0o600 or not stat.S_ISSOCK(sst.st_mode): raise ValueError('socket')
         stage='private_install'
-        for name in ['azure-cleanup15-v2-normal-read.json','azure-cleanup15-v2-baseline.json']:
+        for name in ['azure-cleanup15-v3-normal-read.json','azure-cleanup15-v3-baseline.json']:
             if (root/'run'/name).exists(): raise ValueError('existing-input')
-        save(root/'run/azure-cleanup15-v2-normal-read.json',raw); rst=(root/'run/azure-cleanup15-v2-normal-read.json').stat()
+        save(root/'run/azure-cleanup15-v3-normal-read.json',raw); rst=(root/'run/azure-cleanup15-v3-normal-read.json').stat()
         b=dict(CharonPID=int(nspid),CharonStartTicks=proc(q)[2],CharonExecutableSHA256=packaged,CharonConfigSHA256=digest(config),CharonConfigDevice=cst.st_dev,CharonConfigInode=cst.st_ino,SocketDevice=sst.st_dev,SocketInode=sst.st_ino,JournalSHA256=digest(journal),JournalDevice=jst.st_dev,JournalInode=jst.st_ino,Namespace=ns,BootID=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),NodeExecutableSHA256=exe,NodeStartTicks=ticks,OwnerID=payload['OwnerID'],OrgID=engine['Binding']['OrgID'],DeliveryID=e['DeliveryID'],CleanupID=e['CleanupID'],DesiredRevision=15,GuardExpectedSHA256=digest(payload['Guards'][0]['ExpectedJSON'].encode()),CPDesiredIntent='disabled',CPCleanupState='pending',CPDesiredRevision=15,NormalReadSHA256=digest(raw),NormalReadObservedAt=read['observed_at'],NormalReadDevice=rst.st_dev,NormalReadInode=rst.st_ino)
-        baseline=json.dumps(b).encode(); save(evidence/'baseline.json',baseline); save(root/'run/azure-cleanup15-v2-baseline.json',baseline); save(evidence/'journal-frozen.json',journal)
+        baseline=json.dumps(b).encode(); save(evidence/'baseline.json',baseline); save(root/'run/azure-cleanup15-v3-baseline.json',baseline); save(evidence/'journal-frozen.json',journal)
         same()
         if private_read(root/'var/lib/tunnex-node/ipsec/journal.json')[0]!=journal: raise ValueError('journal-changed')
         normal(raw)
-        save(root/'tmp/azure-cleanup15-v2-remediation.test',binary,0o755)
+        save(root/'tmp/azure-cleanup15-v3-remediation.test',binary,0o755)
         stage='negative_cleanup_helper'
-        result=subprocess.run(['docker','exec','-u','0',cid,'env','TUNNEX_AZURE_DISABLED15_CLEANUP_REMEDIATION=1','/tmp/azure-cleanup15-v2-remediation.test','-test.run','^TestAzureDisabled15CleanupRemediationNative$','-test.timeout=30s'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=40)
+        result=subprocess.run(['docker','exec','-u','0',cid,'env','-u','TUNNEX_AZURE_DISABLED15_ATTESTATION_ONLY','TUNNEX_AZURE_DISABLED15_CLEANUP_REMEDIATION=1','/tmp/azure-cleanup15-v3-remediation.test','-test.run','^TestAzureDisabled15CleanupRemediationNative$','-test.timeout=30s'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=40)
         save(evidence/'helper-private.log',result.stdout)
         if result.returncode: raise ValueError('helper-refused')
         stage='negative_cleanup_completed'
