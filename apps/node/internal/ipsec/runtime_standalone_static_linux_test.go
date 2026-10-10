@@ -20,7 +20,7 @@ import (
 // Static simulator only: its return route/ACL grants no enrolled gateway authority.
 func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, r *KernelReader, d *DaemonClient) {
 	gc := g.Connections[0]
-	owned := RouteTuple{Destination: netip.MustParsePrefix("10.10.0.0/24"), Table: 254, Protocol: 242, Metric: 50001, OutputInterface: gc.Tunnels[0].InterfaceIndex}
+	owned := RouteTuple{Destination: c.CustomTunnels[0].RemotePrefixes[0], Table: 254, Protocol: 242, Metric: 50001, OutputInterface: gc.Tunnels[0].InterfaceIndex}
 	run := func(args ...string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -112,14 +112,18 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 					continue
 				}
 				ch := sa.Children[0]
-				if !ch.Installed || ch.ReqID != tunnel.ReqID || ch.IfIDIn != tunnel.XFRMID || ch.IfIDOut != tunnel.XFRMID || !sameEnginePrefixes(ch.LocalPrefixes, tunnel.LocalPrefixes) || !sameEnginePrefixes(ch.RemotePrefixes, tunnel.RemotePrefixes) {
+				if !ch.Installed || ch.ReqID != tunnel.ReqID || ch.IfIDIn != tunnel.XFRMID || ch.IfIDOut != tunnel.XFRMID || !sameEnginePrefixes(ch.LocalPrefixes, engineTransportPrefixes(tunnel, true)) || !sameEnginePrefixes(ch.RemotePrefixes, engineTransportPrefixes(tunnel, false)) {
 					continue
 				}
 				underlay, e := standalonePeerUnderlay(tunnel)
 				if e != nil {
 					t.Fatal("static underlay refused")
 				}
-				rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.10.0.2 ip daddr 10.32.0.2 tcp dport 18080 ipsec in reqid %d accept\ninsert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", gc.Tunnels[0].InterfaceIndex, lan.Index, tunnel.ReqID, lan.Index, gc.Tunnels[0].InterfaceIndex, gc.Tunnels[0].InterfaceIndex, tunnel.ReqID, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
+				localTarget, remoteTarget := netip.MustParseAddr("10.32.0.2"), netip.MustParseAddr("10.10.0.2")
+				if c.ProfileID == GCPClassicStaticProfile {
+					localTarget, remoteTarget = c.LocalTarget, c.RemoteTarget
+				}
+				rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp dport 18080 ipsec in reqid %d accept\ninsert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", gc.Tunnels[0].InterfaceIndex, lan.Index, remoteTarget, localTarget, tunnel.ReqID, lan.Index, gc.Tunnels[0].InterfaceIndex, localTarget, remoteTarget, gc.Tunnels[0].InterfaceIndex, localTarget, remoteTarget, tunnel.ReqID, underlay.Index, localTarget, remoteTarget, tunnel.ReqID, tunnel.RemoteAddress)
 				if nft(rules) != nil {
 					t.Fatal("static simulator ACL refused")
 				}

@@ -33,18 +33,23 @@ type standalonePeerInterface struct {
 	Metric          uint32 `json:"metric"`
 }
 type standalonePeerConfig struct {
-	Scenario            string
-	CustomTunnels       []EngineTunnel
-	BGPConfig           bgp.Config
-	Interfaces          []standalonePeerInterface
-	PSKs                []string
-	PeerGatewayID       uuid.UUID
-	Generation          uuid.UUID
-	GatewayCPAuthority  string
-	ActivationPerformed bool
+	ProfileID                 string
+	LocalTarget, RemoteTarget netip.Addr
+	Scenario                  string
+	CustomTunnels             []EngineTunnel
+	BGPConfig                 bgp.Config
+	Interfaces                []standalonePeerInterface
+	PSKs                      []string
+	PeerGatewayID             uuid.UUID
+	Generation                uuid.UUID
+	GatewayCPAuthority        string
+	ActivationPerformed       bool
 }
 
 func validStandalonePeer(c standalonePeerConfig) bool {
+	if c.ProfileID != "" {
+		return validStandaloneGCPPeer(c)
+	}
 	if len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
 		return false
 	}
@@ -69,7 +74,7 @@ func validStandalonePeer(c standalonePeerConfig) bool {
 	}
 	for i, e := range c.CustomTunnels {
 		p, f := c.BGPConfig.Peers[i], c.Interfaces[i]
-		if !validEngineTunnel(e) || e.BGP != (c.Scenario != "static") || e.Binding.GatewayID != c.PeerGatewayID || e.Binding != c.CustomTunnels[0].Binding || e.XFRMID != KernelTunnelID(e.TunnelID) || e.ReqID != e.XFRMID || !reflect.DeepEqual(e.LocalPrefixes, c.BGPConfig.LocalPrefixes) || !reflect.DeepEqual(e.RemotePrefixes, c.BGPConfig.RemotePrefixes) || e.LocalAddress != e.LocalIdentity || e.RemoteAddress != e.RemoteIdentity || len(c.PSKs[i]) < 16 || len(c.PSKs[i]) > 256 {
+		if !validEngineTunnel(e) || e.ProfileID != "" || e.BGP != (c.Scenario != "static") || e.Binding.GatewayID != c.PeerGatewayID || e.Binding != c.CustomTunnels[0].Binding || e.XFRMID != KernelTunnelID(e.TunnelID) || e.ReqID != e.XFRMID || !reflect.DeepEqual(e.LocalPrefixes, c.BGPConfig.LocalPrefixes) || !reflect.DeepEqual(e.RemotePrefixes, c.BGPConfig.RemotePrefixes) || e.LocalAddress != e.LocalIdentity || e.RemoteAddress != e.RemoteIdentity || len(c.PSKs[i]) < 16 || len(c.PSKs[i]) > 256 {
 			return false
 		}
 		if p.LinkName != KernelTunnelName(e.TunnelID) || p.XFRMID != e.XFRMID || f.Name != p.LinkName || f.XFRMID != p.XFRMID || f.Alias != "tunnex-ipsec:"+c.Generation.String()+":"+e.TunnelID.String() || f.Address != p.Local.String()+"/30" || f.RemoteHostRoute != p.Remote.String()+"/32" || f.Protocol != 242 || f.Metric != uint32(50001+i) {
@@ -127,6 +132,10 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 	}
 	guard := GuardIntent{Namespace: inventory.Namespace, OwnerID: c.PeerGatewayID, Revision: 1, Connections: []GuardConnection{{ID: c.CustomTunnels[0].Binding.ConnectionID, Local: c.BGPConfig.LocalPrefixes, Remote: c.BGPConfig.RemotePrefixes, PermitFor: 30 * time.Second}}}
 	gc := &guard.Connections[0]
+	if c.ProfileID == GCPClassicStaticProfile {
+		gc.TunnelCount = 1
+		gc.Local, gc.Remote = c.CustomTunnels[0].LocalPrefixes, c.CustomTunnels[0].RemotePrefixes
+	}
 	for i, f := range c.Interfaces {
 		cmd := exec.CommandContext(ctx, "/sbin/ip", "-d", "-j", "link", "show", "dev", f.Name)
 		raw, e := cmd.Output()
@@ -151,6 +160,9 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 				if e := c.CustomTunnels[i]; e.BGP {
 					gc.BGPPeers = append(gc.BGPPeers, GuardBGPPeer{Local: c.BGPConfig.Peers[i].Local, Remote: c.BGPConfig.Peers[i].Remote, InterfaceIndex: link.Index})
 				}
+				if c.ProfileID == GCPClassicStaticProfile {
+					continue
+				}
 				routeFound := false
 				for _, r := range inventory.Routes {
 					if r.Destination == netip.PrefixFrom(c.BGPConfig.Peers[i].Remote, 32) && r.OutputInterface == link.Index && r.Table == 254 && r.Protocol == 242 && r.Metric == f.Metric && !r.Gateway.IsValid() {
@@ -164,6 +176,9 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 		}
 		if !found {
 			t.Fatal("peer XFRM identity absent")
+		}
+		if c.ProfileID == GCPClassicStaticProfile {
+			continue
 		}
 		cmd = exec.CommandContext(ctx, "/sbin/ip", "-j", "address", "show", "dev", f.Name)
 		raw, e = cmd.Output()
@@ -201,6 +216,12 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if c.ProfileID != "" {
+		gr, err := NewGuardReader("/usr/sbin/nft")
+		if err != nil || gr.Check(ctx, rendered) != nil {
+			t.Fatal("GCP peer control refusal readback")
+		}
+	}
 	if phase == "stage" || phase == "initiate" {
 		for i, e := range c.CustomTunnels {
 			if phase == "stage" {
@@ -215,7 +236,7 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 		return
 	}
 	actual, err := client.Inspect(ctx)
-	if err != nil || len(actual.SAs) != 2 {
+	if err != nil || len(actual.SAs) != len(c.CustomTunnels) {
 		t.Fatal("peer transport absent")
 	}
 	for _, e := range c.CustomTunnels {
@@ -230,7 +251,7 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 			t.Fatal("peer actual CHILD binding absent")
 		}
 	}
-	if c.Scenario == "static" {
+	if c.Scenario == "static" || c.Scenario == "gcp-static" {
 		standaloneStaticServe(t, c, guard, reader, client)
 		return
 	}
