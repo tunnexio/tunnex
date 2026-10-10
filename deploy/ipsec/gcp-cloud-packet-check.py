@@ -137,7 +137,7 @@ def remote(profile,expected,source):
  verify_pin(CLIENT);verify_pin(target)
  for protocol in ['tcp','udp']:
   nonce=str(uuid.uuid4())
-  command='sudo python3 -c '+shlex.quote(source+'\nobserve('+repr(target[3])+','+repr(protocol)+','+repr(nonce)+')')
+  command='sudo -n python3 -c '+shlex.quote(source+'\nobserve('+repr(target[3])+','+repr(protocol)+','+repr(nonce)+')')
   observer=subprocess.Popen(ssh(target,command),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True)
   try:
    ready=line(observer,15)
