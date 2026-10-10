@@ -37,5 +37,6 @@ PrivateTmp=true
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now tunnex-azure-lab-app.service
+systemctl enable tunnex-azure-lab-app.service
+systemctl restart tunnex-azure-lab-app.service
 systemctl is-active tunnex-azure-lab-app.service
