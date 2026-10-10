@@ -3,6 +3,7 @@
 import argparse
 import http.cookiejar
 import json
+import ipaddress
 import os
 from pathlib import Path
 import urllib.error
@@ -58,8 +59,20 @@ def private_write(path, text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=("prepare", "bind"))
+    parser.add_argument("--site-name",default=SITE_NAME)
+    parser.add_argument("--node-name",default=NODE_NAME)
+    parser.add_argument("--local-prefix",default=LOCAL_PREFIX)
     parser.add_argument("--private-root", type=Path, default=Path(__file__).resolve().parent / ".runtime")
     args = parser.parse_args()
+    try:
+        local_prefix=ipaddress.ip_network(args.local_prefix,strict=True)
+        if local_prefix.version!=4 or not local_prefix.is_private or local_prefix.prefixlen<8:raise ValueError()
+    except ValueError:
+        raise LabError("Local lab prefix must be canonical private IPv4") from None
+    if not args.site_name.startswith("Azure ") or not args.node_name.startswith("azure-") or len(args.site_name)>100 or len(args.node_name)>100:
+        raise LabError("Site/gateway names must identify the Azure owned lab")
+    site_name,node_name=str(args.site_name),str(args.node_name)
+    local_prefix=str(local_prefix)
     private = args.private_root.resolve()
     credentials = private / "ui-accounts.json"
     if not credentials.exists() or credentials.is_symlink() or credentials.stat().st_mode & 0o077:
@@ -75,24 +88,24 @@ def main():
     org = owned[0]["id"]
     prefix = f"/api/v1/organizations/{org}"
     state_path = private / "api-setup.json"
-    nodes = [node for node in client.call("GET", prefix + "/nodes") if node.get("name") == NODE_NAME]
+    nodes = [node for node in client.call("GET", prefix + "/nodes") if node.get("name") == node_name]
     if len(nodes) > 1:
         raise LabError("Owned gateway name is ambiguous; no changes made")
-    sites = [site for site in client.call("GET", prefix + "/sites") if site.get("name") == SITE_NAME]
+    sites = [site for site in client.call("GET", prefix + "/sites") if site.get("name") == site_name]
     if len(sites) > 1:
         raise LabError("Owned Site name is ambiguous; no changes made")
-    site = sites[0] if sites else client.call("POST", prefix + "/sites", {"name": SITE_NAME})
+    site = sites[0] if sites else client.call("POST", prefix + "/sites", {"name": site_name})
     settings = client.call("GET", prefix + "/ipsec/settings")
     if not settings["enabled"]:
         client.call("PUT", prefix + "/ipsec/settings", {"enabled": True, "expected_revision": settings["revision"]})
     if args.phase == "prepare":
         token_path = private / "gateway.env"
         if not nodes and not token_path.exists():
-            token = client.call("POST", prefix + "/nodes/join-token", {"node_name": NODE_NAME, "enrols_kind": "gateway"})["join_token"]
+            token = client.call("POST", prefix + "/nodes/join-token", {"node_name": node_name, "enrols_kind": "gateway"})["join_token"]
             if not isinstance(token, str) or "\n" in token or "\r" in token:
                 raise LabError("Invalid enrollment token shape")
             private_write(token_path, "TUNNEX_JOIN_TOKEN=" + token + "\n")
-        private_write(state_path, json.dumps({"org_id": org, "site_id": site["id"], "node_name": NODE_NAME, "local_prefix": LOCAL_PREFIX}, indent=2))
+        private_write(state_path, json.dumps({"org_id": org, "site_id": site["id"], "node_name": node_name, "local_prefix": local_prefix}, indent=2))
         print("Owned Site and IPsec opt-in prepared through normal API; join token stays private. Start the real native gateway, then run bind.")
         return
     if not nodes or nodes[0].get("status") != "active":
@@ -100,12 +113,12 @@ def main():
     node = nodes[0]
     client.call("POST", prefix + f"/sites/{site['id']}/bind", {"node_id": node["id"]})
     subnets = client.call("GET", prefix + f"/sites/{site['id']}/subnets")
-    subnet = next((item for item in subnets if item.get("cidr") == LOCAL_PREFIX), None)
+    subnet = next((item for item in subnets if item.get("cidr") == local_prefix), None)
     if subnet is None:
-        subnet = client.call("POST", prefix + f"/sites/{site['id']}/subnets", {"cidr": LOCAL_PREFIX})
+        subnet = client.call("POST", prefix + f"/sites/{site['id']}/subnets", {"cidr": local_prefix})
     if subnet.get("status") != "approved":
         client.call("POST", prefix + f"/site-subnets/{subnet['id']}/approve", {})
-    private_write(state_path, json.dumps({"org_id": org, "site_id": site["id"], "gateway_id": node["id"], "node_name": NODE_NAME, "local_prefix": LOCAL_PREFIX}, indent=2))
+    private_write(state_path, json.dumps({"org_id": org, "site_id": site["id"], "gateway_id": node["id"], "node_name": node_name, "local_prefix": local_prefix}, indent=2))
     print("Real owned gateway bound and local prefix approved through normal API; no capability or SA/BGP status seeded.")
 
 if __name__ == "__main__":

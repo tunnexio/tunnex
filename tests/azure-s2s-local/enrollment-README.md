@@ -7,3 +7,9 @@
 3. Run the script with `bind` and the same private root after actual enrollment. It binds the active gateway and approves local prefix `10.241.10.0/24` through normal owner APIs. Actual daemon capabilities must arrive from the gateway's normal policy report.
 
 An existing token is never printed or silently replaced. If it has expired, investigate the owned enrollment state before deliberately issuing a replacement. The script does not install a licence or alter accounts. API entitlement failures remain explicit blockers.
+
+For the separately owned Azure cloud CP, generate credentials **on that machine** with `prepare-accounts.py --private-root /opt/azure-s2s-lab/.runtime`; do not transfer the Mac's `ui-accounts.json`. The reviewed `ui-fixture-linux-amd64` helper reads only `AZURE_LOCAL_FIXTURE_DSN` and `AZURE_LOCAL_FIXTURE_ACCOUNTS` from its private execution environment, checks the database/user ownership and refuses account resets. It creates explicit local test identities, not gateway capabilities or status.
+
+Use the same normal API helper against the peer's localhost48083 CP with `--site-name 'Azure owned cloud qualification site' --node-name azure-owned-cloud-gateway --local-prefix 10.232.1.0/24` for both prepare and bind. The lead transfers reviewed files and operates the owned cloud host through the authorized Azure bastion; these helpers never run Azure commands.
+
+`qualify-http.py` tests disabled configurations through the owner/admin/member HTTP sessions, including nonsecret readback, unknown health, shared-key maintenance, stale CAS and finalized cleanup. Its synthetic public endpoint fixtures are never enabled. Pass the independently verified running CP source as `--api-source`; the helper cannot infer binary provenance. Its private evidence file contains only key-free results and owned identities. This qualifies API behavior, not Azure tunnel traffic or cloud topology.
