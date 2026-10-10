@@ -1,0 +1,38 @@
+{
+  "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "tree_id": "b9dcec8b3fe9a5b8020369c548f0ad18f7e4d6be",
+  "status": "clean-archive-local-linux-amd64-node-relay-builds-pass",
+  "archive_sha256": "b3148eba840c9e8a36d1590508def529c5da573f6b86739f6e0db8053f2c71ac",
+  "binaries": {
+    "tunnex-node-amd64": "21074d14dbee2543c7c331806008cd0041a7ff96d0809a894d461c89a8911e8f",
+    "tunnex-ai-vpn-relay-amd64": "e510f032707a8a12ac9fec5be7ea5a40e3a608b4e6fdc6053284027104931e35"
+  },
+  "changed_paths": {
+    "apps/node/internal/ipsec/runtime_classic_denied_apply_linux_test.go": "f6055a39f3b73e28e9d99098ea6d93fd84eae03b82872b2c99b22ac733c86a29",
+    "apps/node/internal/ipsec/runtime_classic_denied_transport.go": "f5e32465f0761f258a2caaff042eaa0f246a84776632f9bf009c362d774fd274",
+    "apps/node/internal/ipsec/runtime_classic_denied_transport_test.go": "fa79355b52616b17c6124acaab6d8880f64f5b6acc5fa3c0354367c1eba244ad",
+    "apps/node/internal/ipsec/runtime_controller.go": "9008feea4a8f9311867c958a259f2f997fd9b1633f7023f49d612ec509494a19",
+    "apps/node/internal/ipsec/runtime_gcp_sibling_cause_test.go": "bc56125743d6f6d02dead43480769b1b6976e702d9e09b8c8219505a375f799f",
+    "apps/node/internal/ipsec/runtime_maintenance.go": "893d35d4f773df85ad7deb52103c9fcd7b7ff20b74b61522ff67567f137a392c"
+  },
+  "parity": {
+    "all_apps_node_files": 538,
+    "byte_exact": true
+  },
+  "local_build_flags": {
+    "common": [
+      "-trimpath",
+      "-buildvcs=false"
+    ],
+    "env": {
+      "CGO_ENABLED": "0",
+      "GOOS": "linux",
+      "GOARCH": "amd64",
+      "GOAMD64": "v1",
+      "GOFLAGS": "-mod=readonly"
+    },
+    "node_ldflags": "-s -w -X main.buildVersion=0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+    "relay_ldflags": "-s -w"
+  },
+  "scope": "Local source-bound builds only; no remote command/image/start/packet proof"
+}

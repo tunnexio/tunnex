@@ -1,0 +1,14 @@
+{
+  "observer-main.go": "00ebd994593eb83459ea7169eecf126d41dcf51ed9803f6862654a52e2863423",
+  "observer-main_test.go": "48d3aec6fbac488df3b46bf458caeea8bb23c9640adacf3e76159320f67a5450",
+  "stage-policy-observer-v1.py": "956f15b5e98d4b67488da6eb2238ca7c9a772178f08b657d72af1c427f317636",
+  "classic-withdraw-native-v3.remote.py": "368dff389b44e9c1d31115dad5dcf930704a715d1a80a47de1f52d02aa79c1db",
+  "classic-old-peer-denial-native-v3.remote.py": "0b710414fc382f357ee214eabd6d8c97a7938da6e71394a543697ecac07cc06f",
+  "read-classic-withdraw-native-v3.py": "38f5c5622178b77ea31f94bc62e5d7a592e8cedb89d9d43316911b071faa38c2",
+  "read-classic-old-peer-denial-native-v3.py": "1cf5aebc54a106161b6f890bc7fc2372efedf070f75d6e3d660b1090d044b100",
+  "actual-ip-binding.json": "6ac9c0b36c949123f3efaef5f089aa464d01310bfdd4ecfec11b74a6e13a81ed",
+  "actual-stage-v1.json": "17c8038e4e22c04649be7ed76029fe5291ef95c557eb07ca0d7b62879779988e",
+  "candidate-native-build-receipt.json": "5e2186bb01749f8a5cb6e15ed93f663c356d11fad10ccec066cb1f032e538e00",
+  "candidate-local-build-receipt.json": "6e2aebba43ace9f8ab1cec955d2820aebe0d96da74786ad457dc26db656df7b7",
+  "observational_elf_sha256": "e91d3189a13ac7d68e9a30dd411697779d4c44319725facd577f75a57321a904"
+}
