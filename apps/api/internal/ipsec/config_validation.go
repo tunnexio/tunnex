@@ -108,25 +108,13 @@ func ValidateAWSStaticConfig(c StaticConfig) error {
 	if c.Mode != "ipv4-static" {
 		return configError("mode_unsupported", "mode", 0)
 	}
-	local, err := routedPrefixes(c.LocalPrefixes, "local_prefixes")
+	routes, err := validateRoutedIPv4Pair(c.LocalPrefixes, c.RemotePrefixes)
 	if err != nil {
 		return err
-	}
-	remote, err := routedPrefixes(c.RemotePrefixes, "remote_prefixes")
-	if err != nil {
-		return err
-	}
-	for _, l := range local {
-		for _, r := range remote {
-			if l.Overlaps(r) {
-				return configError("prefix_overlap", "remote_prefixes", 0)
-			}
-		}
 	}
 	if len(c.Tunnels) != 2 {
 		return configError("tunnel_count", "tunnels", 0)
 	}
-	routes := append(local, remote...)
 	customerOutside, ok := canonicalIPv4Address(c.CustomerOutsideAddress)
 	if !ok {
 		return configError("outside_invalid", "customer_outside_address", 0)
