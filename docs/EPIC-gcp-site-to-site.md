@@ -134,3 +134,7 @@ Automatic approval review rejected the reviewed normal join-token issuance and p
 Direct human approval was recorded in the coordinating chat, and the exact reviewed normal join runner executed there successfully (exit0). Its public receipt reports token issued, privately delivered to the exact owned gateway and gateway not started; no token was printed or recreated. See [delivery receipt](../tests/gcp-s2s-local/CLOUD-PRIVATE-JOIN-DELIVERY-20261010.json).
 
 The next exact reviewed host-network container launch was rejected before execution by automatic approval review because persistent gateway enrollment/start requires direct human authorization. A concrete question for that side effect is pending. No gateway container or fresh node ID exists yet; normal Site bind, profile save/enable and live cloud packets remain dependent on enrollment. No alternate token or launch path is used.
+
+### QA DNS naming contract
+
+New provider-owned GCP QA records use the `gcp.s2s-qa.tunnex.app` namespace. The existing AWS `vgw-bgp.s2s-qa.tunnex.app` address `10.85.1.10` is preserved, and Azure uses its own namespace. A public private-A response does not prove private-cloud DNS. GCP-9 acceptance still requires ordinary resolver traffic over VPN with separate DNS53 and application grants. This is a source-only test plan update; no DNS record/zone or gateway launch was changed.
