@@ -23,7 +23,7 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 	if os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT") != "1" {
 		t.Skip("explicit owned scheduler diagnostic only")
 	}
-	fail := func() { t.Fatal("owned_scheduler_snapshot_refused") }
+	fail := func() { t.Helper(); t.Fatal("owned_scheduler_snapshot_refused") }
 	expected := os.Getenv("TUNNEX_AZURE_EXPECTED_NODE_SHA256")
 	exe, e := os.ReadFile("/proc/1/exe")
 	if os.Geteuid() != 0 || e != nil || !validDigest(expected) || remediationSHA(exe) != expected {
@@ -232,7 +232,7 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 	if os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL") != "1" {
 		t.Skip("explicit owned scheduler control only")
 	}
-	fail := func() { t.Fatal("owned_scheduler_control_refused") }
+	fail := func() { t.Helper(); t.Fatal("owned_scheduler_control_refused") }
 	path := os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST")
 	if !strings.HasPrefix(path, "/run/tunnex-ipsec/azure-scheduler-request-") || strings.Contains(path, "..") || strings.ContainsAny(path, "\n\r") {
 		fail()
