@@ -54,10 +54,6 @@ type RuntimeRetainedGuardPredecessor struct {
 }
 
 type RuntimeManifest struct {
-	// TransportVersion/TunnelCount are explicit one-slot intent, omitted on
-	// existing AWS and HA deliveries so their ownership digests are unchanged.
-	TransportVersion       *int             `json:"transport_version,omitempty"`
-	TunnelCount            *int             `json:"tunnel_count,omitempty"`
 	OrgID                  uuid.UUID        `json:"org_id"`
 	NodeID                 uuid.UUID        `json:"node_id"`
 	SiteID                 uuid.UUID        `json:"site_id"`
@@ -69,6 +65,10 @@ type RuntimeManifest struct {
 	LocalPrefixes          []string         `json:"local_prefixes"`
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
+	// TransportVersion/TunnelCount are explicit one-slot intent, omitted on
+	// existing AWS and HA deliveries so their ownership digests are unchanged.
+	TransportVersion *int `json:"transport_version,omitempty"`
+	TunnelCount      *int `json:"tunnel_count,omitempty"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
 	RecoveryVersion           *int                              `json:"recovery_version,omitempty"`
 	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
