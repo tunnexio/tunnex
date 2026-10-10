@@ -24,6 +24,15 @@ def evidence_parent(directory,private_root):
  info=private_root.lstat()
  if not stat.S_ISDIR(info.st_mode) or info.st_uid!=1000 or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('private API owner directory required')
 
+def stable_runtime_identity(value):
+ # Docker's Health log/counters may advance while the exact process remains alive.
+ # Preserve every other State field, including unknown future fields, and all
+ # inspected container/sandbox/mount ownership metadata.
+ output=dict(value);output['state']={key:item for key,item in value['state'].items() if key!='Health'}
+ return output
+
+def same_runtime_identity(before,after):return stable_runtime_identity(before)==stable_runtime_identity(after)
+
 def healthy(value,now):
  runtime=value['runtime'];observed=datetime.fromisoformat(runtime['observed_at'].replace('Z','+00:00'))
  if not 0 <= (now-observed).total_seconds() <=15:raise ValueError('stale health')
@@ -100,19 +109,21 @@ def main():
   stage='normal_api_health'
   health=command('sudo','-u','#1000','--','python3',a.lifecycle_helper,'read','--private-root',a.private_root,timeout=30)
   healthy(json.loads(health),datetime.now(timezone.utc));runner.write_bytes(directory/'before-health.json',health)
+  stage='live_journal_identity'
   current=gated.private_bytes(journal,16<<20);runner.journal_entries_unchanged(raw,current)
-  if proof.inspect(cid)!=node or proof.inspect(aid)!=anchor:raise ValueError('runtime identity changed')
+  stage='docker_process_identity'
+  if not same_runtime_identity(node,proof.inspect(cid)) or not same_runtime_identity(anchor,proof.inspect(aid)):raise ValueError('runtime identity changed')
   gate_raw=json.dumps({'Version':1,'SupervisorRun':str(uuid.uuid4()),'ContainerID':cid},separators=(',',':')).encode()+b'\n'
   runner.write_bytes(gate,gate_raw);gate_identity=gate.lstat()
   before=proof.snapshot(cid,str(journal));proof.private_write(directory/'before.json',before)
   proof.private_write(directory/'anchor-before.json',anchor)
   stage='controlled_stop'
   gated.same_gate(gate,gate_raw,gate_identity)
-  if proof.boot()!=before['boot'] or proof.inspect(cid)!=node:raise ValueError('runtime changed before stop')
+  if proof.boot()!=before['boot'] or not same_runtime_identity(node,proof.inspect(cid)):raise ValueError('runtime changed before stop')
   gated.event('controlled_node_stop_started')
   command('docker','stop','--time','45',cid,timeout=55)
   owner(aid)
-  if proof.inspect(aid)!=anchor:raise ValueError('anchor changed before stop')
+  if not same_runtime_identity(anchor,proof.inspect(aid)):raise ValueError('anchor changed before stop')
   command('ip','netns','delete','azure-s2s-client',timeout=10)
   command('docker','stop','--time','10',aid,timeout=20)
   stage='independent_stop_observation'

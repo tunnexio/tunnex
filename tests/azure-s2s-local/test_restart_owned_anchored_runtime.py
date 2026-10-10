@@ -60,3 +60,14 @@ class ParentOwnershipTests(unittest.TestCase):
    for uid,mode in ((0,0o700),(1000,0o755)):
     with patch.object(Path,'lstat',return_value=SimpleNamespace(st_mode=stat.S_IFDIR|mode,st_uid=uid)):
      with self.assertRaises(ValueError):restart.evidence_parent(evidence,root)
+
+class DockerHealthIdentityTests(unittest.TestCase):
+ def test_only_dynamic_health_is_excluded(self):
+  before={'id':'a'*64,'sandbox':'/owned/netns','mounts':[{'Source':'/owned/state'}],'state':{'Running':True,'Pid':10,'StartedAt':'first','Restarting':False,'FinishedAt':'zero','Dead':False,'Paused':False,'OOMKilled':False,'Error':'','Status':'running','ExitCode':0,'Health':{'Status':'healthy','Log':['first']}}}
+  after=copy.deepcopy(before);after['state']['Health']['Log'].append('new check')
+  self.assertTrue(restart.same_runtime_identity(before,after))
+  for field,value in [('Pid',11),('StartedAt','new'),('Restarting',True),('Running',False),('OOMKilled',True),('UnknownFutureField','changed')]:
+   after=copy.deepcopy(before);after['state'][field]=value
+   self.assertFalse(restart.same_runtime_identity(before,after))
+  after=copy.deepcopy(before);after['sandbox']='/foreign/netns'
+  self.assertFalse(restart.same_runtime_identity(before,after))
