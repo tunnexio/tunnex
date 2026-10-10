@@ -1,0 +1,53 @@
+{
+  "scope": "Owned Azure active-active BGP, Default connection mode; bounded live observations only",
+  "prior_desired_revision": 15,
+  "prior_cleanup_state": "retained_guard",
+  "original_container": "a73f5531c1f9ef76dcc4866917ca9d2ab7ef1672c59eae0b5c871e7c21155b0e",
+  "prior_absence": {
+    "retained_journal_entries": 7,
+    "daemon_sas": 0,
+    "daemon_connections": 0,
+    "daemon_shared_keys": 0,
+    "sad": 0,
+    "spd": 0,
+    "owned_xfrm_links": 0,
+    "protocol242_routes": 0,
+    "full_guard_verified": true,
+    "withdrawal_guard_verified": true,
+    "journal_unchanged": true,
+    "causality_limit": "Original node cleanup settled before deployment. None of the negative remediation helpers removed a session. Settlement does not prove the new cleanup patch executed live."
+  },
+  "deployment": {
+    "production_source_commit": "5861090f",
+    "image": "sha256:faac330572a274177c3c48e08fa75f59cc91216f60863bed92abf2ce0d56e186",
+    "node_binary_sha256": "ba3bd84657db5c84eebfb446d63f47124e419abdbe9920c02a7a148043bc9649",
+    "container": "a62e78e8c2bacae6b5e2e7cb6861a6fe61c2fd8b6b6c5df034a84d09decfabb6",
+    "original_namespace_and_state_preserved": true,
+    "original_container_retained_stopped": true
+  },
+  "normal_enable": {
+    "desired_revision": 16,
+    "cas_sent": true,
+    "application_state": "applied",
+    "observed_at": "2026-10-10T15:47:48.547612+00:00",
+    "strict_native_slots": [{"slot": 1, "ike": 1, "installed_child": 1, "status": "up"}, {"slot": 2, "ike": 1, "installed_child": 1, "status": "up"}],
+    "bgp_peers_established": 2,
+    "remote_route": {"prefix": "10.231.0.0/16", "slot": 1}
+  },
+  "packets": {
+    "started_at": "2026-10-10T15:50:18.503811+00:00",
+    "duration_seconds": 20,
+    "source": "10.233.10.2",
+    "fresh_tcp": {"success": 20, "failure": 0},
+    "existing_tcp": {"success": 20, "failure": 0},
+    "fresh_udp": {"success": 20, "failure": 0},
+    "existing_udp": {"success": 20, "failure": 0},
+    "tcp_source_preserved_and_exact64k_same_socket": true,
+    "udp_exact4096_echo": true,
+    "existing_socket_reuse": true,
+    "receipt_sha256": "28eaaf7e30944adda3f2bba456c1a07701075db4e7ff60315b76c296869ad87c",
+    "no_dns_probes": true
+  },
+  "remaining": ["FQDN controller timeout remains unresolved and no FQDN grant issued", "Default mode stability and rekey qualification", "New cleanup source actual live withdrawal", "Remaining profiles, faults and UI acceptance"],
+  "production_ready": false
+}
