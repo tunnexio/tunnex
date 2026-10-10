@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -422,11 +424,28 @@ func validEnginePSK(psk []byte) bool {
 	return true
 }
 
+// Provider constraints follow the accepted delivery contract. GCP secrets are
+// preserved as UTF-8 bytes; the legacy AWS alphabet remains unchanged.
+func validProfileEnginePSK(profile string, psk []byte) bool {
+	if profile != GCPHABGPProfile && profile != GCPClassicStaticProfile {
+		return validRuntimeProviderProfile(profile) && validEnginePSK(psk)
+	}
+	if len(psk) < 8 || len(psk) > 64 || !utf8.Valid(psk) || strings.TrimSpace(string(psk)) == "" {
+		return false
+	}
+	for _, r := range string(psk) {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
 // stageTunnel is private because loading a responder is itself a mutation that
 // requires verified denial, even with start_action=none. No automatic retry or
 // rollback is attempted: the controller retains the durable cleanup obligation.
 func (c *DaemonClient) stageTunnel(ctx context.Context, t EngineTunnel, psk []byte) error {
-	if c == nil || c.request == nil || !validEngineTunnel(t) || !validEnginePSK(psk) {
+	if c == nil || c.request == nil || !validEngineTunnel(t) || !validProfileEnginePSK(t.ProfileID, psk) {
 		return ErrDaemonProtocol
 	}
 	name := engineName(t)

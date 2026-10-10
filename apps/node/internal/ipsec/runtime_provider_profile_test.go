@@ -86,3 +86,29 @@ func TestAWSProfileJournalShapePreserved(t *testing.T) {
 		t.Fatal("nil controller advertised support")
 	}
 }
+
+func TestGCPPSKPreservesProviderAcceptance(t *testing.T) {
+	for _, value := range []string{"0-GCP-secret!", "abcdefgh with spaces", "अक्षर-GCP-secret"} {
+		for _, profile := range []string{GCPHABGPProfile, GCPClassicStaticProfile} {
+			if !validProfileEnginePSK(profile, []byte(value)) {
+				t.Fatal("accepted GCP PSK refused", profile)
+			}
+		}
+		if validProfileEnginePSK("", []byte(value)) {
+			t.Fatal("AWS PSK restriction widened")
+		}
+		m := gcpMaterialFixture()
+		m.Secrets[0].PSK = value
+		if _, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err != nil {
+			t.Fatal("GCP material PSK refused", err)
+		}
+	}
+	for _, value := range []string{"short", strings.Repeat("a", 65), strings.Repeat(" ", 8), "valid\nsecret", "valid\x7fsecret", "valid\u0085secret", string([]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 255})} {
+		if validProfileEnginePSK(GCPHABGPProfile, []byte(value)) || validProfileEnginePSK(GCPClassicStaticProfile, []byte(value)) {
+			t.Fatal("invalid GCP PSK accepted")
+		}
+	}
+	if validProfileEnginePSK("unknown", []byte("validAWSSecret")) {
+		t.Fatal("unknown provider accepted")
+	}
+}
