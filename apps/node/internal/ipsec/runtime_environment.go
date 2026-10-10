@@ -95,14 +95,19 @@ func runtimeDefaultRules(raw []byte) bool {
 // statements are admitted outside our separately verified guard. NAT must be
 // source scoped to a range disjoint from all protected payload addresses.
 func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
+	rows, ok := runtimeCensusRows(raw)
+	return ok && runtimeHookCensusRows(rows, protected)
+}
+
+// Rows remain local to one freshly bounded, strictly validated snapshot.
+func runtimeCensusRows(raw []byte) ([]map[string]json.RawMessage, bool) {
 	root, ok := runtimeJSONObject(raw)
 	if !ok || len(root) != 1 {
-		return false
+		return nil, false
 	}
-	rows, ok := kernelObjects(root["nftables"])
-	if !ok {
-		return false
-	}
+	return kernelObjects(root["nftables"])
+}
+func runtimeHookCensusRows(rows []map[string]json.RawMessage, protected []netip.Prefix) bool {
 	for _, item := range rows {
 		if len(item) != 1 {
 			return false

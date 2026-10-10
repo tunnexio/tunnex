@@ -15,16 +15,12 @@ import (
 // Docker's opaque xt targets need independent nft-backed iptables semantics.
 // Only its complete loopback DNS topology is admitted; table names are not proof.
 func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte, protected []netip.Prefix) bool {
-	if runtimeHookCensus(raw, protected) {
+	rows, ok := runtimeCensusRows(raw)
+	if !ok {
+		return false
+	}
+	if runtimeHookCensusRows(rows, protected) {
 		return true
-	}
-	root, ok := runtimeJSONObject(raw)
-	if !ok {
-		return false
-	}
-	rows, ok := kernelObjects(root["nftables"])
-	if !ok {
-		return false
 	}
 	present := false
 	for _, row := range rows {
@@ -52,7 +48,7 @@ func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte,
 		return false
 	}
 	listing, err := runKernelCommand(ctx, path, "-t", "nat")
-	return err == nil && runtimeDockerDNSCensus(raw, listing, protected)
+	return err == nil && runtimeDockerDNSCensusRows(rows, listing, protected)
 }
 
 func runtimeDockerDNSPorts(listing []byte) (map[string]int, bool) {
@@ -132,6 +128,10 @@ func runtimeDockerDNSPorts(listing []byte) (map[string]int, bool) {
 }
 
 func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool {
+	rows, ok := runtimeCensusRows(raw)
+	return ok && runtimeDockerDNSCensusRows(rows, listing, protected)
+}
+func runtimeDockerDNSCensusRows(rows []map[string]json.RawMessage, listing []byte, protected []netip.Prefix) bool {
 	ports, ok := runtimeDockerDNSPorts(listing)
 	if !ok {
 		return false
@@ -141,14 +141,6 @@ func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool 
 		if !p.IsValid() || p.Overlaps(loopback) {
 			return false
 		}
-	}
-	root, ok := runtimeJSONObject(raw)
-	if !ok || len(root) != 1 {
-		return false
-	}
-	rows, ok := kernelObjects(root["nftables"])
-	if !ok {
-		return false
 	}
 	remaining := []map[string]json.RawMessage{}
 	tables := 0
@@ -303,6 +295,5 @@ func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool 
 	if tables != 1 || len(chains) != 4 || len(rules) != 6 {
 		return false
 	}
-	filtered, err := json.Marshal(map[string]any{"nftables": remaining})
-	return err == nil && runtimeHookCensus(filtered, protected)
+	return runtimeHookCensusRows(remaining, protected)
 }
