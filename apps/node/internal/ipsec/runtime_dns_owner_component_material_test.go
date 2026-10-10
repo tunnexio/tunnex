@@ -47,6 +47,23 @@ func TestDNSOwnerViewGCPComponentPrepare(t *testing.T) {
 	if err != nil || !remote.Contains(resolver) || resolver == remote.Addr() || resolver == netip.AddrFrom4([4]byte{remote.Addr().As4()[0], remote.Addr().As4()[1], remote.Addr().As4()[2], 255}) {
 		t.Fatal("owned remote host resolver required")
 	}
+	benchmark := netip.MustParsePrefix("198.18.0.0/15")
+	outside := make([]netip.Addr, 3)
+	for i, item := range []struct{ name, fallback string }{{"TUNNEX_GCP_DNS_OWNER_GATEWAY_OUTSIDE", "198.18.222.10"}, {"TUNNEX_GCP_DNS_OWNER_PEER_OUTSIDE_1", "198.18.222.20"}, {"TUNNEX_GCP_DNS_OWNER_PEER_OUTSIDE_2", "198.18.222.21"}} {
+		address, err := netip.ParseAddr(value(item.name, item.fallback))
+		if err != nil || !address.Is4() || !(address.IsPrivate() || benchmark.Contains(address)) || address.As4()[3] == 0 || address.As4()[3] == 255 {
+			t.Fatal("private or benchmark component underlay host required")
+		}
+		outside[i] = address
+		for j := 0; j < i; j++ {
+			if address == outside[j] || netip.PrefixFrom(address, 24).Masked() != netip.PrefixFrom(outside[j], 24).Masked() {
+				t.Fatal("distinct component hosts in one underlay /24 required")
+			}
+		}
+		if local.Contains(address) || remote.Contains(address) {
+			t.Fatal("underlay cannot overlap component LAN")
+		}
+	}
 	for _, profile := range []string{GCPClassicStaticProfile, GCPHABGPProfile} {
 		m := classicMaterialFixture()
 		if profile == GCPHABGPProfile {
@@ -61,9 +78,9 @@ func TestDNSOwnerViewGCPComponentPrepare(t *testing.T) {
 		if m.Manifest.BGP != nil {
 			m.Manifest.BGP.RouterID = source.String()
 		}
-		m.Manifest.CustomerOutsideAddress = "198.18.222.10"
+		m.Manifest.CustomerOutsideAddress = outside[0].String()
 		for i := 0; i < count; i++ {
-			m.Manifest.Tunnels[i].OutsideAddress = []string{"198.18.222.20", "198.18.222.21"}[i]
+			m.Manifest.Tunnels[i].OutsideAddress = outside[i+1].String()
 			secret := make([]byte, 16)
 			if _, err = rand.Read(secret); err != nil {
 				t.Fatal("disposable entropy unavailable")

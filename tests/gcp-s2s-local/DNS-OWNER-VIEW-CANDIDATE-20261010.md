@@ -53,3 +53,6 @@ Current LicenceCard provides owner-only installation of an issued key through th
 
 
 Native harness preflight refused the original local10.10/24 and remote10.20/24 because existing colleague/AWS Docker networks own them. No containers were created and those networks were not touched. Preparation now defaults to isolated10.86/24 and10.87/24 and accepts explicit `TUNNEX_GCP_DNS_OWNER_LOCAL_PREFIX`, `TUNNEX_GCP_DNS_OWNER_REMOTE_PREFIX`, `TUNNEX_GCP_DNS_OWNER_SOURCE` and `TUNNEX_GCP_DNS_OWNER_RESOLVER`. Prefixes must be exact disjoint private IPv4 /24s; source and receiver must be actual host addresses inside their respective prefixes. The Go helper updates material, BGP router ID and policy and reseals with the existing runtime implementation; no manual digest reconstruction.
+
+
+Preparation also accepts bounded `TUNNEX_GCP_DNS_OWNER_GATEWAY_OUTSIDE`, `TUNNEX_GCP_DNS_OWNER_PEER_OUTSIDE_1` and `TUNNEX_GCP_DNS_OWNER_PEER_OUTSIDE_2`. They must be distinct private/benchmark IPv4 hosts in one /24, outside both LANs. To preserve Classic fixtures while qualifying HA sequentially, the latter prepared material uses198.19.223/24 underlay and10.88/24→10.89/24 LANs after independent harness non-overlap preflight. No existing networks are adopted.
