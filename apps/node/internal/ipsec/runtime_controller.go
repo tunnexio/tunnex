@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"github.com/google/uuid"
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
@@ -46,12 +47,13 @@ type RuntimeControllerConfig struct {
 	Environment                 RuntimeEnvironmentInspector
 }
 type runtimeActive struct {
-	Delivery    RuntimeDelivery // secret-free, authenticated normal Apply context for telemetry
-	Entry       RuntimeJournalEntry
-	Environment RuntimeEnvironment
-	Grants      []GuardGrant
-	Identity    PermitLeaseIdentity
-	Authority   *PermitLeaseAuthority
+	StaticKeyDigest [32]byte        // process-private successful Classic key continuity; never journaled or logged
+	Delivery        RuntimeDelivery // secret-free, authenticated normal Apply context for telemetry
+	Entry           RuntimeJournalEntry
+	Environment     RuntimeEnvironment
+	Grants          []GuardGrant
+	Identity        PermitLeaseIdentity
+	Authority       *PermitLeaseAuthority
 }
 
 type RuntimeController struct {
@@ -69,6 +71,7 @@ type RuntimeController struct {
 	qualification           *RuntimePlatformQualification
 	prove                   func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
 	active                  map[uuid.UUID]runtimeActive
+	deniedClassicTransports map[uuid.UUID]runtimeDeniedClassicTransport
 	recoveryHistory         map[uuid.UUID]*recoveryDecision
 	recoveryPrepared        map[uuid.UUID]RuntimeEnvironment
 	recoveryClock           func() time.Duration
@@ -133,6 +136,7 @@ func (c *RuntimeController) Close() error {
 	defer c.mu.Unlock()
 	c.withdrawDNSOwnerView(uuid.Nil)
 	c.closed = true
+	c.deniedClassicTransports = nil
 	c.started = false
 	c.active = nil
 	failed := false
@@ -243,7 +247,10 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	}()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
+	fail := func() (RuntimeAcknowledgement, error) {
+		delete(c.deniedClassicTransports, m.Manifest.ConnectionID)
+		return RuntimeAcknowledgement{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || ctx.Err() != nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return fail()
 	}
@@ -404,6 +411,13 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	}
 	prior, known := c.active[entry.Allocation.ConnectionID]
 	unchanged := known && prior.Entry.DeliveryID == entry.DeliveryID && reflect.DeepEqual(prior.Environment, env)
+	if !known {
+		reuse, err := c.deniedClassicTransportMatches(ctx, m, entry, env, entries)
+		if err != nil {
+			return fail()
+		}
+		unchanged = reuse
+	}
 	if unchanged && prior.Identity.PolicyHash != m.Policy.Hash {
 		delete(c.active, entry.Allocation.ConnectionID)
 		if c.installActive(ctx, entries) != nil {
@@ -516,6 +530,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			return fail()
 		}
 		active.Delivery = m.RuntimeDelivery
+		active.StaticKeyDigest = sha256.Sum256([]byte(m.Secrets[0].PSK))
 		c.active[entry.Allocation.ConnectionID] = active
 	}
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
@@ -536,10 +551,14 @@ func classicCommittedEntryMatches(before, saved RuntimeJournalEntry, boot string
 func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (RuntimeAcknowledgement, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
+	fail := func() (RuntimeAcknowledgement, error) {
+		c.deniedClassicTransports = nil
+		return RuntimeAcknowledgement{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || ctx.Err() != nil || !cleanup.RetainGuard || !runtimeCleanupValid(cleanup, c.config.OrgID, c.config.GatewayID) || cleanup.CoversDeliveryRevision <= 0 || cleanup.CoversDeliveryRevision >= cleanup.DesiredRevision || len(cleanup.Lineage) == 0 || len(cleanup.Lineage) > 256 {
 		return fail()
 	}
+	delete(c.deniedClassicTransports, cleanup.Manifest.ConnectionID)
 	c.withdrawDNSOwnerView(cleanup.Manifest.ConnectionID)
 	entries, e := c.journal.Entries()
 	if e != nil {

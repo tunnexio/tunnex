@@ -30,10 +30,12 @@ func (c *RuntimeController) MaintainIPsecRuntimeObserved(ctx context.Context, ma
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !supportedRuntimePlatform(runtime.GOOS, runtime.GOARCH) {
+		c.deniedClassicTransports = nil
 		return nil, ErrRuntimeController
 	}
 	for _, m := range materials {
 		if m.Manifest.BGP != nil && !c.bgpQualificationCurrent() {
+			c.deniedClassicTransports = nil
 			return nil, ErrRuntimeController
 		}
 	}
@@ -49,18 +51,31 @@ func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials 
 
 func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
 	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || len(materials) > 256 {
+		c.deniedClassicTransports = nil
 		return nil, ErrRuntimeController
 	}
 	entries, err := c.journal.Entries()
 	if err != nil {
+		c.deniedClassicTransports = nil
 		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		return nil, ErrRuntimeController
 	}
 	fail := func() ([]RuntimeMaintenanceResult, error) {
+		c.deniedClassicTransports = nil
 		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
+		return nil, ErrRuntimeController
+	}
+	failHAFreshness := func() ([]RuntimeMaintenanceResult, error) {
+		hints := c.rememberDeniedClassicTransports(entries)
+		c.withdrawDNSOwnerView(uuid.Nil)
+		c.active = nil
+		c.deniedClassicTransports = nil
+		if _, err := c.refuse(ctx, entries); err == nil && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() {
+			c.deniedClassicTransports = hints
+		}
 		return nil, ErrRuntimeController
 	}
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
@@ -197,20 +212,25 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	// exact combined guard transaction and final native/lease checks succeed.
 	for _, a := range candidates {
 		if a.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent()) {
-			return fail()
+			return failHAFreshness()
 		}
 	}
+	haFreshnessFailed := false
 	if c.installActiveCandidates(ctx, entries, staged, candidates, c.active, func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 			return false
 		}
 		for _, a := range candidates {
 			if a.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent()) {
+				haFreshnessFailed = true
 				return false
 			}
 		}
 		return true
 	}) != nil {
+		if haFreshnessFailed && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() {
+			return failHAFreshness()
+		}
 		return fail()
 	}
 	result := make([]RuntimeMaintenanceResult, 0, len(maintained))
