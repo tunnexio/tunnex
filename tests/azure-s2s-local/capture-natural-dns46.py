@@ -8,6 +8,15 @@ IMAGE='sha256:2e2cd11f550d944af6052d1bddbb4c8e0a4252b7e73349497a487c83ad784361'
 NODE='6022368cd6fb2b0483244021d7194a28dd2305f4a5ab2932b5b16fd882233dd9'
 SOURCE='10.233.10.1'; ENDPOINTS={'10.231.2.4','10.231.2.20'}
 PAIRS=sorted((v,p) for v in ENDPOINTS for p in ('tcp','udp'))
+STAGES={'attestation','identity','state_mount','journal','interfaces','tools','evidence','capture_readiness','capture_observation','final_identity','log_read','pcap_parse','counter_validation','correlation'}
+STAGE='attestation'
+
+def stage(value):
+ global STAGE
+ if value not in STAGES: raise ValueError('fixed_stage')
+ STAGE=value
+
+def refusal(): return {'status':'refused','category':'owned_capture_refused','stage':STAGE}
 
 def utc(): return datetime.datetime.now(datetime.timezone.utc).isoformat()
 def stamp(value): return datetime.datetime.fromisoformat(re.sub(r'(\.\d{6})\d+',r'\1',value).replace('Z','+00:00')).timestamp()
@@ -157,6 +166,7 @@ def correlate(rows,diagnostics,rpcs,complete=False,coverage=None):
  return result
 
 def run(args):
+ stage('attestation')
  if os.geteuid()!=0 or socket.gethostname()!='tunnex-peer': raise ValueError('owned_host')
  os.umask(0o077)
  baseline_raw=private(args.attestation,65536);b=json.loads(baseline_raw)
@@ -164,19 +174,24 @@ def run(args):
  required=('whole_journal_valid','normal_authority_matches','resolver_grants_match','routes_match','source_matches','profile_matches')
  if any(b.get(k)is not True for k in required) or b.get('revision')!=46 or b.get('preserved_grant_count')!=8 or b.get('preserved_grant_ids_match')is not True or sorted(map(tuple,b.get('endpoint_pairs',[])))!=PAIRS: raise ValueError('attestation')
  if abs(time.time()-stamp(b['observed_at']))>15: raise ValueError('attestation_age')
- initial=identity();interfaces=b['xfrm_interfaces']+['az-s2s-client']
+ stage('identity');initial=identity()
+ stage('interfaces');interfaces=b['xfrm_interfaces']+['az-s2s-client']
  if len(set(interfaces))!=3 or any(not re.fullmatch(r'[a-zA-Z0-9_-]{1,15}',v) for v in interfaces): raise ValueError('interfaces')
+ stage('state_mount')
  mounts=json.loads(command(['docker','inspect',CID]))[0]['Mounts']
  state=[v['Source'] for v in mounts if v['Destination']=='/var/lib/tunnex-node']
  if len(state)!=1 or b['live_journal_path']!=state[0]+'/ipsec/journal.json': raise ValueError('state_mount')
+ stage('journal')
  live=live_journal(b['live_journal_path'],b['live_journal_device'],b['live_journal_inode'])
  snapshot=private(b['snapshot_journal_path'])
  if sha(live)!=b['journal_sha256'] or sha(snapshot)!=b['journal_sha256']: raise ValueError('journal_attestation')
  payload=json.loads(snapshot)['Payload']
  entries=[e for e in payload['Entries'] if e['Phase']=='applied' and e['Engines'][0]['Binding']['DesiredRevision']==46]
  if len(entries)!=1 or [t['Name'] for t in entries[0]['Allocation']['Tunnels']]!=b['xfrm_interfaces']: raise ValueError('snapshot_interfaces')
+ stage('tools')
  for tool in ('tcpdump','ss','nsenter'): command(['sh','-c','command -v "$1"','sh',tool])
  conntrack_available=subprocess.run(['sh','-c','command -v conntrack'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2).returncode==0
+ stage('evidence')
  directory=pathlib.Path(args.evidence_dir);directory.mkdir(mode=0o700,exist_ok=False)
  if str(directory.resolve())!=str(directory) or directory.stat().st_uid!=0: raise ValueError('evidence_directory')
  save(directory/'attestation.json',baseline_raw);started=utc();processes=[];streams=[];capture_started=time.monotonic()
@@ -190,7 +205,9 @@ def run(args):
    for p in processes:
     if p.poll()is None:p.send_signal(signal.SIGINT)
   timer=threading.Timer(max(0,40-(time.monotonic()-capture_started)),end_capture);timer.daemon=True;timer.start()
+  stage('capture_readiness')
   capture_ready=await_readiness(processes,interfaces,lambda i:private(str(directory/f'capture-{i}.log'),65536),min(capture_started+40,time.monotonic()+5))
+  stage('capture_observation')
   stop=capture_started+39;index=0
   while time.monotonic()<stop:
    if identity()!=initial or any(p.poll()is not None for p in processes): raise ValueError('capture_identity')
@@ -214,7 +231,9 @@ def run(args):
    try:p.wait(timeout=3)
    except subprocess.TimeoutExpired:p.kill();p.wait()
   for stream in streams:stream.close()
+ stage('final_identity')
  if identity()!=initial: raise ValueError('final_identity')
+ stage('log_read')
  logged=subprocess.run(['docker','logs','--since',started,CID],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
  logs=logged.stdout+b'\n'+logged.stderr;save(directory/'node.log',logs)
  diagnostics=[];rpcs=[]
@@ -225,17 +244,20 @@ def run(args):
   if v.get('msg')=='fqdn_rpc_timing':rpcs.append({k:v[k] for k in ('dispatch_utc','handle_ms') if k in v})
  rows=[];hashes=[];health=[]
  for i in range(3):
+  stage('pcap_parse')
   path=directory/f'capture-{i}.pcap';os.chmod(path,0o600);raw=private(str(path))
   if len(raw)>=8_000_000: raise ValueError('capture_rotation')
   hashes.append(sha(raw))
   parsed=packets(raw)
   for row in parsed: row['capture_index']=i
   rows+=parsed
+  stage('counter_validation')
   health.append(capture_health(private(str(directory/f'capture-{i}.log')),processes[i].returncode))
+ stage('correlation')
  result={'version':1,'started_at':started,'ended_at':utc(),'scope':'Read-only natural RPC header correlation; no authority or readiness claim','packet_header_count':len(rows),'socket_sample_count':index,'capture_sha256':hashes,'capture_health':health,'supporting_conntrack_available':conntrack_available,'correlations':correlate(rows,diagnostics,rpcs,all(v['dropped']==0 for v in health),(capture_ready,capture_stopped[0]))}
  save(directory/'summary.json',json.dumps(result,indent=2).encode());print(json.dumps(result))
 
 if __name__=='__main__':
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--attestation',required=True);p.add_argument('--evidence-dir',required=True);a=p.parse_args()
  try:run(a)
- except Exception:print(json.dumps({'status':'refused','category':'owned_capture_refused'}));sys_exit=1;raise SystemExit(sys_exit)
+ except Exception:print(json.dumps(refusal()));sys_exit=1;raise SystemExit(sys_exit)

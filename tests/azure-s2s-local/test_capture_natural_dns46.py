@@ -1,6 +1,12 @@
 import importlib.util,pathlib,unittest
 spec=importlib.util.spec_from_file_location('capture',pathlib.Path(__file__).with_name('capture-natural-dns46.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Correlation(unittest.TestCase):
+ def test_refusal_has_fixed_stage_only(self):
+  for value in m.STAGES:
+   m.stage(value);self.assertEqual(m.refusal(),{'status':'refused','category':'owned_capture_refused','stage':value})
+  with self.assertRaises(ValueError):m.stage('/private/raw exception')
+  self.assertNotIn('/private/raw exception',str(m.refusal()))
+
  def test_exact_udp_and_ambiguity(self):
   end='2026-10-10T21:00:03Z';start=m.stamp(end)-3
   diagnostic={'time':end,'operation':'dns_exchange','socket_ms':3000,'socket_stage':'body','stage':'dns_socket_udp'}
