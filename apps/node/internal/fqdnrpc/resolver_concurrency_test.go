@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/netip"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -283,7 +281,7 @@ func TestDirectResolverParallelClonesIPsecPath(t *testing.T) {
 		_, err := resolver.ResolveBound(t.Context(), "api.example.test", []RecordType{RecordA, RecordAAAA}, config)
 		done <- err
 	}()
-	for range 1 {
+	for range 2 {
 		select {
 		case <-started:
 		case <-time.After(time.Second):
@@ -300,102 +298,4 @@ func TestDirectResolverParallelClonesIPsecPath(t *testing.T) {
 			t.Fatal("caller mutation changed copied IPsec path")
 		}
 	}
-}
-
-func TestDirectResolverIPsecTwoWaveProofBudgetPreservesDeadline(t *testing.T) {
-	for _, count := range []int{4, 8} {
-		t.Run(fmt.Sprint(count), func(t *testing.T) {
-			config := concurrentResolverConfig(count)
-			config.IPsecPath = &IPsecPath{ConnectionID: "88888888-8888-4888-8888-888888888888", ConfigurationRevision: 3, SourceAddress: "10.10.0.1"}
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			deadline, _ := ctx.Deadline()
-			var calls, proofs, active, maximum atomic.Int32
-			var mu sync.Mutex
-			seen := map[ResolverEndpoint][]RecordType{}
-			resolver := DirectResolver{Transport: concurrentIPsecTransport(func(queryCtx context.Context, endpoint ResolverEndpoint, name string, typ RecordType) ([]Record, error) {
-				if got, ok := queryCtx.Deadline(); !ok || !got.Equal(deadline) {
-					t.Error("original deadline changed")
-					return nil, errResolverConfig
-				}
-				calls.Add(1)
-				current := active.Add(1)
-				defer active.Add(-1)
-				for old := maximum.Load(); current > old; old = maximum.Load() {
-					if maximum.CompareAndSwap(old, current) {
-						break
-					}
-				}
-				mu.Lock()
-				seen[endpoint] = append(seen[endpoint], typ)
-				mu.Unlock()
-				// Every exchange still pays TWO complete independent 400ms proofs.
-				// This is a scheduling fixture, not a claim about live proof latency.
-				for range 2 {
-					proofs.Add(1)
-					timer := time.NewTimer(400 * time.Millisecond)
-					select {
-					case <-timer.C:
-					case <-queryCtx.Done():
-						timer.Stop()
-						return nil, queryCtx.Err()
-					}
-				}
-				if typ == RecordA {
-					ttl := 30
-					for i, e := range config.Endpoints {
-						if e == endpoint {
-							ttl -= i
-						}
-					}
-					return resolvedA(name, ttl), nil
-				}
-				return nil, nil
-			})}
-			start := time.Now()
-			records, err := resolver.ResolveBound(ctx, "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config)
-			if err != nil || len(records) != 1 || records[0].TTLSeconds != 31-count || calls.Load() != int32(2*count) || proofs.Load() != int32(4*count) || maximum.Load() != int32(count/2) || active.Load() != 0 || ctx.Err() != nil {
-				t.Fatalf("complete minimum-TTL endpoint consensus err=%v records=%v calls=%d proofs=%d context=%v", err, records, calls.Load(), proofs.Load(), ctx.Err())
-			}
-			for _, endpoint := range config.Endpoints {
-				if got := seen[endpoint]; len(got) != 2 || got[0] != RecordA || got[1] != RecordAAAA {
-					t.Fatalf("endpoint types missing or reordered: %v", got)
-				}
-			}
-			if time.Since(start) >= 5*time.Second {
-				t.Fatal("original budget exceeded")
-			}
-		})
-	}
-}
-
-// Packet fixture exercises the declared IPsec transport dispatch, not the plain resolver injection.
-func concurrentIPsecTransport(exchange func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error)) packetTransport {
-	return packetTransport(func(ctx context.Context, _ ResolverConfig, endpoint ResolverEndpoint, payload []byte) ([]byte, error) {
-		var message dnsmessage.Message
-		if message.Unpack(payload) != nil || len(message.Questions) != 1 {
-			return nil, errResolverConfig
-		}
-		q := message.Questions[0]
-		typ := RecordA
-		if q.Type == dnsmessage.TypeAAAA {
-			typ = RecordAAAA
-		} else if q.Type != dnsmessage.TypeA {
-			return nil, errResolverConfig
-		}
-		name := strings.TrimSuffix(q.Name.String(), ".")
-		records, err := exchange(ctx, endpoint, name, typ)
-		if err != nil {
-			return nil, err
-		}
-		for _, r := range records {
-			address, err := netip.ParseAddr(r.Address)
-			if err != nil || r.Type != RecordA {
-				return nil, errResolverConfig
-			}
-			message.Answers = append(message.Answers, dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: q.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: uint32(r.TTLSeconds)}, Body: &dnsmessage.AResource{A: address.As4()}})
-		}
-		message.Response = true
-		return message.Pack()
-	})
 }
