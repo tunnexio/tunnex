@@ -27,9 +27,28 @@ def resource_body():
     return {'name': 'Azure owned private LB TCP', 'cidr': '10.231.1.10/32',
             'protocol': 'tcp', 'port_low': 8080, 'port_high': 8080}
 
+def selected_profile(context, connection_id, revision):
+    host = 'lbapp.azure-s2s.test'
+    matches = [(len(suffix.split('.')), profile) for profile in context['profiles'] for suffix in profile['zone_suffixes']
+               if host == suffix or host.endswith('.' + suffix)]
+    if not matches:
+        raise lab.LabError('Actual private suffix profile required')
+    longest = max(length for length, _ in matches)
+    selected = {p['id']: p for length, p in matches if length == longest}
+    if len(selected) != 1:
+        raise lab.LabError('Unambiguous most-specific DNS profile required')
+    profile = next(iter(selected.values()))
+    expected = {(ip, 53, transport) for ip in ('10.231.2.4', '10.231.2.20') for transport in ('udp', 'tcp')}
+    actual = {(e['address'], e['port'], e['transport']) for e in profile['endpoints']}
+    if context['state'] != 'active' or profile['provider_hint'] != 'azure' or profile['legacy_default'] or profile['zone_suffixes'] != ['azure-s2s.test'] or actual != expected or len(profile['endpoints']) != 4:
+        raise lab.LabError('Exact shared owned Azure private resolver profile required')
+    if profile.get('ipsec_path') != {'connection_id': connection_id, 'configuration_revision': revision, 'source_address': '10.233.10.1'}:
+        raise lab.LabError('Current IPsec revision and actual gateway DNS source binding required')
+    return profile
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=('prepare', 'grant', 'revoke', 'read'))
+    parser.add_argument('phase', choices=('prepare', 'grant', 'revoke', 'read', 'fqdn-prepare', 'fqdn-enable', 'fqdn-grant', 'fqdn-revoke'))
     parser.add_argument('--private-root', type=Path, required=True)
     parser.add_argument('--connection-id', required=True)
     parser.add_argument('--expiry-seconds', type=int, default=90)
@@ -55,7 +74,8 @@ def main():
     connection = client.call('GET', base + '/ipsec/connections/' + args.connection_id)
     if connection['site_id'] != setup['site_id'] or connection['gateway_node_id'] != setup['gateway_id'] or connection['desired_intent'] != 'enabled':
         raise lab.LabError('Enabled owned connection required; restore/readiness is a separate lead gate')
-    config = client.call('GET', base + '/ipsec/connections/' + args.connection_id + '/configuration')['configuration']
+    config_view = client.call('GET', base + '/ipsec/connections/' + args.connection_id + '/configuration')
+    config = config_view['configuration']
     if '10.233.10.0/24' not in config['local_prefixes'] or not any(ipaddress.ip_address('10.231.1.10') in ipaddress.ip_network(p) for p in config['remote_prefixes']):
         raise lab.LabError('Actual owned source/LB prefixes required')
     statepath = private / 'lb-api-setup.json'
@@ -72,6 +92,48 @@ def main():
             raise lab.LabError('Existing DNS/application/reverse rules missing; no mutation allowed')
         return policies
     verify_protected()
+    if args.phase.startswith('fqdn-'):
+        if state['rule_id']:
+            raise lab.LabError('Explicitly revoke LB IP grant before separate FQDN proof')
+        context = client.call('GET', base + '/fqdn-resolver-contexts/' + setup['site_id'] + '/' + setup['gateway_id'])
+        if context['org_id'] != setup['org_id'] or context['site_id'] != setup['site_id'] or context['gateway_id'] != setup['gateway_id']:
+            raise lab.LabError('Actual shared resolver context identity required')
+        profile = selected_profile(context, args.connection_id, config_view['configuration_revision'])
+        binding = {'context_id': context['id'], 'context_version': context['version'], 'profile_id': profile['id'], 'configuration_revision': config_view['configuration_revision'], 'source_address': '10.233.10.1'}
+        if state.get('fqdn_binding', binding) != binding:
+            raise lab.LabError('Resolver/profile/revision changed; review before new FQDN proof')
+        if args.phase == 'fqdn-prepare':
+            if state.get('fqdn_resource_id'):
+                raise lab.LabError('LB FQDN already prepared')
+            resource = client.call('POST', base + '/fqdn-resources', {'name': 'Azure owned private LB FQDN', 'fqdn': 'lbapp.azure-s2s.test', 'protocol': 'tcp', 'port_low': 8080, 'port_high': 8080, 'resolver_context': {'site_id': setup['site_id'], 'gateway_id': setup['gateway_id']}})
+            state.update(fqdn_resource_id=resource['id'], fqdn_binding=binding, fqdn_rule_id=None)
+            save()
+        elif args.phase == 'fqdn-enable':
+            impact = client.call('GET', base + '/fqdn-resources/setting/impact')
+            if not impact['entitlement_available']:
+                raise lab.LabError('Genuine current FQDN entitlement unavailable')
+            client.call('PUT', base + '/fqdn-resources/setting', {'enabled': True, 'expected_impact_token': impact['expected_impact_token']})
+        elif args.phase == 'fqdn-grant':
+            if not state.get('fqdn_resource_id') or state.get('fqdn_rule_id'):
+                raise lab.LabError('Prepared FQDN without previous rule required')
+            resource = client.call('GET', base + '/fqdn-resources/' + state['fqdn_resource_id'])
+            if resource.get('org_id') != setup['org_id'] or resource.get('fqdn') != 'lbapp.azure-s2s.test' or resource.get('destination_kind') != 'fqdn' or resource.get('protocol') != 'tcp' or resource.get('port_low') != 8080 or resource.get('port_high') != 8080 or resource.get('resolver_context') != {'site_id': setup['site_id'], 'gateway_id': setup['gateway_id']}:
+                raise lab.LabError('Stored distinct LB FQDN resource changed')
+            expiry = (datetime.now(timezone.utc) + timedelta(seconds=args.expiry_seconds)).isoformat()
+            rule = client.call('POST', base + '/policies', {'src_kind': 'cidr', 'src_cidr': '10.233.10.2/32', 'dst_kind': 'fqdn_resource', 'dst_fqdn_resource_id': state['fqdn_resource_id'], 'expires_at': expiry})
+            state.update(fqdn_rule_id=rule['id'], fqdn_expires_at=expiry)
+            save()
+        elif args.phase == 'fqdn-revoke' and state.get('fqdn_rule_id'):
+            try:
+                client.call('DELETE', base + '/policies/' + state['fqdn_rule_id'])
+            except lab.LabError as error:
+                if error.status != 404 or error.code != 'rule_not_found':
+                    raise
+            state['fqdn_rule_id'] = None
+            save()
+        verify_protected()
+        print('Owned LB FQDN API phase completed: ' + args.phase + '; DNS generation and packet enforcement unverified.')
+        return
     if args.phase == 'prepare':
         if state.get('resource_id'):
             raise lab.LabError('LB already prepared; use explicit grant/revoke')
@@ -84,7 +146,7 @@ def main():
         if any(resource.get(k) != v for k, v in resource_body().items()):
             raise lab.LabError('Stored LB resource no longer matches owned /32')
         if args.phase == 'grant':
-            if state['rule_id']:
+            if state['rule_id'] or state.get('fqdn_rule_id'):
                 raise lab.LabError('Revoke previous LB rule first')
             expiry = (datetime.now(timezone.utc) + timedelta(seconds=args.expiry_seconds)).isoformat()
             rule = client.call('POST', base + '/policies', {'src_kind': 'cidr', 'src_cidr': '10.233.10.2/32', 'dst_kind': 'resource', 'dst_resource_id': state['resource_id'], 'expires_at': expiry})
