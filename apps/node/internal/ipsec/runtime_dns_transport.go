@@ -233,7 +233,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	// exact current published template too; changed target epochs remain refused.
 	if latest.guard.Digest != view.guard.Digest {
 		if permitted, guardStage := latest.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
-			stage = guardStage
+			stage = "dns_latest_" + guardStage[len("dns_"):]
 			return fail()
 		}
 	}

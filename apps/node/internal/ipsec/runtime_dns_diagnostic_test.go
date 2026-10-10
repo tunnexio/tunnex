@@ -230,3 +230,24 @@ func TestDNSGuardRevalidationRefusesChangedAuthorityAndDigestChurn(t *testing.T)
 		})
 	}
 }
+
+func TestDNSDiagnosticSeparatesFinalPublishedGuardRead(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	var diagnostic RuntimeDiagnostic
+	f.c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostic = d }
+	view := *f.c.dnsView.Load()
+	route := view.observer.route
+	view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		raw, err := route(ctx, path, args...)
+		renewDNSDiagnosticGuard(t, f)
+		f.observed.Store(`{"nftables":[]}`)
+		return raw, err
+	}
+	f.c.dnsView.Store(&view)
+	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_latest_guard_full_read" {
+		t.Fatalf("final current table refusal misclassified: %+v", diagnostic)
+	}
+	if f.guardReads.Load() != 2 {
+		t.Fatal("diagnostic changed guard read count")
+	}
+}
