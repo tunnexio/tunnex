@@ -31,7 +31,11 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "/usr/sbin/nft", "-f", "-")
 		cmd.Stdin = bytes.NewBufferString(text)
-		return cmd.Run()
+		err := cmd.Run()
+		if err != nil && ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("peer nft deadline exceeded: %w", err)
+		}
+		return err
 	}
 	deny := func() error {
 		v, e := RenderGuard(g)
@@ -99,8 +103,8 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 			return
 		default:
 		}
-		if deny() != nil {
-			t.Fatal("static simulator denial update failed")
+		if err := deny(); err != nil {
+			t.Fatalf("static simulator denial update failed: %v", err)
 		}
 		if err := verify(true); err != nil {
 			t.Fatalf("static simulator return proof failed: %v", err)
@@ -130,8 +134,8 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 				services = append(services, c.Services...)
 				rules := standaloneStaticServiceRules(services, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
 				rules += standaloneStaticReverseServiceRules(c.ReverseServices, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
-				if nft(rules) != nil {
-					t.Fatal("static simulator ACL refused")
+				if err := nft(rules); err != nil {
+					t.Fatalf("static simulator ACL refused: %v", err)
 				}
 			}
 		}

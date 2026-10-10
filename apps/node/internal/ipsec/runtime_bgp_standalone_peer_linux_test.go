@@ -480,9 +480,13 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 			cmd := exec.CommandContext(child, "/usr/sbin/nft", "-f", "-")
 			cmd.Stdin = bytes.NewBufferString(rules)
 			err = cmd.Run()
+			deadline := child.Err() == context.DeadlineExceeded
 			done()
 			if err != nil {
-				t.Fatal("explicit peer simulator target permission failed")
+				if deadline {
+					t.Fatal("explicit peer simulator target permission deadline exceeded")
+				}
+				t.Fatalf("explicit peer simulator target permission command refused: %v", err)
 			}
 		}
 		if !p.Alive() {
