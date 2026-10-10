@@ -274,3 +274,31 @@ func TestAzureSchedulerCombinedGuardRequiresOneFullReadback(t *testing.T) {
 		}
 	}
 }
+
+// This selects only a read-only proof; it never constructs a controller or permit.
+func azureSchedulerNativeProof(ctx context.Context, e RuntimeJournalEntry, d DaemonInventory, k KernelInventory, x XFRMInventory, routes *KernelApplier) error {
+	if !IsAzureBGPProfile(e.Allocation.ProfileID) {
+		return runtimeInventoryMatches(e, d, k, x)
+	}
+	if e.ContractVersion != 3 || !validJournalBGP(e) || !validBGPRoutes(e) || e.BGPRoutes == nil || e.BGPRoutes.Stage != "completed" || routes == nil || k.Namespace != e.Allocation.Namespace || x.Namespace != e.Allocation.Namespace {
+		return ErrKernelApply
+	}
+	count := e.Allocation.activeTunnelCount()
+	if len(d.Connections) != count || len(d.SAs) != count || len(d.SharedKeys) != count {
+		return ErrKernelApply
+	}
+	for i, t := range e.Engines[:count] {
+		if runtimeTunnelStatus(t, e.Observed[i], d, k, x) != "up" {
+			return ErrKernelApply
+		}
+		_, child, retired, err := ownedRuntimeChildren(t, d)
+		if err != nil {
+			return ErrKernelApply
+		}
+		in, out, err := ownedRuntimeSPIStates(t, child, retired, x)
+		if err != nil || in != 1 || out != 1 {
+			return ErrKernelApply
+		}
+	}
+	return routes.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true)
+}

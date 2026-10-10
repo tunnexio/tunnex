@@ -144,7 +144,8 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		return
 	}
 	x, e := xr.Read(ctx)
-	if e != nil || runtimeInventoryMatches(entry, d, k, x) != nil {
+	routeProof, routeErr := NewKernelApplier("/sbin/ip")
+	if e != nil || routeErr != nil || azureSchedulerNativeProof(ctx, entry, d, k, x, routeProof) != nil {
 		fail()
 		return
 	}

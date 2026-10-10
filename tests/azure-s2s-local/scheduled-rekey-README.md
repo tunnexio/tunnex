@@ -128,3 +128,9 @@ inside the automatic interval. This is sampled continuity, not a zero-loss
 microsecond guarantee. Restoration counts are reported separately; later stable
 post-restoration traffic is outside that phase. If no automatic window was reached,
 no automatic continuity passes.
+
+BGP contract3 preflight uses the valid completed journal BGP route obligation,
+strict native transport/CHILD/SPI evidence for every active slot, and the existing
+read-only `verifyBGPRoutes` over the full recorded route union and interface
+ownership. Static profiles retain `runtimeInventoryMatches`. No controller or
+permit lease is constructed by either proof.
