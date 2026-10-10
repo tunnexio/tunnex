@@ -77,6 +77,9 @@ func (s *ConnectionStore) reportBGPStatus(ctx context.Context, p RuntimePrincipa
 	if json.Unmarshal(manifestRaw, &m) != nil {
 		return ErrConnectionUnavailable
 	}
+	if m.ProfileID == GCPHAProfile && !l.gcpHAEligible {
+		return ErrConnectionIneligible
+	}
 	if !validBGPStatus(m, r) {
 		return ErrConnectionInvalid
 	}

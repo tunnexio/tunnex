@@ -12,7 +12,7 @@ import (
 
 func TestGCPHADisabledPersistenceCapabilityAndRollback(t *testing.T) {
 	ctx, p, org, actor, sealer, identity := createFixture(t)
-	if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 222); err != nil {
+	if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 224); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(ctx, `INSERT INTO site_subnets(id,site_id,cidr,status) VALUES($1,$2,'10.10.0.0/16','approved')`, uuid.New(), identity.SiteID); err != nil {
@@ -81,6 +81,10 @@ func TestGCPHADisabledPersistenceCapabilityAndRollback(t *testing.T) {
 	if _, err = p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities-'ipsec_gcp_ha_version' WHERE id=$1`, identity.GatewayID); err != nil {
 		t.Fatal(err)
 	}
+	report := ipsec.RuntimeStatusReport{DeliveryID: material.ID, DesiredRevision: enabled.DesiredRevision, ConfigurationRevision: 1, BGP: &ipsec.RuntimeBGPStatus{Version: 1}}
+	if err = s.ReportStatus(ctx, principal, c.ID, report); !errors.Is(err, ipsec.ErrConnectionIneligible) {
+		t.Fatalf("revoked GCP observation admitted: %v", err)
+	}
 	if _, err = s.Material(ctx, principal, c.ID, enabled.DesiredRevision, sealer); !errors.Is(err, ipsec.ErrConnectionIneligible) {
 		t.Fatalf("revoked GCP material admitted: %v", err)
 	}
@@ -91,19 +95,22 @@ func TestGCPHADisabledPersistenceCapabilityAndRollback(t *testing.T) {
 	if _, err = s.SetIntent(ctx, org, actor, c.ID, disabled.DesiredRevision, "enabled"); !errors.Is(err, ipsec.ErrConnectionIneligible) {
 		t.Fatalf("revoked runtime capability admitted: %v", err)
 	}
+	if err = db.MigrateTo(p.Config().ConnConfig.ConnString(), 222); err != nil {
+		t.Fatal(err)
+	}
 	if err = db.DownOne(p.Config().ConnConfig.ConnString()); err == nil || !strings.Contains(err.Error(), "GCP HA history") {
 		t.Fatal("rollback discarded GCP history")
 	}
 }
 func TestGCPHAMigrationRollbackWithoutHistory(t *testing.T) {
 	_, p, _, _, _, _ := createFixture(t)
-	if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 222); err != nil {
+	if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 224); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.DownOne(p.Config().ConnConfig.ConnString()); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 222); err != nil {
+	if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 224); err != nil {
 		t.Fatal(err)
 	}
 }
