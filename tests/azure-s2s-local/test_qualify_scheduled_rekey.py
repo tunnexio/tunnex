@@ -18,17 +18,24 @@ class SchedulerTests(unittest.TestCase):
  def test_child_default_jitter_and_observation_boundaries(self):
   # All 601 initial values allowed by pinned apply_jitter must qualify.
   for remaining in range(2400,3001):
-   self.assertTrue(q.child_timer_fresh({'child_remaining_seconds':remaining}))
-  self.assertEqual(q.CHILD_FRESH_MIN_SECONDS,2354)
-  self.assertTrue(q.child_timer_fresh({'child_remaining_seconds':2354}))
-  for remaining in (-1,0,2353,3001,3600):
-   self.assertFalse(q.child_timer_fresh({'child_remaining_seconds':remaining}))
-  self.assertFalse(q.child_timer_fresh({}))
+   self.assertTrue(q.child_timer_fresh({'child_remaining_seconds':remaining},0))
+  self.assertEqual(q.CHILD_INITIAL_MIN_SECONDS,2400)
+  self.assertTrue(q.child_timer_fresh({'child_remaining_seconds':2333},66))
+  self.assertFalse(q.child_timer_fresh({'child_remaining_seconds':2332},66))
+  self.assertFalse(q.child_timer_fresh({'child_remaining_seconds':2400},-1))
+  for remaining in (-1,0,2398,3001,3600):
+   self.assertFalse(q.child_timer_fresh({'child_remaining_seconds':remaining},0))
+  self.assertFalse(q.child_timer_fresh({},0))
  def test_fresh_accepts_default_maximum_child_jitter(self):
   engine={'name':'owned'};item={'ike_serial':2,'remaining_seconds':120,'child_remaining_seconds':2400}
   with patch.object(q,'check'),patch.object(q.common,'name',return_value='owned'),patch.object(q,'sample',side_effect=[{'owned':{'ike_serial':1}},{'owned':item}]),patch.object(q,'swan') as swan:
    self.assertEqual(q.fresh({},engine,120),item)
   self.assertEqual([call.args[1] for call in swan.call_args_list],['--terminate','--initiate'])
+ def test_fresh_counts_initiation_and_readback_age(self):
+  item={'ike_serial':2,'remaining_seconds':120,'child_remaining_seconds':2333}
+  # Initiation takes 20s; final checks/readback cross the observation deadline.
+  with patch.object(q,'check'),patch.object(q.common,'name',return_value='owned'),patch.object(q,'sample',side_effect=[{'owned':{'ike_serial':1}},{'owned':item}]),patch.object(q,'swan'),patch.object(q.time,'monotonic',side_effect=[100,120,121,166]):
+   self.assertEqual(q.fresh({}, {},120),item)
  def test_unexpected_timers_refused(self):
   with self.assertRaises(ValueError):q.accelerated('rekey_time = 120s',1)
  def test_original_socket_identity_survives_response_timeout(self):
