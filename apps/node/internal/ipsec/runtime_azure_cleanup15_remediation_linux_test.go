@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
 	"net"
@@ -73,7 +74,10 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 			t.Fatal("normal API disabled15 evidence refused or stale")
 		}
 	}
-	verifyNormalRead()
+	attestationOnly := os.Getenv("TUNNEX_AZURE_DISABLED15_ATTESTATION_ONLY") == "1"
+	if !attestationOnly {
+		verifyNormalRead()
+	}
 	verify := func() ([]byte, runtimeJournalPayload) {
 		ns, e := os.Readlink("/proc/self/ns/net")
 		if e != nil || ns != b.Namespace {
@@ -172,7 +176,13 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 		}
 		socketCtx, stop := context.WithTimeout(context.Background(), time.Second)
 		defer stop()
+		started := time.Now()
 		conn, e := dialOwnedVICI(socketCtx, "/run/tunnex-ipsec/charon.vici")
+		category := azureVICIDialError(e)
+		if errors.Is(e, ErrDaemonProtocol) {
+			category = "protocol_refused"
+		}
+		t.Logf("AZURE15_FIRST_ATTESTATION_DIAL category=%s context=%s elapsed_ms=%d euid_root=%t", category, azureVICIDialError(socketCtx.Err()), time.Since(started).Milliseconds(), os.Geteuid() == 0)
 		if e != nil {
 			t.Fatal("daemon_socket_connect_refused")
 		}
@@ -192,6 +202,10 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 		}
 	}
 	verifyDaemon()
+	if attestationOnly {
+		t.Log("AZURE15_READ_ONLY_ATTESTATION_COMPLETE no VICI command or native mutation")
+		return
+	}
 	journal, payload := verify()
 	if len(payload.Guards) != 1 {
 		t.Fatal("exact one full guard required")
