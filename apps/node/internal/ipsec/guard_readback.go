@@ -33,6 +33,16 @@ func normalizedGuardObjects(raw []byte) ([]any, bool) {
 	return normalizedGuardObjectsWithInterfaces(raw, nil)
 }
 func normalizedGuardObjectsWithInterfaces(raw []byte, interfaces map[string]int) ([]any, bool) {
+	return normalizedGuardObservedObjects(raw, interfaces, false)
+}
+
+// Withdrawal accepts a bounded zero remaining lifetime only as an exact known
+// member. It must not drop that member or supply a positive readback receipt.
+func normalizedGuardWithdrawalObjectsWithInterfaces(raw []byte, interfaces map[string]int) ([]any, bool) {
+	return normalizedGuardObservedObjects(raw, interfaces, true)
+}
+
+func normalizedGuardObservedObjects(raw []byte, interfaces map[string]int, withdrawal bool) ([]any, bool) {
 	if len(raw) > kernelDumpLimit || !utf8.Valid(raw) {
 		return nil, false
 	}
@@ -95,7 +105,7 @@ func normalizedGuardObjectsWithInterfaces(raw []byte, interfaces map[string]int)
 				return nil, false
 			}
 		case "set":
-			if !translateGuardSet(fields, interfaces) || !normalizeGuardSet(fields) {
+			if !translateGuardSet(fields, interfaces) || !normalizeGuardSetObserved(fields, withdrawal) {
 				return nil, false
 			}
 		case "chain":
@@ -190,6 +200,10 @@ func guardCounterNumber(value any) bool {
 // Expiry is observed remaining life, never renewal authority. Callers must also
 // enforce their monotonic lease deadline before and after application/readback.
 func normalizeGuardSet(fields map[string]any) bool {
+	return normalizeGuardSetObserved(fields, false)
+}
+
+func normalizeGuardSetObserved(fields map[string]any, withdrawal bool) bool {
 	if (!reflect.DeepEqual(fields["type"], "iface_index") && !reflect.DeepEqual(fields["type"], map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": json.Number("0")}}})) || !reflect.DeepEqual(fields["flags"], []any{"timeout"}) {
 		return false
 	}
@@ -224,7 +238,8 @@ func normalizeGuardSet(fields map[string]any) bool {
 		if _, explicit := element["timeout"]; !explicit {
 			// Native nft omits an element timeout equal to the known set
 			// default. Accept only our typed 60s lease set with an observed,
-			// still-live bounded expiry; this never creates fresh authority.
+			// bounded expiry. Positive readback still requires remaining life;
+			// withdrawal preserves zero-life members until actual absence.
 			name, named := fields["name"].(string)
 			suffix := ""
 			for _, prefix := range []string{"sa_lease_", "reply_lease_", "lease_"} {
@@ -239,7 +254,7 @@ func normalizeGuardSet(fields map[string]any) bool {
 					known = false
 				}
 			}
-			expiry, live := guardPositiveSeconds(element["expires"])
+			expiry, live := guardObservedExpirySeconds(element["expires"], withdrawal)
 			if !known || duration != 60 || !live || expiry > duration {
 				return false
 			}
@@ -250,7 +265,7 @@ func normalizeGuardSet(fields map[string]any) bool {
 			return false
 		}
 		if remaining, present := element["expires"]; present {
-			expiry, ok := guardPositiveSeconds(remaining)
+			expiry, ok := guardObservedExpirySeconds(remaining, withdrawal)
 			if !ok || expiry > timeout {
 				return false
 			}
@@ -262,6 +277,21 @@ func normalizeGuardSet(fields map[string]any) bool {
 	}
 	return true
 }
+
+// This distinction is private to withdrawal readback. Timeout authority remains
+// strictly positive, and a zero-life member remains present for denial checks.
+func guardObservedExpirySeconds(value any, withdrawal bool) (uint64, bool) {
+	if !withdrawal {
+		return guardPositiveSeconds(value)
+	}
+	n, ok := value.(json.Number)
+	if !ok {
+		return 0, false
+	}
+	seconds, ok := kernelNumber(json.RawMessage(n.String()), 64)
+	return seconds, ok && seconds <= 60
+}
+
 func guardPositiveSeconds(value any) (uint64, bool) {
 	n, ok := value.(json.Number)
 	if !ok {

@@ -31,7 +31,7 @@ func VerifyGuardWithdrawal(expected, observed []byte, links []GuardInterface) er
 	if !ok {
 		return ErrGuardReadback
 	}
-	got, ok := normalizedGuardObjectsWithInterfaces(observed, mapping)
+	got, ok := normalizedGuardWithdrawalObjectsWithInterfaces(observed, mapping)
 	if !ok || len(want) != len(got) {
 		return ErrGuardReadback
 	}
