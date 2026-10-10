@@ -25,7 +25,13 @@
       "Unpublished successor committed proof deadline test",
       "Guard command deadline timing test"
     ],
-    "next_action": "Repair concurrent fixture and compare the two timing failures against predecessor source; no live deployment acceptance"
+    "next_action": "Locally qualified only; live deployment and effect require separate actual measurement.",
+    "test_fixture_fix_root_commit": "8d170f50",
+    "test_fixture_fix_candidate_commit": "ece65ce3c1f4544662fabf4e867f04e8be146490",
+    "subsequent_full_root_race_passed": true,
+    "subsequent_full_root_race_seconds": 447.391,
+    "subsequent_full_root_race_log_sha256": "24b7435506662c2b85446a72c4a6a87e45223a88a8a195c74a6748e02da150fb",
+    "timing_failure_predecessor_comparison": "Both tests passed50repetitions on8eb31c7e and50on9d47candidate; neither calls new recovery helper. Earlier full-suite failures not reproduced or changed."
   },
   "maximum_prefix_source": {
     "root_commit": "8371c0e4",
