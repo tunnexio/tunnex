@@ -27,7 +27,7 @@ def response(data,id,name,full):
  if rid!=id or not flags&0x8000 or flags&0x7800 or qd!=1:raise ValueError('DNS response identity/opcode')
  q,p=decode_name(data,12)
  if q!=name.lower()or p+4>len(data)or data[p:p+4]!=struct.pack('!HH',1,1):raise ValueError('DNS exact question')
- out={'id':rid,'question':q,'rcode':flags&15,'tc':bool(flags&0x200),'answer_count':an,'a':[],'cname':[]};p+=4
+ out={'id':rid,'question':q,'rcode':flags&15,'tc':bool(flags&0x200),'answer_count':an,'a':[],'cname':[],'other_answers':[]};p+=4
  if not full:return out
  if out['tc']:raise ValueError('full response truncated')
  for index in range(an+ns+ar):
@@ -43,32 +43,43 @@ def response(data,id,name,full):
     target,nextpos=decode_name(data,p)
     if nextpos!=end:raise ValueError('DNS CNAME length')
     out['cname'].append({'owner':owner,'target':target})
+   else:out['other_answers'].append({'owner':owner,'type':kind})
   p=end
  if p!=len(data):raise ValueError('DNS trailing bytes')
  return out
 def tcp_query(resolver,wire):
+ deadline=time.monotonic()+4
  with socket.socket(socket.AF_INET,socket.SOCK_STREAM)as s:
-  s.settimeout(4);s.bind((SOURCE,0));s.connect((resolver,53));s.sendall(struct.pack('!H',len(wire))+wire)
+  def remaining():
+   value=deadline-time.monotonic()
+   if value<=0:raise TimeoutError('DNS TCP total deadline')
+   s.settimeout(value)
+  s.bind((SOURCE,0));remaining();s.connect((resolver,53));remaining();s.sendall(struct.pack('!H',len(wire))+wire)
   def exact(n):
    b=b''
    while len(b)<n:
-    part=s.recv(n-len(b))
+    remaining();part=s.recv(n-len(b))
     if not part:raise ValueError('DNS TCP short frame')
     b+=part
    return b
   n=struct.unpack('!H',exact(2))[0]
   if n<12:raise ValueError('DNS TCP bounded frame')
   return exact(n)
+def validate_answers(full,profile,label):
+ _,zone,target,prefix=PROFILES[profile];name=label+'.'+zone;addresses={x['address']for x in full['a']}
+ if full['other_answers']:return False
+ if label=='nx-qualification':return full['rcode']==3 and full['answer_count']==0 and not full['a']and not full['cname']
+ if full['rcode']!=0:return False
+ if label=='alias':return full['answer_count']==2 and full['cname']==[{'owner':name,'target':'app.'+zone}]and full['a']==[{'owner':'app.'+zone,'address':target}]
+ expected={prefix+str(n)for n in range(100,140)}if label=='large'else{target}
+ return addresses==expected and not full['cname']and all(x['owner']==name for x in full['a'])and full['answer_count']==len(expected)
 def probe(profile,label):
  resolver,zone,target,prefix=PROFILES[profile];name=label+'.'+zone;id=secrets.randbelow(65536);wire=struct.pack('!6H',id,0x100,1,0,0,0)+question(name)
  with socket.socket(socket.AF_INET,socket.SOCK_DGRAM)as s:
   s.settimeout(4);s.bind((SOURCE,0));s.sendto(wire,(resolver,53));data,peer=s.recvfrom(65535)
  if peer!=(resolver,53):raise ValueError('DNS exact resolver response')
  udp=response(data,id,name,False);fallback=udp['tc'];full=response(tcp_query(resolver,wire),id,name,True)if fallback else response(data,id,name,True)
- addresses={x['address']for x in full['a']};expected={prefix+str(n)for n in range(100,140)} if label=='large'else{target}
- if label=='nx-qualification':ok=full['rcode']==3 and not full['a']and not full['cname']
- elif label=='alias':ok=full['rcode']==0 and addresses==expected and any(x=={'owner':name,'target':'app.'+zone}for x in full['cname'])
- else:ok=full['rcode']==0 and addresses==expected and all(x['owner']==name for x in full['a'])
+ ok=validate_answers(full,profile,label)
  if fallback:ok=ok and udp['rcode']==full['rcode']
  if label=='large':ok=ok and fallback and udp['rcode']==full['rcode']and full['answer_count']==40
  return {'profile':profile,'source':SOURCE,'resolver':resolver,'name':name,'query_has_edns':False,'udp':udp,'tcp_fallback_used':fallback,'full':full,'accepted':ok,'scope':'ordinary fixed wire DNS only; separate API lease/guard/FQDN evidence required'}
