@@ -135,9 +135,10 @@ function PrivateDNSForScope({ orgId, role, canEdit }: { orgId: string; role: Mem
     updateProfile(index,{ipsec_path:{connection_id:connectionId,configuration_revision:0,source_address:current?.source_address??""}});
     if(!connectionId)return;
     try{const result=await api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration",{params:{path:{orgId,connectionId}}});
+      if(!alive.current)return;
       if(result.error||!result.data){setConfigError("Could not verify the selected connection revision.");return;}
       setProfiles(rows=>rows.map((profile,position)=>position===index&&profile.ipsec_path?.connection_id===connectionId?{...profile,ipsec_path:{...profile.ipsec_path,configuration_revision:result.data!.configuration_revision}}:profile));
-    }catch{setConfigError("Could not reach the API to verify the connection revision.");}
+    }catch{if(alive.current)setConfigError("Could not reach the API to verify the connection revision.");}
   }
   async function save() {
     if (!alive.current || !canManage || locked.current || !profilesValid || !siteId || !gatewayId) return; locked.current = true; setBusy(true); setConfigError("");

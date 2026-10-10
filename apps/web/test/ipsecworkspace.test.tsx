@@ -365,17 +365,17 @@ it("requires valid distinct private ASNs and bounded per-peer limits before BGP 
 });
 it("uses stored BGP mode and fresh BGP readiness for enable and rechecks at the action", async () => {
  const original = mock.get.getMockImplementation()!; let bgpSupported = true;
- mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }] } } : path.endsWith("/configuration") ? { data: bgpReadback } : path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: bgpSupported, reason: bgpSupported ? "eligible" : "unsupported" } } } : original(path, opts));
- render(view()); fireEvent.click(await screen.findByRole("button", { name: "Enable Office to cloud" }));
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }], next_cursor: null } } : path.endsWith("/configuration") ? { data: bgpReadback } : path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: bgpSupported, reason: bgpSupported ? "eligible" : "unsupported" } } } : original(path, opts));
+ render(view()); fireEvent.click(await (await connectionMenu("Office to cloud")).findByRole("menuitem", { name: "Enable Office to cloud" }));
  bgpSupported = false; fireEvent.click(screen.getByRole("button", { name: "Enable connection" }));
  await screen.findByText("Gateway readiness changed. Close and refresh before enabling."); expect(mock.put).not.toHaveBeenCalled();
 });
 it("does not offer BGP enable based on base IPsec support alone", async () => {
  const original = mock.get.getMockImplementation()!;
- mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }] } } : path.endsWith("/configuration") ? { data: bgpReadback } : original(path, opts));
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }], next_cursor: null } } : path.endsWith("/configuration") ? { data: bgpReadback } : original(path, opts));
  render(view()); await screen.findByRole("button", { name: "Office to cloud" });
  await waitFor(() => expect(mock.get.mock.calls.some(([path]) => path.endsWith("/configuration"))).toBe(true));
- expect(screen.queryByRole("button", { name: "Enable Office to cloud" })).toBeNull();
+ expect((await connectionMenu("Office to cloud")).queryByRole("menuitem", { name: "Enable Office to cloud" })).toBeNull();
 });
 it("reads back BGP settings without showing credentials", async () => {
  const original = mock.get.getMockImplementation()!;
@@ -384,4 +384,34 @@ it("reads back BGP settings without showing credentials", async () => {
  await screen.findByText("AWS · IPv4 BGP · revision 1");
  expect(screen.getByText("65000")).toBeTruthy(); expect(screen.getByText("64512")).toBeTruthy();
  expect(screen.getByText("Maximum prefixes per peer")).toBeTruthy(); expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
+});
+it("saves explicit GCP HA profile using common BGP fields and interface review", async () => {
+ mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id}});
+ render(view()); await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});
+ expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(true);
+ expect(screen.getByLabelText("Cloud Router ASN")).toBeTruthy();
+ expect(screen.getByText(/A single local gateway/)).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"})); fillBGPTunnels();
+ expect(screen.getByText("Tunnel 1 · GCP interface 0")).toBeTruthy();
+ expect(screen.getByText("Tunnel 2 · GCP interface 1")).toBeTruthy();
+ expect(screen.getByRole("region",{name:"Connection review"}).textContent).not.toContain("Synthetic.BGP");
+ fireEvent.click(screen.getByRole("button",{name:"Save disabled connection"}));
+ await waitFor(()=>expect(mock.post.mock.calls.some(([path])=>path.endsWith("/connections"))).toBe(true));
+ const configuration=mock.post.mock.calls.find(([path])=>path.endsWith("/connections"))![1].body.configuration;
+ expect(configuration.profile_id).toBe("gcp-ha-bgp-ipv4-v1");expect(configuration.mode).toBe("ipv4-bgp");expect(configuration.tunnels).toHaveLength(2);
+});
+it("keeps Classic save gated while one-tunnel provider storage is unavailable", async()=>{
+ render(view());await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-classic-static-ipv4-v1"}});
+ expect(screen.getByText(/Saving this profile is unavailable/)).toBeTruthy();
+ expect((screen.getByRole("button",{name:"Next: tunnels"}) as HTMLButtonElement).disabled).toBe(true);
+ expect(screen.queryByLabelText("Cloud Router ASN")).toBeNull();expect(mock.post).not.toHaveBeenCalled();
+});
+it("refuses to enable GCP from generic or AWS BGP readiness",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true,reason:"eligible"}}}:original(path,opts));
+ render(view());await screen.findByRole("button",{name:"Office to cloud"});
+ await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
+ expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
 });

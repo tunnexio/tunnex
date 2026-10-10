@@ -60,6 +60,17 @@ describe("FQDN resource operator index", () => {
     expect(screen.queryByText("Active")).toBeNull();
   });
 
+  it("uses Cloud DNS inbound server-policy guidance with the shared zone profile form", async () => {
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", {name:"Edit profiles"}));
+    const dialog=screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 provider"),{target:{value:"google_cloud"}});
+    expect(within(dialog).getByText(/Cloud DNS inbound server-policy IPs in the VPN region/)).toBeTruthy();
+    expect(within(dialog).getByLabelText("Profile 1 DNS zone suffixes")).toBeTruthy();
+    expect(within(dialog).queryByText(/Route 53 Resolver inbound endpoint/)).toBeNull();
+    expect(screen.getByText(/DNS resolution does not grant application access/)).toBeTruthy();
+  });
+
   it("activates named provider profiles and removes prototype-only behavior", async () => {
     page("/access/resources?type=fqdn");
     expect(await screen.findByRole("button", { name: "Edit profiles" })).toBeTruthy();
