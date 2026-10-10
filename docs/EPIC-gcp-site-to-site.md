@@ -128,3 +128,9 @@ Frozen production source `3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9` passed six L
 Human-provided genuine Scale licence was installed through the ordinary owner API and returned VALID with `fqdn_resources`; normal organization impact-token opt-in returned enabled. The [key-free receipt](../tests/gcp-s2s-local/SCALE-ACTIVATION-OPTIN-20261010.json) does not claim automatic FQDN packet acceptance. No signing, capability or licence bypass was used.
 
 Automatic approval review rejected the reviewed normal join-token issuance and private SSH delivery because direct human authorization for that sensitive credential step was required. A concrete approval question is pending; no token was issued, no enrollment file created and no gateway started. Unaffected source qualification, image build, route setup, private launch review and normal licence activation are complete. Live Google SA/BGP/application/DNS tests depend on the fresh genuine gateway enrollment; no live-cloud success or production-ready claim is made. Git remains local only.
+
+### Private delivery complete; gateway launch approval pending
+
+Direct human approval was recorded in the coordinating chat, and the exact reviewed normal join runner executed there successfully (exit0). Its public receipt reports token issued, privately delivered to the exact owned gateway and gateway not started; no token was printed or recreated. See [delivery receipt](../tests/gcp-s2s-local/CLOUD-PRIVATE-JOIN-DELIVERY-20261010.json).
+
+The next exact reviewed host-network container launch was rejected before execution by automatic approval review because persistent gateway enrollment/start requires direct human authorization. A concrete question for that side effect is pending. No gateway container or fresh node ID exists yet; normal Site bind, profile save/enable and live cloud packets remain dependent on enrollment. No alternate token or launch path is used.
