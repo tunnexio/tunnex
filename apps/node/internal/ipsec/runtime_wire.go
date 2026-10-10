@@ -54,6 +54,10 @@ type RuntimeRetainedGuardPredecessor struct {
 }
 
 type RuntimeManifest struct {
+	// TransportVersion/TunnelCount are explicit one-slot intent, omitted on
+	// existing AWS and HA deliveries so their ownership digests are unchanged.
+	TransportVersion       *int             `json:"transport_version,omitempty"`
+	TunnelCount            *int             `json:"tunnel_count,omitempty"`
 	OrgID                  uuid.UUID        `json:"org_id"`
 	NodeID                 uuid.UUID        `json:"node_id"`
 	SiteID                 uuid.UUID        `json:"site_id"`

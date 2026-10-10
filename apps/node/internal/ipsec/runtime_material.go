@@ -10,6 +10,9 @@ import (
 
 func runtimeDeliveryValid(d RuntimeDelivery, org, node uuid.UUID, kind string) bool {
 	m := d.Manifest
+	if _, err := runtimeTransportContract(m); err != nil {
+		return false
+	}
 	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile) || !validDigest(d.OwnershipDigest) {
 		return false
 	}
