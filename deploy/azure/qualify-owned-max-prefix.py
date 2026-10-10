@@ -20,7 +20,7 @@ helpers=prefix.helpers
 
 def normal(receipt,clock,expected=None):
  if receipt.get('version')!=1 or receipt.get('purpose')!='limit':raise ValueError('normal maximum-prefix receipt')
- helpers.fresh(receipt['observed_at'],clock)
+ api.fresh(receipt['observed_at'],clock)
  value=receipt['normal_connection'];wanted={key:value[key] for key in ('id','desired_revision','configuration_revision','profile_id','remote_prefixes','maximum_prefixes')};collector.expected_contract(wanted)
  if wanted['id']==prefix.CP:raise ValueError('new maximum-prefix target required')
  if value.get('desired_intent') not in ('enabled','disabled') or value.get('application_state') not in ('applied','pending','not_applied') or receipt.get('policy_count')!=0:raise ValueError('owned nongranted normal status')
@@ -30,7 +30,7 @@ def normal(receipt,clock,expected=None):
 
 def baseline(proof,current,namespace,clock):
  if proof.get('version')!=1 or proof.get('kind')!='owned_max_prefix_baseline':raise ValueError('independent actual baseline proof required')
- helpers.fresh(proof['observed_at'],clock)
+ api.fresh(proof['observed_at'],clock)
  if any(proof.get(key)!=value for key,value in [('connection_id',current['id']),('desired_revision',current['desired_revision']),('configuration_revision',current['configuration_revision']),('namespace',namespace)]):raise ValueError('baseline proof identity')
  if proof.get('native')!={'sad':4,'spd_in':2,'spd_out':2,'spd_fwd':2}:raise ValueError('strict baseline native counts')
  if proof.get('tunnels')!=[{'slot':1,'state':'up','owned_ike':1,'owned_installed_children':1},{'slot':2,'state':'up','owned_ike':1,'owned_installed_children':1}]:raise ValueError('strict owned tunnel baseline')
@@ -39,11 +39,12 @@ def baseline(proof,current,namespace,clock):
 
 def evidence(review,candidate,clock,receipt,proof):
  current=normal(receipt,clock)
+ if receipt.get('phase')!='read' or receipt.get('runtime_observation')=='not_requested':raise ValueError('runtime baseline read required for add')
  if receipt['normal_connection'].get('desired_intent')!='enabled' or receipt['normal_connection'].get('application_state')!='applied':raise ValueError('enabled Applied baseline required for add')
  if candidate!='10.235.77.0/24' or review.get('version')!=1 or review.get('kind')!='owned_prefix_range_review':raise ValueError('review kind/candidate')
  for key,value in [('subscription',prefix.lab.SUBSCRIPTION),('resource_group',prefix.lab.RG),('owner',prefix.lab.OWNER),('vnet_id',prefix.VNET),('candidate',candidate)]:
   if review.get(key)!=value:raise ValueError('fresh range review ownership')
- helpers.fresh(review['observed_at'],clock)
+ api.fresh(review['observed_at'],clock)
  if any(review['normal_connection'].get(key)!=value for key,value in current.items()) or review['normal_connection'].get('desired_intent')!='enabled' or review['normal_connection'].get('application_state')!='applied':raise ValueError('range review current revision')
  if review.get('candidate_reservation')!={'connection_id':current['id'],'configuration_revision':current['configuration_revision'],'prefix':candidate}:raise ValueError('only intended approved reservation')
  hashes=review.get('source_sha256')

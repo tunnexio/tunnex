@@ -23,6 +23,15 @@ CANDIDATE='10.235.77.0/24'
 ORIGINAL=secure.CONNECTION
 
 
+def instant(value):
+ if not isinstance(value,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})',value):raise ValueError('strict RFC3339 timestamp')
+ return datetime.fromisoformat(life.timestamp(value))
+
+
+def fresh(value,clock):
+ if not 0<=(clock-instant(value)).total_seconds()<=60:raise ValueError('fresh actual evidence required')
+
+
 def reserve(path):
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
  with os.fdopen(fd,'w') as stream:stream.write('owned maximum-prefix operation reserved\n');stream.flush();os.fsync(stream.fileno())
@@ -56,7 +65,7 @@ def native_absence(proof,proof_bytes,proof_hash,binding,setup,identity,revision)
  if not isinstance(proof_hash,str) or not re.fullmatch('[0-9a-f]{64}',proof_hash) or hashlib.sha256(proof_bytes).hexdigest()!=proof_hash:raise ValueError('independent native receipt digest')
  if json.loads(proof_bytes)!=proof:raise ValueError('native proof bytes binding')
  if binding is None or any(binding.get(key)!=setup[key] for key in ('org_id','site_id','gateway_id')) or binding.get('connection_id')!=identity:raise ValueError('independent native normal binding')
- observed=datetime.fromisoformat(proof['observed_at'].replace('Z','+00:00'))
+ observed=instant(proof['observed_at'])
  if not 0<=(datetime.now(timezone.utc)-observed).total_seconds()<=60:raise ValueError('fresh actual native absence required')
  arm='/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection'
  if proof.get('version')!=1 or proof.get('kind')!='owned_native_cleanup_absence' or proof.get('azure_connection_id')!=arm or proof.get('connection_id')!=identity or proof.get('desired_revision')!=revision or proof.get('guard_retained') is not True:raise ValueError('native cleanup identity')
@@ -100,7 +109,10 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
   prior=state['prior']['id']
  raw=client.call('GET',prefix+prior);previous=transition.prior_projection(raw,setup,prior)
  target=state.get('target',state['prior']);path=prefix+target['id']
- live_raw=raw if target['id']==prior else client.call('GET',path)
+ try:live_raw=raw if target['id']==prior else client.call('GET',path)
+ except api.APIError as error:
+  if phase not in ('read','restore-read') or 'target' not in state or error.status!=404 or error.code!='ipsec_connection_not_found':raise
+  return {'version':1,'phase':phase,'purpose':purpose,'observed_at':datetime.now(timezone.utc).isoformat(),'saved_stage':state['stage'],'target_id':target['id'],'classification':'reserved_target_not_observed','requires_review':True,'scope':'Exact normal GET404 only; does not prove POST never committed and permits no replay or allocation'}
  current=transition.prior_projection(live_raw,setup,prior) if target['id']==prior else life.connection_projection(live_raw,setup,target['id'])
  if phase in ('disable','enable'):
   if current['desired_intent']=='deleted':raise ValueError('tombstone has no live authority')
@@ -132,7 +144,7 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
   proof_previous=copy.deepcopy(state['original_configuration'])
   secure.config_identity(proof_previous)
   if discovery.get('active_active') is not True or discovery.get('enable_bgp') is not True or discovery.get('owner')!='azure-s2s-01a12505' or discovery.get('subscription')!='34e2f259-b462-40bf-8f4a-06a3930d99e6':raise ValueError('actual owned AA BGP discovery')
-  observed=datetime.fromisoformat(discovery['observed_at'].replace('Z','+00:00'))
+  observed=instant(discovery['observed_at'])
   if not 0<=(datetime.now(timezone.utc)-observed).total_seconds()<=60:raise ValueError('fresh topology required')
   arm='/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/'
   for name,resource in [('connection_id','connections/tunnex-connection'),('gateway_id','virtualNetworkGateways/azure-vpn'),('local_gateway_id','localNetworkGateways/tunnex-local')]:
@@ -145,19 +157,20 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
   state['target']={'id':str(uuid.uuid4()),'tunnel_ids':[str(uuid.uuid4()),str(uuid.uuid4())]};state['stage']='create_reserved';secure.write(state_path,state)
   target=state['target'];path=prefix+target['id']
   client.call('POST',base+'/ipsec/connections',{**target,'name':'Azure owned maximum-prefix '+purpose,'site_id':setup['site_id'],'gateway_node_id':setup['gateway_id'],'configuration':config})
- elif phase not in ('prepare','read'):raise ValueError('phase')
+ elif phase not in ('prepare','read','restore-read'):raise ValueError('phase')
  fresh=client.call('GET',path)
  projected=transition.prior_projection(fresh,setup,prior) if target['id']==prior else life.connection_projection(fresh,setup,target['id'])
  output={'version':1,'phase':phase,'purpose':purpose,'observed_at':datetime.now(timezone.utc).isoformat(),'connection':projected,'saved_stage':state['stage'],'scope':'Normal API readback only; no BGP/native/packet proof'}
  if fresh['desired_intent']!='deleted':
   if 'target' in state or state['purpose']=='baseline':no_grants(client,base);output['policy_count']=0
   output['normal_connection']={**contract(client.call('GET',path+'/configuration'),target['id']),**projected}
-  output['runtime']=life.runtime_projection(client.call('GET',path+'/status'),target['tunnel_ids'])
+  if phase=='restore-read':output['runtime_observation']='not_requested';output['scope']='Immutable normal connection/config/policy identity only; no runtime or readiness inference'
+  else:output['runtime']=life.runtime_projection(client.call('GET',path+'/status'),target['tunnel_ids'])
  return output
 
 
 def main():
- parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('phase',choices=('prepare','read','disable','delete','create','enable'));parser.add_argument('--private-root',required=True);parser.add_argument('--state',type=Path,required=True);parser.add_argument('--purpose',choices=('limit','baseline'),default='limit');parser.add_argument('--allocation',type=Path);parser.add_argument('--baseline-state',type=Path);parser.add_argument('--psk-file',type=Path);parser.add_argument('--discovery',type=Path);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--native-absence',type=Path);parser.add_argument('--native-sha256');parser.add_argument('--native-binding',type=Path);args=parser.parse_args()
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('phase',choices=('prepare','read','restore-read','disable','delete','create','enable'));parser.add_argument('--private-root',required=True);parser.add_argument('--state',type=Path,required=True);parser.add_argument('--purpose',choices=('limit','baseline'),default='limit');parser.add_argument('--allocation',type=Path);parser.add_argument('--baseline-state',type=Path);parser.add_argument('--psk-file',type=Path);parser.add_argument('--discovery',type=Path);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--native-absence',type=Path);parser.add_argument('--native-sha256');parser.add_argument('--native-binding',type=Path);args=parser.parse_args()
  root=secure.private_root(args.private_root)
  if args.output==args.state or args.output.exists() or args.output.is_symlink():raise ValueError('new separate receipt required')
  for path in (args.state,args.output):

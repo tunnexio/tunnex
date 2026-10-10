@@ -101,6 +101,17 @@ class Lifecycle(unittest.TestCase):
    with self.subTest(kind=kind),self.assertRaises(ValueError):a.operate('delete',type('Client',(),{'call':staticmethod(self.call)})(),self.setup,self.state,**params)
   self.assertFalse(any(method=='DELETE' for method,path,body,revision in self.calls))
 
+ def test_restore_read_skips_refused_runtime_but_preserves_real_config_identity(self):
+  self.prep();self.remove();self.run_phase('create',psk='private.offline.key',discovery=self.discovery)
+  target=json.loads(a.secure.read(self.state))['target']['id'];self.rows[target]['application_state']='pending'
+  original_call=self.call
+  def call(method,path,body=None,revision=None):
+   if path.endswith('/status'):raise ValueError('actual runtime route parser refused')
+   return original_call(method,path,body,revision)
+  self.call=call
+  with self.assertRaises(ValueError):self.run_phase('read')
+  result=self.run_phase('restore-read');self.assertEqual(result['normal_connection']['id'],target);self.assertEqual(result['normal_connection']['application_state'],'pending');self.assertEqual(result['runtime_observation'],'not_requested');self.assertNotIn('runtime',result)
+
  def test_existing_create_marker_prevents_any_post(self):
   self.prep();self.remove();a.reserve(self.state.with_name('max.json.create-reserved'))
   with self.assertRaises(OSError):self.run_phase('create',psk='private.offline.key',discovery=self.discovery)
@@ -109,7 +120,7 @@ class Lifecycle(unittest.TestCase):
 class CloudGuards(unittest.TestCase):
  def setUp(self):
   self.current={'id':I(8),'desired_revision':2,'configuration_revision':7,'profile_id':a.PROFILE,'remote_prefixes':['10.231.0.0/16',a.CANDIDATE],'maximum_prefixes':1,'desired_intent':'enabled','application_state':'applied'}
-  self.receipt={'version':1,'purpose':'limit','observed_at':NOW(),'policy_count':0,'normal_connection':self.current}
+  self.receipt={'version':1,'phase':'read','purpose':'limit','observed_at':NOW(),'policy_count':0,'normal_connection':self.current}
   self.namespace={'device':4,'inode':9}
   self.review={'version':1,'kind':'owned_prefix_range_review','subscription':c.prefix.lab.SUBSCRIPTION,'resource_group':c.prefix.lab.RG,'owner':c.prefix.lab.OWNER,'vnet_id':c.prefix.VNET,'candidate':a.CANDIDATE,'observed_at':NOW(),'normal_connection':self.current,'ranges':['10.231.0.0/16'],'source_sha256':['a'*64]*3,'namespace':self.namespace,'candidate_reservation':{'connection_id':I(8),'configuration_revision':7,'prefix':a.CANDIDATE}}
   self.proof={'version':1,'kind':'owned_max_prefix_baseline','observed_at':NOW(),'connection_id':I(8),'desired_revision':2,'configuration_revision':7,'namespace':self.namespace,'native':{'sad':4,'spd_in':2,'spd_out':2,'spd_fwd':2},'tunnels':[{'slot':n,'state':'up','owned_ike':1,'owned_installed_children':1} for n in (1,2)],'bgp':{'peers':[{'slot':n,'state':'established','accepted_prefixes':1} for n in (1,2)],'routes':['10.231.0.0/16']}}
@@ -196,6 +207,25 @@ class ActualCollectorEnvelope(unittest.TestCase):
     self.assertIn({'source':'connection_remote_prefixes','cidr':a.CANDIDATE},value['ranges'])
     include_foreign=False;changed=True
     with self.assertRaisesRegex(ValueError,'reservation contract'):r.api_collect(root,expected)
+
+class TimestampCompatibility(unittest.TestCase):
+ def test_variable_go_fractions_normalized_before_python310_parse(self):
+  original=a.datetime
+  seen=[]
+  class Python310:
+   @staticmethod
+   def fromisoformat(value):
+    seen.append(value)
+    if '.' in value:
+     fractional=value.split('.')[1].split('+')[0]
+     if len(fractional)!=6:raise ValueError('Python310 fractional length')
+    return original.fromisoformat(value)
+  with patch.object(a,'datetime',Python310):
+   for fraction in ('1','12','123','1234','12345','123456','1234567','12345678','123456789'):
+    self.assertEqual(a.instant('2026-10-10T19:40:21.'+fraction+'Z').microsecond,int(fraction[:6].ljust(6,'0')))
+  self.assertEqual(len(seen),9)
+  for value in ('2026-10-10 19:40:21Z','2026-10-10T19:40:21.1234567890Z','2026-10-10T19:40:21','2026-13-10T19:40:21Z'):
+   with self.assertRaises(ValueError):a.instant(value)
 
 class MainPrivateGuard(unittest.TestCase):
  def test_existing_receipt_refuses_before_normal_login(self):
