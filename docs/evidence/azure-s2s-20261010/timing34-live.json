@@ -101,6 +101,33 @@
       "failure_elapsed_seconds": 1.001041,
       "receipt_sha256": "b4f43a9ef80d6243d862ae7a830ac5001d4de8687453761318f40471fbcc3f07",
       "acceptance_passed": false
+    },
+    {
+      "started_at": "2026-10-10T18:33:57.618588Z",
+      "seconds": 60,
+      "application_request_timeout_seconds": 2,
+      "fresh_tcp": [
+        60,
+        0
+      ],
+      "existing_tcp": [
+        60,
+        0
+      ],
+      "fresh_udp": [
+        60,
+        0
+      ],
+      "existing_udp": [
+        60,
+        0
+      ],
+      "source_preserved_tcp64KiB": true,
+      "udp_exact4096": true,
+      "existing_socket_reuse": true,
+      "receipt_sha256": "e126559a7508e020a8b451032553c209d3121a4c000c191060ca93c30cb7a215",
+      "acceptance_passed": true,
+      "scope": "Separate supported two-second request limit; does not replace either failed one-second window or extend DNS/native deadlines"
     }
   ],
   "direct_gateway_source_dns": {
@@ -213,5 +240,28 @@
     "verified": false,
     "latest_observation": "Documented browser inventory exposes only Chrome; prior owned IAB unavailable; native Codex inspection blocked by computer use boundary",
     "product_defect_inferred": false
+  },
+  "second_fqdn_window": {
+    "normal_grant_acknowledged_at": "2026-10-10T18:33:49.693086Z",
+    "fresh_read_attempt": 103,
+    "genuine_ready_before_normal_grant": true,
+    "grant_expiry_seconds": 90,
+    "http_probe_start": "2026-10-10T18:33:49.781786Z",
+    "http_probe_end": "2026-10-10T18:33:54.782451Z",
+    "fresh_http": [
+      0,
+      3
+    ],
+    "persistent_http": [
+      0,
+      2
+    ],
+    "dns_confirmed_samples": 2,
+    "total_samples": 5,
+    "actual_reused_socket": false,
+    "normal_revoke_completed": true,
+    "grant_active_after_probe": false,
+    "acceptance_passed": false,
+    "scope": "Immediate five-second preflight did not establish HTTP allow; first two DNS-confirmed probes timed out; later probes failed before HTTP; no revoke enforcement claim"
   }
 }
