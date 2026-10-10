@@ -122,6 +122,20 @@ func TestAzureOwnedVICIDialDiagnosticNative(t *testing.T) {
 		}
 		conn.Close()
 	}
+	strictCtx, strictCancel := context.WithTimeout(context.Background(), time.Second)
+	strictStart := time.Now()
+	strictConn, strictErr := dialOwnedVICI(strictCtx, path)
+	strictCategory := azureVICIDialError(strictErr)
+	if errors.Is(strictErr, ErrDaemonProtocol) {
+		strictCategory = "protocol_refused"
+	}
+	result["strict_connect_category"] = strictCategory
+	result["strict_elapsed_ms"] = time.Since(strictStart).Milliseconds()
+	result["strict_context_category"] = azureVICIDialError(strictCtx.Err())
+	if strictConn != nil {
+		strictConn.Close()
+	}
+	strictCancel()
 	result["peer_bound"] = peerBound
 	result["daemon_identity_after"] = process()
 	safe, _ := json.Marshal(result)
