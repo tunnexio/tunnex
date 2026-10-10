@@ -19,6 +19,28 @@ type runtimeDNSOwnerEntry struct {
 	active runtimeActive
 	epoch  *runtimeDNSEpoch
 }
+
+// Only the serialized owner can complete this publication. Closing done
+// synchronizes committed; readers never treat the descriptor as authority.
+type runtimeDNSPublication struct {
+	previous  *runtimeDNSOwnerView
+	done      chan struct{}
+	committed bool
+}
+
+func (c *RuntimeController) awaitDNSPublication(ctx context.Context, previous *runtimeDNSOwnerView) bool {
+	publication := c.dnsPublication.Load()
+	if publication == nil || publication.previous != previous {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-publication.done:
+		return publication.committed && ctx.Err() == nil
+	}
+}
+
 type runtimeDNSOwnerView struct {
 	entries  map[uuid.UUID]runtimeDNSOwnerEntry
 	guard    GuardManifest

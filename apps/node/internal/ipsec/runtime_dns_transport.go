@@ -521,8 +521,22 @@ func (c *RuntimeController) revalidateDNSGuardSnapshotDigestReason(ctx context.C
 		return ""
 	}
 	if latest.guard.Digest == previous.guard.Digest {
-		mark("latest_unchanged")
-		return ""
+		if !c.awaitDNSPublication(ctx, previous) {
+			mark("latest_unchanged")
+			if ctx.Err() != nil {
+				mark("context_inactive")
+			}
+			return ""
+		}
+		latest = c.dnsView.Load()
+		if latest == nil {
+			mark("latest_absent")
+			return ""
+		}
+		if latest.guard.Digest == previous.guard.Digest {
+			mark("latest_unchanged")
+			return ""
+		}
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
 		mark("owner_entry_refused")

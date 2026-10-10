@@ -77,6 +77,7 @@ type RuntimeController struct {
 	recoverySwitch          func(context.Context, KernelAllocation, [2]Ownership, uint8) error
 	mu                      sync.Mutex
 	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
+	dnsPublication          atomic.Pointer[runtimeDNSPublication]
 	dnsDiagnosticAfter      atomic.Int64
 	config                  RuntimeControllerConfig
 	journal                 *RuntimeJournal
@@ -951,6 +952,14 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 		return ErrRuntimeController
 	}
 	stage = "combined_guard_replace"
+	publication := &runtimeDNSPublication{previous: c.dnsView.Load(), done: make(chan struct{})}
+	c.dnsPublication.Store(publication)
+	defer func() {
+		published := c.dnsView.Load()
+		publication.committed = resultErr == nil && ctx.Err() == nil && commitCtx.Err() == nil && published != nil && published != publication.previous
+		c.dnsPublication.CompareAndSwap(publication, nil)
+		close(publication.done)
+	}()
 	manifest, replaceErr := c.replace(commitCtx, intent)
 	if replaceErr != nil {
 		return ErrRuntimeController
