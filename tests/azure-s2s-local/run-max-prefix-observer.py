@@ -66,7 +66,7 @@ c=m.api.Client();c.call('POST','/api/v1/auth/login',{'email':owners[0]['email'],
 current=c.call('GET','/api/v1/organizations/'+setup['org_id']+'/ipsec/connections/'+r['normal_connection']['id']+'/configuration')
 # Prior original during initial cleanup still has original limit8; target uses saved purpose.
 target=st.get('target',{}).get('id')==r['normal_connection']['id']
-purpose=st['purpose'] if target else 'baseline'
+purpose=st['purpose'] if target else ('limit' if st['purpose']=='baseline' and 'original_prior' in st else 'baseline')
 expected=m.configuration(st['original_configuration'],purpose);expected.pop('profile_id')
 if current['profile_id']!=m.PROFILE or current['configuration']!=expected or current['configuration_revision']!=r['normal_connection']['configuration_revision']:raise ValueError('immutable configuration changed')
 print(hashlib.sha256(json.dumps(current,sort_keys=True,separators=(',',':')).encode()).hexdigest())
