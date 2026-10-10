@@ -458,7 +458,7 @@ func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, ent
 	if len(required) != 0 {
 		return false, stage
 	}
-	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil, "dns_guard_full_read"
+	return v.observer.guardReader.checkConnection(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, entry.Allocation.ConnectionID) == nil, "dns_guard_full_read"
 }
 
 // revalidateDNSGuardSnapshot retries only an independently published newer

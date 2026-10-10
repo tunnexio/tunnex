@@ -251,3 +251,72 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 	}
 	return m, nil
 }
+
+// withdrawConnection only removes the exact owner's three permit sets. The
+// current trusted template remains valid for withdrawal; no member is added or
+// renewed and other owners retain their original native deadlines.
+func (a *RuntimeGuard) withdrawConnection(ctx context.Context, namespace string, id uuid.UUID) error {
+	if a == nil || a.journal == nil || a.reader == nil || a.apply == nil || id == uuid.Nil {
+		return ErrGuardRead
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
+	defer cancel()
+	templates, _, err := a.journal.guardTemplates()
+	if err != nil || len(templates) != 1 || templates[0].Namespace != namespace {
+		return ErrGuardRead
+	}
+	template := templates[0]
+	manifest := GuardManifest{Namespace: namespace, ExpectedJSON: template.ExpectedJSON}
+	names := map[string]bool{guardLeaseName(id): true, guardReplyLeaseName(id): true, guardSALeaseName(id): true}
+	verify := func(expected, observed []byte, links []GuardInterface, empty bool) error {
+		if VerifyGuardWithdrawal(expected, observed, links) != nil {
+			return ErrGuardReadback
+		}
+		mapping := map[string]int{}
+		for _, link := range links {
+			mapping[link.Name] = link.Index
+		}
+		objects, ok := normalizedGuardWithdrawalObjectsWithInterfaces(observed, mapping)
+		if !ok {
+			return ErrGuardReadback
+		}
+		found := 0
+		for _, object := range objects {
+			if set, ok := object.(map[string]any)["set"].(map[string]any); ok && names[set["name"].(string)] {
+				found++
+				if members, ok := set["elem"].([]any); empty && ok && len(members) != 0 {
+					return ErrGuardReadback
+				}
+			}
+		}
+		if found != 3 {
+			return ErrGuardReadback
+		}
+		return nil
+	}
+	if a.reader.check(ctx, manifest, func(e, o []byte, links []GuardInterface) error { return verify(e, o, links, false) }) != nil {
+		return ErrGuardRead
+	}
+	current, _, err := a.journal.guardTemplates()
+	if err != nil || !reflect.DeepEqual(current, templates) || ctx.Err() != nil {
+		return ErrGuardRead
+	}
+	transaction := []any{}
+	for _, name := range []string{guardLeaseName(id), guardReplyLeaseName(id), guardSALeaseName(id)} {
+		transaction = append(transaction, map[string]any{"flush": map[string]any{"set": map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": name}}})
+	}
+	raw, err := json.Marshal(map[string]any{"nftables": transaction})
+	if err != nil || a.apply(ctx, raw) != nil || ctx.Err() != nil {
+		return ErrGuardRead
+	}
+	if a.reader.check(ctx, manifest, func(e, o []byte, links []GuardInterface) error { return verify(e, o, links, true) }) != nil {
+		return ErrGuardRead
+	}
+	current, _, err = a.journal.guardTemplates()
+	if err != nil || !reflect.DeepEqual(current, templates) || ctx.Err() != nil {
+		return ErrGuardRead
+	}
+	return nil
+}

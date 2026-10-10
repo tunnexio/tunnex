@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 )
 
 var ErrGuardReadback = errors.New("IPsec guard readback does not match")
@@ -437,4 +439,72 @@ func normalizeGuardHostPrefix(match, left map[string]any) {
 		return
 	}
 	match["right"] = text
+}
+
+// This private result distinguishes a proven target-only loss of membership
+// from unknown structure, namespace or IO. It never authorizes another owner.
+var errGuardConnectionNotPermitted = errors.New("IPsec connection permit is absent")
+
+func verifyGuardConnectionReadback(expected, observed []byte, links []GuardInterface, id uuid.UUID) error {
+	if id == uuid.Nil || VerifyGuardWithdrawal(expected, observed, links) != nil {
+		return ErrGuardReadback
+	}
+	want, ok := normalizedGuardObjects(expected)
+	if !ok {
+		return ErrGuardReadback
+	}
+	required := map[string]any{guardLeaseName(id): nil, guardReplyLeaseName(id): nil, guardSALeaseName(id): nil}
+	for _, object := range want {
+		if set, ok := object.(map[string]any)["set"].(map[string]any); ok {
+			name, _ := set["name"].(string)
+			if _, needed := required[name]; needed {
+				members, ok := set["elem"].([]any)
+				if !ok || len(members) == 0 {
+					return errGuardConnectionNotPermitted
+				}
+				required[name] = set
+			}
+		}
+	}
+	for _, set := range required {
+		if set == nil {
+			return ErrGuardReadback
+		}
+	}
+	// Parse the SAME bounded raw listing again: withdrawal normalization erased
+	// expires, so it must not be reused as a positive target proof.
+	decoder := json.NewDecoder(bytes.NewReader(observed))
+	decoder.UseNumber()
+	var env map[string]any
+	if decoder.Decode(&env) != nil {
+		return ErrGuardReadback
+	}
+	mapping := map[string]int{}
+	for _, link := range links {
+		mapping[link.Name] = link.Index
+	}
+	for _, object := range env["nftables"].([]any) {
+		set, ok := object.(map[string]any)["set"].(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := set["name"].(string)
+		target, needed := required[name]
+		if !needed {
+			continue
+		}
+		if !translateGuardSet(set, mapping) || !normalizeGuardSetObserved(set, false) {
+			return errGuardConnectionNotPermitted
+		}
+		// Drop only metadata already independently bounded by full-table ownership.
+		delete(set, "handle")
+		if !reflect.DeepEqual(target, set) {
+			return errGuardConnectionNotPermitted
+		}
+		delete(required, name)
+	}
+	if len(required) != 0 {
+		return ErrGuardReadback
+	}
+	return nil
 }

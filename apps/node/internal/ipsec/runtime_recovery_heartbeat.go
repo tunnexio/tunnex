@@ -115,6 +115,17 @@ func (c *RuntimeController) refreshIPsecActiveRecovery(ctx context.Context, seen
 		_, _ = c.refuse(ctx, entries)
 		return nil, ErrRuntimeController
 	}
+	// Only independently classified target permit loss may be isolated. An
+	// unknown table/source/context still takes the original global refusal path.
+	failConnection := func() ([]RuntimeRecoveryHeartbeat, error) {
+		delete(c.recoveryHistory, id)
+		delete(c.active, id)
+		c.withdrawDNSOwnerView(id)
+		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || c.guard == nil || c.guard.withdrawConnection(ctx, e.Allocation.Namespace, id) != nil {
+			return fail()
+		}
+		return nil, ErrRuntimeController
+	}
 	if a.Authority == nil || a.Identity.Binding != e.Engines[0].Binding || a.Identity.DeliveryID != e.DeliveryID || a.Delivery.DesiredRevision != e.Engines[0].Binding.DesiredRevision || a.Delivery.Manifest.ConfigurationRevision != e.Engines[0].Binding.ConfigurationRevision || a.Delivery.Manifest.RecoveryVersion == nil || *a.Delivery.Manifest.RecoveryVersion != 1 {
 		return fail()
 	}
@@ -124,7 +135,7 @@ func (c *RuntimeController) refreshIPsecActiveRecovery(ctx context.Context, seen
 	}
 	stage = "remaining_authority"
 	if _, err = a.Authority.RemainingForApply(a.Identity, 5*time.Second); err != nil {
-		return fail()
+		return failConnection()
 	}
 	stage = "permit_lease"
 	authority, identity, err := c.recoveryLease(ctx, e, oldest.epoch.PolicyHash)
@@ -156,7 +167,16 @@ func (c *RuntimeController) refreshIPsecActiveRecovery(ctx context.Context, seen
 	current := int(selectedRuntimeSlot(e)) - 1
 	if statuses[current] == "up" {
 		stage = "native_current_proof_and_guard"
-		if denied || c.proveCurrent(ctx, e, env) != nil || !c.recoveryGuardPermits(ctx, e) {
+		if denied {
+			return failConnection()
+		}
+		if c.proveCurrent(ctx, e, env) != nil {
+			return fail()
+		}
+		if err := c.recoveryGuardPermitCheck(ctx, e); err != nil {
+			if err == errGuardConnectionNotPermitted {
+				return failConnection()
+			}
 			return fail()
 		}
 		value := current + 1
@@ -177,7 +197,7 @@ func (c *RuntimeController) refreshIPsecActiveRecovery(ctx context.Context, seen
 		return fail()
 	}
 	if _, err = a.Authority.RemainingForApply(a.Identity, 5*time.Second); err != nil {
-		return fail()
+		return failConnection()
 	}
 	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 		return fail()

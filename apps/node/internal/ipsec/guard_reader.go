@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+
+	"github.com/google/uuid"
 )
 
 var ErrGuardRead = errors.New("IPsec guard could not be verified")
@@ -48,6 +50,22 @@ func NewGuardReader(nftPath string) (*GuardReader, error) {
 // listing bracketed by namespace/interface observations. The owning controller
 // must separately serialize mutations and check its monotonic lease deadline.
 func (r *GuardReader) Check(ctx context.Context, manifest GuardManifest) error {
+	return r.check(ctx, manifest, VerifyGuardReadbackWithInterfaces)
+}
+
+// checkConnection observes full owned structure but requires all three exact
+// target sets to remain positive. Other known members may naturally expire;
+// their absence can never supply authority for this target.
+func (r *GuardReader) checkConnection(ctx context.Context, manifest GuardManifest, id uuid.UUID) error {
+	if id == uuid.Nil {
+		return ErrGuardRead
+	}
+	return r.check(ctx, manifest, func(expected, observed []byte, links []GuardInterface) error {
+		return verifyGuardConnectionReadback(expected, observed, links, id)
+	})
+}
+
+func (r *GuardReader) check(ctx context.Context, manifest GuardManifest, verify func([]byte, []byte, []GuardInterface) error) error {
 	if r == nil || r.run == nil || r.namespace == nil || r.interfaces == nil || ctx.Err() != nil || !validKernelNamespace(manifest.Namespace) {
 		return ErrGuardRead
 	}
@@ -75,7 +93,16 @@ func (r *GuardReader) Check(ctx context.Context, manifest GuardManifest) error {
 	}
 	sort.Slice(links, func(i, j int) bool { return links[i].Index < links[j].Index })
 	sort.Slice(afterLinks, func(i, j int) bool { return afterLinks[i].Index < afterLinks[j].Index })
-	if !reflect.DeepEqual(links, afterLinks) || VerifyGuardReadbackWithInterfaces([]byte(manifest.ExpectedJSON), observed, links) != nil || ctx.Err() != nil {
+	if !reflect.DeepEqual(links, afterLinks) || ctx.Err() != nil {
+		return ErrGuardRead
+	}
+	if err := verify([]byte(manifest.ExpectedJSON), observed, links); err != nil {
+		if err == errGuardConnectionNotPermitted {
+			return err
+		}
+		return ErrGuardRead
+	}
+	if ctx.Err() != nil {
 		return ErrGuardRead
 	}
 	return nil

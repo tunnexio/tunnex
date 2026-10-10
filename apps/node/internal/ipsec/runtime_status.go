@@ -302,30 +302,33 @@ func (c *RuntimeController) observedRecoveryActiveSlot(ctx context.Context, entr
 	return &slot
 }
 
-// Read-only strict full-table verification; withdrawal matching deliberately does
-// not suffice because it permits missing (expired) lease members.
+// Read-only exact owned structure plus strictly positive target members.
+// Expiry of another known owner cannot establish or revoke this target proof.
 func (c *RuntimeController) recoveryGuardPermits(ctx context.Context, entry RuntimeJournalEntry) bool {
+	return c.recoveryGuardPermitCheck(ctx, entry) == nil
+}
+func (c *RuntimeController) recoveryGuardPermitCheck(ctx context.Context, entry RuntimeJournalEntry) error {
 	if c.journal == nil || c.guard == nil || c.guard.reader == nil {
-		return false
+		return ErrGuardRead
 	}
 	templates, _, err := c.journal.guardTemplates()
 	if err != nil || len(templates) != 1 {
-		return false
+		return ErrGuardRead
 	}
 	g := templates[0]
 	if g.Namespace != entry.Allocation.Namespace {
-		return false
+		return ErrGuardRead
 	}
 	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
 	if !ok {
-		return false
+		return ErrGuardRead
 	}
 	index := int(entry.Recovery.SelectedSlot) - 1
 	required := map[string]string{guardLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(entry.Observed[index].InterfaceIndex), guardSALeaseName(entry.Allocation.ConnectionID): strconv.FormatUint(uint64(entry.Engines[index].ReqID), 10)}
 	for _, object := range objects {
 		fields, ok := object.(map[string]any)
 		if !ok {
-			return false
+			return ErrGuardRead
 		}
 		set, ok := fields["set"].(map[string]any)
 		if !ok {
@@ -338,26 +341,26 @@ func (c *RuntimeController) recoveryGuardPermits(ctx context.Context, entry Runt
 		}
 		members, ok := set["elem"].([]any)
 		if !ok || len(members) != 1 {
-			return false
+			return ErrGuardRead
 		}
 		member, ok := members[0].(map[string]any)
 		if !ok {
-			return false
+			return ErrGuardRead
 		}
 		element, ok := member["elem"].(map[string]any)
 		if !ok {
-			return false
+			return ErrGuardRead
 		}
 		value, ok := element["val"].(json.Number)
 		if !ok || value.String() != want {
-			return false
+			return ErrGuardRead
 		}
 		delete(required, name)
 	}
 	if len(required) != 0 {
-		return false
+		return ErrGuardRead
 	}
-	return c.guard.reader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
+	return c.guard.reader.checkConnection(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, entry.Allocation.ConnectionID)
 }
 
 // Projection requires actual peer observations and completed exact route duties.
