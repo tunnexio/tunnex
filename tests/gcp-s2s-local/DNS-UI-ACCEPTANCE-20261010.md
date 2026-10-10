@@ -17,7 +17,7 @@ Resolver queue SQL joins an organization with `fqdn_resources_enabled`; off enfo
 
 Rotation preserves the existing disabled-only guard. An enabled connection cannot open Rotate keys. Normal sequence: Disable with exact desired-revision If-Match; wait for cleanup eligibility; refresh; open Rotate keys. The form rechecks connection, provider and actual tunnel identities. Classic submits one real tunnel ID through POST rotate-psks with `expected_desired_revision`; success remains disabled and increments desired revision by one. Secret drafts clear on submission. A conflict or uncertain response freezes retry until close/refresh. Peer key transition and explicit Enable are separate steps. No active rotation was submitted in this continuation.
 
-The subsequent cloud inventory remained loading during inspection; a normal browser reload then reached sign-in with `unreachable`. No conclusion about active tunnel state was derived from that incomplete UI response.
+The subsequent cloud inventory remained loading during inspection; a normal browser reload then reached sign-in with `unreachable`. No conclusion about active tunnel state was derived from that incomplete UI response. Root subsequently confirmed the owned API exited with OOM status 137 at 09:41:52 in the shared 1.913 GiB Colima host and restarted only this API. This is an observed lab host limitation, not evidence of a frontend defect.
 
 ## Screenshot integrity
 
