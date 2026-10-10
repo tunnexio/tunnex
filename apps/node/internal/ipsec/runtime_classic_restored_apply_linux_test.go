@@ -14,6 +14,16 @@ import (
 
 // Modeled I/O, actual generic controller and kernel parser; no real-SA claim.
 func TestClassicRestoredApplyUsesReservedGeneration(t *testing.T) {
+	testClassicApplyBoot(t, true, false)
+}
+func TestClassicInitialApplyRecordsProvenCurrentBoot(t *testing.T) {
+	testClassicApplyBoot(t, false, false)
+}
+func TestClassicInitialApplyRefusesChangedIndexBeforeBootBinding(t *testing.T) {
+	testClassicApplyBoot(t, false, true)
+}
+func testClassicApplyBoot(t *testing.T, restored, changedIndex bool) {
+	t.Helper()
 	m := classicMaterialFixture()
 	old, _, entryErr := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
 	if entryErr != nil {
@@ -25,18 +35,26 @@ func TestClassicRestoredApplyUsesReservedGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer j.Close()
-	old = saveAppliedRestorationFixture(t, j, old)
+	if restored {
+		old = saveAppliedRestorationFixture(t, j, old)
+	}
 	next := old
 	next.Observed = [2]Ownership{}
-	next.Allocation.Generation = uuid.New()
+	if restored {
+		next.Allocation.Generation = uuid.New()
+	}
 	next.Allocation.Tunnels[0].Alias = KernelTunnelAlias(next.Allocation.Generation, next.Allocation.Tunnels[0].TunnelID)
 	boot, err := resetBootID()
 	if err != nil {
 		t.Fatal(err)
 	}
-	next.Restoration = &RuntimeRestoration{BootID: boot, Epoch: 1, Retired: []RuntimeRetiredEpoch{{Entry: flattenedRestorationEntry(old), NewBootID: boot, NewNamespace: next.Allocation.Namespace, NewGeneration: next.Allocation.Generation, Termination: "supervisor-confirmed-runtime-stop", EvidenceDigest: stringDigest([]byte("synthetic consumed receipt"))}}}
-	if err = j.Save([]RuntimeJournalEntry{next}); err != nil {
-		t.Fatal(err)
+	if restored {
+		next.Restoration = &RuntimeRestoration{BootID: boot, Epoch: 1, Retired: []RuntimeRetiredEpoch{{Entry: flattenedRestorationEntry(old), NewBootID: boot, NewNamespace: next.Allocation.Namespace, NewGeneration: next.Allocation.Generation, Termination: "supervisor-confirmed-runtime-stop", EvidenceDigest: stringDigest([]byte("synthetic consumed receipt"))}}}
+	}
+	if restored {
+		if err = j.Save([]RuntimeJournalEntry{next}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	f := next.Allocation.Tunnels[0]
 	nativeMutations := 0
@@ -45,7 +63,12 @@ func TestClassicRestoredApplyUsesReservedGeneration(t *testing.T) {
 		var out any
 		switch {
 		case strings.Contains(q, "link show"):
-			out = []map[string]any{{"ifname": f.Name, "ifindex": 10, "mtu": runtimeProfileMTU(next.Allocation.ProfileID), "ifalias": f.Alias, "flags": []string{"UP"}, "linkinfo": map[string]any{"info_kind": "xfrm", "info_data": map[string]any{"if_id": fmt.Sprintf("0x%x", f.XFRMID)}}}}
+			index := 10
+			saved, _ := j.Entries()
+			if changedIndex && len(saved) == 1 && saved[0].Phase == RuntimeApplied {
+				index = 11
+			}
+			out = []map[string]any{{"ifname": f.Name, "ifindex": index, "mtu": runtimeProfileMTU(next.Allocation.ProfileID), "ifalias": f.Alias, "flags": []string{"UP"}, "linkinfo": map[string]any{"info_kind": "xfrm", "info_data": map[string]any{"if_id": fmt.Sprintf("0x%x", f.XFRMID)}}}}
 		case strings.Contains(q, "addr show"):
 			out = []map[string]any{{"ifname": f.Name, "ifindex": 10, "addr_info": []map[string]any{{"family": "inet", "local": f.InsideAddress.Addr().String(), "prefixlen": f.InsideAddress.Bits()}}}}
 		case strings.Contains(q, "-4 route show"):
@@ -89,6 +112,13 @@ func TestClassicRestoredApplyUsesReservedGeneration(t *testing.T) {
 		return RenderGuard(g)
 	}}
 	ack, err := c.Apply(context.Background(), m)
+	if changedIndex {
+		saved, readErr := j.Entries()
+		if err == nil || ack.DeliveryID != uuid.Nil || readErr != nil || len(saved) != 1 || saved[0].Restoration != nil || len(c.active) != 0 {
+			t.Fatal("changed current index accepted or historical boot manufactured", err, readErr)
+		}
+		return
+	}
 	if err != nil || ack.DeliveryID != m.ID {
 		t.Fatal("restored generic apply refused", err, nativeMutations, daemonMutations, permits, proofs)
 	}
@@ -96,7 +126,15 @@ func TestClassicRestoredApplyUsesReservedGeneration(t *testing.T) {
 		t.Fatal("readback/permit path not exercised", nativeMutations, daemonMutations, permits, proofs)
 	}
 	entries, err := j.Entries()
-	if err != nil || len(entries) != 1 || !reflect.DeepEqual(entries[0].Restoration, next.Restoration) || entries[0].Allocation.Generation != next.Allocation.Generation || entries[0].Allocation.Tunnels[0].Alias != f.Alias || entries[0].Observed[1] != (Ownership{}) {
+	if err != nil || len(entries) != 1 || (restored && !reflect.DeepEqual(entries[0].Restoration, next.Restoration)) || entries[0].Allocation.Generation != next.Allocation.Generation || entries[0].Allocation.Tunnels[0].Alias != f.Alias || entries[0].Observed[1] != (Ownership{}) {
 		t.Fatal("generation or retired duty changed", err)
+	}
+	if !restored {
+		if entries[0].Restoration == nil || entries[0].Restoration.BootID != boot || entries[0].Restoration.Epoch != 0 || len(entries[0].Restoration.Retired) != 0 {
+			t.Fatal("initial Classic applied acknowledgement omitted proven current boot")
+		}
+		if len(c.active) != 1 {
+			t.Fatal("initial boot binding lost active lease")
+		}
 	}
 }

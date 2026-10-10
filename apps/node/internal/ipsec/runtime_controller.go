@@ -470,6 +470,14 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		_, _ = c.refuse(ctx, entries)
 		return fail()
 	}
+	if entry.ContractVersion == 4 {
+		stage = "static_boot_record"
+		if c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+	}
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
 }
 
