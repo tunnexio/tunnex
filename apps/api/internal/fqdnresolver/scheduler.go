@@ -88,7 +88,8 @@ func (s *Scheduler) Tick(ctx context.Context) {
 		return
 	}
 	for _, w := range work {
-		s.refresh(ctx, now, w)
+		// Queue time belongs to earlier work; each TTL starts before its own lookup.
+		s.refresh(ctx, s.now(), w)
 	}
 }
 

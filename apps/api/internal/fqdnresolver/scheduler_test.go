@@ -159,3 +159,51 @@ func TestSchedulerHasNoFallbackWhenTransportIsAbsent(t *testing.T) {
 		t.Fatalf("nil transport must do no DNS work: %#v", store)
 	}
 }
+
+func TestSchedulerSerialQueueDelayDoesNotAgeLaterLookupBeforeItStarts(t *testing.T) {
+	start := time.Now()
+	clock := start
+	works := []Work{}
+	for i := 0; i < 8; i++ {
+		works = append(works, work("orders.internal"))
+	}
+	store := &memoryStore{work: works}
+	lookupStarts := []time.Time{}
+	resolver := resolverFunc(func(ctx context.Context, _ Context, hostname string) ([]Response, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("lookup deadline absent")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > 5*time.Second {
+			t.Fatal("original lookup deadline not preserved")
+		}
+		lookupStarts = append(lookupStarts, clock)
+		// Seven individually bounded lookups consume a simulated 34.3s serial queue.
+		// No real wait or request exceeds its original five-second bound.
+		if len(lookupStarts) < 8 {
+			clock = clock.Add(4900 * time.Millisecond)
+		} else {
+			clock = clock.Add(time.Second)
+		}
+		return []Response{answer(a(hostname, "10.2.3.4", 30*time.Second))}, nil
+	})
+	scheduler := NewScheduler(store, resolver, SchedulerConfig{Batch: 8, Timeout: 5 * time.Second})
+	scheduler.now = func() time.Time { return clock }
+	scheduler.Tick(context.Background())
+	if len(store.published) != 8 {
+		t.Fatal("missing publication")
+	}
+	for i, g := range store.published {
+		if !g.ResolvedAt.Equal(lookupStarts[i]) {
+			t.Fatalf("lookup %d timestamp aged by queue: got %s want %s", i, g.ResolvedAt, lookupStarts[i])
+		}
+	}
+	last := store.published[7]
+	if !last.ResolvedAt.Add(last.TTL).After(clock) {
+		t.Fatal("fresh final lookup already expired")
+	}
+	if last.ResolvedAt.Equal(clock) {
+		t.Fatal("lookup completion extended TTL")
+	}
+}
