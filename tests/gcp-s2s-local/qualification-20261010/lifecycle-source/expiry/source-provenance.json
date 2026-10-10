@@ -1,0 +1,31 @@
+{
+  "scope": "source/actual receipt archive; no new cloud or API action",
+  "archive_base": "7bedb121a1b754c5352cc58423fa2ef84f339575",
+  "deployed_source": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "source_sha256": {
+    "expiry.py": "7e8ce129762160991edd6e61c1df9b78791a241d3ed10d584a635ab5ccd4c321",
+    "expiry-v2.py": "1f25b31d3a3ed44bb919c165461d9f1ffbf9cde7371a42950f150372ac5efd7d",
+    "expiry-v3.py": "8418226e2b92e16a6ee3619ae24b548ad7e6f8da6edc2bd008f31a4c82c67905",
+    "test_expiry.py": "5c6e54203ed76f27eb5945ab2650c1e6133f289249612ad6a6cc795784cd88a4",
+    "test_expiry_v2.py": "1e0df32533b8f6dcd51871196a6ad95bebeab2baf1568a311383b8d995e29dc8",
+    "test_expiry_v3.py": "f5412866742e0059a5ac3037082ce65bf197c11d665299ecf469069e0e5044d1",
+    "run-classic-expiry-v1.py": "0eed0c34449e6b5020fa23c32901e645645922bdc1654b845f0d85b9b61db32d",
+    "run-classic-expiry-v2.py": "f050951ba7e4c1ddc0dd15a7186164ba8e4a5cc2610cf90aaacf65359c623bae",
+    "run-classic-expiry-v3.py": "070898abde6d5ce369b255b34da9717e1eb877cf0b4ab628fa9627b1c2025a8e"
+  },
+  "local_checks": {
+    "v2_boundary_tests": 4,
+    "v3_parser_and_boundary_tests": 9,
+    "v3_runtimes": [
+      "Python3.9.6 -O",
+      "Python3.14 -O"
+    ],
+    "independent_ui_v2": "PASS",
+    "independent_ui_v3": "PASS"
+  },
+  "claims": {
+    "v1": "HTTPError after both original grants disabled; both restored; no temporary IDs recorded. Server response cause not preserved/proven; source uniqueness analysis is separate.",
+    "v2": "TCP temporary ID recorded; exact five-digit Go timestamp parser failure causal reproduced on Python3.9. Originals API restored and payloads passed, strict single-rule native observer false while duplicate temporary authority existed; initial cleanup before deadline refused. Normal sweeper removed temporary before later cleanup observed already_absent.",
+    "v3": "Fresh native preallow refused before API writes: trusted template and actual table all six sets empty, zero matching app rules; production full readback/withdrawal and offline deny pass. Runtime withdrawal reason not inferred."
+  }
+}
