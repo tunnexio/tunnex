@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scope": "owned-local-gateway-controlled-restart-qualification",
+  "source_commit": "312c1cba9fc20adc53c77ec3a5bdb4c8874ddbe4",
+  "build_command": "CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o <artifact> ./cmd/agent",
+  "binary_sha256": "c0ea497f3a1f3c88a1c1651111ed8a989b299bb620e201cc853b2c969970b05b",
+  "base_image_source_commit": "aa72e085241052cb7d61222242f3f7c1612535dd",
+  "base_image_digest": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+  "container": "tunnexgcps2slifecycle1010-gateway-1",
+  "executable_path": "/usr/local/bin/tunnex-node",
+  "installation": "staged hash verified; atomic rename; original running process remains on deleted original inode",
+  "new_binary_running_verified": false,
+  "fresh_stop_attempt": "refused preflight due exact installed but unconsumed receipt; no stop occurred",
+  "prior_resume": "valid receipt installed; bounded 180-second recovery wait exhausted; Classic journal version defect proved and fixed",
+  "production_published": false,
+  "google_cloud_verified": false
+}
