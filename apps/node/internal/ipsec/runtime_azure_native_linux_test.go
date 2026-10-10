@@ -8,6 +8,7 @@ import (
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -27,6 +28,17 @@ func TestAzureNativeOwnedComponents(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
 			m := azureMaterialFixture(profile)
+			if IsAzureBGPProfile(profile) {
+				m.Manifest.BGP.LocalASN = 13335
+				if value := os.Getenv("TUNNEX_AZURE_NATIVE_LOCAL_ASN"); value != "" {
+					asn, err := strconv.ParseUint(value, 10, 32)
+					if err != nil {
+						t.Fatal(err)
+					}
+					m.Manifest.BGP.LocalASN = uint32(asn)
+				}
+				runtimeReseal(&m)
+			}
 			ns, err := os.Readlink("/proc/self/ns/net")
 			if err != nil {
 				t.Fatal(err)

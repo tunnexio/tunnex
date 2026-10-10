@@ -8,6 +8,19 @@ import (
 
 const AzureAPIPATransport = "azure-apipa-v1"
 
+// Azure supports public/private and 32-bit ASNs. The Azure default gateway
+// ASN65515 is allowed only remotely; Azure/IANA reserved values fail closed.
+func ValidAzureASN(a uint32, local bool) bool {
+	if a == 0 || a == 23456 || a == 4294967295 || a >= 64496 && a <= 64511 || a >= 65535 && a <= 65551 {
+		return false
+	}
+	switch a {
+	case 8074, 8075, 12076, 65515, 65517, 65518, 65519, 65520:
+		return !local && a == 65515
+	}
+	return true
+}
+
 type Peer struct {
 	AddressBits   uint8 // zero preserves legacy /30; Azure explicitly owns /32 hosts
 	LinkName      string
@@ -40,7 +53,11 @@ func (c Config) valid() bool {
 		return false
 	}
 	private := func(a uint32) bool { return a >= 64512 && a <= 65534 || a >= 4200000000 && a <= 4294967294 }
-	if !private(c.LocalASN) || !(private(c.RemoteASN) || c.RemoteASN == 7224) || c.LocalASN == c.RemoteASN || !c.RouterID.Is4() || c.RouterID.As4()[0] == 0 || c.RouterID.IsLoopback() || c.RouterID.IsLinkLocalUnicast() || c.RouterID.As4()[0] >= 224 || c.MaximumPrefixes < 1 || c.MaximumPrefixes > 64 {
+	asnOK := private(c.LocalASN) && (private(c.RemoteASN) || c.RemoteASN == 7224)
+	if azure {
+		asnOK = ValidAzureASN(c.LocalASN, true) && ValidAzureASN(c.RemoteASN, false)
+	}
+	if !asnOK || c.LocalASN == c.RemoteASN || !c.RouterID.Is4() || c.RouterID.As4()[0] == 0 || c.RouterID.IsLoopback() || c.RouterID.IsLinkLocalUnicast() || c.RouterID.As4()[0] >= 224 || c.MaximumPrefixes < 1 || c.MaximumPrefixes > 64 {
 		return false
 	}
 	seen := []netip.Prefix{}

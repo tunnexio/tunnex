@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"encoding/json"
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"net/netip"
 	"strings"
@@ -74,9 +75,9 @@ func TestAzureProfilesReuseOwnedRuntimeAndJournal(t *testing.T) {
 }
 func TestAzureRefusesUnboundedContracts(t *testing.T) {
 	for name, mutate := range map[string]func(*RuntimeMaterial){
-		"wrong version":      func(m *RuntimeMaterial) { v := 2; m.Manifest.BGPVersion = &v },
-		"reserved local ASN": func(m *RuntimeMaterial) { m.Manifest.BGP.LocalASN = 65515 },
-		"aws remote ASN":     func(m *RuntimeMaterial) { m.Manifest.BGP.RemoteASN = 7224 },
+		"wrong version":       func(m *RuntimeMaterial) { v := 2; m.Manifest.BGPVersion = &v },
+		"reserved local ASN":  func(m *RuntimeMaterial) { m.Manifest.BGP.LocalASN = 65515 },
+		"reserved remote ASN": func(m *RuntimeMaterial) { m.Manifest.BGP.RemoteASN = 23456 },
 		"outside Azure APIPA": func(m *RuntimeMaterial) {
 			m.Manifest.Tunnels[0].InsideCIDR = "169.254.20.0/30"
 			m.Manifest.Tunnels[0].CustomerInsideAddress = "169.254.20.1"
@@ -189,5 +190,50 @@ func TestAzureAPIPAGuardIsExplicitAndBounded(t *testing.T) {
 	intent.Connections[0].BGPPeers[0].Remote = netip.MustParseAddr("10.99.0.1")
 	if _, err := RenderGuard(intent); err == nil {
 		t.Fatal("non-Azure peer guard accepted")
+	}
+}
+
+func TestAzurePublicASNContractPreservesOtherProviders(t *testing.T) {
+	for _, asn := range []uint32{13335, 196608} {
+		m := azureMaterialFixture(AzureActiveActiveBGPProfile)
+		m.Manifest.BGP.LocalASN = asn
+		runtimeReseal(&m)
+		e, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+		if err != nil {
+			t.Fatal("Azure public ASN refused", asn, err)
+		}
+		cfg, err := runtimeBGPProcessConfig(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = bgpengine.RenderConfig(cfg); err != nil {
+			t.Fatal("FRR public ASN refused", err)
+		}
+		if validBGPConfig(*m.Manifest.BGP) {
+			t.Fatal("AWS/GCP ASN restriction widened")
+		}
+	}
+	for _, asn := range []uint32{0, 8074, 8075, 12076, 23456, 64496, 64511, 65515, 65517, 65520, 65535, 65551, 4294967295} {
+		b := BGPConfig{LocalASN: asn, RemoteASN: 65515, RouterID: "10.10.0.1", MaximumPrefixes: 64}
+		if validAzureBGPConfig(b) {
+			t.Fatal("reserved local ASN admitted", asn)
+		}
+	}
+	for _, asn := range []uint32{8074, 8075, 12076, 65517, 65520} {
+		b := BGPConfig{LocalASN: 13335, RemoteASN: asn, RouterID: "10.10.0.1", MaximumPrefixes: 64}
+		if validAzureBGPConfig(b) {
+			t.Fatal("reserved gateway ASN admitted", asn)
+		}
+	}
+}
+
+func TestLegacyBGPPeerSerializationRemainsExact(t *testing.T) {
+	// Independent persisted shape before provider metadata existed. Omitting the
+	// Azure transport tag must preserve canonical bytes and journal-template hashes.
+	const original = `{"Local":"169.254.20.1","Remote":"169.254.20.2","InterfaceIndex":7}`
+	peer := GuardBGPPeer{Local: netip.MustParseAddr("169.254.20.1"), Remote: netip.MustParseAddr("169.254.20.2"), InterfaceIndex: 7}
+	raw, err := json.Marshal(peer)
+	if err != nil || string(raw) != original || stringDigest(raw) != stringDigest([]byte(original)) {
+		t.Fatal("legacy guard peer bytes drifted")
 	}
 }

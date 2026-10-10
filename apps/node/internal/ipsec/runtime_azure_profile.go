@@ -1,6 +1,9 @@
 package ipsec
 
-import "net/netip"
+import (
+	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
+	"net/netip"
+)
 
 const AzureActiveActiveBGPProfile = "azure-active-active-bgp-ipv4-v1"
 const AzureActiveActiveStaticProfile = "azure-active-active-static-ipv4-v1"
@@ -24,11 +27,20 @@ func IsSingleTunnelProfile(p string) bool {
 func validAzurePeer(a netip.Addr) bool {
 	return a.Is4() && (netip.MustParsePrefix("169.254.21.0/24").Contains(a) || netip.MustParsePrefix("169.254.22.0/24").Contains(a))
 }
-func azureReservedASN(a uint32) bool {
-	return a == 8074 || a == 8075 || a == 12076 || a == 65515 || a >= 65517 && a <= 65520
-}
 func validAzureBGPConfig(b BGPConfig) bool {
-	return validBGPConfig(b) && !azureReservedASN(b.LocalASN) && (b.RemoteASN == 65515 || !azureReservedASN(b.RemoteASN)) && b.RemoteASN != 7224
+	if !bgpengine.ValidAzureASN(b.LocalASN, true) || !bgpengine.ValidAzureASN(b.RemoteASN, false) || b.LocalASN == b.RemoteASN {
+		return false
+	}
+	// Reuse common bounded router-ID and prefix-limit validation independently
+	// from its unchanged AWS/GCP ASN constraints.
+	b.LocalASN, b.RemoteASN = 65000, 65001
+	return validBGPConfig(b)
+}
+func validProfileBGPConfig(profile string, b BGPConfig) bool {
+	if IsAzureBGPProfile(profile) {
+		return validAzureBGPConfig(b)
+	}
+	return validBGPConfig(b)
 }
 
 // Capability proves the native controller prerequisites, not Azure connectivity.
