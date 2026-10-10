@@ -42,8 +42,8 @@ class EvidenceTests(unittest.TestCase):
             if str(path)=='/helper': return binary,None
             raise ValueError('injected frozen journal refusal')
         argv=['wrapper','--container',cid,'--private-root','/private/.runtime','--lifecycle-helper','/api.py','--helper-binary','/helper','--helper-sha256',m.digest(binary),'--evidence-dir','/private/.runtime/evidence','--expected-cid',cid,'--expected-image-id','sha256:image','--expected-node-sha256',m.digest(exe)]
-        with patch.object(sys,'argv',argv),patch.object(m.os,'geteuid',return_value=0),patch.object(m.socket,'gethostname',return_value='tunnex-peer'),patch.object(m,'private_read',side_effect=private),patch.object(m,'inspect',return_value=container),patch.object(m,'proc',return_value=('T',1,7)),patch.object(m.os,'readlink',return_value='net:[99]'),patch.object(pathlib.Path,'read_bytes',return_value=exe),patch.object(pathlib.Path,'resolve',lambda p:p),patch.object(pathlib.Path,'lstat',metadata),patch.object(pathlib.Path,'mkdir'),patch.object(m,'save'),patch.object(m,'command',side_effect=call),patch('builtins.print'):
+        with patch.object(sys,'argv',argv),patch.object(m.os,'geteuid',return_value=0),patch.object(m.socket,'gethostname',return_value='tunnex-peer'),patch.object(m,'private_read',side_effect=private),patch.object(m,'inspect',return_value=container),patch.object(m,'proc',return_value=('T',1,7)),patch.object(m.os,'readlink',return_value='net:[99]'),patch.object(pathlib.Path,'read_bytes',return_value=exe),patch.object(pathlib.Path,'resolve',lambda p:p),patch.object(pathlib.Path,'lstat',metadata),patch.object(pathlib.Path,'mkdir'),patch.object(m,'save'),patch.object(m,'command',side_effect=call),patch.object(m.os,'kill') as kill,patch('builtins.print'):
             self.assertEqual(m.main(),1)
-        self.assertIn(['docker','kill','--signal','STOP',cid],calls)
-        self.assertEqual(calls[-1],['docker','kill','--signal','CONT',cid])
+        self.assertEqual(kill.call_args_list,[unittest.mock.call(55,m.signal.SIGSTOP),unittest.mock.call(55,m.signal.SIGCONT)])
+        self.assertFalse(any(args[:2]==['docker','kill'] for args in calls))
 if __name__=='__main__': unittest.main()

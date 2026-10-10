@@ -51,7 +51,7 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("root required")
 	}
-	raw, _, e := remediationRead("/run/azure-cleanup15-baseline.json")
+	raw, _, e := remediationRead("/run/azure-cleanup15-v2-baseline.json")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -65,7 +65,7 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 		t.Fatal("exact Azure15 normal cleanup baseline refused")
 	}
 	verifyNormalRead := func() {
-		raw, st, err := remediationRead("/run/azure-cleanup15-normal-read.json")
+		raw, st, err := remediationRead("/run/azure-cleanup15-v2-normal-read.json")
 		if err != nil || uint64(st.Dev) != b.NormalReadDevice || st.Ino != b.NormalReadInode || remediationSHA(raw) != b.NormalReadSHA256 {
 			t.Fatal("normal API read evidence changed")
 		}
@@ -135,7 +135,7 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 			t.Fatal("charon identity refused")
 		}
 		fields := strings.Fields(string(raw)[at+2:])
-		if len(fields) < 20 || fields[1] != "1" || fields[0] == "Z" {
+		if len(fields) < 20 || fields[1] != "1" || (fields[0] == "Z" || fields[0] == "T" || fields[0] == "t" || fields[0] == "X") {
 			t.Fatal("managed node child identity refused")
 		}
 		ticks, e := strconv.ParseUint(fields[19], 10, 64)
@@ -166,11 +166,15 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 		if socketStat.Uid != 0 || uint64(socketStat.Dev) != b.SocketDevice || socketStat.Ino != b.SocketInode {
 			t.Fatal("daemon socket identity changed")
 		}
+		parentInfo, e := os.Lstat("/run/tunnex-ipsec")
+		if e != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 || parentInfo.Mode().Perm()&0077 != 0 || parentInfo.Sys().(*syscall.Stat_t).Uid != 0 {
+			t.Fatal("daemon_socket_parent_census_refused")
+		}
 		socketCtx, stop := context.WithTimeout(context.Background(), time.Second)
 		defer stop()
 		conn, e := dialOwnedVICI(socketCtx, "/run/tunnex-ipsec/charon.vici")
 		if e != nil {
-			t.Fatal(e)
+			t.Fatal("daemon_socket_connect_refused")
 		}
 		defer conn.Close()
 		uc, ok := conn.(*net.UnixConn)

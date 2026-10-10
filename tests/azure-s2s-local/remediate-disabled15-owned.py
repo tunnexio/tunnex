@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Reviewed one-shot owned negative cleanup. Run only while external CAS mutations are serialized."""
-import argparse, datetime, hashlib, json, os, pathlib, re, socket, stat, subprocess
+import argparse, datetime, hashlib, json, os, pathlib, re, signal, socket, stat, subprocess
 OWNER = 'azure-s2s-01a12505'
 CONNECTION = '9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99'
 def command(args, timeout=10):
@@ -69,7 +69,7 @@ def main():
         raw=command(['sudo','-u','#1000','--','python3',str(helper),'read','--private-root',str(private)],20); read=normal(raw)
         save(evidence/'normal-read.json',raw)
         same(); stage='pause'; resume=True
-        command(['docker','kill','--signal','STOP',cid]); same()
+        os.kill(pid,signal.SIGSTOP); same()
         if proc(pid)[0]!='T': raise ValueError('not-stopped')
         stage='frozen_baseline'; root=pathlib.Path(f'/proc/{pid}/root')
         journal,jst=private_read(root/'var/lib/tunnex-node/ipsec/journal.json'); payload=json.loads(journal)['Payload']; current=[e for e in payload['Entries'] if e['Phase']!='retained_refusal']
@@ -84,22 +84,24 @@ def main():
             q=int(child)
             if proc(q)[1]==pid and digest(pathlib.Path(f'/proc/{q}/exe').read_bytes())==packaged: matches.append(q)
         if len(matches)!=1: raise ValueError('daemon')
-        q=matches[0]; nspid=[line for line in pathlib.Path(f'/proc/{q}/status').read_text().splitlines() if line.startswith('NSpid:')][0].split()[-1]
+        q=matches[0]
+        if proc(q)[0] in ('T','t','Z','X'): raise ValueError('daemon-not-running')
+        nspid=[line for line in pathlib.Path(f'/proc/{q}/status').read_text().splitlines() if line.startswith('NSpid:')][0].split()[-1]
         if os.readlink(f'/proc/{q}/ns/net')!=ns or int(nspid)<=1: raise ValueError('daemon-namespace')
         config,cst=private_read(root/'run/tunnex-ipsec/strongswan.conf'); sst=(root/'run/tunnex-ipsec/charon.vici').lstat()
         if sst.st_uid!=0 or stat.S_IMODE(sst.st_mode)!=0o600 or not stat.S_ISSOCK(sst.st_mode): raise ValueError('socket')
         stage='private_install'
-        for name in ['azure-cleanup15-normal-read.json','azure-cleanup15-baseline.json']:
+        for name in ['azure-cleanup15-v2-normal-read.json','azure-cleanup15-v2-baseline.json']:
             if (root/'run'/name).exists(): raise ValueError('existing-input')
-        save(root/'run/azure-cleanup15-normal-read.json',raw); rst=(root/'run/azure-cleanup15-normal-read.json').stat()
+        save(root/'run/azure-cleanup15-v2-normal-read.json',raw); rst=(root/'run/azure-cleanup15-v2-normal-read.json').stat()
         b=dict(CharonPID=int(nspid),CharonStartTicks=proc(q)[2],CharonExecutableSHA256=packaged,CharonConfigSHA256=digest(config),CharonConfigDevice=cst.st_dev,CharonConfigInode=cst.st_ino,SocketDevice=sst.st_dev,SocketInode=sst.st_ino,JournalSHA256=digest(journal),JournalDevice=jst.st_dev,JournalInode=jst.st_ino,Namespace=ns,BootID=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),NodeExecutableSHA256=exe,NodeStartTicks=ticks,OwnerID=payload['OwnerID'],OrgID=engine['Binding']['OrgID'],DeliveryID=e['DeliveryID'],CleanupID=e['CleanupID'],DesiredRevision=15,GuardExpectedSHA256=digest(payload['Guards'][0]['ExpectedJSON'].encode()),CPDesiredIntent='disabled',CPCleanupState='pending',CPDesiredRevision=15,NormalReadSHA256=digest(raw),NormalReadObservedAt=read['observed_at'],NormalReadDevice=rst.st_dev,NormalReadInode=rst.st_ino)
-        baseline=json.dumps(b).encode(); save(evidence/'baseline.json',baseline); save(root/'run/azure-cleanup15-baseline.json',baseline); save(evidence/'journal-frozen.json',journal)
+        baseline=json.dumps(b).encode(); save(evidence/'baseline.json',baseline); save(root/'run/azure-cleanup15-v2-baseline.json',baseline); save(evidence/'journal-frozen.json',journal)
         same()
         if private_read(root/'var/lib/tunnex-node/ipsec/journal.json')[0]!=journal: raise ValueError('journal-changed')
         normal(raw)
-        save(root/'tmp/azure-cleanup15-remediation.test',binary,0o755)
+        save(root/'tmp/azure-cleanup15-v2-remediation.test',binary,0o755)
         stage='negative_cleanup_helper'
-        result=subprocess.run(['docker','exec','-u','0',cid,'env','TUNNEX_AZURE_DISABLED15_CLEANUP_REMEDIATION=1','/tmp/azure-cleanup15-remediation.test','-test.run','^TestAzureDisabled15CleanupRemediationNative$','-test.timeout=30s'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=40)
+        result=subprocess.run(['docker','exec','-u','0',cid,'env','TUNNEX_AZURE_DISABLED15_CLEANUP_REMEDIATION=1','/tmp/azure-cleanup15-v2-remediation.test','-test.run','^TestAzureDisabled15CleanupRemediationNative$','-test.timeout=30s'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=40)
         save(evidence/'helper-private.log',result.stdout)
         if result.returncode: raise ValueError('helper-refused')
         stage='negative_cleanup_completed'
@@ -108,7 +110,7 @@ def main():
     finally:
         if resume:
             try:
-                same(); command(['docker','kill','--signal','CONT',cid]); resumed=True
+                same(); os.kill(pid,signal.SIGCONT); resumed=True
             except (ValueError,KeyError,OSError,subprocess.SubprocessError): resumed=False; stage='exact_resume_refused'
         else: resumed=False
         print(json.dumps({'stage':stage,'agent_resumed':resumed,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}))
