@@ -28,3 +28,13 @@ Temporary screenshots exclude credentials and PSKs.
 | `/private/tmp/gcp-ui-emulated-ipsec-dns-configured.png` | `d70a861b89567bceaa8c32e9f5a8588384eba9b05425dc02eee2b38890bb7fe6` |
 | `/private/tmp/gcp-ui-emulated-fqdn-entitlement-refusal.png` | `5980d75b43e2a375105609ec9be20a930ff757464f9e3cd66988f1c3fc992e77` |
 | `/private/tmp/gcp-ui-emulated-dns-rebound-v4.png` | `c7f46643274db0e2d32cf1e0ccc5328db7529566c989ad3478fd194e7b5ec3d7` |
+
+## Subsequent normal admin Classic rotation
+
+After root confirmed the independent emulated HA path's first granted packet, admin resumed normal login. The cloud inventory loaded; the recreated Classic connection was Applied and its menu contained Disable but no Rotate while enabled. Admin submitted Disable through the existing revision-2 CAS dialog, observed Cleanup pending, then refreshed and observed Disabled · guard retained. Only after that real cleanup acknowledgement did Rotate keys appear.
+
+The rotation dialog showed exactly one Tunnel 1 password field. Admin submitted an owned private replacement key through the normal UI; no second slot or automatic Enable occurred. The server response passed the component's exact desired-revision 3→4 and disabled-intent checks, and the UI reported: “Keys saved. Update your remote VPN, then enable this connection.” Secret drafts cleared on submit. Enable remains held for root's external emulator peer key transition. No cloud rotation or DNS packet success is claimed.
+
+The earlier runtime content search accidentally exposed an existing disposable emulator test key in tool output. That value is omitted from this receipt and replaced by this authorized rotation. Replacement data stays only in the ignored mode-0600 runtime fixture; no secret is committed.
+
+Screenshot `/private/tmp/gcp-ui-emulated-classic-rotation-disabled.png` SHA-256: `3b6f6aa10249ede3f87dc1298411b5550e021da668bdf69adbce3ac038998183`.
