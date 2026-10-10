@@ -1,0 +1,25 @@
+tcpdump: listening on az-s2s-lan, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+11:20:43.074813 IP (tos 0x0, ttl 64, id 49940, offset 0, flags [DF], proto UDP (17), length 1326)
+    10.233.10.2.52617 > 10.231.1.4.8081: UDP, length 1298
+11:20:43.094253 IP (tos 0x0, ttl 63, id 18484, offset 0, flags [DF], proto UDP (17), length 1326)
+    10.231.1.4.8081 > 10.233.10.2.52617: UDP, length 1298
+11:20:43.095263 IP (tos 0x0, ttl 64, id 62485, offset 0, flags [DF], proto UDP (17), length 1390)
+    10.233.10.2.51172 > 10.231.1.4.8081: UDP, length 1362
+11:20:43.095298 IP (tos 0xc0, ttl 64, id 19361, offset 0, flags [none], proto ICMP (1), length 576)
+    10.233.10.1 > 10.233.10.2: ICMP 10.231.1.4 unreachable - need to frag (mtu 1326), length 556
+	IP (tos 0x0, ttl 64, id 62485, offset 0, flags [DF], proto UDP (17), length 1390)
+    10.233.10.2.51172 > 10.231.1.4.8081: UDP, length 1362
+11:20:43.095382 IP (tos 0x0, ttl 64, id 8023, offset 0, flags [DF], proto UDP (17), length 1326)
+    10.233.10.2.51183 > 10.231.1.4.8081: UDP, length 1298
+11:20:43.114877 IP (tos 0x0, ttl 63, id 18490, offset 0, flags [DF], proto UDP (17), length 1326)
+    10.231.1.4.8081 > 10.233.10.2.51183: UDP, length 1298
+11:20:43.115088 IP (tos 0x0, ttl 64, id 4968, offset 0, flags [DF], proto UDP (17), length 1390)
+    10.233.10.2.35643 > 10.231.1.4.8081: UDP, length 1362
+11:20:43.115117 IP (tos 0xc0, ttl 64, id 19367, offset 0, flags [none], proto ICMP (1), length 576)
+    10.233.10.1 > 10.233.10.2: ICMP 10.231.1.4 unreachable - need to frag (mtu 1326), length 556
+	IP (tos 0x0, ttl 64, id 4968, offset 0, flags [DF], proto UDP (17), length 1390)
+    10.233.10.2.35643 > 10.231.1.4.8081: UDP, length 1362
+
+8 packets captured
+8 packets received by filter
+0 packets dropped by kernel

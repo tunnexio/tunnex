@@ -33,7 +33,7 @@ def udp_echo(connection,payload):
   return {'success':answer==payload,'sent_bytes':sent,'echo_bytes':len(answer),'echo_exact_match':answer==payload,'local_port':connection.getsockname()[1]}
  except OSError as error:
   result={'success':False,'udp_error_stage':stage,'error_code':'udp_socket_error'}
-  if isinstance(error,TimeoutError):result['error_code']='udp_timeout'
+  if isinstance(error,(TimeoutError,socket.timeout)):result['error_code']='udp_timeout'
   elif error.errno==errno.EMSGSIZE:result.update(error_code='udp_message_too_large',socket_errno=errno.EMSGSIZE)
   elif error.errno in (errno.ECONNREFUSED,errno.ENETUNREACH,errno.EHOSTUNREACH):result['socket_errno']=error.errno
   if stage=='receive':result['sent_bytes']=sent
