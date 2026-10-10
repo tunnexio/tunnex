@@ -192,7 +192,19 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 		_ = t.mailbox.Expire(context.Background(), req.RequestID, t.now())
 		return nil, err
 	}
-	records, err := validateGatewayDNSResponse(req, response, now, t.maxAge)
+	// Resolution timestamps describe completed work, so freshness uses receipt
+	// time. Neither queueing nor clock movement extends the original deadline.
+	receivedAt := t.now()
+	if err := requestCtx.Err(); err != nil {
+		return nil, err
+	}
+	if receivedAt.Before(now) {
+		return nil, ErrGatewayDNSRPCStale
+	}
+	if !receivedAt.Before(deadline) {
+		return nil, context.DeadlineExceeded
+	}
+	records, err := validateGatewayDNSResponse(req, response, receivedAt, t.maxAge)
 	if err != nil {
 		return nil, err
 	}
