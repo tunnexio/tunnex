@@ -1,7 +1,7 @@
 # EPIC — GCP site-to-site VPN
 
 Date: 2026-10-10
-Status: HA and Classic backend/runtime/UI development is integrated locally; scoped Google Cloud acceptance continues. The reviewed source4143d866 immutable gateway replacement has started with the existing enrolled identity. Fresh actual Classic TCP8080 and UDP9000 exact responses and target request captures both passed with unchanged normal grants; the earlier UDP timeout remains retained and unclassified. HA is pending with both tunnels Down after restart because daemon transport configuration was not restaged; the causal restart regression is being fixed. Genuine Scale licence and normal FQDN opt-in are active; ordinary Cloud DNS, automatic FQDN, lifecycle/failover, MTU and final live acceptance remain open. Git changes remain local.
+Status: HA and Classic backend/runtime/UI development is integrated locally; scoped Google Cloud acceptance continues. Frozen source4143d866 runs with the existing enrolled identity. Actual Classic TCP8080/UDP9000 applications and configured Cloud DNS UDP A/CNAME/NXDOMAIN passed. Direct DNS TCP connect timed out despite a fresh native permission/lease preflight; fallback remains unverified and the first larger-fixture timeout is retained. HA ordinary restart restaging and scoped shared guard expiry fixes are integrated and locally tested but not yet deployed. Genuine Scale licence and normal FQDN opt-in are active. Automatic FQDN, full lifecycle/failover, MTU and final live acceptance remain open. Git changes remain local.
 Integration branch: `gcp-s2s` (main baseline `8d344e3051270565d6057fba904fcf8692afa783`).
 Qualification branch: `gcp-s2s-qualification`.
 Decision record: [S-GCP-S2S-decisions.md](S-GCP-S2S-decisions.md).
