@@ -290,6 +290,7 @@ func (c *RuntimeController) reconcileActiveBGP(ctx context.Context, entries []Ru
 			continue
 		}
 		grants := active.Grants
+		c.withdrawDNSOwnerView(id)
 		active.Grants = nil
 		c.active[id] = active
 		stage = "route_guard_withdrawal"

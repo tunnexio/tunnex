@@ -88,7 +88,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	if c.recoveryPrepared == nil {
 		c.recoveryPrepared = map[uuid.UUID]RuntimeEnvironment{}
 	}
-	withdraw := func() error { delete(c.active, id); return c.installActive(ctx, entries) }
+	withdraw := func() error { c.withdrawDNSOwnerView(id); delete(c.active, id); return c.installActive(ctx, entries) }
 	fail := func() (RuntimeAcknowledgement, error) {
 		c.recoveryMetrics.refuse(entry.DeliveryID, metricSequence)
 		_ = withdraw()

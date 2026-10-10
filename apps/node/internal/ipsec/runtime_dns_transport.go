@@ -58,6 +58,8 @@ type runtimeDNSProof struct {
 	InterfaceIndex       int
 	SourceInterfaceIndex int
 	Namespace            string
+	epoch                *runtimeDNSEpoch
+	authority            *PermitLeaseAuthority
 }
 
 func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte) ([]byte, error) {
@@ -72,10 +74,23 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 		return nil, ErrRuntimeController
 	}
 	after, err := c.proveResolverDNS(ctx, config, endpoint)
-	if err != nil || after != proof || ctx.Err() != nil {
+	if err != nil || !sameResolverDNSProof(after, proof) || ctx.Err() != nil {
 		return nil, ErrRuntimeController
 	}
 	return response, nil
+}
+
+func sameResolverDNSProof(a, b runtimeDNSProof) bool {
+	current, original := a.authority, b.authority
+	a.authority, b.authority = nil, nil
+	if a != b || current == nil || original == nil || b.epoch == nil || b.epoch.revoked.Load() {
+		return false
+	}
+	if _, err := original.RemainingForApply(b.Identity, time.Second); err != nil {
+		return false
+	}
+	_, err := current.RemainingForApply(a.Identity, time.Second)
+	return err == nil && !b.epoch.revoked.Load()
 }
 
 // proveResolverDNS is read-only. All packet authority remains in the existing
@@ -106,17 +121,18 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if !binding.valid() {
 		return fail()
 	}
-	// The serial runtime owner can be waiting on control-plane IO. DNS must
-	// respect its own deadline while waiting for a coherent owner snapshot.
-	if !c.lockDNSController(ctx) {
+	// Only immutable owner-selected inputs are loaded here. The serial owner may
+	// be blocked on unrelated IO; no global mutex or journal mutex is acquired.
+	view := c.dnsView.Load()
+	if view == nil || ctx.Err() != nil {
 		return fail()
 	}
-	defer c.mu.Unlock()
-	if !c.started || c.closed || ctx.Err() != nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+	owner, ok := view.entries[conn]
+	if !ok || owner.epoch.revoked.Load() || !view.observer.qualification.current() || view.observer.controller.config.DaemonAlive == nil || !view.observer.controller.config.DaemonAlive() {
 		return fail()
 	}
-	a, ok := c.active[conn]
-	if !ok || a.Authority == nil || a.Entry.Phase != RuntimeApplied || a.Identity.Binding.OrgID != c.config.OrgID || a.Identity.Binding.GatewayID != c.config.GatewayID || a.Identity.Binding.ConnectionID != conn || a.Identity.Binding.ConfigurationRevision != binding.ConfigurationRevision {
+	a := owner.active
+	if a.Authority == nil || a.Entry.Phase != RuntimeApplied || a.Identity.Binding.OrgID != view.observer.controller.config.OrgID || a.Identity.Binding.GatewayID != view.observer.controller.config.GatewayID || a.Identity.Binding.ConnectionID != conn || a.Identity.Binding.ConfigurationRevision != binding.ConfigurationRevision {
 		return fail()
 	}
 	protocol := GuardUDP
@@ -135,7 +151,7 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if _, err := a.Authority.RemainingForApply(a.Identity, time.Second); err != nil {
 		return fail()
 	}
-	if c.proveCurrent(ctx, a.Entry, a.Environment) != nil {
+	if view.observer.controller.proveCurrent(ctx, a.Entry, a.Environment) != nil {
 		return fail()
 	}
 	slot := dnsResolverSlot(a.Entry, resolver)
@@ -143,25 +159,40 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 		return fail()
 	}
 	index := a.Entry.Observed[slot-1].InterfaceIndex
-	if index <= 0 || !c.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
+	if index <= 0 || !view.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
 		return fail()
 	}
-	before, err := observeDNSSource(source, a.Environment.LocalIngressIndices)
+	before, err := view.observer.source(source, a.Environment.LocalIngressIndices)
 	if err != nil {
 		return fail()
 	}
-	raw, err := runKernelCommand(ctx, c.config.IPPath, "-j", "-4", "route", "get", resolver.String(), "from", source.String())
+	raw, err := view.observer.route(ctx, view.observer.controller.config.IPPath, "-j", "-4", "route", "get", resolver.String(), "from", source.String())
 	if err != nil || !dnsResolverRouteMatches(raw, a.Entry.Observed[slot-1].InterfaceName, source, resolver) {
 		return fail()
 	}
-	after, err := observeDNSSource(source, a.Environment.LocalIngressIndices)
-	if err != nil || before != after || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+	after, err := view.observer.source(source, a.Environment.LocalIngressIndices)
+	if err != nil || before != after || ctx.Err() != nil || !view.observer.qualification.current() || !view.observer.controller.config.DaemonAlive() {
 		return fail()
 	}
 	if _, err := a.Authority.RemainingForApply(a.Identity, time.Second); err != nil {
 		return fail()
 	}
-	return runtimeDNSProof{a.Entry.DeliveryID, a.Identity, binding, source, resolver, slot, index, before, a.Entry.Allocation.Namespace}, nil
+	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok {
+		return fail()
+	}
+	latest := c.dnsView.Load()
+	if latest == nil {
+		return fail()
+	}
+	// Benign table renewal can happen during the independent reads. Check the
+	// exact current published template too; changed target epochs remain refused.
+	if latest.guard.Digest != view.guard.Digest && !latest.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
+		return fail()
+	}
+	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok || ctx.Err() != nil {
+		return fail()
+	}
+	return runtimeDNSProof{DeliveryID: a.Entry.DeliveryID, Identity: a.Identity, Binding: binding, Source: source, Resolver: resolver, Slot: slot, InterfaceIndex: index, SourceInterfaceIndex: before, Namespace: a.Entry.Allocation.Namespace, epoch: owner.epoch, authority: a.Authority}, nil
 }
 
 func (c *RuntimeController) lockDNSController(ctx context.Context) bool {
@@ -276,15 +307,11 @@ func dnsResolverRouteMatches(raw []byte, wantInterface string, source, resolver 
 	return true
 }
 
-func (c *RuntimeController) resolverGuardPermits(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) bool {
-	if c.journal == nil || c.guard == nil || c.guard.reader == nil {
+func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) bool {
+	if v == nil || v.observer.guardReader == nil {
 		return false
 	}
-	templates, _, err := c.journal.guardTemplates()
-	if err != nil || len(templates) != 1 {
-		return false
-	}
-	g := templates[0]
+	g := v.guard
 	if g.Namespace != entry.Allocation.Namespace {
 		return false
 	}
@@ -337,5 +364,5 @@ func (c *RuntimeController) resolverGuardPermits(ctx context.Context, entry Runt
 	if len(required) != 0 {
 		return false
 	}
-	return c.guard.reader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
+	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
 }
