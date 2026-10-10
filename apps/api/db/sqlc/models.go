@@ -1480,15 +1480,15 @@ type IpsecAwsStaticConfig struct {
 }
 
 type IpsecAwsTunnelConfig struct {
-	TunnelID           uuid.UUID    `json:"tunnel_id"`
-	OrgID              uuid.UUID    `json:"org_id"`
-	ConnectionID       uuid.UUID    `json:"connection_id"`
-	Slot               int16        `json:"slot"`
-	GatewayNodeID      uuid.UUID    `json:"gateway_node_id"`
-	AwsOutsideIpv4     netip.Addr   `json:"aws_outside_ipv4"`
-	InsideCidr         netip.Prefix `json:"inside_cidr"`
-	CustomerInsideIpv4 netip.Addr   `json:"customer_inside_ipv4"`
-	AwsInsideIpv4      netip.Addr   `json:"aws_inside_ipv4"`
+	TunnelID           uuid.UUID     `json:"tunnel_id"`
+	OrgID              uuid.UUID     `json:"org_id"`
+	ConnectionID       uuid.UUID     `json:"connection_id"`
+	Slot               int16         `json:"slot"`
+	GatewayNodeID      uuid.UUID     `json:"gateway_node_id"`
+	AwsOutsideIpv4     netip.Addr    `json:"aws_outside_ipv4"`
+	InsideCidr         *netip.Prefix `json:"inside_cidr"`
+	CustomerInsideIpv4 *netip.Addr   `json:"customer_inside_ipv4"`
+	AwsInsideIpv4      *netip.Addr   `json:"aws_inside_ipv4"`
 }
 
 type IpsecBgpStatus struct {
@@ -1618,6 +1618,14 @@ type IpsecRuntimeState struct {
 	LastCleanedDeliveryRevision      *int64      `json:"last_cleaned_delivery_revision"`
 	CurrentCleanupID                 pgtype.UUID `json:"current_cleanup_id"`
 	AppliedRevision                  *int64      `json:"applied_revision"`
+}
+
+type IpsecStaticRecreation struct {
+	ConnectionID            uuid.UUID `json:"connection_id"`
+	OrgID                   uuid.UUID `json:"org_id"`
+	PredecessorConnectionID uuid.UUID `json:"predecessor_connection_id"`
+	CleanupDeliveryID       uuid.UUID `json:"cleanup_delivery_id"`
+	CreatedAt               time.Time `json:"created_at"`
 }
 
 type IpsecTunnel struct {
