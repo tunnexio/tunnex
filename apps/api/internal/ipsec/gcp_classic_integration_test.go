@@ -99,9 +99,43 @@ func TestGCPClassicSingleActualTunnelLifecycle(t *testing.T) {
 	}
 	req.ID = uuid.New()
 	req.TunnelIDs[0] = uuid.New()
+	// Model missing/string-valued retained-guard authority explicitly. These
+	// refusal cases qualify the gate; they do not explain an earlier intermittent refusal.
+	for _, update := range []string{
+		`UPDATE nodes SET capabilities=capabilities-'ipsec_retained_guard_version' WHERE id=$1`,
+		`UPDATE nodes SET capabilities=capabilities||'{"ipsec_retained_guard_version":"1"}'::jsonb WHERE id=$1`,
+	} {
+		if _, err = p.Exec(ctx, update, identity.GatewayID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = store.CreateProviderDisabled(ctx, org, actor, sealer, req); !errors.Is(err, ipsec.ErrConnectionIneligible) {
+			t.Fatal("unqualified Classic recreation accepted", err)
+		}
+		var unchanged bool
+		if err = p.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM ipsec_connections WHERE id=$1) AND EXISTS(SELECT 1 FROM ipsec_retained_guards WHERE connection_id=$2 AND cleanup_delivery_id=$3)`, req.ID, c.ID, cleanup.ID).Scan(&unchanged); err != nil || !unchanged {
+			t.Fatal("recreation refusal changed retained ownership", err)
+		}
+	}
+	if _, err = p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities||'{"ipsec_retained_guard_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, identity.GatewayID); err != nil {
+		t.Fatal(err)
+	}
 	recreated, err := store.CreateProviderDisabled(ctx, org, actor, sealer, req)
 	if err != nil {
 		t.Fatal("Classic disabled recreate", err)
+	}
+	if _, err = p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities-'ipsec_retained_guard_version' WHERE id=$1`, identity.GatewayID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.SetIntent(ctx, org, actor, recreated.ID, recreated.DesiredRevision, "enabled"); !errors.Is(err, ipsec.ErrConnectionIneligible) {
+		t.Fatal("revoked retained authority activated", err)
+	}
+	var refused bool
+	if err = p.QueryRow(ctx, `SELECT desired_intent='disabled' AND desired_revision=1 AND NOT EXISTS(SELECT 1 FROM ipsec_runtime_deliveries WHERE connection_id=$1) FROM ipsec_connections WHERE id=$1`, recreated.ID).Scan(&refused); err != nil || !refused {
+		t.Fatal("retained authority refusal exposed intent/material", err)
+	}
+	// A new qualified observation restores authority; no failed operation is retried blindly.
+	if _, err = p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities||'{"ipsec_retained_guard_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, identity.GatewayID); err != nil {
+		t.Fatal(err)
 	}
 	recreated, err = store.SetIntent(ctx, org, actor, recreated.ID, recreated.DesiredRevision, "enabled")
 	if err != nil {
