@@ -184,8 +184,12 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 		return nil, errResolverConfig
 	}
 	// Each endpoint remains independently authoritative. Bound concurrency to
-	// four complete endpoint workflows; record types and CNAME steps within a
+	// at most four complete endpoint workflows; record types and CNAME steps within a
 	// workflow remain sequential and every exchange retains its native proofs.
+	// Declared IPsec profiles use two bounded waves, reducing simultaneous
+	// native observations for small profiles while retaining four workers for
+	// eight endpoints. Plain resolver scheduling is unchanged; no proof caching
+	// or deadline extension is introduced.
 	config.Endpoints = append([]ResolverEndpoint(nil), config.Endpoints...)
 	types = append([]RecordType(nil), types...)
 	if config.IPsecPath != nil {
@@ -203,7 +207,11 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 	}
 	close(jobs)
 	var workers sync.WaitGroup
-	for range min(4, len(config.Endpoints)) {
+	workerCount := min(4, len(config.Endpoints))
+	if config.IPsecPath != nil {
+		workerCount = min(4, (len(config.Endpoints)+1)/2)
+	}
+	for range workerCount {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
