@@ -1,0 +1,3 @@
+{"action": "disable", "apply": false, "expected_revision": 2, "external_native_gates_required": true, "started": true}
+{"baseline_preserved": true, "cleanup_state": "not_required", "configuration_revision": 1, "current_intent": "enabled", "current_revision": 2}
+{"completed": true, "mutations": 0}
