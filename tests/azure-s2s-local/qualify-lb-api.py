@@ -12,6 +12,9 @@ import uuid
 spec = importlib.util.spec_from_file_location('azure_enrollment', Path(__file__).with_name('enroll-local.py'))
 lab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lab)
+time_spec = importlib.util.spec_from_file_location('azure_lb_lifecycle', Path(__file__).with_name('lifecycle-live.py'))
+life = importlib.util.module_from_spec(time_spec)
+time_spec.loader.exec_module(life)
 STAGE = 'inputs'
 
 def saved_resource(client, path, ident):
@@ -100,8 +103,8 @@ def fqdn_detail_projection(detail, setup, state, binding, now):
         raise lab.LabError('Active generation profile provenance changed')
     if not isinstance(detail.get('fresh_until_at'), str) or not isinstance(detail.get('observed_at'), str):
         raise lab.LabError('Actual generation timestamps required')
-    fresh = datetime.fromisoformat(detail['fresh_until_at'].replace('Z', '+00:00'))
-    observed = datetime.fromisoformat(detail['observed_at'].replace('Z', '+00:00'))
+    fresh = datetime.fromisoformat(life.timestamp(detail['fresh_until_at']))
+    observed = datetime.fromisoformat(life.timestamp(detail['observed_at']))
     if fresh.tzinfo is None or observed.tzinfo is None or observed > now or fresh <= now:
         raise lab.LabError('Fresh actual generation required')
     value.update(ready=True, generation=generation, active_answer_addresses=['10.231.1.10'], observed_at=observed.isoformat(), fresh_until_at=fresh.isoformat())

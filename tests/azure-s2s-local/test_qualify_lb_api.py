@@ -27,6 +27,21 @@ class LBAPIScopeTests(unittest.TestCase):
         projected = probe.fqdn_detail_projection(detail, setup, state, binding, now)
         self.assertTrue(projected['ready']); self.assertEqual(projected['generation'], 2)
         self.assertNotIn('PRIVATE', str(projected))
+        # The actual Ubuntu Python rejected Go's five-digit fraction. Exercise
+        # that parser restriction without requiring a second local interpreter.
+        class OlderDatetime(datetime):
+            @classmethod
+            def fromisoformat(cls, value):
+                fraction = probe.re.search(r'\.(\d+)', value)
+                if fraction and len(fraction[1]) not in (3, 6):
+                    raise ValueError('older Python fraction restriction')
+                return datetime.fromisoformat(value)
+        with patch.object(probe, 'datetime', OlderDatetime):
+            clock = datetime(2026, 10, 10, 20, 9, 48, tzinfo=timezone.utc)
+            for digits in ('2', '22', '2221', '22215', '2221507', '22215078', '222150789'):
+                actual = {**detail, 'observed_at': '2026-10-10T20:09:47.' + digits + '+00:00',
+                          'fresh_until_at': '2026-10-10T20:10:19.' + digits + 'Z'}
+                self.assertTrue(probe.fqdn_detail_projection(actual, setup, state, binding, clock)['ready'])
         for change in ({'active_answer_addresses': ['8.8.8.8']}, {'fresh_until_at': (now - timedelta(seconds=1)).isoformat()}, {'resource': {**resource, 'resolver_profile_selection': {**resource['resolver_profile_selection'], 'id': 'other'}}}):
             with self.assertRaises(probe.lab.LabError):
                 probe.fqdn_detail_projection({**detail, **change}, setup, state, binding, now)
