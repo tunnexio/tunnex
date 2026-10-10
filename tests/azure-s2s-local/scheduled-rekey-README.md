@@ -177,3 +177,12 @@ or `/run/tunnex-ipsec/azure-scheduler-<canonical UUIDv4>.test`. The helper hash 
 path remain pinned in the private manifest/watchdog. This allows a fresh reviewed
 helper to coexist with the current semantic helper and old attempts; it authorizes
 no binary replacement or active watchdog identity rewrite.
+
+Native fixed control requests bind the host boot ID and original CLOCK_MONOTONIC
+watchdog ceiling privately. The helper requires the same boot and zero time
+namespace offsets, then uses at most 30 seconds or the remaining original
+420-second attempt budget. Missing, malformed or expired ceilings refuse before
+dispatch. This bounds cooperative native requests; it does not promise that a
+Python subprocess timeout kills a Docker-exec helper. Once the hard ceiling
+expires, production restoration may remain unverified and require normal API
+recovery. Watchdog rollback is not guaranteed. No automatic retry is authorized.

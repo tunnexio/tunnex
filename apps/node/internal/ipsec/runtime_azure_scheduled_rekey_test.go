@@ -374,3 +374,37 @@ func TestAzureSchedulerControlBudgetAndJournalStages(t *testing.T) {
 		}
 	}
 }
+
+func azureSchedulerClockBinding(expected, actual, offsets string) bool {
+	if _, err := uuid.Parse(expected); err != nil || expected != actual {
+		return false
+	}
+	lines := strings.Split(strings.TrimSpace(offsets), "\n")
+	if len(lines) != 2 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, line := range lines {
+		f := strings.Fields(line)
+		if len(f) != 3 || (f[0] != "monotonic" && f[0] != "boottime") || seen[f[0]] || f[1] != "0" || f[2] != "0" {
+			return false
+		}
+		seen[f[0]] = true
+	}
+	return true
+}
+func TestAzureSchedulerClockBinding(t *testing.T) {
+	boot := "66142c80-1111-4111-8111-111111111111"
+	offsets := "monotonic 0 0\nboottime 0 0\n"
+	if !azureSchedulerClockBinding(boot, boot, offsets) {
+		t.Fatal("same boot zero offsets refused")
+	}
+	for _, bad := range []string{"", "monotonic 1 0\nboottime 0 0", "monotonic 0 1\nboottime 0 0", "monotonic 0 0\nmonotonic 0 0"} {
+		if azureSchedulerClockBinding(boot, boot, bad) {
+			t.Fatal("unbound clock accepted")
+		}
+	}
+	if azureSchedulerClockBinding(boot, uuid.NewString(), offsets) || azureSchedulerClockBinding("invalid", "invalid", offsets) {
+		t.Fatal("different boot accepted")
+	}
+}

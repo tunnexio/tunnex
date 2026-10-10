@@ -136,7 +136,7 @@ def native_control_ceiling(m):
 def owned_control(m,action,slot=0):
  native=m['native'];authority=m['authority']
  binding={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
- request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot,'WatchdogMonotonicDeadlineNS':native_control_ceiling(m)}
+ request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot,'WatchdogMonotonicDeadlineNS':native_control_ceiling(m),'BootID':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
  path='/run/tunnex-ipsec/azure-scheduler-request-'+str(uuid.uuid4())+'.json'
  # Input remains root-owned 0600 inside the owned container. Neither stdout nor
  # argv carries request material. No arbitrary config or command is passed.

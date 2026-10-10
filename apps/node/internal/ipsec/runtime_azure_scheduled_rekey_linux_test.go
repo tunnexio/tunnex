@@ -254,6 +254,7 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		CharonSHA, CharonStart, NodeSHA, ConfigSHA, Action, Mode string
 		Slot                                                     int
 		WatchdogMonotonicDeadlineNS                              int64
+		BootID                                                   string
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -262,6 +263,12 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		return
 	}
 	stage = "request-ceiling"
+	boot, bootErr := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	offsets, offsetsErr := os.ReadFile("/proc/self/timens_offsets")
+	if bootErr != nil || offsetsErr != nil || !azureSchedulerClockBinding(request.BootID, strings.TrimSpace(string(boot)), string(offsets)) {
+		fail()
+		return
+	}
 	var clock unix.Timespec
 	if unix.ClockGettime(unix.CLOCK_MONOTONIC, &clock) != nil {
 		fail()
