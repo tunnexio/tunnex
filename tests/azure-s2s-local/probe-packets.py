@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded actual-packet observation, run by root inside the owned client namespace."""
 import argparse
+import errno
 from datetime import datetime, timezone
 import http.client
 import ipaddress
@@ -21,6 +22,22 @@ def udp_payload(size,nonce):
  if size not in (64,1200,1362,2000,4096) or len(prefix)>size:raise ValueError('Bounded UDP payload required')
  padding=(b'0123456789abcdef'*((size+15)//16))[:size-len(prefix)]
  return prefix+padding
+
+def udp_echo(connection,payload):
+ # Only fixed categories and explicitly allowed errno values enter receipts.
+ stage='send'
+ try:
+  sent=connection.send(payload)
+  stage='receive'
+  answer=connection.recv(4097)
+  return {'success':answer==payload,'sent_bytes':sent,'echo_bytes':len(answer),'echo_exact_match':answer==payload,'local_port':connection.getsockname()[1]}
+ except OSError as error:
+  result={'success':False,'udp_error_stage':stage,'error_code':'udp_socket_error'}
+  if isinstance(error,TimeoutError):result['error_code']='udp_timeout'
+  elif error.errno==errno.EMSGSIZE:result.update(error_code='udp_message_too_large',socket_errno=errno.EMSGSIZE)
+  elif error.errno in (errno.ECONNREFUSED,errno.ENETUNREACH,errno.EHOSTUNREACH):result['socket_errno']=error.errno
+  if stage=='receive':result['sent_bytes']=sent
+  return result
 
 def stamp():return datetime.now(timezone.utc).isoformat()
 def receipt(path,value):
@@ -117,8 +134,7 @@ def main():
  def new_udp():
   connection=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);connection.settimeout(a.timeout);connection.bind((a.source,0));connection.connect((target,udp_port));return connection
  def echo(connection):
-  payload=udp_payload(a.udp_bytes,time.monotonic_ns());connection.send(payload);answer=connection.recv(4097)
-  return {'success':answer==payload,'sent_bytes':len(payload),'echo_bytes':len(answer),'echo_exact_match':answer==payload,'local_port':connection.getsockname()[1]}
+  return udp_echo(connection,udp_payload(a.udp_bytes,time.monotonic_ns()))
  def fresh_udp():
   connection=new_udp()
   try:return echo(connection)
