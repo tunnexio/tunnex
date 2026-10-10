@@ -6,7 +6,9 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -38,8 +40,10 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 					defer expired()
 				}
 				var order []string
+				var orderMu sync.Mutex
+				record := func(v string) { orderMu.Lock(); order = append(order, v); orderMu.Unlock() }
 				inspector := &runtimeEnvironmentInspector{nftPath: "/qualified/nft", namespace: func() (string, error) { return e.Allocation.Namespace, nil }, nft: func(context.Context, ...string) ([]byte, error) {
-					order = append(order, "nft")
+					record("nft")
 					if kind == "nft_error" {
 						return nil, errors.New("private")
 					}
@@ -49,7 +53,7 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 					return nft, nil
 				}, ip: func(_ context.Context, args ...string) ([]byte, error) {
 					command := strings.Join(args, " ")
-					order = append(order, command)
+					record(command)
 					switch command {
 					case "-j -4 rule show":
 						return []byte(`[{"priority":0,"src":"all","table":"local"},{"priority":32766,"src":"all","table":"main"},{"priority":32767,"src":"all","table":"default"}]`), nil
@@ -64,7 +68,7 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 					}
 				}}
 				hook := func(ctx context.Context, _ string, args ...string) ([]byte, error) {
-					order = append(order, "hook "+strings.Join(args, " "))
+					record("hook " + strings.Join(args, " "))
 					if ctx.Err() != nil {
 						return nil, ctx.Err()
 					}
@@ -84,10 +88,36 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 					observe = func(v runtimeEnvironmentTiming) { calls++; measured = v }
 				}
 				got, err := inspector.observeWithCommands(ctx, e.Allocation, e.Engines, observe, hook)
+				if kind == "success" {
+					nftPhase := 0
+					for _, command := range order {
+						switch command {
+						case "nft":
+							if nftPhase%3 != 0 {
+								t.Fatal("nft snapshots overlapped")
+							}
+							nftPhase++
+						case "hook -V":
+							if nftPhase%3 != 1 {
+								t.Fatal("version read out of order")
+							}
+							nftPhase++
+						case "hook -t nat":
+							if nftPhase%3 != 2 {
+								t.Fatal("NAT read out of order")
+							}
+							nftPhase++
+						}
+					}
+					if nftPhase != 6 {
+						t.Fatal("missing census reads")
+					}
+				}
+				sort.Strings(order)
 				if !enabled {
 					before, beforeErr, beforeOrder = got, err, order
 				} else {
-					if !reflect.DeepEqual(got, before) || !errors.Is(err, beforeErr) || !reflect.DeepEqual(order, beforeOrder) {
+					if !reflect.DeepEqual(got, before) || !errors.Is(err, beforeErr) || (kind == "success" && !reflect.DeepEqual(order, beforeOrder)) {
 						t.Fatal("timing changed result/error/order")
 					}
 					if calls != 1 || measured.CommandCount != len(order) || measured.CommandMillis < 0 || measured.VerificationMillis < 0 {
@@ -96,6 +126,7 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 				}
 				if kind == "success" {
 					expected := []string{"nft", "hook -V", "hook -t nat", "-j -4 rule show", "-j -d link show", "-j -4 route show table main", "-j -4 address show", "-j -4 route get " + e.Engines[0].RemoteAddress.String(), "-j -4 route get " + e.Engines[1].RemoteAddress.String(), "-j -d link show", "-j -4 rule show", "nft", "hook -V", "hook -t nat", "-j -4 route show table main", "-j -4 address show", "-j -4 route get " + e.Engines[0].RemoteAddress.String(), "-j -4 route get " + e.Engines[1].RemoteAddress.String()}
+					sort.Strings(expected)
 					if err != nil || !reflect.DeepEqual(order, expected) {
 						t.Fatal("full eighteen-command bracket failed", err, order)
 					}
