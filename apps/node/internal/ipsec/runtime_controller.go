@@ -434,7 +434,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			}
 		}
 	}
-	// Both tunnel observations are required; selection remains explicit slot 1.
+	// Every active tunnel must be independently observed; static selection is slot 1.
 	if e = c.proveCurrent(ctx, entries[pos], env); e != nil {
 		delete(c.active, entry.Allocation.ConnectionID)
 		_ = c.installActive(ctx, entries)

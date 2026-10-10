@@ -3,8 +3,10 @@
 package ipsec
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -42,6 +44,32 @@ func TestClassicKernelNativeSingleTunnelLifecycle(t *testing.T) {
 	if err != nil || again != owned {
 		t.Fatal("reapply drift", err)
 	}
+
+	// Exercise the same single-interface spoof/grant/MSS renderer against actual
+	// nftables and strict independent readback before removing owned links.
+	guard := GuardConnection{TunnelCount: 1, ID: p.ConnectionID, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, Tunnels: owned, LocalIngressIndices: []int{1}, PermittedInterfaceIndices: []int{owned[0].InterfaceIndex}, ReplyIngressIndices: []int{owned[0].InterfaceIndex}, PermitFor: 30 * time.Second, TunnelMTUs: []GuardTunnelMTU{{InterfaceIndex: owned[0].InterfaceIndex, MTU: 1382}}, EncryptedEgress: []GuardEncryptedEgress{{TunnelInterfaceIndex: owned[0].InterfaceIndex, ReqID: e.Engines[0].ReqID, Peer: e.Engines[0].RemoteAddress, UnderlayInterfaceIndex: 1}}, Grants: []GuardGrant{{Source: e.Engines[0].LocalPrefixes[0], Destination: e.Engines[0].RemotePrefixes[0], Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}}
+	reader, err := NewGuardReader("/usr/sbin/nft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyGuard := func(g GuardConnection, revision int64) {
+		t.Helper()
+		manifest, err := RenderGuard(GuardIntent{Namespace: p.Namespace, OwnerID: e.Engines[0].Binding.GatewayID, Revision: revision, Connections: []GuardConnection{g}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		command := exec.CommandContext(ctx, "/usr/sbin/nft", "-j", "-f", "-")
+		command.Stdin = bytes.NewBufferString(manifest.NFTJSON)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("native single guard: %v %s", err, output)
+		}
+		if err = reader.Check(ctx, manifest); err != nil {
+			t.Fatal("native single guard readback", err)
+		}
+	}
+	applyGuard(guard, 1)
+	applyGuard(GuardConnection{ID: p.ConnectionID, PrefixOnly: true, Local: guard.Local, Remote: guard.Remote}, 2)
+
 	absent, err := a.Remove(ctx, p, owned)
 	if err != nil || absent.TunnelIDs[1] != ([16]byte{}) {
 		t.Fatal("single cleanup", err)

@@ -148,7 +148,15 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 			if c.activeTunnelCount() == 2 {
 				indices = append(indices, c.Tunnels[1].InterfaceIndex)
 			}
-			line := guardRule{text: fmt.Sprintf("    ip saddr %s meta iif != %s counter drop\n", p, indexSet(indices)), expr: []any{guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(p)), guardMatch("!=", guardMeta("iif"), map[string]any{"set": indices}), guardCounter(), guardVerdict("drop")}}
+			// nft canonicalizes a one-member anonymous interface set to a
+			// scalar. Render its exact native form; keep strict readback.
+			var right any = map[string]any{"set": indices}
+			text := indexSet(indices)
+			if len(indices) == 1 {
+				right = indices[0]
+				text = fmt.Sprint(indices[0])
+			}
+			line := guardRule{text: fmt.Sprintf("    ip saddr %s meta iif != %s counter drop\n", p, text), expr: []any{guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(p)), guardMatch("!=", guardMeta("iif"), right), guardCounter(), guardVerdict("drop")}}
 			forward.add(line)
 			input.add(line)
 		}
