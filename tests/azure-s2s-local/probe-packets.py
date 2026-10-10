@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 import http.client
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,28 @@ def receipt(path,value):
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
  with os.fdopen(fd,'w') as out:json.dump(value,out,indent=2)
  path.chmod(0o600)
+
+def observed_http_identity(body, expected_source):
+ result={'owned_service_confirmed':False,'source_preservation':'diagnostic_unknown'}
+ try:
+  if len(body)>16384: return result
+  value=json.loads(body)
+  if not isinstance(value,dict) or value.get('service')!='azure-s2s-owned-app':return result
+  result['owned_service_confirmed']=True
+  raw=value.get('client_ip')
+  if not isinstance(raw,str):return result
+  address=ipaddress.ip_address(raw)
+  if address.version!=4 or str(address)!=raw:return result
+  # The response is untrusted: retain only bounded owned/LAN/Docker addresses.
+  if address in ipaddress.ip_network('10.233.10.0/24'):
+   result['server_observed_client_ip']=raw
+   result['source_preservation']='preserved' if raw==expected_source else 'owned_lan_source_mismatch'
+  elif raw=='10.232.1.4' or address in ipaddress.ip_network('172.16.0.0/12'):
+   result['server_observed_client_ip']=raw
+   result['source_preservation']='nat_source_mismatch'
+  else:result['source_preservation']='unrecognized_source_mismatch'
+ except (ValueError,UnicodeError):pass
+ return result
 
 def main():
  p=argparse.ArgumentParser(description=__doc__)
@@ -55,8 +78,9 @@ def main():
  def request(connection):
   connection.request('GET','/',headers={'Connection':'keep-alive'})
   local_port=connection.sock.getsockname()[1] if connection.sock else None
-  response=connection.getresponse();status=response.status;version=response.version;will_close=response.will_close;response.read(65536)
-  return {'success':200<=status<400,'http_status':status,'http_version':version,'local_port':local_port,'server_closes_connection':will_close}
+  response=connection.getresponse();status=response.status;version=response.version;will_close=response.will_close;body=response.read(16385)
+  identity=observed_http_identity(body,a.source)
+  return {**identity,'success':200<=status<400 and identity['owned_service_confirmed'] and identity['source_preservation']=='preserved','http_response_success':200<=status<400,'http_status':status,'http_version':version,'local_port':local_port,'server_closes_connection':will_close}
  def fresh_tcp():
   connection=new_tcp()
   try:return request(connection)
