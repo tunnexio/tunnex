@@ -412,3 +412,35 @@ func BenchmarkRuntimeCensusFreshSnapshot(b *testing.B) {
 		}
 	})
 }
+
+func TestRuntimeCensusEscapedFilteredSizeBoundary(t *testing.T) {
+	raw, e := os.ReadFile("testdata/runtime-docker-dns-nft.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	listing, e := os.ReadFile("testdata/runtime-docker-dns-save.txt")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var doc map[string][]map[string]any
+	if json.Unmarshal(raw, &doc) != nil {
+		t.Fatal("fixture")
+	}
+	doc["nftables"] = append(doc["nftables"], map[string]any{"table": map[string]any{"family": "inet", "name": "tunnex_ipsec", "comment": strings.Repeat("<", 200000)}})
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if encoder.Encode(doc) != nil {
+		t.Fatal("encode")
+	}
+	data := encoded.Bytes()
+	if len(data) >= kernelOutputLimit {
+		t.Fatal("raw must fit")
+	}
+	if frozenRuntimeDockerDNSCensus(data, listing, nil) {
+		t.Fatal("old filtered size bound must refuse")
+	}
+	if runtimeDockerDNSCensus(data, listing, nil) {
+		t.Fatal("escaped filtered size bound lost")
+	}
+}

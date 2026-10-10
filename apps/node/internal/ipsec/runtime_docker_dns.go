@@ -295,5 +295,7 @@ func runtimeDockerDNSCensusRows(rows []map[string]json.RawMessage, listing []byt
 	if tables != 1 || len(chains) != 4 || len(rules) != 6 {
 		return false
 	}
-	return runtimeHookCensusRows(remaining, protected)
+	// Preserve the old serialized snapshot limit, including HTML escaping.
+	filtered, err := json.Marshal(map[string]any{"nftables": remaining})
+	return err == nil && len(filtered) <= kernelOutputLimit && runtimeHookCensusRows(remaining, protected)
 }
