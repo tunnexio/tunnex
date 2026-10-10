@@ -10800,6 +10800,11 @@ export interface components {
             cloud_inside_address: string;
         };
         IPsecConfigurationCheckInput: {
+            /**
+             * @description Omit for legacy AWS mode selection. GCP profiles require explicit selection.
+             * @enum {string}
+             */
+            profile_id?: "aws-static-ipv4-v1" | "aws-bgp-ipv4-v1" | "gcp-ha-bgp-ipv4-v1" | "gcp-classic-static-ipv4-v1";
             /** @enum {string} */
             mode: "ipv4-static" | "ipv4-bgp";
             bgp?: components["schemas"]["IPsecBGPConfiguration"];

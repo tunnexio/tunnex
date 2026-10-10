@@ -12366,6 +12366,7 @@ components:
       additionalProperties: false
       required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
       properties:
+        profile_id: { type: string, enum: [aws-static-ipv4-v1, aws-bgp-ipv4-v1, gcp-ha-bgp-ipv4-v1, gcp-classic-static-ipv4-v1], description: "Omit for legacy AWS mode selection. GCP profiles require explicit selection." }
         mode: { type: string, enum: [ipv4-static, ipv4-bgp] }
         bgp: { $ref: "#/components/schemas/IPsecBGPConfiguration" }
         customer_outside_address: { type: string, minLength: 1, maxLength: 15 }

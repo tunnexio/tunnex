@@ -12,6 +12,7 @@ type BGPConfig struct {
 }
 
 type StaticConfig struct {
+	ProfileID              string         `json:"profile_id,omitempty"`
 	BGP                    *BGPConfig     `json:"bgp,omitempty"`
 	Mode                   string         `json:"mode"`
 	CustomerOutsideAddress string         `json:"customer_outside_address"`
@@ -235,6 +236,9 @@ func privateBGPASN(a uint32) bool {
 	return a >= 64512 && a <= 65534 || a >= 4200000000 && a <= 4294967294
 }
 func providerProfile(c StaticConfig) string {
+	if c.ProfileID != "" {
+		return c.ProfileID
+	}
 	if c.Mode == "ipv4-bgp" {
 		return "aws-bgp-ipv4-v1"
 	}

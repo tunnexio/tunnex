@@ -29,7 +29,10 @@ type ProviderConfiguration struct {
 }
 
 func (s *ConnectionStore) CreateProviderDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateProviderRequest) (Connection, error) {
-	if ValidateAWSConfig(r.Config) != nil {
+	if r.Config.ProfileID == GCPHAProfile || r.Config.ProfileID == GCPClassicProfile {
+		return Connection{}, ErrConnectionIneligible
+	}
+	if ValidateProviderConfig(r.Config) != nil {
 		return Connection{}, ErrConnectionInvalid
 	}
 	identity := CreateDisabledRequest{ID: r.ID, SiteID: r.SiteID, GatewayID: r.GatewayID, Name: r.Name}

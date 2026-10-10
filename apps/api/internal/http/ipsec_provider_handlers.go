@@ -33,7 +33,7 @@ func (s apiServer) CreateIPsecProviderConnection(ctx context.Context, req api.Cr
 	if err != nil {
 		return nil, err
 	}
-	if err = ipsec.ValidateAWSConfig(cfg); err != nil {
+	if err = ipsec.ValidateProviderConfig(cfg); err != nil {
 		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
 	}
 	if s.ipsecProviders == nil || s.ipsecSealer == nil {
