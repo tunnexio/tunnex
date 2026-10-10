@@ -225,7 +225,7 @@ func TestDNSOwnerViewGCPNative(t *testing.T) {
 	}
 	// Keep the captured original accepted authority live: denial must come from
 	// cleanup/epoch withdrawal, not merely an expired synthetic fixture lease.
-	if _, err = proof.authority.RemainingForApply(proof.Identity, time.Second); err != nil {
+	if _, err = proof.authority.RemainingForApply(proof.Identity, time.Second); err != nil || ctx.Err() != nil {
 		t.Fatal("original native lease expired before cleanup exchange check")
 	}
 	transport := &DNSRuntimeTransport{}
@@ -235,7 +235,7 @@ func TestDNSOwnerViewGCPNative(t *testing.T) {
 		endpoint.Transport = protocol
 		config.Endpoints = []fqdnrpc.ResolverEndpoint{endpoint}
 		response, exchangeErr := transport.ExchangeDNS(ctx, config, endpoint, query)
-		if exchangeErr == nil || len(response) != 0 {
+		if exchangeErr == nil || len(response) != 0 || ctx.Err() != nil {
 			t.Fatal("cleaned native epoch accepted normal DNS exchange", protocol)
 		}
 	}
