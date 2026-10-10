@@ -97,7 +97,7 @@ def configuration(psk):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=['plan', 'create', 'enable', 'status'])
+    parser.add_argument('phase', choices=['plan', 'create', 'resume-create', 'enable', 'status'])
     parser.add_argument('--private-root', required=True)
     parser.add_argument('--psk-file')
     parser.add_argument('--application-address')
@@ -139,7 +139,7 @@ def main():
         uuid.UUID(setup[key])
     prefix = '/api/v1/organizations/' + setup['org_id'] + '/ipsec'
     state_path = root + '/azure-live-activation.json'
-    if args.phase == 'create':
+    if args.phase in ['create', 'resume-create']:
         if not args.psk_file:
             raise ValueError('create requires a private PSK file')
         stage('private_psk')
@@ -150,11 +150,25 @@ def main():
         stage('configuration_check')
         client.call('POST', prefix + '/configuration-check', config)
         stage('allocated_state_guard')
-        if os.path.exists(state_path):
-            raise ValueError('activation state already exists; inspect status before retrying')
-        state = {'id': str(uuid.uuid4()), 'tunnel_ids': [str(uuid.uuid4()), str(uuid.uuid4())]}
-        stage('allocated_state_write')
-        private_write(state_path, state)
+        if args.phase == 'resume-create':
+            state = json.loads(private_read(state_path))
+            state = {'id': str(uuid.UUID(state['id'])), 'tunnel_ids': [str(uuid.UUID(v)) for v in state['tunnel_ids']]}
+            if len(state['tunnel_ids']) != 2 or len(set([state['id']] + state['tunnel_ids'])) != 3:
+                raise ValueError('invalid allocated IDs')
+            stage('resume_connection_absence_check')
+            try:
+                client.call('GET', prefix + '/connections/' + state['id'])
+            except APIError as error:
+                if error.status != 404:
+                    raise
+            else:
+                raise ValueError('connection already exists; use status')
+        else:
+            if os.path.exists(state_path):
+                raise ValueError('activation state already exists; inspect status before retrying')
+            state = {'id': str(uuid.uuid4()), 'tunnel_ids': [str(uuid.uuid4()), str(uuid.uuid4())]}
+            stage('allocated_state_write')
+            private_write(state_path, state)
         stage('connection_create')
         client.call('POST', prefix + '/connections', dict(state, name='Azure owned live active-active BGP',
                     site_id=setup['site_id'], gateway_node_id=setup['gateway_id'], configuration=config))
