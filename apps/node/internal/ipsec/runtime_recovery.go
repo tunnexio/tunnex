@@ -75,6 +75,28 @@ func (c *RuntimeController) recoveryLease(ctx context.Context, e RuntimeJournalE
 
 // applyRecovery executes only authenticated versioned material, serialized by
 // Apply. No saved transition, observation or process cache can restore a lease.
+// recoveryUnchangedActive can retain only the original, unextended authority.
+// A complete owned-table read requires this exact target's members to be live;
+// the final ordinary Apply still obtains a new nonce and rebuilds the full guard.
+func (c *RuntimeController) recoveryUnchangedActive(ctx context.Context, entry RuntimeJournalEntry, env RuntimeEnvironment, policyHash string, grants []GuardGrant) bool {
+	old, ok := c.active[entry.Allocation.ConnectionID]
+	prepared, known := c.recoveryPrepared[entry.DeliveryID]
+	identity := PermitLeaseIdentity{DeliveryID: entry.DeliveryID, Binding: entry.Engines[0].Binding, PolicyHash: policyHash}
+	if !ok || !known || !validJournalRecovery(entry) || old.Delivery.ID != entry.DeliveryID || old.Delivery.OwnershipDigest != entry.OwnershipDigest || !reflect.DeepEqual(prepared, env) || entry.Phase != RuntimeApplied || entry.ContractVersion != 2 || entry.Recovery == nil || entry.Recovery.Stage != "completed" || entry.Recovery.SelectedSlot < 1 || entry.Recovery.SelectedSlot > 2 || old.Authority == nil || old.Identity != identity || !reflect.DeepEqual(old.Entry, entry) || !reflect.DeepEqual(old.Environment, env) || !reflect.DeepEqual(old.Grants, grants) || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+		return false
+	}
+	if _, err := old.Authority.RemainingForApply(identity, 5*time.Second); err != nil {
+		return false
+	}
+	proofCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if c.proveCurrent(proofCtx, entry, env) != nil || c.recoveryGuardPermitCheck(proofCtx, entry) != nil || proofCtx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+		return false
+	}
+	_, err := old.Authority.RemainingForApply(identity, 5*time.Second)
+	return err == nil
+}
+
 func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (RuntimeAcknowledgement, error) {
 	entry := entries[pos]
 	metricSequence := uint64(0)
@@ -179,7 +201,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		c.recoveryPrepared[entry.DeliveryID] = env
 	}
 	// Revalidate old permits before potentially slow CP or daemon observations.
-	if !c.recoveryGuardDenied(ctx, entry) && c.installActive(ctx, entries) != nil {
+	if !c.recoveryUnchangedActive(ctx, entry, env, m.Policy.Hash, grants) && !c.recoveryGuardDenied(ctx, entry) && c.installActive(ctx, entries) != nil {
 		// A global assembly refusal must keep traffic denied, but must not
 		// starve this independently denied target's recovery observations.
 		if !c.recoveryGuardDenied(ctx, entry) {

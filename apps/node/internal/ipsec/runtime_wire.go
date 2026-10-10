@@ -168,3 +168,10 @@ type RuntimeStatusReport struct {
 	ConfigurationRevision int64                  `json:"configuration_revision"`
 	Tunnels               [2]RuntimeTunnelStatus `json:"tunnels"`
 }
+
+// RuntimeMaintenanceResult can acknowledge only an exact previously applied
+// delivery after fresh native proof and a committed replacement lease.
+type RuntimeMaintenanceResult struct {
+	Acknowledgement RuntimeAcknowledgement
+	Report          RuntimeStatusReport
+}

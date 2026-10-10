@@ -565,6 +565,9 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	if err != nil || c.installActive(ctx, entries) != nil {
 		return fail()
 	}
+	if c.rememberAppliedBGPDelivery(ctx, m.RuntimeDelivery, m.Policy.Hash, c.bgpQualificationCurrent) != nil {
+		return fail()
+	}
 	currentEntries, retryErr := c.journal.Entries()
 	if retryErr == nil {
 		for _, current := range currentEntries {
@@ -701,4 +704,35 @@ func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e Ru
 	// Both complete absence and exact surviving checkpointed links require fresh
 	// daemon staging. A crash after Observed Save cannot turn Applied into proof.
 	return true, missing, nil
+}
+
+// rememberAppliedBGPDelivery records only secret-free normal material after the
+// successful ordinary BGP guard commit. It never grants or extends authority.
+func (c *RuntimeController) rememberAppliedBGPDelivery(ctx context.Context, delivery RuntimeDelivery, hash string, bgpCurrent func() bool) error {
+	a, ok := c.active[delivery.Manifest.ConnectionID]
+	if !ok || !runtimeDeliveryValid(delivery, c.config.OrgID, c.config.GatewayID, "apply") || ctx.Err() != nil || delivery.Kind != "apply" || a.Entry.Phase != RuntimeApplied || a.Entry.ContractVersion != 3 || a.Entry.DeliveryID != delivery.ID || a.Entry.OwnershipDigest != delivery.OwnershipDigest || a.Identity != (PermitLeaseIdentity{DeliveryID: delivery.ID, Binding: a.Entry.Engines[0].Binding, PolicyHash: hash}) || a.Entry.Engines[0].Binding.DesiredRevision != delivery.DesiredRevision || a.Entry.Engines[0].Binding.ConfigurationRevision != delivery.Manifest.ConfigurationRevision || bgpCurrent == nil || !bgpCurrent() {
+		return ErrRuntimeController
+	}
+	entries, err := c.journal.Entries()
+	if err != nil {
+		return ErrRuntimeController
+	}
+	found := false
+	for _, e := range entries {
+		if e.DeliveryID == delivery.ID {
+			if found || !reflect.DeepEqual(e, a.Entry) {
+				return ErrRuntimeController
+			}
+			found = true
+		}
+	}
+	if !found {
+		return ErrRuntimeController
+	}
+	if _, err = a.Authority.RemainingForApply(a.Identity, time.Millisecond); err != nil {
+		return ErrRuntimeController
+	}
+	a.Delivery = delivery
+	c.active[delivery.Manifest.ConnectionID] = a
+	return nil
 }

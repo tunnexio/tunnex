@@ -76,15 +76,12 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			if ctx.Err() != nil {
 				return
 			}
-			// Validate process-local authority even when CP discovery fails or
-			// returns no work. This never renews a lease and never blocks cleanup.
+			validated := false
+			// Read-only observations remain independent of fresh permit maintenance.
 			if controller != nil {
 				bound := &boundIPsecClient{Client: client, org: org, node: node}
 				if control.RefreshIPsecRuntimeStatus(ctx, bound, controller) != nil {
 					logger.Warn("ipsec_runtime_observation_refused")
-				}
-				if err := controller.Validate(ctx); err != nil {
-					logger.Warn("ipsec_runtime_authority_withdrawn")
 				}
 			}
 			page, cleanupPending, e := discoverIPsecRuntime(ctx, client)
@@ -140,12 +137,20 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 						// Cleanup remains available without activation qualification; Apply requires
 						// the attached current receipt and cannot grant permits without it.
 						bound := &boundIPsecClient{Client: client, org: org, node: node}
-						if e = control.PollIPsecRuntime(ctx, bound, controller); e != nil {
+						if validated, e = control.PollIPsecRuntimeValidated(ctx, bound, controller); e != nil {
 							logger.Warn("ipsec_runtime_reconcile_refused")
 						}
 					} else {
 						logger.Warn("ipsec_runtime_daemon_unavailable")
 					}
+				}
+			}
+			// Ordinary Apply or unchanged maintenance already proved and committed
+			// the complete native guard. Failed, empty and cleanup-only passes still
+			// validate independently; CP loss can never extend existing deadlines.
+			if controller != nil && !validated {
+				if err := controller.Validate(ctx); err != nil {
+					logger.Warn("ipsec_runtime_authority_withdrawn")
 				}
 			}
 			select {

@@ -692,7 +692,14 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 // installActive rebuilds one combined table from process-local live authority.
 // Other connections keep only their original remaining deadlines; neither a
 // journal template nor this replacement renews their authority.
-func (c *RuntimeController) installActive(ctx context.Context, entries []RuntimeJournalEntry) (resultErr error) {
+func (c *RuntimeController) installActive(ctx context.Context, entries []RuntimeJournalEntry) error {
+	return c.installActiveCandidates(ctx, entries, c.active, nil, nil, nil)
+}
+
+// installActiveCandidates uses the original collection and atomic commit. A
+// maintenance overlay remains owner-private until every required candidate
+// survives the complete native proof and final lease checks.
+func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool) (resultErr error) {
 	c.reconcileDNSOwnerView()
 	stage := "input"
 	connection := uuid.Nil
@@ -704,9 +711,10 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 	}
 	if !c.qualification.current() {
 		c.withdrawDNSOwnerView(uuid.Nil)
+		active = nil
 		c.active = nil
 	}
-	for id, a := range c.active {
+	for id, a := range active {
 		connection = id
 		stage = "entry_current_proof"
 		proofStarted := time.Now()
@@ -716,7 +724,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		proofCancel()
 		if a.Entry.Allocation.Namespace != ns || proofErr != nil {
 			c.withdrawDNSOwnerView(id)
-			delete(c.active, id)
+			delete(active, id)
 			continue
 		}
 		stage = "entry_lease_remaining"
@@ -725,7 +733,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		c.emitRuntimeDiagnostic(ctx, "install_active", stage, id, leaseStarted, e != nil)
 		if e != nil {
 			c.withdrawDNSOwnerView(id)
-			delete(c.active, id)
+			delete(active, id)
 		}
 	}
 	connection = uuid.Nil
@@ -749,7 +757,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		}
 		seen[id] = true
 		g := GuardConnection{BGPPeers: bgpRefusalPeers(entry), ID: id, PrefixOnly: true, Local: entry.Engines[0].LocalPrefixes, Remote: entry.Engines[0].RemotePrefixes}
-		if a, ok := c.active[id]; ok {
+		if a, ok := active[id]; ok {
 			assemblyCtx, assemblyCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer assemblyCancel()
 			stage = "entry_lease_remaining"
@@ -759,7 +767,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 			}
 			if err != nil {
 				c.withdrawDNSOwnerView(id)
-				delete(c.active, id)
+				delete(active, id)
 			} else {
 				if a.Entry.ContractVersion == 3 {
 					observeCtx, observeCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
@@ -768,7 +776,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 					observeCancel()
 					if err != nil {
 						c.withdrawDNSOwnerView(id)
-						delete(c.active, id)
+						delete(active, id)
 						_, _ = c.refuse(ctx, entries)
 						return ErrRuntimeController
 					}
@@ -798,7 +806,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				// observations must never fall back to selected-path permission.
 				if statuses[index] != "up" || (a.Entry.Allocation.activeTunnelCount() == 2 && statuses[1-index] != "up" && statuses[1-index] != "down") {
 					c.withdrawDNSOwnerView(id)
-					delete(c.active, id)
+					delete(active, id)
 					_, _ = c.refuse(ctx, entries)
 					return ErrRuntimeController
 				}
@@ -821,7 +829,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 					mtuCancel()
 					if err != nil {
 						c.withdrawDNSOwnerView(id)
-						delete(c.active, id)
+						delete(active, id)
 						_, _ = c.refuse(ctx, entries)
 						return ErrRuntimeController
 					}
@@ -847,7 +855,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		if g.PrefixOnly {
 			continue
 		}
-		a, ok := c.active[g.ID]
+		a, ok := active[g.ID]
 		if !ok {
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController
@@ -857,7 +865,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 			if grant.DNSResolver != (DNSResolverBinding{}) {
 				if _, err := observeDNSSource(grant.Source.Addr(), a.Environment.LocalIngressIndices); err != nil {
 					c.withdrawDNSOwnerView(g.ID)
-					delete(c.active, g.ID)
+					delete(active, g.ID)
 					_, _ = c.refuse(ctx, entries)
 					return ErrRuntimeController
 				}
@@ -866,7 +874,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		remaining, err := a.Authority.RemainingForApply(a.Identity, 5*time.Second)
 		if err != nil {
 			c.withdrawDNSOwnerView(g.ID)
-			delete(c.active, g.ID)
+			delete(active, g.ID)
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController
 		}
@@ -874,7 +882,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 	}
 	connection = uuid.Nil
 	stage = "combined_guard_qualification"
-	if len(c.active) > 0 && (!c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive()) {
+	if len(active) > 0 && (!c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive()) {
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
@@ -884,12 +892,12 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		}
 		connection = g.ID
 		stage = "entry_bgp_process"
-		a := c.active[g.ID]
+		a := active[g.ID]
 		if a.Entry.ContractVersion == 3 && len(g.Grants) > 0 {
 			process := c.bgpProcesses[a.Entry.DeliveryID]
 			if process == nil || !process.Alive() {
 				c.withdrawDNSOwnerView(g.ID)
-				delete(c.active, g.ID)
+				delete(active, g.ID)
 				_, _ = c.refuse(ctx, entries)
 				return ErrRuntimeController
 			}
@@ -901,19 +909,38 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
+	for id, candidate := range required {
+		current, ok := active[id]
+		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
+			return ErrRuntimeController
+		}
+	}
+	for id := range required {
+		original, ok := prior[id]
+		if !ok || original.Authority == nil {
+			return ErrRuntimeController
+		}
+		if _, err := original.Authority.RemainingForApply(original.Identity, 5*time.Second); err != nil {
+			return ErrRuntimeController
+		}
+	}
+	if candidateQualification != nil && !candidateQualification() {
+		return ErrRuntimeController
+	}
 	stage = "combined_guard_replace"
 	manifest, replaceErr := c.replace(commitCtx, intent)
 	if replaceErr != nil {
 		return ErrRuntimeController
 	}
 	stage = "combined_guard_final_binding"
-	if len(c.active) > 0 && !c.qualification.current() {
+	if len(active) > 0 && !c.qualification.current() {
 		c.withdrawDNSOwnerView(uuid.Nil)
+		active = nil
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
-	for id, a := range c.active {
+	for id, a := range active {
 		connection = id
 		stage = "combined_guard_final_lease"
 		if _, e = a.Authority.RemainingForApply(a.Identity, time.Millisecond); e != nil {
@@ -921,6 +948,22 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 			return ErrRuntimeController
 		}
 	}
+	for id, candidate := range required {
+		current, ok := active[id]
+		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
+			return ErrRuntimeController
+		}
+	}
+	for id := range required {
+		original := prior[id]
+		if _, err := original.Authority.RemainingForApply(original.Identity, time.Millisecond); err != nil {
+			return ErrRuntimeController
+		}
+	}
+	if candidateQualification != nil && !candidateQualification() {
+		return ErrRuntimeController
+	}
+	c.active = active
 	c.publishDNSOwnerView(manifest)
 	return nil
 }
