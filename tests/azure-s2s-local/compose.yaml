@@ -24,8 +24,10 @@ services:
   api:
     image: alpine:3.24.2
     command: [/binaries/tunnex-api]
+    mem_limit: 384m
     environment:
       TUNNEX_ENV: development
+      GOMEMLIMIT: 128MiB
       DATABASE_URL: postgres://azures2s:${AZURE_DB_PASSWORD}@postgres:5432/azures2s?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       TUNNEX_AUTO_MIGRATE: 'true'
