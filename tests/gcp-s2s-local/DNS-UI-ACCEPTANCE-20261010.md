@@ -38,3 +38,16 @@ The rotation dialog showed exactly one Tunnel 1 password field. Admin submitted 
 The earlier runtime content search accidentally exposed an existing disposable emulator test key in tool output. That value is omitted from this receipt and replaced by this authorized rotation. Replacement data stays only in the ignored mode-0600 runtime fixture; no secret is committed.
 
 Screenshot `/private/tmp/gcp-ui-emulated-classic-rotation-disabled.png` SHA-256: `3b6f6aa10249ede3f87dc1298411b5550e021da668bdf69adbce3ac038998183`.
+
+## Subsequent old-key refusal and new-key recovery
+
+Root explicitly authorized the isolated negative test with the external emulator peer retaining its previous key. Admin submitted Enable once from the revision-4 rotation readback, through the existing CAS/capability review; inventory reported Applying. Actual public single-tunnel status then reported Down, observed at 15:18:35. No optimistic retry or healthy assumption occurred. Root independently confirmed desired revision 5 and performed the old-key refusal probe before installing its private replacement peer fixture.
+
+After root reported the new emulator peer staged/initiated successfully and the normal granted HTTP marker passed, admin refreshed actual tunnel status: exactly one Tunnel 1 was Up, observed 15:20:04. A normal inventory refresh reported Applied. The detail's revision 1 is the configuration revision; desired revision 5 was confirmed independently by root's normal API readback. Neither Applied nor Up alone is application traffic proof.
+
+Root reports API source `90ef` and native source `15eb` for this test. Root's independent HA continuity proof was 30/30 successful HTTP probes during Classic disable, and HA traffic also passed during the Classic old-key test. Those packet observations belong to root's lab evidence, separate from this browser status receipt. All peer endpoints are owned internal emulator addresses; none of this establishes Google Cloud operation. DNS remains blocked by the genuine licence gate and no bypass occurred.
+
+| Additional screenshot | SHA-256 |
+| --- | --- |
+| `/private/tmp/gcp-ui-emulated-classic-old-key-down.png` | `3bc16208973770d5d37557bcf6efdccbc0659cfc9bde5e7cd80f66b9399040f1` |
+| `/private/tmp/gcp-ui-emulated-classic-new-key-up.png` | `1e5e7842d9577462eca71508448f80f8fe826f42fc961d870405eb6e7ad547d9` |
