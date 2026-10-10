@@ -269,6 +269,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	physical := map[string]int{}
+	downBridges := map[string]bool{}
 	physicalMTU := map[string]uint32{}
 	indices := map[uint64]bool{}
 	for _, o := range objects {
@@ -285,6 +286,15 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		up := false
 		for _, f := range flags {
 			up = up || f == "UP"
+		}
+		state, _ := kernelString(o, "operstate")
+		noCarrier, lowerUp := false, false
+		for _, f := range flags {
+			noCarrier = noCarrier || f == "NO-CARRIER"
+			lowerUp = lowerUp || f == "LOWER_UP"
+		}
+		if fok && typ == "ether" && kind == "bridge" && state == "DOWN" && !lowerUp && (!up || noCarrier) {
+			downBridges[name] = true
 		}
 		if ok && fok && idx > 0 && up && typ == "ether" && (kind == "" || kind == "veth") {
 			if _, dup := physical[name]; dup {
@@ -346,20 +356,35 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 			if typ, present := row["type"]; present && string(typ) != `"unicast"` {
 				return fail()
 			}
+			p, valid := runtimeMainRoutePrefix(row)
+			dev, deviceOK := kernelString(row, "dev")
+			if !valid || !deviceOK || dev == "" {
+				return fail()
+			}
+			gcp := a.ProfileID == GCPHABGPProfile || a.ProfileID == GCPClassicStaticProfile
 			if flags, present := row["flags"]; present {
 				f, ok := kernelFlags(flags)
-				if !ok || len(f) != 0 {
+				// An unrelated, assigned Docker bridge may be down. It cannot
+				// supply LAN or underlay identity, and protected routes still refuse.
+				disjointBridge := gcp && len(f) == 1 && f[0] == "linkdown" && runtimeDisjointDownBridge(row, p, protected, downBridges, assigned)
+				if !ok || (len(f) != 0 && !disjointBridge) {
 					return fail()
 				}
 			}
-			dst, _ := kernelString(row, "dst")
-			p, err := netip.ParsePrefix(dst)
-			if err != nil || !p.Overlaps(prefix) {
+			if !p.IsValid() || !p.Overlaps(prefix) {
 				continue
 			}
-			dev, _ := kernelString(row, "dev")
 			index := physical[dev]
-			if index == 0 || p.Bits() > prefix.Bits() {
+			if index == 0 {
+				return fail()
+			}
+			if p.Bits() > prefix.Bits() {
+				if !gcp || !runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned) {
+					return fail()
+				}
+				continue // A gateway host is never proof of prefix coverage.
+			}
+			if _, routed := row["gateway"]; gcp && routed && !runtimeRoutedLocalPrefix(row, p, prefix, routeRows, physical, assigned) {
 				return fail()
 			}
 			if found != 0 && found != index {
@@ -448,4 +473,107 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	return out, nil
+}
+
+// iproute2 renders a host destination without /32. Do not silently hide an
+// overlapping host or malformed destination while proving a protected prefix.
+func runtimeMainRoutePrefix(row map[string]json.RawMessage) (netip.Prefix, bool) {
+	for _, field := range []string{"gateway", "prefsrc"} {
+		if _, present := row[field]; present {
+			value, ok := kernelString(row, field)
+			a, err := netip.ParseAddr(value)
+			if !ok || err != nil || !a.Is4() {
+				return netip.Prefix{}, false
+			}
+		}
+	}
+	dst, ok := kernelString(row, "dst")
+	if !ok {
+		return netip.Prefix{}, false
+	}
+	if dst == "default" {
+		return netip.Prefix{}, true
+	}
+	if p, err := netip.ParsePrefix(dst); err == nil {
+		return p, p.Addr().Is4() && p == p.Masked()
+	}
+	a, err := netip.ParseAddr(dst)
+	if err != nil || !a.Is4() {
+		return netip.Prefix{}, false
+	}
+	return netip.PrefixFrom(a, 32), true
+}
+
+// The only narrow GCP route exception is the on-link gateway for one exact
+// approved routed prefix. A default route, another host, or another interface
+// cannot manufacture local coverage. Route order has no effect.
+func runtimeRoutedGatewayHost(host map[string]json.RawMessage, p, prefix netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool) bool {
+	if p.Bits() != 32 {
+		return false
+	}
+	dev, _ := kernelString(host, "dev")
+	scope, _ := kernelString(host, "scope")
+	source, sourceOK := kernelString(host, "prefsrc")
+	src, err := netip.ParseAddr(source)
+	if scope != "link" || physical[dev] == 0 || !sourceOK || err != nil || !src.Is4() || !prefix.Contains(src) || !assigned[dev][src] {
+		return false
+	}
+	if _, via := host["gateway"]; via {
+		return false
+	}
+	matches := 0
+	for _, route := range rows {
+		covering, valid := runtimeMainRoutePrefix(route)
+		if !valid || covering != prefix {
+			continue
+		}
+		routeDev, _ := kernelString(route, "dev")
+		gateway, _ := kernelString(route, "gateway")
+		routeSource, _ := kernelString(route, "prefsrc")
+		gw, err := netip.ParseAddr(gateway)
+		if routeDev != dev || routeSource != source || err != nil || gw != p.Addr() {
+			return false
+		}
+		matches++
+	}
+	return matches == 1
+}
+
+func runtimeDisjointDownBridge(row map[string]json.RawMessage, p netip.Prefix, protected []netip.Prefix, down map[string]bool, assigned map[string]map[netip.Addr]bool) bool {
+	if !p.IsValid() {
+		return false
+	}
+	for _, prefix := range protected {
+		if p.Overlaps(prefix) {
+			return false
+		}
+	}
+	dev, _ := kernelString(row, "dev")
+	scope, _ := kernelString(row, "scope")
+	value, _ := kernelString(row, "prefsrc")
+	src, err := netip.ParseAddr(value)
+	if !down[dev] || scope != "link" || err != nil || !p.Contains(src) || !assigned[dev][src] {
+		return false
+	}
+	_, via := row["gateway"]
+	return !via
+}
+
+func runtimeRoutedLocalPrefix(route map[string]json.RawMessage, p, approved netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool) bool {
+	if p != approved {
+		return false
+	}
+	gateway, _ := kernelString(route, "gateway")
+	gw, err := netip.ParseAddr(gateway)
+	if err != nil || !approved.Contains(gw) {
+		return false
+	}
+	matches := 0
+	for _, host := range rows {
+		hp, valid := runtimeMainRoutePrefix(host)
+		if valid && hp.IsValid() && hp.Bits() == 32 && hp.Addr() == gw && runtimeRoutedGatewayHost(host, hp, approved, rows, physical, assigned) {
+			matches++
+		}
+	}
+	return matches == 1
 }
