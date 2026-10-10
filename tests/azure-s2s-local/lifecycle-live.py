@@ -6,6 +6,7 @@ import importlib.util
 import ipaddress
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import time
@@ -39,7 +40,12 @@ def enum(value,values):
 def timestamp(value):
  if value is None:return None
  if not isinstance(value,str) or len(value)>64:raise ValueError('timestamp shape')
- parsed=datetime.fromisoformat(value.replace('Z','+00:00'))
+ # Go RFC3339Nano emits variable fractional digits. Python 3.9/3.10
+ # fromisoformat accepts only three or six; receipts use microseconds.
+ normalized=value.replace('Z','+00:00')
+ fraction=re.fullmatch(r'(.*T\d{2}:\d{2}:\d{2})\.(\d{1,9})([+-]\d{2}:\d{2})',normalized)
+ if fraction:normalized=fraction[1]+'.'+fraction[2][:6].ljust(6,'0')+fraction[3]
+ parsed=datetime.fromisoformat(normalized)
  if parsed.tzinfo is None:raise ValueError('timestamp timezone')
  return parsed.isoformat()
 

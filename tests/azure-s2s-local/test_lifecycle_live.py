@@ -16,6 +16,17 @@ spec.loader.exec_module(lifecycle)
 
 
 class LifecycleEnvelopeTests(unittest.TestCase):
+    def test_go_variable_fraction_status_timestamp_on_older_python(self):
+        for fraction, expected in [('1', '100000'), ('17802', '178020'), ('178020', '178020'), ('178020123', '178020')]:
+            with self.subTest(fraction=fraction):
+                self.assertEqual(lifecycle.timestamp('2026-10-10T15:59:52.' + fraction + 'Z'),
+                                 '2026-10-10T15:59:52.' + expected + '+00:00')
+        self.assertEqual(lifecycle.timestamp('2026-10-10T15:59:52Z'), '2026-10-10T15:59:52+00:00')
+        self.assertIsNone(lifecycle.timestamp(None))
+        for invalid in ('2026-10-10T15:59:52.17802', '2026-10-99T15:59:52.17802Z', 'untrusted input', 42):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                lifecycle.timestamp(invalid)
+
     def test_actual_top_level_profile_envelope_reaches_exact_disable_and_enable_cas(self):
         # GetIPsecProviderConfiguration returns ProfileId/ConfigurationRevision
         # outside Configuration, which contains network fields only.
