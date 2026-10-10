@@ -102,6 +102,17 @@ class ActivationTests(unittest.TestCase):
                     activation.main()
                 self.assertFalse(any(c[0] == 'POST' and c[1].endswith('/connections') for c in calls))
 
+    def test_api_error_only_exposes_allowlisted_bounded_code(self):
+        for body, expected in [(b'{"code":"ipsec_connection_ineligible","message":"PRIVATE"}', 'ipsec_connection_ineligible'),
+                               (b'{"code":"PRIVATE-PSK"}', None), (b'x' * 16385, None)]:
+            client = activation.Client()
+            error = activation.urllib.error.HTTPError('private', 409, 'private', {}, io.BytesIO(body))
+            with patch.object(client.opener, 'open', side_effect=error):
+                with self.assertRaises(activation.APIError) as raised:
+                    client.call('POST', '/reviewed')
+            self.assertEqual(raised.exception.status, 409)
+            self.assertEqual(raised.exception.code, expected)
+
     def test_private_input_rejects_symlinks_and_public_files(self):
         with tempfile.TemporaryDirectory() as root:
             path = root + '/input'

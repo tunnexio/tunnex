@@ -22,8 +22,9 @@ STAGE = 'arguments'
 
 
 class APIError(ValueError):
-    def __init__(self, status=None):
+    def __init__(self, status=None, code=None):
         self.status = status
+        self.code = code
 
 
 def stage(value):
@@ -76,7 +77,20 @@ class Client:
                     raise ValueError('API response exceeds limit')
                 return json.loads(data) if data else None
         except urllib.error.HTTPError as error:
-            raise APIError(error.code) from None
+            allowed = {'ipsec_connection_ineligible', 'ipsec_connection_conflict', 'ipsec_connection_unavailable', 'ipsec_connection_not_found', 'ipsec_cleanup_in_progress', 'invalid_ipsec_connection', 'invalid_ipsec_configuration', 'forbidden', 'unauthorized'}
+            code = None
+            try:
+                data = error.read(16385)
+                if len(data) <= 16384:
+                    payload = json.loads(data)
+                    candidate = payload.get('code')
+                    if candidate is None and isinstance(payload.get('error'), dict):
+                        candidate = payload['error'].get('code')
+                    if candidate in allowed:
+                        code = candidate
+            except (ValueError, TypeError, AttributeError, OSError):
+                pass
+            raise APIError(error.code, code) from None
         except urllib.error.URLError:
             raise APIError() from None
 
@@ -97,7 +111,7 @@ def configuration(psk):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=['plan', 'create', 'resume-create', 'enable', 'status'])
+    parser.add_argument('phase', choices=['plan', 'create', 'resume-create', 'enable', 'status', 'eligibility'])
     parser.add_argument('--private-root', required=True)
     parser.add_argument('--psk-file')
     parser.add_argument('--application-address')
@@ -138,6 +152,15 @@ def main():
     for key in ['org_id', 'site_id', 'gateway_id']:
         uuid.UUID(setup[key])
     prefix = '/api/v1/organizations/' + setup['org_id'] + '/ipsec'
+    if args.phase == 'eligibility':
+        stage('eligibility_read')
+        result = client.call('GET', prefix + '/eligibility?site_id=' + setup['site_id'] + '&gateway_node_id=' + setup['gateway_id'])
+        output = {k: result.get(k) for k in ['eligible', 'reason']}
+        for key in ['bgp', 'azure_bgp', 'azure_static', 'gcp_classic', 'gcp_ha']:
+            if isinstance(result.get(key), dict):
+                output[key] = {k: result[key].get(k) for k in ['eligible', 'reason']}
+        print(json.dumps({'eligibility': output}, sort_keys=True))
+        return
     state_path = root + '/azure-live-activation.json'
     if args.phase in ['create', 'resume-create']:
         if not args.psk_file:
@@ -217,5 +240,7 @@ if __name__ == '__main__':
         diagnostic = {'error': 'activation_failed', 'stage': STAGE, 'category': category}
         if isinstance(error, APIError) and error.status is not None:
             diagnostic['http_status'] = error.status
+        if isinstance(error, APIError) and error.code is not None:
+            diagnostic['api_code'] = error.code
         print(json.dumps(diagnostic, sort_keys=True))
         raise SystemExit(1)
