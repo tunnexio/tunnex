@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 let role = "admin";
@@ -123,6 +123,44 @@ describe("FQDN resource operator index", () => {
     await waitFor(() => expect(vi.mocked(api.PUT)).toHaveBeenCalled());
     const call = vi.mocked(api.PUT).mock.calls[0] as unknown as [string, { body: { profiles: Array<{ ipsec_path: unknown }> } }];
     expect(call[1].body.profiles[0].ipsec_path).toEqual({ connection_id: "ipsec-a", configuration_revision: 4, source_address: "10.0.0.254" });
+  });
+
+  it("ignores a connection revision response from a cancelled DNS draft", async () => {
+    connections = [{ id: "ipsec-a", name: "GCP enabled", site_id: "site-a", gateway_node_id: "gw-a", desired_intent: "enabled", cleanup_state: "complete" }];
+    const original = vi.mocked(api.GET).getMockImplementation()!;
+    let finishOld: (value: unknown) => void = () => {};
+    let reads = 0;
+    vi.mocked(api.GET).mockImplementation((async (path: string, options: unknown) => {
+      if (path.endsWith("/configuration")) {
+        if (++reads === 1) return await new Promise<unknown>(resolve => { finishOld = resolve; });
+        return { data: { configuration_revision: 5 } };
+      }
+      return (original as unknown as (path: string, options: unknown) => Promise<unknown>)(path, options);
+    }) as typeof api.GET);
+    try {
+      page("/access/resources?type=fqdn");
+      async function configure() {
+        fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
+        const dialog = screen.getByRole("dialog");
+        fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "private.example.test" } });
+        fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS transport path"), { target: { value: "ipsec" } });
+        const picker = within(dialog).getByLabelText("Profile 1 IPsec connection");
+        await within(picker).findByRole("option", { name: "GCP enabled" });
+        fireEvent.change(picker, { target: { value: "ipsec-a" } });
+        fireEvent.change(within(dialog).getByLabelText("Profile 1 gateway DNS source IPv4"), { target: { value: "10.0.0.254" } });
+        return dialog;
+      }
+      const cancelled = await configure();
+      fireEvent.click(within(cancelled).getByRole("button", { name: "Cancel" }));
+      const current = await configure();
+      const activate = within(current).getByRole("button", { name: "Activate profiles" });
+      await waitFor(() => expect((activate as HTMLButtonElement).disabled).toBe(false));
+      await act(async () => { finishOld({ data: { configuration_revision: 4 } }); });
+      fireEvent.click(activate);
+      await waitFor(() => expect(api.PUT).toHaveBeenCalled());
+      const call = vi.mocked(api.PUT).mock.calls[0] as unknown as [string, { body: { profiles: Array<{ ipsec_path: { configuration_revision: number } }> } }];
+      expect(call[1].body.profiles[0].ipsec_path.configuration_revision).toBe(5);
+    } finally { vi.mocked(api.GET).mockImplementation(original); }
   });
 
   it("refuses a stored IPsec profile with a non-DNS port and keeps its port fixed", async () => {

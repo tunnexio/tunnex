@@ -92,3 +92,20 @@ it("refuses Classic rotation if status contains a foreign second slot",async()=>
  mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:"gcp-classic-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{}]}}}:original(path));
  render(view());fireEvent.click((await connectionMenu()).getByRole("menuitem",{name:/Rotate keys/}));await screen.findByText(/Could not load tunnel identities/);expect(screen.queryByLabelText("Tunnel 1 new PSK")).toBeNull();expect(mock.POST).not.toHaveBeenCalled();
 });
+it.each([
+ ["gcp-ha-bgp-ipv4-v1", "ipv4-bgp", 2],
+ ["gcp-classic-static-ipv4-v1", "ipv4-static", 1],
+])("clears %s rotation secrets after revision conflict and blocks stale retry", async (profile, mode, count) => {
+ const original = mock.GET.getMockImplementation()!;
+ mock.GET.mockImplementation(async (path: string) => path.endsWith("/configuration") ? {data:{profile_id:profile,configuration_revision:1,configuration:{mode,tunnels:Array.from({length:Number(count)},()=>({}))}}} : path.endsWith("/status") ? {data:{tunnels:Array.from({length:Number(count)},(_,index)=>({id:`gcp-tunnel-${index+1}`,slot:index+1,status:"unknown",selected:index===0}))}} : original(path));
+ mock.POST.mockResolvedValue({error:{code:"ipsec_revision_conflict"},response:{status:409}});
+ render(view()); await open();
+ fireEvent.change(screen.getByLabelText("Tunnel 1 new PSK"), {target:{value:"Synthetic.GCPSecret1"}});
+ fireEvent.click(screen.getByRole("button", {name:"Save new keys"}));
+ await screen.findByText(/Could not confirm the key change/);
+ expect(screen.queryByDisplayValue("Synthetic.GCPSecret1")).toBeNull();
+ const retry = screen.getByRole("button", {name:"Save new keys"});
+ expect((retry as HTMLButtonElement).disabled).toBe(true); fireEvent.click(retry);
+ expect(mock.POST).toHaveBeenCalledTimes(1); expect(mock.PUT).not.toHaveBeenCalled();
+ expect(mock.POST.mock.calls[0][1].body.expected_desired_revision).toBe(4);
+});
