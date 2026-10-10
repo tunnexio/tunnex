@@ -1,0 +1,15 @@
+{
+  "scope": "read-only designated bastion DNS_RESOLVER projection",
+  "project": "project-0048836f-6ba1-4a14-8da",
+  "region": "asia-south2",
+  "ha": {
+    "subnet": "tn-gcps2s-20261010-ha",
+    "address": "10.80.0.2"
+  },
+  "classic": {
+    "subnet": "tn-gcps2s-20261010-classic",
+    "address": "10.81.0.2"
+  },
+  "secrets_read": false,
+  "cloud_mutation": false
+}
