@@ -21,6 +21,19 @@ def settled(connection):
  return connection['desired_intent']=='disabled' and connection['cleanup_state'] in ('not_required','retained_guard')
 
 
+def prior_projection(raw,setup,identity):
+ # Tombstones are cleanup evidence only, never enabled transport authority.
+ if raw.get('desired_intent')!='deleted':return life.connection_projection(raw,setup,identity)
+ if raw.get('id')!=identity or raw.get('org_id')!=setup['org_id'] or raw.get('historical_site_id')!=setup['site_id'] or raw.get('historical_gateway_node_id')!=setup['gateway_id'] or not raw.get('deleted_at'):raise ValueError('deleted historical binding')
+ life.timestamp(raw['deleted_at'])
+ if raw.get('finalized_at'):life.timestamp(raw['finalized_at'])
+ return {'id':life.identifier(identity),'desired_revision':life.bounded_int(raw['desired_revision'],1,9223372036854775807),'desired_intent':'deleted','application_state':life.enum(raw['application_state'],('applied','pending','not_applied')),'cleanup_state':life.enum(raw['cleanup_state'],('pending','retained_guard','not_required'))}
+
+
+def finalized_prior(raw,connection):
+ return connection['desired_intent']=='deleted' and connection['application_state']=='not_applied' and connection['cleanup_state'] in ('not_required','retained_guard') and bool(raw.get('deleted_at')) and bool(raw.get('finalized_at'))
+
+
 def static_configuration(previous,psk):
  if previous.get('profile_id')!='azure-active-active-bgp-ipv4-v1':raise ValueError('prior profile')
  source=previous['configuration']
@@ -102,6 +115,7 @@ def main():
   state={'prior':{'id':life.identifier(prior['id']),'tunnel_ids':[life.identifier(value) for value in prior['tunnel_ids']]}}
  old_path=prefix+'/connections/'+life.identifier(state['prior']['id'])
  def owned(raw,identity):
+  if identity==state['prior']['id'] and raw.get('desired_intent')=='deleted':return prior_projection(raw,setup,identity)
   if raw.get('finalized_at'):
    if raw.get('historical_site_id')!=setup['site_id'] or raw.get('historical_gateway_node_id')!=setup['gateway_id']:raise ValueError('historical binding')
    raw={**raw,'site_id':setup['site_id'],'gateway_node_id':setup['gateway_id']}
@@ -125,7 +139,7 @@ def main():
   if current['desired_intent']!='disabled':current=intent(path,current,target['id'],'disabled');sent=True
  elif args.phase=='delete':
   if 'target' in state:raise ValueError('only prior deletion permitted')
-  if not settled(prior):raise ValueError('prior cleanup pending')
+  if not settled(prior) and prior['desired_intent']!='deleted':raise ValueError('prior cleanup pending')
   if not prior_raw.get('deleted_at'):
    STAGE='save_prior_nonsecret_binding';state['prior_configuration']=client.call('GET',old_path+'/configuration')
    if state['prior_configuration'].get('profile_id') not in (*PROFILES,'azure-active-active-bgp-ipv4-v1'):raise ValueError('prior Azure profile required')
@@ -133,7 +147,7 @@ def main():
    STAGE='delete_cas';current=owned(client.call('DELETE',old_path,revision=prior['desired_revision']),target['id']);sent=True
  elif args.phase in ('create-static','create-profile'):
   if 'target' in state:raise ValueError('target already allocated; inspect read')
-  if not settled(prior) or not prior_raw.get('deleted_at') or not prior_raw.get('finalized_at'):raise ValueError('prior finalization required')
+  if not finalized_prior(prior_raw,prior):raise ValueError('prior finalization required')
   if not args.psk_file:raise ValueError('private PSK required')
   psk=api.private_read(str(args.psk_file)).decode().rstrip('\r\n')
   if not 8<=len(psk)<=64 or any(ord(char)<32 or ord(char)==127 for char in psk):raise ValueError('PSK shape')
@@ -145,7 +159,7 @@ def main():
   state['target']=target;api.private_write(str(state_path),state);STAGE='create_disabled'
   current=owned(client.call('POST',prefix+'/connections',{**target,'name':'Azure owned live '+args.profile,'site_id':setup['site_id'],'gateway_node_id':setup['gateway_id'],'configuration':config}),target['id']);sent=True
  elif args.phase=='enable':
-  if 'target' not in state or not prior_raw.get('finalized_at'):raise ValueError('target/prior finalization required')
+  if 'target' not in state or not finalized_prior(prior_raw,prior):raise ValueError('target/prior finalization required')
   contract=client.call('GET',path+'/configuration')
   if contract.get('profile_id')!=args.profile:raise ValueError('target profile')
   if current['cleanup_state']=='pending':raise ValueError('target cleanup pending')

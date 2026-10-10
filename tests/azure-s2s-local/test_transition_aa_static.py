@@ -62,7 +62,7 @@ class TransitionContractTests(unittest.TestCase):
     def call(method,path,body=None,revision=None):
      calls.append((method,path,body))
      if path=='/api/v1/organizations':return [{'id':setup['org_id'],'slug':'azure-s2s-local'}]
-     if path.endswith('/connections/'+prior_id):return {**raw(prior_id),'deleted_at':'2026-10-10T00:00:00Z','finalized_at':'2026-10-10T00:00:01Z' if finalized else None,'historical_site_id':setup['site_id'],'historical_gateway_node_id':setup['gateway_id']}
+     if path.endswith('/connections/'+prior_id):return {**raw(prior_id),'desired_intent':'deleted','site_id':None,'gateway_node_id':None,'deleted_at':'2026-10-10T00:00:00Z','finalized_at':'2026-10-10T00:00:01Z' if finalized else None,'historical_site_id':setup['site_id'],'historical_gateway_node_id':setup['gateway_id']}
      if method=='POST' and path.endswith('/connections'):created.update(body);return raw(body['id'])
      if method=='GET' and created and path.endswith('/connections/'+created['id']):return raw(created['id'])
      if path.endswith('/status'):return {'tunnels':[{'id':identity,'slot':index+1,'status':'unknown','selected':False} for index,identity in enumerate(created['tunnel_ids'])]}
@@ -77,6 +77,18 @@ class TransitionContractTests(unittest.TestCase):
      else:
       with self.assertRaisesRegex(ValueError,'finalization required'):helper.main()
       self.assertFalse(any(method=='POST' and path.endswith('/connections') for method,path,body in calls))
+
+ def test_real_deleted_projection_is_prior_only_and_creation_fail_closed(self):
+  setup={'org_id':'00000000-0000-4000-8000-000000000001','site_id':'00000000-0000-4000-8000-000000000002','gateway_id':'00000000-0000-4000-8000-000000000003'}
+  identity='00000000-0000-4000-8000-000000000004'
+  raw={'id':identity,'org_id':setup['org_id'],'site_id':None,'gateway_node_id':None,'historical_site_id':setup['site_id'],'historical_gateway_node_id':setup['gateway_id'],'desired_revision':3,'desired_intent':'deleted','application_state':'not_applied','cleanup_state':'retained_guard','deleted_at':'2026-10-10T00:00:00Z','finalized_at':'2026-10-10T00:00:01Z'}
+  projected=helper.prior_projection(raw,setup,identity)
+  self.assertTrue(helper.finalized_prior(raw,projected))
+  with self.assertRaises(ValueError):helper.life.connection_projection(raw,setup,identity)
+  for field,value in [('historical_site_id',identity),('historical_gateway_node_id',identity),('org_id',identity),('deleted_at',None)]:
+   with self.subTest(field=field),self.assertRaises(ValueError):helper.prior_projection({**raw,field:value},setup,identity)
+  for field,value in [('finalized_at',None),('cleanup_state','pending'),('application_state','applied')]:
+   changed={**raw,field:value};self.assertFalse(helper.finalized_prior(changed,helper.prior_projection(changed,setup,identity)))
 
  def test_cleanup_requires_disabled_and_real_settled_state(self):
   for intent,cleanup,expected in [('disabled','retained_guard',True),('disabled','not_required',True),('disabled','pending',False),('enabled','not_required',False)]:
