@@ -78,7 +78,7 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if body.TransportVersion != nil || body.TunnelCount != nil {
-		if body.TransportVersion == nil || *body.TransportVersion != 1 || body.TunnelCount == nil || *body.TunnelCount != 1 || body.BGP != nil || body.RecoveryVersion != nil || body.SelectionSequence != nil || body.ActiveSlot != nil {
+		if body.TransportVersion == nil || *body.TransportVersion != 1 || body.TunnelCount == nil || *body.TunnelCount != 1 || body.RecoveryVersion != nil || body.SelectionSequence != nil || body.ActiveSlot != nil {
 			agentIPsecInvalid(w, r)
 			return
 		}
@@ -90,6 +90,10 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 	}
 	bgp, valid := body.BGP.runtimeStatus()
 	if !valid {
+		agentIPsecInvalid(w, r)
+		return
+	}
+	if body.TunnelCount != nil && bgp != nil && bgp.Peers[1] != (ipsec.RuntimeBGPPeerStatus{}) {
 		agentIPsecInvalid(w, r)
 		return
 	}

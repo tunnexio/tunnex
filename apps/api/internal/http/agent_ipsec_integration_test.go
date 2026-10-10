@@ -50,7 +50,10 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 	testAgentIPsecCommittedDelivery(t, false)
 }
 func TestGCPClassicAgentIPsecStatusWire(t *testing.T) { testAgentIPsecCommittedDelivery(t, true) }
-func testAgentIPsecCommittedDelivery(t *testing.T, classic bool) {
+func TestAzureStandbyBGPAgentIPsecStatusWire(t *testing.T) {
+	testAgentIPsecCommittedDelivery(t, false, true)
+}
+func testAgentIPsecCommittedDelivery(t *testing.T, classic bool, azure ...bool) {
 	t.Helper()
 	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -134,6 +137,27 @@ func testAgentIPsecCommittedDelivery(t *testing.T, classic bool) {
 			t.Fatal(err)
 		}
 	}
+	azureBGP := len(azure) > 0 && azure[0]
+	if azureBGP {
+		count = 1
+		cfg.ProfileID = ipsec.AzureActiveStandbyBGPProfile
+		cfg.Mode = "ipv4-bgp"
+		cfg.Azure = &ipsec.AzureContract{GatewaySKU: "VpnGw1AZ", VPNType: "RouteBased", IKEVersion: 2, CustomPolicy: "aes256-sha256-dh14-pfs2048"}
+		cfg.BGP = &ipsec.BGPConfig{LocalASN: 64512, RemoteASN: 65515, RouterID: "10.10.0.1", MaximumPrefixes: 16}
+		cfg.Tunnels = cfg.Tunnels[:1]
+		cfg.Tunnels[0].InsideCIDR = "169.254.20.1/32"
+		cfg.Tunnels[0].CustomerInsideAddress = "169.254.20.1"
+		cfg.Tunnels[0].CloudInsideAddress = "169.254.21.2"
+		tunnelIDs[1] = uuid.Nil
+		channel := NewAgentChannel(nodes.NewService(pool, nil, nil), nil, nil, nil)
+		req := httptest.NewRequest("POST", "/agent/report", strings.NewReader(`{"public_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE=","ipsec_config_version":1,"ipsec_bgp_version":1,"ipsec_azure_version":1}`)).WithContext(ctx)
+		req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{SerialNumber: big.NewInt(0x010203)}}}
+		rr := httptest.NewRecorder()
+		channel.report(rr, req)
+		if rr.Code != 204 {
+			t.Fatal("Azure capability report rejected", rr.Code)
+		}
+	}
 	c, err := store.CreateProviderDisabled(ctx, org, actor, sealer, ipsec.CreateProviderRequest{ID: id, SiteID: site, GatewayID: gateway, Name: "runtime HTTP", TunnelIDs: tunnelIDs, Config: cfg})
 	if err != nil {
 		t.Fatal(err)
@@ -186,11 +210,15 @@ func testAgentIPsecCommittedDelivery(t *testing.T, classic bool) {
 	}
 
 	statusReport := ipsec.RuntimeStatusReport{DeliveryID: material.ID, DesiredRevision: material.DesiredRevision, ConfigurationRevision: 1, Tunnels: [2]ipsec.RuntimeTunnelStatus{{ID: material.Manifest.Tunnels[0].ID, Slot: 1, Status: "up", Selected: true}, {ID: material.Manifest.Tunnels[1].ID, Slot: 2, Status: "down"}}}
-	if classic {
+	if classic || azureBGP {
 		version, count := 1, 1
 		statusReport.TransportVersion = &version
 		statusReport.TunnelCount = &count
 		statusReport.Tunnels[1] = ipsec.RuntimeTunnelStatus{}
+	}
+	if azureBGP {
+		statusReport.Tunnels[0].Selected = false
+		statusReport.BGP = &ipsec.RuntimeBGPStatus{Version: 1, Sequence: 1, Peers: [2]ipsec.RuntimeBGPPeerStatus{{Slot: 1, State: "idle"}, {}}, Routes: []ipsec.RuntimeBGPRoute{}}
 	}
 	statusBytes, _ := json.Marshal(statusReport)
 	statusReply := httptest.NewRecorder()
@@ -230,6 +258,19 @@ func testAgentIPsecCommittedDelivery(t *testing.T, classic bool) {
 				t.Fatal("invalid Classic wire accepted", reply.Code)
 			}
 		}
+	}
+	if azureBGP {
+		bad := statusReport
+		clone := *bad.BGP
+		bad.BGP = &clone
+		bad.BGP.Peers[1].Slot = 2
+		raw, _ := json.Marshal(bad)
+		reply := httptest.NewRecorder()
+		call("POST", "/status", string(raw), reply)
+		if reply.Code != 400 {
+			t.Fatal("nonzero inactive Azure peer accepted", reply.Code)
+		}
+		return
 	}
 	runtimeLeasePolicyRace(t, ctx, pool, store, org, gateway, id, rule, material)
 	c, err = store.SetIntent(ctx, org, actor, id, c.DesiredRevision, "disabled")
