@@ -192,7 +192,14 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 		_ = t.mailbox.Expire(context.Background(), req.RequestID, t.now())
 		return nil, err
 	}
-	records, err := validateGatewayDNSResponse(req, response, now, t.maxAge)
+	completedAt := t.now()
+	if requestCtx.Err() != nil {
+		return nil, requestCtx.Err()
+	}
+	if !completedAt.Before(req.Deadline) {
+		return nil, context.DeadlineExceeded
+	}
+	records, err := validateGatewayDNSResponse(req, response, completedAt, t.maxAge)
 	if err != nil {
 		return nil, err
 	}
