@@ -107,16 +107,41 @@ def peer_config(material, peer_gateway_id, generation, local_target, remote_targ
     return config
 
 
+def attach_creation_secrets(projection, creation):
+    """Use locally supplied creation keys; never extract gateway material secrets."""
+    manifest = projection["manifest"]
+    if "secrets" in projection or creation["id"] != manifest["connection_id"] or creation["tunnel_ids"] != [t["id"] for t in manifest["tunnels"]]:
+        raise ValueError("exact key-free creation binding required")
+    supplied = creation["configuration"]
+    for field in ["profile_id", "customer_outside_address", "local_prefixes", "remote_prefixes", "bgp"]:
+        if supplied[field] != manifest[field]:
+            raise ValueError("creation configuration mismatch")
+    if len(supplied["tunnels"]) != 2:
+        raise ValueError("exact HA creation cardinality required")
+    secrets = []
+    for actual, original in zip(manifest["tunnels"], supplied["tunnels"]):
+        if actual["secret_revision"] != 1:
+            raise ValueError("creation keys cannot serve rotated material")
+        for field in ["outside_address", "inside_cidr", "customer_inside_address", "cloud_inside_address"]:
+            if actual[field] != original[field]:
+                raise ValueError("creation tunnel configuration mismatch")
+        secrets.append({"tunnel_id": actual["id"], "revision": 1, "psk": original["psk"]})
+    return dict(projection, secrets=secrets)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("material")
     parser.add_argument("output")
+    parser.add_argument("--creation-request", help="private owned original create input; material argument must be key-free projection")
     parser.add_argument("--peer-gateway-id", required=True)
     parser.add_argument("--generation", required=True)
     parser.add_argument("--local-target", required=True)
     parser.add_argument("--remote-target", required=True)
     args = parser.parse_args()
-    config = peer_config(read_private(args.material), args.peer_gateway_id, args.generation, args.local_target, args.remote_target)
+    material = read_private(args.material)
+    if args.creation_request:
+        material = attach_creation_secrets(material, read_private(args.creation_request))
+    config = peer_config(material, args.peer_gateway_id, args.generation, args.local_target, args.remote_target)
     encoded = json.dumps(config, separators=(",", ":")) + "\n"
     if len(encoded.encode()) > 32 * 1024:
         raise ValueError("bounded peer fixture required")
@@ -129,6 +154,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, KeyError, TypeError, OSError) as error:
+    except (ValueError, KeyError, TypeError, OSError, UnicodeError, OverflowError) as error:
         # Never print exception text; a decoder can include supplied secret bytes.
         raise SystemExit("Peer preparation refused; private input/config contract invalid.") from None

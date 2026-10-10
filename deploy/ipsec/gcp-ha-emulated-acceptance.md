@@ -15,6 +15,8 @@ Root first checks address/network/ASN collisions. Keep the synthetic outside bri
 
 Normal API create uses fresh connection/tunnel IDs, profile `gcp-ha-bgp-ipv4-v1`, mode `ipv4-bgp`, customer outside33.0.0.10, local10.70/24 and remote10.74/24. BGP local ASN65001, remote ASN65002, router ID10.70.0.1, maximum prefixes1. Tunnel1 outside33.0.0.30, inside169.254.74.0/30, customer169.254.74.1/cloud169.254.74.2; tunnel2 outside33.0.0.31, inside169.254.74.4/30, customer169.254.74.5/cloud169.254.74.6. Supply distinct private PSKs through the existing private request path. Save disabled, then enable with ordinary desired-revision CAS. Never manually create leases, deliveries or journal records.
 
+Prefer a key-free manifest projection plus the independently supplied original private creation input: pass `--creation-request /private/original-create.json` and use the key-free projection as the material argument. This path refuses rotated secrets, differing configuration, wrong connection/tunnel IDs, and projections containing Secrets. Gateway identity and authenticated secret material remain inside the gateway.
+
 Fetch exact genuine material through the enrolled gateway mTLS path into a private0600 file. The helper verifies canonical digest, explicit profile, revision, kernel allocations, secret bindings and prefix bounds, then reverses intent for the external peer. It cannot acknowledge gateway delivery:
 
 ```sh

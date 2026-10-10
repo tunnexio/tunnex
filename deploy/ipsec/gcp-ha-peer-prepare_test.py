@@ -38,6 +38,17 @@ class PrepareTest(unittest.TestCase):
             m = copy.deepcopy(self.material)
             change(m)
             with self.assertRaises(ValueError): self.config(m)
+    def test_key_free_projection_uses_only_owned_creation_keys(self):
+        projection = copy.deepcopy(self.material); del projection['secrets']
+        config = projection['manifest']
+        creation = dict(id=config['connection_id'], tunnel_ids=[t['id'] for t in config['tunnels']], configuration={field:copy.deepcopy(config[field]) for field in ['profile_id','customer_outside_address','local_prefixes','remote_prefixes','bgp']})
+        creation['configuration']['tunnels'] = [{**{field:t[field] for field in ['outside_address','inside_cidr','customer_inside_address','cloud_inside_address']}, 'psk':'0-owned-local-create-only'} for t in config['tunnels']]
+        result = prepare.attach_creation_secrets(projection, creation)
+        self.assertEqual(result['secrets'][0]['psk'], '0-owned-local-create-only')
+        self.assertNotIn('secrets', projection)
+        with self.assertRaises(ValueError): prepare.attach_creation_secrets(self.material, creation)
+        projection['manifest']['tunnels'][0]['secret_revision'] = 2
+        with self.assertRaises(ValueError): prepare.attach_creation_secrets(projection, creation)
     def test_private_input_boundary(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'material.json'
