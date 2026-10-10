@@ -33,6 +33,7 @@ type standalonePeerInterface struct {
 	Metric          uint32 `json:"metric"`
 }
 type standalonePeerConfig struct {
+	Services                  []standalonePeerService
 	ProfileID                 string
 	LocalTarget, RemoteTarget netip.Addr
 	Scenario                  string
@@ -50,7 +51,7 @@ func validStandalonePeer(c standalonePeerConfig) bool {
 	if c.ProfileID != "" {
 		return validStandaloneGCPPeer(c)
 	}
-	if len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
+	if len(c.Services) != 0 || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
 		return false
 	}
 	if _, err := bgp.RenderConfig(c.BGPConfig); err != nil {

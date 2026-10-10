@@ -123,7 +123,9 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 				if c.ProfileID == GCPClassicStaticProfile {
 					localTarget, remoteTarget = c.LocalTarget, c.RemoteTarget
 				}
-				rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp dport 18080 ipsec in reqid %d accept\ninsert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", gc.Tunnels[0].InterfaceIndex, lan.Index, remoteTarget, localTarget, tunnel.ReqID, lan.Index, gc.Tunnels[0].InterfaceIndex, localTarget, remoteTarget, gc.Tunnels[0].InterfaceIndex, localTarget, remoteTarget, tunnel.ReqID, underlay.Index, localTarget, remoteTarget, tunnel.ReqID, tunnel.RemoteAddress)
+				services := []standalonePeerService{{Source: remoteTarget, Destination: localTarget, Protocol: "tcp", Port: 18080}}
+				services = append(services, c.Services...)
+				rules := standaloneStaticServiceRules(services, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
 				if nft(rules) != nil {
 					t.Fatal("static simulator ACL refused")
 				}

@@ -29,3 +29,16 @@ For Classic use `ProfileID: "gcp-classic-static-ipv4-v1"`, `Scenario: "gcp-stati
 `LocalTarget` and `RemoteTarget` are the exact IPv4 application endpoints inside the engine local/remote prefixes. Serve verifies the real installed CHILD and owned underlay, creates an exact return route to the single remote prefix, and permits only test TCP18080 between those endpoints. It launches no BGP daemon. This permission belongs only to the external emulator; the genuine enrolled gateway must independently obtain normal API activation, policy and lease authority. On exit the emulator applies denial and removes only its verified return route. Existing AWS two-tunnel/static/limits emulator contracts remain separate.
 
 The same standalone emulator accepts HA with `ProfileID: "gcp-ha-bgp-ipv4-v1"` and `Scenario: "gcp-ha"`. Supply exactly two actual peer engines, interfaces and PSKs, distinct local outside addresses and the same enrolled gateway remote outside address. Provide the common `BGPConfig` with private ASNs, approved single local/remote prefixes, two explicit link-local /30 peers, and bounded maximum prefixes. Each interface's address and remote host route must match its configured BGP peer exactly. `LocalTarget`/`RemoteTarget` provide the approved application endpoints. Serve reuses the existing common FRR process and exact learned-prefix/return-route selection. This emulates a Cloud Router peer; it does not claim live Cloud Router interoperability.
+
+Classic peer config may optionally add `Services`, at most16 exact request tuples. Each tuple has lowercase JSON fields `source`, `destination`, `protocol` (`tcp` or `udp`) and nonzero `port`. The source must be an exact IPv4 address within the engine remote prefix; destination must equal `LocalTarget`. Prefix-wide sources, other targets, unknown protocols, duplicate/default tuples and excess tuples are refused. AWS and HA emulator configs refuse this extension.
+
+For example, additional UDP/TCP DNS from another approved exact gateway source:
+
+```json
+"Services": [
+  {"source":"10.10.0.3","destination":"10.20.0.2","protocol":"udp","port":53},
+  {"source":"10.10.0.3","destination":"10.20.0.2","protocol":"tcp","port":53}
+]
+```
+
+The existing exact `RemoteTarget`→`LocalTarget` TCP18080 behavior remains the default. Extra services require real inbound IPsec request IDs and permit only matching conntrack-established replies with the observed outbound IPsec request ID/peer. These tuples grant nothing on the enrolled gateway; its actual policy/lease remains a separate acceptance prerequisite. Native fixture coverage proves exact tuple syntax/readback and restoration of permanent denial; payload DNS/application acceptance belongs to the genuine CP lab.
