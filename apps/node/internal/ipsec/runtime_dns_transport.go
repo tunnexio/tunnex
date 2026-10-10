@@ -79,7 +79,25 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 	if endpoint.Transport == "tcp" {
 		stage = "dns_socket_tcp"
 	}
-	response, err = fqdnrpc.ExchangeBoundSocket(ctx, endpoint, proof.Source, payload)
+	response, err = fqdnrpc.ExchangeBoundSocketObserved(ctx, endpoint, proof.Source, payload, func(outcome fqdnrpc.SocketOutcome) {
+		if endpoint.Transport != "tcp" {
+			return
+		}
+		switch outcome.Stage {
+		case fqdnrpc.SocketInput:
+			stage = "dns_socket_tcp_input"
+		case fqdnrpc.SocketDial:
+			stage = "dns_socket_tcp_dial"
+		case fqdnrpc.SocketWrite:
+			stage = "dns_socket_tcp_write"
+		case fqdnrpc.SocketLength:
+			stage = "dns_socket_tcp_length"
+		case fqdnrpc.SocketBody:
+			stage = "dns_socket_tcp_body"
+		case fqdnrpc.SocketComplete:
+			stage = "dns_socket_tcp_complete"
+		}
+	})
 	if err != nil {
 		return nil, ErrRuntimeController
 	}

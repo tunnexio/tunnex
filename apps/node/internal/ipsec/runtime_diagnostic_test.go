@@ -147,3 +147,14 @@ func TestRuntimeDiagnosticChildDeadlineIsDistinctFromActiveParent(t *testing.T) 
 		t.Fatalf("child deadline confused with parent or cleanup cancellation: %+v", events)
 	}
 }
+
+func TestRuntimeDiagnosticTCPStagesPreserveGuardLabels(t *testing.T) {
+	for _, stage := range []string{"dns_socket_tcp_input", "dns_socket_tcp_dial", "dns_socket_tcp_write", "dns_socket_tcp_length", "dns_socket_tcp_body", "dns_socket_tcp_complete", "dns_latest_guard_template", "dns_latest_guard_required", "dns_latest_guard_full_read", "dns_guard_superseded_verified", "dns_guard_current_refused"} {
+		if !validRuntimeDiagnostic("dns_exchange", stage) {
+			t.Fatal("fixed diagnostic refused", stage)
+		}
+	}
+	if validRuntimeDiagnostic("dns_exchange", "dns_socket_tcp_password=secret") {
+		t.Fatal("unbounded socket diagnostic accepted")
+	}
+}

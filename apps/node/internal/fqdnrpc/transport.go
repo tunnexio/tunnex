@@ -91,7 +91,36 @@ func (configlessTransport) ExchangeDNS(ctx context.Context, config ResolverConfi
 // ExchangeBoundSocket sends one raw DNS packet with the explicit source when
 // supplied. Callers with an IPsec path must independently prove its authority
 // and native source/route before invoking this low-level socket operation.
+type SocketStage string
+
+const (
+	SocketInput    SocketStage = "input"
+	SocketDial     SocketStage = "dial"
+	SocketWrite    SocketStage = "write"
+	SocketLength   SocketStage = "length"
+	SocketBody     SocketStage = "body"
+	SocketComplete SocketStage = "complete"
+)
+
+// SocketOutcome contains no endpoint, packet or underlying error information.
+type SocketOutcome struct {
+	Stage   SocketStage
+	Failed  bool
+	Elapsed time.Duration
+}
+
 func ExchangeBoundSocket(ctx context.Context, endpoint ResolverEndpoint, source netip.Addr, payload []byte) ([]byte, error) {
+	return ExchangeBoundSocketObserved(ctx, endpoint, source, payload, nil)
+}
+
+// ExchangeBoundSocketObserved invokes the per-call observer synchronously once.
+func ExchangeBoundSocketObserved(ctx context.Context, endpoint ResolverEndpoint, source netip.Addr, payload []byte, observe func(SocketOutcome)) (response []byte, resultErr error) {
+	stage, started := SocketInput, time.Now()
+	defer func() {
+		if observe != nil {
+			observe(SocketOutcome{Stage: stage, Failed: resultErr != nil, Elapsed: time.Since(started)})
+		}
+	}()
 	if len(payload) < 12 || len(payload) > 65535 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
 		return nil, errResolverConfig
 	}
@@ -108,6 +137,7 @@ func ExchangeBoundSocket(ctx context.Context, endpoint ResolverEndpoint, source 
 			dialer.LocalAddr = &net.TCPAddr{IP: net.IP(source.AsSlice())}
 		}
 	}
+	stage = SocketDial
 	c, err := dialer.DialContext(ctx, endpoint.Transport, net.JoinHostPort(endpoint.Address, strconv.Itoa(endpoint.Port)))
 	if err != nil {
 		return nil, err
@@ -118,15 +148,18 @@ func ExchangeBoundSocket(ctx context.Context, endpoint ResolverEndpoint, source 
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = c.SetDeadline(deadline)
 	}
+	stage = SocketWrite
 	if endpoint.Transport == "udp" {
 		if _, err = c.Write(payload); err != nil {
 			return nil, err
 		}
 		b := make([]byte, 65535)
+		stage = SocketBody
 		n, err := c.Read(b)
 		if err != nil {
 			return nil, err
 		}
+		stage = SocketComplete
 		return b[:n], nil
 	}
 	frame := make([]byte, 2+len(payload))
@@ -142,6 +175,7 @@ func ExchangeBoundSocket(ctx context.Context, endpoint ResolverEndpoint, source 
 		}
 		frame = frame[n:]
 	}
+	stage = SocketLength
 	var size [2]byte
 	if _, err := io.ReadFull(c, size[:]); err != nil {
 		return nil, err
@@ -150,9 +184,11 @@ func ExchangeBoundSocket(ctx context.Context, endpoint ResolverEndpoint, source 
 	if n < 12 {
 		return nil, fmt.Errorf("invalid DNS TCP frame")
 	}
+	stage = SocketBody
 	resp := make([]byte, n)
 	if _, err := io.ReadFull(c, resp); err != nil {
 		return nil, err
 	}
+	stage = SocketComplete
 	return resp, nil
 }

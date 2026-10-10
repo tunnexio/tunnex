@@ -190,3 +190,82 @@ func TestDNSBoundTCFallbackStaysSameEndpointAndValidatesQuestion(t *testing.T) {
 		t.Fatal("truncated TCP observation accepted as complete DNS answer")
 	}
 }
+
+func TestBoundSocketObservedTCPStages(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		stage SocketStage
+		mode  string
+		fail  bool
+	}{
+		{"length close", SocketLength, "length", true},
+		{"body close", SocketBody, "body", true},
+		{"length deadline", SocketLength, "stall", true},
+		{"complete", SocketComplete, "complete", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listener, err := net.Listen("tcp4", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				c, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				defer c.Close()
+				_ = c.SetDeadline(time.Now().Add(time.Second))
+				var size [2]byte
+				if _, err = io.ReadFull(c, size[:]); err != nil {
+					return
+				}
+				query := make([]byte, binary.BigEndian.Uint16(size[:]))
+				if _, err = io.ReadFull(c, query); err != nil {
+					return
+				}
+				switch tc.mode {
+				case "length":
+					return
+				case "body":
+					_, _ = c.Write([]byte{0, 12, 1})
+				case "stall":
+					var b [1]byte
+					_, _ = c.Read(b[:])
+				case "complete":
+					_, _ = c.Write(append([]byte{0, 12}, make([]byte, 12)...))
+				}
+			}()
+			ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+			defer cancel()
+			count := 0
+			var got SocketOutcome
+			_, err = ExchangeBoundSocketObserved(ctx, ResolverEndpoint{Address: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, Transport: "tcp"}, netip.MustParseAddr("127.0.0.1"), make([]byte, 12), func(v SocketOutcome) { count++; got = v })
+			if count != 1 || got.Stage != tc.stage || got.Failed != tc.fail || (err != nil) != tc.fail || got.Elapsed <= 0 {
+				t.Fatalf("unexpected bounded outcome: %+v count=%d failed=%v", got, count, err != nil)
+			}
+			<-done
+		})
+	}
+}
+func TestBoundSocketObservedInputAndDial(t *testing.T) {
+	for _, tc := range []struct {
+		payload []byte
+		stage   SocketStage
+	}{{nil, SocketInput}, {make([]byte, 12), SocketDial}} {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		count := 0
+		_, err := ExchangeBoundSocketObserved(ctx, ResolverEndpoint{Address: "127.0.0.1", Port: 53, Transport: "tcp"}, netip.Addr{}, tc.payload, func(v SocketOutcome) {
+			count++
+			if v.Stage != tc.stage || !v.Failed {
+				t.Errorf("unexpected outcome: %+v", v)
+			}
+		})
+		if err == nil || count != 1 {
+			t.Fatal("missing exactly-once refusal")
+		}
+	}
+}
