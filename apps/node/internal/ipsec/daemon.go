@@ -489,7 +489,13 @@ func (c *DaemonClient) initiateTunnel(ctx context.Context, t EngineTunnel) error
 // removeTunnel requires already-verified refusal and an exact owned intent from
 // the durable controller. Never terminate by wildcard or clear all credentials.
 func (c *DaemonClient) removeTunnel(ctx context.Context, t EngineTunnel) error {
-	if !validEngineTunnel(t) {
+	return c.removeTunnelSelectors(ctx, t, func(child DaemonChild) bool {
+		return sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(t, true)) && sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(t, false))
+	})
+}
+
+func (c *DaemonClient) removeTunnelSelectors(ctx context.Context, t EngineTunnel, selectors func(DaemonChild) bool) error {
+	if c == nil || c.request == nil || selectors == nil || !validEngineTunnel(t) {
 		return ErrDaemonProtocol
 	}
 	name := engineName(t)
@@ -508,7 +514,7 @@ func (c *DaemonClient) removeTunnel(ctx context.Context, t EngineTunnel) error {
 			return ErrDaemonProtocol
 		}
 		for _, child := range sa.Children {
-			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(t, true)) || !sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(t, false)) {
+			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !selectors(child) {
 				return ErrDaemonProtocol
 			}
 		}

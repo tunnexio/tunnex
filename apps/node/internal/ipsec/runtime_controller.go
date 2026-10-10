@@ -662,9 +662,15 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 				}
 			}
 		}
-		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
+		for slot, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			stage = "cleanup_remove_tunnel"
-			if c.config.Daemon.removeTunnel(ctx, t) != nil {
+			var removeErr error
+			if IsAzureBGPProfile(entry.Allocation.ProfileID) {
+				removeErr = c.config.Daemon.removeAzureCleanupTunnel(ctx, entry, slot, currentNamespace)
+			} else {
+				removeErr = c.config.Daemon.removeTunnel(ctx, t)
+			}
+			if removeErr != nil {
 				return fail()
 			}
 		}
