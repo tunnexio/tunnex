@@ -8,18 +8,36 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
 
+type azureCleanupChildDiagnostic struct {
+	NameMatch           bool `json:"name_matches"`
+	InIDMatch           bool `json:"if_id_in_matches"`
+	OutIDMatch          bool `json:"if_id_out_matches"`
+	ReqIDMatch          bool `json:"reqid_matches"`
+	LocalPrefixesMatch  bool `json:"local_prefixes_match"`
+	RemotePrefixesMatch bool `json:"remote_prefixes_match"`
+}
+type azureCleanupIKEDiagnostic struct {
+	LocalAddressMatch  bool                          `json:"local_address_matches"`
+	RemoteAddressMatch bool                          `json:"remote_address_matches"`
+	Children           []azureCleanupChildDiagnostic `json:"children"`
+}
+
 type azureSlotDiagnostic struct {
-	Slot          int            `json:"slot"`
-	Status        string         `json:"status"`
-	Category      string         `json:"category"`
-	IKEMatches    int            `json:"ike_matches"`
-	ChildStates   map[string]int `json:"child_states"`
-	SADMatches    int            `json:"sad_matches"`
-	SPDDirections map[string]int `json:"spd_directions"`
+	CleanupIKES      []azureCleanupIKEDiagnostic `json:"cleanup_ike_bindings"`
+	StoredConnection bool                        `json:"stored_connection_present"`
+	StoredSharedKey  bool                        `json:"stored_shared_key_present"`
+	Slot             int                         `json:"slot"`
+	Status           string                      `json:"status"`
+	Category         string                      `json:"category"`
+	IKEMatches       int                         `json:"ike_matches"`
+	ChildStates      map[string]int              `json:"child_states"`
+	SADMatches       int                         `json:"sad_matches"`
+	SPDDirections    map[string]int              `json:"spd_directions"`
 }
 
 // Observation only: exact existing validators decide categories. Never creates
@@ -27,10 +45,15 @@ type azureSlotDiagnostic struct {
 func azureNativeSlotDiagnostic(entry RuntimeJournalEntry, d DaemonInventory, k KernelInventory, x XFRMInventory) []azureSlotDiagnostic {
 	output := []azureSlotDiagnostic{}
 	for index, tunnel := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
-		item := azureSlotDiagnostic{Slot: index + 1, Status: runtimeTunnelStatus(tunnel, entry.Observed[index], d, k, x), Category: "native_observation", ChildStates: map[string]int{}, SPDDirections: map[string]int{}}
+		item := azureSlotDiagnostic{StoredConnection: containsString(d.Connections, engineName(tunnel)), StoredSharedKey: containsString(d.SharedKeys, engineName(tunnel)), Slot: index + 1, Status: runtimeTunnelStatus(tunnel, entry.Observed[index], d, k, x), Category: "native_observation", ChildStates: map[string]int{}, SPDDirections: map[string]int{}}
 		for _, ike := range d.SAs {
 			if ike.Name == engineName(tunnel) {
 				item.IKEMatches++
+				binding := azureCleanupIKEDiagnostic{LocalAddressMatch: ike.LocalAddress == tunnel.LocalAddress, RemoteAddressMatch: ike.RemoteAddress == tunnel.RemoteAddress, Children: []azureCleanupChildDiagnostic{}}
+				for _, child := range ike.Children {
+					binding.Children = append(binding.Children, azureCleanupChildDiagnostic{child.Name == engineName(tunnel), child.IfIDIn == tunnel.XFRMID, child.IfIDOut == tunnel.XFRMID, tunnel.ReqID == 0 || child.ReqID == tunnel.ReqID, sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(tunnel, true)), sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(tunnel, false))})
+				}
+				item.CleanupIKES = append(item.CleanupIKES, binding)
 			}
 			for _, child := range ike.Children {
 				if child.Name == engineName(tunnel) || child.ReqID == tunnel.ReqID || child.IfIDIn == tunnel.XFRMID || child.IfIDOut == tunnel.XFRMID {
@@ -166,6 +189,29 @@ func TestAzureOwnedNativeStatusDiagnostic(t *testing.T) {
 		t.Fatal("actual key-free XFRM read refused")
 	}
 	entry := entries[0]
+	guardReader, err := NewGuardReader("/sbin/nft")
+	if err != nil {
+		t.Fatal("fixed guard reader refused")
+	}
+	guardLinks, err := guardReader.interfaces()
+	if err != nil {
+		t.Fatal("guard interfaces refused")
+	}
+	guardRaw, err := guardReader.run(ctx, "-j", "list", "table", "inet", "tunnex_ipsec")
+	if err != nil {
+		t.Fatal("guard observation refused")
+	}
+	mapping := map[string]int{}
+	for _, link := range guardLinks {
+		mapping[link.Name] = link.Index
+	}
+	_, positiveParser := normalizedGuardObjectsWithInterfaces(guardRaw, mapping)
+	withdrawalMatched := false
+	for _, g := range payload.Guards {
+		if g.Namespace == entry.Allocation.Namespace && VerifyGuardWithdrawal([]byte(g.ExpectedJSON), guardRaw, guardLinks) == nil {
+			withdrawalMatched = true
+		}
+	}
 	if k.Namespace != entry.Allocation.Namespace || x.Namespace != entry.Allocation.Namespace {
 		t.Fatal("actual namespace differs from recorded obligation")
 	}
@@ -175,16 +221,43 @@ func TestAzureOwnedNativeStatusDiagnostic(t *testing.T) {
 		phase = "applied"
 	case RuntimeApplying:
 		phase = "applying"
+	case RuntimeCleanupPending:
+		phase = "cleanup_pending"
 	}
 	output := struct {
-		ObservedAt string                `json:"observed_at"`
-		Phase      string                `json:"journal_phase"`
-		Slots      []azureSlotDiagnostic `json:"slots"`
-		Scope      string                `json:"scope"`
-	}{time.Now().UTC().Format(time.RFC3339Nano), phase, azureNativeSlotDiagnostic(entry, d, k, x), "Single native snapshot classification only; no authority or readiness inference"}
+		ObservedAt                string                `json:"observed_at"`
+		Phase                     string                `json:"journal_phase"`
+		Slots                     []azureSlotDiagnostic `json:"slots"`
+		PositiveObservedParser    bool                  `json:"positive_observed_parser_accepts"`
+		WithdrawalTemplateMatched bool                  `json:"withdrawal_template_matches"`
+		CleanupProcessRecorded    bool                  `json:"cleanup_process_recorded"`
+		CleanupRoutesRecorded     bool                  `json:"cleanup_routes_recorded"`
+		RetiredDuties             int                   `json:"retired_duties"`
+		Scope                     string                `json:"scope"`
+	}{time.Now().UTC().Format(time.RFC3339Nano), phase, azureNativeSlotDiagnostic(entry, d, k, x), positiveParser, withdrawalMatched, entry.BGPProcess != nil, entry.BGPRoutes != nil, len(entry.BGPProcessRetired), "Single native snapshot classification only; no authority or readiness inference"}
 	encoded, err := json.Marshal(output)
 	if err != nil {
 		t.Fatal("safe projection encode refused")
 	}
 	fmt.Println(string(encoded))
+}
+
+func TestAzureCleanupDiagnosticReportsExactTupleBooleans(t *testing.T) {
+	entry, d, k, x := runtimeProofFixture()
+	d.SAs = append(d.SAs, d.SAs[0])
+	d.SAs[len(d.SAs)-1].Children = append([]DaemonChild(nil), d.SAs[0].Children...)
+	d.SAs[len(d.SAs)-1].Children[0].IfIDOut++
+	got := azureNativeSlotDiagnostic(entry, d, k, x)
+	if len(got[0].CleanupIKES) != 2 || !got[0].CleanupIKES[0].LocalAddressMatch || !got[0].CleanupIKES[0].RemoteAddressMatch || !got[0].CleanupIKES[0].Children[0].OutIDMatch || got[0].CleanupIKES[1].Children[0].OutIDMatch {
+		t.Fatal("exact cleanup binding difference not projected")
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{engineName(entry.Engines[0]), entry.Engines[0].RemoteAddress.String(), entry.Allocation.ConnectionID.String()} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatal("raw ownership material emitted")
+		}
+	}
 }
