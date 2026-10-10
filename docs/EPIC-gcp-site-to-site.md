@@ -80,3 +80,11 @@ All listed branches/worktrees now exist locally. Branch separation enables isola
 - Project `project-0048836f-6ba1-4a14-8da`, region `asia-south2`: 39 owned lab resources include separate peer, HA and Classic VPCs, Cloud Router, two HA tunnels, one Classic tunnel, targets and Cloud DNS inbound policy. Creation does not prove IPsec SA establishment or application/DNS traffic. Preserve these resources for inspection.
 - Bastion access incident: after moving the generated lab SSH key from project metadata to the four owned VM metadata entries and removing that exact project key, the existing Mac-to-bastion login began refusing public-key authentication. The user was informed and asked to restore bastion access through Console. Cloud work is paused; no local cloud CLI/API bypass is used. Existing cloud resources remain intact.
 - No remote push, PR, main merge, production release, or live GCP acceptance claim.
+
+### Final integration checks
+
+Merged API IPsec/policy/policy-spec/FQDN resolver suites passed. Merged node IPsec/control/BGP/DNS/node-policy suites passed; reviewed journal-capacity regressions passed with a separate 16 MiB envelope limit and unchanged 1 MiB native/per-guard bounds. Frontend: 171 focused tests and typecheck passed. Isolated API/PostgreSQL/Redis are healthy; schema version 224.
+
+The first merged PostgreSQL GCP run refused Classic recreation Enable as ineligible. The identical combined HA/Classic suite then passed twice. This intermittent refusal has not yet been explained; preserve it as an unresolved qualification observation rather than declaring lifecycle fully accepted. Failure diagnostics are being added without relaxing eligibility.
+
+Clean tracked source at `c3c6b8978f2a6ba78a6a5fcdff0a0e4064aa7dd5` was archived separately. Linux AMD64 API, node and relay builds passed. Key-free source/binary/recipe/context hashes are in `/private/tmp/gcp-s2s-build-20261010-2/build-receipt.json`; its native container build and cloud execution remain pending SSH access restoration.
