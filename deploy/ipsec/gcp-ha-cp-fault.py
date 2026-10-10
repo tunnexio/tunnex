@@ -23,7 +23,10 @@ owner=run(['docker','inspect',PEER,'--format','{{index .Config.Labels "tunnex.te
 if owner!='gcp-s2s-runtime':raise SystemExit('owned peer required')
 action=sys.argv[1]
 if action=='clear':
- run(['docker','exec',PEER,'nft','delete','table','inet','tunnex_ha_owned_fault']);print('Owned outer fault cleared')
+ tables=json.loads(run(['docker','exec',PEER,'nft','-j','list','tables']))
+ if any(item.get('table',{}).get('family')=='inet' and item.get('table',{}).get('name')=='tunnex_ha_owned_fault' for item in tables['nftables']):
+  run(['docker','exec',PEER,'nft','delete','table','inet','tunnex_ha_owned_fault'])
+ print('Owned outer fault absent')
 else:
  addresses=['33.0.0.30'] if action=='one' else ['33.0.0.30','33.0.0.31'] if action=='both' else []
  if not addresses:raise SystemExit('explicit one/both/clear required')
@@ -31,7 +34,7 @@ else:
  # The both transition changes only this dedicated owned fault table.
  if action=='both':run(['docker','exec',PEER,'nft','delete','table','inet','tunnex_ha_owned_fault'])
  run(['docker','exec','-i',PEER,'nft','-f','-'],text);print('Owned outer fault set',action)
-for attempt in range(18):
+for attempt in range(30):
  status=status_read()
  if 'bgp' not in status:
   time.sleep(2);continue
