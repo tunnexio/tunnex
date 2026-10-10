@@ -1,7 +1,7 @@
 # EPIC — GCP site-to-site VPN
 
 Date: 2026-10-10
-Status: HA and Classic API/runtime development integrated locally. Genuine local Classic controlled restoration, fragmented UDP, TCP upload/download and lower-underlay MTU/MSS checks passed; local HA packet/lifecycle acceptance passed. Bastion SSH is restored and verified. Genuine Scale licence and normal FQDN opt-in are now active. Actual Google Cloud tunnel traffic and automatic FQDN packet acceptance remain open; reviewed gateway enrollment awaits direct credential-step approval.
+Status: HA and Classic API/runtime development integrated locally. Genuine local Classic controlled restoration, fragmented UDP, TCP upload/download and lower-underlay MTU/MSS checks passed; local HA packet/lifecycle acceptance passed. Bastion SSH is restored and verified. Genuine Scale licence and normal FQDN opt-in are now active. Actual Google Cloud tunnel traffic and automatic FQDN packet acceptance remain open. The actual gateway is enrolled, normally bound and healthy with the real WireGuard backend; strict IPsec qualification currently refuses the dedicated host Docker firewall topology.
 Integration branch: `gcp-s2s` (main baseline `8d344e3051270565d6057fba904fcf8692afa783`).
 Qualification branch: `gcp-s2s-qualification`.
 Decision record: [S-GCP-S2S-decisions.md](S-GCP-S2S-decisions.md).
@@ -121,7 +121,7 @@ The [key-free preparation receipt](../tests/gcp-s2s-local/CLOUD-PREPARATION-RECE
 
 Combined integrated node IPsec/control/BGP/FQDN RPC/DNS forwarding/node policy suites passed (IPsec44.439s). Classic initial successful apply now records the proven current boot; HA startup after recorded boot change preserves old duties behind mandatory prefix denial rather than probing old processes through a reused namespace number. Native modeled Linux RED/GREEN regressions passed; this does not yet establish actual GCP VM reboot acceptance.
 
-### Current source freeze, licence and enrollment gate
+### Historical source freeze, licence and enrollment gate
 
 Frozen production source `3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9` passed six Linux API/node/relay cross-builds, all six relevant node suites, focused DNS/environment race and integrated Linux startup/apply unit regressions. The owned GCP VM built native AMD64 image `sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102`; isolated network-none/read-only/cap-drop content checks and embedded binary hashes passed. The exact approved LAN route was added with independent before/after verification; all DHCP and unrelated routes were preserved. Earlier licence/SSH/route gaps in historical checkpoints above are superseded by these current facts.
 
@@ -129,7 +129,7 @@ Human-provided genuine Scale licence was installed through the ordinary owner AP
 
 Automatic approval review rejected the reviewed normal join-token issuance and private SSH delivery because direct human authorization for that sensitive credential step was required. A concrete approval question is pending; no token was issued, no enrollment file created and no gateway started. Unaffected source qualification, image build, route setup, private launch review and normal licence activation are complete. Live Google SA/BGP/application/DNS tests depend on the fresh genuine gateway enrollment; no live-cloud success or production-ready claim is made. Git remains local only.
 
-### Private delivery complete; gateway launch approval pending
+### Historical private delivery and gateway launch approval gate
 
 Direct human approval was recorded in the coordinating chat, and the exact reviewed normal join runner executed there successfully (exit0). Its public receipt reports token issued, privately delivered to the exact owned gateway and gateway not started; no token was printed or recreated. See [delivery receipt](../tests/gcp-s2s-local/CLOUD-PRIVATE-JOIN-DELIVERY-20261010.json).
 
@@ -138,3 +138,11 @@ The next exact reviewed host-network container launch was rejected before execut
 ### QA DNS naming contract
 
 New provider-owned GCP QA records use the `gcp.s2s-qa.tunnex.app` namespace. The existing AWS `vgw-bgp.s2s-qa.tunnex.app` address `10.85.1.10` is preserved, and Azure uses its own namespace. A public private-A response does not prove private-cloud DNS. GCP-9 acceptance still requires ordinary resolver traffic over VPN with separate DNS53 and application grants. This is a source-only test plan update; no DNS record/zone or gateway launch was changed.
+
+### Current actual cloud enrollment and deployment correction
+
+Direct human approval for the exact reviewed private delivery and initial gateway launch was recorded in the coordinating chat, where those unchanged reviewed actions executed successfully. The gateway genuinely enrolled as `01a125fa-32f3-762b-83d4-d368447bf6ed`; normal Site70 binding returned HTTP204. The preceding approval-pending checkpoints are historical and superseded. No token was reissued or credential values printed.
+
+The initial container selected the default `mem` WireGuard backend because the reviewed launch configuration omitted `TUNNEX_WG_BACKEND=wgctrl`. It exited safely before any IPsec connection was enabled. Independently reviewed replacement added only that environment setting, retained the original stopped container, immutable image/source and persistent enrolled identity. The replacement is running with healthy local health endpoint and actual `wg0` UP. See [normal enrollment receipt](../tests/gcp-s2s-local/GCP-CLOUD-ENROLLMENT-BIND-20261010.json) and [backend correction receipt](../tests/gcp-s2s-local/cloud-existing-identity-backend-fix-20261010.json).
+
+Fresh normal eligibility still reports unsupported: the actual host Docker bridge NAT/FORWARD topology fails strict static firewall qualification. One disabled HA save was refused and readback returned404; no Classic save or enable was attempted. Provider activation remains on hold while the dedicated host deployment is corrected. Firewall guards, capability and eligibility checks are unchanged. No Google Cloud SA, BGP, application or private DNS packet success is claimed.
