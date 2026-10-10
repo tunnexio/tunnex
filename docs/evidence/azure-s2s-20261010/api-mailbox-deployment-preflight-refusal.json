@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "kind": "owned_api_repair_deployment_preflight_refusal",
+  "source_commit": "46d6bb94",
+  "api_tree": "8affd6647f5efa66d6429c794924f6e279492d68",
+  "candidate_sha256": "70bf3b43812466135018bcae5bae61670836e9b4c6117063838889d3df7f985b",
+  "deployment_source_sha256": "3fc9f54751e1f283ed20814bc12cc992a28425a525bda10f4515d1804b0c73bb",
+  "private_sources_and_candidate_staging": {
+    "reviewed_sources_staged": 3,
+    "candidate_sha256": "70bf3b43812466135018bcae5bae61670836e9b4c6117063838889d3df7f985b",
+    "executed": false
+  },
+  "attempt_rows": [
+    {
+      "pins_captured": true,
+      "api_running": true,
+      "current_binary_sha": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+      "gateway_unchanged": true
+    },
+    {
+      "action": "deploy",
+      "stage": "preflight",
+      "success": false,
+      "healthy": false,
+      "current_binary_sha": null,
+      "automatic_rollback": false,
+      "unknown_outcome_requires_read_reconciliation": true
+    }
+  ],
+  "independent_later_read": {
+    "observed_at": "2026-10-10T23:09:07.496882+00:00",
+    "checks": {
+      "gateway": "pass",
+      "api": "pass",
+      "original_durable": "pass",
+      "original_bind": "pass"
+    },
+    "api_running": true,
+    "api_started_at": "2026-10-10T17:15:16.52944432Z",
+    "actual_process_sha": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+    "actual_configuration_matches_pin": true,
+    "old_configuration_pin_sha256": "b35622b41ecd4d8c25e54e98988df8d099365355355d6291a3a21b017eb7b7ca",
+    "actual_configuration_sha256": "b35622b41ecd4d8c25e54e98988df8d099365355355d6291a3a21b017eb7b7ca"
+  },
+  "retained_stage_metadata": {
+    "retained_files": [
+      {
+        "name": "fixed-result.json",
+        "bytes": 190,
+        "mode": "0o600"
+      },
+      {
+        "name": "private-api-after-refusal.json",
+        "bytes": 6099,
+        "mode": "0o600"
+      }
+    ],
+    "baseline_checks": {
+      "stopped": false,
+      "started_exact": true,
+      "process_exact": true,
+      "durable_exact": true,
+      "bind_exact": true
+    }
+  },
+  "limits": [
+    "Refusal occurred at preflight before stop, before binary backup or installation.",
+    "healthy=false means health was not checked by this attempt; it is not proof the old API was unhealthy.",
+    "Later exact identity/configuration/file passes do not identify the historical refusal cause.",
+    "No deployment retry or automatic rollback occurred at this checkpoint.",
+    "Gateway revision54 and original8policies remain unchanged."
+  ]
+}
