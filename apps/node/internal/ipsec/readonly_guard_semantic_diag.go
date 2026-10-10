@@ -169,6 +169,152 @@ func diagNativeSetShapes(raw []byte) []map[string]any {
 	return out
 }
 
+// These bounded counts describe raw shape only. Parsed member values never leave
+// this diagnostic; production normalization/withdrawal remains authoritative.
+type diagSetShape struct {
+	members                                                                                         map[string]bool
+	count, invalidMembers, positiveExpiry, zeroExpiry, invalidExpiry, missingExpiry, missingTimeout int
+}
+
+func diagSets(raw []byte, links map[string]int) (map[string]diagSetShape, bool) {
+	if len(raw) > kernelDumpLimit {
+		return nil, false
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	var env map[string]any
+	if d.Decode(&env) != nil {
+		return nil, false
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return nil, false
+	}
+	objects, ok := env["nftables"].([]any)
+	if !ok || len(objects) > kernelEntryLimit {
+		return nil, false
+	}
+	out := map[string]diagSetShape{}
+	for _, object := range objects {
+		wrapper, ok := object.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		rawSet, present := wrapper["set"]
+		if !present {
+			continue
+		}
+		set, ok := rawSet.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		name, ok := set["name"].(string)
+		if !ok || name == "" || len(name) > 128 {
+			return nil, false
+		}
+		if _, duplicate := out[name]; duplicate {
+			return nil, false
+		}
+		shape := diagSetShape{members: map[string]bool{}}
+		values := []any{}
+		if elems, present := set["elem"]; present {
+			var valid bool
+			values, valid = elems.([]any)
+			if !valid || len(values) > kernelEntryLimit {
+				return nil, false
+			}
+		}
+		shape.count = len(values)
+		for _, value := range values {
+			w, ok := value.(map[string]any)
+			if !ok || len(w) != 1 {
+				shape.invalidMembers++
+				shape.invalidExpiry++
+				continue
+			}
+			e, ok := w["elem"].(map[string]any)
+			if !ok {
+				shape.invalidMembers++
+				shape.invalidExpiry++
+				continue
+			}
+			member := e["val"]
+			if set["type"] == "iface_index" {
+				var translated bool
+				member, translated = translateGuardIndex(member, links)
+				if !translated {
+					member = nil
+				}
+			}
+			n, valid := member.(json.Number)
+			if !valid || !guardCounterNumber(n) || n.String() == "0" || shape.members[n.String()] {
+				shape.invalidMembers++
+			} else {
+				shape.members[n.String()] = true
+			}
+			if _, present := e["timeout"]; !present {
+				shape.missingTimeout++
+			}
+			expiry, present := e["expires"]
+			if !present {
+				shape.missingExpiry++
+			} else if number, valid := expiry.(json.Number); valid && number.String() == "0" {
+				shape.zeroExpiry++
+			} else if _, positive := guardPositiveSeconds(expiry); positive {
+				shape.positiveExpiry++
+			} else {
+				shape.invalidExpiry++
+			}
+		}
+		out[name] = shape
+	}
+	return out, true
+}
+func diagSetMemberCounts(expected, observed []byte, links map[string]int) ([]map[string]any, bool) {
+	want, wok := diagSets(expected, nil)
+	got, gok := diagSets(observed, links)
+	if !wok || !gok {
+		return []map[string]any{}, false
+	}
+	names := map[string]bool{}
+	for name := range want {
+		names[name] = true
+	}
+	for name := range got {
+		names[name] = true
+	}
+	if len(names) > kernelEntryLimit {
+		return []map[string]any{}, false
+	}
+	order := make([]string, 0, len(names))
+	for name := range names {
+		order = append(order, name)
+	}
+	sort.Strings(order)
+	rows := make([]map[string]any, 0, len(order))
+	for _, name := range order {
+		w, wp := want[name]
+		g, gp := got[name]
+		valid := w.invalidMembers == 0 && g.invalidMembers == 0
+		var missing, extra any
+		if valid {
+			m, x := 0, 0
+			for value := range w.members {
+				if !g.members[value] {
+					m++
+				}
+			}
+			for value := range g.members {
+				if !w.members[value] {
+					x++
+				}
+			}
+			missing, extra = m, x
+		}
+		rows = append(rows, map[string]any{"name_sha256": diagHash([]byte(name)), "expected_set_present": wp, "observed_set_present": gp, "expected_member_count": w.count, "observed_member_count": g.count, "member_comparison_valid": valid, "missing_member_count": missing, "extra_member_count": extra, "expected_invalid_member_count": w.invalidMembers, "observed_invalid_member_count": g.invalidMembers, "observed_positive_expiry_count": g.positiveExpiry, "observed_zero_expiry_count": g.zeroExpiry, "observed_invalid_expiry_count": g.invalidExpiry, "observed_missing_expiry_count": g.missingExpiry, "observed_missing_element_timeout_count": g.missingTimeout})
+	}
+	return rows, true
+}
+
 func ReadOnlyGuardSemantic(raw []byte) (map[string]any, error) {
 	if len(raw) > runtimeJournalLimit+2*kernelDumpLimit {
 		return nil, fmt.Errorf("bounded input refused")
@@ -207,7 +353,8 @@ func ReadOnlyGuardSemantic(raw []byte) (map[string]any, error) {
 		if match {
 			matches++
 		}
-		row := map[string]any{"namespace_matches": g.Namespace == in.Namespace, "revision": g.Revision, "digest": g.Digest, "expected_normalization_valid": expectedOK, "withdrawal_matches": match}
+		memberCounts, memberCountsValid := diagSetMemberCounts([]byte(g.ExpectedJSON), in.Native, mapping)
+		row := map[string]any{"namespace_matches": g.Namespace == in.Namespace, "revision": g.Revision, "digest": g.Digest, "expected_normalization_valid": expectedOK, "withdrawal_matches": match, "set_member_count_projection_valid": memberCountsValid, "set_member_counts": memberCounts}
 		if expectedOK && nativeOK && !match && g.Namespace == in.Namespace {
 			freshGot, _ := normalizedGuardObjectsWithInterfaces(in.Native, mapping)
 			row["expected_normalized_sha256"] = diagValueHash(want)

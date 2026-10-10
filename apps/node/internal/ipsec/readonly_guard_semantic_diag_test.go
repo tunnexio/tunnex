@@ -104,3 +104,81 @@ func TestReadOnlyGuardSemanticAzureSchema10(t *testing.T) {
 		})
 	}
 }
+
+func TestReadOnlyGuardSemanticMemberCountsSchema10(t *testing.T) {
+	set := `{"set":{"family":"inet","table":"tunnex_ipsec","name":"lease_test","type":"iface_index","flags":["timeout"],"timeout":60,"elem":[{"elem":{"val":10,"timeout":30}}]}}`
+	expected := strings.Replace(guardExpectedFixture, `{"chain":`, set+`,{"chain":`, 1)
+	material := azureMaterialFixture(AzureActiveActiveBGPProfile)
+	entry, _, err := runtimeMaterialEntry(material, material.Manifest.OrgID, material.Manifest.NodeID, "net:[4026531992]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := runtimeJournalPayload{Version: 10, OwnerID: material.Manifest.NodeID, Sequence: 3, Entries: []RuntimeJournalEntry{entry}, Guards: []runtimeGuardTemplate{{Namespace: "net:[4026531992]", Revision: 1, Digest: strings.Repeat("a", 64), ExpectedJSON: expected}}}
+	journal, _ := json.Marshal(runtimeJournalEnvelope{Payload: payload, Checksum: journalChecksum(payload)})
+	for _, tc := range []struct {
+		name, native                                                                     string
+		observed, missing, extra, positive, zero, invalid, missingExpiry, missingTimeout int
+		match                                                                            bool
+	}{
+		{"complete", expected, 1, 0, 0, 0, 0, 0, 1, 0, true},
+		{"positive", strings.Replace(expected, `"timeout":30}`, `"timeout":30,"expires":29}`, 1), 1, 0, 0, 1, 0, 0, 0, 0, true},
+		{"disappeared", strings.Replace(expected, `,"elem":[{"elem":{"val":10,"timeout":30}}]`, "", 1), 0, 1, 0, 0, 0, 0, 0, 0, true},
+		{"foreign member", strings.Replace(expected, `"val":10`, `"val":11`, 1), 1, 1, 1, 0, 0, 0, 1, 0, false},
+		{"zero", strings.Replace(expected, `"timeout":30}`, `"timeout":30,"expires":0}`, 1), 1, 0, 0, 0, 1, 0, 0, 0, true},
+		{"invalid expiry", strings.Replace(expected, `"timeout":30}`, `"timeout":30,"expires":-1}`, 1), 1, 0, 0, 0, 0, 1, 0, 0, false},
+		{"missing timeout", strings.Replace(expected, `"timeout":30}`, `"expires":29}`, 1), 1, 0, 0, 1, 0, 0, 0, 1, false},
+		{"foreign structure", strings.Replace(expected, `"drop":null`, `"accept":null`, 1), 1, 0, 0, 0, 0, 0, 1, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in, _ := json.Marshal(ReadOnlyGuardSemanticInput{Journal: journal, Native: json.RawMessage(tc.native), Namespace: "net:[4026531992]", Links: []GuardInterface{{Name: "tx-fixture", Index: 10}}, Phase: "recovery"})
+			result, err := ReadOnlyGuardSemantic(in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate := result["candidates"].([]map[string]any)[0]
+			if candidate["set_member_count_projection_valid"] != true || candidate["withdrawal_matches"] != tc.match {
+				t.Fatal("wrong diagnostic/validator result", candidate)
+			}
+			rows := candidate["set_member_counts"].([]map[string]any)
+			if len(rows) != 1 {
+				t.Fatal(rows)
+			}
+			row := rows[0]
+			want := map[string]int{"expected_member_count": 1, "observed_member_count": tc.observed, "missing_member_count": tc.missing, "extra_member_count": tc.extra, "observed_positive_expiry_count": tc.positive, "observed_zero_expiry_count": tc.zero, "observed_invalid_expiry_count": tc.invalid, "observed_missing_expiry_count": tc.missingExpiry, "observed_missing_element_timeout_count": tc.missingTimeout}
+			for key, v := range want {
+				if row[key] != v {
+					t.Fatalf("%s got%v want%d", key, row[key], v)
+				}
+			}
+			if row["name_sha256"] != diagHash([]byte("lease_test")) || row["member_comparison_valid"] != true {
+				t.Fatal(row)
+			}
+			raw, _ := json.Marshal(row)
+			if strings.Contains(string(raw), "lease_test") || strings.Contains(string(raw), "tunnex_ipsec") || strings.Contains(string(raw), "tx-fixture") || strings.Contains(string(raw), `"val"`) {
+				t.Fatal("member/name payload leaked")
+			}
+			if result["no_packet_permission_or_health_receipt"] != true || result["historical_failure_reproduced"] != false {
+				t.Fatal("diagnostic promoted")
+			}
+		})
+	}
+}
+
+func TestReadOnlyGuardSemanticMemberCountsMalformedAndBounded(t *testing.T) {
+	set := `{"nftables":[{"set":{"name":"private-name","type":"iface_index","elem":[{"elem":{"val":10}}]}}]}`
+	rows, ok := diagSetMemberCounts([]byte(set), []byte(strings.Replace(set, `"val":10`, `"val":"tx-fixture"`, 1)), map[string]int{"tx-fixture": 10})
+	if !ok || len(rows) != 1 || rows[0]["missing_member_count"] != 0 || rows[0]["extra_member_count"] != 0 {
+		t.Fatal("canonical interface comparison refused", rows)
+	}
+	malformed := strings.Replace(set, `{"elem":{"val":10}}`, `{"elem":{"val":10}},{"elem":{"val":10}}`, 1)
+	rows, ok = diagSetMemberCounts([]byte(set), []byte(malformed), nil)
+	if !ok || rows[0]["member_comparison_valid"] != false || rows[0]["missing_member_count"] != nil || rows[0]["extra_member_count"] != nil {
+		t.Fatal("duplicate member implied comparison", rows)
+	}
+	if _, ok := diagSetMemberCounts([]byte(set), append([]byte(set), []byte(`{}`)...), nil); ok {
+		t.Fatal("trailing data accepted")
+	}
+	if _, ok := diagSetMemberCounts([]byte(set), []byte(strings.Repeat("x", kernelDumpLimit+1)), nil); ok {
+		t.Fatal("unbounded diagnostic accepted")
+	}
+}
