@@ -5,12 +5,32 @@ from datetime import datetime, timedelta, timezone
 import importlib.util
 import ipaddress
 import json
+import re
 from pathlib import Path
 import uuid
 
 spec = importlib.util.spec_from_file_location('azure_enrollment', Path(__file__).with_name('enroll-local.py'))
 lab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lab)
+STAGE = 'inputs'
+
+def saved_resource(client, path, ident):
+    values = client.call('GET', path)
+    if not isinstance(values, list):
+        raise lab.LabError('Normal resource list required')
+    matches = [value for value in values if isinstance(value, dict) and value.get('id') == ident]
+    if len(matches) != 1:
+        raise lab.LabError('Exact singular saved resource required')
+    return matches[0]
+
+def safe_diagnostic(error):
+    result = 'Owned LB API failed at stage=' + STAGE
+    if isinstance(error, lab.LabError):
+        if isinstance(error.status, int) and 100 <= error.status <= 599:
+            result += ' status=' + str(error.status)
+        if isinstance(error.code, str) and re.fullmatch(r'[a-z0-9_]{1,64}', error.code):
+            result += ' code=' + error.code
+    return result
 
 def protected_ids(state):
     result = []
@@ -47,12 +67,14 @@ def selected_profile(context, connection_id, revision):
     return profile
 
 def main():
+    global STAGE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('phase', choices=('prepare', 'grant', 'revoke', 'read', 'fqdn-prepare', 'fqdn-enable', 'fqdn-grant', 'fqdn-revoke'))
     parser.add_argument('--private-root', type=Path, required=True)
     parser.add_argument('--connection-id', required=True)
     parser.add_argument('--expiry-seconds', type=int, default=90)
     args = parser.parse_args()
+    STAGE = 'inputs'
     if not 30 <= args.expiry_seconds <= 300 or str(uuid.UUID(args.connection_id)) != args.connection_id:
         raise lab.LabError('Canonical connection and bounded expiry required')
     private = args.private_root.resolve()
@@ -66,6 +88,7 @@ def main():
     if accounts['owner']['email'] != 'browser-owner@azure-s2s.local' or dns['connection_id'] != args.connection_id or dns['source_address'] != '10.233.10.2':
         raise lab.LabError('Owned Azure source and connection required')
     protected = protected_ids(dns)
+    STAGE = 'owned_authority_read'
     client = lab.Client(accounts['owner'])
     orgs = client.call('GET', '/api/v1/organizations')
     if not any(o['id'] == setup['org_id'] and o['slug'] == 'azure-s2s-local' for o in orgs):
@@ -93,6 +116,7 @@ def main():
         return policies
     verify_protected()
     if args.phase.startswith('fqdn-'):
+        STAGE = 'fqdn_binding_read'
         if state['rule_id']:
             raise lab.LabError('Explicitly revoke LB IP grant before separate FQDN proof')
         context = client.call('GET', base + '/fqdn-resolver-contexts/' + setup['site_id'] + '/' + setup['gateway_id'])
@@ -103,27 +127,32 @@ def main():
         if state.get('fqdn_binding', binding) != binding:
             raise lab.LabError('Resolver/profile/revision changed; review before new FQDN proof')
         if args.phase == 'fqdn-prepare':
+            STAGE = 'fqdn_resource_prepare'
             if state.get('fqdn_resource_id'):
                 raise lab.LabError('LB FQDN already prepared')
             resource = client.call('POST', base + '/fqdn-resources', {'name': 'Azure owned private LB FQDN', 'fqdn': 'lbapp.azure-s2s.test', 'protocol': 'tcp', 'port_low': 8080, 'port_high': 8080, 'resolver_context': {'site_id': setup['site_id'], 'gateway_id': setup['gateway_id']}})
             state.update(fqdn_resource_id=resource['id'], fqdn_binding=binding, fqdn_rule_id=None)
             save()
         elif args.phase == 'fqdn-enable':
+            STAGE = 'fqdn_opt_in'
             impact = client.call('GET', base + '/fqdn-resources/setting/impact')
             if not impact['entitlement_available']:
                 raise lab.LabError('Genuine current FQDN entitlement unavailable')
             client.call('PUT', base + '/fqdn-resources/setting', {'enabled': True, 'expected_impact_token': impact['expected_impact_token']})
         elif args.phase == 'fqdn-grant':
+            STAGE = 'fqdn_resource_validation'
             if not state.get('fqdn_resource_id') or state.get('fqdn_rule_id'):
                 raise lab.LabError('Prepared FQDN without previous rule required')
-            resource = client.call('GET', base + '/fqdn-resources/' + state['fqdn_resource_id'])
+            resource = saved_resource(client, base + '/fqdn-resources', state['fqdn_resource_id'])
             if resource.get('org_id') != setup['org_id'] or resource.get('fqdn') != 'lbapp.azure-s2s.test' or resource.get('destination_kind') != 'fqdn' or resource.get('protocol') != 'tcp' or resource.get('port_low') != 8080 or resource.get('port_high') != 8080 or resource.get('resolver_context') != {'site_id': setup['site_id'], 'gateway_id': setup['gateway_id']}:
                 raise lab.LabError('Stored distinct LB FQDN resource changed')
             expiry = (datetime.now(timezone.utc) + timedelta(seconds=args.expiry_seconds)).isoformat()
+            STAGE = 'fqdn_grant'
             rule = client.call('POST', base + '/policies', {'src_kind': 'cidr', 'src_cidr': '10.233.10.2/32', 'dst_kind': 'fqdn_resource', 'dst_fqdn_resource_id': state['fqdn_resource_id'], 'expires_at': expiry})
             state.update(fqdn_rule_id=rule['id'], fqdn_expires_at=expiry)
             save()
         elif args.phase == 'fqdn-revoke' and state.get('fqdn_rule_id'):
+            STAGE = 'fqdn_revoke'
             try:
                 client.call('DELETE', base + '/policies/' + state['fqdn_rule_id'])
             except lab.LabError as error:
@@ -135,6 +164,7 @@ def main():
         print('Owned LB FQDN API phase completed: ' + args.phase + '; DNS generation and packet enforcement unverified.')
         return
     if args.phase == 'prepare':
+        STAGE = 'lb_resource_prepare'
         if state.get('resource_id'):
             raise lab.LabError('LB already prepared; use explicit grant/revoke')
         state['resource_id'] = client.call('POST', base + '/resources', resource_body())['id']
@@ -142,17 +172,20 @@ def main():
     else:
         if not state.get('resource_id'):
             raise lab.LabError('Prepare distinct LB resource first')
-        resource = client.call('GET', base + '/resources/' + state['resource_id'])
+        STAGE = 'lb_resource_validation'
+        resource = saved_resource(client, base + '/resources', state['resource_id'])
         if any(resource.get(k) != v for k, v in resource_body().items()):
             raise lab.LabError('Stored LB resource no longer matches owned /32')
         if args.phase == 'grant':
             if state['rule_id'] or state.get('fqdn_rule_id'):
                 raise lab.LabError('Revoke previous LB rule first')
             expiry = (datetime.now(timezone.utc) + timedelta(seconds=args.expiry_seconds)).isoformat()
+            STAGE = 'lb_grant'
             rule = client.call('POST', base + '/policies', {'src_kind': 'cidr', 'src_cidr': '10.233.10.2/32', 'dst_kind': 'resource', 'dst_resource_id': state['resource_id'], 'expires_at': expiry})
             state.update(rule_id=rule['id'], expires_at=expiry)
             save()
         elif args.phase == 'revoke':
+            STAGE = 'lb_revoke'
             if state['rule_id']:
                 try:
                     client.call('DELETE', base + '/policies/' + state['rule_id'])
@@ -170,5 +203,5 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (lab.LabError, OSError, KeyError, TypeError, ValueError):
-        raise SystemExit('Owned LB API input/state/authority check failed; inspect private state without exposing credentials')
+    except (lab.LabError, OSError, KeyError, TypeError, ValueError) as error:
+        raise SystemExit(safe_diagnostic(error))

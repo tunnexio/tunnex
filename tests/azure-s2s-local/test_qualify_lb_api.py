@@ -1,5 +1,10 @@
 import importlib.util
 import copy
+import contextlib
+import io
+import json
+import tempfile
+from unittest.mock import patch
 from pathlib import Path
 import unittest
 
@@ -8,6 +13,58 @@ probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 
 class LBAPIScopeTests(unittest.TestCase):
+    def test_normal_grant_contract_uses_list_and_preserves_eight_rules(self):
+        connection_id = '11111111-1111-4111-8111-111111111111'
+        setup = {'org_id': 'org', 'site_id': 'site', 'gateway_id': 'gateway'}
+        dns = {'connection_id': connection_id, 'source_address': '10.233.10.2', 'dns_rules': ['d1', 'd2', 'd3', 'd4'], 'app_rules': ['a1', 'a2'], 'reverse_rules': ['r1', 'r2']}
+        protected = sorted(probe.protected_ids(dns))
+        calls = []
+        class Client:
+            def __init__(self, _account):
+                pass
+            def call(self, method, path, body=None):
+                calls.append((method, path, body))
+                if method == 'GET' and '/resources/' in path:
+                    raise AssertionError('Unsupported resource GET-by-ID')
+                if path == '/api/v1/organizations':
+                    return [{'id': 'org', 'slug': 'azure-s2s-local'}]
+                if path.endswith('/policies'):
+                    if method == 'POST':
+                        return {'id': 'lb-rule'}
+                    return [{'id': value} for value in protected]
+                if path.endswith('/configuration'):
+                    return {'configuration_revision': 1, 'configuration': {'local_prefixes': ['10.233.10.0/24'], 'remote_prefixes': ['10.231.0.0/16']}}
+                if '/ipsec/connections/' in path:
+                    return {'site_id': 'site', 'gateway_node_id': 'gateway', 'desired_intent': 'enabled'}
+                if path.endswith('/resources') and method == 'GET':
+                    return [{'id': 'other', **probe.resource_body()}, {'id': 'lb-resource', **probe.resource_body()}]
+                raise AssertionError('Unexpected endpoint')
+        with tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve()) as directory:
+            private = Path(directory)
+            inputs = {'ui-accounts.json': {'owner': {'email': 'browser-owner@azure-s2s.local', 'password': 'private-fixture'}}, 'api-setup.json': setup, 'dns-api-setup.json': dns,
+                      'lb-api-setup.json': {'connection_id': connection_id, 'source_address': '10.233.10.2', 'resource_body': probe.resource_body(), 'rule_id': None, 'resource_id': 'lb-resource', 'protected_policy_ids': protected}}
+            for name, value in inputs.items():
+                path = private / name; path.write_text(json.dumps(value)); path.chmod(0o600)
+            with patch.object(probe.lab, 'Client', Client), patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=type('Args', (), {'phase': 'grant', 'private_root': private, 'connection_id': connection_id, 'expiry_seconds': 90})()), contextlib.redirect_stdout(io.StringIO()):
+                probe.main()
+            self.assertEqual(json.loads((private / 'dns-api-setup.json').read_text()), dns)
+            self.assertEqual(json.loads((private / 'lb-api-setup.json').read_text())['rule_id'], 'lb-rule')
+        mutations = [(method, path, body) for method, path, body in calls if method != 'GET']
+        self.assertEqual(len(mutations), 1)
+        body = mutations[0][2]
+        self.assertEqual(body['src_cidr'], '10.233.10.2/32')
+        self.assertEqual(body['dst_resource_id'], 'lb-resource')
+        self.assertIn('expires_at', body)
+
+    def test_list_requires_one_exact_identity_and_diagnostics_do_not_echo_errors(self):
+        for values in ([], [{'id': 'saved'}, {'id': 'saved'}], {'resource': {'id': 'saved'}}):
+            client = type('Client', (), {'call': lambda _self, *_args: values})()
+            with self.assertRaises(probe.lab.LabError):
+                probe.saved_resource(client, '/resources', 'saved')
+        self.assertEqual(probe.saved_resource(type('Client', (), {'call': lambda *_args: [{'id': 'saved'}]})(), '/fqdn-resources', 'saved')['id'], 'saved')
+        result = probe.safe_diagnostic(probe.lab.LabError('PRIVATE', 403, 'forbidden'))
+        self.assertIn('status=403 code=forbidden', result)
+        self.assertNotIn('PRIVATE', result)
     def test_existing_rule_counts_and_unique_identity_required(self):
         state = {'dns_rules': ['d1', 'd2', 'd3', 'd4'], 'app_rules': ['a1', 'a2'], 'reverse_rules': ['r1', 'r2']}
         self.assertEqual(len(probe.protected_ids(state)), 8)
