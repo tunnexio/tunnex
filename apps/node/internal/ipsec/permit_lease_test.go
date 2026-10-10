@@ -189,3 +189,19 @@ func TestPermitLeaseCanonicalPolicyHashIdentity(t *testing.T) {
 		t.Fatal("invalid policy identity")
 	}
 }
+
+func TestPermitLeaseMixedPolicyAuthorityRefused(t *testing.T) {
+	id := PermitLeaseIdentity{Binding: Binding{OrgID: uuid.New(), GatewayID: uuid.New(), ConnectionID: uuid.New(), DesiredRevision: 1, ConfigurationRevision: 1, PolicyRevision: 1}, DeliveryID: uuid.New(), PolicyHash: strings.Repeat("b", 64)}
+	if _, err := NewPermitLeaseAuthority().Begin(id); err == nil {
+		t.Fatal("legacy revision mixed with canonical hash accepted")
+	}
+	id.PolicyHash = ""
+	if _, err := NewPermitLeaseAuthority().Begin(id); err != nil {
+		t.Fatal("legal legacy authority refused", err)
+	}
+	id.Binding.PolicyRevision = 0
+	id.PolicyHash = strings.Repeat("b", 64)
+	if _, err := NewPermitLeaseAuthority().Begin(id); err != nil {
+		t.Fatal("legal canonical authority refused", err)
+	}
+}

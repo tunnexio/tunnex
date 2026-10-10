@@ -38,7 +38,17 @@ func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEn
 		return ErrRuntimeController
 	}
 	after, err := xr.Read(ctx)
-	if err != nil || !reflect.DeepEqual(before, after) || !c.config.DaemonAlive() {
+	if err != nil || !reflect.DeepEqual(connectionXFRMSnapshot(e, before), connectionXFRMSnapshot(e, after)) || !c.config.DaemonAlive() {
+		return ErrRuntimeController
+	}
+	// Reprove the requested connection against a fresh complete independent
+	// snapshot; unrelated namespace changes cannot supply target ownership.
+	daemonAfter, err := c.config.Daemon.Inspect(ctx)
+	if err != nil {
+		return ErrRuntimeController
+	}
+	kernelAfter, err := kr.Read(ctx)
+	if err != nil || !reflect.DeepEqual(connectionKernelSnapshot(e, kernel), connectionKernelSnapshot(e, kernelAfter)) || runtimeInventoryMatches(e, daemonAfter, kernelAfter, after) != nil || !c.config.DaemonAlive() || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
 	return nil
@@ -120,48 +130,15 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 			}
 			continue
 		}
-		matches := 0
-		var expectedSPIIn, expectedSPIOut uint32
-		for _, sa := range daemon.SAs {
-			if sa.Name != engineName(t) {
-				continue
-			}
-			if !sa.Established || sa.LocalAddress != t.LocalAddress || sa.RemoteAddress != t.RemoteAddress {
-				return ErrRuntimeController
-			}
-			for _, child := range sa.Children {
-				if child.Name != engineName(t) || !child.Installed || child.ReqID != t.ReqID || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || !sameEnginePrefixes(child.LocalPrefixes, t.LocalPrefixes) || !sameEnginePrefixes(child.RemotePrefixes, t.RemotePrefixes) {
-					return ErrRuntimeController
-				}
-				in, out := false, false
-				for _, state := range before.States {
-					if state.IfID != t.XFRMID {
-						if state.ReqID == t.ReqID {
-							return ErrRuntimeController
-						}
-						continue
-					}
-					if state.ReqID != t.ReqID {
-						return ErrRuntimeController
-					}
-					if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress && state.SPI == child.SPIOut && (state.Direction == "" || state.Direction == "out") {
-						out = true
-					} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress && state.SPI == child.SPIIn && (state.Direction == "" || state.Direction == "in") {
-						in = true
-					} else {
-						return ErrRuntimeController
-					}
-				}
-				if !in || !out {
-					return ErrRuntimeController
-				}
-				expectedSPIIn, expectedSPIOut = child.SPIIn, child.SPIOut
-				matches++
-			}
-		}
-		if matches != 1 {
+		sa, child, retired, err := ownedRuntimeChildren(t, daemon)
+		if err != nil || sa == nil || !sa.Established || child == nil || !child.Installed {
 			return ErrRuntimeController
 		}
+		in, out, err := ownedRuntimeSPIStates(t, child, retired, before)
+		if err != nil || in != 1 || out != 1 {
+			return ErrRuntimeController
+		}
+		expectedSPIIn, expectedSPIOut := child.SPIIn, child.SPIOut
 		for _, p := range before.Policies {
 			if p.IfID != t.XFRMID {
 				if p.ReqID == t.ReqID {
@@ -177,8 +154,8 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 				return ErrRuntimeController
 			}
 			allowed := false
-			for _, l := range t.LocalPrefixes {
-				for _, r := range t.RemotePrefixes {
+			for _, l := range engineTransportPrefixes(t, true) {
+				for _, r := range engineTransportPrefixes(t, false) {
 					if p.ReqID == t.ReqID && (p.Direction == "out" && p.Source == l && p.Destination == r && p.TemplateSource == t.LocalAddress && p.TemplateDestination == t.RemoteAddress || (p.Direction == "in" || p.Direction == "fwd") && p.Source == r && p.Destination == l && p.TemplateSource == t.RemoteAddress && p.TemplateDestination == t.LocalAddress) {
 						allowed = true
 					}
@@ -188,8 +165,8 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 				return ErrRuntimeController
 			}
 		}
-		for _, local := range t.LocalPrefixes {
-			for _, remote := range t.RemotePrefixes {
+		for _, local := range engineTransportPrefixes(t, true) {
+			for _, remote := range engineTransportPrefixes(t, false) {
 				for _, dir := range []string{"in", "fwd", "out"} {
 					found := false
 					for _, p := range before.Policies {

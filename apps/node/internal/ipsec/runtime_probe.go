@@ -122,7 +122,7 @@ func newRuntimePlatformProbe(ipPath, nftPath string, daemon *DaemonClient, alive
 			return ErrRuntimeProbe
 		}
 		raw, e := runKernelCommand(c, nftPath, "-j", "list", "ruleset")
-		if e != nil || !runtimeHookCensus(raw, nil) {
+		if e != nil || !runtimeQualifiedHookCensus(c, nftPath, raw, nil) {
 			return ErrRuntimeProbe
 		}
 		return nil
@@ -152,7 +152,7 @@ func newRuntimePlatformProbe(ipPath, nftPath string, daemon *DaemonClient, alive
 	return p, nil
 }
 func runtimeProbeManifest(ns string) (GuardManifest, error) {
-	return RenderGuard(GuardIntent{Namespace: ns, OwnerID: uuid.New(), Revision: 1, Connections: []GuardConnection{{ID: uuid.New(), Local: []netip.Prefix{netip.MustParsePrefix("10.250.1.0/24")}, Remote: []netip.Prefix{netip.MustParsePrefix("10.250.2.0/24")}, Tunnels: [2]Ownership{{Namespace: ns, InterfaceName: "tx_probe_a", InterfaceIndex: 10001, XFRMID: 10001}, {Namespace: ns, InterfaceName: "tx_probe_b", InterfaceIndex: 10002, XFRMID: 10002}}, LocalIngressIndices: []int{10003}, PermittedInterfaceIndices: []int{10001}, PermitFor: time.Second, EncryptedEgress: []GuardEncryptedEgress{{TunnelInterfaceIndex: 10001, ReqID: 10001, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 10004}}, Grants: []GuardGrant{{Source: netip.MustParsePrefix("10.250.1.0/24"), Destination: netip.MustParsePrefix("10.250.2.0/24"), Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}}}})
+	return RenderGuard(GuardIntent{Namespace: ns, OwnerID: uuid.New(), Revision: 1, Connections: []GuardConnection{{ID: uuid.New(), Local: []netip.Prefix{netip.MustParsePrefix("10.250.1.0/24")}, Remote: []netip.Prefix{netip.MustParsePrefix("10.250.2.0/24")}, TunnelMTUs: []GuardTunnelMTU{{InterfaceIndex: 10001, MTU: 1422}, {InterfaceIndex: 10002, MTU: 1422}}, Tunnels: [2]Ownership{{Namespace: ns, InterfaceName: "tx_probe_a", InterfaceIndex: 10001, XFRMID: 10001}, {Namespace: ns, InterfaceName: "tx_probe_b", InterfaceIndex: 10002, XFRMID: 10002}}, LocalIngressIndices: []int{10003}, PermittedInterfaceIndices: []int{10001}, ReplyIngressIndices: []int{10001}, PermitFor: time.Second, EncryptedEgress: []GuardEncryptedEgress{{TunnelInterfaceIndex: 10001, ReqID: 10001, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 10004}}, Grants: []GuardGrant{{Source: netip.MustParsePrefix("10.250.1.1/32"), Destination: netip.MustParsePrefix("10.250.2.0/24"), Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}}}})
 }
 
 func runtimeProbePlugins(plugins []string) bool {

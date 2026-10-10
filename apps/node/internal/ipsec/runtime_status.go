@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/google/uuid"
+	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"reflect"
 	"strconv"
 	"time"
@@ -15,13 +16,17 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 	if d.ID == uuid.Nil || d.Kind != "apply" || d.DesiredRevision <= 0 || d.Manifest.DesiredRevision != d.DesiredRevision || d.Manifest.ConfigurationRevision <= 0 {
 		return RuntimeStatusReport{}, ErrRuntimeController
 	}
+	bgp, bgpErr := runtimeBGPContract(d.Manifest)
+	if bgpErr != nil {
+		return RuntimeStatusReport{}, ErrRuntimeController
+	}
 	recovery, recoveryErr := runtimeRecoveryContract(d.Manifest)
 	if recoveryErr != nil {
 		return RuntimeStatusReport{}, ErrRuntimeController
 	}
 	report := RuntimeStatusReport{DeliveryID: d.ID, DesiredRevision: d.DesiredRevision, ConfigurationRevision: d.Manifest.ConfigurationRevision}
 	for i, t := range d.Manifest.Tunnels {
-		if t.ID == uuid.Nil || t.Slot != i+1 || t.Selected != (i == 0) {
+		if t.ID == uuid.Nil || t.Slot != i+1 || t.Selected != (!bgp && i == 0) {
 			return RuntimeStatusReport{}, ErrRuntimeController
 		}
 		report.Tunnels[i] = RuntimeTunnelStatus{ID: t.ID, Slot: t.Slot, Status: "unknown", Selected: t.Selected}
@@ -81,6 +86,10 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 		}
 		version := 1
 		report.RecoveryVersion, report.SelectionSequence = &version, &seq
+		if c.recoveryStatusSequence == nil {
+			c.recoveryStatusSequence = map[uuid.UUID]uint64{}
+		}
+		c.recoveryStatusSequence[entry.DeliveryID] = seq
 	}
 	kr, e := NewKernelReader(c.config.IPPath)
 	if e != nil {
@@ -93,6 +102,25 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 	statuses := runtimeObservedStatuses(ctx, *entry, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
 	for i, status := range statuses {
 		report.Tunnels[i].Status = status
+	}
+	if bgp {
+		observed, err := c.observedBGPStatus(ctx, *entry)
+		if err != nil || observed == nil || c.kernel == nil || entry.BGPRoutes == nil || entry.BGPRoutes.Stage != "completed" || c.kernel.verifyBGPRoutes(ctx, entry.Allocation, entry.Observed, entry.BGPRoutes.Owned, true) != nil {
+			return report, nil
+		}
+		projection := projectBGPStatus(*entry, *observed, statuses)
+		if projection == nil {
+			return report, nil
+		}
+		if c.journal.Save(entries) != nil {
+			return RuntimeStatusReport{}, ErrRuntimeController
+		}
+		_, sequence, err := c.journal.guardTemplates()
+		if err != nil || sequence == 0 || sequence > 9007199254740991 {
+			return RuntimeStatusReport{}, ErrRuntimeController
+		}
+		projection.Sequence = sequence
+		report.BGP = projection
 	}
 	if recovery {
 		slot := c.observedRecoveryActiveSlot(ctx, *entry)
@@ -133,7 +161,7 @@ func runtimeObservedStatuses(ctx context.Context, e RuntimeJournalEntry, r runti
 			previousX = x
 			previousK = k
 		} else {
-			if !reflect.DeepEqual(previousX, x) || !reflect.DeepEqual(previousK, k) {
+			if !reflect.DeepEqual(connectionXFRMSnapshot(e, previousX), connectionXFRMSnapshot(e, x)) || !reflect.DeepEqual(connectionKernelSnapshot(e, previousK), connectionKernelSnapshot(e, k)) {
 				return unknown
 			}
 			for i := range current {
@@ -160,51 +188,12 @@ func runtimeTunnelStatus(t EngineTunnel, own Ownership, d DaemonInventory, k Ker
 	if !validEngineTunnel(t) || t.ReqID == 0 {
 		return "unknown"
 	}
-	var sa *DaemonIKE
-	var child *DaemonChild
-	for i := range d.SAs {
-		candidate := &d.SAs[i]
-		if candidate.Name == engineName(t) {
-			if sa != nil || candidate.LocalAddress != t.LocalAddress || candidate.RemoteAddress != t.RemoteAddress {
-				return "unknown"
-			}
-			sa = candidate
-		}
-		for j := range candidate.Children {
-			c := &candidate.Children[j]
-			related := c.Name == engineName(t) || c.ReqID == t.ReqID || c.IfIDIn == t.XFRMID || c.IfIDOut == t.XFRMID
-			if !related {
-				continue
-			}
-			if candidate.Name != engineName(t) || c.Name != engineName(t) || c.ReqID != t.ReqID || c.IfIDIn != t.XFRMID || c.IfIDOut != t.XFRMID || !sameEnginePrefixes(c.LocalPrefixes, t.LocalPrefixes) || !sameEnginePrefixes(c.RemotePrefixes, t.RemotePrefixes) || child != nil {
-				return "unknown"
-			}
-			child = c
-		}
+	sa, child, retired, err := ownedRuntimeChildren(t, d)
+	if err != nil {
+		return "unknown"
 	}
-	statesIn, statesOut := 0, 0
-	for _, state := range x.States {
-		if state.IfID != t.XFRMID && state.ReqID != t.ReqID {
-			continue
-		}
-		if state.IfID != t.XFRMID || state.ReqID != t.ReqID {
-			return "unknown"
-		}
-		if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress && (state.Direction == "" || state.Direction == "out") {
-			statesOut++
-			if child != nil && state.SPI != child.SPIOut {
-				return "unknown"
-			}
-		} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress && (state.Direction == "" || state.Direction == "in") {
-			statesIn++
-			if child != nil && state.SPI != child.SPIIn {
-				return "unknown"
-			}
-		} else {
-			return "unknown"
-		}
-	}
-	if statesIn > 1 || statesOut > 1 {
+	statesIn, statesOut, err := ownedRuntimeSPIStates(t, child, retired, x)
+	if err != nil {
 		return "unknown"
 	}
 	linkCount := 0
@@ -231,8 +220,8 @@ func runtimeTunnelStatus(t EngineTunnel, own Ownership, d DaemonInventory, k Ker
 			return "unknown"
 		}
 		matched := false
-		for _, l := range t.LocalPrefixes {
-			for _, r := range t.RemotePrefixes {
+		for _, l := range engineTransportPrefixes(t, true) {
+			for _, r := range engineTransportPrefixes(t, false) {
 				src, dst, outerSrc, outerDst := r, l, t.RemoteAddress, t.LocalAddress
 				spi := uint32(0)
 				if child != nil {
@@ -266,8 +255,8 @@ func runtimeTunnelStatus(t EngineTunnel, own Ownership, d DaemonInventory, k Ker
 	if sa == nil || !sa.Established || child == nil || !child.Installed || linkCount == 0 || !linkUp || statesIn == 0 || statesOut == 0 {
 		return "down"
 	}
-	for _, l := range t.LocalPrefixes {
-		for _, r := range t.RemotePrefixes {
+	for _, l := range engineTransportPrefixes(t, true) {
+		for _, r := range engineTransportPrefixes(t, false) {
 			for _, dir := range []string{"in", "fwd", "out"} {
 				if policyCount[dir+"|"+l.String()+"|"+r.String()] != 1 {
 					return "down"
@@ -360,4 +349,33 @@ func (c *RuntimeController) recoveryGuardPermits(ctx context.Context, entry Runt
 		return false
 	}
 	return c.guard.reader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
+}
+
+// Projection requires actual peer observations and completed exact route duties.
+func projectBGPStatus(entry RuntimeJournalEntry, observed bgpengine.Status, tunnels [2]string) *RuntimeBGPStatus {
+	if entry.ContractVersion != 3 || entry.Phase != RuntimeApplied || !validJournalBGP(entry) || !validBGPRoutes(entry) || entry.BGPRoutes == nil || entry.BGPRoutes.Stage != "completed" {
+		return nil
+	}
+	out := &RuntimeBGPStatus{Version: 1, Routes: []RuntimeBGPRoute{}}
+	installed := [2]int{}
+	for _, route := range entry.BGPRoutes.Owned {
+		installed[route.Slot-1]++
+		out.Routes = append(out.Routes, RuntimeBGPRoute{Prefix: route.Prefix.String(), Slot: int(route.Slot)})
+	}
+	for i, peer := range observed.Peers {
+		switch peer.State {
+		case "unknown", "idle", "connect", "active", "opensent", "openconfirm", "established":
+		default:
+			return nil
+		}
+		if peer.Slot != i+1 || peer.AcceptedPrefixes < 0 || peer.AcceptedPrefixes > entry.BGP.MaximumPrefixes || peer.AcceptedPrefixes > len(entry.Allocation.Tunnels[i].RemotePrefixes) || installed[i] > peer.AcceptedPrefixes || (peer.State != "established" && (peer.AcceptedPrefixes != 0 || installed[i] != 0)) || (peer.State == "established" && tunnels[i] != "up") || peer.RejectedPrefixes != nil && (*peer.RejectedPrefixes < 0 || *peer.RejectedPrefixes > 1000000000) {
+			return nil
+		}
+		out.Peers[i] = RuntimeBGPPeerStatus{Slot: peer.Slot, State: peer.State, AcceptedPrefixes: peer.AcceptedPrefixes, InstalledPrefixes: installed[i]}
+		if peer.RejectedPrefixes != nil {
+			rejected := *peer.RejectedPrefixes
+			out.Peers[i].RejectedPrefixes = &rejected
+		}
+	}
+	return out
 }

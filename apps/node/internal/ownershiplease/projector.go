@@ -428,6 +428,10 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 		request := *in.DNSResolveRequest
 		request.RecordTypes = append([]fqdnrpc.RecordType(nil), request.RecordTypes...)
 		request.ResolverEndpoints = append([]fqdnrpc.ResolverEndpoint(nil), request.ResolverEndpoints...)
+		if request.ResolverIPsecPath != nil {
+			path := *request.ResolverIPsecPath
+			request.ResolverIPsecPath = &path
+		}
 		out.DNSResolveRequest = &request
 	}
 	if in.KubernetesOwnershipBaseAuthority != nil {
@@ -461,6 +465,15 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 		policy.Routes = append([]nodepolicy.Route(nil), in.Policy.Routes...)
 		policy.LocalSubnets = append([]string(nil), in.Policy.LocalSubnets...)
 		policy.DNSForwards = append([]nodepolicy.DNSForward(nil), in.Policy.DNSForwards...)
+		if in.Policy.DNSResolverProfiles != nil {
+			policy.DNSResolverProfiles = make([]nodepolicy.DNSResolverProfile, len(in.Policy.DNSResolverProfiles))
+			for i, profile := range in.Policy.DNSResolverProfiles {
+				policy.DNSResolverProfiles[i] = profile
+				policy.DNSResolverProfiles[i].ZoneSuffixes = append([]string(nil), profile.ZoneSuffixes...)
+				policy.DNSResolverProfiles[i].AllowedSources = append([]string(nil), profile.AllowedSources...)
+				policy.DNSResolverProfiles[i].Endpoints = append([]nodepolicy.DNSResolverEndpoint(nil), profile.Endpoints...)
+			}
+		}
 		policy.VIPMappings = append([]nodepolicy.VIPMapping(nil), in.Policy.VIPMappings...)
 		policy.K8sDNSZones = append([]nodepolicy.K8sDNSZone(nil), in.Policy.K8sDNSZones...)
 		policy.FQDNGenerations = make([]nodepolicy.FQDNGeneration, len(in.Policy.FQDNGenerations))

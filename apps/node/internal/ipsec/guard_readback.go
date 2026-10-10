@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -220,6 +221,31 @@ func normalizeGuardSet(fields map[string]any) bool {
 		}
 		seen[value.String()] = true
 		timeout, ok := guardPositiveSeconds(element["timeout"])
+		if _, explicit := element["timeout"]; !explicit {
+			// Native nft omits an element timeout equal to the known set
+			// default. Accept only our typed 60s lease set with an observed,
+			// still-live bounded expiry; this never creates fresh authority.
+			name, named := fields["name"].(string)
+			suffix := ""
+			for _, prefix := range []string{"sa_lease_", "reply_lease_", "lease_"} {
+				if strings.HasPrefix(name, prefix) {
+					suffix = strings.TrimPrefix(name, prefix)
+					break
+				}
+			}
+			known := named && len(suffix) == 32
+			for _, c := range suffix {
+				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+					known = false
+				}
+			}
+			expiry, live := guardPositiveSeconds(element["expires"])
+			if !known || duration != 60 || !live || expiry > duration {
+				return false
+			}
+			timeout, ok = duration, true
+			element["timeout"] = json.Number("60")
+		}
 		if !ok || timeout > duration {
 			return false
 		}
@@ -349,14 +375,19 @@ func translateGuardSet(fields map[string]any, links map[string]int) bool {
 	return true
 }
 
-// nft canonicalizes IPv4 /32 payload matches to scalar addresses. Normalize
+// nft canonicalizes IPv4 /32 payload and typed original CT matches to scalar addresses. Normalize
 // only this exact equivalence; preserve all other fields for strict comparison.
 func normalizeGuardHostPrefix(match, left map[string]any) {
 	if len(left) != 1 {
 		return
 	}
-	payload, ok := left["payload"].(map[string]any)
-	if !ok || len(payload) != 2 || payload["protocol"] != "ip" || (payload["field"] != "saddr" && payload["field"] != "daddr") {
+	payload, payloadOK := left["payload"].(map[string]any)
+	payloadHost := payloadOK && len(payload) == 2 && payload["protocol"] == "ip" && (payload["field"] == "saddr" || payload["field"] == "daddr")
+	ct, ctOK := left["ct"].(map[string]any)
+	// Native nft renders typed IPv4 original-tuple NAT predicates as a
+	// scalar for /32. Direction and typed key must remain exact.
+	ctHost := ctOK && len(ct) == 2 && ct["dir"] == "original" && (ct["key"] == "ip saddr" || ct["key"] == "ip daddr")
+	if !payloadHost && !ctHost {
 		return
 	}
 	right, ok := match["right"].(map[string]any)

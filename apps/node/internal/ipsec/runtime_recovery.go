@@ -108,7 +108,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			return fail()
 		}
 		if entry.Phase == RuntimeApplied {
-			missing, err := c.kernel.RestartNeedsRecreation(ctx, entry.Allocation, entry.Observed)
+			missing, err := c.restartNeedsRecreation(ctx, entry)
 			if err != nil {
 				return fail()
 			}
@@ -120,7 +120,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 				if err != nil {
 					return fail()
 				}
-				missing, err = c.kernel.RestartNeedsRecreation(ctx, entry.Allocation, entry.Observed)
+				missing, err = c.restartNeedsRecreation(ctx, entry)
 				if err != nil || !missing {
 					return fail()
 				}
@@ -179,8 +179,12 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		c.recoveryPrepared[entry.DeliveryID] = env
 	}
 	// Revalidate old permits before potentially slow CP or daemon observations.
-	if c.installActive(ctx, entries) != nil {
-		return fail()
+	if !c.recoveryGuardDenied(ctx, entry) && c.installActive(ctx, entries) != nil {
+		// A global assembly refusal must keep traffic denied, but must not
+		// starve this independently denied target's recovery observations.
+		if !c.recoveryGuardDenied(ctx, entry) {
+			return fail()
+		}
 	}
 	authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash)
 	if err != nil {
@@ -321,7 +325,10 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	} else if c.proveCurrent(ctx, entry, env) != nil {
 		return fail()
 	}
-	c.active[id] = runtimeActive{Entry: entry, Environment: env, Grants: grants, Identity: identity, Authority: authority}
+	if _, err := c.ensureUnderlayMTUs(ctx, entry, env, entries); err != nil {
+		return fail()
+	}
+	c.active[id] = runtimeActive{Delivery: m.RuntimeDelivery, Entry: entry, Environment: env, Grants: grants, Identity: identity, Authority: authority}
 	if c.installActive(ctx, entries) != nil {
 		return fail()
 	}

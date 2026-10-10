@@ -5,6 +5,7 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
+	"time"
 )
 
 type IPsecRuntimeTransport interface {
@@ -18,6 +19,54 @@ type IPsecRuntimeApplier interface {
 	Apply(context.Context, ipsec.RuntimeMaterial) (ipsec.RuntimeAcknowledgement, error)
 	Cleanup(context.Context, ipsec.RuntimeCleanup) (ipsec.RuntimeAcknowledgement, error)
 	ObserveIPsecStatus(context.Context, ipsec.RuntimeDelivery) (ipsec.RuntimeStatusReport, error)
+}
+
+// IPsecRecoveryRefresher is optional inactive evidence work by the same owner.
+// It never installs permits or substitutes for fresh ordinary material/Apply.
+type IPsecRecoveryRefresher interface {
+	RefreshIPsecRecovery(context.Context) error
+}
+
+// IPsecActiveRecoveryRefresher independently samples and reports current static
+// transport between slow provider reconciliations; it cannot acknowledge Apply.
+type IPsecActiveRecoveryRefresher interface {
+	RefreshIPsecActiveRecovery(context.Context) ([]ipsec.RuntimeRecoveryHeartbeat, error)
+}
+
+func RefreshIPsecRuntimeStatus(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
+	observer, ok := controller.(IPsecActiveRecoveryRefresher)
+	if !ok {
+		return nil
+	}
+	observationCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	reports, err := observer.RefreshIPsecActiveRecovery(observationCtx)
+	if err != nil {
+		return ErrIPsecControl
+	}
+	if len(reports) > 256 {
+		return ErrIPsecControl
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, v := range reports {
+		if seen[v.ConnectionID] {
+			return ErrIPsecControl
+		}
+		seen[v.ConnectionID] = true
+		if observationCtx.Err() != nil || v.ConnectionID == uuid.Nil || v.Delivery.Kind != "apply" || v.Delivery.Manifest.ConnectionID != v.ConnectionID || !runtimeStatusMatchesDelivery(v.Delivery, v.Report) {
+			return ErrIPsecControl
+		}
+	}
+	failed := false
+	for _, v := range reports {
+		if client.IPsecReportStatus(observationCtx, v.ConnectionID, v.Report) != nil {
+			failed = true
+		}
+	}
+	if failed {
+		return ErrIPsecControl
+	}
+	return nil
 }
 
 // PollIPsecRuntime is called serially by the runtime owner. Authority is fetched
@@ -48,6 +97,18 @@ func PollIPsecRuntime(ctx context.Context, client IPsecRuntimeTransport, control
 				}
 				if item.Kind != kind {
 					continue
+				}
+				if kind == "apply" {
+					if RefreshIPsecRuntimeStatus(ctx, client, controller) != nil {
+						failed = true
+					}
+					if observer, ok := controller.(IPsecRecoveryRefresher); ok {
+						observationCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+						if observer.RefreshIPsecRecovery(observationCtx) != nil {
+							failed = true
+						}
+						cancel()
+					}
 				}
 				if e = pollIPsecItem(ctx, client, controller, item); e != nil {
 					failed = true
@@ -90,7 +151,7 @@ func pollIPsecItem(ctx context.Context, client IPsecRuntimeTransport, controller
 		}
 		ack, err = controller.Apply(ctx, material)
 		report, observeErr := controller.ObserveIPsecStatus(ctx, delivery)
-		if observeErr != nil {
+		if observeErr != nil || !runtimeStatusMatchesDelivery(delivery, report) {
 			statusErr = ErrIPsecControl
 		} else if client.IPsecReportStatus(ctx, item.ConnectionID, report) != nil {
 			statusErr = ErrIPsecControl
@@ -118,4 +179,47 @@ func pollIPsecItem(ctx context.Context, client IPsecRuntimeTransport, controller
 }
 func runtimeDeliveryMatches(d ipsec.RuntimeDelivery, item ipsec.RuntimePending) bool {
 	return d.ID != uuid.Nil && d.Kind == item.Kind && d.DesiredRevision == item.DesiredRevision && d.Manifest.ConnectionID == item.ConnectionID && ((item.Kind == "apply" && d.Manifest.DesiredRevision == item.DesiredRevision) || (item.Kind == "cleanup" && d.Manifest.DesiredRevision > 0 && d.Manifest.DesiredRevision < item.DesiredRevision))
+}
+
+func runtimeStatusMatchesDelivery(d ipsec.RuntimeDelivery, report ipsec.RuntimeStatusReport) bool {
+	m := d.Manifest
+	if !validIPsecStatusReport(report) || report.DeliveryID != d.ID || report.DesiredRevision != d.DesiredRevision || report.ConfigurationRevision != m.ConfigurationRevision {
+		return false
+	}
+	dynamic := m.ProfileID == "aws-bgp-ipv4-v1"
+	if dynamic {
+		if m.BGP == nil || m.BGPVersion == nil || *m.BGPVersion != 1 || m.RecoveryVersion != nil {
+			return false
+		}
+	} else if m.ProfileID != "aws-static-ipv4-v1" || m.BGP != nil || m.BGPVersion != nil || report.BGP != nil {
+		return false
+	}
+	for i, t := range m.Tunnels {
+		if report.Tunnels[i].ID != t.ID || t.Slot != i+1 || t.Selected != (!dynamic && i == 0) || report.Tunnels[i].Selected != t.Selected {
+			return false
+		}
+	}
+	if dynamic {
+		if m.BGP.MaximumPrefixes < 1 || m.BGP.MaximumPrefixes > 64 || len(m.RemotePrefixes) > 64 {
+			return false
+		}
+		approved := map[string]bool{}
+		for _, prefix := range m.RemotePrefixes {
+			approved[prefix] = true
+		}
+		if report.BGP != nil {
+			for _, peer := range report.BGP.Peers {
+				if peer.AcceptedPrefixes > m.BGP.MaximumPrefixes || peer.AcceptedPrefixes > len(approved) {
+					return false
+				}
+			}
+			for _, route := range report.BGP.Routes {
+				if !approved[route.Prefix] {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return (m.RecoveryVersion == nil && report.RecoveryVersion == nil) || (m.RecoveryVersion != nil && *m.RecoveryVersion == 1 && report.RecoveryVersion != nil && *report.RecoveryVersion == 1)
 }

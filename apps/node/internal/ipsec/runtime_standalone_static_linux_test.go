@@ -1,0 +1,174 @@
+//go:build linux
+
+package ipsec
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/netip"
+	"os"
+	"os/exec"
+	"os/signal"
+	"syscall"
+	"testing"
+	"time"
+)
+
+// Static simulator only: its return route/ACL grants no enrolled gateway authority.
+func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, r *KernelReader, d *DaemonClient) {
+	gc := g.Connections[0]
+	owned := RouteTuple{Destination: netip.MustParsePrefix("10.10.0.0/24"), Table: 254, Protocol: 242, Metric: 50001, OutputInterface: gc.Tunnels[0].InterfaceIndex}
+	run := func(args ...string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "/sbin/ip", args...).Run()
+	}
+	nft := func(text string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "/usr/sbin/nft", "-f", "-")
+		cmd.Stdin = bytes.NewBufferString(text)
+		return cmd.Run()
+	}
+	deny := func() error {
+		v, e := RenderGuard(g)
+		if e != nil {
+			return e
+		}
+		return nft(v.NFT)
+	}
+	verify := func(present bool) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		v, e := r.Read(ctx)
+		if e != nil {
+			return e
+		}
+		if v.Namespace != g.Namespace {
+			return fmt.Errorf("static peer namespace changed")
+		}
+		found := false
+		for _, x := range v.Routes {
+			if x.Destination == owned.Destination {
+				if x.Destination != owned.Destination || x.Table != owned.Table || x.Protocol != owned.Protocol || x.Metric != owned.Metric || x.OutputInterface != owned.OutputInterface || x.Gateway.IsValid() {
+					return fmt.Errorf("foreign static return tuple")
+				}
+				found = true
+			}
+		}
+		if found != present {
+			return fmt.Errorf("static return readback mismatch")
+		}
+		return nil
+	}
+	if verify(false) != nil {
+		t.Fatal("preexisting static return refused")
+	}
+	if run("route", "add", owned.Destination.String(), "dev", gc.Tunnels[0].InterfaceName, "proto", "242", "metric", "50001") != nil {
+		t.Fatal("static return add refused")
+	}
+	defer func() {
+		if deny() != nil {
+			t.Error("static denial failed")
+		}
+		if verify(true) != nil {
+			t.Error("static cleanup ownership refused")
+			return
+		}
+		if run("route", "del", owned.Destination.String(), "dev", gc.Tunnels[0].InterfaceName, "proto", "242", "metric", "50001") != nil || verify(false) != nil {
+			t.Error("static return cleanup failed")
+		}
+	}()
+	if verify(true) != nil {
+		t.Fatal("static return readback failed")
+	}
+	lan, e := net.InterfaceByName("eth1")
+	if e != nil || lan.Flags&net.FlagUp == 0 {
+		t.Fatal("static LAN absent")
+	}
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(shutdown)
+	t.Log("STANDALONE_STATIC_PEER_READY")
+	for n := 0; n < 3600; n++ {
+		select {
+		case <-shutdown:
+			return
+		default:
+		}
+		if deny() != nil || verify(true) != nil {
+			t.Fatal("static simulator proof failed")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		sas, e := d.Inspect(ctx)
+		cancel()
+		if e == nil {
+			for _, sa := range sas.SAs {
+				tunnel := c.CustomTunnels[0]
+				if sa.Name != engineName(tunnel) || !sa.Established || sa.LocalAddress != tunnel.LocalAddress || sa.RemoteAddress != tunnel.RemoteAddress || len(sa.Children) != 1 {
+					continue
+				}
+				ch := sa.Children[0]
+				if !ch.Installed || ch.ReqID != tunnel.ReqID || ch.IfIDIn != tunnel.XFRMID || ch.IfIDOut != tunnel.XFRMID || !sameEnginePrefixes(ch.LocalPrefixes, tunnel.LocalPrefixes) || !sameEnginePrefixes(ch.RemotePrefixes, tunnel.RemotePrefixes) {
+					continue
+				}
+				underlay, e := standalonePeerUnderlay(tunnel)
+				if e != nil {
+					t.Fatal("static underlay refused")
+				}
+				rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.10.0.2 ip daddr 10.32.0.2 tcp dport 18080 ipsec in reqid %d accept\ninsert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", gc.Tunnels[0].InterfaceIndex, lan.Index, tunnel.ReqID, lan.Index, gc.Tunnels[0].InterfaceIndex, gc.Tunnels[0].InterfaceIndex, tunnel.ReqID, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
+				if nft(rules) != nil {
+					t.Fatal("static simulator ACL refused")
+				}
+			}
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func standalonePeerUnderlay(e EngineTunnel) (*net.Interface, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	raw, err := exec.CommandContext(ctx, "/sbin/ip", "-j", "-4", "route", "get", e.RemoteAddress.String(), "from", e.LocalAddress.String()).Output()
+	if err != nil {
+		return nil, err
+	}
+	var rows []map[string]json.RawMessage
+	if json.Unmarshal(raw, &rows) != nil || len(rows) != 1 {
+		return nil, fmt.Errorf("underlay schema")
+	}
+	for k := range rows[0] {
+		switch k {
+		case "dst", "gateway", "dev", "from", "flags", "uid", "cache":
+		default:
+			return nil, fmt.Errorf("unsupported underlay")
+		}
+	}
+	var v []struct {
+		Dst   string   `json:"dst"`
+		Dev   string   `json:"dev"`
+		From  string   `json:"from"`
+		Flags []string `json:"flags"`
+	}
+	if json.Unmarshal(raw, &v) != nil || len(v) != 1 || v[0].Dst != e.RemoteAddress.String() || v[0].From != e.LocalAddress.String() || len(v[0].Flags) != 0 {
+		return nil, fmt.Errorf("underlay provenance")
+	}
+	link, err := net.InterfaceByName(v[0].Dev)
+	if err != nil || link.Flags&net.FlagUp == 0 || len(link.HardwareAddr) != 6 || link.Name == "eth1" {
+		return nil, fmt.Errorf("underlay physical link")
+	}
+	addresses, err := link.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range addresses {
+		p, x := netip.ParsePrefix(a.String())
+		if x == nil && p.Addr() == e.LocalAddress {
+			return link, nil
+		}
+	}
+	return nil, fmt.Errorf("underlay source absent")
+}

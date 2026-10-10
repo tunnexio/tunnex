@@ -1,6 +1,9 @@
 package ipsec
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
+)
 
 // Private authenticated control-channel DTOs. Material is memory-only and must never enter logs or the journal.
 type RuntimeGrant struct {
@@ -12,8 +15,10 @@ type RuntimeGrant struct {
 	RuleID      string `json:"rule_id"`
 }
 type RuntimePolicy struct {
-	Hash   string         `json:"hash"`
-	Grants []RuntimeGrant `json:"grants"`
+	Hash                string                          `json:"hash"`
+	Grants              []RuntimeGrant                  `json:"grants"`
+	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
+	DNSResolverProfiles []nodepolicy.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 }
 type RuntimeTunnel struct {
 	ID                    uuid.UUID `json:"id"`
@@ -34,6 +39,20 @@ type RuntimeTunnel struct {
 
 // RuntimeManifest contains CP-owned stable intent, never observed namespace or
 // interface indices, credentials, dynamic policy authority or daemon output.
+type BGPConfig struct {
+	LocalASN        uint32 `json:"local_asn"`
+	RemoteASN       uint32 `json:"remote_asn"`
+	RouterID        string `json:"router_id"`
+	MaximumPrefixes int    `json:"maximum_prefixes"`
+}
+
+type RuntimeRetainedGuardPredecessor struct {
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	DeliveryID        uuid.UUID `json:"delivery_id"`
+	CleanupDeliveryID uuid.UUID `json:"cleanup_delivery_id"`
+	OwnershipDigest   string    `json:"ownership_digest"`
+}
+
 type RuntimeManifest struct {
 	OrgID                  uuid.UUID        `json:"org_id"`
 	NodeID                 uuid.UUID        `json:"node_id"`
@@ -47,7 +66,10 @@ type RuntimeManifest struct {
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	RecoveryVersion *int `json:"recovery_version,omitempty"`
+	RecoveryVersion           *int                              `json:"recovery_version,omitempty"`
+	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
+	BGPVersion                *int                              `json:"bgp_version,omitempty"`
+	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
 }
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`
@@ -113,7 +135,25 @@ type RuntimeTunnelStatus struct {
 	Status   string    `json:"status"`
 	Selected bool      `json:"selected"`
 }
+type RuntimeBGPPeerStatus struct {
+	Slot              int    `json:"slot"`
+	State             string `json:"state"`
+	AcceptedPrefixes  int    `json:"accepted_prefixes"`
+	InstalledPrefixes int    `json:"installed_prefixes"`
+	RejectedPrefixes  *int   `json:"rejected_prefixes,omitempty"`
+}
+type RuntimeBGPRoute struct {
+	Prefix string `json:"prefix"`
+	Slot   int    `json:"slot"`
+}
+type RuntimeBGPStatus struct {
+	Version  int                     `json:"version"`
+	Sequence uint64                  `json:"sequence"`
+	Peers    [2]RuntimeBGPPeerStatus `json:"peers"`
+	Routes   []RuntimeBGPRoute       `json:"routes"`
+}
 type RuntimeStatusReport struct {
+	BGP                   *RuntimeBGPStatus      `json:"bgp,omitempty"`
 	RecoveryVersion       *int                   `json:"recovery_version,omitempty"`
 	SelectionSequence     *uint64                `json:"selection_sequence,omitempty"`
 	ActiveSlot            *int                   `json:"active_slot,omitempty"`

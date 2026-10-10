@@ -1,0 +1,22 @@
+--- a/zebra/main.c
++++ b/zebra/main.c
+@@ -100,7 +100,7 @@
+ 	{ 0 }
+ };
+ 
+-zebra_capabilities_t _caps_p[] = {ZCAP_NET_ADMIN, ZCAP_SYS_ADMIN,
++zebra_capabilities_t _caps_p[] = {ZCAP_NET_ADMIN,
+ 				  ZCAP_NET_RAW,
+ #ifdef HAVE_DPDK
+ 				  ZCAP_IPC_LOCK,  ZCAP_READ_SEARCH,
+@@ -499,6 +499,10 @@
+ 		}
+ 	}
+ 
++	if (vrf_is_backend_netns()) {
++		fprintf(stderr, "Tunnex observer refuses namespace VRF backend\n");
++		exit(1);
++	}
+ 	zrouter.master = frr_init();
+ 
+ 	/* Zebra related initialize. */

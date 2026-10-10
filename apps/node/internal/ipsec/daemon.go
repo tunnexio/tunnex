@@ -74,6 +74,7 @@ type DaemonIKE struct {
 	Children                    []DaemonChild
 }
 type DaemonChild struct {
+	State                                 string
 	Name                                  string
 	UniqueID                              uint64
 	ReqID, IfIDIn, IfIDOut, SPIIn, SPIOut uint32
@@ -333,13 +334,14 @@ func parseDaemonChild(m viciMessage) (DaemonChild, error) {
 	if !ok {
 		return invalid()
 	}
-	return DaemonChild{Name: name, UniqueID: id, ReqID: uint32(req), IfIDIn: in, IfIDOut: out, SPIIn: spiIn, SPIOut: spiOut, Installed: state == "INSTALLED", LocalPrefixes: local, RemotePrefixes: remote, BytesIn: bytesIn, BytesOut: bytesOut}, nil
+	return DaemonChild{Name: name, UniqueID: id, ReqID: uint32(req), IfIDIn: in, IfIDOut: out, SPIIn: spiIn, SPIOut: spiOut, Installed: state == "INSTALLED", State: state, LocalPrefixes: local, RemotePrefixes: remote, BytesIn: bytesIn, BytesOut: bytesOut}, nil
 }
 
 // EngineTunnel contains only explicit facts supplied by the owning controller.
 // LocalAddress is the actual local underlay address; LocalIdentity may be the
 // separately configured public NAT identity. Neither is inferred from a name.
 type EngineTunnel struct {
+	BGP                                                        bool `json:",omitempty"`
 	Binding                                                    Binding
 	TunnelID                                                   uuid.UUID
 	SecretRevision                                             int64
@@ -391,6 +393,15 @@ func validEngineTunnel(t EngineTunnel) bool {
 	}
 	return true
 }
+func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
+	if t.BGP {
+		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
+	}
+	if local {
+		return t.LocalPrefixes
+	}
+	return t.RemotePrefixes
+}
 func enginePrefixes(prefixes []netip.Prefix) viciValue {
 	values := make([]string, 0, len(prefixes))
 	for _, p := range prefixes {
@@ -430,7 +441,7 @@ func (c *DaemonClient) stageTunnel(ctx context.Context, t EngineTunnel, psk []by
 	if c.success(ctx, "load-shared", shared) != nil {
 		return ErrDaemonProtocol
 	}
-	child := viciMessage{"mode": viciText("tunnel"), "local_ts": enginePrefixes(t.LocalPrefixes), "remote_ts": enginePrefixes(t.RemotePrefixes), "esp_proposals": viciList("aes256-sha256-modp2048"), "start_action": viciText("none"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "if_id_in": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "if_id_out": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "life_time": viciText("3600s"), "rekey_time": viciText("3000s")}
+	child := viciMessage{"mode": viciText("tunnel"), "local_ts": enginePrefixes(engineTransportPrefixes(t, true)), "remote_ts": enginePrefixes(engineTransportPrefixes(t, false)), "esp_proposals": viciList("aes256-sha256-modp2048"), "start_action": viciText("none"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "if_id_in": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "if_id_out": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "life_time": viciText("3600s"), "rekey_time": viciText("3000s")}
 	if t.ReqID != 0 {
 		child["reqid"] = viciText(strconv.FormatUint(uint64(t.ReqID), 10))
 	}
@@ -477,7 +488,7 @@ func (c *DaemonClient) removeTunnel(ctx context.Context, t EngineTunnel) error {
 			return ErrDaemonProtocol
 		}
 		for _, child := range sa.Children {
-			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !sameEnginePrefixes(child.LocalPrefixes, t.LocalPrefixes) || !sameEnginePrefixes(child.RemotePrefixes, t.RemotePrefixes) {
+			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(t, true)) || !sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(t, false)) {
 				return ErrDaemonProtocol
 			}
 		}

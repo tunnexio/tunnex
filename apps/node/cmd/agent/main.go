@@ -32,6 +32,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
 	"github.com/tunnexio/tunnex/apps/node/internal/identity"
+	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
 	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
@@ -218,7 +219,8 @@ func main() {
 			go appRuntime.Run(ctx)
 		}
 	}
-	if err := startIPsecRuntime(ctx, client, certDir, logger); err != nil {
+	dnsTransport := &ipsec.DNSRuntimeTransport{}
+	if err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport); err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
 	}
@@ -287,6 +289,7 @@ func main() {
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.
 	dnsFwd := dnsforward.New(logger, nil)
+	dnsFwd.SetResolverTransport(dnsTransport)
 	if err := dnsFwd.SetVPNHost(os.Getenv("TUNNEX_AI_VPN_HOSTNAME"), os.Getenv("TUNNEX_AI_VPN_ADDRESS")); err != nil {
 		logger.Error("invalid VPN AI DNS configuration")
 		return
@@ -396,7 +399,8 @@ func main() {
 	r.OnPolicy(func(p *nodepolicy.Compiled) {
 		if err := reconcileWithPolicyReportWake(egressMgr, &egressNAT, &egressIPv6, reportKick, func() error {
 			egressMgr.SetPolicy(p)
-			dnsFwd.SetTable(dnsEntriesFrom(p))      // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
+			dnsFwd.SetTable(dnsEntriesFrom(p)) // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
+			dnsFwd.SetResolverProfiles(dnsResolverProfilesFrom(p))
 			dnsFwd.SetK8sAnswers(k8sAnswersFrom(p)) // S10.3 A1: reprogram the K8s direct-answer set (nil policy → empty → answers nothing)
 			// ReconcileOnce itself runs on the serialized command lane. Apply policy
 			// substrates inline so revocation is complete before the desired-state
@@ -414,7 +418,7 @@ func main() {
 	// DirectResolver accepts only the immutable resolver endpoint snapshot bound
 	// into an authenticated gateway DNS RPC request. It never consults host DNS,
 	// resolv.conf, public DNS, or the control plane as a fallback.
-	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{})
+	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{Transport: dnsTransport})
 	r.OnDNSResolve(func(ds reconcile.DesiredState) {
 		if ds.DNSResolveRequest == nil {
 			return
@@ -935,6 +939,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 			MaxSupportedVersion:       nodepolicy.MaxSupportedVersion,
 			OVPNHealth:                ovpnH,
 			DNSResolveRPCVersion:      fqdnrpc.Version,
+			DNSIPsecResolveVersion:    1,
 			FlowLogState:              flow.State,
 			FlowLogLastObservedAt:     flow.LastObservedAt,
 			FlowLogLastDeliveredAt:    flow.LastDeliveredAt,

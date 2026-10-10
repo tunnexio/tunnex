@@ -10,6 +10,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // VerifyGuardWithdrawal proves only that the prior rendered objects still have
@@ -74,10 +76,11 @@ func VerifyGuardWithdrawal(expected, observed []byte, links []GuardInterface) er
 // RuntimeGuard owns only the journal-bound inet table. The journal stores prior
 // semantic templates for withdrawal, never authority to reinstall their permits.
 type RuntimeGuard struct {
-	mu      sync.Mutex
-	journal *RuntimeJournal
-	reader  *GuardReader
-	apply   func(context.Context, []byte) error
+	diagnostic func(RuntimeDiagnostic)
+	mu         sync.Mutex
+	journal    *RuntimeJournal
+	reader     *GuardReader
+	apply      func(context.Context, []byte) error
 }
 
 func NewRuntimeGuard(j *RuntimeJournal, nftPath string) (*RuntimeGuard, error) {
@@ -150,7 +153,7 @@ func guardTablePresent(raw []byte) (bool, error) {
 // Replace serializes, verifies exact previous ownership (including expired
 // member subsets), fsyncs potential replacement BEFORE mutation, then requires
 // the unchanged strict complete readback before committing the new template.
-func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (GuardManifest, error) {
+func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifestResult GuardManifest, resultErr error) {
 	fail := func() (GuardManifest, error) { return GuardManifest{}, ErrGuardRead }
 	if a == nil || a.journal == nil || a.reader == nil || a.apply == nil {
 		return fail()
@@ -159,18 +162,26 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (GuardMa
 	defer a.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
 	defer cancel()
+	stage := "guard_render"
+	started := time.Now()
+	defer func() {
+		emitRuntimeDiagnostic(a.diagnostic, ctx, "guard_replace", stage, uuid.Nil, started, resultErr != nil)
+	}()
 	m, e := RenderGuard(intent)
 	if e != nil {
 		return fail()
 	}
+	stage = "guard_namespace"
 	before, e := a.reader.namespace()
 	if e != nil || before != m.Namespace {
 		return fail()
 	}
+	stage = "guard_interfaces"
 	links, e := a.reader.interfaces()
 	if e != nil {
 		return fail()
 	}
+	stage = "guard_table_read"
 	tables, e := a.reader.run(ctx, "-j", "list", "tables")
 	if e != nil {
 		return fail()
@@ -179,11 +190,13 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (GuardMa
 	if e != nil {
 		return fail()
 	}
+	stage = "journal_inventory"
 	templates, _, e := a.journal.guardTemplates()
 	if e != nil {
 		return fail()
 	}
 	var matched *runtimeGuardTemplate
+	stage = "guard_prior_ownership"
 	if present {
 		actual, e := a.reader.run(ctx, "-j", "list", "table", "inet", "tunnex_ipsec")
 		if e != nil {
@@ -200,6 +213,7 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (GuardMa
 			return fail()
 		}
 	}
+	stage = "guard_source_bracket"
 	afterLinks, e := a.reader.interfaces()
 	if e != nil {
 		return fail()
@@ -215,18 +229,23 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (GuardMa
 	}
 	// Resolve an interrupted atomic replacement to the independently observed
 	// candidate before reserving a successor. No packet permit is inferred here.
+	stage = "guard_resolve_journal"
 	if e = a.journal.resolveGuardOwnership(matched); e != nil {
 		return fail()
 	}
+	stage = "guard_prepare_journal"
 	if e = a.journal.prepareGuard(m); e != nil {
 		return fail()
 	}
+	stage = "guard_atomic_replace"
 	if e = a.apply(ctx, []byte(m.NFTJSON)); e != nil || ctx.Err() != nil {
 		return fail()
 	}
+	stage = "guard_complete_readback"
 	if e = a.reader.Check(ctx, m); e != nil || ctx.Err() != nil {
 		return fail()
 	}
+	stage = "guard_finish_journal"
 	if e = a.journal.finishGuard(m); e != nil {
 		return fail()
 	}

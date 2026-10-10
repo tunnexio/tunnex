@@ -22,6 +22,11 @@ COPY deploy/ipsec/build.sh deploy/ipsec/verify_source.py deploy/ipsec/PROVENANCE
 COPY deploy/docker/node.Dockerfile /build/ipsec/node.Dockerfile
 RUN sh /build/ipsec/build.sh
 
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS bgp-observer-build
+COPY deploy/bgp/build_observer.sh /build_observer.sh
+COPY deploy/bgp/zebra-no-sys-admin.patch /build/zebra-no-sys-admin.patch
+RUN sh /build_observer.sh
+
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 # WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel
 # WireGuard module (present in most modern kernels incl. Docker's LinuxKit VM).
@@ -36,6 +41,9 @@ FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4c
 # the alternative-selected iptables wrapper is never part of the authority proof.
 RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables openvpn libcrypto3 libssl3 \
     && iptables-nft-save -V
+COPY deploy/bgp/install.sh deploy/bgp/PROVENANCE.json deploy/bgp/NOTICE /usr/share/tunnex-bgp/
+RUN sh /usr/share/tunnex-bgp/install.sh
+COPY --from=bgp-observer-build /stage/opt/tunnex-bgp /opt/tunnex-bgp
 COPY --from=ipsec-build /stage/opt/tunnex-ipsec /opt/tunnex-ipsec
 COPY --from=ipsec-build /stage/usr/share/tunnex-ipsec /usr/share/tunnex-ipsec
 COPY --from=build /out/tunnex-node /usr/local/bin/tunnex-node

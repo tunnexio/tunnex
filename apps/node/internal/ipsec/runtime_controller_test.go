@@ -3,6 +3,7 @@ package ipsec
 import (
 	"context"
 	"github.com/google/uuid"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestRuntimeControllerRestartRestoresOnlyPrefixRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	c := &RuntimeController{config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, replace: func(_ context.Context, in GuardIntent) (GuardManifest, error) {
+	c := &RuntimeController{config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID, DaemonAlive: func() bool { return true }}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, replace: func(_ context.Context, in GuardIntent) (GuardManifest, error) {
 		calls++
 		if len(in.Connections) != 1 || !in.Connections[0].PrefixOnly || len(in.Connections[0].Grants) != 0 || in.Connections[0].PermitFor != 0 {
 			t.Fatal("startup reused authority")
@@ -46,7 +47,7 @@ func TestRuntimeControllerStartupFailureBlocksMaterial(t *testing.T) {
 	if err = j.Save([]RuntimeJournalEntry{entry}); err != nil {
 		t.Fatal(err)
 	}
-	c := &RuntimeController{config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, replace: func(context.Context, GuardIntent) (GuardManifest, error) { return GuardManifest{}, ErrGuardReadback }}
+	c := &RuntimeController{config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID, DaemonAlive: func() bool { return true }}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, replace: func(context.Context, GuardIntent) (GuardManifest, error) { return GuardManifest{}, ErrGuardReadback }}
 	if err = c.Start(context.Background()); err == nil || c.started {
 		t.Fatal("failed refusal accepted")
 	}
@@ -82,10 +83,10 @@ func TestRuntimeCombinedGuardPreservesDeadlineAndDropsExpiredConnection(t *testi
 		t.Fatal(err)
 	}
 	var intents []GuardIntent
-	c := &RuntimeController{config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, prove: func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error { return nil }, replace: func(_ context.Context, in GuardIntent) (GuardManifest, error) {
+	c := &RuntimeController{config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID, DaemonAlive: func() bool { return true }}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, prove: func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error { return nil }, replace: func(_ context.Context, in GuardIntent) (GuardManifest, error) {
 		intents = append(intents, in)
 		return GuardManifest{}, nil
-	}, qualification: testRuntimeQualification(entry.Allocation.Namespace), active: map[uuid.UUID]runtimeActive{entry.Allocation.ConnectionID: {Entry: entry, Environment: RuntimeEnvironment{Namespace: entry.Allocation.Namespace, Underlays: [2]RuntimeUnderlay{{InterfaceIndex: 2}, {InterfaceIndex: 2}}}, Authority: authority, Identity: identity}}}
+	}, qualification: testRuntimeQualification(entry.Allocation.Namespace), active: map[uuid.UUID]runtimeActive{entry.Allocation.ConnectionID: {Entry: entry, Environment: RuntimeEnvironment{Namespace: entry.Allocation.Namespace, Underlays: [2]RuntimeUnderlay{{InterfaceIndex: 2, OuterMTU: 1500, LocalAddress: netip.MustParseAddr("192.0.2.1")}, {InterfaceIndex: 2, OuterMTU: 1500, LocalAddress: netip.MustParseAddr("192.0.2.1")}}}, Authority: authority, Identity: identity}}}
 	c.recoveryObserve = func(context.Context, RuntimeJournalEntry) [2]string { return [2]string{"up", "up"} }
 	elapsed = 10 * time.Second
 	if err = c.installActive(context.Background(), []RuntimeJournalEntry{entry}); err != nil {
@@ -139,7 +140,7 @@ func TestRuntimeApplyBudgetStartsBeforeIntentAssembly(t *testing.T) {
 		t.Fatal(err)
 	}
 	installed := false
-	c := &RuntimeController{config: RuntimeControllerConfig{GatewayID: entry.Engines[0].Binding.GatewayID}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, prove: func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error { return nil }, replace: func(context.Context, GuardIntent) (GuardManifest, error) {
+	c := &RuntimeController{config: RuntimeControllerConfig{GatewayID: entry.Engines[0].Binding.GatewayID, DaemonAlive: func() bool { return true }}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, prove: func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error { return nil }, replace: func(context.Context, GuardIntent) (GuardManifest, error) {
 		installed = true
 		return GuardManifest{}, nil
 	}, qualification: testRuntimeQualification(entry.Allocation.Namespace), active: map[uuid.UUID]runtimeActive{entry.Allocation.ConnectionID: {Entry: entry, Authority: authority, Identity: identity}}}
@@ -191,7 +192,7 @@ func TestRuntimeEmptyPollWithdrawsInvalidatedAuthority(t *testing.T) {
 	q := testRuntimeQualification(entry.Allocation.Namespace)
 	q.invalid = true
 	calls := 0
-	c := &RuntimeController{started: true, qualification: q, config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, replace: func(_ context.Context, in GuardIntent) (GuardManifest, error) {
+	c := &RuntimeController{started: true, qualification: q, config: RuntimeControllerConfig{OrgID: entry.Engines[0].Binding.OrgID, GatewayID: entry.Engines[0].Binding.GatewayID, DaemonAlive: func() bool { return true }}, journal: j, namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, replace: func(_ context.Context, in GuardIntent) (GuardManifest, error) {
 		calls++
 		if !in.Connections[0].PrefixOnly {
 			t.Fatal("invalidated authority replayed")

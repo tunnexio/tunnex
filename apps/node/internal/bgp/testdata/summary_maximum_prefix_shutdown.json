@@ -1,0 +1,14 @@
+{
+  "peers": {
+    "169.254.84.2": {
+      "state": "Idle (PfxCt)",
+      "peerState": "PfxCt",
+      "pfxRcd": 0
+    },
+    "169.254.84.6": {
+      "state": "Idle (PfxCt)",
+      "peerState": "PfxCt",
+      "pfxRcd": 0
+    }
+  }
+}

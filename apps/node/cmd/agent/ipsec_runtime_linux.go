@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"github.com/tunnexio/tunnex/apps/node/internal/control"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"log/slog"
@@ -17,7 +18,7 @@ import (
 // Existing obligations restore refusal synchronously before any WireGuard
 // forwarding. New hosts discover opt-in in the background and bind no IKE ports
 // until authoritative opt-in is true. There is no local capability override.
-func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger) error {
+func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport) error {
 	dir := filepath.Join(stateDir, "ipsec")
 	org, node, err := ipsec.ReadRuntimeJournalIdentity(dir)
 	existing := err == nil
@@ -33,7 +34,14 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment}, client)
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
+			attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
+			if event.Refused {
+				logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
+			} else {
+				logger.Debug("ipsec_runtime_diagnostic_completed", attrs...)
+			}
+		}}, client)
 		if e != nil {
 			return e
 		}
@@ -43,6 +51,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			return e
 		}
 		client.AttachIPsecController(controller)
+		dns.Attach(controller)
 		return nil
 	}
 	if existing {
@@ -70,6 +79,10 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			// Validate process-local authority even when CP discovery fails or
 			// returns no work. This never renews a lease and never blocks cleanup.
 			if controller != nil {
+				bound := &boundIPsecClient{Client: client, org: org, node: node}
+				if control.RefreshIPsecRuntimeStatus(ctx, bound, controller) != nil {
+					logger.Warn("ipsec_runtime_observation_refused")
+				}
 				if err := controller.Validate(ctx); err != nil {
 					logger.Warn("ipsec_runtime_authority_withdrawn")
 				}
@@ -99,14 +112,29 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 					}
 					if e == nil && process != nil {
 						if !qualified && page.IPsecEnabled {
+							qualificationStarted := time.Now()
+							qualificationStage := "static_probe"
 							receipt, probeErr := ipsec.ProbeRuntimePlatform(ctx, "/sbin/ip", "/usr/sbin/nft", process.Client, process.Alive)
 							if probeErr == nil {
+								qualificationStage = "static_attach"
 								probeErr = controller.AttachQualification(receipt)
 							}
 							if probeErr == nil {
 								qualified = true
+								// BGP support is independently observed without peers/listeners;
+								// failure preserves the already qualified static runtime.
+								bgpStarted := time.Now()
+								bgpStage := "bgp_preflight"
+								bgpReceipt, bgpErr := bgp.QualifyPreflight(ctx, dir)
+								if bgpErr == nil {
+									bgpStage = "bgp_attach"
+									bgpErr = controller.AttachBGPQualification(bgpReceipt)
+								}
+								if bgpErr != nil {
+									logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
+								}
 							} else {
-								logger.Warn("ipsec_runtime_platform_refused")
+								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}
 						}
 						// Cleanup remains available without activation qualification; Apply requires

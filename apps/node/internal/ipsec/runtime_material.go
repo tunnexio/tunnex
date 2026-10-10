@@ -10,7 +10,7 @@ import (
 
 func runtimeDeliveryValid(d RuntimeDelivery, org, node uuid.UUID, kind string) bool {
 	m := d.Manifest
-	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || m.ProfileID != "aws-static-ipv4-v1" || !validDigest(d.OwnershipDigest) {
+	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1") || !validDigest(d.OwnershipDigest) {
 		return false
 	}
 	if kind == "cleanup" {
@@ -50,11 +50,15 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	fail := func() (RuntimeJournalEntry, []GuardGrant, error) {
 		return RuntimeJournalEntry{}, nil, ErrRuntimeController
 	}
+	bgp, bgpErr := runtimeBGPContract(m.Manifest)
+	if bgpErr != nil {
+		return fail()
+	}
 	recovery, recoveryErr := runtimeRecoveryContract(m.Manifest)
 	if recoveryErr != nil {
 		return fail()
 	}
-	if !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
+	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
 		return fail()
 	}
 	local, ok := runtimePrefixes(m.Manifest.LocalPrefixes)
@@ -69,13 +73,19 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	if e != nil || !public.Is4() {
 		return fail()
 	}
-	out := RuntimeJournalEntry{DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
+	out := RuntimeJournalEntry{RetainedGuardPredecessors: append([]RuntimeRetainedGuardPredecessor(nil), m.Manifest.RetainedGuardPredecessors...), DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
+	if bgp {
+		out.ContractVersion = 3
+		copyConfig := *m.Manifest.BGP
+		out.BGP = &copyConfig
+		out.Allocation.BGP = true
+	}
 	if recovery {
 		out.ContractVersion = 2
 		out.Recovery = &RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}
 	}
 	for i, t := range m.Manifest.Tunnels {
-		if t.Slot != i+1 || t.ID == uuid.Nil || t.SecretRevision <= 0 || t.LinkName != KernelTunnelName(t.ID) || t.XFRMID != KernelTunnelID(t.ID) || t.ReqID != t.XFRMID || t.RouteTable != 254 || t.RouteProtocol != 242 || t.RouteMetric != uint32(50001+i) || t.Selected != (i == 0) {
+		if t.Slot != i+1 || t.ID == uuid.Nil || t.SecretRevision <= 0 || t.LinkName != KernelTunnelName(t.ID) || t.XFRMID != KernelTunnelID(t.ID) || t.ReqID != t.XFRMID || t.RouteTable != 254 || t.RouteProtocol != 242 || t.RouteMetric != uint32(50001+i) || t.Selected != (!bgp && i == 0) {
 			return fail()
 		}
 		p, e := netip.ParsePrefix(t.InsideCIDR)
@@ -99,7 +109,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 			return fail()
 		}
 		out.Allocation.Tunnels[i] = KernelTunnelAllocation{TunnelID: t.ID, Slot: uint8(t.Slot), Name: t.LinkName, Alias: KernelTunnelAlias(m.ID, t.ID), XFRMID: t.XFRMID, InsideAddress: netip.PrefixFrom(customer, 30), RemotePrefixes: remote, Selected: t.Selected}
-		out.Engines[i] = EngineTunnel{Binding: Binding{OrgID: org, GatewayID: node, ConnectionID: m.Manifest.ConnectionID, ConfigurationRevision: m.Manifest.ConfigurationRevision, DesiredRevision: m.DesiredRevision}, TunnelID: t.ID, SecretRevision: t.SecretRevision, XFRMID: t.XFRMID, ReqID: t.ReqID, LocalAddress: public, LocalIdentity: public, RemoteAddress: peer, RemoteIdentity: peer, LocalPrefixes: local, RemotePrefixes: remote}
+		if bgp {
+			out.Allocation.Tunnels[i].BGP = &KernelBGPTransport{Peer: cloud}
+		}
+		out.Engines[i] = EngineTunnel{BGP: bgp, Binding: Binding{OrgID: org, GatewayID: node, ConnectionID: m.Manifest.ConnectionID, ConfigurationRevision: m.Manifest.ConfigurationRevision, DesiredRevision: m.DesiredRevision}, TunnelID: t.ID, SecretRevision: t.SecretRevision, XFRMID: t.XFRMID, ReqID: t.ReqID, LocalAddress: public, LocalIdentity: public, RemoteAddress: peer, RemoteIdentity: peer, LocalPrefixes: local, RemotePrefixes: remote}
 		if !validEngineTunnel(out.Engines[i]) || (secrets && (m.Secrets[i].TunnelID != t.ID || m.Secrets[i].Revision != t.SecretRevision || !validEnginePSK([]byte(m.Secrets[i].PSK)))) {
 			return fail()
 		}
@@ -108,6 +121,11 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		return fail()
 	}
 	grants := []GuardGrant{}
+	dns, dnsErr := runtimeDNSGrants(m, local, remote)
+	if dnsErr != nil {
+		return fail()
+	}
+	grants = append(grants, dns...)
 	for _, g := range m.Policy.Grants {
 		source, e := netip.ParsePrefix(g.Source)
 		if e != nil || source != source.Masked() {

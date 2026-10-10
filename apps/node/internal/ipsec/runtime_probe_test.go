@@ -3,6 +3,8 @@ package ipsec
 import (
 	"context"
 	"errors"
+	"net/netip"
+	"strings"
 	"testing"
 	"time"
 )
@@ -90,5 +92,35 @@ func TestRuntimePlatformNativePluginInventory(t *testing.T) {
 	duplicate[7] = "charon"
 	if runtimeProbePlugins(duplicate) {
 		t.Fatal("duplicate plugin accepted")
+	}
+}
+
+// This checks the real check-only bootstrap manifest, not a parallel render
+// fixture: qualification must exercise every newly required nft expression.
+func TestRuntimeProbeManifestExercisesMSSAndRelatedParentGrammar(t *testing.T) {
+	m, err := runtimeProbeManifest("net:[1234]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{`"mangle"`, `"related"`, `"proto-dst"`, `"right":443`, `"destination-unreachable"`} {
+		if !strings.Contains(m.NFTJSON, required) {
+			t.Fatal("bootstrap omitted grammar", required)
+		}
+	}
+	if !strings.Contains(m.NFT, "ip daddr 10.250.1.1/32") || !strings.Contains(m.NFT, "ct original proto-dst 443") {
+		t.Fatal("probe parent receiver/port not exact")
+	}
+	i := guardFixture()
+	c := &i.Connections[0]
+	c.Grants[0].Source = netip.MustParsePrefix("10.10.0.1/32")
+	c.ReplyIngressIndices = []int{10}
+	c.TunnelMTUs = []GuardTunnelMTU{{10, 1422}}
+	c.PermitFor = 0
+	denied, err := RenderGuard(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(denied.NFTJSON, `"mangle"`) || strings.Contains(denied.NFTJSON, `"related"`) {
+		t.Fatal("expired guard manufactured authority from probe grammar")
 	}
 }
