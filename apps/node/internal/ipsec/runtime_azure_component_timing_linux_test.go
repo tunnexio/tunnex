@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// Read-only measurements, not authority. The outer operator binds normal CP
-// identity before/after; this external helper cannot observe in-memory epochs.
+// Read-only; outer operator binds CP identity. In-memory epochs are unobservable.
 func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	if os.Getenv("TUNNEX_AZURE_OWNED_COMPONENT_TIMING") != "1" {
 		t.Skip("explicit owned read-only timing only")
@@ -95,6 +94,50 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	if e != nil {
 		t.Fatal("guard_reader_refused")
 	}
+	// Helper-only wrappers; residual includes unwrapped iptables census and validation.
+	inspector, ok := environment.(*runtimeEnvironmentInspector)
+	if !ok {
+		t.Fatal("concrete_environment_refused")
+	}
+	type commandTiming struct {
+		Count    int   `json:"count"`
+		SummedMS int64 `json:"summed_ms"`
+		MaxMS    int64 `json:"max_ms"`
+		elapsed  time.Duration
+	}
+	commands := map[string]*commandTiming{}
+	for _, name := range []string{"route_get", "rule", "link", "main_route", "address", "full_ruleset", "unexpected"} {
+		commands[name] = &commandTiming{}
+	}
+	var wrappedElapsed time.Duration
+	wrap := func(run func(context.Context, ...string) ([]byte, error)) func(context.Context, ...string) ([]byte, error) {
+		return func(ctx context.Context, args ...string) ([]byte, error) {
+			name := "unexpected"
+			for label, expected := range map[string][]string{"rule": {"-j", "-4", "rule", "show"}, "link": {"-j", "-d", "link", "show"}, "main_route": {"-j", "-4", "route", "show", "table", "main"}, "address": {"-j", "-4", "address", "show"}, "full_ruleset": {"-j", "list", "ruleset"}} {
+				if reflect.DeepEqual(args, expected) {
+					name = label
+				}
+			}
+			if len(args) == 5 && reflect.DeepEqual(args[:4], []string{"-j", "-4", "route", "get"}) {
+				name = "route_get"
+			}
+			start := time.Now()
+			output, err := run(ctx, args...)
+			elapsed := time.Since(start)
+			row := commands[name]
+			row.Count++
+			row.elapsed += elapsed
+			row.SummedMS = row.elapsed.Milliseconds()
+			if elapsed.Milliseconds() > row.MaxMS {
+				row.MaxMS = elapsed.Milliseconds()
+			}
+			wrappedElapsed += elapsed
+			return output, err
+		}
+	}
+	inspector.ip = wrap(inspector.ip)
+	inspector.nft = wrap(inspector.nft)
+	var observeElapsed time.Duration
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	rows := []map[string]any{}
@@ -106,7 +149,7 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	}
 	var finalChecks map[string]bool
 	emit := func(stage string, counts map[string]int) {
-		safe, _ := json.Marshal(map[string]any{"stage": stage, "measurements": rows, "counts": counts, "authority": false, "in_memory_epoch_observed": false, "final_checks": finalChecks})
+		safe, _ := json.Marshal(map[string]any{"stage": stage, "measurements": rows, "counts": counts, "authority": false, "in_memory_epoch_observed": false, "final_checks": finalChecks, "environment_commands": commands, "residual_census_and_parse_ms": max(int64(0), (observeElapsed - wrappedElapsed).Milliseconds())})
 		t.Log("AZURE_OWNED_COMPONENT_TIMING " + string(safe))
 	}
 	var d DaemonInventory
@@ -141,7 +184,12 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 		emit("initial_native_refused", counts)
 		t.Fatal("initial_native_refused")
 	}
-	environmentOK := timed("environment_observe", func() error { _, err := environment.Observe(ctx, entry.Allocation, entry.Engines); return err })
+	environmentOK := timed("environment_observe", func() error {
+		start := time.Now()
+		_, err := environment.Observe(ctx, entry.Allocation, entry.Engines)
+		observeElapsed = time.Since(start)
+		return err
+	})
 	guardOK := timed("full_guard_check", func() error {
 		return reader.Check(ctx, GuardManifest{Namespace: ns, Revision: guard.Revision, Digest: guard.Digest, ExpectedJSON: guard.ExpectedJSON})
 	})
@@ -167,7 +215,6 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	for _, passed := range finalChecks {
 		stable = stable && passed
 	}
-
 	if !stable {
 		emit("final_native_or_journal_refused", counts)
 		t.Fatal("final_native_or_journal_refused")
