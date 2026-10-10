@@ -488,7 +488,11 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
 }
 
-func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (RuntimeAcknowledgement, error) {
+func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (ack RuntimeAcknowledgement, resultErr error) {
+	stage, started := "cleanup_validation", time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "cleanup", stage, cleanup.Manifest.ConnectionID, started, resultErr != nil)
+	}()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
@@ -496,10 +500,12 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		return fail()
 	}
 	c.withdrawDNSOwnerView(cleanup.Manifest.ConnectionID)
+	stage = "cleanup_journal_read"
 	entries, e := c.journal.Entries()
 	if e != nil {
 		return fail()
 	}
+	stage = "cleanup_lineage"
 	lineage := map[uuid.UUID]RuntimeDelivery{}
 	for _, d := range cleanup.Lineage {
 		if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.Manifest.ConnectionID != cleanup.Manifest.ConnectionID || d.DesiredRevision > cleanup.CoversDeliveryRevision {
@@ -532,9 +538,11 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		entry.AbsenceOnly = true
 		entries = append(entries, entry)
 	}
+	stage = "cleanup_journal_commit"
 	if c.journal.Save(entries) != nil {
 		return fail()
 	}
+	stage = "cleanup_covered_lineage"
 	positions := []int{}
 	covered := []RuntimeJournalEntry{}
 	for i, entry := range entries {
@@ -569,9 +577,11 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	}
 	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
+	stage = "cleanup_install_active"
 	if e = c.installActive(ctx, entries); e != nil {
 		return fail()
 	}
+	stage = "cleanup_environment"
 	if c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return fail()
 	}
@@ -582,6 +592,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	var resetProof *RuntimeResetCleanup
 	for _, entry := range covered {
 		if entry.Phase != RuntimeRetainedRefusal && entry.Allocation.Namespace != currentNamespace {
+			stage = "cleanup_reset_receipt"
 			resetProof, e = c.resetCleanupReceipt(cleanup, covered)
 			if e != nil {
 				return fail()
@@ -602,6 +613,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			entries[i].ResetCleanup = resetProof
 			covered[n].ResetCleanup = resetProof
 		}
+		stage = "cleanup_journal_commit"
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
@@ -612,6 +624,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			continue
 		}
 		if entry.Allocation.Namespace != currentNamespace {
+			stage = "cleanup_prove_reset_absent"
 			if c.proveResetAbsent(ctx, entry, resetProof) != nil {
 				return fail()
 			}
@@ -623,15 +636,18 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		}
 		drainEntries = append(drainEntries, entry)
 		if entry.AbsenceOnly {
+			stage = "cleanup_prove_absent"
 			if c.proveAbsent(ctx, entry) != nil {
 				return fail()
 			}
 			continue
 		}
 		if entry.ContractVersion == 3 {
+			stage = "cleanup_bgp_duties"
 			if c.cleanupBGPDuties(ctx, entry) != nil {
 				return fail()
 			}
+			stage = "cleanup_journal_read"
 			refreshed, err := c.journal.Entries()
 			if err != nil {
 				return fail()
@@ -647,10 +663,12 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			}
 		}
 		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
+			stage = "cleanup_remove_tunnel"
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
 		}
+		stage = "cleanup_kernel_remove"
 		if entry.ContractVersion == 2 {
 			if c.kernel.RemoveRecovery(ctx, entry.Allocation, entry.Observed) != nil {
 				return fail()
@@ -659,10 +677,12 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			return fail()
 		}
 	}
+	stage = "cleanup_environment_drain"
 	if len(drainEntries) > 0 && c.config.Environment.Drain(ctx, drainEntries) != nil {
 		return fail()
 	}
 	if resetProof != nil {
+		stage = "cleanup_prove_reset_absent"
 		for _, entry := range covered {
 			if entry.Phase != RuntimeRetainedRefusal && entry.Allocation.Namespace != currentNamespace && c.proveResetAbsent(ctx, entry, resetProof) != nil {
 				return fail()
@@ -671,9 +691,11 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	}
 	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
+	stage = "cleanup_install_active"
 	if e = c.installActive(ctx, entries); e != nil {
 		return fail()
 	}
+	stage = "cleanup_retained_guard_commit"
 	for _, i := range positions {
 		entries[i].Phase = RuntimeRetainedRefusal
 	}
