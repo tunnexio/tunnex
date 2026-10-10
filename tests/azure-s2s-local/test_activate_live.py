@@ -1,0 +1,74 @@
+import contextlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+spec = importlib.util.spec_from_file_location('activation', Path(__file__).with_name('activate-live.py'))
+activation = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(activation)
+
+
+class ActivationTests(unittest.TestCase):
+    def test_create_and_enable_use_normal_protocol_without_printing_secrets(self):
+        org, site, gateway = [str(activation.uuid.uuid4()) for _ in range(3)]
+        calls = []
+        connection = {'gateway_node_id': gateway, 'site_id': site, 'desired_revision': 7,
+                      'desired_intent': 'disabled', 'application_state': 'pending'}
+
+        class FakeClient:
+            def call(self, method, path, body=None, revision=None):
+                calls.append((method, path, body, revision))
+                if path.endswith('/organizations'):
+                    return [{'id': org, 'slug': 'azure-s2s-local'}]
+                if path.endswith('/status'):
+                    return {'tunnels': [{'slot': 0, 'status': 'down', 'psk': 'SECRET-SHOULD-NOT-PRINT'}]}
+                if path.endswith('/intent'):
+                    return dict(connection, desired_revision=8, desired_intent='enabled')
+                return connection
+
+        with tempfile.TemporaryDirectory() as root:
+            for name, content in [('ui-accounts.json', {'owner': {'email': 'browser-owner@azure-s2s.local', 'password': 'PRIVATE-PASSWORD'}}),
+                                  ('api-setup.json', {'org_id': org, 'site_id': site, 'gateway_id': gateway})]:
+                activation.private_write(root + '/' + name, content)
+            psk = root + '/psk'
+            fd = os.open(psk, os.O_CREAT | os.O_WRONLY, 0o600)
+            os.write(fd, b'PRIVATE-PSK-MATERIAL')
+            os.close(fd)
+            output = io.StringIO()
+            with patch.object(activation, 'Client', FakeClient), contextlib.redirect_stdout(output):
+                with patch('sys.argv', ['activate', 'create', '--private-root', root, '--psk-file', psk]):
+                    activation.main()
+                with patch('sys.argv', ['activate', 'enable', '--private-root', root]):
+                    activation.main()
+            self.assertNotIn('PRIVATE-', output.getvalue())
+            self.assertNotIn('SECRET-', output.getvalue())
+            check = next(call for call in calls if call[1].endswith('/configuration-check'))
+            self.assertEqual(check[2]['profile_id'], 'azure-active-active-bgp-ipv4-v1')
+            create = next(call for call in calls if call[0] == 'POST' and call[1].endswith('/connections'))
+            self.assertNotIn('desired_intent', create[2])
+            self.assertEqual(create[2]['configuration']['tunnels'][0]['psk'], create[2]['configuration']['tunnels'][1]['psk'])
+            enable = next(call for call in calls if call[1].endswith('/intent'))
+            self.assertEqual(enable[3], 7)
+            self.assertEqual(enable[2], {'intent': 'enabled'})
+            self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['application_reachability'], 'not_probed')
+
+    def test_private_input_rejects_symlinks_and_public_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = root + '/input'
+            Path(path).write_text('secret')
+            os.chmod(path, 0o644)
+            with self.assertRaises(ValueError):
+                activation.private_read(path)
+            os.chmod(path, 0o600)
+            os.symlink(path, root + '/link')
+            with self.assertRaises(OSError):
+                activation.private_read(root + '/link')
+
+
+if __name__ == '__main__':
+    unittest.main()
