@@ -1,0 +1,120 @@
+{
+  "observed_at": "2026-10-10T21:06:08.338844+00:00",
+  "failed_attempt": {
+    "desired_revision": 44,
+    "failure_category": "owned_control_refused",
+    "failure_locations": [
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 309
+      },
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 222
+      },
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 222
+      },
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 165
+      },
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 112
+      },
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 147
+      },
+      {
+        "file": "qualify-scheduled-rekey.py",
+        "line": 130
+      }
+    ],
+    "helper_sha256": "a60f312d7f6d217b9da985a4d97a2de7e58dc57989484c9e46207436e6f05536",
+    "observed_at": "2026-10-10T20:53:37.936181+00:00",
+    "production_duration_soak": false,
+    "production_timers_verified": false,
+    "recovery_required": true,
+    "runner_completed": false,
+    "scheduler_pass": false,
+    "scope": "Actual accelerated IKE test only; bootstrap/restoration excluded from automatic acceptance",
+    "strict_native_observation_count": 0,
+    "watchdog_armed": true
+  },
+  "phase_markers": {
+    "bootstrap-started": "2026-10-10T20:53:24.939720+00:00",
+    "automatic-ended": "2026-10-10T20:53:32.154225+00:00",
+    "restoration-started": "2026-10-10T20:53:32.167765+00:00"
+  },
+  "automatic_window_started": false,
+  "attempt_private_failure_sha256": "66582773f93db71b1ed2a204970df586b74f361a54a66b4014c9148b15c6bdb9",
+  "recovery_native_absence": {
+    "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+    "configuration_revision": 1,
+    "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+    "desired_revision": 45,
+    "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "guard_retained": true,
+    "historical_boot_entry_count": 1,
+    "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+    "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+    "host_machine_identity_source": "external_root_attestation",
+    "journal_entries": 21,
+    "journal_sha256": "63ff364cde96c7f2a0000dbd72bd116395de89b44a1729c934cd03841ef916ae",
+    "kind": "owned_native_cleanup_absence",
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "observed_at": "2026-10-10T20:57:27.754409408Z",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "owned_children": 0,
+    "owned_ike": 0,
+    "owned_interfaces": 0,
+    "owned_routes": 0,
+    "owned_sad": 0,
+    "owned_spd": 0,
+    "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "version": 1
+  },
+  "current_gateway": {
+    "container": "6c7ce0e29e7a6f9f8756b2a19eb2074fa39b3da891802197b770ff9f822c3233",
+    "image": "sha256:2e2cd11f550d944af6052d1bddbb4c8e0a4252b7e73349497a487c83ad784361",
+    "started_at": "2026-10-10T20:57:38.143745115Z",
+    "node_sha256": "6022368cd6fb2b0483244021d7194a28dd2305f4a5ab2932b5b16fd882233dd9",
+    "desired_revision": 46
+  },
+  "loaded_production_parameters": {
+    "active_tunnel_count": 2,
+    "actual_timer_countdowns": [
+      {
+        "child_remaining_seconds": 2267,
+        "ike_remaining_seconds": 27563,
+        "slot": 1
+      },
+      {
+        "child_remaining_seconds": 2339,
+        "ike_remaining_seconds": 27518,
+        "slot": 2
+      }
+    ],
+    "configuration_revision": 1,
+    "desired_revision": 46,
+    "full_guard": true,
+    "helper_sha256": "a60f312d7f6d217b9da985a4d97a2de7e58dc57989484c9e46207436e6f05536",
+    "loaded_production_connection_parameters_verified": true,
+    "observed_at": "2026-10-10T21:04:55.718835+00:00",
+    "passed": true,
+    "profile": "azure-active-active-bgp-ipv4-v1",
+    "retained_entries": 21,
+    "scope": "Fresh independent read-only scheduler preflight only; no timer changes",
+    "strict_native": true
+  },
+  "limits": [
+    "The attempted timer test failed in bootstrap and did not observe automatic scheduled renewal. Its own production timer restoration was not verified.",
+    "Recovery used normal controller disable45, independent complete native absence and a fresh normal enable46; it is separately observed recovery, not successful test rollback.",
+    "Current loaded production parameters and live countdowns do not prove natural production scheduled rekey or an eight-hour soak."
+  ]
+}
