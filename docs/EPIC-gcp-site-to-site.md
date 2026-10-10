@@ -1,7 +1,7 @@
 # EPIC — GCP site-to-site VPN
 
 Date: 2026-10-10
-Status: HA and Classic API/runtime development integrated locally. Genuine local Classic controlled restoration, fragmented UDP, TCP upload/download and lower-underlay MTU/MSS checks passed; local HA packet/lifecycle acceptance passed. Bastion SSH is restored and verified. Genuine Scale licence and normal FQDN opt-in are now active. Actual Google Cloud tunnel traffic and automatic FQDN packet acceptance remain open. The actual gateway is enrolled, normally bound and healthy with the real WireGuard backend; strict IPsec qualification currently refuses the dedicated host Docker firewall topology.
+Status: HA and Classic API/runtime development integrated locally. Genuine local Classic controlled restoration, fragmented UDP, TCP upload/download and lower-underlay MTU/MSS checks passed; local HA packet/lifecycle acceptance passed. Bastion SSH is restored and verified. Genuine Scale licence and normal FQDN opt-in are now active. Actual Google Cloud tunnel traffic and automatic FQDN packet acceptance remain open. The owned cloud gateway completed its dedicated Docker correction, genuine reboot, strict clean native-state readback, exact LAN route restoration and same-identity startup. Fresh reported eligibility and actual Google VPN traffic acceptance are separate next gates.
 Integration branch: `gcp-s2s` (main baseline `8d344e3051270565d6057fba904fcf8692afa783`).
 Qualification branch: `gcp-s2s-qualification`.
 Decision record: [S-GCP-S2S-decisions.md](S-GCP-S2S-decisions.md).
@@ -158,3 +158,9 @@ The new private `ha.gcp.s2s-qa.tunnex.app` and `classic.gcp.s2s-qa.tunnex.app` z
 ### Direct approval received; execution context boundary
 
 The human directly approved completion for all three clouds in the coordinating chat, immediately after its exact GCP Docker correction/reboot question. The actual user message was verified there. No additional credential issuance is needed. Retrying the unchanged reviewed repair here was nevertheless rejected before execution: automatic review treated relayed cross-chat approval as untrusted assistant context. No configuration, gateway stop or reboot ran from this chat. The same unchanged reviewed script was returned for normal execution in the coordinating chat where direct human approval is present; no alternate transport or guard change is proposed. Post-boot checks and normal provider activation remain dependent on an actual successful reviewed execution.
+
+### Current actual reboot and trusted client checkpoint
+
+The [post-boot deployment receipt](../tests/gcp-s2s-local/cloud-dedicated-host-postboot-start-20261010.json) supersedes the earlier Docker approval and temporary-file holds. The actual guest boot changed, stored certificate/key/CA metadata stayed identical, and the same immutable image/container started through its existing enrolled identity. Strict post-boot firewall/XFRM absence, the exact approved LAN route and loopback control-plane forwarding were independently checked. No runtime guard, journal or node restoration authority was rewritten.
+
+The [client trust receipt](../tests/gcp-s2s-local/GCP-CLOUD-CLIENT-HOSTKEY-SUCCESS-20261010.json) records authenticated existing public-key publication, complete original metadata restoration, independent keyscan equality and strict SSH with the matching actual boot. Automatic approval review refused the separate HA target reset before any target metadata/reset action; one precise human question covers both owned target resets. Gateway qualification and provider development continue while that question is pending. Actual cloud SAs, BGP, application packets and VPN DNS acceptance remain open; configured cipher equality is recorded separately from negotiated interoperability.
