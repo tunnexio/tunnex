@@ -62,19 +62,31 @@ type runtimeDNSProof struct {
 	authority            *PermitLeaseAuthority
 }
 
-func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte) ([]byte, error) {
+func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte) (response []byte, resultErr error) {
+	stage, started := "dns_before_proof", time.Now()
+	connection := uuid.Nil
+	if config.IPsecPath != nil {
+		connection, _ = uuid.Parse(config.IPsecPath.ConnectionID)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	proof, err := c.proveResolverDNS(ctx, config, endpoint)
+	defer func() { c.emitDNSRuntimeDiagnostic(ctx, "dns_exchange", stage, connection, started, resultErr != nil) }()
+	proof, err := c.proveResolverDNSStage(ctx, config, endpoint, "dns_before_proof")
 	if err != nil {
 		return nil, ErrRuntimeController
 	}
-	response, err := fqdnrpc.ExchangeBoundSocket(ctx, endpoint, proof.Source, payload)
+	stage = "dns_socket"
+	response, err = fqdnrpc.ExchangeBoundSocket(ctx, endpoint, proof.Source, payload)
 	if err != nil {
 		return nil, ErrRuntimeController
 	}
-	after, err := c.proveResolverDNS(ctx, config, endpoint)
-	if err != nil || !sameResolverDNSProof(after, proof) || ctx.Err() != nil {
+	stage = "dns_after_proof"
+	after, err := c.proveResolverDNSStage(ctx, config, endpoint, "dns_after_proof")
+	if err != nil {
+		return nil, ErrRuntimeController
+	}
+	stage = "dns_after_binding"
+	if !sameResolverDNSProof(after, proof) || ctx.Err() != nil {
 		return nil, ErrRuntimeController
 	}
 	return response, nil
@@ -96,10 +108,17 @@ func sameResolverDNSProof(a, b runtimeDNSProof) bool {
 // proveResolverDNS is read-only. All packet authority remains in the existing
 // independent kernel lease sets; a DNS observation never extends their TTL.
 func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint) (runtimeDNSProof, error) {
+	return c.proveResolverDNSStage(ctx, config, endpoint, "dns_proof")
+}
+func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, operation string) (result runtimeDNSProof, resultErr error) {
+	stage, started := "dns_input", time.Now()
+	connection := uuid.Nil
+	defer func() { c.emitDNSRuntimeDiagnostic(ctx, operation, stage, connection, started, resultErr != nil) }()
 	fail := func() (runtimeDNSProof, error) { return runtimeDNSProof{}, ErrRuntimeController }
 	if c == nil || config.IPsecPath == nil || !fqdnrpc.ValidResolverConfig(config) || endpoint.Port != 53 || endpoint.Transport != "udp" && endpoint.Transport != "tcp" {
 		return fail()
 	}
+	stage = "dns_endpoint"
 	listed := false
 	for _, e := range config.Endpoints {
 		if e.Address == endpoint.Address && e.Port == 53 {
@@ -109,7 +128,9 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if !listed {
 		return fail()
 	}
+	stage = "dns_binding"
 	conn, ce := uuid.Parse(config.IPsecPath.ConnectionID)
+	connection = conn
 	cfg, ge := uuid.Parse(config.ID)
 	profile, pe := uuid.Parse(config.ProfileID)
 	source, se := netip.ParseAddr(config.IPsecPath.SourceAddress)
@@ -123,6 +144,7 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	}
 	// Only immutable owner-selected inputs are loaded here. The serial owner may
 	// be blocked on unrelated IO; no global mutex or journal mutex is acquired.
+	stage = "dns_owner"
 	view := c.dnsView.Load()
 	if view == nil || ctx.Err() != nil {
 		return fail()
@@ -131,6 +153,7 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if !ok || owner.epoch.revoked.Load() || !view.observer.qualification.current() || view.observer.controller.config.DaemonAlive == nil || !view.observer.controller.config.DaemonAlive() {
 		return fail()
 	}
+	stage = "dns_authority"
 	a := owner.active
 	if a.Authority == nil || a.Entry.Phase != RuntimeApplied || a.Identity.Binding.OrgID != view.observer.controller.config.OrgID || a.Identity.Binding.GatewayID != view.observer.controller.config.GatewayID || a.Identity.Binding.ConnectionID != conn || a.Identity.Binding.ConfigurationRevision != binding.ConfigurationRevision {
 		return fail()
@@ -139,6 +162,7 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if endpoint.Transport == "tcp" {
 		protocol = GuardTCP
 	}
+	stage = "dns_grant"
 	authorized := false
 	for _, g := range a.Grants {
 		if g.DNSResolver == binding && g.HostOrigin && !g.FQDNManaged && g.Source == netip.PrefixFrom(source, 32) && g.Destination == netip.PrefixFrom(resolver, 32) && g.Protocol == protocol && g.PortLow == 53 && g.PortHigh == 53 {
@@ -148,38 +172,48 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if !authorized {
 		return fail()
 	}
+	stage = "dns_original_lease"
 	if _, err := a.Authority.RemainingForApply(a.Identity, time.Second); err != nil {
 		return fail()
 	}
+	stage = "dns_native_proof"
 	if view.observer.controller.proveCurrent(ctx, a.Entry, a.Environment) != nil {
 		return fail()
 	}
+	stage = "dns_route_slot"
 	slot := dnsResolverSlot(a.Entry, resolver)
 	if slot < 1 || slot > 2 {
 		return fail()
 	}
+	stage = "dns_guard"
 	index := a.Entry.Observed[slot-1].InterfaceIndex
 	if index <= 0 || !view.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
 		return fail()
 	}
+	stage = "dns_source_before"
 	before, err := view.observer.source(source, a.Environment.LocalIngressIndices)
 	if err != nil {
 		return fail()
 	}
+	stage = "dns_route"
 	raw, err := view.observer.route(ctx, view.observer.controller.config.IPPath, "-j", "-4", "route", "get", resolver.String(), "from", source.String())
 	if err != nil || !dnsResolverRouteMatches(raw, a.Entry.Observed[slot-1].InterfaceName, source, resolver) {
 		return fail()
 	}
+	stage = "dns_source_after"
 	after, err := view.observer.source(source, a.Environment.LocalIngressIndices)
 	if err != nil || before != after || ctx.Err() != nil || !view.observer.qualification.current() || !view.observer.controller.config.DaemonAlive() {
 		return fail()
 	}
+	stage = "dns_current_lease"
 	if _, err := a.Authority.RemainingForApply(a.Identity, time.Second); err != nil {
 		return fail()
 	}
+	stage = "dns_epoch"
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok {
 		return fail()
 	}
+	stage = "dns_latest_guard"
 	latest := c.dnsView.Load()
 	if latest == nil {
 		return fail()
@@ -189,6 +223,7 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if latest.guard.Digest != view.guard.Digest && !latest.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
 		return fail()
 	}
+	stage = "dns_epoch"
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok || ctx.Err() != nil {
 		return fail()
 	}

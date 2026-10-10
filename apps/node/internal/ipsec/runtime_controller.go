@@ -76,6 +76,7 @@ type RuntimeController struct {
 	recoverySwitch          func(context.Context, KernelAllocation, [2]Ownership, uint8) error
 	mu                      sync.Mutex
 	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
+	dnsDiagnosticAfter      atomic.Int64
 	config                  RuntimeControllerConfig
 	journal                 *RuntimeJournal
 	guard                   *RuntimeGuard
