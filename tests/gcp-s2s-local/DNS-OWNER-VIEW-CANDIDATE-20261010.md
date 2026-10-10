@@ -1,6 +1,6 @@
 # Shared DNS owner-view candidate — source qualification
 
-Base: `790be7fc`, isolated branch `gcp-s2s-dns-owner-view`.
+Base: `790be7fc`, isolated branch `gcp-s2s-dns-owner-view`. Current status: reviewed and selectively integrated after final HA and Classic native component proof passed. Earlier pending/failure sections below are historical checkpoints, superseded by the final source-bound receipts at the end.
 
 Imported source-only patch SHA256: `8abfbb1eed2375b9b92fd1ba64d8e4a218a1d09ad416ef2157d14cd03811d833` from retained `/private/tmp/ipsec-dns-owner-view-sourceonly-20261010-1/candidate-v2.patch`. No AWS checkout file replacement, cloud commands, current lab or licence mutation.
 
