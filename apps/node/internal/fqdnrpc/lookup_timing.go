@@ -18,6 +18,9 @@ type LookupPhaseTiming struct {
 	MaxMillis    int64 `json:"max_ms"`
 }
 type LookupTiming struct {
+	// StatsSaturated means at least one counter/sample was capped or scalar clamped;
+	// drained workers do not imply an uncapped measurement.
+	StatsSaturated bool `json:"stats_saturated"`
 	// ReturnedExchanges counts transport calls that returned, including refusals;
 	// CompletedExchanges counts successful complete transport proof brackets.
 	EndpointWorkersDrained     bool              `json:"endpoint_workers_drained"`
@@ -46,7 +49,8 @@ func lookupTiming(ctx context.Context) *LookupTimingAccumulator {
 	return a
 }
 
-const lookupExchangeCeiling = 8 * 9 * 2
+// Eight endpoints, nine CNAME steps, two record types, and one UDP→TCP retry.
+const lookupExchangeCeiling = 8 * 9 * 2 * 2
 
 func lookupBoundMillis(d time.Duration, signed bool) int64 {
 	v := d.Milliseconds()
@@ -82,6 +86,7 @@ func RecordLookupPhase(ctx context.Context, phase string, elapsed time.Duration,
 		return
 	}
 	if p.Count >= lookupExchangeCeiling {
+		a.value.StatsSaturated = true
 		return
 	}
 	p.Count++
@@ -91,9 +96,13 @@ func RecordLookupPhase(ctx context.Context, phase string, elapsed time.Duration,
 		p.Refused++
 	}
 	ms := lookupBoundMillis(elapsed, false)
+	if elapsed < 0 || elapsed.Milliseconds() > 300000 {
+		a.value.StatsSaturated = true
+	}
 	p.SummedMillis += ms
 	if p.SummedMillis > 300000 {
 		p.SummedMillis = 300000
+		a.value.StatsSaturated = true
 	}
 	if ms > p.MaxMillis {
 		p.MaxMillis = ms
@@ -107,6 +116,7 @@ func RecordLookupExchange(ctx context.Context, success bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.value.ReturnedExchanges >= lookupExchangeCeiling {
+		a.value.StatsSaturated = true
 		return
 	}
 	a.value.TransportTimingObserved = true
@@ -133,7 +143,11 @@ func finishLookupTiming(ctx context.Context, err error) {
 		a.value.Outcome = "canceled"
 	}
 	if d, ok := ctx.Deadline(); ok && a.value.ReductionObserved {
-		a.value.RemainingAtReductionMillis = lookupBoundMillis(time.Until(d), true)
+		remaining := time.Until(d)
+		if remaining.Milliseconds() > 300000 || remaining.Milliseconds() < -300000 {
+			a.value.StatsSaturated = true
+		}
+		a.value.RemainingAtReductionMillis = lookupBoundMillis(remaining, true)
 	}
 }
 func (a *LookupTimingAccumulator) Snapshot() LookupTiming {

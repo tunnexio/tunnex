@@ -34,7 +34,7 @@ func TestLookupTimingRequestOwnershipBoundsAndNoUnknownData(t *testing.T) {
 	}
 	workers.Wait()
 	v := a.Snapshot()
-	if v.BeforeProof.Count != lookupExchangeCeiling || v.BeforeProof.SummedMillis != 300000 || v.BeforeProof.MaxMillis != 300000 || v.AfterProof.MaxMillis != 0 || v.ReturnedExchanges != lookupExchangeCeiling || v.CompletedExchanges > v.ReturnedExchanges {
+	if !v.StatsSaturated || v.BeforeProof.Count != lookupExchangeCeiling || v.BeforeProof.SummedMillis != 300000 || v.BeforeProof.MaxMillis != 300000 || v.AfterProof.MaxMillis != 0 || v.ReturnedExchanges != lookupExchangeCeiling || v.CompletedExchanges > v.ReturnedExchanges {
 		t.Fatal("unbounded summary", v)
 	}
 	if b.Snapshot().ReturnedExchanges != 0 {
@@ -150,5 +150,23 @@ func TestLookupTimingEarlyRefusalDoesNotClaimReduction(t *testing.T) {
 	v := a.Snapshot()
 	if v.EndpointWorkersDrained || v.ReductionObserved || v.RemainingAtReductionMillis != 0 || v.Outcome != "resolver_failure" {
 		t.Fatal("early refusal claimed a complete reduction", v)
+	}
+}
+
+func TestLookupTimingExactFallbackBoundAndOverflowFlag(t *testing.T) {
+	ctx, a := WithLookupTiming(t.Context())
+	for i := 0; i < 288; i++ {
+		RecordLookupExchange(ctx, true)
+		RecordLookupPhase(ctx, "socket", time.Millisecond, true)
+	}
+	v := a.Snapshot()
+	if v.ReturnedExchanges != 288 || v.CompletedExchanges != 288 || v.Socket.Count != 288 || v.StatsSaturated {
+		t.Fatal("valid bounded fallback workload saturated", v)
+	}
+	RecordLookupExchange(ctx, true)
+	RecordLookupPhase(ctx, "socket", time.Millisecond, true)
+	v = a.Snapshot()
+	if v.ReturnedExchanges != 288 || v.CompletedExchanges != 288 || v.Socket.Count != 288 || !v.StatsSaturated {
+		t.Fatal("dropped sample was not indicated", v)
 	}
 }

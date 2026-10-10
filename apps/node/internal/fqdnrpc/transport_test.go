@@ -149,9 +149,11 @@ func (f packetTransport) ExchangeDNS(ctx context.Context, c ResolverConfig, e Re
 func TestDNSBoundTCFallbackStaysSameEndpointAndValidatesQuestion(t *testing.T) {
 	query := dnsmessage.Message{Header: dnsmessage.Header{ID: 51}, Questions: []dnsmessage.Question{{Name: dnsmessage.MustNewName("service.private.test."), Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET}}}
 	payload, _ := query.Pack()
+	ctx, timing := WithLookupTiming(t.Context())
 	calls := 0
-	transport := packetTransport(func(_ context.Context, _ ResolverConfig, e ResolverEndpoint, _ []byte) ([]byte, error) {
+	transport := packetTransport(func(c context.Context, _ ResolverConfig, e ResolverEndpoint, _ []byte) ([]byte, error) {
 		calls++
+		defer RecordLookupExchange(c, true)
 		if e.Address != "10.20.0.53" || e.Port != 53 {
 			t.Fatal("fallback changed resolver")
 		}
@@ -167,8 +169,12 @@ func TestDNSBoundTCFallbackStaysSameEndpointAndValidatesQuestion(t *testing.T) {
 		}
 		return reply.Pack()
 	})
-	if _, err := exchangeDNSPacket(t.Context(), transport, ResolverConfig{}, ResolverEndpoint{Address: "10.20.0.53", Port: 53, Transport: "udp"}, payload); err != nil || calls != 2 {
+	if _, err := exchangeDNSPacket(ctx, transport, ResolverConfig{}, ResolverEndpoint{Address: "10.20.0.53", Port: 53, Transport: "udp"}, payload); err != nil || calls != 2 {
 		t.Fatal(err, calls)
+	}
+	v := timing.Snapshot()
+	if v.ReturnedExchanges != 2 || v.CompletedExchanges != 2 || v.StatsSaturated {
+		t.Fatal("UDP/TCP fallback accounting lost", v)
 	}
 	bad := packetTransport(func(context.Context, ResolverConfig, ResolverEndpoint, []byte) ([]byte, error) {
 		reply := query
