@@ -40,7 +40,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 				attrs = []any{"operation", event.Operation, "stage", event.Stage, "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
 			}
 			if event.DNSReadTiming != nil {
-				attrs = append(attrs, "guard_bracket_count", event.DNSReadTiming.GuardBracketCount, "guard_command_ms", event.DNSReadTiming.GuardCommandMillis, "guard_verification_ms", event.DNSReadTiming.GuardVerificationMillis, "guard_failure_class", event.DNSReadTiming.GuardFailureClass, "socket_ms", event.DNSReadTiming.SocketMillis, "socket_stage", event.DNSReadTiming.SocketStage)
+				attrs = append(attrs, "guard_bracket_count", event.DNSReadTiming.GuardBracketCount, "guard_command_ms", event.DNSReadTiming.GuardCommandMillis, "guard_verification_ms", event.DNSReadTiming.GuardVerificationMillis, "guard_failure_class", event.DNSReadTiming.GuardFailureClass, "socket_ms", event.DNSReadTiming.SocketMillis, "socket_stage", event.DNSReadTiming.SocketStage, "guard_revalidation", event.DNSReadTiming.GuardRevalidation)
 			}
 			if event.Refused {
 				logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)

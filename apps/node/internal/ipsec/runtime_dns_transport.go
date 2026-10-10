@@ -146,7 +146,9 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	connection := uuid.Nil
 	var guardTiming runtimeDNSReadTiming
 	var observeGuard func(guardReadTiming)
+	var observeRevalidation func(string)
 	if c != nil && c.config.DNSReadTiming {
+		observeRevalidation = func(reason string) { guardTiming.GuardRevalidation = reason }
 		observeGuard = func(t guardReadTiming) {
 			guardTiming.GuardBracketCount++
 			guardTiming.GuardCommandMillis = t.CommandMillis
@@ -238,7 +240,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 		stage = guardStage
 		// A committed renewal may supersede this loaded template. Try exactly one
 		// current immutable template, retaining the original owner/lease/epoch.
-		if guardStage != "dns_guard_full_read" || c.revalidateDNSGuardSnapshotDigestObserved(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard) == "" {
+		if guardStage != "dns_guard_full_read" || c.revalidateDNSGuardSnapshotDigestReason(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard, observeRevalidation) == "" {
 			return fail()
 		}
 		revalidationUsed = true
@@ -286,7 +288,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 			if revalidationUsed || !permitted && guardStage != "dns_guard_full_read" {
 				return fail()
 			}
-			checkedDigest = c.revalidateDNSGuardSnapshotDigestObserved(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard)
+			checkedDigest = c.revalidateDNSGuardSnapshotDigestReason(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard, observeRevalidation)
 			if checkedDigest == "" {
 				return fail()
 			}
@@ -497,25 +499,54 @@ func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context
 	return c.revalidateDNSGuardSnapshotDigestObserved(ctx, connection, owner, previous, entry, index, reqid, nil)
 }
 func (c *RuntimeController) revalidateDNSGuardSnapshotDigestObserved(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32, observe func(guardReadTiming)) string {
+	return c.revalidateDNSGuardSnapshotDigestReason(ctx, connection, owner, previous, entry, index, reqid, observe, nil)
+}
+
+func (c *RuntimeController) revalidateDNSGuardSnapshotDigestReason(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32, observe func(guardReadTiming), reason func(string)) string {
+	mark := func(value string) {
+		if reason != nil {
+			reason(value)
+		}
+	}
 	if c == nil || previous == nil || ctx.Err() != nil {
+		mark("input_refused")
+		if ctx.Err() != nil {
+			mark("context_inactive")
+		}
 		return ""
 	}
 	latest := c.dnsView.Load()
-	if latest == nil || latest.guard.Digest == previous.guard.Digest {
+	if latest == nil {
+		mark("latest_absent")
+		return ""
+	}
+	if latest.guard.Digest == previous.guard.Digest {
+		mark("latest_unchanged")
 		return ""
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
+		mark("owner_entry_refused")
 		return ""
 	}
 	if permitted, _ := latest.resolverGuardPermitsStageObserved(ctx, entry, index, reqid, observe); !permitted {
+		mark("latest_guard_refused")
+		if ctx.Err() != nil {
+			mark("context_inactive")
+		}
 		return ""
 	}
 	current := c.dnsView.Load()
 	if current == nil || current.guard.Digest != latest.guard.Digest {
+		mark("digest_changed_again")
 		return ""
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok || ctx.Err() != nil {
+		mark("final_owner_entry_refused")
+		if ctx.Err() != nil {
+			mark("context_inactive")
+		}
 		return ""
 	}
+	mark("accepted")
 	return latest.guard.Digest
 }

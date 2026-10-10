@@ -75,7 +75,7 @@ func (c *RuntimeController) claimDNSDiagnostic(now time.Time) bool {
 type runtimeDNSReadTiming struct {
 	GuardCommandMillis, GuardVerificationMillis, SocketMillis int64
 	GuardBracketCount                                         int
-	GuardFailureClass, SocketStage                            string
+	GuardFailureClass, SocketStage, GuardRevalidation         string
 }
 
 func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool, detail ...runtimeDNSReadTiming) {
@@ -98,6 +98,11 @@ func validDNSReadTiming(t runtimeDNSReadTiming) bool {
 	}
 	switch t.GuardFailureClass {
 	case "", "none", "target_not_permitted", "structural_or_read", "interface_mapping", "observed_invalid", "object_count", "nonset_mismatch", "nonset_kind_mismatch", "table_mismatch", "chain_mismatch", "rule_mismatch", "owner_structure_mismatch", "owner_comment_mismatch", "owner_revision_mismatch", "owner_digest_mismatch", "owner_revision_digest_mismatch", "set_member_mismatch", "set_metadata_mismatch", "required_set_missing", "context_deadline", "context_canceled":
+	default:
+		return false
+	}
+	switch t.GuardRevalidation {
+	case "", "input_refused", "latest_absent", "latest_unchanged", "owner_entry_refused", "latest_guard_refused", "digest_changed_again", "final_owner_entry_refused", "context_inactive", "accepted":
 	default:
 		return false
 	}
