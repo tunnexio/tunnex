@@ -6,11 +6,14 @@ let role = "admin";
 let rows: Array<Record<string, unknown>> = [];
 let cidrRows: Array<Record<string, unknown>> = [];
 let resolverContext: Record<string, unknown> = {};
+let connections: Array<Record<string, unknown>> = [];
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-a", name: "Org A" } }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email_verified: true } } }) }));
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: { GET: vi.fn(async (path: string) => {
+    if (path.endsWith("/ipsec/connections")) return { data: { items: connections, next_cursor: null } };
+    if (path.endsWith("/configuration")) return { data: { configuration_revision: 4 } };
     if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role }] };
     if (path.endsWith("/fqdn-resources/setting")) return { data: { enabled: false } };
     if (path.endsWith("/fqdn-resources")) return { data: rows };
@@ -26,7 +29,7 @@ import AccessResources from "../src/pages/AccessResources";
 
 function page(entry = "/access/resources") { return render(<MemoryRouter initialEntries={[entry]}><AccessResources /></MemoryRouter>); }
 beforeEach(() => {
-  role = "admin"; rows = []; cidrRows = [];
+  role = "admin"; rows = []; cidrRows = []; connections = [];
   resolverContext = { id: "resolver-a", org_id: "org-a", site_id: "site-a", gateway_id: "gw-a", version: 1, state: "active", created_at: "2026-08-28T00:00:00Z", provider_hint: "aws", endpoints: [{ address: "10.0.0.53", port: 53, transport: "udp" }], profiles: [{ id: "profile-a", name: "Legacy resolver", provider_hint: "aws", zone_suffixes: [], endpoints: [{ address: "10.0.0.53", port: 53, transport: "udp" }], legacy_default: true }] };
   vi.mocked(api.POST).mockClear(); vi.mocked(api.PUT).mockClear();
 });
@@ -53,6 +56,8 @@ describe("FQDN resource operator index", () => {
     page("/access/resources?type=fqdn");
     expect(await screen.findByText("Legacy resolver")).toBeTruthy();
     expect(screen.getByText("AWS").closest("article")?.querySelector("svg")).toBeTruthy();
+    expect(screen.getByText("Configured")).toBeTruthy();
+    expect(screen.queryByText("Active")).toBeNull();
   });
 
   it("activates named provider profiles and removes prototype-only behavior", async () => {
@@ -79,6 +84,64 @@ describe("FQDN resource operator index", () => {
     const body = call[1].body;
     expect(body.profiles).toHaveLength(2);
     expect(body.profiles[1]).toMatchObject({ provider_hint: "azure", zone_suffixes: ["azure.internal.example.com"] });
+  });
+
+  it("binds the current owned IPsec revision and documents separate office and WG proxy scope", async () => {
+    connections = [
+      { id: "ipsec-a", name: "AWS enabled", site_id: "site-a", gateway_node_id: "gw-a", desired_intent: "enabled", cleanup_state: "complete" },
+      { id: "ipsec-disabled", name: "AWS disabled", site_id: "site-a", gateway_node_id: "gw-a", desired_intent: "disabled" },
+      { id: "ipsec-other", name: "Other site", site_id: "site-b", gateway_node_id: "gw-b", desired_intent: "enabled" },
+    ];
+    page("/access/resources?type=fqdn");
+    expect(await screen.findByText(/Existing office DNS:/)).toBeTruthy();
+    expect(screen.getByText(/this does not expose a DNS listener to the office LAN/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "private.example.test" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS transport path"), { target: { value: "ipsec" } });
+    const picker = within(dialog).getByLabelText("Profile 1 IPsec connection");
+    await within(picker).findByRole("option", { name: "AWS enabled" });
+    expect(within(picker).queryByRole("option", { name: "AWS disabled" })).toBeNull();
+    expect(within(picker).queryByRole("option", { name: "Other site" })).toBeNull();
+    fireEvent.change(picker, { target: { value: "ipsec-a" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 gateway DNS source IPv4"), { target: { value: "10.0.0.254" } });
+    const activate = within(dialog).getByRole("button", { name: "Activate profiles" });
+    await waitFor(() => expect((activate as HTMLButtonElement).disabled).toBe(false));
+    expect((within(dialog).getByLabelText("Profile 1 endpoint 1 port") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(activate);
+    await waitFor(() => expect(vi.mocked(api.PUT)).toHaveBeenCalled());
+    const call = vi.mocked(api.PUT).mock.calls[0] as unknown as [string, { body: { profiles: Array<{ ipsec_path: unknown }> } }];
+    expect(call[1].body.profiles[0].ipsec_path).toEqual({ connection_id: "ipsec-a", configuration_revision: 4, source_address: "10.0.0.254" });
+  });
+
+  it("refuses a stored IPsec profile with a non-DNS port and keeps its port fixed", async () => {
+    connections = [{ id: "ipsec-a", name: "AWS enabled", site_id: "site-a", gateway_node_id: "gw-a", desired_intent: "enabled", cleanup_state: "complete" }];
+    resolverContext.profiles = [{ id: "profile-a", name: "AWS private DNS", provider_hint: "aws", zone_suffixes: ["private.example.test"], endpoints: [{ address: "10.0.0.53", port: 5353, transport: "udp" }], legacy_default: false, ipsec_path: { connection_id: "ipsec-a", configuration_revision: 4, source_address: "10.0.0.254" } }];
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByRole("option", { name: "AWS enabled" });
+    expect((within(dialog).getByLabelText("Profile 1 endpoint 1 port") as HTMLInputElement).disabled).toBe(true);
+    expect((within(dialog).getByRole("button", { name: "Activate profiles" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).getByText(/UDP and TCP port 53/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate profiles" }));
+    expect(vi.mocked(api.PUT)).not.toHaveBeenCalled();
+  });
+
+  it("retains custom resolver ports for a direct gateway path", async () => {
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "private.example.test" } });
+    const port = within(dialog).getByLabelText("Profile 1 endpoint 1 port") as HTMLInputElement;
+    expect(port.disabled).toBe(false);
+    fireEvent.change(port, { target: { value: "5353" } });
+    expect((within(dialog).getByRole("button", { name: "Activate profiles" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate profiles" }));
+    await waitFor(() => expect(vi.mocked(api.PUT)).toHaveBeenCalled());
+    const call = vi.mocked(api.PUT).mock.calls[0] as unknown as [string, { body: { profiles: Array<{ endpoints: Array<{ port: number }>; ipsec_path?: unknown }> } }];
+    expect(call[1].body.profiles[0].endpoints[0].port).toBe(5353);
+    expect(call[1].body.profiles[0].ipsec_path).toBeUndefined();
   });
 
   it("previews parent and child profile precedence and disables unmatched creation", async () => {

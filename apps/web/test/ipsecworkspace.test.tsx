@@ -311,3 +311,77 @@ it.each(["repeated", "cyclic"] as const)("rejects a %s backend cursor and retrie
  for (const [, options] of retryReads) expect(options).toEqual({ params: { path: { orgId: "org-a" }, query: { limit: 20, after: failedCursor } } });
  expect(mock.post).not.toHaveBeenCalled(); expect(mock.put).not.toHaveBeenCalled(); expect(mock.del).not.toHaveBeenCalled();
 });
+
+async function prepareBGPForm() {
+ fireEvent.click(await screen.findByRole("button", { name: "New connection" }));
+ fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Office BGP" } });
+ fireEvent.change(screen.getByLabelText("Routing"), { target: { value: "ipv4-bgp" } });
+ fireEvent.change(screen.getByLabelText("Local network"), { target: { value: "site-a" } });
+ fireEvent.change(await screen.findByLabelText("Gateway"), { target: { value: "gateway-a" } });
+ fireEvent.click(await screen.findByLabelText("10.10.0.0/16"));
+ fireEvent.change(screen.getByLabelText("Customer public IP"), { target: { value: "9.9.9.9" } });
+ fireEvent.change(screen.getByLabelText("Remote network ranges"), { target: { value: "10.20.0.0/16" } });
+ fireEvent.change(screen.getByLabelText("Router ID"), { target: { value: "10.10.0.1" } });
+}
+function fillBGPTunnels() {
+ for (const n of [1, 2]) for (const [field, value] of Object.entries({ "outside IP": n === 1 ? "8.8.8.8" : "1.1.1.1", "inside CIDR": n === 1 ? "169.254.10.0/30" : "169.254.10.4/30", "customer IP": n === 1 ? "169.254.10.1" : "169.254.10.5", "cloud IP": n === 1 ? "169.254.10.2" : "169.254.10.6", PSK: `Synthetic.BGP_${n}` })) fireEvent.change(screen.getByLabelText(`Tunnel ${n} ${field}`), { target: { value } });
+}
+const bgpReadback = { profile_id: "aws-bgp-ipv4-v1", configuration_revision: 1, configuration: { mode: "ipv4-bgp", customer_outside_address: "9.9.9.9", local_prefixes: ["10.10.0.0/16"], remote_prefixes: ["10.20.0.0/16"], tunnels: [], bgp: { local_asn: 65000, remote_asn: 64512, router_id: "10.10.0.1", maximum_prefixes: 64 } } };
+it("reviews and saves BGP disabled even when BGP activation capability is unavailable", async () => {
+ const original = mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: false, reason: "unsupported" } } } : original(path, opts));
+ mock.post.mockImplementation(async (path: string, opts: any) => path.endsWith("configuration-check") ? { data: { valid: true } } : { data: { ...record, id: opts.body.id } });
+ render(view()); await prepareBGPForm();
+ expect(await screen.findByText("You can save this BGP configuration disabled. Enabling requires a gateway with fresh BGP support.")).toBeTruthy();
+ fireEvent.click(screen.getByRole("button", { name: "Next: tunnels" })); fillBGPTunnels();
+ expect(screen.getByRole("region", { name: "Connection review" }).textContent).toContain("Customer ASN 65000");
+ expect(screen.getByRole("region", { name: "Connection review" }).textContent).not.toContain("Synthetic.BGP");
+ fireEvent.click(screen.getByRole("button", { name: "Save disabled connection" }));
+ await waitFor(() => expect(mock.post.mock.calls.some(([path]) => path.endsWith("/connections"))).toBe(true));
+ const payload = mock.post.mock.calls.find(([path]) => path.endsWith("/connections"))![1].body.configuration;
+ expect(payload.mode).toBe("ipv4-bgp"); expect(payload.bgp).toEqual(bgpReadback.configuration.bgp);
+ expect(payload.tunnels[1].psk).toBe("Synthetic.BGP_2");
+});
+it("keeps static payload unchanged when switching away from BGP", async () => {
+ mock.post.mockImplementation(async (path: string, opts: any) => path.endsWith("configuration-check") ? { data: { valid: true } } : { data: { ...record, id: opts.body.id } });
+ render(view()); await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Routing"), { target: { value: "ipv4-static" } });
+ expect(screen.queryByLabelText("Customer ASN")).toBeNull();
+ fireEvent.click(screen.getByRole("button", { name: "Next: tunnels" })); fillBGPTunnels();
+ fireEvent.click(screen.getByRole("button", { name: "Save disabled connection" }));
+ await waitFor(() => expect(mock.post.mock.calls.some(([path]) => path.endsWith("/connections"))).toBe(true));
+ const payload = mock.post.mock.calls.find(([path]) => path.endsWith("/connections"))![1].body.configuration;
+ expect(payload.mode).toBe("ipv4-static"); expect(payload).not.toHaveProperty("bgp");
+});
+it("requires valid distinct private ASNs and bounded per-peer limits before BGP review", async () => {
+ render(view()); await prepareBGPForm();
+ for (const [label, invalid] of [["Customer ASN", "65535"], ["AWS ASN", "65000"], ["Maximum prefixes per peer", "65"]]) {
+  const input = screen.getByLabelText(label); const original = (input as HTMLInputElement).value;
+  fireEvent.change(input, { target: { value: invalid } });
+  expect((screen.getByRole("button", { name: "Next: tunnels" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(input, { target: { value: original } });
+ }
+ expect((screen.getByRole("button", { name: "Next: tunnels" }) as HTMLButtonElement).disabled).toBe(false); expect(mock.post).not.toHaveBeenCalled();
+});
+it("uses stored BGP mode and fresh BGP readiness for enable and rechecks at the action", async () => {
+ const original = mock.get.getMockImplementation()!; let bgpSupported = true;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }] } } : path.endsWith("/configuration") ? { data: bgpReadback } : path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: bgpSupported, reason: bgpSupported ? "eligible" : "unsupported" } } } : original(path, opts));
+ render(view()); fireEvent.click(await screen.findByRole("button", { name: "Enable Office to cloud" }));
+ bgpSupported = false; fireEvent.click(screen.getByRole("button", { name: "Enable connection" }));
+ await screen.findByText("Gateway readiness changed. Close and refresh before enabling."); expect(mock.put).not.toHaveBeenCalled();
+});
+it("does not offer BGP enable based on base IPsec support alone", async () => {
+ const original = mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }] } } : path.endsWith("/configuration") ? { data: bgpReadback } : original(path, opts));
+ render(view()); await screen.findByRole("button", { name: "Office to cloud" });
+ await waitFor(() => expect(mock.get.mock.calls.some(([path]) => path.endsWith("/configuration"))).toBe(true));
+ expect(screen.queryByRole("button", { name: "Enable Office to cloud" })).toBeNull();
+});
+it("reads back BGP settings without showing credentials", async () => {
+ const original = mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/configuration") ? { data: bgpReadback } : original(path, opts));
+ render(view()); fireEvent.click(await screen.findByRole("button", { name: "Office to cloud" }));
+ await screen.findByText("AWS · IPv4 BGP · revision 1");
+ expect(screen.getByText("65000")).toBeTruthy(); expect(screen.getByText("64512")).toBeTruthy();
+ expect(screen.getByText("Maximum prefixes per peer")).toBeTruthy(); expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
+});
