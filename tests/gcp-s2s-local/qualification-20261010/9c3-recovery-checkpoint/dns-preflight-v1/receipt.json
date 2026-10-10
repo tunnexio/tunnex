@@ -1,0 +1,1 @@
+{"started": true, "completed": false, "stages": [], "scope": "one UDP TC-large with conditional TCP continuation; XFRM absence/SPI counters alone never causal proof", "error_type": "ValueError"}

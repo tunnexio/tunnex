@@ -1,0 +1,5 @@
+{
+  "original": "/private/tmp/gcp-dns-fallback-boundary-9c3-20261011/classic-tc-large-native-9c3-v1.json",
+  "sha256": "e4dc0c0ee1ad6e21f4da4fd76999f3496a9d81ca207c14b4df94bfb1416eb9f7",
+  "scope": "actual snapshot preflight refusal; no socket bind/observers/query; no DNS packet or fallback claim"
+}
