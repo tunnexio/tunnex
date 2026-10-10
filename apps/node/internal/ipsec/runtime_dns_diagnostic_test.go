@@ -101,7 +101,11 @@ func TestDNSDiagnosticSocketRefusalPreservesActiveContext(t *testing.T) {
 			if _, err := f.c.exchangeResolverDNS(context.Background(), f.config, endpoint, []byte("short")); err == nil {
 				t.Fatal("malformed DNS packet accepted")
 			}
-			if diagnostic.Operation != "dns_exchange" || diagnostic.Stage != "dns_socket_"+protocol || diagnostic.ContextState != "active" || !diagnostic.Refused {
+			stage := "dns_socket_" + protocol
+			if protocol == "tcp" {
+				stage = "dns_socket_tcp_input"
+			}
+			if diagnostic.Operation != "dns_exchange" || diagnostic.Stage != stage || diagnostic.ContextState != "active" || !diagnostic.Refused {
 				t.Fatalf("wrong socket refusal or context: %+v", diagnostic)
 			}
 		})
