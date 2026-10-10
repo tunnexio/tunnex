@@ -144,7 +144,7 @@ func resetExtraObjectsAbsent(e RuntimeJournalEntry, linksRaw, addressesRaw []byt
 				return false
 			}
 		}
-		for _, t := range e.Allocation.Tunnels {
+		for _, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 			if name == t.Name || alias == t.Alias {
 				return false
 			}
@@ -175,7 +175,7 @@ func resetExtraObjectsAbsent(e RuntimeJournalEntry, linksRaw, addressesRaw []byt
 			if err != nil || !ip.Is4() {
 				return false
 			}
-			for _, t := range e.Allocation.Tunnels {
+			for _, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 				if t.InsideAddress.Masked().Contains(ip) {
 					return false
 				}

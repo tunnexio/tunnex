@@ -53,7 +53,7 @@ func sameRestorationIntent(before, after RuntimeJournalEntry) bool {
 	a.Restoration = b.Restoration
 	a.Allocation.Namespace = b.Allocation.Namespace
 	a.Allocation.Generation = b.Allocation.Generation
-	for i := range a.Allocation.Tunnels {
+	for i := range a.Allocation.Tunnels[:a.Allocation.activeTunnelCount()] {
 		a.Allocation.Tunnels[i].Alias = b.Allocation.Tunnels[i].Alias
 		a.Engines[i].LocalAddress = b.Engines[i].LocalAddress
 	}
@@ -71,7 +71,7 @@ func validRestoration(r RuntimeJournalEntry) bool {
 	if v == nil {
 		return true
 	}
-	if (r.ContractVersion != 2 && r.ContractVersion != 3) || r.AbsenceOnly || !validBootID(v.BootID) || !validHistoryContinuation(v.Compacted) || len(v.Retired) > 16 || (v.Compacted != nil && len(v.Retired) != 16) || historyCount(v.Compacted) > ^uint64(0)-uint64(len(v.Retired)) || v.Epoch != historyCount(v.Compacted)+uint64(len(v.Retired)) {
+	if (r.ContractVersion != 2 && r.ContractVersion != 3 && r.ContractVersion != 4) || r.AbsenceOnly || !validBootID(v.BootID) || !validHistoryContinuation(v.Compacted) || len(v.Retired) > 16 || (v.Compacted != nil && len(v.Retired) != 16) || historyCount(v.Compacted) > ^uint64(0)-uint64(len(v.Retired)) || v.Epoch != historyCount(v.Compacted)+uint64(len(v.Retired)) {
 		return false
 	}
 	for i, h := range v.Retired {
@@ -205,7 +205,7 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 		if e.DeliveryID != id {
 			continue
 		}
-		if e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3) {
+		if e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && e.ContractVersion != 4) {
 			return ErrRuntimeController
 		}
 		if e.Restoration != nil {
@@ -318,7 +318,7 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 	candidate.BGPProcessHistory = old.BGPProcessHistory
 	candidate.BGPProcessRetired = append([]bgpengine.ProcessIdentity(nil), old.BGPProcessRetired...)
 	candidate.BGPRoutes = old.BGPRoutes
-	if old.Phase != RuntimeApplied || (old.ContractVersion != 2 && old.ContractVersion != 3) || old.AbsenceOnly || old.ResetCleanup != nil || !sameRestorationIntent(old, candidate) {
+	if old.Phase != RuntimeApplied || (old.ContractVersion != 2 && old.ContractVersion != 3 && old.ContractVersion != 4) || old.AbsenceOnly || old.ResetCleanup != nil || !sameRestorationIntent(old, candidate) {
 		return fmt.Errorf("%w: restoration intent", ErrRuntimeController)
 	}
 	ns := candidate.Allocation.Namespace
@@ -363,7 +363,7 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 		return ErrRuntimeController
 	}
 	candidate.Allocation.Generation = uuid.New()
-	for i := range candidate.Allocation.Tunnels {
+	for i := range candidate.Allocation.Tunnels[:candidate.Allocation.activeTunnelCount()] {
 		candidate.Allocation.Tunnels[i].Alias = KernelTunnelAlias(candidate.Allocation.Generation, candidate.Allocation.Tunnels[i].TunnelID)
 	}
 	candidate.Observed = [2]Ownership{}

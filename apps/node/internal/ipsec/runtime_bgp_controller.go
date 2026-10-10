@@ -25,7 +25,7 @@ func runtimeBGPProcessConfig(e RuntimeJournalEntry) (bgpengine.Config, error) {
 		return bgpengine.Config{}, ErrRuntimeController
 	}
 	c := bgpengine.Config{LocalASN: e.BGP.LocalASN, RemoteASN: e.BGP.RemoteASN, RouterID: router, MaximumPrefixes: e.BGP.MaximumPrefixes, LocalPrefixes: e.Engines[0].LocalPrefixes, RemotePrefixes: e.Engines[0].RemotePrefixes}
-	for i, t := range e.Allocation.Tunnels {
+	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		c.Peers[i] = bgpengine.Peer{Slot: int(t.Slot), Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer, LinkName: t.Name, XFRMID: t.XFRMID}
 	}
 	return c, nil
@@ -180,7 +180,7 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 	e := a.Entry
 	g := GuardConnection{ID: e.Allocation.ConnectionID, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, Tunnels: e.Observed, LocalIngressIndices: a.Environment.LocalIngressIndices, Grants: a.Grants, PermitFor: remaining}
 	statuses := c.observeRecovery(ctx, e)
-	for i, t := range e.Allocation.Tunnels {
+	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		peer := GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
 		if statuses[i] == "up" {
 			peer.InterfaceIndex = e.Observed[i].InterfaceIndex
@@ -426,7 +426,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
-		for i, t := range e.Engines {
+		for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}

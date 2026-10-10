@@ -11,7 +11,7 @@ import (
 
 // selectedRuntimeSlot reports completed route duty, never active authority.
 func selectedRuntimeSlot(e RuntimeJournalEntry) uint8 {
-	if e.ContractVersion == 0 && e.Recovery == nil {
+	if (e.ContractVersion == 0 || e.ContractVersion == 4 && validClassicJournal(e)) && e.Recovery == nil {
 		return 1
 	}
 	if e.ContractVersion != 2 || !validJournalRecovery(e) || e.Recovery.Stage != "completed" {
@@ -152,7 +152,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			}
 		}
 		entry = entries[pos]
-		for i, t := range entry.Engines {
+		for i, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -166,7 +166,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			}
 		}
 		// Either peer may be unavailable; only independent readback can declare Up.
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			_ = c.config.Daemon.initiateTunnel(ctx, t)
 		}
 		if entry.Phase == RuntimeApplying {
@@ -209,7 +209,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 			return fail()
 		}
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			retryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			if c.recoveryInitiate != nil {
 				_ = c.recoveryInitiate(retryCtx, t)

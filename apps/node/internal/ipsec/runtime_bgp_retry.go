@@ -28,7 +28,7 @@ func (c *RuntimeController) initiateStagedBGPChildren(ctx context.Context, e Run
 	if c.bgpRetries == nil {
 		c.bgpRetries = map[uuid.UUID][2]runtimeBGPRetry{}
 	}
-	for slot, tunnel := range e.Engines {
+	for slot, tunnel := range e.Engines[:e.Allocation.activeTunnelCount()] {
 		ns, err := c.namespace()
 		current, observeErr := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
 		if err != nil || ns != e.Allocation.Namespace || observeErr != nil || !reflect.DeepEqual(current, env) || !c.qualification.current() || !c.config.DaemonAlive() || c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true) != nil {

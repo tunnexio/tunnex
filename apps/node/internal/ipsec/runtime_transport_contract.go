@@ -4,8 +4,8 @@ import "reflect"
 
 // runtimeTransportContract validates cardinality independently of activation.
 // Classic's second wire slot is empty; it never represents a second SA, link,
-// inside address, PSK or cloud resource. Current Classic activation remains
-// refused until every lifecycle/authority observer supports this contract.
+// inside address, PSK or cloud resource. Profile ownership bounds all shared
+// lifecycle and authority observers to the single active slot.
 func runtimeTransportContract(m RuntimeManifest) (int, error) {
 	if m.ProfileID != GCPClassicStaticProfile {
 		if m.TransportVersion != nil || m.TunnelCount != nil {
@@ -35,3 +35,10 @@ func emptyKernelTunnel(t KernelTunnelAllocation) bool {
 	return reflect.DeepEqual(t, KernelTunnelAllocation{})
 }
 func emptyEngineTunnel(t EngineTunnel) bool { return reflect.DeepEqual(t, EngineTunnel{}) }
+
+func validClassicJournal(e RuntimeJournalEntry) bool {
+	if e.Allocation.ProfileID != GCPClassicStaticProfile {
+		return e.ContractVersion != 4
+	}
+	return e.ContractVersion == 4 && !e.Allocation.BGP && e.BGP == nil && e.Recovery == nil && emptyKernelTunnel(e.Allocation.Tunnels[1]) && emptyEngineTunnel(e.Engines[1]) && e.Observed[1] == (Ownership{}) && e.Engines[0].ProfileID == GCPClassicStaticProfile
+}

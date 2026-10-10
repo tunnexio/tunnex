@@ -10,11 +10,11 @@ import (
 // Existing smaller operator ceilings are preserved; restoration never raises an
 // MTU based on a guess about whether its prior lowering was operator-managed.
 func (a *KernelApplier) LowerTunnelMTUs(ctx context.Context, p KernelAllocation, previous [2]Ownership, outer [2]uint32, routes []RuntimeBGPRouteTuple, verifyDenial func(context.Context) error) error {
-	if verifyDenial == nil || verifyDenial(ctx) != nil {
+	if (p.activeTunnelCount() == 1 && (previous[1] != (Ownership{}) || outer[1] != 0)) || verifyDenial == nil || verifyDenial(ctx) != nil {
 		return ErrKernelApply
 	}
 	ceilings := [2]uint32{}
-	for i, value := range outer {
+	for i, value := range outer[:p.activeTunnelCount()] {
 		var ok bool
 		ceilings[i], ok = runtimeProfileInnerMTU(p.ProfileID, value)
 		if !ok {
@@ -27,18 +27,18 @@ func (a *KernelApplier) LowerTunnelMTUs(ctx context.Context, p KernelAllocation,
 	if err != nil {
 		return ErrKernelApply
 	}
-	for i, owned := range snapshot.ownership {
+	for i, owned := range snapshot.ownership[:p.activeTunnelCount()] {
 		if owned.InterfaceIndex == 0 || owned != previous[i] || !snapshot.address[i] || snapshot.mtu[i] < 68 {
 			return ErrKernelApply
 		}
 	}
-	for i, tunnel := range p.Tunnels {
+	for i, tunnel := range p.Tunnels[:p.activeTunnelCount()] {
 		if snapshot.mtu[i] > uint64(ceilings[i]) {
 			current, err := a.snapshotSelectionRoutes(ctx, p, true, routes)
 			if err != nil || verifyDenial(ctx) != nil {
 				return ErrKernelApply
 			}
-			for k, owned := range current.ownership {
+			for k, owned := range current.ownership[:p.activeTunnelCount()] {
 				expected := snapshot.mtu[k]
 				if k < i && expected > uint64(ceilings[k]) {
 					expected = uint64(ceilings[k])
@@ -56,7 +56,7 @@ func (a *KernelApplier) LowerTunnelMTUs(ctx context.Context, p KernelAllocation,
 	if err != nil {
 		return ErrKernelApply
 	}
-	for i, owned := range after.ownership {
+	for i, owned := range after.ownership[:p.activeTunnelCount()] {
 		expected := snapshot.mtu[i]
 		if expected > uint64(ceilings[i]) {
 			expected = uint64(ceilings[i])

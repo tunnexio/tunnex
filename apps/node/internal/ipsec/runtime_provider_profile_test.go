@@ -65,7 +65,7 @@ func TestProviderMTUIsIndependentAndLoweringOnly(t *testing.T) {
 			t.Fatalf("%s/%d got%d want%d", tc.profile, tc.outer, v, tc.want)
 		}
 	}
-	if _, ok := runtimeProfileInnerMTU(GCPClassicStaticProfile, 1500); ok {
+	if _, ok := runtimeProfileInnerMTU("unsupported", 1500); ok {
 		t.Fatal("unsupported profile MTU accepted")
 	}
 	if runtimeChildLifetime(GCPHABGPProfile) != "10800s" || runtimeChildRekey(GCPHABGPProfile) != "9000s" || runtimeIKERekey(GCPHABGPProfile) != "32400s" {

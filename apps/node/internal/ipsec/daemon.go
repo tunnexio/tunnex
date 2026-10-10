@@ -395,7 +395,7 @@ func validEngineTunnel(t EngineTunnel) bool {
 	return true
 }
 func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
-	if t.BGP {
+	if t.BGP || t.ProfileID == GCPClassicStaticProfile {
 		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
 	}
 	if local {

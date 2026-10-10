@@ -47,7 +47,7 @@ func exactHandoffPrefixes(a, b []netip.Prefix) bool {
 func sameHandoffDomain(a, b RuntimeJournalEntry) bool {
 	x, y := a.Engines[0].Binding, b.Engines[0].Binding
 	for _, e := range []RuntimeJournalEntry{a, b} {
-		if !exactHandoffPrefixes(e.Engines[0].LocalPrefixes, e.Engines[1].LocalPrefixes) || !exactHandoffPrefixes(e.Engines[0].RemotePrefixes, e.Engines[1].RemotePrefixes) {
+		if e.Allocation.activeTunnelCount() == 2 && (!exactHandoffPrefixes(e.Engines[0].LocalPrefixes, e.Engines[1].LocalPrefixes) || !exactHandoffPrefixes(e.Engines[0].RemotePrefixes, e.Engines[1].RemotePrefixes)) {
 			return false
 		}
 	}

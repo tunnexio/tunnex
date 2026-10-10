@@ -1,17 +1,22 @@
 package ipsec
 
+import (
+	"crypto/sha256"
+	"net/netip"
+)
+
 // GCPHABGPProfile reuses the common two-session IPv4 engine. Its versioned
 // delivery is refused by legacy nodes. A single peer host is not host HA.
 const GCPHABGPProfile = "gcp-ha-bgp-ipv4-v1"
 const GCPClassicStaticProfile = "gcp-classic-static-ipv4-v1"
 
 // Empty metadata is the unchanged legacy AWS journal representation. Classic
-// is intentionally refused until a versioned one-tunnel lifecycle exists.
+// uses a distinct single-tunnel contract throughout its owned lifecycle.
 func validRuntimeProviderProfile(profile string) bool {
-	return profile == "" || profile == GCPHABGPProfile
+	return profile == "" || isGCPRuntimeProfile(profile)
 }
 func runtimeProfileMTU(profile string) uint32 {
-	if profile == GCPHABGPProfile {
+	if isGCPRuntimeProfile(profile) {
 		return 1382
 	}
 	if profile == "" {
@@ -27,7 +32,7 @@ func runtimeProfileInnerMTU(profile string, outer uint32) (uint32, bool) {
 	if !validRuntimeProviderProfile(profile) {
 		return 0, false
 	}
-	if profile == GCPHABGPProfile && outer > 1460 {
+	if isGCPRuntimeProfile(profile) && outer > 1460 {
 		outer = 1460
 	}
 	value, ok := awsIPv4InnerMTU(outer)
@@ -47,19 +52,19 @@ func validGCPBGPConfig(b BGPConfig) bool {
 // Google IKEv2 lifetimes36000/10800; initiate rekey ahead of expiry.
 // https://docs.cloud.google.com/network-connectivity/docs/vpn/concepts/supported-ike-ciphers
 func runtimeChildLifetime(profile string) string {
-	if profile == GCPHABGPProfile {
+	if isGCPRuntimeProfile(profile) {
 		return "10800s"
 	}
 	return "3600s"
 }
 func runtimeChildRekey(profile string) string {
-	if profile == GCPHABGPProfile {
+	if isGCPRuntimeProfile(profile) {
 		return "9000s"
 	}
 	return "3000s"
 }
 func runtimeIKERekey(profile string) string {
-	if profile == GCPHABGPProfile {
+	if isGCPRuntimeProfile(profile) {
 		return "32400s"
 	}
 	return "28800s"
@@ -72,4 +77,31 @@ func (c *RuntimeController) GCPHACapability() int {
 		return 0
 	}
 	return c.BGPCapability()
+}
+
+func isGCPRuntimeProfile(profile string) bool {
+	return profile == GCPHABGPProfile || profile == GCPClassicStaticProfile
+}
+func (p KernelAllocation) activeTunnelCount() int {
+	if p.ProfileID == GCPClassicStaticProfile {
+		return 1
+	}
+	return 2
+}
+func engineTunnelCount(e [2]EngineTunnel) int {
+	if e[0].ProfileID == GCPClassicStaticProfile {
+		return 1
+	}
+	return 2
+}
+func classicLocalAddress(id [16]byte) netip.Prefix {
+	h := sha256.Sum256(id[:])
+	return netip.PrefixFrom(netip.AddrFrom4([4]byte{169, 254, h[0], h[1]&0xfc | 1}), 32)
+}
+
+func (c *RuntimeController) GCPClassicCapability() int {
+	if c == nil {
+		return 0
+	}
+	return c.Capability()
 }

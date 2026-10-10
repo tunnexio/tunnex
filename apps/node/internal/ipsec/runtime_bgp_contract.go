@@ -37,7 +37,7 @@ func validJournalBGP(r RuntimeJournalEntry) bool {
 	if r.BGP == nil || !validBGPConfig(*r.BGP) || (r.Allocation.ProfileID == GCPHABGPProfile && !validGCPBGPConfig(*r.BGP)) || !r.Allocation.BGP || r.Recovery != nil {
 		return false
 	}
-	for i, e := range r.Engines {
+	for i, e := range r.Engines[:r.Allocation.activeTunnelCount()] {
 		if !e.BGP || e.ProfileID != r.Allocation.ProfileID || r.Allocation.Tunnels[i].BGP == nil {
 			return false
 		}
@@ -52,7 +52,7 @@ func bgpRefusalPeers(e RuntimeJournalEntry) []GuardBGPPeer {
 		return nil
 	}
 	peers := make([]GuardBGPPeer, 0, 2)
-	for _, t := range e.Allocation.Tunnels {
+	for _, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		peers = append(peers, GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer})
 	}
 	return peers

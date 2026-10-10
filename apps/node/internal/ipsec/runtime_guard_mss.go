@@ -31,7 +31,7 @@ func (c *RuntimeController) guardTunnelMTUs(ctx context.Context, e RuntimeJourna
 		}
 	}
 	var result []GuardTunnelMTU
-	for i, owned := range snap.ownership {
+	for i, owned := range snap.ownership[:e.Allocation.activeTunnelCount()] {
 		if !wanted[owned.InterfaceIndex] {
 			continue
 		}

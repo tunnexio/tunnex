@@ -249,7 +249,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	protected := append(append([]netip.Prefix{}, engines[0].LocalPrefixes...), engines[0].RemotePrefixes...)
-	if len(engines[0].LocalPrefixes) == 0 || !sameEnginePrefixes(engines[0].LocalPrefixes, engines[1].LocalPrefixes) {
+	if engineTunnelCount(engines) != a.activeTunnelCount() || (a.activeTunnelCount() == 1 && !emptyEngineTunnel(engines[1])) || len(engines[0].LocalPrefixes) == 0 || (a.activeTunnelCount() == 2 && !sameEnginePrefixes(engines[0].LocalPrefixes, engines[1].LocalPrefixes)) {
 		return fail()
 	}
 	nft, e := r.nft(ctx, "-j", "list", "ruleset")
@@ -380,8 +380,8 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 	}
 	sort.Ints(out.LocalIngressIndices)
 	peerReads := [2][]byte{}
-	for i, engine := range engines {
-		if engine.TunnelID != a.Tunnels[i].TunnelID || engine.XFRMID != a.Tunnels[i].XFRMID || engine.Binding.ConnectionID != a.ConnectionID || !engine.RemoteAddress.Is4() {
+	for i, engine := range engines[:engineTunnelCount(engines)] {
+		if engine.ProfileID != a.ProfileID || engine.TunnelID != a.Tunnels[i].TunnelID || engine.XFRMID != a.Tunnels[i].XFRMID || engine.Binding.ConnectionID != a.ConnectionID || !engine.RemoteAddress.Is4() {
 			return fail()
 		}
 		raw, e := r.ip(ctx, "-j", "-4", "route", "get", engine.RemoteAddress.String())
@@ -437,7 +437,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 	if e != nil || !bytes.Equal(again, addresses) {
 		return fail()
 	}
-	for i, engine := range engines {
+	for i, engine := range engines[:engineTunnelCount(engines)] {
 		again, e = r.ip(ctx, "-j", "-4", "route", "get", engine.RemoteAddress.String())
 		if e != nil || !bytes.Equal(again, peerReads[i]) {
 			return fail()

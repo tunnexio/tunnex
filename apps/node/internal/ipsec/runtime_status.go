@@ -16,6 +16,10 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 	if d.ID == uuid.Nil || d.Kind != "apply" || d.DesiredRevision <= 0 || d.Manifest.DesiredRevision != d.DesiredRevision || d.Manifest.ConfigurationRevision <= 0 {
 		return RuntimeStatusReport{}, ErrRuntimeController
 	}
+	count, err := runtimeTransportContract(d.Manifest)
+	if err != nil {
+		return RuntimeStatusReport{}, ErrRuntimeController
+	}
 	bgp, bgpErr := runtimeBGPContract(d.Manifest)
 	if bgpErr != nil {
 		return RuntimeStatusReport{}, ErrRuntimeController
@@ -25,7 +29,12 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 		return RuntimeStatusReport{}, ErrRuntimeController
 	}
 	report := RuntimeStatusReport{DeliveryID: d.ID, DesiredRevision: d.DesiredRevision, ConfigurationRevision: d.Manifest.ConfigurationRevision}
-	for i, t := range d.Manifest.Tunnels {
+	if count == 1 {
+		v, n := 1, 1
+		report.TransportVersion = &v
+		report.TunnelCount = &n
+	}
+	for i, t := range d.Manifest.Tunnels[:count] {
 		if t.ID == uuid.Nil || t.Slot != i+1 || t.Selected != (!bgp && i == 0) {
 			return RuntimeStatusReport{}, ErrRuntimeController
 		}
@@ -66,7 +75,7 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 	if entry == nil || entry.Allocation.ConnectionID != d.Manifest.ConnectionID || entry.OwnershipDigest != d.OwnershipDigest {
 		return report, nil
 	}
-	for i, t := range entry.Engines {
+	for i, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 		if t.TunnelID != d.Manifest.Tunnels[i].ID || t.Binding.DesiredRevision != d.DesiredRevision || t.Binding.ConfigurationRevision != d.Manifest.ConfigurationRevision {
 			return report, nil
 		}
@@ -100,7 +109,7 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 		return report, nil
 	}
 	statuses := runtimeObservedStatuses(ctx, *entry, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
-	for i, status := range statuses {
+	for i, status := range statuses[:count] {
 		report.Tunnels[i].Status = status
 	}
 	if bgp {
@@ -179,7 +188,7 @@ func runtimeTunnelStatuses(e RuntimeJournalEntry, d DaemonInventory, k KernelInv
 	if k.Namespace != e.Allocation.Namespace || x.Namespace != e.Allocation.Namespace {
 		return result
 	}
-	for i, t := range e.Engines {
+	for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 		result[i] = runtimeTunnelStatus(t, e.Observed[i], d, k, x)
 	}
 	return result

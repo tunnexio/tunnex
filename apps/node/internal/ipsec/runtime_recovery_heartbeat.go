@@ -204,7 +204,7 @@ func (c *RuntimeController) refreshIPsecActiveRecovery(ctx context.Context, seen
 	c.recoveryStatusSequence[e.DeliveryID] = seq
 	version := 1
 	report := RuntimeStatusReport{DeliveryID: e.DeliveryID, DesiredRevision: e.Engines[0].Binding.DesiredRevision, ConfigurationRevision: e.Engines[0].Binding.ConfigurationRevision, RecoveryVersion: &version, SelectionSequence: &seq, ActiveSlot: slot}
-	for i, t := range e.Engines {
+	for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 		report.Tunnels[i] = RuntimeTunnelStatus{ID: t.TunnelID, Slot: i + 1, Status: statuses[i], Selected: a.Delivery.Manifest.Tunnels[i].Selected}
 	}
 	return []RuntimeRecoveryHeartbeat{{ConnectionID: id, Delivery: a.Delivery, Report: report}}, nil

@@ -13,6 +13,9 @@ func classicMaterialFixture() RuntimeMaterial {
 	m.Manifest.TransportVersion = &v
 	m.Manifest.TunnelCount = &c
 	m.Manifest.Tunnels[1] = RuntimeTunnel{}
+	m.Manifest.Tunnels[0].InsideCIDR = ""
+	m.Manifest.Tunnels[0].CustomerInsideAddress = ""
+	m.Manifest.Tunnels[0].CloudInsideAddress = ""
 	m.Secrets[1] = RuntimeSecret{}
 	runtimeReseal(&m)
 	return m
@@ -22,8 +25,8 @@ func TestClassicOneRealTunnelContract(t *testing.T) {
 	if n, err := runtimeMaterialTransportContract(m); err != nil || n != 1 {
 		t.Fatal("single-slot intent refused", err)
 	}
-	if _, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err == nil {
-		t.Fatal("unfinished lifecycle activated")
+	if e, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err != nil || e.ContractVersion != 4 || !validClassicJournal(e) || !validKernelAllocation(e.Allocation) {
+		t.Fatal("single-slot lifecycle intent refused", err)
 	}
 	for name, mutate := range map[string]func(*RuntimeMaterial){"missing version": func(m *RuntimeMaterial) { m.Manifest.TransportVersion = nil }, "future version": func(m *RuntimeMaterial) { v := 2; m.Manifest.TransportVersion = &v }, "two slots": func(m *RuntimeMaterial) { v := 2; m.Manifest.TunnelCount = &v }, "hidden tunnel": func(m *RuntimeMaterial) { m.Manifest.Tunnels[1].Slot = 2 }, "hidden secret": func(m *RuntimeMaterial) { m.Secrets[1].Revision = 1 }, "bgp": func(m *RuntimeMaterial) { m.Manifest.BGP = &BGPConfig{} }, "recovery": func(m *RuntimeMaterial) { v := 1; m.Manifest.RecoveryVersion = &v }} {
 		t.Run(name, func(t *testing.T) {

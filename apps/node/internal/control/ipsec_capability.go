@@ -53,3 +53,14 @@ func (c *Client) ipsecGCPHACapability() int {
 	}
 	return controller.GCPHACapability()
 }
+
+func (c *Client) ipsecGCPClassicCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.GCPClassicCapability()
+}

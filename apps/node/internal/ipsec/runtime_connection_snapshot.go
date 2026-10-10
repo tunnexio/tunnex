@@ -6,7 +6,7 @@ package ipsec
 func connectionXFRMSnapshot(e RuntimeJournalEntry, x XFRMInventory) XFRMInventory {
 	out := XFRMInventory{Namespace: x.Namespace}
 	for _, s := range x.States {
-		for _, t := range e.Engines {
+		for _, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 			if s.IfID == t.XFRMID || s.ReqID == t.ReqID {
 				out.States = append(out.States, s)
 				break
@@ -14,7 +14,7 @@ func connectionXFRMSnapshot(e RuntimeJournalEntry, x XFRMInventory) XFRMInventor
 		}
 	}
 	for _, p := range x.Policies {
-		for _, t := range e.Engines {
+		for _, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 			if p.IfID == t.XFRMID || p.ReqID == t.ReqID {
 				out.Policies = append(out.Policies, p)
 				break
@@ -26,7 +26,7 @@ func connectionXFRMSnapshot(e RuntimeJournalEntry, x XFRMInventory) XFRMInventor
 func connectionKernelSnapshot(e RuntimeJournalEntry, k KernelInventory) KernelInventory {
 	out := KernelInventory{Namespace: k.Namespace}
 	for _, l := range k.Links {
-		for _, o := range e.Observed {
+		for _, o := range e.Observed[:e.Allocation.activeTunnelCount()] {
 			if l.Name == o.InterfaceName || l.Index == o.InterfaceIndex || l.XFRMID == o.XFRMID {
 				out.Links = append(out.Links, l)
 				break
@@ -35,7 +35,7 @@ func connectionKernelSnapshot(e RuntimeJournalEntry, k KernelInventory) KernelIn
 	}
 	for _, r := range k.Routes {
 		relevant := false
-		for i, o := range e.Observed {
+		for i, o := range e.Observed[:e.Allocation.activeTunnelCount()] {
 			relevant = relevant || r.OutputInterface == o.InterfaceIndex
 			for _, p := range e.Allocation.Tunnels[i].RemotePrefixes {
 				relevant = relevant || r.Destination.Overlaps(p)

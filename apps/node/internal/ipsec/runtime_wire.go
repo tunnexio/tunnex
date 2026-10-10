@@ -157,6 +157,8 @@ type RuntimeBGPStatus struct {
 	Routes   []RuntimeBGPRoute       `json:"routes"`
 }
 type RuntimeStatusReport struct {
+	TransportVersion      *int                   `json:"transport_version,omitempty"`
+	TunnelCount           *int                   `json:"tunnel_count,omitempty"`
 	BGP                   *RuntimeBGPStatus      `json:"bgp,omitempty"`
 	RecoveryVersion       *int                   `json:"recovery_version,omitempty"`
 	SelectionSequence     *uint64                `json:"selection_sequence,omitempty"`

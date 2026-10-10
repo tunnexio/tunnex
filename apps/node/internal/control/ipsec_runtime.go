@@ -137,7 +137,14 @@ func validIPsecStatusReport(report ipsec.RuntimeStatusReport) bool {
 	if report.DeliveryID == uuid.Nil || report.DesiredRevision <= 0 || report.ConfigurationRevision <= 0 {
 		return false
 	}
-	for i, t := range report.Tunnels {
+	count := 2
+	if report.TransportVersion != nil || report.TunnelCount != nil {
+		if report.TransportVersion == nil || *report.TransportVersion != 1 || report.TunnelCount == nil || *report.TunnelCount != 1 || report.Tunnels[1] != (ipsec.RuntimeTunnelStatus{}) || report.BGP != nil || report.RecoveryVersion != nil {
+			return false
+		}
+		count = 1
+	}
+	for i, t := range report.Tunnels[:count] {
 		if t.ID == uuid.Nil || t.Slot != i+1 || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
 			return false
 		}

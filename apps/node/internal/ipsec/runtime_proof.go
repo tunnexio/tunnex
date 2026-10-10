@@ -55,6 +55,9 @@ func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEn
 }
 
 func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kernel KernelInventory, before XFRMInventory) error {
+	if e.Allocation.ProfileID == GCPClassicStaticProfile && !validClassicJournal(e) {
+		return ErrRuntimeController
+	}
 	slot := selectedRuntimeSlot(e)
 	if slot == 0 {
 		return ErrRuntimeController
@@ -77,7 +80,7 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 	}
 	for _, route := range kernel.Routes {
 		owned := -1
-		for i, o := range e.Observed {
+		for i, o := range e.Observed[:e.Allocation.activeTunnelCount()] {
 			if route.OutputInterface == o.InterfaceIndex {
 				owned = i
 			}
@@ -98,6 +101,9 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 			}
 			continue
 		}
+		if e.Allocation.ProfileID == GCPClassicStaticProfile && route.Kind != 2 {
+			return ErrRuntimeController
+		}
 		expected := t.InsideAddress.Addr()
 		scope := uint8(254)
 		if route.Kind == 3 {
@@ -112,7 +118,7 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 			return ErrRuntimeController
 		}
 	}
-	for i, t := range e.Engines {
+	for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 		own := e.Observed[i]
 		found := false
 		for _, link := range kernel.Links {
@@ -193,6 +199,9 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 }
 
 func runtimeObjectsAbsent(e RuntimeJournalEntry, d DaemonInventory, k KernelInventory, x XFRMInventory) bool {
+	if e.Allocation.ProfileID == GCPClassicStaticProfile && !validClassicJournal(e) {
+		return false
+	}
 	if k.Namespace != e.Allocation.Namespace || x.Namespace != e.Allocation.Namespace {
 		return false
 	}
@@ -206,7 +215,7 @@ func runtimeObjectsAbsent(e RuntimeJournalEntry, d DaemonInventory, k KernelInve
 			}
 		}
 	}
-	for i, t := range e.Engines {
+	for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 		name := engineName(t)
 		if containsString(d.Connections, name) || containsString(d.SharedKeys, name) {
 			return false

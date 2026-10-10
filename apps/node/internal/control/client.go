@@ -262,6 +262,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	if c.ipsecGCPHACapability() == 1 {
 		payload["ipsec_gcp_ha_version"] = 1
 	}
+	if c.ipsecGCPClassicCapability() == 1 {
+		payload["ipsec_gcp_classic_version"] = 1
+	}
 	if !ps.FlowLogLastObservedAt.IsZero() {
 		payload["flow_log_last_observed_at"] = ps.FlowLogLastObservedAt.UTC().Format(time.RFC3339Nano)
 	}

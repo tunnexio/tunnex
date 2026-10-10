@@ -286,10 +286,10 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	// public/NAT identity as the actual local socket address.
 	stage = "environment"
 	env, e := c.config.Environment.Observe(ctx, entry.Allocation, entry.Engines)
-	if e != nil || env.Namespace != ns {
+	if e != nil || env.Namespace != ns || (entry.Allocation.activeTunnelCount() == 1 && env.Underlays[1] != (RuntimeUnderlay{})) {
 		return fail()
 	}
-	for i := range entry.Engines {
+	for i := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 		entry.Engines[i].LocalAddress = env.Underlays[i].LocalAddress
 		if env.Underlays[i].InterfaceIndex <= 0 || !validEngineTunnel(entry.Engines[i]) {
 			return fail()
@@ -307,7 +307,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		}
 	} else {
 		old := entries[pos]
-		if entry.ContractVersion == 2 || entry.ContractVersion == 3 {
+		if entry.ContractVersion == 2 || entry.ContractVersion == 3 || entry.ContractVersion == 4 {
 			boot, err := resetBootID()
 			if err != nil {
 				return fail()
@@ -329,7 +329,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		same := entry
 		same.Restoration = old.Restoration
 		same.Allocation.Generation = old.Allocation.Generation
-		for i := range same.Allocation.Tunnels {
+		for i := range same.Allocation.Tunnels[:same.Allocation.activeTunnelCount()] {
 			same.Allocation.Tunnels[i].Alias = old.Allocation.Tunnels[i].Alias
 		}
 		same.Phase = old.Phase
@@ -403,7 +403,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
-		for i, t := range entry.Engines {
+		for i, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -428,7 +428,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		return fail()
 	}
 	if !unchanged {
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.initiateTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -617,7 +617,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 				}
 			}
 		}
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -736,6 +736,9 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				}
 				g.PrefixOnly = false
 				g.Tunnels = a.Entry.Observed
+				if a.Entry.Allocation.activeTunnelCount() == 1 {
+					g.TunnelCount = 1
+				}
 				g.Grants = a.Grants
 				g.LocalIngressIndices = a.Environment.LocalIngressIndices
 				g.PermitFor = remaining
@@ -752,7 +755,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				// The installation observation can disagree with the earlier recovery
 				// decision. Withdraw existing authority before returning; empty reply
 				// observations must never fall back to selected-path permission.
-				if statuses[index] != "up" || (statuses[1-index] != "up" && statuses[1-index] != "down") {
+				if statuses[index] != "up" || (a.Entry.Allocation.activeTunnelCount() == 2 && statuses[1-index] != "up" && statuses[1-index] != "down") {
 					delete(c.active, id)
 					_, _ = c.refuse(ctx, entries)
 					return ErrRuntimeController
@@ -763,7 +766,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 					return ErrRuntimeController
 				}
 				g.PermitFor = remaining
-				for i, status := range statuses {
+				for i, status := range statuses[:a.Entry.Allocation.activeTunnelCount()] {
 					if status == "up" {
 						g.ReplyIngressIndices = append(g.ReplyIngressIndices, a.Entry.Observed[i].InterfaceIndex)
 					}
