@@ -25,11 +25,18 @@ func runtimeBGPProcessConfig(e RuntimeJournalEntry) (bgpengine.Config, error) {
 		return bgpengine.Config{}, ErrRuntimeController
 	}
 	c := bgpengine.Config{LocalASN: e.BGP.LocalASN, RemoteASN: e.BGP.RemoteASN, RouterID: router, MaximumPrefixes: e.BGP.MaximumPrefixes, LocalPrefixes: e.Engines[0].LocalPrefixes, RemotePrefixes: e.Engines[0].RemotePrefixes}
+	if IsAzureBGPProfile(e.Allocation.ProfileID) {
+		c.TransportProfile = bgpengine.AzureAPIPATransport
+	}
 	if e.Allocation.activeTunnelCount() == 1 {
 		c.PeerCount = 1
 	}
 	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
-		c.Peers[i] = bgpengine.Peer{Slot: int(t.Slot), Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer, LinkName: t.Name, XFRMID: t.XFRMID}
+		bits := uint8(0)
+		if IsAzureBGPProfile(e.Allocation.ProfileID) {
+			bits = 32
+		}
+		c.Peers[i] = bgpengine.Peer{AddressBits: bits, Slot: int(t.Slot), Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer, LinkName: t.Name, XFRMID: t.XFRMID}
 	}
 	return c, nil
 }
@@ -187,7 +194,11 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 		g.TunnelCount = 1
 	}
 	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
-		peer := GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
+		profile := ""
+		if IsAzureBGPProfile(e.Allocation.ProfileID) {
+			profile = "azure-apipa-v1"
+		}
+		peer := GuardBGPPeer{TransportProfile: profile, Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
 		if statuses[i] == "up" {
 			peer.InterfaceIndex = e.Observed[i].InterfaceIndex
 			g.PermittedInterfaceIndices = append(g.PermittedInterfaceIndices, peer.InterfaceIndex)

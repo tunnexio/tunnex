@@ -101,7 +101,7 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 			}
 			continue
 		}
-		if e.Allocation.ProfileID == GCPClassicStaticProfile && route.Kind != 2 {
+		if t.InsideAddress.Bits() == 32 && route.Kind != 2 {
 			return ErrRuntimeController
 		}
 		expected := t.InsideAddress.Addr()

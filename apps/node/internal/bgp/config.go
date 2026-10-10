@@ -6,13 +6,17 @@ import (
 	"strings"
 )
 
+const AzureAPIPATransport = "azure-apipa-v1"
+
 type Peer struct {
+	AddressBits   uint8 // zero preserves legacy /30; Azure explicitly owns /32 hosts
 	LinkName      string
 	XFRMID        uint32
 	Slot          int
 	Local, Remote netip.Addr
 }
 type Config struct {
+	TransportProfile              string
 	LocalASN, RemoteASN           uint32
 	RouterID                      netip.Addr
 	MaximumPrefixes               int
@@ -29,6 +33,10 @@ func (c Config) activePeerCount() int {
 }
 func (c Config) valid() bool {
 	if c.PeerCount != 0 && c.PeerCount != 1 || c.PeerCount == 1 && c.Peers[1] != (Peer{}) {
+		return false
+	}
+	azure := c.TransportProfile == AzureAPIPATransport
+	if c.TransportProfile != "" && !azure {
 		return false
 	}
 	private := func(a uint32) bool { return a >= 64512 && a <= 65534 || a >= 4200000000 && a <= 4294967294 }
@@ -53,13 +61,20 @@ func (c Config) valid() bool {
 		}
 	}
 	for i, p := range c.Peers[:c.activePeerCount()] {
-		if p.Slot != i+1 || !p.Local.Is4() || !p.Remote.Is4() || p.Local == p.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(p.Local) || !netip.PrefixFrom(p.Local, 30).Contains(p.Remote) {
+		if p.Slot != i+1 || !p.Local.Is4() || !p.Remote.Is4() || p.Local == p.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(p.Local) || (!azure && !netip.PrefixFrom(p.Local, 30).Contains(p.Remote)) {
 			return false
 		}
 		l, r := p.Local.As4(), p.Remote.As4()
-		if l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3 {
+		if azure {
+			if p.AddressBits != 32 || !(netip.MustParsePrefix("169.254.21.0/24").Contains(p.Remote) || netip.MustParsePrefix("169.254.22.0/24").Contains(p.Remote)) {
+				return false
+			}
+		} else if p.AddressBits != 0 || l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3 {
 			return false
 		}
+	}
+	if azure {
+		return c.activePeerCount() == 1 || c.Peers[0].Local == c.Peers[1].Local && c.Peers[0].Remote != c.Peers[1].Remote
 	}
 	return c.activePeerCount() == 1 || netip.PrefixFrom(c.Peers[0].Local, 30).Masked() != netip.PrefixFrom(c.Peers[1].Local, 30).Masked()
 }

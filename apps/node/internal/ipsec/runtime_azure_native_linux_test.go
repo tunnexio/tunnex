@@ -77,10 +77,10 @@ func TestAzureNativeOwnedComponents(t *testing.T) {
 			for i := 0; i < count; i++ {
 				g.PermittedInterfaceIndices = append(g.PermittedInterfaceIndices, own[i].InterfaceIndex)
 				g.ReplyIngressIndices = append(g.ReplyIngressIndices, own[i].InterfaceIndex)
-				g.TunnelMTUs = append(g.TunnelMTUs, GuardTunnelMTU{InterfaceIndex: own[i].InterfaceIndex, MTU: 1422})
+				g.TunnelMTUs = append(g.TunnelMTUs, GuardTunnelMTU{InterfaceIndex: own[i].InterfaceIndex, MTU: uint16(runtimeProfileMTU(profile))})
 				g.EncryptedEgress = append(g.EncryptedEgress, GuardEncryptedEgress{TunnelInterfaceIndex: own[i].InterfaceIndex, ReqID: e.Engines[i].ReqID, Peer: e.Engines[i].RemoteAddress, UnderlayInterfaceIndex: 1})
 				if e.Allocation.BGP {
-					g.BGPPeers = append(g.BGPPeers, GuardBGPPeer{Local: e.Allocation.Tunnels[i].InsideAddress.Addr(), Remote: e.Allocation.Tunnels[i].BGP.Peer, InterfaceIndex: own[i].InterfaceIndex})
+					g.BGPPeers = append(g.BGPPeers, GuardBGPPeer{TransportProfile: "azure-apipa-v1", Local: e.Allocation.Tunnels[i].InsideAddress.Addr(), Remote: e.Allocation.Tunnels[i].BGP.Peer, InterfaceIndex: own[i].InterfaceIndex})
 				}
 			}
 			g.Grants = []GuardGrant{{Source: g.Local[0], Destination: g.Remote[0], Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}

@@ -59,7 +59,11 @@ func bgpRefusalPeers(e RuntimeJournalEntry) []GuardBGPPeer {
 	}
 	peers := make([]GuardBGPPeer, 0, 2)
 	for _, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
-		peers = append(peers, GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer})
+		profile := ""
+		if IsAzureBGPProfile(e.Allocation.ProfileID) {
+			profile = "azure-apipa-v1"
+		}
+		peers = append(peers, GuardBGPPeer{TransportProfile: profile, Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer})
 	}
 	return peers
 }

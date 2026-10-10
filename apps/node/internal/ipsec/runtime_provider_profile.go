@@ -19,7 +19,10 @@ func runtimeProfileMTU(profile string) uint32 {
 	if isGCPRuntimeProfile(profile) {
 		return 1382
 	}
-	if profile == "" || IsAzureRuntimeProfile(profile) {
+	if IsAzureRuntimeProfile(profile) {
+		return 1390
+	}
+	if profile == "" {
 		return AWSIPv4TunnelMTU
 	}
 	return 0

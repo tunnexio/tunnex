@@ -42,8 +42,9 @@ type GuardEncryptedEgress struct {
 	UnderlayInterfaceIndex int
 }
 type GuardBGPPeer struct {
-	Local, Remote  netip.Addr
-	InterfaceIndex int
+	TransportProfile string `json:",omitempty"`
+	Local, Remote    netip.Addr
+	InterfaceIndex   int
 }
 
 // GuardTunnelMTU is fresh runtime readback, never configuration or grant authority.
@@ -428,11 +429,15 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		c.BGPPeers = append([]GuardBGPPeer(nil), c.BGPPeers...)
 		seenPeer := map[netip.Addr]bool{}
 		for _, peer := range c.BGPPeers {
-			if !peer.Local.Is4() || !peer.Remote.Is4() || peer.Local == peer.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(peer.Local) || !netip.PrefixFrom(peer.Local, 30).Contains(peer.Remote) || seenPeer[peer.Remote] {
+			azure := peer.TransportProfile == "azure-apipa-v1"
+			if peer.TransportProfile != "" && !azure {
+				return GuardIntent{}, false
+			}
+			if !peer.Local.Is4() || !peer.Remote.Is4() || peer.Local == peer.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(peer.Local) || (!azure && !netip.PrefixFrom(peer.Local, 30).Contains(peer.Remote)) || (azure && !validAzurePeer(peer.Remote)) || seenPeer[peer.Remote] {
 				return GuardIntent{}, false
 			}
 			l, r := peer.Local.As4(), peer.Remote.As4()
-			if l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3 {
+			if !azure && (l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3) {
 				return GuardIntent{}, false
 			}
 			seenPeer[peer.Remote] = true

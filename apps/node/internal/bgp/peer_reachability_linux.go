@@ -54,7 +54,7 @@ func ProbePeerReachability(ctx context.Context, peers [2]Peer) error {
 		if i == 1 && peer == (Peer{}) {
 			continue
 		}
-		if peer.LinkName == "" || peer.XFRMID == 0 {
+		if peer.LinkName == "" || peer.XFRMID == 0 || (peer.AddressBits != 0 && peer.AddressBits != 32) {
 			return ErrPackage
 		}
 		linkOK := false
@@ -103,7 +103,7 @@ func ProbePeerReachability(ctx context.Context, peers [2]Peer) error {
 				return ErrPackage
 			}
 			for _, i := range infos {
-				addressOK = addressOK || (i.Local == peer.Local.String() && i.Bits == 30)
+				addressOK = addressOK || (i.Local == peer.Local.String() && i.Bits == map[bool]int{true: 32, false: 30}[peer.AddressBits == 32])
 			}
 		}
 		if !addressOK {

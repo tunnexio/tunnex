@@ -74,19 +74,19 @@ func validKernelAllocation(p KernelAllocation) bool {
 		if t.TunnelID == uuid.Nil || t.Slot != uint8(i+1) || t.Name != KernelTunnelName(t.TunnelID) || t.XFRMID != KernelTunnelID(t.TunnelID) || t.Alias != KernelTunnelAlias(p.Generation, t.TunnelID) || t.Selected != (!p.BGP && i == 0) {
 			return false
 		}
-		if !t.InsideAddress.IsValid() || !t.InsideAddress.Addr().Is4() || t.InsideAddress.Bits() != map[bool]int{true: 32, false: 30}[p.ProfileID == GCPClassicStaticProfile] || !netip.MustParsePrefix("169.254.0.0/16").Contains(t.InsideAddress.Addr()) {
+		if !t.InsideAddress.IsValid() || !t.InsideAddress.Addr().Is4() || t.InsideAddress.Bits() != map[bool]int{true: 32, false: 30}[p.ProfileID == GCPClassicStaticProfile || IsAzureBGPProfile(p.ProfileID)] || !netip.MustParsePrefix("169.254.0.0/16").Contains(t.InsideAddress.Addr()) {
 			return false
 		}
 		b := t.InsideAddress.Addr().As4()
-		if p.ProfileID != GCPClassicStaticProfile && (b[3]&3 == 0 || b[3]&3 == 3) {
+		if !IsAzureBGPProfile(p.ProfileID) && p.ProfileID != GCPClassicStaticProfile && (b[3]&3 == 0 || b[3]&3 == 3) {
 			return false
 		}
 		if p.BGP {
-			if t.BGP == nil || !t.BGP.Peer.Is4() || !t.InsideAddress.Contains(t.BGP.Peer) || t.BGP.Peer == t.InsideAddress.Addr() {
+			if t.BGP == nil || !t.BGP.Peer.Is4() || (!IsAzureBGPProfile(p.ProfileID) && !t.InsideAddress.Contains(t.BGP.Peer)) || t.BGP.Peer == t.InsideAddress.Addr() {
 				return false
 			}
 			b := t.BGP.Peer.As4()
-			if b[3]&3 == 0 || b[3]&3 == 3 || IsAzureBGPProfile(p.ProfileID) && !validAzurePeer(t.BGP.Peer) {
+			if (!IsAzureBGPProfile(p.ProfileID) && (b[3]&3 == 0 || b[3]&3 == 3)) || IsAzureBGPProfile(p.ProfileID) && !validAzurePeer(t.BGP.Peer) {
 				return false
 			}
 		} else if t.BGP != nil {
@@ -107,7 +107,7 @@ func validKernelAllocation(p KernelAllocation) bool {
 		return true
 	}
 	a, b := p.Tunnels[0], p.Tunnels[1]
-	if a.TunnelID == b.TunnelID || a.Name == b.Name || a.XFRMID == b.XFRMID || a.InsideAddress.Masked() == b.InsideAddress.Masked() || len(a.RemotePrefixes) != len(b.RemotePrefixes) {
+	if a.TunnelID == b.TunnelID || a.Name == b.Name || a.XFRMID == b.XFRMID || (!IsAzureBGPProfile(p.ProfileID) && a.InsideAddress.Masked() == b.InsideAddress.Masked()) || (IsAzureBGPProfile(p.ProfileID) && (a.InsideAddress != b.InsideAddress || a.BGP.Peer == b.BGP.Peer)) || len(a.RemotePrefixes) != len(b.RemotePrefixes) {
 		return false
 	}
 	for i := range a.RemotePrefixes {
@@ -347,7 +347,7 @@ func (a *KernelApplier) snapshotSelectionRoutes(ctx context.Context, p KernelAll
 		broadcast[3] |= 3
 		expectedScope := uint64(254)
 		ownAddressRoute := kind == 2 && prefix == netip.PrefixFrom(t.InsideAddress.Addr(), 32)
-		if p.ProfileID != GCPClassicStaticProfile && kind == 3 && prefix == netip.PrefixFrom(netip.AddrFrom4(broadcast), 32) {
+		if t.InsideAddress.Bits() != 32 && kind == 3 && prefix == netip.PrefixFrom(netip.AddrFrom4(broadcast), 32) {
 			ownAddressRoute = true
 			expectedScope = 253
 		}

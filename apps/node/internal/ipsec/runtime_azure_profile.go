@@ -18,8 +18,9 @@ func IsSingleTunnelProfile(p string) bool {
 }
 
 // Azure's APIPA peers are explicitly configured, never inferred from public IPs.
-// This first adapter accepts the shared single-hop /30 subset only. Azure's
-// cloud address is confined to its documented custom APIPA range.
+// One Azure connection shares the on-premises /32 update source across both
+// instances; each cloud APIPA /32 is routed over its independently owned XFRM
+// interface. Azure's cloud address stays in its documented custom APIPA range.
 func validAzurePeer(a netip.Addr) bool {
 	return a.Is4() && (netip.MustParsePrefix("169.254.21.0/24").Contains(a) || netip.MustParsePrefix("169.254.22.0/24").Contains(a))
 }

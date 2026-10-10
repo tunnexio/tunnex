@@ -110,7 +110,8 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 			inside = classicLocalAddress(t.ID)
 		} else {
 			p, e := netip.ParsePrefix(t.InsideCIDR)
-			if e != nil || !p.Addr().Is4() || p != p.Masked() || p.Bits() != 30 {
+			azureBGP := IsAzureBGPProfile(m.Manifest.ProfileID)
+			if e != nil || !p.Addr().Is4() || p != p.Masked() || p.Bits() != map[bool]int{true: 32, false: 30}[azureBGP] {
 				return fail()
 			}
 			customer, e := netip.ParseAddr(t.CustomerInsideAddress)
@@ -118,14 +119,14 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 				return fail()
 			}
 			cloud, e = netip.ParseAddr(t.CloudInsideAddress)
-			if e != nil || !p.Contains(cloud) || cloud == customer {
+			if e != nil || !cloud.Is4() || (!azureBGP && !p.Contains(cloud)) || (azureBGP && !validAzurePeer(cloud)) || cloud == customer {
 				return fail()
 			}
 			cb := cloud.As4()
-			if cb[3]&3 == 0 || cb[3]&3 == 3 {
+			if !azureBGP && (cb[3]&3 == 0 || cb[3]&3 == 3) {
 				return fail()
 			}
-			inside = netip.PrefixFrom(customer, 30)
+			inside = netip.PrefixFrom(customer, p.Bits())
 		}
 		peer, e := netip.ParseAddr(t.OutsideAddress)
 		if e != nil || !peer.Is4() {
@@ -142,6 +143,9 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		}
 	}
 	if !validKernelAllocation(out.Allocation) || count == 2 && out.Engines[0].RemoteAddress == out.Engines[1].RemoteAddress {
+		return fail()
+	}
+	if IsAzureRuntimeProfile(m.Manifest.ProfileID) && count == 2 && secrets && m.Secrets[0].PSK != m.Secrets[1].PSK {
 		return fail()
 	}
 	grants := []GuardGrant{}

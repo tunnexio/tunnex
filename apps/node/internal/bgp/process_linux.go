@@ -130,7 +130,12 @@ func startProcess(ctx context.Context, dir string, c Config, checkpoint func(Pro
 				args = append(args, "-p", "0")
 			}
 			if !observer {
+				listen := map[string]bool{}
 				for _, peer := range c.Peers[:c.activePeerCount()] {
+					if listen[peer.Local.String()] {
+						continue
+					}
+					listen[peer.Local.String()] = true
 					args = append(args, "-l", peer.Local.String())
 				}
 			}

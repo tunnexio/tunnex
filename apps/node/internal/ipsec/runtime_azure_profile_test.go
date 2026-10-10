@@ -21,6 +21,10 @@ func azureMaterialFixture(profile string) RuntimeMaterial {
 		m.Manifest.Tunnels[i].InsideCIDR = []string{"169.254.21.0/30", "169.254.22.0/30"}[i]
 		m.Manifest.Tunnels[i].CustomerInsideAddress = []string{"169.254.21.1", "169.254.22.1"}[i]
 		m.Manifest.Tunnels[i].CloudInsideAddress = []string{"169.254.21.2", "169.254.22.2"}[i]
+		if IsAzureBGPProfile(profile) {
+			m.Manifest.Tunnels[i].InsideCIDR = "169.254.10.1/32"
+			m.Manifest.Tunnels[i].CustomerInsideAddress = "169.254.10.1"
+		}
 	}
 	if IsSingleTunnelProfile(profile) {
 		v, n := 1, 1
@@ -125,5 +129,65 @@ func TestAzureStaticSharedRecoveryContract(t *testing.T) {
 		if _, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err == nil {
 			t.Fatal("unbounded recovery accepted", p)
 		}
+	}
+}
+
+func TestAzureSingleConnectionContractRejectsSeparateLocalPeersAndKeys(t *testing.T) {
+	for name, mutate := range map[string]func(*RuntimeMaterial){
+		"separate LNG local peer": func(m *RuntimeMaterial) {
+			m.Manifest.Tunnels[1].InsideCIDR = "169.254.10.5/32"
+			m.Manifest.Tunnels[1].CustomerInsideAddress = "169.254.10.5"
+		},
+		"same Azure instance": func(m *RuntimeMaterial) {
+			m.Manifest.Tunnels[1].CloudInsideAddress = m.Manifest.Tunnels[0].CloudInsideAddress
+		},
+		"different connection keys": func(m *RuntimeMaterial) { m.Secrets[1].PSK = "Different_Key_123" },
+		"legacy /30": func(m *RuntimeMaterial) {
+			for i := range m.Manifest.Tunnels {
+				m.Manifest.Tunnels[i].InsideCIDR = []string{"169.254.21.0/30", "169.254.22.0/30"}[i]
+				m.Manifest.Tunnels[i].CustomerInsideAddress = []string{"169.254.21.1", "169.254.22.1"}[i]
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := azureMaterialFixture(AzureActiveActiveBGPProfile)
+			mutate(&m)
+			runtimeReseal(&m)
+			if _, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err == nil {
+				t.Fatal("separate connection accepted")
+			}
+		})
+	}
+	m := azureMaterialFixture(AzureActiveActiveStaticProfile)
+	m.Secrets[1].PSK = "Different_Key_123"
+	if _, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]"); err == nil {
+		t.Fatal("static connection keys differ")
+	}
+}
+func TestAzureAPIPAGuardIsExplicitAndBounded(t *testing.T) {
+	m := azureMaterialFixture(AzureActiveActiveBGPProfile)
+	e, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peers := bgpRefusalPeers(e)
+	g := GuardConnection{ID: m.Manifest.ConnectionID, PrefixOnly: true, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, BGPPeers: peers}
+	intent := GuardIntent{Namespace: e.Allocation.Namespace, OwnerID: m.Manifest.NodeID, Revision: 1, Connections: []GuardConnection{g}}
+	if _, err := RenderGuard(intent); err != nil {
+		t.Fatal("Azure refusal guard", err)
+	}
+	for _, p := range peers {
+		if p.TransportProfile != "azure-apipa-v1" || p.InterfaceIndex != 0 {
+			t.Fatal("refusal leaked authority")
+		}
+	}
+	intent.Connections[0].BGPPeers[0].TransportProfile = ""
+	if _, err := RenderGuard(intent); err == nil {
+		t.Fatal("legacy guard widened to Azure host transport")
+	}
+	intent.Connections[0].BGPPeers[0].TransportProfile = "azure-apipa-v1"
+	intent.Connections[0].BGPPeers[0].Remote = netip.MustParseAddr("10.99.0.1")
+	if _, err := RenderGuard(intent); err == nil {
+		t.Fatal("non-Azure peer guard accepted")
 	}
 }
