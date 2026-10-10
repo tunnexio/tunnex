@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 )
@@ -25,39 +27,43 @@ func TestNativeDiagnosticReadersPreserveResultsAndOrder(t *testing.T) {
 					defer stop()
 				}
 				var order, classes []string
-				pass := 0
+				var orderMu sync.Mutex
+				record := func(v string) { orderMu.Lock(); order = append(order, v); orderMu.Unlock() }
+				kernelPass, xfrmPass := 0, 0
 				var observer func(string)
 				if enabled {
 					observer = func(s string) { classes = append(classes, s) }
 				}
 				r := runtimeStatusReaders{alive: func() bool { return true }, daemon: func(context.Context) (DaemonInventory, error) {
-					order = append(order, "daemon")
-					pass++
+					record("daemon")
 					if kind == "daemon_read" {
 						return d, errors.New("private")
 					}
 					return d, nil
 				}, kernel: func(context.Context) (KernelInventory, error) {
-					order = append(order, "kernel")
+					record("kernel")
+					kernelPass++
 					if kind == "kernel_read" {
 						return k, errors.New("private")
 					}
-					if kind == "kernel_snapshot_changed" && pass == 2 {
+					if kind == "kernel_snapshot_changed" && kernelPass == 2 {
 						return KernelInventory{Namespace: k.Namespace}, nil
 					}
 					return k, nil
 				}, xfrm: func(context.Context) (XFRMInventory, error) {
-					order = append(order, "xfrm")
+					record("xfrm")
+					xfrmPass++
 					if kind == "xfrm_read" {
 						return x, errors.New("private")
 					}
-					if kind == "xfrm_snapshot_changed" && pass == 2 {
+					if kind == "xfrm_snapshot_changed" && xfrmPass == 2 {
 						return XFRMInventory{Namespace: x.Namespace}, nil
 					}
 					return x, nil
 				}}
 				got := runtimeObservedStatusesObserved(ctx, e, r, observer)
 				cancel()
+				sort.Strings(order)
 				if !enabled {
 					reference = got
 					referenceOrder = order
@@ -77,6 +83,7 @@ func TestNativeDiagnosticReadersPreserveResultsAndOrder(t *testing.T) {
 				if kind == "daemon_read" || kind == "kernel_read" || kind == "xfrm_read" || kind == "context_canceled" || kind == "context_deadline" {
 					want = 3
 				}
+
 				if len(order) != want {
 					t.Fatal(order)
 				}

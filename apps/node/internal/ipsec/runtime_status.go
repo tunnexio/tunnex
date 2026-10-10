@@ -176,9 +176,7 @@ func runtimeObservedStatusesObserved(ctx context.Context, e RuntimeJournalEntry,
 	var previousX XFRMInventory
 	var previousK KernelInventory
 	for pass := 0; pass < 2; pass++ {
-		d, de := r.daemon(ctx)
-		k, ke := r.kernel(ctx)
-		x, xe := r.xfrm(ctx)
+		d, k, x, de, ke, xe := runtimeReadStatusSnapshot(ctx, r)
 		if de != nil || ke != nil || xe != nil || ctx.Err() != nil || !r.alive() {
 			reason := "daemon_read"
 			if de == nil && ke != nil {
