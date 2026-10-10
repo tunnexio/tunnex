@@ -382,6 +382,10 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		}
 		return ack, err
 	}
+	// Continuity above validated the durable allocation, including any restored
+	// generation. Kernel mutations must use that allocation, not its original
+	// manifest generation, which is now a retired obligation.
+	entry = entries[pos]
 	if c.active == nil {
 		c.active = map[uuid.UUID]runtimeActive{}
 	}
