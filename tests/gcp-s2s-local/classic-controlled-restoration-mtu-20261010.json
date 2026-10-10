@@ -233,6 +233,83 @@
     "tcp8080-lower-client-syn.txt": {
       "sha256": "899bd97c2357de4299b7a0e309e52e285c5f0c3fe0f2ec66a577e270d615a2ba",
       "result": "tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n12:08:26.350694 IP (tos 0x0, ttl 64, id 49896, offset 0, flags [DF], proto TCP (6), length 60)\n    10.76.0.10.60302 > 10.75.0.10.8080: Flags [S], cksum 0x14d9 (incorrect -> 0x9f5a), seq 2652692587, win 64300, options [mss 1286,sackOK,TS val 3863816583 ecr 0,nop,wscale 7], length 0\n12:08:26.351347 IP (tos 0x0, ttl 62, id 0, offset 0, flags [DF], proto TCP (6), length 60)\n    10.75.0.10.8080 > 10.76.0.10.60302: Flags [S.], cksum 0xa624 (correct), seq 2250563944, ack 2652692588, win 64974, options [mss 1286,sackOK,TS val 1208567532 ecr 3863816583,nop,wscale 7], length 0\n2 packets captured\n2 packets received by filter\n0 packets dropped by kernel\n"
+    },
+    "continuous-supported-restart-result.json": {
+      "sha256": "f5db01c7ec9a5574a3470b4532a42e5269f09bdf57573ebb8e4752dcd7bd872e",
+      "result": {
+        "active_tunnel_count": 1,
+        "epoch": 3,
+        "payload_verified": false,
+        "scope": "controlled-supervisor-container-restart",
+        "started_utc": "2026-10-10T12:11:39.749826+00:00",
+        "status": "controller-and-tunnels-restored",
+        "stop_to_active_established_seconds": 37.744,
+        "version": 1
+      }
+    },
+    "continuous-supported-restart-udp.json": {
+      "sha256": "14cd421dbf82cfd3aeefd644327d72f6f02938e9db0579e4e9a2c3226ca4efad",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "denied": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "continuous-supported-restart-udp-repeat.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "continuous-supported-restart-tcp.json": {
+      "sha256": "f8c70e241862e2347e6b71ca94887f2df68a25250f2f750e3bd23cd34a624243",
+      "result": {
+        "download_exact": true,
+        "download_bytes": 1098504,
+        "upload_sha_exact": true,
+        "upload_bytes": 1048576
+      }
     }
   },
   "tcp_followup": {
@@ -249,6 +326,21 @@
     "limitations": [
       "Initial upload exceeded fixture1MiB cap and caused BrokenPipe; corrected1MiB upload passed",
       "No independently target-initiated TCP session proof or reverse-grant claim"
+    ]
+  },
+  "continuous_restart": {
+    "same_container_id": "cf5a1c57bb1ff50adfab944070bf87c793ec65b0b871c0b30fdd160f39f76571",
+    "stop_grace": 45,
+    "recovery_bound": 180,
+    "runner_exit": 0,
+    "run": "6d05b86c-e8b1-4bca-ba1a-ea3da812ead7",
+    "fresh_epoch": 3,
+    "stop_to_active_established_seconds": 37.744,
+    "peer_remained_active": true,
+    "scope": "controlled supervisor container restart, not VM reboot/crash",
+    "limits": [
+      "First missing evidence directory refusal occurred before stop; required root700 directory created",
+      "First postrestart1400 probe timed out; recorded independently, no reliability claim"
     ]
   }
 }
