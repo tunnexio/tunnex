@@ -1,0 +1,103 @@
+{
+  "source": "fc6de304",
+  "test_binary_sha256": "116eeb063d8916b4c622badb9a3d7e76a617fc78a48622c6cbde772a4f4973d0",
+  "daemon_image_id": "sha256:7350786a0eeff8352b0ae522f3e7d8a852bd42d065c34539e19c0261290ac7de",
+  "connection": "27e56a4f-b74e-43b2-9c7d-2ac10caf9c09",
+  "profile": "gcp-ha-bgp-ipv4-v1",
+  "genuine_create_http": 201,
+  "genuine_enable_http": 200,
+  "genuine_material_http": 200,
+  "peer_stage": "PASS",
+  "peer_initiate": "PASS",
+  "both_tunnels": "up",
+  "both_bgp": "established",
+  "exact_remote_route": "10.74.0.0/24",
+  "routed_default_deny": "PASS",
+  "normal_grant_http": 201,
+  "granted_tcp_marker": "PASS",
+  "scope": "local genuine CP external emulator; no Google cloud qualification",
+  "one_path_fault": {
+    "result": "PASS",
+    "public_status": "connect/established; exact remote route slot2",
+    "actual_http_marker": "PASS",
+    "classic_continuity": "PASS"
+  },
+  "both_path_fault": {
+    "result": "PASS",
+    "public_status": "both down/connect; routes empty",
+    "exact_gateway_remote_route": "absent",
+    "actual_http": "denied"
+  },
+  "fault_removal_recovery": {
+    "result": "PASS",
+    "first_observation_window_seconds": 36,
+    "first_window_result": "not confirmed",
+    "subsequent_fresh_status": "both up/BGP established, route slot1",
+    "actual_http_marker": "PASS",
+    "manual_gateway_state_mutation": false
+  },
+  "normal_revoke": {
+    "http": 200,
+    "observed_denial_seconds": 6.76
+  },
+  "normal_temporary_expiry": {
+    "create_http": 201,
+    "initial_granted_packet": "PASS",
+    "temporary_expires_at": "2026-10-10T09:59:04.928511+00:00",
+    "observed_denial_seconds_after_initial_allowed_packet": 51.25,
+    "denied_path_health": "target live; peer owned return route present; both tunnels up; both BGP established",
+    "result": "PASS",
+    "scope": "local genuine CP HA expiry; no cloud qualification"
+  },
+  "excluded_evidence": [
+    "initial temporary expiry attempt confounded by peer fixture exit and harness subprocess timeout; no expiry pass claimed"
+  ],
+  "peer_fixture_long_run_exit": {
+    "stage": "external peer target ACL command",
+    "elapsed_seconds": 747,
+    "cause": "unknown; strict2second fixture deadline possible, not established",
+    "production_bug_claim": false
+  },
+  "peer_serve_restart": "strict native preflight passed; no daemon/journal/lease recreation",
+  "production_node_image_id": "sha256:858600540bb9765e03445038240b377cd27d1c039fbc0980ab1ee5075865bd4f",
+  "reusable_commits": [
+    "1a084b60",
+    "9f37db8f",
+    "74012cf2"
+  ],
+  "normal_cleanup": {
+    "disable_http": 200,
+    "disable_revision": 3,
+    "cleanup_ack_public_state": "retained_guard",
+    "gateway_sad_count_after": 2,
+    "gateway_remote74_route": "absent",
+    "retained74_prefix_drop_readback": "present",
+    "delete_http": 200,
+    "delete_revision": 4,
+    "finalized_at": "2026-10-10T10:03:15.407129Z",
+    "peer_serve_sigterm_pid": 5435,
+    "peer_return70_route_after": "absent",
+    "resources_preserved": true
+  },
+  "owned_peer_daemon_shutdown": {
+    "signal": "TERM",
+    "component_result": "PASS",
+    "elapsed_seconds": 1573.9,
+    "container_preserved": true,
+    "network_preserved": true,
+    "target_preserved": true,
+    "container_running": false,
+    "container_exit_code": 0,
+    "oom_killed": false
+  },
+  "test_binary_source_commit": "fc6de304bc30a61656b962a28da8b1f1dcdfc0a5",
+  "fixture_followup_commit": "9302ba7eab3d9c4e0031e5ff8408302b0a2cea4c",
+  "orchestration_sha256": {
+    "fetch.go": "add31665ffba6e722f0a01548bb219b82f6246448d9636e03a3451b0a6940d95",
+    "project.go": "73dfc3834a3e66495eeb278fe3b9ff5701a91e276fdb95b7f18c92a5986f8218",
+    "api.py": "efe44387b534d306d12b2ec00a7e1333082a1fee099b58dde901cf244bbbea28",
+    "peer_prepare.py": "c09a3fd5586cee93210ff9f5b6dc45b1b56e709f8e48ab9c694d3eb17a9ad10d",
+    "fault.py": "4dfd6cce774e29aca9f77400298d42bc4e6d1a50b6ded3954d2d6893cf86150a",
+    "expiry_retry.py": "709b31d6cbdc8fdcc9d8fc5a49e5e38a65a8a70107186740364a70e39a225650"
+  }
+}
