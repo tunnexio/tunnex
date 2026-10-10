@@ -490,6 +490,7 @@ it.each(["azure-active-active-bgp-ipv4-v1", "azure-active-standby-bgp-ipv4-v1", 
  await waitFor(()=>expect(mock.post.mock.calls.some(([path])=>path.endsWith("/connections"))).toBe(true));
  const body=mock.post.mock.calls.find(([path])=>path.endsWith("/connections"))![1].body;
  expect(body.tunnel_ids).toHaveLength(count); expect(body.configuration.tunnels).toHaveLength(count);
+ expect(body.configuration.azure).toEqual({gateway_sku:"VpnGw1AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false});
  expect(body.configuration.profile_id).toBe(profile); expect(body.configuration.mode).toBe(dynamic?"ipv4-bgp":"ipv4-static");
  if(count===1) expect(body.configuration).toMatchObject({transport_version:1,tunnel_count:1});
  if(!dynamic) expect(body.configuration).not.toHaveProperty("bgp");

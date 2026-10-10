@@ -78,7 +78,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
     </div>
     <div className="overflow-x-auto rounded border border-line">
       <table className="w-full text-left text-sm" aria-label="IPsec tunnel state">
-        <thead className="border-b border-line bg-surface-inset text-xs text-ink-secondary"><tr>{["Tunnel", "Outside IP address", ...(!classic ? ["Inside IPv4 CIDR"] : []), dynamic ? "IPsec status" : "Status", ...(dynamic ? ["BGP peer", "Accepted prefixes", "Installed prefixes", "Rejected prefixes"] : ["Path"]), "Last observed"].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
+        <thead className="border-b border-line bg-surface-inset text-xs text-ink-secondary"><tr>{["Tunnel", "Outside IP address", ...(!classic ? [profileId?.startsWith("azure-") && !dynamic ? "Tunnex runtime IPv4 CIDR" : "Inside IPv4 CIDR"] : []), dynamic ? "IPsec status" : "Status", ...(dynamic ? ["BGP peer", "Accepted prefixes", "Installed prefixes", "Rejected prefixes"] : ["Path"]), "Last observed"].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
         <tbody>{tunnels.map((tunnel, i) => {
           const health = report?.tunnels.find(t => t.slot === i + 1);
           const status = fresh && health ? health.status : "unknown";
