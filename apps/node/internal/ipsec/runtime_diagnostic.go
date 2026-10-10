@@ -97,7 +97,7 @@ func validDNSReadTiming(t runtimeDNSReadTiming) bool {
 		return false
 	}
 	switch t.GuardFailureClass {
-	case "", "none", "target_not_permitted", "structural_or_read", "context_deadline", "context_canceled":
+	case "", "none", "target_not_permitted", "structural_or_read", "interface_mapping", "observed_invalid", "object_count", "nonset_mismatch", "set_member_mismatch", "set_metadata_mismatch", "required_set_missing", "context_deadline", "context_canceled":
 	default:
 		return false
 	}

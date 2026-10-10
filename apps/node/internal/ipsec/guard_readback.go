@@ -457,10 +457,14 @@ func verifyGuardConnectionReadback(expected, observed []byte, links []GuardInter
 }
 
 func verifyGuardConnectionObjectsReadback(expected []any, observed []byte, links []GuardInterface, id uuid.UUID) error {
+	return verifyGuardConnectionObjectsReadbackClass(expected, observed, links, id, nil)
+}
+
+func verifyGuardConnectionObjectsReadbackClass(expected []any, observed []byte, links []GuardInterface, id uuid.UUID, classify func(string)) error {
 	if id == uuid.Nil || len(expected) == 0 {
 		return ErrGuardReadback
 	}
-	want, err := verifyGuardWithdrawalObjectsSnapshot(expected, observed, links)
+	want, err := verifyGuardWithdrawalObjectsSnapshotClass(expected, observed, links, classify)
 	if err != nil {
 		return ErrGuardReadback
 	}
@@ -479,6 +483,9 @@ func verifyGuardConnectionObjectsReadback(expected []any, observed []byte, links
 	}
 	for _, set := range required {
 		if set == nil {
+			if classify != nil {
+				classify("required_set_missing")
+			}
 			return ErrGuardReadback
 		}
 	}

@@ -87,9 +87,23 @@ func (r *GuardReader) checkConnectionSnapshotObserved(ctx context.Context, manif
 	if id == uuid.Nil || snapshot.raw != manifest.ExpectedJSON || len(snapshot.objects) == 0 {
 		return ErrGuardRead
 	}
+	class := ""
+	var classify func(string)
+	if observe != nil {
+		classify = func(value string) { class = value }
+	}
+	wrapped := observe
+	if observe != nil {
+		wrapped = func(t guardReadTiming) {
+			if t.FailureClass == "structural_or_read" && class != "" {
+				t.FailureClass = class
+			}
+			observe(t)
+		}
+	}
 	return r.checkObserved(ctx, manifest, func(_, observed []byte, links []GuardInterface) error {
-		return verifyGuardConnectionObjectsReadback(snapshot.objects, observed, links, id)
-	}, observe)
+		return verifyGuardConnectionObjectsReadbackClass(snapshot.objects, observed, links, id, classify)
+	}, wrapped)
 }
 
 func (r *GuardReader) check(ctx context.Context, manifest GuardManifest, verify func([]byte, []byte, []GuardInterface) error) error {

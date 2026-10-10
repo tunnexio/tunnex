@@ -33,6 +33,16 @@ func verifyGuardWithdrawalSnapshot(expected, observed []byte, links []GuardInter
 
 // want is locally normalized from the exact expected bytes for this read only.
 func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []GuardInterface) ([]any, error) {
+	return verifyGuardWithdrawalObjectsSnapshotClass(want, observed, links, nil)
+}
+
+func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, links []GuardInterface, classify func(string)) ([]any, error) {
+	mark := func(value string) {
+		if classify != nil {
+			classify(value)
+		}
+	}
+	mark("interface_mapping")
 	mapping := map[string]int{}
 	indices := map[int]bool{}
 	for _, l := range links {
@@ -43,7 +53,12 @@ func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []G
 		indices[l.Index] = true
 	}
 	got, ok := normalizedGuardWithdrawalObjectsWithInterfaces(observed, mapping)
-	if !ok || len(want) != len(got) {
+	if !ok {
+		mark("observed_invalid")
+		return nil, ErrGuardReadback
+	}
+	if len(want) != len(got) {
+		mark("object_count")
 		return nil, ErrGuardReadback
 	}
 	for i, w := range want {
@@ -52,12 +67,14 @@ func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []G
 		ws, isSet := wf["set"].(map[string]any)
 		if !isSet {
 			if !reflect.DeepEqual(wf, gf) {
+				mark("nonset_mismatch")
 				return nil, ErrGuardReadback
 			}
 			continue
 		}
 		gs, ok := gf["set"].(map[string]any)
 		if !ok {
+			mark("set_metadata_mismatch")
 			return nil, ErrGuardReadback
 		}
 		allowed := map[string]any{}
@@ -71,6 +88,7 @@ func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []G
 			for _, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
 				if !reflect.DeepEqual(allowed[e["val"].(json.Number).String()], v) {
+					mark("set_member_mismatch")
 					return nil, ErrGuardReadback
 				}
 			}
@@ -88,6 +106,7 @@ func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []G
 			}
 		}
 		if !reflect.DeepEqual(wantMetadata, gotMetadata) {
+			mark("set_metadata_mismatch")
 			return nil, ErrGuardReadback
 		}
 	}

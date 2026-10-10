@@ -68,7 +68,7 @@ func TestDNSGuardTimingPreservesBracketAndRefusal(t *testing.T) {
 			if measured != plain || !reflect.DeepEqual(sequence, plainSequence) || calls != 1 {
 				t.Fatal("diagnostic changed result/bracket", plain, measured, sequence, plainSequence, calls)
 			}
-			want := map[string]string{"success": "none", "expired": "target_not_permitted", "structural": "structural_or_read", "read": "structural_or_read", "canceled": "context_canceled", "deadline": "context_deadline"}[kind]
+			want := map[string]string{"success": "none", "expired": "target_not_permitted", "structural": "observed_invalid", "read": "structural_or_read", "canceled": "context_canceled", "deadline": "context_deadline"}[kind]
 			if timing.FailureClass != want || timing.CommandMillis < 0 || timing.VerificationMillis < 0 {
 				t.Fatal("classification", timing)
 			}
