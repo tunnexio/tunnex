@@ -100,7 +100,7 @@ def main():
  stage('fresh_connection_revision');before=read_connection();sent=False
  if args.phase in ('disable','enable'):
   stage('nonsecret_azure_contract')
-  config=client.call('GET',path+'/configuration')['configuration']
+  config=client.call('GET',path+'/configuration')
   if config['profile_id'] not in ('azure-active-active-bgp-ipv4-v1','azure-active-active-static-ipv4-v1','azure-active-standby-bgp-ipv4-v1','azure-active-standby-static-ipv4-v1'):raise ValueError('Azure contract required')
   desired='disabled' if args.phase=='disable' else 'enabled'
   if before['desired_intent']!=desired:
