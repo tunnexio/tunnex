@@ -3834,7 +3834,7 @@ paths:
     post:
       operationId: checkIPsecConfiguration
       summary: Validate an IPsec configuration without saving it
-      description: Requires verified human ipsec:manage. Checks the proposed AWS static or BGP IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
+      description: Requires verified human ipsec:manage. Checks bounded AWS static/BGP IPv4 or explicitly selected GCP HA BGP/Classic static IPv4 profiles. AWS and GCP HA require two tunnels; GCP HA uses two cloud interfaces to one public peer. GCP Classic requires one tunnel with empty inside address fields and no BGP configuration. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
       tags: [ipsec]
       requestBody:
         required: true
@@ -4012,7 +4012,7 @@ paths:
       tags: [ipsec]
       responses:
         "200":
-          description: Nonsecret two-tunnel status; finalized tombstones may have no tunnel identities.
+          description: "Nonsecret status for the actual profile tunnel count: two for AWS or GCP HA, one for GCP Classic. Finalized tombstones may have no tunnel identities."
           headers:
             X-Request-Id: { $ref: "#/components/headers/RequestId" }
             Cache-Control: { schema: { type: string } }
@@ -12370,7 +12370,7 @@ components:
       additionalProperties: false
       required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
       properties:
-        profile_id: { type: string, enum: [aws-static-ipv4-v1, aws-bgp-ipv4-v1, gcp-ha-bgp-ipv4-v1, gcp-classic-static-ipv4-v1], description: "Omit for legacy AWS mode selection. GCP profiles require explicit selection." }
+        profile_id: { type: string, enum: [aws-static-ipv4-v1, aws-bgp-ipv4-v1, gcp-ha-bgp-ipv4-v1, gcp-classic-static-ipv4-v1], description: "Omit for legacy AWS mode selection. GCP profiles require explicit selection: HA uses IPv4 BGP and two tunnels to one public peer; Classic uses IPv4 static routing and one tunnel with empty inside address fields." }
         mode: { type: string, enum: [ipv4-static, ipv4-bgp] }
         bgp: { $ref: "#/components/schemas/IPsecBGPConfiguration" }
         customer_outside_address: { type: string, minLength: 1, maxLength: 15 }

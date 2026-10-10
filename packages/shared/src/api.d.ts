@@ -3446,7 +3446,7 @@ export interface paths {
         put?: never;
         /**
          * Validate an IPsec configuration without saving it
-         * @description Requires verified human ipsec:manage. Checks the proposed AWS static or BGP IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
+         * @description Requires verified human ipsec:manage. Checks bounded AWS static/BGP IPv4 or explicitly selected GCP HA BGP/Classic static IPv4 profiles. AWS and GCP HA require two tunnels; GCP HA uses two cloud interfaces to one public peer. GCP Classic requires one tunnel with empty inside address fields and no BGP configuration. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
          */
         post: operations["checkIPsecConfiguration"];
         delete?: never;
@@ -10803,7 +10803,7 @@ export interface components {
         };
         IPsecConfigurationCheckInput: {
             /**
-             * @description Omit for legacy AWS mode selection. GCP profiles require explicit selection.
+             * @description Omit for legacy AWS mode selection. GCP profiles require explicit selection: HA uses IPv4 BGP and two tunnels to one public peer; Classic uses IPv4 static routing and one tunnel with empty inside address fields.
              * @enum {string}
              */
             profile_id?: "aws-static-ipv4-v1" | "aws-bgp-ipv4-v1" | "gcp-ha-bgp-ipv4-v1" | "gcp-classic-static-ipv4-v1";
@@ -18680,7 +18680,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Nonsecret two-tunnel status; finalized tombstones may have no tunnel identities. */
+            /** @description Nonsecret status for the actual profile tunnel count: two for AWS or GCP HA, one for GCP Classic. Finalized tombstones may have no tunnel identities. */
             200: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];

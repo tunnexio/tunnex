@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tunnexio/tunnex/apps/api/db"
@@ -299,7 +300,31 @@ func testProviderHTTPStoredLifecycle(t *testing.T, fixture, profile string, tunn
 		}
 		request(router, "PUT", intentPath, `{"intent":"disabled"}`, `"1"`, 409)
 		principal := ipsec.RuntimePrincipal{OrgID: org, NodeID: gateway, CertificateSerial: gateway.String()}
-		if _, err := store.Material(ctx, principal, id, 2, sealer); err != nil {
+		material, err := store.Material(ctx, principal, id, 2, sealer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaseRequest := ipsec.RuntimeLeaseRequest{DeliveryID: material.ID, DesiredRevision: 2, PolicyHash: material.Policy.Hash, Nonce: strings.Repeat("b", 64)}
+		lease, err := store.PermitLease(ctx, principal, id, leaseRequest)
+		if err != nil || lease.TTLMS != 60000 {
+			t.Fatal("qualified bounded lease refused", err)
+		}
+		store.ConfigureRuntimePolicy(func(context.Context, *sqlc.Queries, ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+			return ipsec.RuntimePolicy{Hash: strings.Repeat("c", 64), Grants: []ipsec.RuntimeGrant{}}, nil
+		})
+		if _, err = store.PermitLease(ctx, principal, id, leaseRequest); !errors.Is(err, ipsec.ErrConnectionConflict) {
+			t.Fatal("withdrawn policy renewed stale delivery", err)
+		}
+		store.ConfigureRuntimePolicy(func(_ context.Context, _ *sqlc.Queries, in ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+			return ipsec.RuntimePolicy{Hash: strings.Repeat("a", 64), Grants: []ipsec.RuntimeGrant{{Source: in.Config.LocalPrefixes[0], Destination: in.Config.RemotePrefixes[0], Protocol: "any", RuleID: "http-fixture"}}}, nil
+		})
+		if _, err = pool.Exec(ctx, `UPDATE nodes SET policy_reported_at=clock_timestamp()-interval '91 seconds' WHERE id=$1`, gateway); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = store.PermitLease(ctx, principal, id, leaseRequest); !errors.Is(err, ipsec.ErrConnectionIneligible) {
+			t.Fatal("expired authority renewed lease", err)
+		}
+		if _, err = pool.Exec(ctx, `UPDATE nodes SET policy_reported_at=clock_timestamp() WHERE id=$1`, gateway); err != nil {
 			t.Fatal(err)
 		}
 		role = rbac.RoleMember
