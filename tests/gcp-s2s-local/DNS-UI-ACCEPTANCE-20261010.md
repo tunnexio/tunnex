@@ -63,3 +63,12 @@ Fresh observations were 15:30:38 admin, 15:31:02 owner, 15:31:27 member. Member 
 | `/private/tmp/gcp-ui-emulated-ha-admin-two-up.png` | `79b0011e7881f04e7fa57bcb766566ec3001788ed0567cf4601dfc20e4116edb` |
 | `/private/tmp/gcp-ui-emulated-ha-owner-two-up.png` | `abff7d80ef983fe1ac6e551672702b8f0c42892b7bfa9c782fffe5341db171a7` |
 | `/private/tmp/gcp-ui-emulated-ha-member-two-up-readonly.png` | `8ade8b34c2700d3164cf8ce78873937e0c6d1ec79c629ba3418789ccd1f47228` |
+
+## Fresh lifecycle Site preparation
+
+Normal verified owner registered `GCP lifecycle qualification local`, Site `01a1255c-323d-74ec-a690-ca42f8271a86`, in the existing owned organization. The initially requested local `10.71.0.0/24` advertisement remained pending: actual approval refused overlap with the preserved disabled HA baseline's `ipsec_remote` reservation. No eligibility/range guard was bypassed. After root explicitly chose `10.76.0.0/24`, owner removed only the fresh inactive pending71 advertisement, advertised76, and approved it through normal Range approvals. Inventory readback shows new76 Approved/routed and existing70 baseline preserved. The new Site has no assigned gateway; root owns its separate enrollment/lifecycle namespace. No new organization, CP-admin capability, entitlement, DNS, global setting, application grant, old identity/journal or gateway mutation occurred here. Remote75/24 must still pass root's actual provider preflight; this Site approval does not establish remote eligibility or traffic.
+
+| Preparation screenshot | SHA-256 |
+| --- | --- |
+| `/private/tmp/gcp-ui-lifecycle-range-overlap-refused.png` | `5bbc8ca29fc16a9e9d9e038c3e44b7c16186a8c89c9dbad7161314934bb0de49` |
+| `/private/tmp/gcp-ui-lifecycle-site76-approved.png` | `d99e08b7b3cd009a833cb96159e6de7244bc1fc22e3b2a3f9bf49fa613c5db6a` |
