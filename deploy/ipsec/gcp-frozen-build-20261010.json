@@ -1,0 +1,25 @@
+{
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "archive_sha256": "b4080ec2a60d18920d8c7e1b16eae58a2965f8deb4f3b26782b658f4b3dd75e1",
+  "status": "six-Linux-builds-pass",
+  "binaries": {
+    "tunnex-api-amd64": "e2dff585d15bae352af9d2b6dae8f730bc216f5ccc3b002ca56765d8fd16c793",
+    "tunnex-api-arm64": "a4612765d6ab2aaf9b195c56027c2b3e2350a5ff5c21930c683d3fe8bddf10ac",
+    "tunnex-node-amd64": "12f75f63c965fa31f1d7c3f756f8e3c6270beb5bc7e7eae4e1fed75748f97038",
+    "tunnex-node-arm64": "5d10cfc9f503a57d9c8612b89365f05caca507519d1f956b352e00ef6adbe2ee",
+    "tunnex-ai-vpn-relay-amd64": "923bda1af32cc01bd6603bfee37143be0aedcb99cce21e5563105a7800858cca",
+    "tunnex-ai-vpn-relay-arm64": "31959e47b622598cebe1fe0f6420872383a7da6fc577010539012488a79603d4"
+  },
+  "scope": "clean tracked source cross-build only; no deployment proof",
+  "relevant_node_suites": {
+    "ipsec_seconds": 41.624,
+    "control_seconds": 5.936,
+    "bgp_seconds": 1.541,
+    "fqdnrpc_seconds": 3.049,
+    "dnsforward_seconds": 3.55,
+    "nodepolicy_seconds": 2.557,
+    "result": "pass"
+  },
+  "native_image_status": "owned AMD64 native build in progress; not yet accepted",
+  "cloud_tunnel_proof": false
+}
