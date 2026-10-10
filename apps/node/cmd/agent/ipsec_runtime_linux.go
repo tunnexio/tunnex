@@ -26,22 +26,23 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		return nil, errors.New("IPsec saved refusal unavailable")
 	}
 	var controller *ipsec.RuntimeController
+	diagnostic := func(event ipsec.RuntimeDiagnostic) {
+		attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
+		if event.Refused {
+			logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
+		} else {
+			logger.Debug("ipsec_runtime_diagnostic_completed", attrs...)
+		}
+	}
 	construct := func() error {
-		environment, e := ipsec.NewRuntimeEnvironmentInspector("/sbin/ip", "/usr/sbin/nft")
+		environment, e := ipsec.NewRuntimeEnvironmentInspectorWithDiagnostics("/sbin/ip", "/usr/sbin/nft", diagnostic)
 		if e != nil {
 			return e
 		}
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
-			attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
-			if event.Refused {
-				logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
-			} else {
-				logger.Debug("ipsec_runtime_diagnostic_completed", attrs...)
-			}
-		}}, client)
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: diagnostic}, client)
 		if e != nil {
 			return e
 		}
