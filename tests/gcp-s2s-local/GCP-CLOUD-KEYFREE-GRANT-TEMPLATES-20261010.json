@@ -55,8 +55,8 @@
       },
       "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
       "grant_body": {
-        "src_kind": "site",
-        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
         "dst_kind": "resource",
         "dst_resource_id": null,
         "expires_at": null
@@ -75,8 +75,8 @@
       },
       "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
       "grant_body": {
-        "src_kind": "site",
-        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
         "dst_kind": "resource",
         "dst_resource_id": null,
         "expires_at": null
@@ -135,8 +135,8 @@
       },
       "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
       "grant_body": {
-        "src_kind": "site",
-        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
         "dst_kind": "resource",
         "dst_resource_id": null,
         "expires_at": null
@@ -155,8 +155,8 @@
       },
       "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
       "grant_body": {
-        "src_kind": "site",
-        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
         "dst_kind": "resource",
         "dst_resource_id": null,
         "expires_at": null

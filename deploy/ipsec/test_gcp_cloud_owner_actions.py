@@ -18,4 +18,9 @@ class Boundaries(unittest.TestCase):
         actual={(x['resource_body']['cidr'],x['resource_body']['protocol'],x['resource_body']['port_low'],x['resource_body']['port_high']) for x in items}
         expected={(f'10.{n}.0.{host}/32',proto,port,port) for n in [80,81] for host,proto,port in [(10,'tcp',8080),(10,'udp',9000),(2,'tcp',53),(2,'udp',53)]}
         self.assertEqual(actual,expected)
+        for item in items:
+            grant=item['grant_body']
+            if item['resource_body']['port_low']==53:
+                self.assertEqual((grant['src_kind'],grant['src_cidr']),('cidr','10.70.0.2/32'));self.assertNotIn('src_site_id',grant)
+            else:self.assertEqual((grant['src_kind'],grant['src_site_id']),('site',m.SITE))
 if __name__=='__main__':unittest.main()
