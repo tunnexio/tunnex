@@ -1,0 +1,36 @@
+{
+  "completed": false,
+  "scope": "fixed owned packet observation; no authority/MTU mutation",
+  "profile": "ha",
+  "size": 1200,
+  "df": false,
+  "source_sha256": "5356a68d2f16f78511cfb95d48024d97f99db7263a7f7fff8490925011925cab",
+  "started_at_utc": "2026-10-10T20:46:13Z",
+  "stderr_sha256": "a6530f51f8279330931ef3df22d69bd6420fd2abe1d9cb0e3068e14841fac091",
+  "observation": {
+    "completed": false,
+    "observer_ready": [
+      {
+        "ready": true,
+        "address": "10.70.0.10",
+        "interface": "ens4",
+        "boot_id": "5d6a0f20-8cc2-45fd-b604-7802d95658f7"
+      },
+      {
+        "ready": true,
+        "address": "10.80.0.10",
+        "interface": "ens4",
+        "boot_id": "b421e753-b6cb-470b-9f86-7df987b08a7b"
+      }
+    ],
+    "ends": [],
+    "scope": "observation only; fresh full guard/native/API evidence bound separately",
+    "reservation": {
+      "ready": true,
+      "source": "10.70.0.10",
+      "udp_port": 52619,
+      "tcp_port": 51913
+    },
+    "error_type": "ValueError"
+  }
+}
