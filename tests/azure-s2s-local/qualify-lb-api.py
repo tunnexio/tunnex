@@ -66,10 +66,43 @@ def selected_profile(context, connection_id, revision):
         raise lab.LabError('Current IPsec revision and actual gateway DNS source binding required')
     return profile
 
+def fqdn_detail_projection(detail, setup, state, binding, now):
+    resource = detail['resource']
+    context = resource.get('resolver_context')
+    if not isinstance(context, dict) or context.get('site_id') != setup['site_id'] or context.get('gateway_id') != setup['gateway_id']:
+        raise lab.LabError('FQDN resource context identity changed')
+    config = context.get('resolver_config')
+    if not isinstance(config, dict) or config.get('id') != binding['context_id'] or config.get('version') != binding['context_version']:
+        raise lab.LabError('FQDN nested resolver configuration changed')
+    profile = selected_profile(config, state['connection_id'], binding['configuration_revision'])
+    if profile['id'] != binding['profile_id'] or resource.get('id') != state['fqdn_resource_id'] or resource.get('org_id') != setup['org_id'] or resource.get('fqdn') != 'lbapp.azure-s2s.test' or resource.get('destination_kind') != 'fqdn' or resource.get('protocol') != 'tcp' or resource.get('port_low') != 8080 or resource.get('port_high') != 8080:
+        raise lab.LabError('Stored distinct LB FQDN resource changed')
+    value = {'resource_id': state['fqdn_resource_id'], 'resolver_config_id': binding['context_id'], 'resolver_config_version': binding['context_version'], 'resolver_profile_id': binding['profile_id'], 'configuration_revision': binding['configuration_revision'], 'dns_source_address': '10.233.10.1', 'ready': False}
+    if resource.get('state') not in ('draft', 'unconfigured', 'resolving', 'healthy', 'stale', 'failed', 'nxdomain') or detail.get('status_source') not in ('resource_configuration', 'resolver_configuration', 'latest_generation', 'active_generation'):
+        raise lab.LabError('Unknown FQDN status contract')
+    value.update(state=resource['state'], status_source=detail['status_source'])
+    if resource['state'] != 'healthy' or detail['status_source'] != 'active_generation' or detail.get('resolver_ready') is not True:
+        return value
+    generation = resource.get('generation')
+    selection = resource.get('resolver_profile_selection')
+    addresses = detail.get('active_answer_addresses')
+    if isinstance(generation, bool) or not isinstance(generation, int) or generation <= 0 or resource.get('answer_count') != 1 or addresses != ['10.231.1.10']:
+        raise lab.LabError('Exact actual active LB generation required')
+    if not isinstance(selection, dict) or selection.get('id') != binding['profile_id'] or selection.get('config_version') != binding['context_version'] or selection.get('matched_suffix') != 'azure-s2s.test' or selection.get('provider_hint') != 'azure':
+        raise lab.LabError('Active generation profile provenance changed')
+    if not isinstance(detail.get('fresh_until_at'), str) or not isinstance(detail.get('observed_at'), str):
+        raise lab.LabError('Actual generation timestamps required')
+    fresh = datetime.fromisoformat(detail['fresh_until_at'].replace('Z', '+00:00'))
+    observed = datetime.fromisoformat(detail['observed_at'].replace('Z', '+00:00'))
+    if fresh.tzinfo is None or observed.tzinfo is None or observed > now or fresh <= now:
+        raise lab.LabError('Fresh actual generation required')
+    value.update(ready=True, generation=generation, active_answer_addresses=['10.231.1.10'], observed_at=observed.isoformat(), fresh_until_at=fresh.isoformat())
+    return value
+
 def main():
     global STAGE
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=('prepare', 'grant', 'revoke', 'read', 'fqdn-prepare', 'fqdn-enable', 'fqdn-grant', 'fqdn-revoke'))
+    parser.add_argument('phase', choices=('prepare', 'grant', 'revoke', 'read', 'fqdn-prepare', 'fqdn-enable', 'fqdn-read', 'fqdn-grant', 'fqdn-revoke'))
     parser.add_argument('--private-root', type=Path, required=True)
     parser.add_argument('--connection-id', required=True)
     parser.add_argument('--expiry-seconds', type=int, default=90)
@@ -139,13 +172,19 @@ def main():
             if not impact['entitlement_available']:
                 raise lab.LabError('Genuine current FQDN entitlement unavailable')
             client.call('PUT', base + '/fqdn-resources/setting', {'enabled': True, 'expected_impact_token': impact['expected_impact_token']})
-        elif args.phase == 'fqdn-grant':
+        elif args.phase in ('fqdn-read', 'fqdn-grant'):
             STAGE = 'fqdn_resource_validation'
-            if not state.get('fqdn_resource_id') or state.get('fqdn_rule_id'):
+            if not state.get('fqdn_resource_id') or args.phase == 'fqdn-grant' and state.get('fqdn_rule_id'):
                 raise lab.LabError('Prepared FQDN without previous rule required')
-            resource = saved_resource(client, base + '/fqdn-resources', state['fqdn_resource_id'])
-            if resource.get('org_id') != setup['org_id'] or resource.get('fqdn') != 'lbapp.azure-s2s.test' or resource.get('destination_kind') != 'fqdn' or resource.get('protocol') != 'tcp' or resource.get('port_low') != 8080 or resource.get('port_high') != 8080 or resource.get('resolver_context') != {'site_id': setup['site_id'], 'gateway_id': setup['gateway_id']}:
-                raise lab.LabError('Stored distinct LB FQDN resource changed')
+            detail = client.call('GET', base + '/fqdn-resources/' + state['fqdn_resource_id'])
+            state['fqdn_observation'] = fqdn_detail_projection(detail, setup, state, binding, datetime.now(timezone.utc))
+            save()
+            if args.phase == 'fqdn-read':
+                verify_protected()
+                print('Owned FQDN projected readiness=' + str(state['fqdn_observation']['ready']) + '; no packet success inference.')
+                return
+            if not state['fqdn_observation']['ready']:
+                raise lab.LabError('Actual fresh FQDN generation not ready; no grant')
             expiry = (datetime.now(timezone.utc) + timedelta(seconds=args.expiry_seconds)).isoformat()
             STAGE = 'fqdn_grant'
             rule = client.call('POST', base + '/policies', {'src_kind': 'cidr', 'src_cidr': '10.233.10.2/32', 'dst_kind': 'fqdn_resource', 'dst_fqdn_resource_id': state['fqdn_resource_id'], 'expires_at': expiry})

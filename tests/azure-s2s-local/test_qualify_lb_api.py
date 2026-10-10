@@ -5,6 +5,7 @@ import io
 import json
 import tempfile
 from unittest.mock import patch
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import unittest
 
@@ -13,6 +14,24 @@ probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 
 class LBAPIScopeTests(unittest.TestCase):
+    def test_nested_actual_detail_projects_only_fresh_owned_generation(self):
+        now = datetime.now(timezone.utc)
+        profile = {'id': 'profile', 'provider_hint': 'azure', 'legacy_default': False, 'zone_suffixes': ['azure-s2s.test'], 'endpoints': [{'address': ip, 'port': 53, 'transport': transport} for ip in ('10.231.2.4', '10.231.2.20') for transport in ('udp', 'tcp')], 'ipsec_path': {'connection_id': 'connection', 'configuration_revision': 7, 'source_address': '10.233.10.1'}}
+        config = {'id': 'config', 'version': 3, 'state': 'active', 'profiles': [profile]}
+        setup = {'org_id': 'org', 'site_id': 'site', 'gateway_id': 'gateway'}
+        state = {'connection_id': 'connection', 'fqdn_resource_id': 'resource'}
+        binding = {'context_id': 'config', 'context_version': 3, 'profile_id': 'profile', 'configuration_revision': 7}
+        resource = {'id': 'resource', 'org_id': 'org', 'fqdn': 'lbapp.azure-s2s.test', 'destination_kind': 'fqdn', 'protocol': 'tcp', 'port_low': 8080, 'port_high': 8080, 'state': 'healthy', 'answer_count': 1, 'generation': 2,
+                    'resolver_context': {'site_id': 'site', 'gateway_id': 'gateway', 'site_name': 'actual-name', 'gateway_name': 'actual-name', 'resolver_config': config}, 'resolver_profile_selection': {'id': 'profile', 'config_version': 3, 'matched_suffix': 'azure-s2s.test', 'provider_hint': 'azure'}}
+        detail = {'resource': resource, 'active_answer_addresses': ['10.231.1.10'], 'status_source': 'active_generation', 'resolver_ready': True, 'observed_at': (now - timedelta(seconds=1)).isoformat(), 'fresh_until_at': (now + timedelta(seconds=20)).isoformat(), 'server_reason': 'PRIVATE-DO-NOT-ECHO'}
+        projected = probe.fqdn_detail_projection(detail, setup, state, binding, now)
+        self.assertTrue(projected['ready']); self.assertEqual(projected['generation'], 2)
+        self.assertNotIn('PRIVATE', str(projected))
+        for change in ({'active_answer_addresses': ['8.8.8.8']}, {'fresh_until_at': (now - timedelta(seconds=1)).isoformat()}, {'resource': {**resource, 'resolver_profile_selection': {**resource['resolver_profile_selection'], 'id': 'other'}}}):
+            with self.assertRaises(probe.lab.LabError):
+                probe.fqdn_detail_projection({**detail, **change}, setup, state, binding, now)
+        not_ready = {**detail, 'resource': {**resource, 'state': 'resolving'}, 'status_source': 'latest_generation'}
+        self.assertFalse(probe.fqdn_detail_projection(not_ready, setup, state, binding, now)['ready'])
     def test_normal_grant_contract_uses_list_and_preserves_eight_rules(self):
         connection_id = '11111111-1111-4111-8111-111111111111'
         setup = {'org_id': 'org', 'site_id': 'site', 'gateway_id': 'gateway'}
