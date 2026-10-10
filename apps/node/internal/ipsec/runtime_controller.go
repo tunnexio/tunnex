@@ -182,6 +182,19 @@ func (c *RuntimeController) Start(ctx context.Context) error {
 			if entry.Allocation.Namespace != ns {
 				continue
 			}
+			// Namespace inode numbers can be reused after a kernel reboot.
+			// Old-boot duties cannot identify current processes. Prefix denial
+			// is already installed; exact reset receipt and independent absence
+			// proof remain required by normal restoration and cleanup.
+			if entry.Restoration != nil {
+				boot, err := resetBootID()
+				if err != nil {
+					return ErrRuntimeController
+				}
+				if entry.Restoration.BootID != boot {
+					continue
+				}
+			}
 			if c.cleanupBGPDuties(ctx, entry) != nil {
 				return ErrRuntimeController
 			}

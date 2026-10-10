@@ -49,7 +49,11 @@ func (p *bgpSessionFixture) ObserveRoutes(context.Context, bgpengine.Status) ([]
 }
 func bgpControllerFixture(t *testing.T, installed bool) (*RuntimeController, *recoveryKernelFixture, *bgpSessionFixture, *bool) {
 	t.Helper()
-	e, f, j := bgpRouteWriterFixture(t)
+	return bgpControllerEntryFixture(t, installed, bgpEntryFixture(t))
+}
+func bgpControllerEntryFixture(t *testing.T, installed bool, initial RuntimeJournalEntry) (*RuntimeController, *recoveryKernelFixture, *bgpSessionFixture, *bool) {
+	t.Helper()
+	e, f, j := bgpRouteWriterEntryFixture(t, initial)
 	routes := []RuntimeBGPRouteTuple{}
 	if installed {
 		routes = append(routes, routeTupleFixture(e, 1))

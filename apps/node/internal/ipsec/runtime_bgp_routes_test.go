@@ -9,7 +9,10 @@ import (
 
 func bgpRouteWriterFixture(t *testing.T) (RuntimeJournalEntry, *recoveryKernelFixture, *RuntimeJournal) {
 	t.Helper()
-	e := bgpEntryFixture(t)
+	return bgpRouteWriterEntryFixture(t, bgpEntryFixture(t))
+}
+func bgpRouteWriterEntryFixture(t *testing.T, e RuntimeJournalEntry) (RuntimeJournalEntry, *recoveryKernelFixture, *RuntimeJournal) {
+	t.Helper()
 	f := newRecoveryKernelFixture()
 	f.p = e.Allocation
 	for i, p := range f.p.Tunnels {
