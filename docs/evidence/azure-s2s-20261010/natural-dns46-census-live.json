@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "scope": "Private completed natural capture aggregate census only; no new probes",
+  "windows": [
+    {
+      "started_at": "2026-10-10T21:19:28.988120+00:00",
+      "ended_at": "2026-10-10T21:20:08.069707+00:00",
+      "headers": 190,
+      "protocol_counts": {
+        "udp": {
+          "outbound": 15,
+          "inbound": 15,
+          "unique_flow_count": 15,
+          "query_headers": 15,
+          "response_headers": 15,
+          "noerror_response_headers": 15
+        },
+        "tcp": {
+          "outbound": 96,
+          "inbound": 64,
+          "unique_flow_count": 16,
+          "syn_headers": 16,
+          "synack_headers": 16
+        }
+      },
+      "logged_refusal_stage_counts": {
+        "dns_native_proof": 2
+      },
+      "rpc_results": {
+        "SERVFAIL/resolver_unavailable/failure": 4
+      },
+      "limits": [
+        "Untied aggregate packet header counts only; not timeout correlation or socket receipt proof."
+      ]
+    },
+    {
+      "started_at": "2026-10-10T21:21:11.841924+00:00",
+      "ended_at": "2026-10-10T21:21:51.007930+00:00",
+      "headers": 74,
+      "protocol_counts": {
+        "udp": {
+          "outbound": 7,
+          "inbound": 7,
+          "unique_flow_count": 7,
+          "query_headers": 7,
+          "response_headers": 7,
+          "noerror_response_headers": 7
+        },
+        "tcp": {
+          "outbound": 36,
+          "inbound": 24,
+          "unique_flow_count": 6,
+          "syn_headers": 6,
+          "synack_headers": 6
+        }
+      },
+      "logged_refusal_stage_counts": {
+        "dns_native_proof": 1
+      },
+      "rpc_results": {
+        "SERVFAIL/resolver_unavailable/failure": 2
+      },
+      "limits": [
+        "Untied aggregate packet header counts only; not timeout correlation or socket receipt proof."
+      ]
+    }
+  ]
+}
