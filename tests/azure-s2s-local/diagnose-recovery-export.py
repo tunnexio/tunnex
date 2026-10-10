@@ -48,7 +48,71 @@ def diagnostic(error):
  if isinstance(error,subprocess.TimeoutExpired):return {'category':'bounded_read_timeout'}
  if isinstance(error,OSError):return {'category':'filesystem_refused'}
  if isinstance(error,TypeError):return {'category':'unexpected_type'}
+ known={'snapshot version','identity/hash shape','boot identity','timestamp','timestamp timezone','bounded lifecycle integer','stop proof shape','termination binding','termination ordering','fresh runtime kind','namespace identity','root evidence directory','snapshot/proof binding','attempt identity','attempt bound','gate result shape','fresh runtime binding','stopped journal hash binding','expected exactly one accepted gate result','private receipt shape','root observer requires UID1000 private root','private root path'}
+ if isinstance(error,ValueError) and str(error) in known:return {'category':'strict_validation_refused','validation':str(error).replace(' ','_').replace('/','_')}
  return {'category':'strict_projection_or_ownership_refused'}
+
+
+def controlled_stages(root,check):
+ directory=root/'controlled-namespace-stop-2'
+ if not directory.exists():print(json.dumps({'stage':'controlled:directory','result':'missing_optional_receipt'}));return
+ if not check('controlled:directory_ownership',lambda:export.root_evidence_directory(directory)):return
+ values={}
+ for name,projector in [('before.json',export.stop_snapshot),('stopped.json',export.stopped_proof)]:
+  holder={}
+  if check('controlled:'+name+':read_private',lambda:holder.update(value=export.read_private(directory/name))):
+   check('controlled:'+name+':projection',lambda:values.update({name:projector(holder['value'])}))
+ if len(values)==2:
+  def binding():
+   if values['before.json']!=values['stopped.json']['snapshot']:raise ValueError('snapshot/proof binding')
+  check('controlled:snapshot_proof_binding',binding)
+ attempts=[]
+ for path in directory.iterdir():
+  if path.name.startswith('assemble-'):
+   def identity():
+    import uuid
+    suffix=path.name[len('assemble-'):]
+    if str(uuid.UUID(suffix))!=suffix:raise ValueError('attempt identity')
+   if not check('controlled:attempt_identity',identity):continue
+   if check('controlled:attempt_directory_ownership',lambda:export.root_evidence_directory(path)):attempts.append(path)
+ if len(attempts)>100:check('controlled:attempt_count_bound',lambda:(_ for _ in ()).throw(ValueError('attempt bound')));return
+ accepted=0
+ for path in sorted(attempts):
+  # Never emit the path or UUID. Labels identify only accepted fixed stage names.
+  if not (path/'result.json').exists():print(json.dumps({'stage':'controlled:attempt_result','result':'missing_result'}));continue
+  result={};fresh={}
+  if check('controlled:result.json:read_private',lambda:result.update(value=export.read_private(path/'result.json'))):
+   def result_shape():
+    value=result['value']
+    if value.get('stage')!='exact_gate_released' or value.get('runtime_acceptance')!='not_observed':raise ValueError('gate result shape')
+    export.timestamp(value['observed_at'])
+   if check('controlled:result.json:shape',result_shape):accepted+=1
+  if check('controlled:fresh-runtime.json:read_private',lambda:fresh.update(value=export.read_private(path/'fresh-runtime.json'))):
+   if check('controlled:fresh-runtime.json:projection',lambda:fresh.update(projected=export.fresh_runtime(fresh['value']))) and len(values)==2:
+    def fresh_binding():
+     before=values['before.json'];value=fresh['projected']
+     if value['container']!=before['container'] or value['boot']!=before['boot'] or value['pid']==before['pid'] or value['started_at']==before['started']:raise ValueError('fresh runtime binding')
+    check('controlled:fresh_runtime_binding',fresh_binding)
+    def hash_binding():
+     if fresh['projected']['stopped_journal_sha256']!=values['stopped.json']['stopped_journal_raw_sha256']:raise ValueError('stopped journal hash binding')
+    check('controlled:stopped_journal_hash_binding',hash_binding)
+ def result_count():
+  if accepted!=1:raise ValueError('expected exactly one accepted gate result')
+ check('controlled:accepted_result_count',result_count)
+
+
+def child_failure(stdout):
+ output={'category':'normal_api_read_refused'}
+ try:
+  if len(stdout)>16384:return output
+  value=json.loads(stdout)
+  stages={'arguments','private_root','private_inputs','normal_owner_login','owned_organization','fresh_connection_revision','fresh_cleanup_readback','typed_runtime_status','receipt'}
+  if value.get('error')!='lifecycle_failed':return output
+  if value.get('stage') in stages:output['child_stage']=value['stage']
+  if value.get('category') in ('api','input_or_response_shape'):output['child_category']=value['category']
+  if type(value.get('http_status'))==int and value['http_status'] in (400,401,403,404,409,429,500,502,503,504):output['http_status']=value['http_status']
+ except (ValueError,TypeError,AttributeError):pass
+ return output
 
 
 def main():
@@ -70,7 +134,8 @@ def main():
   holder={}
   if check(name+':read_private',lambda:holder.update(value=export.read_private(path))):
    if check(name+':required_fields',lambda:packet_shape(holder['value'])):check(name+':strict_projection',lambda:export.packets(holder['value']))
- check('controlled-namespace-stop-2:strict_projection',lambda:export.controlled_restart(root))
+ controlled_stages(root,check)
+ check('controlled:final_strict_projection',lambda:export.controlled_restart(root))
  def initial():
   path=args.initial_refusal
   if path.name!='genuine-reboot-recovery.json' or path.is_symlink() or not path.is_file() or path.stat().st_size>2097152:raise ValueError('initial receipt shape')
@@ -79,10 +144,14 @@ def main():
  if args.read_current:
   def current():
    run=subprocess.run(export.current_read_command(root),capture_output=True,text=True,timeout=40)
-   if run.returncode:raise ValueError('normal read refused')
+   if run.returncode:
+    print(json.dumps({'stage':'normal_api:uid1000_read','result':'refused',**child_failure(run.stdout)},sort_keys=True));return
    value=json.loads(run.stdout)
    if value.get('phase')!='read' or value.get('cas_request_sent') is not False:raise ValueError('not read only')
-  check('normal_api:uid1000_read',current)
+   print(json.dumps({'stage':'normal_api:uid1000_read','result':'pass'}))
+  try:current()
+  except (ValueError,KeyError,TypeError,OSError,subprocess.TimeoutExpired) as error:
+   print(json.dumps({'stage':'normal_api:uid1000_read','result':'refused',**diagnostic(error)},sort_keys=True))
 
 
 if __name__=='__main__':main()

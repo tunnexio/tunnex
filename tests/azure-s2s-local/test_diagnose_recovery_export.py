@@ -18,6 +18,18 @@ class DiagnosticTests(unittest.TestCase):
   with self.assertRaises(diag.ShapeFailure) as failure:diag.field({'success':'SECRET'},'success','packet.counters.fresh_tcp',(int,))
   self.assertEqual(diag.diagnostic(failure.exception),{'category':'unexpected_type','field_path':'packet.counters.fresh_tcp.success'})
 
+ def test_only_known_validation_messages_are_exposed(self):
+  self.assertEqual(diag.diagnostic(ValueError('termination ordering')),{'category':'strict_validation_refused','validation':'termination_ordering'})
+  self.assertNotIn('SECRET',str(diag.diagnostic(ValueError('SECRET'))))
+
+ def test_child_failure_retains_only_known_stage_category_status(self):
+  import json
+  value={'error':'lifecycle_failed','stage':'typed_runtime_status','category':'input_or_response_shape','http_status':403,'secret':'SECRET'}
+  self.assertEqual(diag.child_failure(json.dumps(value)),{'category':'normal_api_read_refused','child_stage':'typed_runtime_status','child_category':'input_or_response_shape','http_status':403})
+  value.update(stage='SECRET',category='SECRET',http_status=999)
+  self.assertEqual(diag.child_failure(json.dumps(value)),{'category':'normal_api_read_refused'})
+  self.assertEqual(diag.child_failure('SECRET'),{'category':'normal_api_read_refused'})
+
  def test_bool_is_not_counter_integer(self):
   with self.assertRaises(diag.ShapeFailure):diag.field({'success':True},'success','packet.counters.fresh_tcp',(int,))
 
