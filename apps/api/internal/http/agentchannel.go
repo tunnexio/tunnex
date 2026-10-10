@@ -287,6 +287,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		DNSIPsecResolveVersion    int `json:"dns_ipsec_resolve_version"`
 		IPsecConfigVersion        int `json:"ipsec_config_version"`
 		IPsecRecoveryVersion      int `json:"ipsec_recovery_version"`
+		IPsecGCPHAVersion         int `json:"ipsec_gcp_ha_version"`
 		IPsecBGPVersion           int `json:"ipsec_bgp_version"`
 		IPsecRetainedGuardVersion int `json:"ipsec_retained_guard_version"`
 		// FlowLogState is a bounded collector heartbeat. It is deliberately
@@ -300,7 +301,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecBGPVersion: body.IPsecBGPVersion, IPsecRetainedGuardVersion: body.IPsecRetainedGuardVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, DNSIPsecResolveVersion: body.DNSIPsecResolveVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecBGPVersion: body.IPsecBGPVersion, IPsecGCPHAVersion: body.IPsecGCPHAVersion, IPsecRetainedGuardVersion: body.IPsecRetainedGuardVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, DNSIPsecResolveVersion: body.DNSIPsecResolveVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch

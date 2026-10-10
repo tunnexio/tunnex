@@ -179,7 +179,7 @@ func (s *ConnectionStore) ReadStatus(ctx context.Context, org, id uuid.UUID) (Co
 	if e = tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, id, org).Scan(&profile); e != nil {
 		return out, ErrConnectionUnavailable
 	}
-	if profile == "aws-bgp-ipv4-v1" {
+	if isBGPProfile(profile) {
 		for i := range out.Tunnels {
 			out.Tunnels[i].Selected = false
 		}

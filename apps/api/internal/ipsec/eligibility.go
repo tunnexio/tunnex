@@ -13,6 +13,7 @@ import (
 type Eligibility struct {
 	Eligible bool         `json:"eligible"`
 	Reason   string       `json:"reason"`
+	GCPHA    *Eligibility `json:"gcp_ha,omitempty"`
 	BGP      *Eligibility `json:"bgp,omitempty"`
 }
 
@@ -91,5 +92,12 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 		return Eligibility{}, ErrConnectionUnavailable
 	}
 	reason := gatewayEligibilityReason(status, serial, revoked, reported, caps, clock)
-	return advisoryEligibility(reason, gatewayBGPEligibilityReason(status, serial, revoked, reported, caps, clock)), nil
+	result := advisoryEligibility(reason, gatewayBGPEligibilityReason(status, serial, revoked, reported, caps, clock))
+	gcpReason := result.BGP.Reason
+	var cap map[string]json.RawMessage
+	if gcpReason == "eligible" && (json.Unmarshal(caps, &cap) != nil || string(cap["ipsec_gcp_ha_version"]) != "1") {
+		gcpReason = "unsupported"
+	}
+	result.GCPHA = &Eligibility{Eligible: gcpReason == "eligible", Reason: gcpReason}
+	return result, nil
 }

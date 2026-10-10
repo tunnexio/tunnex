@@ -29,7 +29,7 @@ type ProviderConfiguration struct {
 }
 
 func (s *ConnectionStore) CreateProviderDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateProviderRequest) (Connection, error) {
-	if r.Config.ProfileID == GCPHAProfile || r.Config.ProfileID == GCPClassicProfile {
+	if r.Config.ProfileID == GCPClassicProfile {
 		return Connection{}, ErrConnectionIneligible
 	}
 	if ValidateProviderConfig(r.Config) != nil {
@@ -133,7 +133,7 @@ func removeProvider(ctx context.Context, tx pgx.Tx, org, id uuid.UUID) error {
 		return createError(err)
 	}
 	tables := []string{"ipsec_aws_local_prefixes", "ipsec_aws_remote_prefixes", "ipsec_aws_tunnel_configs", "ipsec_aws_static_configs"}
-	if profile == "aws-bgp-ipv4-v1" {
+	if isBGPProfile(profile) {
 		tables = append([]string{"ipsec_aws_bgp_configs"}, tables...)
 	}
 	for _, table := range tables {
@@ -171,8 +171,8 @@ func (s *ConnectionStore) ReadProvider(ctx context.Context, org, id uuid.UUID) (
 		}
 		return result, nil
 	}
-	config := &StaticConfig{Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
-	if result.ProfileID == "aws-bgp-ipv4-v1" {
+	config := &StaticConfig{ProfileID: result.ProfileID, Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
+	if isBGPProfile(result.ProfileID) {
 		config.Mode = "ipv4-bgp"
 		config.BGP = &BGPConfig{}
 		b := config.BGP

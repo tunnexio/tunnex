@@ -34,6 +34,7 @@ type runtimeLocked struct {
 	eligible              bool
 	recoveryEligible      bool
 	bgpEligible           bool
+	gcpHAEligible         bool
 	retainedGuardEligible bool
 }
 
@@ -111,6 +112,7 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	var capability map[string]json.RawMessage
 	out.recoveryEligible = out.eligible && json.Unmarshal(caps, &capability) == nil && string(capability["ipsec_recovery_version"]) == "1"
 	out.bgpEligible = out.eligible && string(capability["ipsec_bgp_version"]) == "1"
+	out.gcpHAEligible = out.bgpEligible && string(capability["ipsec_gcp_ha_version"]) == "1"
 	out.retainedGuardEligible = out.eligible && retainedGuardCapability(caps)
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
@@ -127,10 +129,10 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&profile); err != nil {
 		return StaticConfig{}, [2]RuntimeTunnel{}, ErrConnectionUnavailable
 	}
-	cfg := StaticConfig{Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
-	if profile == "aws-bgp-ipv4-v1" {
+	cfg := StaticConfig{ProfileID: profile, Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
+	if isBGPProfile(profile) {
 		var eligible bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&eligible); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND ($4<>'gcp-ha-bgp-ipv4-v1' OR capabilities->'ipsec_gcp_ha_version'='1'::jsonb) AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID, profile).Scan(&eligible); err != nil {
 			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
 		}
 		if !eligible {
@@ -266,6 +268,9 @@ func runtimeManifest(c Connection, cfg StaticConfig, tunnels [2]RuntimeTunnel) R
 	m := RuntimeManifest{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, DesiredRevision: c.DesiredRevision, ConfigurationRevision: 1, ProfileID: providerProfile(cfg), CustomerOutsideAddress: cfg.CustomerOutsideAddress, LocalPrefixes: cfg.LocalPrefixes, RemotePrefixes: cfg.RemotePrefixes, Tunnels: tunnels}
 	if cfg.BGP != nil {
 		v := 1
+		if cfg.ProfileID == GCPHAProfile {
+			v = 2
+		}
 		b := *cfg.BGP
 		m.BGP = &b
 		m.BGPVersion = &v

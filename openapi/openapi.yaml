@@ -12287,6 +12287,8 @@ components:
         reason: { type: string, enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale] }
         bgp:
           $ref: '#/components/schemas/IPsecBGPEligibility'
+        gcp_ha:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
     IPsecBGPEligibility:
       type: object
       additionalProperties: false

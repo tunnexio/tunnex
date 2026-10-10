@@ -54,7 +54,7 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
 	}
-	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible) {
+	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) {
 		return invalid(ErrConnectionIneligible)
 	}
 	raw, digest := runtimeHash(manifest)
@@ -265,7 +265,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)

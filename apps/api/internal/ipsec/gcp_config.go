@@ -117,3 +117,7 @@ func gcpOutside(raw, field string, slot int, routes []netip.Prefix) (netip.Addr,
 	}
 	return a, nil
 }
+
+func isBGPProfile(profile string) bool {
+	return profile == "aws-bgp-ipv4-v1" || profile == GCPHAProfile
+}
