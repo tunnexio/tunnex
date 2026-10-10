@@ -34,14 +34,16 @@ func TestLookupTimingRequestOwnershipBoundsAndNoUnknownData(t *testing.T) {
 	}
 	workers.Wait()
 	v := a.Snapshot()
-	if v.BeforeProof.Count != lookupExchangeCeiling || v.BeforeProof.TotalMillis != 300000 || v.BeforeProof.MaxMillis != 300000 || v.AfterProof.MaxMillis != 0 || v.AttemptedExchanges != lookupExchangeCeiling || v.CompletedExchanges > v.AttemptedExchanges {
+	if v.BeforeProof.Count != lookupExchangeCeiling || v.BeforeProof.SummedMillis != 300000 || v.BeforeProof.MaxMillis != 300000 || v.AfterProof.MaxMillis != 0 || v.ReturnedExchanges != lookupExchangeCeiling || v.CompletedExchanges > v.ReturnedExchanges {
 		t.Fatal("unbounded summary", v)
 	}
-	if b.Snapshot().AttemptedExchanges != 0 {
+	if b.Snapshot().ReturnedExchanges != 0 {
 		t.Fatal("request contamination")
 	}
 	RecordLookupPhase(parent, "before", time.Second, true)
 	RecordLookupExchange(parent, true)
+	markLookupWorkersDrained(ctx)
+	markLookupWorkersDrained(other)
 	finishLookupTiming(ctx, errors.New("private-error"))
 	finishLookupTiming(other, nil)
 	v = a.Snapshot()
@@ -84,12 +86,69 @@ func TestLookupTimingResolverSuccessFailureAndExpiredDeadline(t *testing.T) {
 			if kind == "deadline" {
 				want = "deadline"
 			}
-			if !v.ReductionObserved || v.Outcome != want || (err == nil) != (kind == "success") {
+			if !v.EndpointWorkersDrained || !v.ReductionObserved || v.Outcome != want || (err == nil) != (kind == "success") {
 				t.Fatal("incorrect result", v, err)
 			}
 			if v.TransportTimingObserved {
 				t.Fatal("generic exchange falsely reported native proofs")
 			}
 		})
+	}
+}
+
+func TestLookupTimingCancellationReturnsAfterWorkerDrain(t *testing.T) {
+	parent, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctx, a := WithLookupTiming(parent)
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	d := DirectResolver{exchange: func(c context.Context, _ ResolverEndpoint, _ string, _ RecordType) ([]Record, error) {
+		entered <- struct{}{}
+		<-c.Done()
+		<-release
+		RecordLookupPhase(c, "before", time.Millisecond, false)
+		RecordLookupExchange(c, false)
+		return nil, c.Err()
+	}}
+	go func() {
+		_, err := d.ResolveBound(ctx, "private.example.test", []RecordType{RecordA}, concurrentResolverConfig(2))
+		done <- err
+	}()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("workers did not start")
+		}
+	}
+	cancel()
+	v := a.Snapshot()
+	if v.EndpointWorkersDrained || v.ReductionObserved || v.ReturnedExchanges != 0 {
+		t.Fatal("claimed completion while workers live", v)
+	}
+	select {
+	case <-done:
+		t.Fatal("returned before workers drained")
+	default:
+	}
+	close(release)
+	if <-done == nil {
+		t.Fatal("cancellation succeeded")
+	}
+	v = a.Snapshot()
+	if !v.EndpointWorkersDrained || !v.ReductionObserved || v.Outcome != "canceled" || v.ReturnedExchanges != 2 || v.CompletedExchanges != 0 || v.BeforeProof.Refused != 2 {
+		t.Fatal("final worker accounting missing", v)
+	}
+}
+
+func TestLookupTimingEarlyRefusalDoesNotClaimReduction(t *testing.T) {
+	ctx, a := WithLookupTiming(t.Context())
+	if _, err := (DirectResolver{}).ResolveBound(ctx, "private", []RecordType{RecordA}, ResolverConfig{}); err == nil {
+		t.Fatal("invalid config admitted")
+	}
+	v := a.Snapshot()
+	if v.EndpointWorkersDrained || v.ReductionObserved || v.RemainingAtReductionMillis != 0 || v.Outcome != "resolver_failure" {
+		t.Fatal("early refusal claimed a complete reduction", v)
 	}
 }

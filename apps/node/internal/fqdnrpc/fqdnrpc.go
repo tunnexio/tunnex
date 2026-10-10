@@ -220,6 +220,7 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 	// Drain before returning, including on cancellation. Reduce in configured
 	// order, so faster replies never decide consensus or DNS error precedence.
 	workers.Wait()
+	markLookupWorkersDrained(ctx)
 	var canonical []Record
 	for _, result := range results {
 		records, err := result.records, result.err

@@ -17,10 +17,10 @@ func TestRuntimeLookupTimingDefaultOffAndMandatoryRefusal(t *testing.T) {
 		}
 		v := a.Snapshot()
 		if enabled {
-			if !v.TransportTimingObserved || v.AttemptedExchanges != 1 || v.CompletedExchanges != 0 || v.BeforeProof.Count != 1 || v.BeforeProof.Refused != 1 || v.AfterProof.Count != 0 || v.Socket.Count != 0 {
+			if !v.TransportTimingObserved || v.ReturnedExchanges != 1 || v.CompletedExchanges != 0 || v.BeforeProof.Count != 1 || v.BeforeProof.Refused != 1 || v.AfterProof.Count != 0 || v.Socket.Count != 0 {
 				t.Fatal("refused phases misstated", v)
 			}
-		} else if v.TransportTimingObserved || v.AttemptedExchanges != 0 || v.BeforeProof.Count != 0 {
+		} else if v.TransportTimingObserved || v.ReturnedExchanges != 0 || v.BeforeProof.Count != 0 {
 			t.Fatal("default-off recorded transport timing")
 		}
 	}
@@ -36,5 +36,18 @@ func TestRuntimeLookupTimingSuccessfulProofAndSocketRefusal(t *testing.T) {
 	v := a.Snapshot()
 	if err == nil || v.BeforeProof.Count != 1 || v.BeforeProof.Successful != 1 || v.Socket.Count != 1 || v.Socket.Refused != 1 || v.AfterProof.Count != 0 || v.CompletedExchanges != 0 || f.nativeProofs.Load() != 1 || f.guardReads.Load() != 1 || f.routeReads.Load() != 1 || f.sourceReads.Load() != 2 {
 		t.Fatal("successful/failed stages or exact proof reads misstated", v)
+	}
+}
+
+func TestRuntimeLookupTimingNilControllerRefuses(t *testing.T) {
+	var controller *RuntimeController
+	ctx, a := fqdnrpc.WithLookupTiming(t.Context())
+	_, err := controller.exchangeResolverDNS(ctx, fqdnrpc.ResolverConfig{}, fqdnrpc.ResolverEndpoint{}, nil)
+	if err == nil {
+		t.Fatal("nil controller did not refuse")
+	}
+	v := a.Snapshot()
+	if v.TransportTimingObserved || v.ReturnedExchanges != 0 || v.BeforeProof.Count != 0 {
+		t.Fatal("nil controller fabricated timing", v)
 	}
 }

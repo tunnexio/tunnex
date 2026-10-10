@@ -70,7 +70,7 @@ func TestFQDNTimingPreservesCallsContextAndResponse(t *testing.T) {
 		if e.DeadlineRemainingMillis != 5000 || e.StartDelayMillis != 100 || e.HandleMillis != 2000 || e.ReportMillis != 200 || e.Status != "unknown" || e.Result != "unknown" || e.Delivery != "failure" || e.Context != "active" {
 			t.Fatalf("incorrect fixed timing %+v", e)
 		}
-		if !e.Lookup.TransportTimingObserved || e.Lookup.BeforeProof.Successful != 1 || e.Lookup.AfterProof.Refused != 1 || e.Lookup.AttemptedExchanges != 1 || e.Lookup.CompletedExchanges != 0 || e.ReportHTTPStatus != 0 || e.ReportFailure != "transport_or_encoding" {
+		if !e.Lookup.TransportTimingObserved || e.Lookup.BeforeProof.Successful != 1 || e.Lookup.AfterProof.Refused != 1 || e.Lookup.ReturnedExchanges != 1 || e.Lookup.CompletedExchanges != 0 || e.ReportHTTPStatus != 0 || e.ReportFailure != "transport_or_encoding" {
 			t.Fatal("lookup summary or delivery category lost", e)
 		}
 		encoded, _ := json.Marshal(e)

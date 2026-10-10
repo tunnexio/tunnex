@@ -64,7 +64,8 @@ type runtimeDNSProof struct {
 
 func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte) (response []byte, resultErr error) {
 	stage, started := "dns_before_proof", time.Now()
-	if c != nil && c.config.DNSReadTiming {
+	timingEnabled := c != nil && c.config.DNSReadTiming
+	if timingEnabled {
 		defer func() { fqdnrpc.RecordLookupExchange(ctx, resultErr == nil) }()
 	}
 	connection := uuid.Nil
@@ -78,11 +79,11 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 		c.emitDNSRuntimeDiagnostic(ctx, "dns_exchange", stage, connection, started, resultErr != nil, socketTiming)
 	}()
 	var proofStarted time.Time
-	if c.config.DNSReadTiming {
+	if timingEnabled {
 		proofStarted = time.Now()
 	}
 	proof, err := c.proveResolverDNSStage(ctx, config, endpoint, "dns_before_proof")
-	if c.config.DNSReadTiming {
+	if timingEnabled {
 		fqdnrpc.RecordLookupPhase(ctx, "before", time.Since(proofStarted), err == nil)
 	}
 	if err != nil {
@@ -93,7 +94,7 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 		stage = "dns_socket_tcp"
 	}
 	response, err = fqdnrpc.ExchangeBoundSocketObserved(ctx, endpoint, proof.Source, payload, func(outcome fqdnrpc.SocketOutcome) {
-		if c.config.DNSReadTiming {
+		if timingEnabled {
 			fqdnrpc.RecordLookupPhase(ctx, "socket", outcome.Elapsed, outcome.Stage == fqdnrpc.SocketComplete && !outcome.Failed)
 			socketTiming.SocketMillis = outcome.Elapsed.Milliseconds()
 			switch outcome.Stage {
@@ -123,11 +124,11 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 		return nil, ErrRuntimeController
 	}
 	stage = "dns_after_proof"
-	if c.config.DNSReadTiming {
+	if timingEnabled {
 		proofStarted = time.Now()
 	}
 	after, err := c.proveResolverDNSStage(ctx, config, endpoint, "dns_after_proof")
-	if c.config.DNSReadTiming {
+	if timingEnabled {
 		fqdnrpc.RecordLookupPhase(ctx, "after", time.Since(proofStarted), err == nil)
 	}
 	if err != nil {

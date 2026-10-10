@@ -8,16 +8,21 @@ import (
 
 // LookupTiming contains bounded scalars only. It belongs to one callback; no
 // request identity, DNS input, answer, or shared registry is retained.
+// SummedMillis sums independent phase durations across concurrent endpoints;
+// it is not lookup wall time. Count and outcome counts cover returned phases.
 type LookupPhaseTiming struct {
-	Count       int   `json:"count"`
-	Successful  int   `json:"successful"`
-	Refused     int   `json:"refused"`
-	TotalMillis int64 `json:"total_ms"`
-	MaxMillis   int64 `json:"max_ms"`
+	Count        int   `json:"count"`
+	Successful   int   `json:"successful"`
+	Refused      int   `json:"refused"`
+	SummedMillis int64 `json:"summed_ms"`
+	MaxMillis    int64 `json:"max_ms"`
 }
 type LookupTiming struct {
+	// ReturnedExchanges counts transport calls that returned, including refusals;
+	// CompletedExchanges counts successful complete transport proof brackets.
+	EndpointWorkersDrained     bool              `json:"endpoint_workers_drained"`
 	TransportTimingObserved    bool              `json:"transport_timing_observed"`
-	AttemptedExchanges         int               `json:"attempted_exchanges"`
+	ReturnedExchanges          int               `json:"returned_exchanges"`
 	CompletedExchanges         int               `json:"completed_exchanges"`
 	BeforeProof                LookupPhaseTiming `json:"before_proof"`
 	AfterProof                 LookupPhaseTiming `json:"after_proof"`
@@ -86,9 +91,9 @@ func RecordLookupPhase(ctx context.Context, phase string, elapsed time.Duration,
 		p.Refused++
 	}
 	ms := lookupBoundMillis(elapsed, false)
-	p.TotalMillis += ms
-	if p.TotalMillis > 300000 {
-		p.TotalMillis = 300000
+	p.SummedMillis += ms
+	if p.SummedMillis > 300000 {
+		p.SummedMillis = 300000
 	}
 	if ms > p.MaxMillis {
 		p.MaxMillis = ms
@@ -101,11 +106,11 @@ func RecordLookupExchange(ctx context.Context, success bool) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.value.AttemptedExchanges >= lookupExchangeCeiling {
+	if a.value.ReturnedExchanges >= lookupExchangeCeiling {
 		return
 	}
 	a.value.TransportTimingObserved = true
-	a.value.AttemptedExchanges++
+	a.value.ReturnedExchanges++
 	if success {
 		a.value.CompletedExchanges++
 	}
@@ -117,7 +122,7 @@ func finishLookupTiming(ctx context.Context, err error) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.value.ReductionObserved = true
+	a.value.ReductionObserved = a.value.EndpointWorkersDrained
 	a.value.Outcome = "success"
 	if err != nil {
 		a.value.Outcome = "resolver_failure"
@@ -127,7 +132,7 @@ func finishLookupTiming(ctx context.Context, err error) {
 	} else if ctx.Err() != nil {
 		a.value.Outcome = "canceled"
 	}
-	if d, ok := ctx.Deadline(); ok {
+	if d, ok := ctx.Deadline(); ok && a.value.ReductionObserved {
 		a.value.RemainingAtReductionMillis = lookupBoundMillis(time.Until(d), true)
 	}
 }
@@ -135,4 +140,14 @@ func (a *LookupTimingAccumulator) Snapshot() LookupTiming {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.value
+}
+
+func markLookupWorkersDrained(ctx context.Context) {
+	a := lookupTiming(ctx)
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.value.EndpointWorkersDrained = true
 }
