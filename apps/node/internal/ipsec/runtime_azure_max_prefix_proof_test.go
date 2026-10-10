@@ -66,7 +66,7 @@ func azureMaxProofEntry(p runtimeJournalPayload, b azureMaxProofBinding, ns stri
 
 func azureMaxProofEntryHistory(p runtimeJournalPayload, b azureMaxProofBinding, ns string, historical map[uuid.UUID]bool) (RuntimeJournalEntry, error) {
 	bad := func() (RuntimeJournalEntry, error) { return RuntimeJournalEntry{}, fmt.Errorf("journal_scope_refused") }
-	if !validJournalPayload(p) || p.OwnerID != b.GatewayID || b.OrgID == uuid.Nil || b.SiteID == uuid.Nil || b.ConnectionID == uuid.Nil || b.DesiredRevision < 1 || b.ConfigurationRevision < 1 || (b.Mode != "baseline" && b.Mode != "absence") || len(p.Entries) == 0 || len(p.Guards) != 1 || p.Guards[0].Namespace != ns {
+	if !validJournalPayload(p) || p.OwnerID != b.GatewayID || b.OrgID == uuid.Nil || b.SiteID == uuid.Nil || b.ConnectionID == uuid.Nil || b.DesiredRevision < 1 || b.ConfigurationRevision < 1 || (b.Mode != "baseline" && b.Mode != "absence" && b.Mode != "post-limit") || len(p.Entries) == 0 || len(p.Guards) != 1 || p.Guards[0].Namespace != ns {
 		return bad()
 	}
 	var selected RuntimeJournalEntry
@@ -103,10 +103,13 @@ func azureMaxProofEntryHistory(p runtimeJournalPayload, b azureMaxProofBinding, 
 			}
 		}
 	}
-	if b.Mode == "baseline" && active != 1 || b.Mode == "absence" && (active != 0 || latest == 0) {
+	if (b.Mode == "baseline" || b.Mode == "post-limit") && active != 1 || b.Mode == "absence" && (active != 0 || latest == 0) {
 		return bad()
 	}
 	if selected.Allocation.ConnectionID != b.ConnectionID || selected.SiteID != b.SiteID || selected.ContractVersion != 3 || selected.Allocation.ProfileID != AzureActiveActiveBGPProfile || selected.Allocation.activeTunnelCount() != 2 || selected.AbsenceOnly {
+		return bad()
+	}
+	if b.Mode == "post-limit" && b.MaximumPrefixes != 1 {
 		return bad()
 	}
 	cfg, err := runtimeBGPProcessConfig(selected)

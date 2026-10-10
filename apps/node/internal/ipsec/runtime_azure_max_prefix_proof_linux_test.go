@@ -386,7 +386,7 @@ func azureProofProcesses(ctx context.Context, p runtimeJournalPayload, e Runtime
 	return nil
 }
 
-func azureProofVTY(ctx context.Context, e RuntimeJournalEntry) (bgpengine.Status, []bgpengine.LearnedRoute, error) {
+func azureProofVTY(ctx context.Context, e RuntimeJournalEntry, limitPeers *[2]azureProofLimitPeer) (bgpengine.Status, []bgpengine.LearnedRoute, error) {
 	cfg, err := runtimeBGPProcessConfig(e)
 	if err != nil || e.BGPProcess == nil {
 		return bgpengine.Status{}, nil, fmt.Errorf("bgp_config_refused")
@@ -426,6 +426,12 @@ func azureProofVTY(ctx context.Context, e RuntimeJournalEntry) (bgpengine.Status
 	status, err := bgpengine.ParseSummary(summary, cfg)
 	if err != nil {
 		return status, nil, fmt.Errorf("summary_parser_refused")
+	}
+	if limitPeers != nil {
+		*limitPeers, err = azureProofLimitSummary(summary, cfg)
+		if err != nil {
+			return status, nil, err
+		}
 	}
 	rib, err := read("show bgp ipv4 unicast json", 1<<20)
 	if err != nil {
@@ -508,8 +514,9 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	daemon := &DaemonClient{request: transport.call}
 	guard := payload.Guards[0]
 	manifest := GuardManifest{Namespace: guard.Namespace, Revision: guard.Revision, Digest: guard.Digest, ExpectedJSON: guard.ExpectedJSON}
+	limitFrames := [][2]azureProofLimitPeer{}
 	collect := func() (DaemonInventory, KernelInventory, XFRMInventory, bgpengine.Status, []bgpengine.LearnedRoute) {
-		if azureProofProcesses(ctx, payload, entry, first, binding.Mode == "baseline", historical) != nil {
+		if azureProofProcesses(ctx, payload, entry, first, binding.Mode != "absence", historical) != nil {
 			t.Fatal("all_process_duties_refused")
 		}
 		if gr.Check(ctx, manifest) != nil {
@@ -529,13 +536,33 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 		}
 		var status bgpengine.Status
 		var routes []bgpengine.LearnedRoute
-		if binding.Mode == "baseline" {
-			status, routes, e = azureProofVTY(ctx, entry)
+		if binding.Mode != "absence" {
+			var frame [2]azureProofLimitPeer
+			var frameTarget *[2]azureProofLimitPeer
+			if binding.Mode == "post-limit" {
+				frameTarget = &frame
+			}
+			status, routes, e = azureProofVTY(ctx, entry, frameTarget)
 			if e != nil {
 				t.Fatal("independent_frr_read_refused")
 			}
-			if azureMaxProofBaseline(entry, d, k, x, status, routes) != nil {
-				t.Fatal("baseline_native_binding_refused")
+			if binding.Mode == "baseline" {
+				if azureMaxProofBaseline(entry, d, k, x, status, routes) != nil {
+					t.Fatal("baseline_native_binding_refused")
+				}
+			} else {
+				if azureMaxProofPostLimit(entry, d, k, x, status, routes, frame) != nil {
+					t.Fatal("post_limit_native_binding_refused")
+				}
+				links, err := gr.interfaces()
+				if err != nil {
+					t.Fatal("post_limit_guard_interfaces_refused")
+				}
+				observed, err := gr.run(ctx, "-j", "list", "table", "inet", "tunnex_ipsec")
+				if err != nil || VerifyGuardWithdrawal([]byte(guard.ExpectedJSON), observed, links) != nil || azureProofNoForwardGrants(observed, links) != nil {
+					t.Fatal("post_limit_guard_withdrawal_refused")
+				}
+				limitFrames = append(limitFrames, frame)
 			}
 		} else {
 			if azureMaxProofAbsenceHistory(payload, d, k, x, historical) != nil {
@@ -568,6 +595,9 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	if !reflect.DeepEqual(status, statusAfter) || !reflect.DeepEqual(routes, routesAfter) {
 		t.Fatal("bgp_bracket_changed")
 	}
+	if binding.Mode == "post-limit" && (len(limitFrames) != 2 || limitFrames[0] != limitFrames[1]) {
+		t.Fatal("post_limit_frame_bracket_changed")
+	}
 	trafficAdvanced, err := azureProofTrafficCounters(d, da)
 	if err != nil {
 		t.Fatal("traffic_counter_bracket_refused")
@@ -579,6 +609,14 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	projection := azureMaxProofProjection(payload, entry, binding, time.Now(), remediationSHA(raw), da, ka, xa, statusAfter, routesAfter)
 	projection["historical_boot_entry_count"] = len(historical)
 	projection["traffic_counters_monotonic_advanced"] = trafficAdvanced
+	if binding.Mode == "post-limit" {
+		projection["kind"] = "owned_max_prefix_shutdown_observation"
+		projection["maximum_prefixes"] = entry.BGP.MaximumPrefixes
+		projection["limit_peers"] = limitFrames[1]
+		projection["approved_and_candidate_routes_absent"] = true
+		projection["forward_grant_rules_absent"] = true
+		projection["scope"] = "Exact owned PfxCt frames and independent route/forward-grant absence; no Azure NLRI, API ACK or packet inference"
+	}
 	if binding.HistoricalBoot != nil {
 		projection["historical_proof_sha256"] = binding.HistoricalBoot.ProofSHA256
 		projection["historical_stopped_journal_sha256"] = binding.HistoricalBoot.StoppedJournalSHA256
