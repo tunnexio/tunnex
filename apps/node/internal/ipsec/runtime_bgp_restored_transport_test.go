@@ -76,3 +76,32 @@ func TestBGPTrustedRestoredAppliedTransportPreparation(t *testing.T) {
 		})
 	}
 }
+
+func TestBGPInitialBootRecordNeverAuthorizesRestaging(t *testing.T) {
+	for _, fault := range []string{"observed", "unobserved", "invalid boot", "invented retired epoch"} {
+		t.Run(fault, func(t *testing.T) {
+			c, f, _, denied := bgpControllerFixture(t, false)
+			entries, _ := c.journal.Entries()
+			e := entries[0]
+			e.Restoration = &RuntimeRestoration{BootID: "0259d2d2-1111-4111-8111-111111111111"}
+			switch fault {
+			case "unobserved":
+				e.Observed = [2]Ownership{}
+			case "invalid boot":
+				e.Restoration.BootID = "unproved"
+			case "invented retired epoch":
+				e.Restoration.Retired = []RuntimeRetiredEpoch{{}}
+			}
+			before := e
+			mutations := f.mutations
+			active := c.active[e.Allocation.ConnectionID]
+			recreate, missing, err := c.bgpRestoredTransportAbsent(context.Background(), e, []RuntimeJournalEntry{e}, active.Authority, active.Identity)
+			if (err == nil) != (fault == "observed") || recreate || missing {
+				t.Fatal("initial boot became reset authority", err)
+			}
+			if *denied || f.mutations != mutations || !reflect.DeepEqual(before, e) {
+				t.Fatal("boot classification changed journal, guard or kernel")
+			}
+		})
+	}
+}

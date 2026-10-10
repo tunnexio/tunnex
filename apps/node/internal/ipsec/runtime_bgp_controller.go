@@ -596,14 +596,16 @@ func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e Ru
 	if e.Phase != RuntimeApplied || c.bgpStaged[e.DeliveryID] {
 		return false, false, nil
 	}
-	if e.Restoration == nil {
+	if e.Restoration != nil && !validRestoration(e) {
+		return false, false, ErrRuntimeController
+	}
+	// Epoch zero only records the initial boot identity. It grants no reset
+	// authority and must follow the ordinary Applied ownership path.
+	if e.Restoration == nil || e.Restoration.Epoch == 0 {
 		if e.Observed == ([2]Ownership{}) {
 			return false, false, ErrRuntimeController
 		}
 		return false, false, nil
-	}
-	if e.Restoration.Epoch == 0 || !validRestoration(e) {
-		return false, false, ErrRuntimeController
 	}
 	delete(c.active, e.Allocation.ConnectionID)
 	if c.installActive(ctx, entries) != nil {
