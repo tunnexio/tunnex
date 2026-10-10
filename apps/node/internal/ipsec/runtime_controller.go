@@ -39,6 +39,7 @@ type RuntimeLeaseClient interface {
 }
 type RuntimeControllerConfig struct {
 	Diagnostic                  func(RuntimeDiagnostic)
+	DNSReadTiming               bool
 	OrgID, GatewayID            uuid.UUID
 	JournalDir, IPPath, NFTPath string
 	Daemon                      *DaemonClient

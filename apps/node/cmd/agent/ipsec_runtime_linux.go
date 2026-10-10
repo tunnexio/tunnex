@@ -34,8 +34,14 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{DNSReadTiming: os.Getenv("TUNNEX_IPSEC_DNS_READ_TIMING") == "true", OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
 			attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
+			if event.DNSReadTiming != nil {
+				attrs = []any{"operation", event.Operation, "stage", event.Stage, "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
+			}
+			if event.DNSReadTiming != nil {
+				attrs = append(attrs, "guard_bracket_count", event.DNSReadTiming.GuardBracketCount, "guard_command_ms", event.DNSReadTiming.GuardCommandMillis, "guard_verification_ms", event.DNSReadTiming.GuardVerificationMillis, "guard_failure_class", event.DNSReadTiming.GuardFailureClass, "socket_ms", event.DNSReadTiming.SocketMillis, "socket_stage", event.DNSReadTiming.SocketStage)
+			}
 			if event.Refused {
 				logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
 			} else {

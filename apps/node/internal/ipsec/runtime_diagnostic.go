@@ -15,6 +15,7 @@ type RuntimeDiagnostic struct {
 	ConnectionID                   uuid.UUID
 	ElapsedMillis                  int64
 	Refused                        bool
+	DNSReadTiming                  *runtimeDNSReadTiming
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
@@ -70,9 +71,40 @@ func (c *RuntimeController) claimDNSDiagnostic(now time.Time) bool {
 		}
 	}
 }
-func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool) {
+
+type runtimeDNSReadTiming struct {
+	GuardCommandMillis, GuardVerificationMillis, SocketMillis int64
+	GuardBracketCount                                         int
+	GuardFailureClass, SocketStage                            string
+}
+
+func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool, detail ...runtimeDNSReadTiming) {
 	if c == nil || c.config.Diagnostic == nil || !refused || !validRuntimeDiagnostic(operation, stage) || !c.claimDNSDiagnostic(time.Now()) {
 		return
 	}
-	c.emitRuntimeDiagnostic(ctx, operation, stage, connection, started, true)
+	if !c.config.DNSReadTiming || len(detail) != 1 || !validDNSReadTiming(detail[0]) {
+		c.emitRuntimeDiagnostic(ctx, operation, stage, connection, started, true)
+		return
+	}
+	timing := detail[0]
+	callback := c.config.Diagnostic
+	emitRuntimeDiagnostic(func(event RuntimeDiagnostic) { event.DNSReadTiming = &timing; callback(event) }, ctx, operation, stage, connection, started, true)
+}
+
+// This private telemetry can never contain an error body or DNS data.
+func validDNSReadTiming(t runtimeDNSReadTiming) bool {
+	if t.GuardCommandMillis < 0 || t.GuardVerificationMillis < 0 || t.SocketMillis < 0 || t.GuardCommandMillis > 60000 || t.GuardVerificationMillis > 60000 || t.SocketMillis > 60000 || t.GuardBracketCount < 0 || t.GuardBracketCount > 4 {
+		return false
+	}
+	switch t.GuardFailureClass {
+	case "", "none", "target_not_permitted", "structural_or_read", "context_deadline", "context_canceled":
+	default:
+		return false
+	}
+	switch t.SocketStage {
+	case "", "input", "dial", "write", "length", "body", "complete":
+	default:
+		return false
+	}
+	return true
 }

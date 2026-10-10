@@ -70,7 +70,10 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	defer func() { c.emitDNSRuntimeDiagnostic(ctx, "dns_exchange", stage, connection, started, resultErr != nil) }()
+	var socketTiming runtimeDNSReadTiming
+	defer func() {
+		c.emitDNSRuntimeDiagnostic(ctx, "dns_exchange", stage, connection, started, resultErr != nil, socketTiming)
+	}()
 	proof, err := c.proveResolverDNSStage(ctx, config, endpoint, "dns_before_proof")
 	if err != nil {
 		return nil, ErrRuntimeController
@@ -80,6 +83,13 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 		stage = "dns_socket_tcp"
 	}
 	response, err = fqdnrpc.ExchangeBoundSocketObserved(ctx, endpoint, proof.Source, payload, func(outcome fqdnrpc.SocketOutcome) {
+		if c.config.DNSReadTiming {
+			socketTiming.SocketMillis = outcome.Elapsed.Milliseconds()
+			switch outcome.Stage {
+			case fqdnrpc.SocketInput, fqdnrpc.SocketDial, fqdnrpc.SocketWrite, fqdnrpc.SocketBody, fqdnrpc.SocketLength, fqdnrpc.SocketComplete:
+				socketTiming.SocketStage = string(outcome.Stage)
+			}
+		}
 		if endpoint.Transport != "tcp" {
 			return
 		}
@@ -134,7 +144,19 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, operation string) (result runtimeDNSProof, resultErr error) {
 	stage, started := "dns_input", time.Now()
 	connection := uuid.Nil
-	defer func() { c.emitDNSRuntimeDiagnostic(ctx, operation, stage, connection, started, resultErr != nil) }()
+	var guardTiming runtimeDNSReadTiming
+	var observeGuard func(guardReadTiming)
+	if c != nil && c.config.DNSReadTiming {
+		observeGuard = func(t guardReadTiming) {
+			guardTiming.GuardBracketCount++
+			guardTiming.GuardCommandMillis = t.CommandMillis
+			guardTiming.GuardVerificationMillis = t.VerificationMillis
+			guardTiming.GuardFailureClass = t.FailureClass
+		}
+	}
+	defer func() {
+		c.emitDNSRuntimeDiagnostic(ctx, operation, stage, connection, started, resultErr != nil, guardTiming)
+	}()
 	fail := func() (runtimeDNSProof, error) { return runtimeDNSProof{}, ErrRuntimeController }
 	if c == nil || config.IPsecPath == nil || !fqdnrpc.ValidResolverConfig(config) || endpoint.Port != 53 || endpoint.Transport != "udp" && endpoint.Transport != "tcp" {
 		return fail()
@@ -212,11 +234,11 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	if index <= 0 {
 		return fail()
 	}
-	if permitted, guardStage := view.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
+	if permitted, guardStage := view.resolverGuardPermitsStageObserved(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard); !permitted {
 		stage = guardStage
 		// A committed renewal may supersede this loaded template. Try exactly one
 		// current immutable template, retaining the original owner/lease/epoch.
-		if guardStage != "dns_guard_full_read" || !c.revalidateDNSGuardSnapshot(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
+		if guardStage != "dns_guard_full_read" || c.revalidateDNSGuardSnapshotDigestObserved(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard) == "" {
 			return fail()
 		}
 		revalidationUsed = true
@@ -253,7 +275,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	// shares one supersession retry, including the earlier native guard read.
 	checkedDigest := latest.guard.Digest
 	if latest.guard.Digest != view.guard.Digest {
-		permitted, guardStage := latest.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+		permitted, guardStage := latest.resolverGuardPermitsStageObserved(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard)
 		current := c.dnsView.Load()
 		stable := current != nil && current.guard.Digest == checkedDigest
 		if !permitted || !stable {
@@ -264,7 +286,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 			if revalidationUsed || !permitted && guardStage != "dns_guard_full_read" {
 				return fail()
 			}
-			checkedDigest = c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+			checkedDigest = c.revalidateDNSGuardSnapshotDigestObserved(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID, observeGuard)
 			if checkedDigest == "" {
 				return fail()
 			}
@@ -400,6 +422,9 @@ func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry Ru
 	return permitted
 }
 func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) (bool, string) {
+	return v.resolverGuardPermitsStageObserved(ctx, entry, index, reqid, nil)
+}
+func (v *runtimeDNSOwnerView) resolverGuardPermitsStageObserved(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32, observe func(guardReadTiming)) (bool, string) {
 	stage := "dns_guard_template"
 	if v == nil || v.observer.guardReader == nil {
 		return false, stage
@@ -458,7 +483,7 @@ func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, ent
 	if len(required) != 0 {
 		return false, stage
 	}
-	return v.observer.guardReader.checkConnectionSnapshot(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, entry.Allocation.ConnectionID, guardExpectedSnapshot{raw: g.ExpectedJSON, objects: objects}) == nil, "dns_guard_full_read"
+	return v.observer.guardReader.checkConnectionSnapshotObserved(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, entry.Allocation.ConnectionID, guardExpectedSnapshot{raw: g.ExpectedJSON, objects: objects}, observe) == nil, "dns_guard_full_read"
 }
 
 // revalidateDNSGuardSnapshot retries only an independently published newer
@@ -469,6 +494,9 @@ func (c *RuntimeController) revalidateDNSGuardSnapshot(ctx context.Context, conn
 }
 
 func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) string {
+	return c.revalidateDNSGuardSnapshotDigestObserved(ctx, connection, owner, previous, entry, index, reqid, nil)
+}
+func (c *RuntimeController) revalidateDNSGuardSnapshotDigestObserved(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32, observe func(guardReadTiming)) string {
 	if c == nil || previous == nil || ctx.Err() != nil {
 		return ""
 	}
@@ -479,7 +507,7 @@ func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
 		return ""
 	}
-	if !latest.resolverGuardPermits(ctx, entry, index, reqid) {
+	if permitted, _ := latest.resolverGuardPermitsStageObserved(ctx, entry, index, reqid, observe); !permitted {
 		return ""
 	}
 	current := c.dnsView.Load()
