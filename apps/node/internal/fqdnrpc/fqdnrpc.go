@@ -183,9 +183,45 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 	if !validResolverConfig(config) {
 		return nil, errResolverConfig
 	}
+	// Each endpoint remains independently authoritative. Bound concurrency to
+	// four complete endpoint workflows; record types and CNAME steps within a
+	// workflow remain sequential and every exchange retains its native proofs.
+	config.Endpoints = append([]ResolverEndpoint(nil), config.Endpoints...)
+	types = append([]RecordType(nil), types...)
+	if config.IPsecPath != nil {
+		path := *config.IPsecPath
+		config.IPsecPath = &path
+	}
+	type endpointResult struct {
+		records []Record
+		err     error
+	}
+	results := make([]endpointResult, len(config.Endpoints))
+	jobs := make(chan int, len(config.Endpoints))
+	for i := range config.Endpoints {
+		jobs <- i
+	}
+	close(jobs)
+	var workers sync.WaitGroup
+	for range min(4, len(config.Endpoints)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for i := range jobs {
+				if err := ctx.Err(); err != nil {
+					results[i].err = err
+					continue
+				}
+				results[i].records, results[i].err = d.resolveEndpoint(ctx, config, config.Endpoints[i], hostname, types)
+			}
+		}()
+	}
+	// Drain before returning, including on cancellation. Reduce in configured
+	// order, so faster replies never decide consensus or DNS error precedence.
+	workers.Wait()
 	var canonical []Record
-	for _, endpoint := range config.Endpoints {
-		records, err := d.resolveEndpoint(ctx, config, endpoint, hostname, types)
+	for _, result := range results {
+		records, err := result.records, result.err
 		if err != nil {
 			var statusErr resolverStatusError
 			if errors.As(err, &statusErr) {
@@ -221,7 +257,7 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 			addresses++
 		}
 	}
-	if addresses == 0 {
+	if addresses == 0 || ctx.Err() != nil {
 		return nil, errResolverConfig
 	}
 	return canonical, nil

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -95,11 +96,12 @@ func TestLocalResolverKeepsUsableAddressFamilyWhenOtherLookupsFail(t *testing.T)
 
 func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
 	config := ResolverConfig{ID: "66666666-6666-6666-6666-666666666666", Version: 4, ProfileID: "77777777-7777-7777-7777-777777777777", MatchedSuffix: "example.test", Endpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}, {Address: "10.20.0.54", Port: 53, Transport: "tcp"}}}
-	calls := 0
+	var calls atomic.Int32
 	direct := DirectResolver{exchange: func(_ context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
-		calls++
+		calls.Add(1)
 		if hostname != "api.example.test" || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
-			t.Fatalf("unexpected direct query endpoint=%+v hostname=%q", endpoint, hostname)
+			t.Errorf("unexpected direct query endpoint=%+v hostname=%q", endpoint, hostname)
+			return nil, errResolverConfig
 		}
 		if typ == RecordA {
 			return []Record{{Name: hostname, Type: RecordA, Address: "10.20.0.8", TTLSeconds: 30}}, nil
@@ -107,8 +109,8 @@ func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
 		return []Record{{Name: hostname, Type: RecordAAAA, Address: "fd00::8", TTLSeconds: 30}}, nil
 	}}
 	got, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config)
-	if err != nil || calls != 4 || len(got) != 2 {
-		t.Fatalf("direct bound lookup got=%+v err=%v calls=%d", got, err, calls)
+	if err != nil || calls.Load() != 4 || len(got) != 2 {
+		t.Fatalf("direct bound lookup got=%+v err=%v calls=%d", got, err, calls.Load())
 	}
 	// Every bound endpoint is authoritative. A disagreement cannot silently pick
 	// one or ask the host resolver as a tiebreaker.
@@ -186,7 +188,7 @@ func TestResponderDirectResolverRefusesMissingBoundConfig(t *testing.T) {
 }
 
 func TestResponderPreservesConfiguredResolverNXDOMAINAndSERVFAIL(t *testing.T) {
-	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	for _, want := range []Status{StatusNXDomain, StatusServFail} {
 		t.Run(string(want), func(t *testing.T) {
 			direct := DirectResolver{exchange: func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error) {
