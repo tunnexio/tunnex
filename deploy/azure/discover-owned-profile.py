@@ -8,10 +8,13 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import socket
+import stat
 import uuid
 
 RG='tunnex-azure-s2s-20261010'
 OWNER='azure-s2s-01a12505'
+SUBSCRIPTION='34e2f259-b462-40bf-8f4a-06a3930d99e6'
 
 
 def resource_id(value,subscription,kind):
@@ -32,6 +35,8 @@ def owned(value,expected):
 
 
 def discover(subscription,connection_id):
+ if socket.gethostname()!='bastion-host':raise ValueError('bastion hostname required')
+ if subscription!=SUBSCRIPTION:raise ValueError('authorized subscription required')
  if az('account','show','--query','id')!=subscription:raise ValueError('subscription mismatch')
  group=az('group','show','-n',RG,'--subscription',subscription,'--query','{id:id,owner:tags.owner}')
  owned(group,'/subscriptions/'+subscription+'/resourceGroups/'+RG)
@@ -68,6 +73,13 @@ def discover(subscription,connection_id):
  return {'version':1,'observed_at':datetime.now(timezone.utc).isoformat(),'subscription':subscription,'resource_group':RG,'owner':OWNER,'connection_id':connection_id,'gateway_id':gateway_id,'local_gateway_id':lng_id,'active_active':gateway['active'],'sku':gateway['sku'],'vpn_type':gateway['vpn'],'enable_bgp':connection['bgp'],'customer_outside_address':str(ipaddress.IPv4Address(lng['outside'])),'local_asn':lng.get('asn'),'customer_bgp_address':lng.get('bgp'),'remote_asn':gateway.get('asn'),'public_endpoints':endpoints,'local_prefixes':lng['prefixes']}
 
 
+def output_preflight(path):
+ parent=path.parent
+ info=parent.lstat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700 or parent.absolute()!=parent.resolve():raise ValueError('private output parent')
+ if path.exists() or path.is_symlink():raise ValueError('new private output required')
+
+
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
  parser.add_argument('phase',choices=['discover','aa-static'])
@@ -75,8 +87,8 @@ def main():
  parser.add_argument('--connection-id',required=True)
  parser.add_argument('--output',required=True,type=Path)
  args=parser.parse_args()
- if str(uuid.UUID(args.subscription))!=args.subscription:raise ValueError('subscription UUID')
- if args.output.exists() or args.output.is_symlink():raise ValueError('new private output required')
+ if args.subscription!=SUBSCRIPTION:raise ValueError('authorized subscription required')
+ output_preflight(args.output)
  before=discover(args.subscription,args.connection_id)
  if args.phase=='aa-static':
   if before['active_active'] is not True or len(before['public_endpoints'])!=2:raise ValueError('AA topology required')

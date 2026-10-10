@@ -41,6 +41,7 @@ PROFILES=('azure-active-active-static-ipv4-v1','azure-active-standby-bgp-ipv4-v1
 def profile_configuration(previous,psk,profile,discovery):
  if profile not in PROFILES or previous.get('profile_id') not in (*PROFILES,'azure-active-active-bgp-ipv4-v1'):raise ValueError('Azure profile')
  subscription=life.identifier(discovery['subscription'])
+ if subscription!='34e2f259-b462-40bf-8f4a-06a3930d99e6':raise ValueError('authorized Azure subscription')
  for key,kind in [('connection_id','connections'),('gateway_id','virtualNetworkGateways'),('local_gateway_id','localNetworkGateways')]:
   expected='/subscriptions/'+re.escape(subscription)+'/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/'+kind+'/[A-Za-z0-9_.-]+'
   if not isinstance(discovery.get(key),str) or not re.fullmatch(expected,discovery[key],re.IGNORECASE):raise ValueError('owned Azure resource ID')

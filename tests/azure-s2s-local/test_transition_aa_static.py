@@ -16,7 +16,7 @@ class TransitionContractTests(unittest.TestCase):
   return {'profile_id':'azure-active-active-bgp-ipv4-v1','configuration_revision':1,'configuration':{'azure':{'gateway_sku':'VpnGw1AZ','vpn_type':'RouteBased','ike_version':2,'custom_policy':'aes256-sha256-dh14-pfs2048','use_policy_based_traffic_selectors':False,'nat_enabled':False},'customer_outside_address':'20.219.28.146','local_prefixes':['10.233.10.0/24'],'remote_prefixes':['10.231.0.0/16'],'tunnels':[{'outside_address':'52.140.60.21'},{'outside_address':'20.219.125.34'}],'bgp':{'local_asn':65000}}}
 
  def discovery(self,active=True,bgp=False):
-  subscription='00000000-0000-4000-8000-000000000007'
+  subscription='34e2f259-b462-40bf-8f4a-06a3930d99e6'
   prefix='/subscriptions/'+subscription+'/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/'
   return {'version':1,'observed_at':datetime.now(timezone.utc).isoformat(),'subscription':subscription,'connection_id':prefix+'connections/owned','gateway_id':prefix+'virtualNetworkGateways/owned','local_gateway_id':prefix+'localNetworkGateways/owned','owner':'azure-s2s-01a12505','resource_group':'tunnex-azure-s2s-20261010','active_active':active,'enable_bgp':bgp,'vpn_type':'RouteBased','sku':'VpnGw1AZ','customer_outside_address':'20.219.28.146','local_asn':65000,'remote_asn':65515,'customer_bgp_address':'169.254.10.1','public_endpoints':[{'outside_address':'52.140.60.21','cloud_inside_address':'169.254.21.2'}]+([{'outside_address':'20.219.125.34','cloud_inside_address':'169.254.22.2'}] if active else [])}
 
@@ -31,7 +31,7 @@ class TransitionContractTests(unittest.TestCase):
   with self.assertRaises(ValueError):helper.profile_configuration(self.previous(),'private.synthetic.key','azure-active-standby-bgp-ipv4-v1',value)
 
  def test_discovery_owner_ids_and_freshness_refused(self):
-  for key,value in [('owner','other'),('connection_id','/unowned'),('observed_at','2020-01-01T00:00:00Z')]:
+  for key,value in [('subscription','00000000-0000-4000-8000-000000000007'),('owner','other'),('connection_id','/unowned'),('observed_at','2020-01-01T00:00:00Z')]:
    discovery=self.discovery();discovery[key]=value
    with self.assertRaises(ValueError):helper.profile_configuration(self.previous(),'private.synthetic.key',helper.PROFILES[0],discovery)
 
