@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -163,11 +164,59 @@ func (m *PostgresGatewayDNSMailbox) Complete(ctx context.Context, authenticatedO
 	if m == nil || m.pool == nil || authenticatedOrg == uuid.Nil || authenticatedGateway == uuid.Nil || response.RequestID == uuid.Nil {
 		return ErrGatewayDNSRPCMalformed
 	}
+	return retryMailboxCompletion(ctx, func() error {
+		return m.completeAttempt(ctx, authenticatedOrg, authenticatedGateway, response)
+	})
+}
+
+// Retry only an unambiguous server serialization refusal, after the previous
+// transaction has rolled back. Each attempt rereads and revalidates everything;
+// no response, request deadline, or authorization is reused from a failed tx.
+func retryMailboxCompletion(ctx context.Context, attempt func() error) error {
+	for n := 0; n < 3; n++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := attempt()
+		if err == nil {
+			return nil
+		}
+		if contextErr := ctx.Err(); contextErr != nil {
+			return contextErr
+		}
+		if !mailboxSerializationFailure(err) || n == 2 {
+			return err
+		}
+	}
+	panic("unreachable mailbox retry")
+}
+func mailboxSerializationFailure(err error) bool {
+	// A single wrapping chain is allowed; joined/ambiguous errors never retry.
+	for err != nil {
+		if pg, ok := err.(*pgconn.PgError); ok {
+			return pg.Code == "40001"
+		}
+		wrapped, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return false
+		}
+		err = wrapped.Unwrap()
+	}
+	return false
+}
+func (m *PostgresGatewayDNSMailbox) completeAttempt(ctx context.Context, authenticatedOrg, authenticatedGateway uuid.UUID, response GatewayDNSResponse) (result error) {
 	tx, err := m.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		// Rollback completes before the outer loop can acquire a new transaction.
+		// Unknown cleanup failure prevents retry; pgx closes a failed rollback conn.
+		rollbackErr := tx.Rollback(ctx)
+		if mailboxSerializationFailure(result) && rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			result = errors.Join(result, rollbackErr)
+		}
+	}()
 	var request GatewayDNSRequest
 	var types, endpoints, path []byte
 	err = tx.QueryRow(ctx, `
