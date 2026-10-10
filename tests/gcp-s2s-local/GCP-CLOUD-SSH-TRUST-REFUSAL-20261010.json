@@ -1,0 +1,46 @@
+{
+  "scope": "authenticated designated-bastion exact owned VM serial readback; no trust mutation",
+  "result": "TRUST_SETUP_REFUSED",
+  "instances": [
+    {
+      "name": "tn-gcps2s-20261010-local-client",
+      "instance_id": "4751969643435150303",
+      "private_ip": "10.70.0.10",
+      "public_ip": "34.131.121.30",
+      "identity_verified": true,
+      "serial_port": 1,
+      "fingerprint_blocks": 0,
+      "sha256_fingerprint_tokens": 0,
+      "public_hostkey_candidates": 0,
+      "hostkey_marker_present": false
+    },
+    {
+      "name": "tn-gcps2s-20261010-ha-target",
+      "instance_id": "7595462031766211538",
+      "private_ip": "10.80.0.10",
+      "public_ip": "34.131.187.41",
+      "identity_verified": true,
+      "serial_port": 1,
+      "fingerprint_blocks": 0,
+      "sha256_fingerprint_tokens": 0,
+      "public_hostkey_candidates": 0,
+      "hostkey_marker_present": false
+    },
+    {
+      "name": "tn-gcps2s-20261010-classic-target",
+      "instance_id": "139156170322758560",
+      "private_ip": "10.81.0.10",
+      "public_ip": "34.131.232.234",
+      "identity_verified": true,
+      "serial_port": 1,
+      "fingerprint_blocks": 0,
+      "sha256_fingerprint_tokens": 0,
+      "public_hostkey_candidates": 0,
+      "hostkey_marker_present": false
+    }
+  ],
+  "known_hosts_unchanged": true,
+  "scan_only_acceptance": false,
+  "listener_readiness_verified": false,
+  "secrets_output": false
+}
