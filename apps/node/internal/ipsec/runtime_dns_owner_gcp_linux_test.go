@@ -223,5 +223,22 @@ func TestDNSOwnerViewGCPNative(t *testing.T) {
 	if _, err = c.proveResolverDNS(ctx, config, config.Endpoints[0]); err == nil {
 		t.Fatal("cleaned native epoch retained DNS authority")
 	}
+	// Keep the captured original accepted authority live: denial must come from
+	// cleanup/epoch withdrawal, not merely an expired synthetic fixture lease.
+	if _, err = proof.authority.RemainingForApply(proof.Identity, time.Second); err != nil {
+		t.Fatal("original native lease expired before cleanup exchange check")
+	}
+	transport := &DNSRuntimeTransport{}
+	transport.Attach(c)
+	for _, protocol := range []string{"udp", "tcp"} {
+		endpoint := config.Endpoints[0]
+		endpoint.Transport = protocol
+		config.Endpoints = []fqdnrpc.ResolverEndpoint{endpoint}
+		response, exchangeErr := transport.ExchangeDNS(ctx, config, endpoint, query)
+		if exchangeErr == nil || len(response) != 0 {
+			t.Fatal("cleaned native epoch accepted normal DNS exchange", protocol)
+		}
+	}
+	fmt.Println("GCP_DNS_OWNER_NATIVE_CLEANUP_EXCHANGE_DENIED")
 	fmt.Println("GCP_DNS_OWNER_NATIVE_CLEANUP_DENIED")
 }
