@@ -65,19 +65,25 @@ func TestAzureDisabled15CleanupRemediationNative(t *testing.T) {
 	if b.CPDesiredIntent != "disabled" || b.CPCleanupState != "pending" || b.CPDesiredRevision != 15 || b.DesiredRevision != 15 || !validDigest(b.NormalReadSHA256) {
 		t.Fatal("exact Azure15 normal cleanup baseline refused")
 	}
+	attestationOnly := os.Getenv("TUNNEX_AZURE_DISABLED15_ATTESTATION_ONLY") == "1"
 	verifyNormalRead := func() {
 		raw, st, err := remediationRead("/run/azure-cleanup15-v2-normal-read.json")
 		if err != nil || uint64(st.Dev) != b.NormalReadDevice || st.Ino != b.NormalReadInode || remediationSHA(raw) != b.NormalReadSHA256 {
 			t.Fatal("normal API read evidence changed")
 		}
-		if !azure15NormalReadMatches(raw, b, time.Now()) {
+		now := time.Now()
+		if attestationOnly {
+			reference, parseErr := time.Parse(time.RFC3339Nano, b.NormalReadObservedAt)
+			if parseErr != nil {
+				t.Fatal("read_only_evidence_timestamp_refused")
+			}
+			now = reference // Read-only comparison: preserve exact bytes/inode/hash/shape, isolate only age.
+		}
+		if !azure15NormalReadMatches(raw, b, now) {
 			t.Fatal("normal API disabled15 evidence refused or stale")
 		}
 	}
-	attestationOnly := os.Getenv("TUNNEX_AZURE_DISABLED15_ATTESTATION_ONLY") == "1"
-	if !attestationOnly {
-		verifyNormalRead()
-	}
+	verifyNormalRead()
 	verify := func() ([]byte, runtimeJournalPayload) {
 		ns, e := os.Readlink("/proc/self/ns/net")
 		if e != nil || ns != b.Namespace {
