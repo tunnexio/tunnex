@@ -26,10 +26,21 @@ def command(args,timeout=15):
 
 def read_owned(path,owner):
  path=Path(path)
- if not path.is_absolute() or path.resolve()!=path or path.parent.stat().st_uid!=owner or stat.S_IMODE(path.parent.stat().st_mode)!=0o700:raise ValueError('private path')
- st=path.stat()
- if st.st_uid!=owner or stat.S_IMODE(st.st_mode)!=0o600 or not stat.S_ISREG(st.st_mode) or st.st_size>10485760:raise ValueError('private file')
- return path.read_bytes()
+ historical={PRIVATE/'azure-genuine-reboot-proof.json':PROOF_SHA,PRIVATE/'azure-stopped-journal.json':STOP_SHA}
+ parent_owner=1000 if owner==0 and path in historical else owner
+ if not path.is_absolute() or path.resolve()!=path:raise ValueError('private path')
+ parent=path.parent.stat()
+ if parent.st_uid!=parent_owner or stat.S_IMODE(parent.st_mode)!=0o700:raise ValueError('private parent')
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ try:
+  st=os.fstat(fd)
+  if st.st_uid!=owner or stat.S_IMODE(st.st_mode)!=0o600 or not stat.S_ISREG(st.st_mode) or st.st_size>10485760:raise ValueError('private file')
+  with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read(10485761)
+  after=os.fstat(fd)
+  if len(raw)!=st.st_size or (st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise ValueError('file changed')
+  if path in historical and hashlib.sha256(raw).hexdigest()!=historical[path]:raise ValueError('historical hash')
+  return raw
+ finally:os.close(fd)
 
 def save(path,raw):
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
@@ -120,7 +131,7 @@ def run(args):
  if machine!=MACHINE or historical['MachineID']!=machine or historical['NewBootID']!=boot:raise ValueError('host reboot')
  b['historical_boot']={'proof_sha256':PROOF_SHA,'stopped_journal_sha256':STOP_SHA,'root_attested_host_machine_id':machine}
  attestation={'observed_at':datetime.now(timezone.utc).isoformat(),'container_id':p.CONTAINER,'image_sha256':p.IMAGE,'node_executable_sha256':p.NODE,'binding':b,'journal_cleanup_desired_revision':entry['CleanupDesiredRevision']}
- binding=p.build(normal,attestation,immutable,args.mode,datetime.now(timezone.utc))
+ binding=p.build(fresh,attestation,immutable,args.mode,datetime.now(timezone.utc))
  if fresh.get('policy_count')!=0:raise ValueError('empty policies')
  STAGE='private_install'
  q=PRIVATE/('maxproof-window-'+str(uuid.uuid4()));q.mkdir(mode=0o700)
@@ -133,13 +144,17 @@ def run(args):
  command(['docker','exec','-u0',p.CONTAINER,'chmod','700',helper])
  if command(['docker','exec','-u0',p.CONTAINER,'sha256sum',helper]).decode().split()[0]!=p.OBSERVER:raise ValueError('installed binary')
  STAGE='pre_observer_bracket'
- if identity()!=before or not authority_equal(fresh,read_normal(args.state,immutable['purpose'])):raise ValueError('bracket')
+ latest=read_normal(args.state,immutable['purpose'])
+ if identity()!=before or not authority_equal(fresh,latest):raise ValueError('bracket')
+ if p.build(latest,attestation,immutable,args.mode,datetime.now(timezone.utc))!=binding:raise ValueError('current observer binding')
  if not 0<=(datetime.now(timezone.utc)-p.timestamp(normal['observed_at'])).total_seconds()<=60:raise ValueError('expired input')
  STAGE='observer'
  result=subprocess.run(['docker','exec','-u0','-e','TUNNEX_AZURE_MAX_PREFIX_NATIVE_PROOF=1',p.CONTAINER,helper,'-test.run=^TestAzureOwnedMaxPrefixNativeProof$','-test.count=1','-test.v','-test.timeout=30s'],capture_output=True,timeout=35)
  raw=result.stdout+result.stderr;save(q/'observer-private.log',raw)
  STAGE='post_observer_bracket'
- if identity()!=before or not authority_equal(fresh,read_normal(args.state,immutable['purpose'])):raise ValueError('bracket')
+ latest=read_normal(args.state,immutable['purpose'])
+ if identity()!=before or not authority_equal(fresh,latest):raise ValueError('bracket')
+ if p.build(latest,attestation,immutable,args.mode,datetime.now(timezone.utc))!=binding:raise ValueError('current observer binding')
  STAGE='receipt_extract';receipt=extract(raw,result.returncode,binding);save(q/'native-receipt.json',receipt)
  print(json.dumps({'version':1,'category':'independent_observation_written','mode':args.mode,'private_run_id':q.name,'receipt_sha256':hashlib.sha256(receipt).hexdigest()}))
 

@@ -58,6 +58,13 @@ class Lifecycle(unittest.TestCase):
   return a.operate(phase,type('Client',(),{'call':staticmethod(self.call)})(),self.setup,self.state,**kw)
  def prep(self):self.run_phase('prepare',allocation=self.allocation)
  def remove(self):self.run_phase('disable');self.run_phase('delete')
+ def test_original_restore_read_real_empty_policy_proof(self):
+  self.grants=[{'id':I(99)}];self.prep()
+  # Original prepare/read may retain eight real grants; restore-read for observation must prove empty.
+  with self.assertRaises(ValueError):self.run_phase('restore-read')
+  self.grants=[];result=self.run_phase('restore-read')
+  self.assertEqual(result['policy_count'],0);self.assertEqual(result['runtime_observation'],'not_requested')
+  self.assertFalse(any(method!='GET' and path.endswith('/policies') for method,path,body,revision in self.calls))
  def test_full_normal_new_ids_limit_and_restoration_lineage_no_grants(self):
   self.prep();self.remove();self.run_phase('create',psk='private.offline.key',discovery=self.discovery)
   saved=json.loads(a.secure.read(self.state));self.assertNotEqual(saved['target']['id'],a.ORIGINAL);self.assertTrue(set(saved['target']['tunnel_ids']).isdisjoint(self.allocation['tunnel_ids']))

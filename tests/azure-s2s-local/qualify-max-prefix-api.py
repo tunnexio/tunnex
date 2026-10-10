@@ -162,7 +162,7 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
  projected=transition.prior_projection(fresh,setup,prior) if target['id']==prior else life.connection_projection(fresh,setup,target['id'])
  output={'version':1,'phase':phase,'purpose':purpose,'observed_at':datetime.now(timezone.utc).isoformat(),'connection':projected,'saved_stage':state['stage'],'scope':'Normal API readback only; no BGP/native/packet proof'}
  if fresh['desired_intent']!='deleted':
-  if 'target' in state or state['purpose']=='baseline':no_grants(client,base);output['policy_count']=0
+  if phase=='restore-read' or 'target' in state or state['purpose']=='baseline':no_grants(client,base);output['policy_count']=0
   output['normal_connection']={**contract(client.call('GET',path+'/configuration'),target['id']),**projected}
   if phase=='restore-read':output['runtime_observation']='not_requested';output['scope']='Immutable normal connection/config/policy identity only; no runtime or readiness inference'
   else:output['runtime']=life.runtime_projection(client.call('GET',path+'/status'),target['tunnel_ids'])
