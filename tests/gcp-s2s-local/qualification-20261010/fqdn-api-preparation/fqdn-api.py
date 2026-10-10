@@ -31,7 +31,7 @@ def baseline_valid(b):
  for k,count in [('connections',9),('resources',13),('policies',12)]:
   if len(ids(b[k]))!=count:raise ValueError('unexpected current owned baseline')
  ids(b['fqdn']);plan.context(b['context'])
- if b['setting']!={'enabled':True}:raise ValueError('existing opt-in required')
+ if b['setting'].get('enabled')is not True:raise ValueError('existing opt-in required')
  names=[r['name']for r in b['fqdn']]
  for label in LABELS:plan.create(b['context'],label,names)
 def preserve(b,current,owned):

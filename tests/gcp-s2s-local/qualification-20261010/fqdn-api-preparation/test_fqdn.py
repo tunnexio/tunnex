@@ -2,12 +2,16 @@ import importlib.util,pathlib,unittest,copy,uuid
 spec=importlib.util.spec_from_file_location('f',pathlib.Path(__file__).with_name('fqdn-api.py'));f=importlib.util.module_from_spec(spec);spec.loader.exec_module(f)
 def rows(n):return [{'id':str(uuid.uuid4())}for _ in range(n)]
 def baseline():
- return {'configurations':{cid:{}for cid in ('80c20667-8d84-4dd8-8e51-ae4a10445cbb','b79d7eda-fafe-41cf-af2c-4115d4ef32c6','431fa305-4d3d-4c38-b0e4-88068c0e2297')},'connections':rows(9),'resources':rows(13),'policies':rows(12),'fqdn':[],'setting':{'enabled':True},'context':{'id':f.plan.CONFIG,'site_id':f.plan.SITE,'gateway_id':f.plan.NODE,'state':'active','version':1,'profiles':[{'id':f.plan.PROFILE,'zone_suffixes':[f.plan.ZONE],'provider_hint':'google_cloud','legacy_default':False,'ipsec_path':{'connection_id':f.plan.CONNECTION,'configuration_revision':1,'source_address':'10.70.0.2'},'endpoints':[{'address':'10.81.0.2','port':53,'transport':'tcp'},{'address':'10.81.0.2','port':53,'transport':'udp'}]}]}}
+ return {'configurations':{cid:{}for cid in ('80c20667-8d84-4dd8-8e51-ae4a10445cbb','b79d7eda-fafe-41cf-af2c-4115d4ef32c6','431fa305-4d3d-4c38-b0e4-88068c0e2297')},'connections':rows(9),'resources':rows(13),'policies':rows(12),'fqdn':[],'setting':{'enabled':True,'expected_impact_token':None},'context':{'id':f.plan.CONFIG,'site_id':f.plan.SITE,'gateway_id':f.plan.NODE,'state':'active','version':1,'profiles':[{'id':f.plan.PROFILE,'zone_suffixes':[f.plan.ZONE],'provider_hint':'google_cloud','legacy_default':False,'ipsec_path':{'connection_id':f.plan.CONNECTION,'configuration_revision':1,'source_address':'10.70.0.2'},'endpoints':[{'address':'10.81.0.2','port':53,'transport':'tcp'},{'address':'10.81.0.2','port':53,'transport':'udp'}]}]}}
 class Tests(unittest.TestCase):
  def test_unknown_baseline_duplicate_context(self):
   for mutate in [lambda b:b['policies'].append({'id':str(uuid.uuid4())}),lambda b:b['resources'].__setitem__(1,b['resources'][0]),lambda b:b['context'].__setitem__('version',2)]:
    b=baseline();mutate(b)
    with self.assertRaises(ValueError):f.baseline_valid(b)
+ def test_actual_nullable_setting_shape(self):
+  b=baseline();f.baseline_valid(b)
+  b['setting']['enabled']=False
+  with self.assertRaises(ValueError):f.baseline_valid(b)
  def test_existing_name_refuses(self):
   b=baseline();b['fqdn']=[{'id':str(uuid.uuid4()),'name':'GCP Classic FQDN qualification app 20261010'}]
   with self.assertRaises(ValueError):f.baseline_valid(b)
