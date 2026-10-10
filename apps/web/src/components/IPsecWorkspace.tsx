@@ -21,6 +21,7 @@ type Eligibility = components["schemas"]["IPsecEligibility"];
 function canEnableConfiguration(provider: Provider, eligibility: Eligibility): boolean {
   if (!eligibility.eligible) return false;
   if (provider.profile_id === "aws-static-ipv4-v1" && provider.configuration?.mode === "ipv4-static") return true;
+  if (provider.profile_id === "gcp-ha-bgp-ipv4-v1") return provider.configuration?.mode === "ipv4-bgp" && eligibility.bgp?.eligible === true && eligibility.gcp_ha?.eligible === true;
   return provider.profile_id === "aws-bgp-ipv4-v1" && provider.configuration?.mode === "ipv4-bgp" && eligibility.bgp?.eligible === true;
 }
 function privateASN(value: string): boolean {
@@ -217,7 +218,7 @@ function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: str
       {!result.configuration ? <p className="text-sm text-ink-secondary">Configuration removed. Identity retained.</p> : <div className="space-y-4">
         <ResourceSummary title="Stored configuration" headingLevel={4}><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt>Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt>Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></ResourceSummary>
           {result.configuration.bgp && <dl className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-4">{[
-            ["Customer ASN", result.configuration.bgp.local_asn], ["AWS ASN", result.configuration.bgp.remote_asn],
+            ["Customer ASN", result.configuration.bgp.local_asn], [result.profile_id.startsWith("gcp-") ? "Cloud Router ASN" : "AWS ASN", result.configuration.bgp.remote_asn],
             ["Router ID", result.configuration.bgp.router_id], ["Maximum prefixes per peer", result.configuration.bgp.maximum_prefixes],
           ].map(([label, value]) => <div key={label}><dt className="text-ink-secondary">{label}</dt><dd className="font-mono">{value}</dd></div>)}</dl>}
         <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} mode={result.configuration.mode === "ipv4-bgp" ? "ipv4-bgp" : "ipv4-static"} approvedRemotePrefixes={result.configuration.remote_prefixes} /></div>
@@ -356,6 +357,7 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
       </fieldset>
       <div className="ipsec-setup-readiness"><p role="status" className="text-ink-secondary">{checking ? "Checking gateway support…" : currentEligibility ? eligibilityText[currentEligibility.reason] : "Choose a network and gateway to check support."}</p>{site && gateway && <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => setCheckAttempt(value => value + 1)}>Check support</Button>}</div>
       {mode === "ipv4-bgp" && currentEligibility?.eligible && !currentEligibility.bgp?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this BGP configuration disabled. Enabling requires a gateway with fresh BGP support.</p>}
+      {gcp && !classic && currentEligibility?.eligible && !currentEligibility.gcp_ha?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this HA configuration disabled. Enabling requires fresh Google Cloud HA VPN support from this gateway.</p>}
       <ErrorText>{error}</ErrorText>
       <div className="ipsec-setup-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy}>Next: tunnels</Button> : <Button type="submit" disabled={busy || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}</div>
     </form>

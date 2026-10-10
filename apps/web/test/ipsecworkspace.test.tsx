@@ -391,6 +391,7 @@ it("saves explicit GCP HA profile using common BGP fields and interface review",
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});
  expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(true);
  expect(screen.getByLabelText("Cloud Router ASN")).toBeTruthy();
+ expect(screen.getByText(/Enabling requires fresh Google Cloud HA VPN support/)).toBeTruthy();
  expect(screen.getByText(/A single local gateway/)).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"})); fillBGPTunnels();
  expect(screen.getByText("Tunnel 1 · GCP interface 0")).toBeTruthy();
@@ -411,6 +412,28 @@ it("keeps Classic save gated while one-tunnel provider storage is unavailable", 
 it("refuses to enable GCP from generic or AWS BGP readiness",async()=>{
  const original=mock.get.getMockImplementation()!;
  mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true,reason:"eligible"}}}:original(path,opts));
+ render(view());await screen.findByRole("button",{name:"Office to cloud"});
+ await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
+ expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
+});
+it("reads GCP BGP configuration with Cloud Router labels and no PSK fields",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:original(path,opts));
+ render(view());fireEvent.click(await screen.findByRole("button",{name:"Office to cloud"}));
+ await screen.findByText("Google Cloud · IPv4 BGP · revision 1");
+ expect(screen.getByText("Cloud Router ASN")).toBeTruthy();expect(screen.queryByText("AWS ASN")).toBeNull();
+ expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
+});
+it("enables GCP HA only with actual GCP and BGP capability and rechecks at action",async()=>{
+ const original=mock.get.getMockImplementation()!;let supported=true;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true,reason:"eligible"},gcp_ha:{eligible:supported,reason:supported?"eligible":"unsupported"}}}:original(path,opts));
+ render(view());fireEvent.click(await (await connectionMenu("Office to cloud")).findByRole("menuitem",{name:"Enable Office to cloud"}));
+ supported=false;fireEvent.click(screen.getByRole("button",{name:"Enable connection"}));
+ await screen.findByText("Gateway readiness changed. Close and refresh before enabling.");expect(mock.put).not.toHaveBeenCalled();
+});
+it("refuses GCP HA enable when GCP readiness exists but BGP readiness is stale",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:false,reason:"report_stale"},gcp_ha:{eligible:true,reason:"eligible"}}}:original(path,opts));
  render(view());await screen.findByRole("button",{name:"Office to cloud"});
  await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
  expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
