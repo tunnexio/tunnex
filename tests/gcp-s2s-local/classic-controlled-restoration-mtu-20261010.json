@@ -342,5 +342,13 @@
       "First missing evidence directory refusal occurred before stop; required root700 directory created",
       "First postrestart1400 probe timed out; recorded independently, no reliability claim"
     ]
+  },
+  "final_peer": {
+    "scope": "only owned strictserve and peerPID1daemon gracefully stopped beforeboundeddeadline; gateway untouched",
+    "strict_serve_exit": 0,
+    "strict_serve_seconds": 824.47,
+    "preserved": "container/config/network/evidence",
+    "sha256": "28e2ee67083de9956a02664696917b02effe0933b8b4746f369be56e22abf99d",
+    "state": "running=false exit=0 oom=false finished=2026-10-10T12:19:44.472269135Z"
   }
 }
