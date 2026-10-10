@@ -17,6 +17,11 @@ import (
 
 var ErrRuntimeJournal = errors.New("IPsec runtime journal unavailable")
 
+// A journal includes bounded restoration history and both potential guard
+// templates during an atomic replacement. Its envelope can exceed one native
+// kernel dump without increasing any native-reader limit or dropping duties.
+const runtimeJournalLimit = 16 << 20
+
 type RuntimePhase string
 
 const (
@@ -176,11 +181,11 @@ func (j *RuntimeJournal) read() (runtimeJournalPayload, error) {
 	}
 	defer f.Close()
 	info, e := f.Stat()
-	if e != nil || !journalPrivate(info, false) || info.Size() > kernelDumpLimit {
+	if e != nil || !journalPrivate(info, false) || info.Size() > runtimeJournalLimit {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
-	raw, e := io.ReadAll(io.LimitReader(f, kernelDumpLimit+1))
-	if e != nil || len(raw) > kernelDumpLimit {
+	raw, e := io.ReadAll(io.LimitReader(f, runtimeJournalLimit+1))
+	if e != nil || len(raw) > runtimeJournalLimit {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -509,7 +514,7 @@ func (j *RuntimeJournal) saveLocked(next runtimeJournalPayload) error {
 		return ErrRuntimeJournal
 	}
 	raw, e := json.Marshal(runtimeJournalEnvelope{Payload: next, Checksum: journalChecksum(next)})
-	if e != nil || len(raw) > kernelDumpLimit {
+	if e != nil || len(raw) > runtimeJournalLimit {
 		return ErrRuntimeJournal
 	}
 	current, e := j.read()
