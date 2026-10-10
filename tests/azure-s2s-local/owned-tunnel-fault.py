@@ -7,6 +7,7 @@ import ipaddress
 import json
 import os
 import signal
+import socket
 import subprocess
 import time
 
@@ -48,6 +49,8 @@ def main():
     parser.add_argument('--slot', type=int, choices=[1, 2])
     parser.add_argument('--seconds', type=int, default=90)
     args = parser.parse_args()
+    if socket.gethostname() != 'tunnex-peer':
+        raise ValueError('owned peer hostname required')
     if os.geteuid() != 0:
         raise ValueError('owned host root required')
     if args.action == 'clear':
