@@ -172,6 +172,12 @@ func (c *RuntimeController) RefreshIPsecRecovery(ctx context.Context) error {
 		if h == nil || !h.seen {
 			continue
 		}
+		// Historical cleanup obligations can share this connection ID with the
+		// current delivery. They cannot invalidate the current delivery's
+		// process-local evidence; its own entry still passes every check below.
+		if entry.DeliveryID != h.epoch.DeliveryID {
+			continue
+		}
 		if entry.Phase != RuntimeApplied || entry.ContractVersion != 2 || entry.AbsenceOnly || !validJournalRecovery(*entry) || entry.Recovery.Stage != "completed" {
 			delete(c.recoveryHistory, entry.Allocation.ConnectionID)
 			continue
