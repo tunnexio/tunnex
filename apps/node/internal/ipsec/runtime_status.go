@@ -158,9 +158,17 @@ type runtimeStatusReaders struct {
 }
 
 func runtimeObservedStatuses(ctx context.Context, e RuntimeJournalEntry, r runtimeStatusReaders) [2]string {
+	return runtimeObservedStatusesObserved(ctx, e, r, nil)
+}
+
+func runtimeObservedStatusesObserved(ctx context.Context, e RuntimeJournalEntry, r runtimeStatusReaders, observe func(string)) [2]string {
+	fail := func(reason string) [2]string {
+		reportNativeFailure(ctx, observe, reason)
+		return [2]string{"unknown", "unknown"}
+	}
 	unknown := [2]string{"unknown", "unknown"}
 	if r.daemon == nil || r.kernel == nil || r.xfrm == nil || r.alive == nil || !r.alive() {
-		return unknown
+		return fail("daemon_read")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -172,7 +180,13 @@ func runtimeObservedStatuses(ctx context.Context, e RuntimeJournalEntry, r runti
 		k, ke := r.kernel(ctx)
 		x, xe := r.xfrm(ctx)
 		if de != nil || ke != nil || xe != nil || ctx.Err() != nil || !r.alive() {
-			return unknown
+			reason := "daemon_read"
+			if de == nil && ke != nil {
+				reason = "kernel_read"
+			} else if de == nil && ke == nil && xe != nil {
+				reason = "xfrm_read"
+			}
+			return fail(reason)
 		}
 		current := runtimeTunnelStatuses(e, d, k, x)
 		if pass == 0 {
@@ -180,8 +194,11 @@ func runtimeObservedStatuses(ctx context.Context, e RuntimeJournalEntry, r runti
 			previousX = x
 			previousK = k
 		} else {
-			if !reflect.DeepEqual(connectionXFRMSnapshot(e, previousX), connectionXFRMSnapshot(e, x)) || !reflect.DeepEqual(connectionKernelSnapshot(e, previousK), connectionKernelSnapshot(e, k)) {
-				return unknown
+			if !reflect.DeepEqual(connectionXFRMSnapshot(e, previousX), connectionXFRMSnapshot(e, x)) {
+				return fail("xfrm_snapshot_changed")
+			}
+			if !reflect.DeepEqual(connectionKernelSnapshot(e, previousK), connectionKernelSnapshot(e, k)) {
+				return fail("kernel_snapshot_changed")
 			}
 			for i := range current {
 				if current[i] != before[i] {

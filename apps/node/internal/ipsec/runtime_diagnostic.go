@@ -73,9 +73,9 @@ func (c *RuntimeController) claimDNSDiagnostic(now time.Time) bool {
 }
 
 type runtimeDNSReadTiming struct {
-	GuardCommandMillis, GuardVerificationMillis, SocketMillis int64
-	GuardBracketCount                                         int
-	GuardFailureClass, SocketStage, GuardRevalidation         string
+	GuardCommandMillis, GuardVerificationMillis, SocketMillis             int64
+	GuardBracketCount                                                     int
+	GuardFailureClass, SocketStage, GuardRevalidation, NativeFailureClass string
 }
 
 func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool, detail ...runtimeDNSReadTiming) {
@@ -106,10 +106,32 @@ func validDNSReadTiming(t runtimeDNSReadTiming) bool {
 	default:
 		return false
 	}
+	if !validNativeFailureClass(t.NativeFailureClass) {
+		return false
+	}
 	switch t.SocketStage {
 	case "", "input", "dial", "write", "length", "body", "complete":
 	default:
 		return false
 	}
 	return true
+}
+
+func validNativeFailureClass(reason string) bool {
+	switch reason {
+	case "", "binding_invalid", "route_read_or_binding", "daemon_read", "kernel_read", "xfrm_read", "kernel_snapshot_changed", "xfrm_snapshot_changed", "owned_status_unknown", "all_tunnels_down", "environment_read_or_validation", "environment_changed", "context_deadline", "context_canceled":
+		return true
+	}
+	return false
+}
+func reportNativeFailure(ctx context.Context, observe func(string), reason string) {
+	if observe == nil {
+		return
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		reason = "context_deadline"
+	} else if ctx.Err() != nil {
+		reason = "context_canceled"
+	}
+	observe(reason)
 }

@@ -163,25 +163,44 @@ func (c *RuntimeController) BGPCapability() int {
 }
 
 func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	return c.proveBGPCurrentObserved(ctx, e, env, nil)
+}
+func (c *RuntimeController) proveBGPCurrentObserved(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string)) error {
+	reported := false
+	report := func(reason string) {
+		if !reported {
+			reportNativeFailure(ctx, observe, reason)
+			reported = true
+		}
+	}
 	if !validJournalBGP(e) || !validBGPRoutes(e) || e.ContractVersion != 3 || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
+		report("binding_invalid")
 		return ErrRuntimeController
 	}
 	if c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true) != nil {
+		report("route_read_or_binding")
 		return ErrRuntimeController
 	}
-	statuses := c.observeRecovery(ctx, e)
+	statuses := c.observeRecoveryObserved(ctx, e, report)
 	up := false
 	for _, state := range statuses {
 		if state != "up" && state != "down" {
+			report("owned_status_unknown")
 			return ErrRuntimeController
 		}
 		up = up || state == "up"
 	}
 	if !up {
+		report("all_tunnels_down")
 		return ErrRuntimeController
 	}
 	current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
 	if err != nil || !reflect.DeepEqual(current, env) {
+		reason := "environment_changed"
+		if err != nil {
+			reason = "environment_read_or_validation"
+		}
+		report(reason)
 		return ErrRuntimeController
 	}
 	return nil

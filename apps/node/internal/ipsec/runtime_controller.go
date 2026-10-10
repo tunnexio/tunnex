@@ -1014,11 +1014,14 @@ func (c *RuntimeController) AttachDaemon(client *DaemonClient, alive func() bool
 }
 
 func (c *RuntimeController) proveCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	return c.proveCurrentObserved(ctx, e, env, nil)
+}
+func (c *RuntimeController) proveCurrentObserved(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string)) error {
 	if c.prove != nil {
 		return c.prove(ctx, e, env)
 	}
 	if e.ContractVersion == 3 {
-		return c.proveBGPCurrent(ctx, e, env)
+		return c.proveBGPCurrentObserved(ctx, e, env, observe)
 	}
 	return c.proveRuntime(ctx, e, env)
 }

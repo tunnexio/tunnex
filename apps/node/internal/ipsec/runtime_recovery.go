@@ -39,19 +39,24 @@ func (c *RuntimeController) recoveryNow() time.Duration {
 	return c.recoveryClock()
 }
 func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJournalEntry) [2]string {
+	return c.observeRecoveryObserved(ctx, e, nil)
+}
+func (c *RuntimeController) observeRecoveryObserved(ctx context.Context, e RuntimeJournalEntry, observe func(string)) [2]string {
 	if c.recoveryObserve != nil {
 		return c.recoveryObserve(ctx, e)
 	}
 	unknown := [2]string{"unknown", "unknown"}
 	kr, err := NewKernelReader(c.config.IPPath)
 	if err != nil {
+		reportNativeFailure(ctx, observe, "kernel_read")
 		return unknown
 	}
 	xr, err := NewXFRMReader(c.config.IPPath)
 	if err != nil {
+		reportNativeFailure(ctx, observe, "xfrm_read")
 		return unknown
 	}
-	return runtimeObservedStatuses(ctx, e, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
+	return runtimeObservedStatusesObserved(ctx, e, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive}, observe)
 }
 func (c *RuntimeController) reconcileRecoveryRoutes(ctx context.Context, e RuntimeJournalEntry, target uint8) error {
 	if c.recoverySwitch != nil {
