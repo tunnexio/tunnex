@@ -89,16 +89,18 @@
     },
     {
       "path": "tests/azure-s2s-local/run-max-prefix-observer.py",
-      "sha256": "e237a2d8951ff405c090e31901094ddb0844550e616b61b092539468f290148c",
-      "bytes": 13205
+      "sha256": "bdf5371c1edf3a3c5bc3c232661b8a2a888b8f6420fc2e7bc5bf5c0ab985dbf7",
+      "bytes": 13217
     },
     {
       "path": "tests/azure-s2s-local/max-prefix-observer-wrapper-review.md",
-      "sha256": "a70dbe9123cbc013ef4d85659084c1a887fac89d86641836f4c53ad48e0ac8c9",
-      "bytes": 8486
+      "sha256": "4cc969d07407b403482a925e1eadde818a92bff9abcd7700481c925a7fea0939",
+      "bytes": 8965
     }
   ],
   "imports": "Original15 Python import closure plus prepare-max-prefix-observer.py imported by run-max-prefix-observer.py. Only standard library; preserve repository layout.",
   "excluded": "No .runtime/env/accounts/keys/captures/binaries/private baselines or receipts. Root separately attests a55 binary.",
-  "validation": "All listed Python source AST parsed; offline qualification17 and observer10 tests pass."
+  "validation": "All listed Python source AST parsed; offline qualification17 and observer10 tests pass.",
+  "reviewed_layout": "/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v2-669e541e",
+  "source_binding": "run-max-prefix-observer.py SOURCE points exclusively to this v2 layout. Complete closure includes corrected qualify-max-prefix-api.py. No old3cc fallback."
 }
