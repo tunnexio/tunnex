@@ -1,0 +1,32 @@
+{
+  "scope": "genuine local CP fresh enrolled Classic gateway and owned external emulator; no Google cloud acceptance",
+  "connection_id": "56125c63-10de-4e3c-8636-49a22d8c82e0",
+  "profile": "gcp-classic-static-ipv4-v1",
+  "source_peer": "76e1a87e",
+  "source_gateway": "aa72e085",
+  "observations": [
+    "Normal eligibility and configuration check200; create201 enable200rev2; public fresh singleUp",
+    "Default-deny for UDP16/1200/1400 and ungranted9002",
+    "Normal exact site76 to target75.10 UDP9000 grant201",
+    "16/1200 exactecho pass;1400 exactecho1422pass and both physical fragments retain scoped association bit+ReqID",
+    "Repeated1400echo9of10pass;one timeout retained, reliability cause unclassified",
+    "Premarked unrelated UDP9002 to9009 forwarded reply denied by owned peer prefix guard, no clientreceipt",
+    "All temporary owned nft diagnostic tables removed; no capture namespace holders"
+  ],
+  "evidence_sha256": {
+    "default-deny.json": "03edc02cede72a17fe0f2d78fc1b57bb03ee8d60ba48733ba4814135371333b2",
+    "allowed-fragment.json": "14cd421dbf82cfd3aeefd644327d72f6f02938e9db0579e4e9a2c3226ca4efad",
+    "fragment-repeat.json": "21d2c2c469ba0b14fd13a2a275ed8ee1461d32ad6c5b56ca4c11f0f42b5816d2",
+    "candidate-fragment-trace.txt": "31859adfd2be6477212b93fe91c3740dc4b7e796f9a67f9a13a874de2fb5da11",
+    "negative-premark-trace.txt": "bbe573bbaeb435fdb0a9d72bd38057aa9c5e37fffdbfbbb43789f0bd69b9d94d",
+    "negative-premark-result.txt": "26df78d0a048abcb372fed256acdd95e5a5c7e4669ae31c3f7ca1745d1f97ca8",
+    "initial-status.json": "5d7798451243f420d9880628ea3248e11daa62e65c24ff6800fd0f422c06aad8"
+  },
+  "pending": [
+    "supervised identity-preserving gateway restart",
+    "controlled symmetric lower-underlay MTU acceptance",
+    "isolate one transient repeated UDP timeout"
+  ],
+  "gateway_material_secrets_exported": false,
+  "gateway_guard_modified": false
+}
