@@ -32,5 +32,14 @@
     "azure-scale-ui-verified.png": "9c30cf23176e5ffa8c5a0714dbf10a755a68eeeca0abf45f4f12e16cdff04224",
     "azure-current-ui-tunnels.png": "21654be0c6042f37298e267b867ced31f9c13c4f53e1d3a855a26ae8289991fa",
     "azure-ui-import-draft-verified.png": "825caea51afa39a230c96e3a2519e74afd2423f1f73cdd8c3bd135ad652546ef"
+  },
+  "download_followup": {
+    "method": "Visible exact review link locator.downloadMedia",
+    "timeout_ms": 15000,
+    "result": "Timed out waiting for download",
+    "delivered_file_verified": false,
+    "page_after_attempt": "Original owned connection detail, both Up/BGP Established",
+    "source_link": "data:application/json URL with download attribute",
+    "scope": "No downloadable file delivery acceptance; no source defect inferred from browser timeout"
   }
 }

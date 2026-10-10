@@ -118,5 +118,18 @@
     "No pre-fault established TCP socket continuity test",
     "No exact daemon AUTH_FAILED category observed",
     "20s settled packet qualification does not prove sustained stability"
-  ]
+  ],
+  "restored_fqdn_stored_readback": {
+    "ready": false,
+    "state": "failed",
+    "status_source": "latest_generation",
+    "failure_code": "timeout",
+    "grant_issued": false
+  },
+  "restored_ui": {
+    "both_tunnels": "Up",
+    "both_bgp": "Established",
+    "approved_route_slot": 1,
+    "screenshot_sha256": "14ca0a61a98e1c50a5f3ac695ccff4e5eaec7661f258f64789ef9da05fbd8f2c"
+  }
 }
