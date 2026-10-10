@@ -15,7 +15,7 @@ Use the existing Site-to-site entry point, IPsec workspace, PSK encryption/rotat
 
 ## Supported provider contract
 
-HA VPN + Cloud Router/BGP is the primary profile (`gcp-ha-ipv4-bgp-v1`). Classic route-based static IPv4 is a separate profile (`gcp-classic-static-ipv4-v1`), not an HA variant. The founder handoff authorizes development of both explicit profiles; the earlier routing-selection gate is removed.
+HA VPN + Cloud Router/BGP is the primary profile (`gcp-ha-bgp-ipv4-v1`). Classic route-based static IPv4 is a separate profile (`gcp-classic-static-ipv4-v1`), not an HA variant. The founder handoff authorizes development of both explicit profiles; the earlier routing-selection gate is removed.
 
 - HA topology: two distinct GCP gateway interfaces/tunnels to one Tunnex peer with a fixed public IPv4 address. Reuse the common FRR runtime. A single Tunnex VM is still a host failure domain; no host-HA/SLA claim.
 - Classic topology: one route-based tunnel to the peer, explicit static routes and return routes. Cardinality/cleanup cannot inherit AWS two-slot assumptions.

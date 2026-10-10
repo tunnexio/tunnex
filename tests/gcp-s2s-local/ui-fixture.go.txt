@@ -1,0 +1,42 @@
+package main
+import (
+ "context"
+ "encoding/json"
+ "errors"
+ "fmt"
+ "os"
+ "time"
+ "github.com/google/uuid"
+ "github.com/jackc/pgx/v5"
+ "github.com/jackc/pgx/v5/pgxpool"
+ "github.com/tunnexio/tunnex/apps/api/internal/password"
+)
+type account struct { Email string `json:"email"`; Password string `json:"password"` }
+func main(){
+ ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
+ pool,err:=pgxpool.New(ctx,os.Getenv("GCP_LOCAL_FIXTURE_DSN"));if err!=nil{panic("fixture DB config failed")};defer pool.Close()
+ tx,err:=pool.Begin(ctx);if err!=nil{panic("fixture DB unavailable")};defer tx.Rollback(ctx)
+ var db,user string;if tx.QueryRow(ctx,"SELECT current_database(),current_user").Scan(&db,&user)!=nil||db!="gcps2s"||user!="gcps2s"{panic("refuse non-owned fixture database")}
+ raw,err:=os.ReadFile(os.Getenv("GCP_LOCAL_FIXTURE_ACCOUNTS"));if err!=nil{panic("private fixture input missing")};defer clear(raw)
+ var accounts map[string]account;if json.Unmarshal(raw,&accounts)!=nil||len(accounts)!=3{panic("invalid fixture inputs")}
+ var org uuid.UUID
+ err=tx.QueryRow(ctx,"SELECT id FROM organizations WHERE slug='gcp-s2s-local'").Scan(&org)
+ if errors.Is(err,pgx.ErrNoRows){err=tx.QueryRow(ctx,"INSERT INTO organizations(name,slug) VALUES('GCP site-to-site local qualification','gcp-s2s-local') RETURNING id").Scan(&org)}
+ if err!=nil{panic("fixture organization unavailable")}
+ for _,role:=range []string{"owner","admin","member"}{
+  a:=accounts[role];if a.Email!="browser-"+role+"@gcp-s2s.local"||len(a.Password)<32{panic("invalid fixture identity")}
+  var id uuid.UUID;var hash string;var verified,cpadmin,wall bool;var status string
+  err=tx.QueryRow(ctx,"SELECT id,password_hash,email_verified_at IS NOT NULL,cp_admin,must_change_password,status FROM users WHERE email=$1",a.Email).Scan(&id,&hash,&verified,&cpadmin,&wall,&status)
+  if errors.Is(err,pgx.ErrNoRows){
+   hash,err=password.Hash(a.Password);if err!=nil{panic("fixture hashing failed")}
+   err=tx.QueryRow(ctx,"INSERT INTO users(email,name,password_hash,email_verified_at,cp_admin,must_change_password) VALUES($1,$2,$3,now(),false,false) RETURNING id",a.Email,"GCP local "+role,hash).Scan(&id);if err!=nil{panic("fixture insert failed")}
+   _,err=tx.Exec(ctx,"INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,$3)",org,id,role);if err!=nil{panic("fixture membership failed")}
+  }else{
+   if err!=nil||!verified||cpadmin||wall||status!="active"{panic("existing identity mismatch; refuse mutation")}
+   if _,err=password.Verify(a.Password,hash);err!=nil{panic("credential mismatch; refuse reset")}
+   var actual string;if tx.QueryRow(ctx,"SELECT role FROM memberships WHERE org_id=$1 AND user_id=$2",org,id).Scan(&actual)!=nil||actual!=role{panic("role mismatch; refuse mutation")}
+  }
+ }
+ if tx.Commit(ctx)!=nil{panic("fixture transaction failed")}
+ fmt.Println("Owned owner/admin/member fixtures ready; credentials remain private.")
+}
