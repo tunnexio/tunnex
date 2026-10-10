@@ -188,12 +188,19 @@ func (j *RuntimeJournal) read() (runtimeJournalPayload, error) {
 	if e != nil || len(raw) > runtimeJournalLimit {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
+	return decodeRuntimeJournalSnapshot(raw)
+}
+
+func decodeRuntimeJournalSnapshot(raw []byte) (runtimeJournalPayload, error) {
+	if len(raw) == 0 || len(raw) > runtimeJournalLimit {
+		return runtimeJournalPayload{}, ErrRuntimeJournal
+	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.UseNumber()
 	if !kernelJSONValue(d, 0) {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
-	if _, e = d.Token(); e != io.EOF {
+	if _, e := d.Token(); e != io.EOF {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
 	var env runtimeJournalEnvelope
