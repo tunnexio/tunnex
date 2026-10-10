@@ -349,6 +349,7 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	stage = "env_addresses_before"
+	addressReadStarted := time.Now()
 	addresses, e := r.ip(ctx, "-j", "-4", "address", "show")
 	if e != nil {
 		return fail()
@@ -502,7 +503,7 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 	}
 	stage = "env_addresses_after"
 	again, e = r.ip(ctx, "-j", "-4", "address", "show")
-	if e != nil || !bytes.Equal(again, addresses) {
+	if e != nil || !runtimeAddressBracket(addresses, again, time.Since(addressReadStarted)) {
 		return fail()
 	}
 	stage = "env_peer_routes_after"
