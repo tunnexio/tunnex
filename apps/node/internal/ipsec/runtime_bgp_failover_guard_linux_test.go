@@ -19,6 +19,12 @@ func TestNativeBGPHealthyDownGuardReadback(t *testing.T) {
 	if os.Getenv("TUNNEX_IPSEC_BGP_PARTIAL_GUARD_LAB") != "1" {
 		t.Skip("disconnected disposable namespace only")
 	}
+	for _, profile := range []string{"aws", "gcp-ha"} {
+		t.Run(profile, func(t *testing.T) { nativeBGPHealthyDownGuardReadback(t, profile) })
+	}
+}
+
+func nativeBGPHealthyDownGuardReadback(t *testing.T, profile string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	run := func(path string, args ...string) []byte {
@@ -52,6 +58,14 @@ func TestNativeBGPHealthyDownGuardReadback(t *testing.T) {
 		t.Fatal("owned component underlay identity refused")
 	}
 	e := bgpEntryFixture(t)
+	if profile == "gcp-ha" {
+		m := gcpMaterialFixture()
+		var err error
+		e, _, err = runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	e.Allocation.Namespace, _ = os.Readlink("/proc/self/ns/net")
 	for i := range e.Engines {
 		e.Engines[i].ReqID = e.Engines[i].XFRMID
@@ -71,10 +85,12 @@ func TestNativeBGPHealthyDownGuardReadback(t *testing.T) {
 	}()
 	links := []GuardInterface{{Name: "tnxbpartial", Index: underlay}, {Name: e.Observed[0].InterfaceName, Index: e.Observed[0].InterfaceIndex}, {Name: e.Observed[1].InterfaceName, Index: e.Observed[1].InterfaceIndex}}
 	var last GuardManifest
-	for down := 0; down < 2; down++ {
+	for down := -1; down < 2; down++ {
 		c := &RuntimeController{recoveryObserve: func(context.Context, RuntimeJournalEntry) [2]string {
 			states := [2]string{"up", "up"}
-			states[down] = "down"
+			if down >= 0 {
+				states[down] = "down"
+			}
 			return states
 		}}
 		active := runtimeActive{Entry: e, Environment: RuntimeEnvironment{Underlays: [2]RuntimeUnderlay{{InterfaceIndex: underlay, OuterMTU: 1500}, {InterfaceIndex: underlay, OuterMTU: 1500}}}}
@@ -82,11 +98,11 @@ func TestNativeBGPHealthyDownGuardReadback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		manifest, err := RenderGuard(GuardIntent{Namespace: e.Allocation.Namespace, OwnerID: e.Engines[0].Binding.GatewayID, Revision: int64(down + 1), Connections: []GuardConnection{g}})
+		manifest, err := RenderGuard(GuardIntent{Namespace: e.Allocation.Namespace, OwnerID: e.Engines[0].Binding.GatewayID, Revision: int64(down + 2), Connections: []GuardConnection{g}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if down == 1 {
+		if down >= 0 {
 			run("/usr/sbin/nft", "delete", "table", "inet", "tunnex_ipsec")
 		}
 		cmd := exec.CommandContext(ctx, "/usr/sbin/nft", "-j", "-f", "-")
@@ -99,13 +115,22 @@ func TestNativeBGPHealthyDownGuardReadback(t *testing.T) {
 		if VerifyGuardReadbackWithInterfaces([]byte(manifest.ExpectedJSON), raw, links) != nil {
 			t.Fatalf("native exact partial-health readback refused expected=%s observed=%s", manifest.ExpectedJSON, raw)
 		}
-		peer := e.Allocation.Tunnels[down].BGP.Peer.String()
-		for _, line := range strings.Split(manifest.NFT, "\n") {
-			if strings.Contains(line, peer) && strings.Contains(line, "counter accept") {
-				t.Fatal("down peer gained permission")
+		if down >= 0 {
+			peer := e.Allocation.Tunnels[down].BGP.Peer.String()
+			for _, line := range strings.Split(manifest.NFT, "\n") {
+				if strings.Contains(line, peer) && strings.Contains(line, "counter accept") {
+					t.Fatal("down peer gained permission")
+				}
 			}
 		}
 		last = manifest
+	}
+	for _, health := range [][2]string{{"down", "down"}, {"unknown", "up"}, {"up", "unknown"}} {
+		c := &RuntimeController{recoveryObserve: func(context.Context, RuntimeJournalEntry) [2]string { return health }}
+		active := runtimeActive{Entry: e, Environment: RuntimeEnvironment{Underlays: [2]RuntimeUnderlay{{InterfaceIndex: underlay, OuterMTU: 1460}, {InterfaceIndex: underlay, OuterMTU: 1460}}}}
+		if _, err := c.bgpGuard(ctx, active, 30*time.Second); err != ErrRuntimeController {
+			t.Fatal("unproven health gained grant", health, err)
+		}
 	}
 	raw := run("/usr/sbin/nft", "-j", "list", "table", "inet", "tunnex_ipsec")
 	if VerifyGuardReadbackWithInterfaces([]byte(last.ExpectedJSON), raw, links) != nil {

@@ -70,6 +70,26 @@ func TestClassicKernelNativeSingleTunnelLifecycle(t *testing.T) {
 	applyGuard(guard, 1)
 	applyGuard(GuardConnection{ID: p.ConnectionID, PrefixOnly: true, Local: guard.Local, Remote: guard.Remote}, 2)
 
+	// Exact ownership drift and foreign attached routes must block cleanup.
+	if _, err = a.run(ctx, "link", "set", "dev", p.Tunnels[0].Name, "alias", "foreign-owner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.Remove(ctx, p, owned); err != ErrKernelApply {
+		t.Fatal("foreign alias cleanup accepted", err)
+	}
+	if _, err = a.run(ctx, "link", "set", "dev", p.Tunnels[0].Name, "alias", p.Tunnels[0].Alias); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.run(ctx, "-4", "route", "add", "198.18.0.0/24", "dev", p.Tunnels[0].Name, "proto", "99"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.Remove(ctx, p, owned); err != ErrKernelApply {
+		t.Fatal("foreign route cleanup accepted", err)
+	}
+	if _, err = a.run(ctx, "-4", "route", "del", "198.18.0.0/24", "dev", p.Tunnels[0].Name, "proto", "99"); err != nil {
+		t.Fatal(err)
+	}
+
 	absent, err := a.Remove(ctx, p, owned)
 	if err != nil || absent.TunnelIDs[1] != ([16]byte{}) {
 		t.Fatal("single cleanup", err)
