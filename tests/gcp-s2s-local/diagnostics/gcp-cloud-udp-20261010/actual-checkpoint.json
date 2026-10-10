@@ -1,0 +1,85 @@
+{
+  "receipt_sha256": "91cc3a73d38dfa3087d481e12bb85c03e2fe77f21d89941be609e2fb96be5942",
+  "execution_chunks": [
+    "028bff",
+    "649359"
+  ],
+  "client": {
+    "protocol": "udp",
+    "destination": "10.81.0.10",
+    "source": "10.70.0.10",
+    "nonce": "5bdcf238-109b-4383-9188-68c8b4cb18db",
+    "payload_sha256": "27fd77bc235680b28ef93845f82885cd6225d91e1eb9d50ab68cfd03a21b4978",
+    "exact_response": true,
+    "outcome": "response",
+    "response_sha256": "27fd77bc235680b28ef93845f82885cd6225d91e1eb9d50ab68cfd03a21b4978",
+    "elapsed_ms": 5.578
+  },
+  "target": {
+    "stopped_by_request": true,
+    "counts": {
+      "exact_payload": 1,
+      "syn": 0,
+      "other_tuple": 0,
+      "unsupported": 0
+    },
+    "capture_packets": 3,
+    "capture_drops": 0,
+    "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+    "scope": "bounded raw receiver observation; no policy authority"
+  },
+  "gateway_capture": {
+    "capture_complete": true,
+    "counts": {
+      "ens4": {
+        "incoming_exact": 1,
+        "outgoing_exact": 0,
+        "other_tuple": 0,
+        "unsupported_fragment": 0,
+        "invalid_udp_length": 0
+      },
+      "txe936e4aecebb": {
+        "incoming_exact": 0,
+        "outgoing_exact": 0,
+        "other_tuple": 0,
+        "unsupported_fragment": 0,
+        "invalid_udp_length": 0
+      }
+    },
+    "stats": {
+      "ens4": {
+        "packets": 8,
+        "drops": 0
+      },
+      "txe936e4aecebb": {
+        "packets": 1,
+        "drops": 0
+      }
+    },
+    "stopped_by_request": true
+  },
+  "transport_identity_stable": true,
+  "guard_identity_stable": false,
+  "diagnostic_stable": false,
+  "sa_before": {
+    "ike_id": "1214",
+    "child_id": "78",
+    "reqid": 3912688814
+  },
+  "sa_after": {
+    "ike_id": "1214",
+    "child_id": "78",
+    "reqid": 3912688814
+  },
+  "guard_before": {
+    "Revision": 7539,
+    "Digest": "80d644f9cbe574f35b8cf099fc39835c2f0f204ada88e76482ccc44f91d91f94",
+    "Namespace": "net:[4026531840]"
+  },
+  "guard_after": {
+    "Revision": 7543,
+    "Digest": "9a0b1b2944d70eff054b1e6c33b0aa1466ce84caa71ae4296b06ae32f6d747e2",
+    "Namespace": "net:[4026531840]"
+  },
+  "scope": "One actual exact UDP echo checkpoint. Full guard stability gate false due legitimate revision churn. XFRM observer outgoing zero cannot be treated as drop given actual exact receiver echo. Original first UDP timeout remains unexplained; no permissions changed."
+}
