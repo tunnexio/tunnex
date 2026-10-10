@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import pathlib
 import select
 import shlex
 import socket
@@ -88,7 +89,7 @@ def observe(target,protocol,nonce):
  if len(names)!=1:raise ValueError('exact assigned target interface absent')
  counts={'exact_payload':0,'syn':0,'other_tuple':0,'unsupported':0}
  with socket.socket(socket.AF_PACKET,socket.SOCK_RAW,socket.htons(0x0800)) as s:
-  s.bind((names[0],0));s.setblocking(False)
+  s.bind((names[0],0x0800));s.setblocking(False)
   print(json.dumps({'ready':True,'target':target,'interface':names[0],'control':control}),flush=True)
   stopped=False
   deadline=time.monotonic()+20
@@ -106,7 +107,7 @@ def observe(target,protocol,nonce):
     kind=frame_match(s.recv(65535),target,protocol,nonce)
     if kind:counts[kind]+=1
   stats=s.getsockopt(263,6,8);packets,drops=struct.unpack('II',stats)
- print(json.dumps({'stopped_by_request':stopped,'counts':counts,'capture_packets':packets,'capture_drops':drops,'boot_id':open('/proc/sys/kernel/random/boot_id').read().strip(),'scope':'bounded raw receiver observation; no policy authority'}),flush=True)
+ print(json.dumps({'stopped_by_request':stopped,'counts':counts,'capture_packets':packets,'capture_drops':drops,'boot_id':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'scope':'bounded raw receiver observation; no policy authority'}),flush=True)
 
 def ssh(role,code):
  public,instance,pin,_=role
@@ -159,10 +160,16 @@ def remote(profile,expected,source):
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--profile',choices=TARGETS,required=True);p.add_argument('--expect',choices=['allow','deny'],required=True);p.add_argument('--evidence',required=True);a=p.parse_args()
- source=open(__file__).read().split('\nif __name__')[0]
+ source=pathlib.Path(__file__).read_text().split('\nif __name__')[0]
  parent=os.path.dirname(os.path.abspath(a.evidence));s=os.lstat(parent)
  if not stat.S_ISDIR(s.st_mode) or s.st_uid!=os.getuid() or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('owned0700 evidence directory required')
  fd=os.open(a.evidence,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ run=None
+ base={'started':True,'profile':a.profile,'expected':a.expect,'source_sha256':sha(source.encode()),'started_at_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+ def save(receipt):
+  nonlocal fd
+  with os.fdopen(fd,'w') as f:
+   fd=-1;json.dump(receipt,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
  try:
   # This source is delivered only to the designated bastion. No gcloud or local
   # private-host route is used and no pin/auth key is created or changed.
@@ -170,8 +177,14 @@ def main():
   run=subprocess.run(['ssh','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10',BASTION,'python3 -c '+shlex.quote(code)],capture_output=True,text=True,timeout=75)
   if run.returncode or len(run.stdout)>128*1024:raise ValueError('bounded bastion runner refused')
   result=json.loads(run.stdout,object_pairs_hook=unique)
-  receipt={'profile':a.profile,'expected':a.expect,'source_sha256':sha(source.encode()),'results':result,'accepted':len(result)==2 and all(x['accepted'] for x in result),'executed_at_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
-  with os.fdopen(fd,'w') as f:fd=-1;json.dump(receipt,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
+  receipt=dict(base,completed=True,results=result,accepted=len(result)==2 and all(x['accepted'] for x in result),executed_at_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()))
+  save(receipt)
+ except Exception as e:
+  stdout=run.stdout if run is not None else getattr(e,'stdout',None) or b''
+  stderr=run.stderr if run is not None else getattr(e,'stderr',None) or b''
+  asbytes=lambda value:value.encode() if isinstance(value,str) else value
+  save(dict(base,completed=False,accepted=False,error_type=type(e).__name__,returncode=run.returncode if run is not None else getattr(e,'returncode',None),stdout_sha256=sha(asbytes(stdout)),stderr_sha256=sha(asbytes(stderr)),failed_at_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())))
+  raise
  finally:
   if fd>=0:os.close(fd)
 

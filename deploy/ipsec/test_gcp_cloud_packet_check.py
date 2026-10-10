@@ -45,6 +45,21 @@ class PacketScopeTests(unittest.TestCase):
     with self.assertRaises(ValueError):m.verify_pin(m.CLIENT)
     path.chmod(0o600);path.write_text('compute.'+m.CLIENT[1]+' ssh-ed25519 '+m.base64.b64encode(b'drift').decode()+'\n')
     with self.assertRaises(ValueError):m.verify_pin(m.CLIENT)
+ def test_failure_receipt_and_no_replay(self):
+  for failure in [m.subprocess.TimeoutExpired('owned SSH',75,output=b'private-output',stderr=b'private-error'),m.subprocess.CompletedProcess(['ssh'],7,'private-output','private-error')]:
+   with tempfile.TemporaryDirectory() as directory:
+    m.os.chmod(directory,0o700);path=pathlib.Path(directory)/'new.json'
+    argv=['runner','--profile','classic','--expect','deny','--evidence',str(path)]
+    with mock.patch.object(m.sys,'argv',argv),mock.patch.object(m.subprocess,'run',side_effect=failure if isinstance(failure,Exception) else None,return_value=failure) as run:
+     with self.assertRaises(Exception):m.main()
+     receipt=m.json.loads(path.read_text());before=path.read_bytes()
+     self.assertTrue(receipt['started']);self.assertFalse(receipt['completed']);self.assertFalse(receipt['accepted'])
+     self.assertEqual(receipt['stdout_sha256'],m.sha(b'private-output'))
+     self.assertEqual(receipt['stderr_sha256'],m.sha(b'private-error'))
+     self.assertNotIn('private-output',path.read_text())
+     self.assertEqual(path.stat().st_mode&0o777,0o600)
+     with self.assertRaises(FileExistsError):m.main()
+     self.assertEqual(path.read_bytes(),before);self.assertEqual(run.call_count,1)
  def test_duplicate_receipt_refused(self):
   with self.assertRaises(ValueError):m.json.loads('{"accepted":true,"accepted":false}',object_pairs_hook=m.unique)
 
