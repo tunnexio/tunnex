@@ -111,7 +111,7 @@ def fault_inventory(local=None):
             raise ValueError('fault table read refused')
         return None
     doc = json.loads(raw)
-    _, text = run(['nft', '-n', 'list', 'table', 'inet', TABLE])
+    _, text = run(['nft', 'list', 'table', 'inet', TABLE])
     attest_fault_text(doc, text.decode(), local)
     return doc
 
