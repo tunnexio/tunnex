@@ -105,7 +105,12 @@ func TestGCPClassicSingleActualTunnelLifecycle(t *testing.T) {
 	}
 	recreated, err = store.SetIntent(ctx, org, actor, recreated.ID, recreated.DesiredRevision, "enabled")
 	if err != nil {
-		t.Fatal("Classic recreate enable", err)
+		advisory, advisoryErr := store.ReadEligibility(ctx, org, req.SiteID, req.GatewayID)
+		var configured, classic, retained, opted bool
+		var age float64
+		var cleanupPending bool
+		probeErr := p.QueryRow(ctx, `SELECT COALESCE(n.capabilities->'ipsec_config_version'='1'::jsonb,false),COALESCE(n.capabilities->'ipsec_gcp_classic_version'='1'::jsonb,false),COALESCE(n.capabilities->'ipsec_retained_guard_version'='1'::jsonb,false),extract(epoch from clock_timestamp()-n.policy_reported_at)::float8,o.enabled,EXISTS(SELECT 1 FROM ipsec_runtime_state s WHERE s.connection_id=$2 AND s.current_cleanup_id IS NOT NULL) FROM nodes n JOIN ipsec_org_settings o ON o.org_id=n.org_id WHERE n.id=$1`, identity.GatewayID, req.ID).Scan(&configured, &classic, &retained, &age, &opted, &cleanupPending)
+		t.Fatalf("Classic recreate enable: %v; advisory=%+v advisory_error=%v config_cap=%t classic_cap=%t retained_cap=%t report_age_seconds=%.3f opt_in=%t cleanup_pending=%t probe_error=%v", err, advisory, advisoryErr, configured, classic, retained, age, opted, cleanupPending, probeErr)
 	}
 	next, err := store.Material(ctx, principal, recreated.ID, recreated.DesiredRevision, sealer)
 	if err != nil || len(next.Manifest.RetainedGuardPredecessors) != 1 {
