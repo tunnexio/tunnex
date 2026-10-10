@@ -85,7 +85,7 @@ def fqdn_detail_projection(detail, setup, state, binding, now):
     # failure_code/status alias. Only the stable lifecycle vocabulary is safe.
     reason = detail.get('server_reason')
     reasons = {'nxdomain', 'servfail', 'timeout', 'disagreement', 'overflow', 'last_good_expired', 'invalid_answer', 'unbound_context', 'NXDOMAIN', 'SERVFAIL'}
-    if reason in reasons:
+    if isinstance(reason, str) and reason in reasons:
         value['failure_code'] = reason
     elif reason is not None:
         value['failure_code'] = 'unrecognized_server_reason'
