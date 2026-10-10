@@ -56,15 +56,16 @@ def identity(m):
   if executable!=m['native']['charon_sha'] or len(fields)<=19 or fields[19]!=m['native']['charon_start_ticks']:raise ValueError('daemon_identity_changed')
  return value
 
-def api_authority(m):
+def api_authority(m,rollback=False):
  accounts=proof.private_read(m['accounts']);setup=proof.private_read(m['setup'])
  if accounts['owner']['email']!='browser-owner@azure-s2s.local':raise ValueError('owner_account_refused')
  client=lab.Client(accounts['owner']);base='/api/v1/organizations/'+setup['org_id']
  connection=client.call('GET',base+'/ipsec/connections/'+m['connection'])
  config=client.call('GET',base+'/ipsec/connections/'+m['connection']+'/configuration')
- if (connection['id']!=m['connection'] or connection['org_id']!=setup['org_id'] or connection['site_id']!=setup['site_id'] or connection['gateway_node_id']!=setup['gateway_id'] or connection['desired_intent']!='enabled' or connection['application_state']!='applied' or connection['deleted_at'] is not None or connection['finalized_at'] is not None):raise ValueError('normal_enabled_applied_authority_refused')
+ if (connection['id']!=m['connection'] or connection['org_id']!=setup['org_id'] or connection['site_id']!=setup['site_id'] or connection['gateway_node_id']!=setup['gateway_id'] or connection['desired_intent']!='enabled' or connection['application_state'] not in ({'applied','pending','not_applied'} if rollback else {'applied'}) or connection['deleted_at'] is not None or connection['finalized_at'] is not None):raise ValueError('normal_enabled_applied_authority_refused')
  projection={'org':connection['org_id'],'site':connection['site_id'],'gateway':connection['gateway_node_id'],'connection':connection['id'],'desired':connection['desired_revision'],'configuration':config['configuration_revision'],'profile':config['profile_id'],'config':config['configuration']}
  if projection['profile'] not in PROFILES:raise ValueError('azure_profile_refused')
+ if rollback and 'authority' not in m:raise ValueError('rollback_baseline_required')
  if 'authority' in m and projection!=m['authority']:raise ValueError('normal_authority_changed')
  return projection
 
@@ -103,7 +104,11 @@ def accelerated(config,count):
 
 def swan(m,*args):
  if not args or args[0] not in ('--load-conns','--terminate','--initiate'):return common.swan(m,*args)
- if m.get('_restoring'):return common.swan(m,*args)
+ if m.get('_restoring'):
+  # Caller holds restore.lock; never recursively acquire it. This projection
+  # authorizes only rollback to the privately pinned production configuration.
+  identity(m);api_authority(m,rollback=True);verify_conns(m)
+  return common.swan(m,*args)
  directory=Path(m['evidence_dir'])
  fd=os.open(directory/'restore.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
  try:
@@ -123,7 +128,7 @@ def parse_sample(text,engines):
   if len(timers)==2:values[header.group(1)]['child_remaining_seconds']=int(timers[1])
  return values
 def sample(m):return parse_sample(swan(m,'--list-sas'),m['engines'])
-def check(m):identity(m);api_authority(m);verify_conns(m)
+def check(m):identity(m);api_authority(m,rollback=m.get('_restoring') is True);verify_conns(m)
 def fresh(m,engine,maximum=None):
  check(m);name=common.name(engine);before=sample(m).get(name,{}).get('ike_serial')
  swan(m,'--terminate','--ike',name,'--timeout','20');check(m)
@@ -135,23 +140,73 @@ def fresh(m,engine,maximum=None):
   time.sleep(1)
  raise ValueError('fresh_timer_not_verified')
 
+def marker(directory,stage):
+ if stage not in ('bootstrap-started','bootstrap-ended','automatic-started','automatic-ended','restoration-started','restoration-ended'):raise ValueError('fixed_marker_required')
+ path=directory/(stage+'.json')
+ try:proof.private_write(path,{'stage':stage,'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'monotonic':time.monotonic()})
+ except FileExistsError:
+  if proof.private_read(path)['stage']!=stage:raise ValueError('marker_identity_changed')
+ return proof.private_read(path)
+
+def packet_phase_summary(directory,scheduler_passed):
+ packets=proof.private_read(directory/'packets.json');baseline=proof.private_read(directory/'packets-started.json')
+ stages={}
+ for stage in ('bootstrap-started','bootstrap-ended','automatic-started','automatic-ended','restoration-started','restoration-ended'):
+  path=directory/(stage+'.json')
+  if path.exists():
+   value=proof.private_read(path)
+   if value['stage']!=stage or not isinstance(value['monotonic'],(int,float)):raise ValueError('marker_identity_changed')
+   stages[stage]=value['monotonic']
+ automatic_end=min(stages.get('automatic-ended',float('inf')),stages.get('restoration-started',float('inf')))
+ intervals={'bootstrap':(stages.get('bootstrap-started',float('inf')),stages.get('bootstrap-ended',float('-inf'))),'automatic_observation':(stages.get('automatic-started',float('inf')),automatic_end),'restoration':(stages.get('restoration-started',float('inf')),stages.get('restoration-ended',float('inf')))}
+ kinds=('existing_tcp','existing_udp','fresh_tcp','fresh_udp')
+ original_tcp=baseline.get('original_tcp_local_port');original_udp=baseline.get('original_udp_local_port')
+ socket_consistent=all(type(port) is int and 1<=port<=65535 for port in (original_tcp,original_udp))
+ counts={phase:{kind:{'success':0,'failure':0} for kind in kinds} for phase in (*intervals,'outside_or_boundary')}
+ for row in packets['samples']:
+  for kind in kinds:
+   value=row[kind];start=value['start_monotonic'];end=value['end_monotonic']
+   if not isinstance(start,(int,float)) or not isinstance(end,(int,float)) or end<start:raise ValueError('packet_time_refused')
+   selected='outside_or_boundary'
+   for phase,(begin,finish) in intervals.items():
+    if begin<=start<=end<=finish:selected=phase;break
+   counts[selected][kind]['success' if value['success'] is True else 'failure']+=1
+   if selected=='automatic_observation':
+    if kind=='existing_tcp':socket_consistent=socket_consistent and value.get('original_local_port')==original_tcp and value.get('local_port_before_attempt')==original_tcp and value.get('original_socket_present') is True
+    if kind=='existing_udp':socket_consistent=socket_consistent and value.get('original_local_port')==original_udp and (value.get('success') is not True or value.get('local_port')==original_udp)
+ automatic=counts['automatic_observation']
+ observed=bool(scheduler_passed and socket_consistent and baseline['all_four_succeeded'] is True and all(v['failure']==0 and v['success']>=3 for v in automatic.values()))
+ return {'scope':'sampled-automatic-observation-only','sampled_continuity_pass':observed,'original_socket_identity_consistent':bool(socket_consistent),'original_socket_baseline_succeeded':baseline['all_four_succeeded'] is True,'counts_by_phase':counts,'all_window_counts':packets['counts'],'production_duration_soak':False}
+
 def restore(m,directory):
  fd=os.open(directory/'restore.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
  try:
   fcntl.flock(fd,fcntl.LOCK_EX)
   if (directory/'restored.json').exists():return
   m['_restoring']=True
+  marker(directory,'restoration-started')
   check(m)
   if digest_file(directory/'original.conf')!=m['original_sha']:raise ValueError('original_configuration_changed')
   path=common.put_config(m,'production',proof.private_bytes(directory/'original.conf').decode())
   swan(m,'--load-conns','--file',path)
   sessions={common.name(e):fresh(m,e) for e in m['engines']}
-  snapshot(m)
+  # Restore acceptance remains strict; transient normal pending is tolerated
+  # only for the rollback commands, never as successful native/permit evidence.
+  end=time.monotonic()+45
+  while True:
+   check(m)
+   try:snapshot(m);break
+   except Exception:
+    if time.monotonic()>=end:raise ValueError('restored_strict_proof_missing')
+    time.sleep(1)
+  marker(directory,'restoration-ended')
   proof.private_write(directory/'restored.json',{'production_timers_verified':True,'sessions':sessions,'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
  except Exception:
   if not (directory/'recovery-required.json').exists():proof.private_write(directory/'recovery-required.json',{'restored':False,'category':'authority_or_native_restoration_refused'})
   raise
- finally:os.close(fd)
+ finally:
+  m.pop('_restoring',None)
+  os.close(fd)
 
 def watchdog(directory):
  m=proof.private_read(directory/'manifest.json')
@@ -184,10 +239,11 @@ def run(args):
   time.sleep(.1)
  events=None;packets=None;passed=False;observations=[]
  try:
+  marker(directory,'bootstrap-started')
   check(m);path=common.put_config(m,'accelerated',accelerated(common_text,len(m['engines'])));swan(m,'--load-conns','--file',path)
   seeded={}
   for i,e in enumerate(m['engines']):seeded[common.name(e)]={'sample':fresh(m,e,(120,150)[i]),'monotonic':time.monotonic()}
-  baseline_native=snapshot(m);proof.private_write(directory/'bootstrap-excluded.json',{'sessions':seeded,'children':baseline_native['children'],'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
+  baseline_native=snapshot(m);marker(directory,'bootstrap-ended');proof.private_write(directory/'bootstrap-excluded.json',{'sessions':seeded,'children':baseline_native['children'],'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
   packets=subprocess.Popen(['ip','netns','exec','azure-s2s-client',sys.executable,str(Path(__file__).resolve()),'--packet-receipt',str(directory/'packets.json')],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
   ready=directory/'packets-started.json';packet_deadline=time.monotonic()+10
   while not ready.exists():
@@ -201,6 +257,7 @@ def run(args):
   peer_status=Path(f'/proc/{peer}/status').read_text()
   match=re.search(r'^NSpid:\s+(.*)$',peer_status,re.M)
   if uid!=0 or not match or int(match.group(1).split()[-1])!=m['native']['charon_pid'] or hashlib.sha256(Path(f'/proc/{peer}/exe').read_bytes()).hexdigest()!=m['native']['charon_sha']:raise ValueError('event_peer_refused')
+  marker(directory,'automatic-started')
   renewed=set();end=time.monotonic()+220
   while time.monotonic()<end:
    check(m);current=sample(m);native=snapshot(m);now=time.monotonic()
@@ -216,6 +273,7 @@ def run(args):
    time.sleep(2)
   if not passed:raise ValueError('scheduled_rekey_not_observed')
  finally:
+  marker(directory,'automatic-ended')
   if events:events.close();proof.private_write(directory/'ike-events.json',events.events)
   proof.private_write(directory/'scheduler-result.json',{'scope':'accelerated-scheduled-IKE-only','pass':passed,'production_duration_soak':False,'packet_continuity_verified':False,'observations':observations})
   try:restore(m,directory)
@@ -223,6 +281,7 @@ def run(args):
    if packets:
     try:packets.wait(timeout=260)
     except subprocess.TimeoutExpired:packets.terminate();packets.wait(timeout=5)
+    if (directory/'packets.json').exists():proof.private_write(directory/'packet-phases.json',packet_phase_summary(directory,passed))
  print('Accelerated scheduler complete; production timers restored. Packet continuity and production-duration soak are separate.')
 
 def http_attempt(connection,original_port):
@@ -240,6 +299,11 @@ def http_attempt(connection,original_port):
  except Exception:result['category']='http_exchange_failed'
  return result
 
+def timed_packet(operation):
+ start=time.monotonic();utc=datetime.datetime.now(datetime.timezone.utc).isoformat()
+ value=operation()
+ return {**value,'start_monotonic':start,'end_monotonic':time.monotonic(),'started_utc':utc,'ended_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
 def packet_probe(path):
  if os.geteuid()!=0 or not path.is_absolute() or path.parent.resolve()!=path.parent:raise ValueError('private_packet_path_required')
  probe=adjacent('probe-packets');rows=[];tcp=None;udp=None
@@ -248,21 +312,24 @@ def packet_probe(path):
   udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind(('10.233.10.2',0));udp.connect(('10.231.1.4',8081));udp.settimeout(.5);udp_port=udp.getsockname()[1]
   deadline=time.monotonic()+240;index=0
   while time.monotonic()<deadline:
-   row={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'existing_tcp':http_attempt(tcp,tcp_port)}
-   row['existing_udp']={'original_local_port':udp_port,**probe.udp_echo(udp,probe.udp_payload(64,index))};index+=1
+   row={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'existing_tcp':timed_packet(lambda:http_attempt(tcp,tcp_port))}
+   row['existing_udp']=timed_packet(lambda:{'original_local_port':udp_port,**probe.udp_echo(udp,probe.udp_payload(64,index))});index+=1
    fresh=http.client.HTTPConnection('10.231.1.4',8080,timeout=.5,source_address=('10.233.10.2',0))
-   try:
-    fresh.connect();row['fresh_tcp']=http_attempt(fresh,fresh.sock.getsockname()[1])
-   except Exception:row['fresh_tcp']={'success':False,'category':'http_connect_failed'}
-   finally:fresh.close()
+   def fresh_tcp():
+    try:fresh.connect();return http_attempt(fresh,fresh.sock.getsockname()[1])
+    except Exception:return {'success':False,'category':'http_connect_failed'}
+    finally:fresh.close()
+   row['fresh_tcp']=timed_packet(fresh_tcp)
    fresh_udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-   try:
-    fresh_udp.bind(('10.233.10.2',0));fresh_udp.connect(('10.231.1.4',8081));fresh_udp.settimeout(.5)
-    row['fresh_udp']=probe.udp_echo(fresh_udp,probe.udp_payload(64,index));index+=1
-   except Exception:row['fresh_udp']={'success':False,'category':'udp_connect_failed'}
-   finally:fresh_udp.close()
+   def fresh_udp_attempt():
+    try:
+     fresh_udp.bind(('10.233.10.2',0));fresh_udp.connect(('10.231.1.4',8081));fresh_udp.settimeout(.5)
+     return probe.udp_echo(fresh_udp,probe.udp_payload(64,index))
+    except Exception:return {'success':False,'category':'udp_connect_failed'}
+    finally:fresh_udp.close()
+   row['fresh_udp']=timed_packet(fresh_udp_attempt);index+=1
    rows.append(row)
-   if len(rows)==1:proof.private_write(path.with_name('packets-started.json'),{'all_four_succeeded':all(row[kind]['success'] is True for kind in ('existing_tcp','existing_udp','fresh_tcp','fresh_udp'))})
+   if len(rows)==1:proof.private_write(path.with_name('packets-started.json'),{'all_four_succeeded':all(row[kind]['success'] is True for kind in ('existing_tcp','existing_udp','fresh_tcp','fresh_udp')),'original_tcp_local_port':tcp_port,'original_udp_local_port':udp_port})
    time.sleep(.5)
  finally:
   if tcp:tcp.close()

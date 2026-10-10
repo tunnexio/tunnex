@@ -33,8 +33,8 @@ Operator supplies all mandatory flags to `qualify-scheduled-rekey.py`:
 `--container FULL_CID --image sha256:DIGEST --node-sha DIGEST --helper PRIVATE_HOST_COPY
 --helper-sha DIGEST --accounts PRIVATE_UI_ACCOUNTS --setup PRIVATE_API_SETUP
 --connection UUID --evidence-dir NEW_PRIVATE_ABSOLUTE_DIRECTORY`.
-API access is fixed localhost48083 and the normal owned owner account. Every
-mutation checks fresh normal enabled/applied identity and exact stored
+API access is fixed localhost48083 and the normal owned owner account. Bootstrap
+and scheduler acceptance require fresh normal enabled/applied identity and exact stored
 configuration/revisions, then exact loaded connection cardinality. The API
 credentials and generated configuration remain private; no raw errors print.
 
@@ -100,3 +100,31 @@ across samples, but all are validated anew on every complete snapshot. The
 before/after journal bytes must still match within each snapshot; concurrent
 journal/guard refresh refuses rather than accepting mixed proof. No lease,
 guard, history or authority check is dropped.
+
+Rollback-only authority tolerates exactly applied/pending/not_applied application
+state, but still requires the unchanged enabled intent, private original normal
+API identity/configuration/desired revision projection, current pinned container,
+node and daemon process, and exact owned staged connection cardinality/names.
+A disabled/deleted/finalized/superseded binding or unknown state refuses before
+any mutation. Every restoration load/terminate/initiate repeats these checks
+inside the held restore lock; read-only staged-connection verification uses the
+common direct swan reader and cannot recursively acquire the mutation lock.
+Final acceptance does NOT use the rollback projection: after fresh production
+countdowns, bounded retries require normal Applied and the original strict native
+snapshot. A pending state is never native readiness or permit authority. Failure
+clears the in-memory restoration mode and leaves recovery-required evidence.
+
+Durable fixed markers separate bootstrap start/end, automatic observation
+start/end, and restoration start/end. Each packet attempt records monotonic
+start/end and UTC stamps; a crossing attempt is preserved outside automatic
+qualification. A watchdog-started restoration clips the automatic window even
+if the foreground only notices later. packets.json retains every raw sample and
+all-window counts. packet-phases.json preserves those counts and reports separate
+bootstrap, automatic, restoration and outside/boundary counts. Forced restoration
+losses cannot be attributed to the scheduler. Sampled automatic continuity needs
+scheduler success, successful original socket baseline, consistent original TCP
+and UDP ports, and at least three successful/no-failure samples per flow entirely
+inside the automatic interval. This is sampled continuity, not a zero-loss
+microsecond guarantee. Restoration counts are reported separately; later stable
+post-restoration traffic is outside that phase. If no automatic window was reached,
+no automatic continuity passes.
