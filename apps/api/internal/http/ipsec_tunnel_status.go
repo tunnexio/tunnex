@@ -54,6 +54,8 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
+		TransportVersion      *int               `json:"transport_version,omitempty"`
+		TunnelCount           *int               `json:"tunnel_count,omitempty"`
 		BGP                   *agentIPsecBGPWire `json:"bgp,omitempty"`
 		RecoveryVersion       *int               `json:"recovery_version,omitempty"`
 		SelectionSequence     *uint64            `json:"selection_sequence,omitempty"`
@@ -75,6 +77,17 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 		agentIPsecInvalid(w, r)
 		return
 	}
+	if body.TransportVersion != nil || body.TunnelCount != nil {
+		if body.TransportVersion == nil || *body.TransportVersion != 1 || body.TunnelCount == nil || *body.TunnelCount != 1 || body.BGP != nil || body.RecoveryVersion != nil || body.SelectionSequence != nil || body.ActiveSlot != nil {
+			agentIPsecInvalid(w, r)
+			return
+		}
+		inactive := body.Tunnels[1]
+		if inactive.ID != uuid.Nil || inactive.Slot != 0 || inactive.Status != "" || inactive.Selected == nil || *inactive.Selected {
+			agentIPsecInvalid(w, r)
+			return
+		}
+	}
 	bgp, valid := body.BGP.runtimeStatus()
 	if !valid {
 		agentIPsecInvalid(w, r)
@@ -93,7 +106,7 @@ func (a *AgentChannel) ipsecStatusReport(w http.ResponseWriter, r *http.Request)
 		writeAgentIPsec(w, r, nil, ipsec.ErrConnectionUnavailable)
 		return
 	}
-	e := store.ReportStatus(r.Context(), p, id, ipsec.RuntimeStatusReport{BGP: bgp, RecoveryVersion: body.RecoveryVersion, SelectionSequence: body.SelectionSequence, ActiveSlot: body.ActiveSlot, DeliveryID: body.DeliveryID, DesiredRevision: body.DesiredRevision, ConfigurationRevision: body.ConfigurationRevision, Tunnels: tunnels})
+	e := store.ReportStatus(r.Context(), p, id, ipsec.RuntimeStatusReport{TransportVersion: body.TransportVersion, TunnelCount: body.TunnelCount, BGP: bgp, RecoveryVersion: body.RecoveryVersion, SelectionSequence: body.SelectionSequence, ActiveSlot: body.ActiveSlot, DeliveryID: body.DeliveryID, DesiredRevision: body.DesiredRevision, ConfigurationRevision: body.ConfigurationRevision, Tunnels: tunnels})
 	if e != nil {
 		writeAgentIPsec(w, r, nil, e)
 		return
