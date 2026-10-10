@@ -1,0 +1,7 @@
+# Owned cloud replacement evidence
+
+These immutable scripts archive one reviewed 2026-10-10 deployment in the authorized GCP test lab. They bind specific source/image/container/boot/namespace/identity/env snapshots and private original evidence. They are not a general-purpose deploy command and must not be repurposed or executed without fresh review and authorized bindings. No credentials, environment contents, raw XFRM keys or secret material are included.
+
+The old gateway stopped gracefully with exit 0, no managed processes and SAD 0. The initial create was refused because normal WireGuard/egress shutdown removed the exact owned wg0 route and two owned tables. That failure and its original false retained-route flag stayed intact. A separately reviewed continuation reproduced the complete original route digest by adding only the historical wg0 row to the actual stopped snapshot and matched every previous WG table base object. It required a fresh exact IPsec withdrawal verifier and genuinely empty permit sets before ordinary creation/start.
+
+The replacement retained enrolled identity and normal policies. Its Classic tunnel returned; HA daemon staging remained pending and was diagnosed separately. These observations do not establish full live HA/BGP, cleanup, lifecycle or production readiness. The archived files are observational deployment evidence; they create no node journal/lease/authority.
