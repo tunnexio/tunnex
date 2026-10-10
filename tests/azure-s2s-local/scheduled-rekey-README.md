@@ -149,10 +149,17 @@ scheduled observation. Rollback alone permits a partial mixture of the exact
 production/accelerated IKE timer values before loading production. Same-name drift
 in any exposed field refuses before mutation. The real provider renderer supplies
 the exact load tree, including unchanged CHILD lifetime and native identifiers.
-strongSwan's list-conns protocol does **not** expose original CHILD hard lifetime,
-proposals, reqid/if_id, randomization or over_time; no byte-for-byte readback claim
+strongSwan 6.1.0 list-conns also exposes exact IKE/ESP proposal transforms and
+configured endpoint ports; these are checked and AH proposals must be absent.
+The protocol does **not** expose original CHILD hard lifetime, reqid/if_id,
+randomization or over_time; no byte-for-byte readback claim
 is made for these hidden fields. Native SA/SPI/SPD/ownership proof still applies.
-See the upstream [VICI query implementation](https://github.com/strongswan/strongswan/blob/6.0.2/src/libcharon/plugins/vici/vici_query.c).
+See the upstream [VICI query implementation](https://github.com/strongswan/strongswan/blob/6.1.0/src/libcharon/plugins/vici/vici_query.c).
 
 Snapshot acceptance also requires the proof context to remain unexpired through
 private receipt sync. A completed read after expiry cannot authorize control.
+
+Readback follows the packaged 6.1.0 schema: PSK authentication is rendered as
+`pre-shared key`; configured `dpd_action=clear` maps to `ACTION_NONE` and reads as
+`none`. This preserves the configured semantics; restart/trap and other auth
+classes still refuse. Exact proposal checks reject weaker/extra transforms.

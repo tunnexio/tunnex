@@ -46,7 +46,7 @@ func azureSchedulerLoadedMatch(events []viciMessage, engines []EngineTunnel, mod
 				got, ok := viciStrings(m, k)
 				return ok && reflect.DeepEqual(got, want)
 			}
-			if !list(m, "local_addrs", []string{e.LocalAddress.String()}) || !list(m, "remote_addrs", []string{e.RemoteAddress.String()}) || !scalar(m, "version", "IKEv2") || !scalar(m, "reauth_time", "0") || !scalar(m, "dpd_delay", "10") {
+			if !list(m, "local_addrs", []string{e.LocalAddress.String()}) || !list(m, "remote_addrs", []string{e.RemoteAddress.String()}) || !scalar(m, "version", "IKEv2") || !scalar(m, "reauth_time", "0") || !scalar(m, "dpd_delay", "10") || !scalar(m, "local_port", "500") || !scalar(m, "remote_port", "500") || !reflect.DeepEqual(m["proposals"], azureSchedulerExpectedProposal(true)) {
 				return false
 			}
 			timer, _ := viciString(m, "rekey_time")
@@ -63,7 +63,7 @@ func azureSchedulerLoadedMatch(events []viciMessage, engines []EngineTunnel, mod
 			}
 			for _, side := range []struct{ name, id string }{{"local-1", e.LocalIdentity.String()}, {"remote-1", e.RemoteIdentity.String()}} {
 				auth := m[side.name]
-				if auth.kind != 1 || !scalar(auth.section, "class", "PSK") || !scalar(auth.section, "id", side.id) {
+				if auth.kind != 1 || !scalar(auth.section, "class", "pre-shared key") || !scalar(auth.section, "id", side.id) {
 					return false
 				}
 				for key, v := range auth.section {
@@ -84,7 +84,10 @@ func azureSchedulerLoadedMatch(events []viciMessage, engines []EngineTunnel, mod
 				return false
 			}
 			c := child.section
-			if !scalar(c, "mode", "TUNNEL") || !scalar(c, "rekey_time", "3000") || !scalar(c, "rekey_bytes", "0") || !scalar(c, "rekey_packets", "0") || !scalar(c, "dpd_action", "clear") || !scalar(c, "close_action", "none") || !list(c, "local-ts", []string{"0.0.0.0/0"}) || !list(c, "remote-ts", []string{"0.0.0.0/0"}) {
+			if !reflect.DeepEqual(c["esp_proposals"], azureSchedulerExpectedProposal(false)) || c["ah_proposals"].kind != 1 || len(c["ah_proposals"].section) != 0 {
+				return false
+			}
+			if !scalar(c, "mode", "TUNNEL") || !scalar(c, "rekey_time", "3000") || !scalar(c, "rekey_bytes", "0") || !scalar(c, "rekey_packets", "0") || !scalar(c, "dpd_action", "none") || !scalar(c, "close_action", "none") || !list(c, "local-ts", []string{"0.0.0.0/0"}) || !list(c, "remote-ts", []string{"0.0.0.0/0"}) {
 				return false
 			}
 			for _, key := range []string{"interface", "priority", "label"} {
@@ -167,7 +170,7 @@ func azureSchedulerLoadedFixture(engines []EngineTunnel, mode string) []viciMess
 			timer = fmt.Sprint(120 + i*30)
 		}
 		name := engineName(e)
-		out = append(out, viciMessage{name: viciSection(viciMessage{"local_addrs": viciList(e.LocalAddress.String()), "remote_addrs": viciList(e.RemoteAddress.String()), "version": viciText("IKEv2"), "reauth_time": viciText("0"), "rekey_time": viciText(timer), "dpd_delay": viciText("10"), "local-1": viciSection(viciMessage{"class": viciText("PSK"), "id": viciText(e.LocalIdentity.String()), "groups": viciList()}), "remote-1": viciSection(viciMessage{"class": viciText("PSK"), "id": viciText(e.RemoteIdentity.String()), "groups": viciList()}), "children": viciSection(viciMessage{name: viciSection(viciMessage{"mode": viciText("TUNNEL"), "rekey_time": viciText("3000"), "rekey_bytes": viciText("0"), "rekey_packets": viciText("0"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "local-ts": viciList("0.0.0.0/0"), "remote-ts": viciList("0.0.0.0/0")})})})})
+		out = append(out, viciMessage{name: viciSection(viciMessage{"local_addrs": viciList(e.LocalAddress.String()), "remote_addrs": viciList(e.RemoteAddress.String()), "local_port": viciText("500"), "remote_port": viciText("500"), "proposals": azureSchedulerExpectedProposal(true), "version": viciText("IKEv2"), "reauth_time": viciText("0"), "rekey_time": viciText(timer), "dpd_delay": viciText("10"), "local-1": viciSection(viciMessage{"class": viciText("pre-shared key"), "id": viciText(e.LocalIdentity.String()), "groups": viciList()}), "remote-1": viciSection(viciMessage{"class": viciText("pre-shared key"), "id": viciText(e.RemoteIdentity.String()), "groups": viciList()}), "children": viciSection(viciMessage{name: viciSection(viciMessage{"esp_proposals": azureSchedulerExpectedProposal(false), "ah_proposals": viciSection(viciMessage{}), "mode": viciText("TUNNEL"), "rekey_time": viciText("3000"), "rekey_bytes": viciText("0"), "rekey_packets": viciText("0"), "dpd_action": viciText("none"), "close_action": viciText("none"), "local-ts": viciList("0.0.0.0/0"), "remote-ts": viciList("0.0.0.0/0")})})})})
 	}
 	return out
 }
@@ -298,5 +301,50 @@ func TestAzureSchedulerLoadedReadDeadlineCannotAuthorizeMutation(t *testing.T) {
 	}}
 	if azureSchedulerControl(ctx, d, engines, "load-accelerated", "production", 0) == nil || calls != 1 {
 		t.Fatal("expired completed read authorized mutation")
+	}
+}
+
+func azureSchedulerExpectedProposal(ike bool) viciValue {
+	transforms := viciMessage{"encr": viciList("AES_CBC_256"), "integ": viciList("HMAC_SHA2_256_128"), "ke": viciList("MODP_2048")}
+	if ike {
+		transforms["prf"] = viciList("PRF_HMAC_SHA2_256")
+	} else {
+		transforms["sn"] = viciList("NO_EXT_SEQ")
+	}
+	return viciSection(viciMessage{"0": viciSection(transforms)})
+}
+
+func TestAzureSchedulerStrongSwan61SemanticReadbackRefusals(t *testing.T) {
+	for _, profile := range []string{AzureActiveActiveBGPProfile, AzureActiveStandbyBGPProfile, AzureActiveActiveStaticProfile, AzureActiveStandbyStaticProfile} {
+		m := azureMaterialFixture(profile)
+		e, _, _ := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+		engines := e.Engines[:e.Allocation.activeTunnelCount()]
+		for name, mutate := range map[string]func(viciMessage){
+			"non-PSK-auth":          func(c viciMessage) { c["local-1"].section["class"] = viciText("public key") },
+			"unexpected-auth-round": func(c viciMessage) { c["local-2"] = c["local-1"] },
+			"restart-DPD": func(c viciMessage) {
+				c["children"].section[engineName(engines[0])].section["dpd_action"] = viciText("start")
+			},
+			"trap-DPD": func(c viciMessage) {
+				c["children"].section[engineName(engines[0])].section["dpd_action"] = viciText("trap")
+			},
+			"weak-IKE-proposal":  func(c viciMessage) { c["proposals"].section["0"].section["encr"] = viciList("AES_CBC_128") },
+			"extra-IKE-proposal": func(c viciMessage) { c["proposals"].section["1"] = c["proposals"].section["0"] },
+			"weak-ESP-proposal": func(c viciMessage) {
+				c["children"].section[engineName(engines[0])].section["esp_proposals"].section["0"].section["integ"] = viciList("HMAC_SHA1_96")
+			},
+			"AH-proposal": func(c viciMessage) {
+				c["children"].section[engineName(engines[0])].section["ah_proposals"] = azureSchedulerExpectedProposal(false)
+			},
+			"wrong-configured-port": func(c viciMessage) { c["remote_port"] = viciText("4500") },
+		} {
+			t.Run(profile+"/"+name, func(t *testing.T) {
+				events := azureSchedulerLoadedFixture(engines, "production")
+				mutate(events[0][engineName(engines[0])].section)
+				if azureSchedulerLoadedMatch(events, engines, "production") {
+					t.Fatal("changed semantic readback admitted")
+				}
+			})
+		}
 	}
 }
