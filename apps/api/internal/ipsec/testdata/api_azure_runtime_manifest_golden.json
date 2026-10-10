@@ -1,0 +1,236 @@
+[
+  {
+    "name": "azure-active-active-bgp-ipv4-v1",
+    "manifest": {
+      "org_id": "00000000-0000-0000-0000-000000000001",
+      "node_id": "00000000-0000-0000-0000-000000000002",
+      "site_id": "00000000-0000-0000-0000-000000000003",
+      "connection_id": "00000000-0000-0000-0000-000000000004",
+      "desired_revision": 1,
+      "configuration_revision": 1,
+      "profile_id": "azure-active-active-bgp-ipv4-v1",
+      "customer_outside_address": "192.0.2.1",
+      "local_prefixes": [
+        "10.10.0.0/24"
+      ],
+      "remote_prefixes": [
+        "10.20.0.0/24"
+      ],
+      "tunnels": [
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "slot": 1,
+          "secret_revision": 1,
+          "link_name": "tunnel1",
+          "xfrm_id": 101,
+          "reqid": 101,
+          "outside_address": "198.51.100.1",
+          "inside_cidr": "169.254.20.1/32",
+          "customer_inside_address": "169.254.20.1",
+          "cloud_inside_address": "169.254.21.2",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50001,
+          "selected": false
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "slot": 2,
+          "secret_revision": 1,
+          "link_name": "tunnel2",
+          "xfrm_id": 102,
+          "reqid": 102,
+          "outside_address": "198.51.100.2",
+          "inside_cidr": "169.254.20.1/32",
+          "customer_inside_address": "169.254.20.1",
+          "cloud_inside_address": "169.254.22.2",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50002,
+          "selected": false
+        }
+      ],
+      "bgp": {
+        "local_asn": 65000,
+        "remote_asn": 65515,
+        "router_id": "10.10.0.1",
+        "maximum_prefixes": 64
+      },
+      "bgp_version": 3
+    },
+    "sha256": "6fbd22d69294048acfef8db1f9d21197914137299c04d729ca97578e74ecaba8"
+  },
+  {
+    "name": "azure-active-active-static-ipv4-v1",
+    "manifest": {
+      "org_id": "00000000-0000-0000-0000-000000000001",
+      "node_id": "00000000-0000-0000-0000-000000000002",
+      "site_id": "00000000-0000-0000-0000-000000000003",
+      "connection_id": "00000000-0000-0000-0000-000000000004",
+      "desired_revision": 1,
+      "configuration_revision": 1,
+      "profile_id": "azure-active-active-static-ipv4-v1",
+      "customer_outside_address": "192.0.2.1",
+      "local_prefixes": [
+        "10.10.0.0/24"
+      ],
+      "remote_prefixes": [
+        "10.20.0.0/24"
+      ],
+      "tunnels": [
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "slot": 1,
+          "secret_revision": 1,
+          "link_name": "tunnel1",
+          "xfrm_id": 101,
+          "reqid": 101,
+          "outside_address": "198.51.100.1",
+          "inside_cidr": "169.254.20.0/30",
+          "customer_inside_address": "169.254.20.1",
+          "cloud_inside_address": "169.254.20.2",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50001,
+          "selected": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "slot": 2,
+          "secret_revision": 1,
+          "link_name": "tunnel2",
+          "xfrm_id": 102,
+          "reqid": 102,
+          "outside_address": "198.51.100.2",
+          "inside_cidr": "169.254.20.4/30",
+          "customer_inside_address": "169.254.20.5",
+          "cloud_inside_address": "169.254.20.6",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50002,
+          "selected": false
+        }
+      ]
+    },
+    "sha256": "ab0d3ec0639dd50cd165d38938e37cc1378a82cefedf15f340f185a6193dce33"
+  },
+  {
+    "name": "azure-active-standby-bgp-ipv4-v1",
+    "manifest": {
+      "org_id": "00000000-0000-0000-0000-000000000001",
+      "node_id": "00000000-0000-0000-0000-000000000002",
+      "site_id": "00000000-0000-0000-0000-000000000003",
+      "connection_id": "00000000-0000-0000-0000-000000000004",
+      "desired_revision": 1,
+      "configuration_revision": 1,
+      "profile_id": "azure-active-standby-bgp-ipv4-v1",
+      "customer_outside_address": "192.0.2.1",
+      "local_prefixes": [
+        "10.10.0.0/24"
+      ],
+      "remote_prefixes": [
+        "10.20.0.0/24"
+      ],
+      "tunnels": [
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "slot": 1,
+          "secret_revision": 1,
+          "link_name": "tunnel1",
+          "xfrm_id": 101,
+          "reqid": 101,
+          "outside_address": "198.51.100.1",
+          "inside_cidr": "169.254.20.1/32",
+          "customer_inside_address": "169.254.20.1",
+          "cloud_inside_address": "169.254.21.2",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50001,
+          "selected": false
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000000",
+          "slot": 0,
+          "secret_revision": 0,
+          "link_name": "",
+          "xfrm_id": 0,
+          "reqid": 0,
+          "outside_address": "",
+          "inside_cidr": "",
+          "customer_inside_address": "",
+          "cloud_inside_address": "",
+          "route_table": 0,
+          "route_protocol": 0,
+          "route_metric": 0,
+          "selected": false
+        }
+      ],
+      "transport_version": 1,
+      "tunnel_count": 1,
+      "bgp": {
+        "local_asn": 65000,
+        "remote_asn": 65515,
+        "router_id": "10.10.0.1",
+        "maximum_prefixes": 64
+      },
+      "bgp_version": 3
+    },
+    "sha256": "79bfc0aea287a6af959e87ef9f1e6ee28e818e28adf933790a4083814d60a235"
+  },
+  {
+    "name": "azure-active-standby-static-ipv4-v1",
+    "manifest": {
+      "org_id": "00000000-0000-0000-0000-000000000001",
+      "node_id": "00000000-0000-0000-0000-000000000002",
+      "site_id": "00000000-0000-0000-0000-000000000003",
+      "connection_id": "00000000-0000-0000-0000-000000000004",
+      "desired_revision": 1,
+      "configuration_revision": 1,
+      "profile_id": "azure-active-standby-static-ipv4-v1",
+      "customer_outside_address": "192.0.2.1",
+      "local_prefixes": [
+        "10.10.0.0/24"
+      ],
+      "remote_prefixes": [
+        "10.20.0.0/24"
+      ],
+      "tunnels": [
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "slot": 1,
+          "secret_revision": 1,
+          "link_name": "tunnel1",
+          "xfrm_id": 101,
+          "reqid": 101,
+          "outside_address": "198.51.100.1",
+          "inside_cidr": "169.254.20.0/30",
+          "customer_inside_address": "169.254.20.1",
+          "cloud_inside_address": "169.254.20.2",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50001,
+          "selected": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000000",
+          "slot": 0,
+          "secret_revision": 0,
+          "link_name": "",
+          "xfrm_id": 0,
+          "reqid": 0,
+          "outside_address": "",
+          "inside_cidr": "",
+          "customer_inside_address": "",
+          "cloud_inside_address": "",
+          "route_table": 0,
+          "route_protocol": 0,
+          "route_metric": 0,
+          "selected": false
+        }
+      ],
+      "transport_version": 1,
+      "tunnel_count": 1
+    },
+    "sha256": "3638ce896ea2cd7f4507c1adc43fa4fb971d89c1abda26112ec33e4885cfb35c"
+  }
+]

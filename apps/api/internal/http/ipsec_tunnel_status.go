@@ -32,7 +32,7 @@ func (s apiServer) GetIPsecConnectionStatus(ctx context.Context, req api.GetIPse
 	if status.BGP != nil {
 		b := status.BGP
 		body.Bgp = &api.IPsecBGPStatus{Version: api.IPsecBGPStatusVersion(b.Version), Sequence: b.Sequence, Peers: []api.IPsecBGPPeerStatus{}, Routes: []api.IPsecBGPRouteStatus{}}
-		for _, peer := range b.Peers {
+		for _, peer := range b.Peers[:len(status.Tunnels)] {
 			body.Bgp.Peers = append(body.Bgp.Peers, api.IPsecBGPPeerStatus{Slot: peer.Slot, State: api.IPsecBGPPeerStatusState(peer.State), AcceptedPrefixes: peer.AcceptedPrefixes, InstalledPrefixes: peer.InstalledPrefixes, RejectedPrefixes: peer.RejectedPrefixes})
 		}
 		for _, route := range b.Routes {

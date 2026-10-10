@@ -139,7 +139,7 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 		if err = rows.Scan(&connection, &raw); err != nil {
 			return createError(err)
 		}
-		if m.BGP != nil || m.BGPVersion != nil || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != GCPClassicProfile) {
+		if m.BGP != nil || m.BGPVersion != nil || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != GCPClassicProfile && !(isAzureProfile(m.ProfileID) && !azureBGP(m.ProfileID))) {
 			return ErrConnectionConflict
 		}
 		var lineage []RuntimeDelivery

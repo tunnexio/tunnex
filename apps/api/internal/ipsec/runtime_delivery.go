@@ -47,14 +47,14 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if !fresh && e != nil {
 		return invalid(createError(e))
 	}
-	if fresh && manifest.BGP == nil && manifest.ProfileID != GCPClassicProfile && locked.recoveryEligible {
+	if fresh && manifest.BGP == nil && activeTunnelCount(manifest.ProfileID) == 2 && locked.recoveryEligible {
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
 	}
-	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) {
+	if isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) {
 		return invalid(ErrConnectionIneligible)
 	}
 	raw, digest := runtimeHash(manifest)
@@ -265,7 +265,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)

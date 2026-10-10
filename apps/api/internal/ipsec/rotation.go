@@ -48,7 +48,10 @@ func (s *ConnectionStore) rotatePSKs(ctx context.Context, org, actor, id uuid.UU
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, id, org).Scan(&profile); err != nil {
 		return Connection{}, ErrConnectionUnavailable
 	}
-	if profile != GCPHAProfile && profile != GCPClassicProfile {
+	if isAzureProfile(profile) && !azureStandby(profile) && (len(replacements) != 2 || replacements[0].PSK != replacements[1].PSK) {
+		return Connection{}, ErrConnectionInvalid
+	}
+	if profile != GCPHAProfile && profile != GCPClassicProfile && !isAzureProfile(profile) {
 		for _, replacement := range replacements {
 			if !awsStaticPSK(replacement.PSK) {
 				return Connection{}, ErrConnectionInvalid

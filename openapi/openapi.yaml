@@ -12289,6 +12289,10 @@ components:
           $ref: '#/components/schemas/IPsecBGPEligibility'
         gcp_ha:
           $ref: '#/components/schemas/IPsecBGPEligibility'
+        azure_bgp:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+        azure_static:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
         gcp_classic:
           $ref: '#/components/schemas/IPsecBGPEligibility'
     IPsecBGPEligibility:
@@ -12343,11 +12347,23 @@ components:
         profile_id: { type: string }
         configuration_revision: { type: integer, format: int64, minimum: 1 }
         configuration: { $ref: "#/components/schemas/IPsecProviderNetworkConfiguration" }
+    IPsecAzureContract:
+      type: object
+      additionalProperties: false
+      required: [gateway_sku, vpn_type, ike_version, custom_policy, use_policy_based_traffic_selectors, nat_enabled]
+      properties:
+        gateway_sku: { type: string, enum: [VpnGw1, VpnGw2, VpnGw3, VpnGw4, VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ, VpnGw4AZ, VpnGw5AZ] }
+        vpn_type: { type: string, enum: [RouteBased] }
+        ike_version: { type: integer, enum: [2] }
+        custom_policy: { type: string, enum: [aes256-sha256-dh14-pfs2048] }
+        use_policy_based_traffic_selectors: { type: boolean, enum: [false] }
+        nat_enabled: { type: boolean, enum: [false] }
     IPsecProviderNetworkConfiguration:
       type: object
       additionalProperties: false
       required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
       properties:
+        azure: { $ref: "#/components/schemas/IPsecAzureContract" }
         mode: { type: string }
         bgp: { $ref: "#/components/schemas/IPsecBGPConfiguration" }
         customer_outside_address: { type: string }
@@ -12370,7 +12386,8 @@ components:
       additionalProperties: false
       required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
       properties:
-        profile_id: { type: string, enum: [aws-static-ipv4-v1, aws-bgp-ipv4-v1, gcp-ha-bgp-ipv4-v1, gcp-classic-static-ipv4-v1], description: "Omit for legacy AWS mode selection. GCP profiles require explicit selection." }
+        azure: { $ref: "#/components/schemas/IPsecAzureContract" }
+        profile_id: { type: string, enum: [aws-static-ipv4-v1, aws-bgp-ipv4-v1, gcp-ha-bgp-ipv4-v1, gcp-classic-static-ipv4-v1, azure-active-active-bgp-ipv4-v1, azure-active-active-static-ipv4-v1, azure-active-standby-bgp-ipv4-v1, azure-active-standby-static-ipv4-v1], description: "Omit for legacy AWS mode selection. GCP profiles require explicit selection." }
         mode: { type: string, enum: [ipv4-static, ipv4-bgp] }
         bgp: { $ref: "#/components/schemas/IPsecBGPConfiguration" }
         customer_outside_address: { type: string, minLength: 1, maxLength: 15 }
