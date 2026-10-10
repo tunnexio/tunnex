@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run on the owned peer host, outside gateway netns. No cloud commands.
-Block one fixed Azure peer for a bounded interval; always remove the owned fault.
+Block one or both fixed Azure peers for a bounded interval; always remove the owned fault.
 """
 import argparse
 import ipaddress
@@ -46,7 +46,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['block', 'clear'])
     parser.add_argument('--container')
-    parser.add_argument('--slot', type=int, choices=[1, 2])
+    parser.add_argument('--slot', choices=['1', '2', 'both'])
     parser.add_argument('--seconds', type=int, default=90)
     args = parser.parse_args()
     if socket.gethostname() != 'tunnex-peer':
@@ -67,22 +67,24 @@ def main():
     if set(networks) != {NETWORK}:
         raise ValueError('isolated owned bridge required')
     local = str(ipaddress.IPv4Address(networks[NETWORK]['IPAddress']))
-    peer = PEERS[args.slot]
+    slots = [1, 2] if args.slot == 'both' else [int(args.slot)]
+    peers = [PEERS[slot] for slot in slots]
     if fault_inventory() is not None:
         raise ValueError('existing fault refused')
-    script = f'''add table inet {TABLE} {{ comment "{OWNER}"; }}
-add chain inet {TABLE} forward {{ type filter hook forward priority -300; policy accept; }}
-add rule inet {TABLE} forward ip saddr {local} ip daddr {peer} udp dport {{ 500, 4500 }} counter drop
-add rule inet {TABLE} forward ip saddr {peer} ip daddr {local} udp sport {{ 500, 4500 }} counter drop
-add rule inet {TABLE} forward ip saddr {local} ip daddr {peer} ip protocol esp counter drop
-add rule inet {TABLE} forward ip saddr {peer} ip daddr {local} ip protocol esp counter drop
-'''.encode()
+    script = f'add table inet {TABLE} {{ comment "{OWNER}"; }}\n'
+    script += f'add chain inet {TABLE} forward {{ type filter hook forward priority -300; policy accept; }}\n'
+    for peer in peers:
+        script += f'add rule inet {TABLE} forward ip saddr {local} ip daddr {peer} udp dport {{ 500, 4500 }} counter drop\n'
+        script += f'add rule inet {TABLE} forward ip saddr {peer} ip daddr {local} udp sport {{ 500, 4500 }} counter drop\n'
+        script += f'add rule inet {TABLE} forward ip saddr {local} ip daddr {peer} ip protocol esp counter drop\n'
+        script += f'add rule inet {TABLE} forward ip saddr {peer} ip daddr {local} ip protocol esp counter drop\n'
+    script = script.encode()
     run(['nft', '--check', '-f', '-'], script)
     for sig in [signal.SIGINT, signal.SIGTERM]:
         signal.signal(sig, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         run(['nft', '-f', '-'], script)
-        print(json.dumps({'fault': 'blocked', 'slot': args.slot, 'peer': peer, 'seconds': args.seconds}), flush=True)
+        print(json.dumps({'fault': 'blocked', 'slots': slots, 'peers': peers, 'seconds': args.seconds}), flush=True)
         time.sleep(args.seconds)
     finally:
         clear()

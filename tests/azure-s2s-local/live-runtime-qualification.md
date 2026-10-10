@@ -54,3 +54,7 @@ The immediate safe lifecycle observation is an owned gateway pause/unpause in th
 For a clean ordinary recreation, first use normal desired-revision CAS disable and wait for real cleanup completion while observing denied traffic. Preserve retained journal evidence and exact ownership. Recreate only the owned gateway with LAN routes installed before agent startup, then enable via normal CAS and prove fresh activation. That is disable/recreate/re-enable qualification, distinct from in-place restart recovery.
 
 All conclusions must identify exact source/image/binary, timestamps, actual packet source, fault interval, observed loss, fresh status sequences and any missing MTU/lifecycle proof.
+
+## Both-instance failure
+
+After the single-instance fault has fully cleared and both peers are freshly healthy, run the same owned host helper with `--slot both --seconds 90`. This targets exactly the two fixed Azure instances, never an arbitrary peer. Run overlapping bounded client probe windows and fresh API observations. Once both paths are observed failed and permits withdrawn, require zero successful fresh/persistent TCP and UDP samples in a measured tail; report detection/withdrawal latency separately from that tail. No success during an early detection interval may be described as post-withdrawal forwarding. After automatic fault cleanup, require actual peer/SA return, fresh normal authority/status, installed selected route and client traffic; do not infer recovery from the fault table disappearing.
