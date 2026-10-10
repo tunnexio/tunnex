@@ -164,13 +164,16 @@ class OrchestrationTests(unittest.TestCase):
                  patch.object(runner.proof, 'boot', return_value='same-boot'), \
                  patch.object(runner.proof, 'state_mount', return_value=None), \
                  patch.object(runner.proof, 'private_bytes', side_effect=lambda p: Path(p).read_bytes()), \
-                 patch.object(runner.proof, 'private_read', return_value={'Payload': {'Entries': [dict(after, ContractVersion=2)]}}), \
+                 patch.object(runner.proof, 'private_read', side_effect=[{'Payload': {'Entries': [dict(after, ContractVersion=2, Phase=phase)]}} for phase in ('reserved', 'applying', 'applied')]), \
+                 patch.object(runner.time, 'sleep'), \
                  patch.object(runner.os, 'readlink', return_value='net:[2]'), \
                  patch.object(runner, 'tunnels_installed', return_value=True), \
                  patch.object(runner, 'links_owned', return_value=True):
                 result = runner.run(args)
             self.assertEqual(result['status'], 'controller-and-tunnels-restored')
             self.assertFalse(result['payload_verified'])
+            self.assertIn('stop_to_active_established_seconds', result)
+            self.assertNotIn('resume_wait_to_active_established_seconds', result)
             self.assertTrue(target.exists())
             self.assertFalse((Path(tmp) / 'restoration-startup-gate').exists())
             self.assertEqual(calls[0][:2], ('docker', 'stop'))

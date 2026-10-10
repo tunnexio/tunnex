@@ -61,13 +61,39 @@ def active_count(entry):
     return count
 
 
-def active_entry(document):
+def active_entry(document, phases=('applied',)):
     entries = [e for e in document['Payload']['Entries'] if e['Phase'] != 'retained_refusal']
-    if (len(entries) != 1 or entries[0]['Phase'] != 'applied'
+    if (len(entries) != 1 or entries[0]['Phase'] not in phases
             or entries[0].get('AbsenceOnly') or entries[0].get('ResetCleanup')):
         raise ValueError('requires exactly one applied restoration obligation')
     active_count(entries[0])
     return entries[0]
+
+
+def poll_entry(document, before):
+    entry = active_entry(document, phases=('reserved', 'applying', 'applied'))
+    if (entry['DeliveryID'] != before['DeliveryID']
+            or entry['ContractVersion'] != before['ContractVersion']
+            or active_count(entry) != active_count(before)):
+        raise ValueError('foreign restoration obligation')
+    def allocation_identity(value):
+        allocation = {k: v for k, v in value['Allocation'].items() if k not in ('Namespace', 'Generation', 'Tunnels')}
+        allocation['Tunnels'] = [{k: v for k, v in tunnel.items() if k != 'Alias'} for tunnel in value['Allocation']['Tunnels']]
+        return allocation
+    def engine_identity(value):
+        return [{k: v for k, v in engine.items() if k != 'LocalAddress'} for engine in value['Engines']]
+    if allocation_identity(entry) != allocation_identity(before) or engine_identity(entry) != engine_identity(before):
+        raise ValueError('restoration intent changed')
+    return entry
+
+
+def acceptance_result(before, after, started_utc, elapsed, resumed=False):
+    metric = 'resume_wait_to_active_established_seconds' if resumed else 'stop_to_active_established_seconds'
+    return {'version': 1, 'status': 'controller-and-tunnels-restored',
+            'scope': 'controlled-supervisor-container-restart',
+            'epoch': after['Restoration']['Epoch'], 'payload_verified': False,
+            'started_utc': started_utc, 'active_tunnel_count': active_count(after),
+            metric: round(elapsed, 3)}
 
 
 def validate_previous_receipt(entry, raw):
@@ -306,7 +332,7 @@ def run(args):
     finally:
         os.close(lock)
 
-def finish_restoration(args, cid, before_entry, before, directory, journal_raw, target, previous, gate, gate_raw, gate_identity, stop_started, started_utc):
+def finish_restoration(args, cid, before_entry, before, directory, journal_raw, target, previous, gate, gate_raw, gate_identity, stop_started, started_utc, resumed=False):
     deadline = time.monotonic() + args.timeout
     current = proof.inspect(cid)
     while not current['state']['Running'] or current['state']['Pid'] <= 0:
@@ -354,7 +380,7 @@ def finish_restoration(args, cid, before_entry, before, directory, journal_raw, 
     release_gate(gate, gate_raw, gate_identity)
     print('Bound receipt installed; awaiting journal restoration and active tunnel sessions.', flush=True)
     while time.monotonic() < deadline:
-        after = active_entry(proof.private_read(args.journal))
+        after = poll_entry(proof.private_read(args.journal), before_entry)
         if restored(before_entry, after, ns):
             try:
                 sas = proof.command('docker', 'exec', '-e', 'STRONGSWAN_CONF=' + args.strongswan_conf,
@@ -366,11 +392,8 @@ def finish_restoration(args, cid, before_entry, before, directory, journal_raw, 
                             or final['state']['StartedAt'] != current['state']['StartedAt']
                             or os.readlink('/proc/%d/ns/net' % pid) != ns or proof.boot() != new_boot):
                         raise ValueError('runtime identity changed during acceptance')
-                    result = {'version': 1, 'status': 'controller-and-tunnels-restored',
-                              'scope': 'controlled-supervisor-container-restart',
-                              'epoch': after['Restoration']['Epoch'], 'payload_verified': False,
-                              'started_utc': started_utc, 'active_tunnel_count': active_count(after),
-                              'stop_to_active_established_seconds': round(time.monotonic() - stop_started, 3)}
+                    result = acceptance_result(before_entry, after, started_utc,
+                                               time.monotonic() - stop_started, resumed=resumed)
                     proof.private_write(directory / 'result.json', result)
                     print('PASS: controller restoration and all active fresh tunnel sessions. Client payload verification remains separate.', flush=True)
                     return result
@@ -441,7 +464,7 @@ def resume(args):
         write_bytes(attempt / 'stopped-journal.json', journal_raw)
         return finish_restoration(args, before['container'], before_entry, before, attempt,
                                   journal_raw, target, previous, gate, gate_raw, gate_identity,
-                                  time.monotonic(), datetime.datetime.now(datetime.timezone.utc).isoformat())
+                                  time.monotonic(), datetime.datetime.now(datetime.timezone.utc).isoformat(), resumed=True)
     finally:
         os.close(lock)
 

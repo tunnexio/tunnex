@@ -87,3 +87,27 @@ class ResumeEvidenceTests(unittest.TestCase):
                     if mutation=='stop_digest':
                         changed=copy.deepcopy(stopped);changed['stopped_journal_raw_sha256']='wrong';(original/'stopped.json').write_text(json.dumps(changed))
                     with self.subTest(mutation=mutation),self.assertRaises(ValueError):runner.resume(args)
+
+class BoundedAcceptanceTests(unittest.TestCase):
+    def test_restoration_transition_waits_without_accepting(self):
+        from test_runtime_restore_profiles import entry
+        before=entry('gcp-classic-static-ipv4-v1',4)
+        for phase in ('reserved','applying'):
+            candidate=copy.deepcopy(before);candidate['Phase']=phase
+            got=runner.poll_entry({'Payload':{'Entries':[candidate]}},before)
+            self.assertEqual(got['Phase'],phase)
+            self.assertFalse(runner.restored(before,got,'net:[1]'))
+        for mutate in (lambda e:e.update(Phase='cleanup_pending'),lambda e:e.update(DeliveryID='foreign'),lambda e:e['Engines'][0]['Binding'].update(DesiredRevision=99),lambda e:e['Allocation'].update(ProfileID='foreign')):
+            bad=copy.deepcopy(before);mutate(bad)
+            with self.assertRaises(ValueError):runner.poll_entry({'Payload':{'Entries':[bad]}},before)
+
+    def test_resume_wait_metric_is_not_outage_metric(self):
+        from test_runtime_restore_profiles import entry
+        before=entry('gcp-classic-static-ipv4-v1',4)
+        after=entry('gcp-classic-static-ipv4-v1',4,'net:[2]');after['Restoration']={'Epoch':1}
+        result=runner.acceptance_result(before,after,'start',1.0,resumed=True)
+        self.assertIn('resume_wait_to_active_established_seconds',result)
+        self.assertNotIn('stop_to_active_established_seconds',result)
+        ordinary=runner.acceptance_result(before,after,'start',1.0,resumed=False)
+        self.assertIn('stop_to_active_established_seconds',ordinary)
+        self.assertNotIn('resume_wait_to_active_established_seconds',ordinary)
