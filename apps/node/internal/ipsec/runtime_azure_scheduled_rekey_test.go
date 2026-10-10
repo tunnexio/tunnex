@@ -13,11 +13,11 @@ import (
 
 // Configuration comes from the real stage material constructor with a mock
 // transport. Neither credential material nor a daemon mutation escapes it.
-func azureSchedulerConfig(engines []EngineTunnel) (string, error) {
-	out := "connections {\n"
+func azureSchedulerMessages(engines []EngineTunnel) ([]viciMessage, error) {
+	out := []viciMessage{}
 	for _, engine := range engines {
 		if !IsAzureRuntimeProfile(engine.ProfileID) || !validEngineTunnel(engine) {
-			return "", ErrDaemonProtocol
+			return nil, ErrDaemonProtocol
 		}
 		var connection viciMessage
 		mock := &DaemonClient{request: func(_ context.Context, command, _ string, message viciMessage) (viciMessage, []viciMessage, error) {
@@ -36,9 +36,20 @@ func azureSchedulerConfig(engines []EngineTunnel) (string, error) {
 			}
 		}}
 		if mock.stageTunnel(context.Background(), engine, []byte("mock-only-unused")) != nil {
-			return "", ErrDaemonProtocol
+			return nil, ErrDaemonProtocol
 		}
-		text, err := azureSchedulerSection(connection, "  ")
+		out = append(out, connection)
+	}
+	return out, nil
+}
+func azureSchedulerConfig(engines []EngineTunnel) (string, error) {
+	messages, err := azureSchedulerMessages(engines)
+	if err != nil {
+		return "", err
+	}
+	out := "connections {\n"
+	for _, message := range messages {
+		text, err := azureSchedulerSection(message, "  ")
 		if err != nil {
 			return "", err
 		}

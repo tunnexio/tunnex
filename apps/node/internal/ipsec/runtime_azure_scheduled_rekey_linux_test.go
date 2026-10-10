@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"golang.org/x/sys/unix"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -78,46 +79,11 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		fail()
 		return
 	}
-	daemon, e := NewDaemonClient("/run/tunnex-ipsec/charon.vici")
+	daemon, e := azureSchedulerOwnedDaemon(charonPID, charonSHA, charonStat)
 	if e != nil {
 		fail()
 		return
 	}
-	transport := viciTransport{dial: func(ctx context.Context) (net.Conn, error) {
-		conn, e := dialOwnedVICI(ctx, "/run/tunnex-ipsec/charon.vici")
-		if e != nil {
-			return nil, e
-		}
-		socket, ok := conn.(*net.UnixConn)
-		if !ok {
-			conn.Close()
-			return nil, ErrDaemonProtocol
-		}
-		fd, e := socket.SyscallConn()
-		if e != nil {
-			conn.Close()
-			return nil, e
-		}
-		var credential *unix.Ucred
-		var ce error
-		e = fd.Control(func(value uintptr) {
-			credential, ce = unix.GetsockoptUcred(int(value), unix.SOL_SOCKET, unix.SO_PEERCRED)
-		})
-		binary, be := os.ReadFile(fmt.Sprintf("/proc/%d/exe", charonPID))
-		stat, se := os.ReadFile(fmt.Sprintf("/proc/%d/stat", charonPID))
-		// Only stable start ticks, not changing counters, identify the process.
-		sameStart := func(a, b []byte) bool {
-			as := strings.Fields(string(a)[strings.LastIndex(string(a), ")")+1:])
-			bs := strings.Fields(string(b)[strings.LastIndex(string(b), ")")+1:])
-			return len(as) > 19 && len(bs) > 19 && as[19] == bs[19]
-		}
-		if e != nil || ce != nil || credential == nil || credential.Uid != 0 || int(credential.Pid) != charonPID || be != nil || se != nil || remediationSHA(binary) != charonSHA || !sameStart(charonStat, stat) {
-			conn.Close()
-			return nil, ErrDaemonProtocol
-		}
-		return conn, nil
-	}}
-	daemon.request = transport.call
 	probe, e := newRuntimePlatformProbe("/sbin/ip", "/usr/sbin/nft", daemon, func() bool { return true })
 	if e != nil || probe.packaged(ctx) != nil {
 		fail()
@@ -183,13 +149,17 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		}
 		children = append(children, map[string]any{"name": engineName(engine), "child_id": child.UniqueID, "spi_in": child.SPIIn, "spi_out": child.SPIOut, "retired": retired != nil})
 	}
+	if azureSchedulerVerifyLoaded(ctx, daemon, engines, os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_TIMER_MODE")) != nil {
+		fail()
+		return
+	}
 	config, e := azureSchedulerConfig(engines)
 	if e != nil {
 		fail()
 		return
 	}
 	after, ast, e := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
-	if e != nil || st.Dev != ast.Dev || st.Ino != ast.Ino || !bytes.Equal(raw, after) {
+	if e != nil || ctx.Err() != nil || st.Dev != ast.Dev || st.Ino != ast.Ino || !bytes.Equal(raw, after) {
 		fail()
 		return
 	}
@@ -204,7 +174,139 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		return
 	}
 	defer file.Close()
-	if json.NewEncoder(file).Encode(map[string]any{"retained_identity": retainedIdentity, "retained_count": len(envelope.Payload.Entries) - 1, "charon_start_ticks": charonFields[19], "charon_pid": charonPID, "charon_sha": charonSHA, "profile": entry.Allocation.ProfileID, "delivery": entry.DeliveryID, "binding": engines[0].Binding, "engines": engines, "config": config, "children": children, "strict_native": true, "full_guard": true}) != nil || file.Sync() != nil {
+	if ctx.Err() != nil {
 		fail()
+		return
+	}
+	if json.NewEncoder(file).Encode(map[string]any{"retained_identity": retainedIdentity, "retained_count": len(envelope.Payload.Entries) - 1, "charon_start_ticks": charonFields[19], "charon_pid": charonPID, "charon_sha": charonSHA, "profile": entry.Allocation.ProfileID, "delivery": entry.DeliveryID, "binding": engines[0].Binding, "engines": engines, "config": config, "children": children, "strict_native": true, "full_guard": true}) != nil || file.Sync() != nil || ctx.Err() != nil {
+		fail()
+	}
+}
+
+func azureSchedulerOwnedDaemon(charonPID int, charonSHA string, charonStat []byte) (*DaemonClient, error) {
+	daemon, e := NewDaemonClient("/run/tunnex-ipsec/charon.vici")
+	if e != nil {
+		return nil, e
+	}
+	transport := viciTransport{dial: func(ctx context.Context) (net.Conn, error) {
+		conn, e := dialOwnedVICI(ctx, "/run/tunnex-ipsec/charon.vici")
+		if e != nil {
+			return nil, e
+		}
+		socket, ok := conn.(*net.UnixConn)
+		if !ok {
+			conn.Close()
+			return nil, ErrDaemonProtocol
+		}
+		fd, e := socket.SyscallConn()
+		if e != nil {
+			conn.Close()
+			return nil, e
+		}
+		var credential *unix.Ucred
+		var ce error
+		e = fd.Control(func(value uintptr) {
+			credential, ce = unix.GetsockoptUcred(int(value), unix.SOL_SOCKET, unix.SO_PEERCRED)
+		})
+		binary, be := os.ReadFile(fmt.Sprintf("/proc/%d/exe", charonPID))
+		stat, se := os.ReadFile(fmt.Sprintf("/proc/%d/stat", charonPID))
+		// Only stable start ticks, not changing counters, identify the process.
+		sameStart := func(a, b []byte) bool {
+			as := strings.Fields(string(a)[strings.LastIndex(string(a), ")")+1:])
+			bs := strings.Fields(string(b)[strings.LastIndex(string(b), ")")+1:])
+			return len(as) > 19 && len(bs) > 19 && as[19] == bs[19]
+		}
+		if e != nil || ce != nil || credential == nil || credential.Uid != 0 || int(credential.Pid) != charonPID || be != nil || se != nil || remediationSHA(binary) != charonSHA || !sameStart(charonStat, stat) {
+			conn.Close()
+			return nil, ErrDaemonProtocol
+		}
+		return conn, nil
+	}}
+	daemon.request = transport.call
+	return daemon, nil
+}
+
+// Default-off, private fixed-action request. No arbitrary VICI command, config
+// file, key input, socket path, or caller-provided connection name is accepted.
+func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
+	if os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL") != "1" {
+		t.Skip("explicit owned scheduler control only")
+	}
+	fail := func() { t.Fatal("owned_scheduler_control_refused") }
+	path := os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST")
+	if !strings.HasPrefix(path, "/run/tunnex-ipsec/azure-scheduler-request-") || strings.Contains(path, "..") || strings.ContainsAny(path, "\n\r") {
+		fail()
+		return
+	}
+	raw, st, err := remediationRead(path)
+	if err != nil || st.Mode&0777 != 0600 || st.Uid != 0 {
+		fail()
+		return
+	}
+	var request struct {
+		Binding                                                  azureSchedulerBinding
+		Delivery                                                 string
+		RetainedIdentity                                         string
+		CharonPID                                                int
+		CharonSHA, CharonStart, NodeSHA, ConfigSHA, Action, Mode string
+		Slot                                                     int
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&request) != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		fail()
+		return
+	}
+	node, err := os.ReadFile("/proc/1/exe")
+	if os.Geteuid() != 0 || err != nil || !validDigest(request.NodeSHA) || remediationSHA(node) != request.NodeSHA || request.CharonPID <= 1 || !validDigest(request.CharonSHA) {
+		fail()
+		return
+	}
+	journal, jst, err := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
+	var envelope runtimeJournalEnvelope
+	if err != nil || json.Unmarshal(journal, &envelope) != nil || journalChecksum(envelope.Payload) != envelope.Checksum {
+		fail()
+		return
+	}
+	entry, retained, err := azureSchedulerEntry(envelope.Payload, request.Binding)
+	if err != nil || entry.DeliveryID.String() != request.Delivery || retained != request.RetainedIdentity {
+		fail()
+		return
+	}
+	config, configErr := azureSchedulerConfig(entry.Engines[:entry.Allocation.activeTunnelCount()])
+	if configErr != nil || !validDigest(request.ConfigSHA) || remediationSHA([]byte(config)) != request.ConfigSHA {
+		fail()
+		return
+	}
+	ns, err := os.Readlink("/proc/self/ns/net")
+	if err != nil || ns != entry.Allocation.Namespace {
+		fail()
+		return
+	}
+	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", request.CharonPID))
+	fields := strings.Fields(string(stat)[strings.LastIndex(string(stat), ")")+1:])
+	binary, be := os.ReadFile(daemonExecutable)
+	if err != nil || be != nil || len(fields) <= 19 || fields[19] != request.CharonStart || remediationSHA(binary) != request.CharonSHA {
+		fail()
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	daemon, err := azureSchedulerOwnedDaemon(request.CharonPID, request.CharonSHA, stat)
+	guard, ge := NewGuardReader("/usr/sbin/nft")
+	if err != nil || ge != nil || azureSchedulerCombinedGuard(envelope.Payload.Guards, ns, func(g runtimeGuardTemplate) bool {
+		return guard.Check(ctx, GuardManifest{Namespace: g.Namespace, Revision: g.Revision, Digest: g.Digest, ExpectedJSON: g.ExpectedJSON}) == nil
+	}) != nil {
+		fail()
+		return
+	}
+	after, ast, err := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
+	if err != nil || ctx.Err() != nil || jst.Dev != ast.Dev || jst.Ino != ast.Ino || !bytes.Equal(journal, after) {
+		fail()
+		return
+	}
+	if azureSchedulerControl(ctx, daemon, entry.Engines[:entry.Allocation.activeTunnelCount()], request.Action, request.Mode, request.Slot) != nil || ctx.Err() != nil {
+		fail()
+		return
 	}
 }

@@ -82,7 +82,7 @@ def snapshot(m):
  # The helper binary is already installed privately by the operator; never run
  # a binary selected by journal data or copy a binary into a live container.
  expected={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
- result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_BINDING='+json.dumps(expected,separators=(',',':')),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT=1','-e','TUNNEX_AZURE_EXPECTED_NODE_SHA256='+m['node_sha'],'-e','TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeySnapshot$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=25)
+ result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_BINDING='+json.dumps(expected,separators=(',',':')),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_TIMER_MODE='+m.get('timer_mode','production'),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT=1','-e','TUNNEX_AZURE_EXPECTED_NODE_SHA256='+m['node_sha'],'-e','TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeySnapshot$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=25)
  if result.returncode:raise ValueError('strict_native_snapshot_refused')
  raw=proof.command('docker','exec',m['container'],'cat',path)
  value=json.loads(raw)
@@ -103,21 +103,51 @@ def accelerated(config,count):
  return config
 
 def swan(m,*args):
- if not args or args[0] not in ('--load-conns','--terminate','--initiate'):return common.swan(m,*args)
+ if args==('--list-sas',):return common.swan(m,*args)
+ if not args or args[0] not in ('--load-conns','--terminate','--initiate'):raise ValueError('fixed_scheduler_command_required')
  if m.get('_restoring'):
   # Caller holds restore.lock; never recursively acquire it. This projection
   # authorizes only rollback to the privately pinned production configuration.
   identity(m);api_authority(m,rollback=True);verify_conns(m)
-  return common.swan(m,*args)
+  return owned_mutation(m,*args)
  directory=Path(m['evidence_dir'])
  fd=os.open(directory/'restore.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
  try:
   fcntl.flock(fd,fcntl.LOCK_EX)
   if (directory/'restored.json').exists() or (directory/'recovery-required.json').exists():raise ValueError('restoration_already_started')
   identity(m);api_authority(m);verify_conns(m)
-  return common.swan(m,*args)
+  return owned_mutation(m,*args)
  finally:os.close(fd)
-def verify_conns(m):return common.verify_exact_configs(m)
+def owned_control(m,action,slot=0):
+ native=m['native'];authority=m['authority']
+ binding={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
+ request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot}
+ path='/run/tunnex-ipsec/azure-scheduler-request-'+str(uuid.uuid4())+'.json'
+ # Input remains root-owned 0600 inside the owned container. Neither stdout nor
+ # argv carries request material. No arbitrary config or command is passed.
+ subprocess.run(['docker','exec','-i',m['container'],'/bin/sh','-c','umask 077; cat > '+path],input=json.dumps(request).encode(),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True,timeout=10)
+ result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL=1','-e','TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeyControl$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=40)
+ if result.returncode:raise ValueError('owned_control_refused')
+
+def owned_mutation(m,*args):
+ if args[0]=='--load-conns':
+  if len(args)!=3 or args[1]!='--file':raise ValueError('fixed_load_required')
+  target='production' if m.get('_restoring') else 'accelerated'
+  expected='/run/tunnex-ipsec/'+m['run_id']+'-'+target+'.conf'
+  if args[2]!=expected:raise ValueError('fixed_owned_config_required')
+  owned_control(m,'load-'+target);m['timer_mode']=target
+ elif args[0] in ('--terminate','--initiate'):
+  names=[common.name(engine) for engine in m['engines']]
+  if args[0]=='--terminate':
+   if len(args)!=5 or args[1]!='--ike' or args[3:]!=('--timeout','20') or args[2] not in names:raise ValueError('fixed_terminate_required')
+   slot=names.index(args[2])+1
+  else:
+   if len(args)!=7 or args[1]!='--child' or args[3]!='--ike' or args[2]!=args[4] or args[5:]!=('--timeout','20') or args[2] not in names:raise ValueError('fixed_initiate_required')
+   slot=names.index(args[2])+1
+  owned_control(m,args[0][2:],slot)
+ else:raise ValueError('fixed_mutation_required')
+ return ''
+def verify_conns(m):return owned_control(m,'verify')
 def parse_sample(text,engines):
  values=common.sample(text,engines)
  for block in re.split(r'(?m)(?=^tnx-ipsec-)',text):

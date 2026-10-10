@@ -134,3 +134,25 @@ strict native transport/CHILD/SPI evidence for every active slot, and the existi
 read-only `verifyBGPRoutes` over the full recorded route union and interface
 ownership. Static profiles retain `runtimeInventoryMatches`. No controller or
 permit lease is constructed by either proof.
+
+Azure scheduler changes and rollback use the test helper's fixed `load-conn`,
+`terminate`, and `initiate` VICI commands, not generic swanctl mutation/redial.
+Each command connects only to the packaged private socket and checks root
+SO_PEERCRED, exact pinned charon PID/start ticks and executable digest. Requests
+remain root-owned 0600 and stdout/stderr are suppressed. All existing normal API,
+full journal/history, combined guard, watchdog lock and phase boundaries remain.
+
+Actual `list-conns` readback must match endpoints, IKE version/PSK identities,
+IKE rekey/reauth, DPD delay, CHILD name/mode/rekey/actions and transport selectors.
+Production timers are required by production snapshots; accelerated timers by
+scheduled observation. Rollback alone permits a partial mixture of the exact
+production/accelerated IKE timer values before loading production. Same-name drift
+in any exposed field refuses before mutation. The real provider renderer supplies
+the exact load tree, including unchanged CHILD lifetime and native identifiers.
+strongSwan's list-conns protocol does **not** expose original CHILD hard lifetime,
+proposals, reqid/if_id, randomization or over_time; no byte-for-byte readback claim
+is made for these hidden fields. Native SA/SPI/SPD/ownership proof still applies.
+See the upstream [VICI query implementation](https://github.com/strongswan/strongswan/blob/6.0.2/src/libcharon/plugins/vici/vici_query.c).
+
+Snapshot acceptance also requires the proof context to remain unexpired through
+private receipt sync. A completed read after expiry cannot authorize control.

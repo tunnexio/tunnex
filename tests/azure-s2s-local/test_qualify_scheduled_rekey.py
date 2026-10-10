@@ -95,7 +95,7 @@ class RollbackAndPhaseTests(unittest.TestCase):
     q.swan(material,'--terminate','--ike','owned')
     q.swan(material,'--initiate','--ike','owned')
     return {'remaining_seconds':27000,'child_remaining_seconds':2900}
-   with patch.object(q,'identity'),patch.object(q,'api_authority') as authority,patch.object(q,'verify_conns') as staged,patch.object(q,'digest_file',return_value='fixed'),patch.object(q.proof,'private_bytes',return_value=b'production'),patch.object(q,'marker'),patch.object(q.common,'put_config',return_value='/run/tunnex-ipsec/owned-production.conf'),patch.object(q.common,'swan') as commands,patch.object(q,'fresh',side_effect=fresh),patch.object(q.common,'name',return_value='owned'),patch.object(q,'snapshot') as strict,patch.object(q.fcntl,'flock') as lock:
+   with patch.object(q,'identity'),patch.object(q,'api_authority') as authority,patch.object(q,'verify_conns') as staged,patch.object(q,'digest_file',return_value='fixed'),patch.object(q.proof,'private_bytes',return_value=b'production'),patch.object(q,'marker'),patch.object(q.common,'put_config',return_value='/run/tunnex-ipsec/owned-production.conf'),patch.object(q,'owned_mutation') as commands,patch.object(q,'fresh',side_effect=fresh),patch.object(q.common,'name',return_value='owned'),patch.object(q,'snapshot') as strict,patch.object(q.fcntl,'flock') as lock:
     q.restore(m,directory)
    self.assertEqual(lock.call_count,1)
    self.assertEqual([call.args[1] for call in commands.call_args_list],['--load-conns','--terminate','--initiate'])
@@ -144,3 +144,29 @@ class RollbackAndPhaseTests(unittest.TestCase):
   self.assertFalse(self.phase_summary(socket_changed=True)['sampled_continuity_pass'])
 
 if __name__=='__main__':unittest.main()
+
+class OwnedControlTests(unittest.TestCase):
+ def test_foreground_and_restoration_never_use_generic_mutation(self):
+  for restoring in (False,True):
+   with tempfile.TemporaryDirectory() as temporary:
+    m={'evidence_dir':temporary,'_restoring':restoring}
+    with patch.object(q,'identity'),patch.object(q,'api_authority') as authority,patch.object(q,'verify_conns'),patch.object(q,'owned_mutation') as owned,patch.object(q.common,'swan') as generic:
+     q.swan(m,'--terminate','--ike','owned','--timeout','20')
+    owned.assert_called_once();generic.assert_not_called()
+    self.assertEqual(authority.call_args.kwargs.get('rollback',False),restoring)
+ def test_no_arbitrary_command_or_unowned_config(self):
+  with patch.object(q,'owned_control') as control,patch.object(q.common,'swan') as generic:
+   for args in (('--rekey','--ike','owned'),('--unload-conns',),('--load-creds',)):
+    with self.assertRaises(ValueError):q.swan({},*args)
+   with self.assertRaises(ValueError):q.owned_mutation({'run_id':'owned'},'--load-conns','--file','/tmp/unowned.conf')
+  control.assert_not_called();generic.assert_not_called()
+ def test_load_and_restore_modes_are_pinned(self):
+  for restoring,target in ((False,'accelerated'),(True,'production')):
+   m={'run_id':'owned','_restoring':restoring}
+   with patch.object(q,'owned_control') as control:q.owned_mutation(m,'--load-conns','--file','/run/tunnex-ipsec/owned-'+target+'.conf')
+   control.assert_called_once_with(m,'load-'+target);self.assertEqual(m['timer_mode'],target)
+ def test_failed_load_does_not_claim_timer_transition(self):
+  m={'run_id':'owned','timer_mode':'production'}
+  with patch.object(q,'owned_control',side_effect=ValueError('refused')):
+   with self.assertRaises(ValueError):q.owned_mutation(m,'--load-conns','--file','/run/tunnex-ipsec/owned-accelerated.conf')
+  self.assertEqual(m['timer_mode'],'production')
