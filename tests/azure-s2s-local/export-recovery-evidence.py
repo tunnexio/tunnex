@@ -35,7 +35,7 @@ def timestamp(value):
  # Python3.10 rejects RFC3339Nano; validate calendar/offset with at most six
  # fractional digits, but retain the original observed precision in evidence.
  if not isinstance(value,str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})',value):raise ValueError('timestamp shape')
- compatible=re.sub(r'(\.[0-9]{6})[0-9]{1,3}(?=Z|[+-])',r'\1',value).replace('Z','+00:00')
+ compatible=re.sub(r'\.([0-9]{1,9})(?=Z|[+-])',lambda match:'.'+match.group(1)[:6].ljust(6,'0'),value).replace('Z','+00:00')
  try:
   parsed=datetime.fromisoformat(compatible)
   offset=value[-6:] if not value.endswith('Z') else None

@@ -56,6 +56,15 @@ class RFC3339TimestampTests(unittest.TestCase):
    self.assertEqual(export.timestamp(value),value)
    parser.fromisoformat.assert_called_once_with('2026-10-10T13:02:09.667123+00:00')
 
+ def test_short_fractions_are_padded_for_python310(self):
+  original=export.datetime
+  for fraction in ('1','12','123','1234','12345','123456','1234567','12345678','123456789'):
+   value='2026-10-10T13:02:09.'+fraction+'Z'
+   with self.subTest(fraction=fraction),patch.object(export,'datetime') as parser:
+    parser.fromisoformat.side_effect=original.fromisoformat
+    self.assertEqual(export.timestamp(value),value)
+    parser.fromisoformat.assert_called_once_with('2026-10-10T13:02:09.'+fraction[:6].ljust(6,'0')+'+00:00')
+
  def test_fractional_precisions_and_offsets_preserved(self):
   for value in ['2026-10-10T13:02:09Z','2026-10-10T13:02:09.1Z','2026-10-10T13:02:09.123456Z','2026-10-10T13:02:09.123456789+05:30','2026-10-10T13:02:09.123456789-04:00']:
    with self.subTest(value=value):self.assertEqual(export.timestamp(value),value)
