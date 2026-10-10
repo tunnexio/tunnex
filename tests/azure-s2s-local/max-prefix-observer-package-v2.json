@@ -39,8 +39,8 @@
     },
     {
       "path": "tests/azure-s2s-local/qualify-lb-api.py",
-      "sha256": "068354c4de9f05488c24f745efbf4d44e85dbc315dfa1e7cfbeb08048b1fdbbf",
-      "bytes": 16928
+      "sha256": "50c72741607f580865437d58ac8a439ebd70e05dc2cbfa20925991f59886fbf0",
+      "bytes": 17119
     },
     {
       "path": "tests/azure-s2s-local/qualify-dns-api.py",
@@ -102,5 +102,17 @@
   "excluded": "No .runtime/env/accounts/keys/captures/binaries/private baselines or receipts. Root separately attests a55 binary.",
   "validation": "All listed Python source AST parsed; offline qualification17 and observer10 tests pass.",
   "reviewed_layout": "/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v2-669e541e",
-  "source_binding": "run-max-prefix-observer.py SOURCE points exclusively to this v2 layout. Complete closure includes corrected qualify-max-prefix-api.py. No old3cc fallback."
+  "source_binding": "run-max-prefix-observer.py SOURCE points exclusively to this v2 layout. Complete closure includes corrected qualify-max-prefix-api.py. No old3cc fallback.",
+  "archive_source_commit": "8eb31c7e2915a7c2bbb45407085c0396d5486b0a",
+  "manifest_refresh": {
+    "original_manifest_sha256": "5ebe03255911cb097d9cb3ef7368de6180466ed6dc0100ea95f9bc808fff046b",
+    "root_HEAD_updates": [
+      {
+        "path": "tests/azure-s2s-local/qualify-lb-api.py",
+        "previous_sha256": "068354c4de9f05488c24f745efbf4d44e85dbc315dfa1e7cfbeb08048b1fdbbf",
+        "current_sha256": "50c72741607f580865437d58ac8a439ebd70e05dc2cbfa20925991f59886fbf0"
+      }
+    ],
+    "reason": "Current tracked LB helper adds existing lifecycle timestamp normalization import; import closure already includes lifecycle-live.py. Local manifest only; root unchanged."
+  }
 }
