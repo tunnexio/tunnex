@@ -75,7 +75,10 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 	if err != nil {
 		return nil, ErrRuntimeController
 	}
-	stage = "dns_socket"
+	stage = "dns_socket_udp"
+	if endpoint.Transport == "tcp" {
+		stage = "dns_socket_tcp"
+	}
 	response, err = fqdnrpc.ExchangeBoundSocket(ctx, endpoint, proof.Source, payload)
 	if err != nil {
 		return nil, ErrRuntimeController
@@ -187,7 +190,16 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	}
 	stage = "dns_guard"
 	index := a.Entry.Observed[slot-1].InterfaceIndex
-	if index <= 0 || !view.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
+	if index <= 0 {
+		return fail()
+	}
+	if permitted, guardStage := view.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
+		stage = guardStage
+		if guardStage == "dns_guard_full_read" {
+			if diagnostic := c.diagnoseSupersededDNSGuard(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID); diagnostic != "" {
+				stage = diagnostic
+			}
+		}
 		return fail()
 	}
 	stage = "dns_source_before"
@@ -220,8 +232,11 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	}
 	// Benign table renewal can happen during the independent reads. Check the
 	// exact current published template too; changed target epochs remain refused.
-	if latest.guard.Digest != view.guard.Digest && !latest.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
-		return fail()
+	if latest.guard.Digest != view.guard.Digest {
+		if permitted, guardStage := latest.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
+			stage = guardStage
+			return fail()
+		}
 	}
 	stage = "dns_epoch"
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok || ctx.Err() != nil {
@@ -343,22 +358,28 @@ func dnsResolverRouteMatches(raw []byte, wantInterface string, source, resolver 
 }
 
 func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) bool {
+	permitted, _ := v.resolverGuardPermitsStage(ctx, entry, index, reqid)
+	return permitted
+}
+func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) (bool, string) {
+	stage := "dns_guard_template"
 	if v == nil || v.observer.guardReader == nil {
-		return false
+		return false, stage
 	}
 	g := v.guard
 	if g.Namespace != entry.Allocation.Namespace {
-		return false
+		return false, stage
 	}
 	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
 	if !ok {
-		return false
+		return false, stage
 	}
+	stage = "dns_guard_required"
 	required := map[string]string{guardLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(index), guardReplyLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(index), guardSALeaseName(entry.Allocation.ConnectionID): strconv.FormatUint(uint64(reqid), 10)}
 	for _, object := range objects {
 		fields, ok := object.(map[string]any)
 		if !ok {
-			return false
+			return false, stage
 		}
 		set, ok := fields["set"].(map[string]any)
 		if !ok {
@@ -371,33 +392,69 @@ func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry Ru
 		}
 		members, ok := set["elem"].([]any)
 		if !ok {
-			return false
+			return false, stage
 		}
 		found := false
 		for _, m := range members {
 			member, ok := m.(map[string]any)
 			if !ok {
-				return false
+				return false, stage
 			}
 			element, ok := member["elem"].(map[string]any)
 			if !ok {
-				return false
+				return false, stage
 			}
 			value, ok := element["val"].(json.Number)
 			if !ok {
-				return false
+				return false, stage
 			}
 			if value.String() == want {
 				found = true
 			}
 		}
 		if !found {
-			return false
+			return false, stage
 		}
 		delete(required, name)
 	}
 	if len(required) != 0 {
-		return false
+		return false, stage
 	}
-	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
+	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil, "dns_guard_full_read"
+}
+
+// This bounded probe classifies a stale snapshot race; it NEVER changes the
+// original refusal into permission or renews any authority.
+func (c *RuntimeController) diagnoseSupersededDNSGuard(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) string {
+	if c == nil || c.config.Diagnostic == nil || ctx.Err() != nil {
+		return ""
+	}
+	latest := c.dnsView.Load()
+	if latest == nil || latest.guard.Digest == previous.guard.Digest {
+		return ""
+	}
+	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
+		return ""
+	}
+	now := time.Now().UnixNano()
+	for {
+		prior := c.dnsGuardProbeAfter.Load()
+		if now < prior {
+			return ""
+		}
+		if c.dnsGuardProbeAfter.CompareAndSwap(prior, now+int64(time.Second)) {
+			break
+		}
+	}
+	if !latest.resolverGuardPermits(ctx, entry, index, reqid) {
+		return "dns_guard_current_refused"
+	}
+	current := c.dnsView.Load()
+	if current == nil || current.guard.Digest != latest.guard.Digest {
+		return "dns_guard_current_refused"
+	}
+	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok || ctx.Err() != nil {
+		return "dns_guard_current_refused"
+	}
+	return "dns_guard_superseded_verified"
 }

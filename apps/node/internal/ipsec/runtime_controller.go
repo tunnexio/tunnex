@@ -77,6 +77,7 @@ type RuntimeController struct {
 	mu                      sync.Mutex
 	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
 	dnsDiagnosticAfter      atomic.Int64
+	dnsGuardProbeAfter      atomic.Int64
 	config                  RuntimeControllerConfig
 	journal                 *RuntimeJournal
 	guard                   *RuntimeGuard
