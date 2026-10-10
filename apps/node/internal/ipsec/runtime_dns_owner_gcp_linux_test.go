@@ -84,7 +84,14 @@ func TestDNSOwnerViewGCPNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewRuntimeController(RuntimeControllerConfig{OrgID: m.Manifest.OrgID, GatewayID: m.Manifest.NodeID, JournalDir: t.TempDir(), IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Daemon: daemon.Client, DaemonAlive: daemon.Alive, Environment: environment}, nativeRuntimeLease{})
+	privateTemp, err := os.MkdirTemp("/run", "gcp-dns-owner-component-")
+	if err != nil {
+		t.Fatal("owned private component state directory refused", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(privateTemp) })
+	t.Setenv("TMPDIR", privateTemp)
+	journal := journalDir(t)
+	c, err := NewRuntimeController(RuntimeControllerConfig{OrgID: m.Manifest.OrgID, GatewayID: m.Manifest.NodeID, JournalDir: journal, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Daemon: daemon.Client, DaemonAlive: daemon.Alive, Environment: environment}, nativeRuntimeLease{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +107,7 @@ func TestDNSOwnerViewGCPNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	if count == 2 {
-		receipt, err := bgpengine.QualifyPreflight(ctx, t.TempDir())
+		receipt, err := bgpengine.QualifyPreflight(ctx, journal)
 		if err != nil {
 			t.Fatal("actual no-peer BGP qualification refused", err)
 		}
