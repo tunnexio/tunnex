@@ -101,6 +101,16 @@
       "file": "inventory-capture.json",
       "retained_path": "/private/tmp/gcp-runtime-proof-diagnostics-20261010/actual-native-capture.json",
       "sha256": "0adefd40323975708efb735f055016c47a4a7c20cc909935937c54b390a781cd"
+    },
+    {
+      "file": "actual-v3-native-capture.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v3-native-capture.json",
+      "sha256": "f995ee96be0673a86475c22940a36dd31bda61a1428ceba3b65a3dbe84bf795f"
+    },
+    {
+      "file": "actual-v3-observer-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v3-observer-receipt.json",
+      "sha256": "2e92e25a89ed25dcf7dcb2ff8b1902ed422aa4520d452b8ad09ec02267d47653"
     }
   ],
   "scope": "Actual read-only checkpoint; offline strict observer; no packet or authority restoration claim"
