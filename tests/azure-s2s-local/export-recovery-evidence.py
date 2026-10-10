@@ -7,11 +7,14 @@ import importlib.util
 import json
 import math
 import os
+import re
+import uuid
 from pathlib import Path
 import stat
 import subprocess
 
-FILES=('postboot-reenabled-packets.json','anchored-active-restart-cbdf882f-packets.json')
+FILES=('postboot-reenabled-packets.json','anchored-active-restart-cbdf882f-packets.json',
+       'controlled-recovery-fd6eeaff-packets.json','controlled-healthy-restart-12cfccbb-packets.json')
 KINDS=('fresh_tcp','existing_tcp','fresh_udp','existing_udp')
 
 
@@ -66,6 +69,89 @@ def packets(value):
  return output
 
 
+def integer(value,low=0,high=9223372036854775807):
+ if type(value)!=int or not low<=value<=high:raise ValueError('bounded lifecycle integer')
+ return value
+
+
+def hex_digest(value):
+ if not isinstance(value,str) or not re.fullmatch('[0-9a-f]{64}',value):raise ValueError('identity/hash shape')
+ return value
+
+
+def boot_id(value):
+ if not isinstance(value,str) or str(uuid.UUID(value))!=value:raise ValueError('boot identity')
+ return value
+
+
+def stop_snapshot(value):
+ if value.get('version')!=1:raise ValueError('snapshot version')
+ result={'version':1,'container':hex_digest(value['container']),'boot':boot_id(value['boot']),
+         'pid':integer(value['pid'],1),'started':timestamp(value['started']),
+         'observed_ns':integer(value['observed_ns'],1),
+         'namespace':{key:integer(value['namespace'][key],1) for key in ('device','inode')}}
+ for key in ('journal_entries_sha256','journal_raw_sha256'):result[key]=hex_digest(value[key])
+ return result
+
+
+def stopped_proof(value):
+ required=['exact-stopped-runtime','empty-cgroup','no-namespace-holders-two-passes']
+ if value.get('version')!=1 or value.get('kind')!='supervisor-confirmed-runtime-stop' or value.get('checks')!=required:raise ValueError('stop proof shape')
+ snapshot=stop_snapshot(value['snapshot']);event=value['termination']
+ if event.get('action')!='die' or event.get('container')!=snapshot['container']:raise ValueError('termination binding')
+ event_ns=integer(event['time_ns'],1);verified=integer(value['verified_ns'],1)
+ if not snapshot['observed_ns']<=event_ns<=verified:raise ValueError('termination ordering')
+ return {'version':1,'kind':value['kind'],'snapshot':snapshot,'checks':required,
+         'termination':{'container':snapshot['container'],'action':'die','time_ns':event_ns},
+         'verified_ns':verified,'stopped_journal_raw_sha256':hex_digest(value['stopped_journal_raw_sha256'])}
+
+
+def fresh_runtime(value):
+ if value.get('version')!=1 or value.get('kind')!='supervisor-confirmed-fresh-runtime':raise ValueError('fresh runtime kind')
+ ns=value['namespace']
+ if not isinstance(ns,str) or not re.fullmatch(r'net:\[[1-9][0-9]{0,19}\]',ns):raise ValueError('namespace identity')
+ result={'version':1,'kind':value['kind'],'container':hex_digest(value['container']),
+         'boot':boot_id(value['boot']),'namespace':ns,'started_at':timestamp(value['started_at'])}
+ for key in ('pid','pid_start_ticks','startup_gate_device','startup_gate_inode'):result[key]=integer(value[key],1)
+ for key in ('stop_evidence_sha256','stopped_journal_sha256','current_journal_sha256','startup_gate_sha256'):result[key]=hex_digest(value[key])
+ return result
+
+
+def root_evidence_directory(path):
+ info=path.lstat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o700 or path.absolute()!=path.resolve():raise ValueError('root evidence directory')
+
+
+def controlled_restart(root):
+ directory=root/'controlled-namespace-stop-2'
+ if not directory.exists():return {'availability':'missing'}
+ root_evidence_directory(directory)
+ before=stop_snapshot(read_private(directory/'before.json'))
+ stopped=stopped_proof(read_private(directory/'stopped.json'))
+ if before!=stopped['snapshot']:raise ValueError('snapshot/proof binding')
+ attempts=[]
+ for path in directory.iterdir():
+  if path.name.startswith('assemble-'):
+   suffix=path.name[len('assemble-'):]
+   if str(uuid.UUID(suffix))!=suffix:raise ValueError('attempt identity')
+   root_evidence_directory(path);attempts.append(path)
+ if len(attempts)>100:raise ValueError('attempt bound')
+ accepted=[];missing=0
+ for path in attempts:
+  if not (path/'result.json').exists():missing+=1;continue
+  result=read_private(path/'result.json')
+  if result.get('stage')!='exact_gate_released' or result.get('runtime_acceptance')!='not_observed':raise ValueError('gate result shape')
+  fresh=fresh_runtime(read_private(path/'fresh-runtime.json'))
+  if fresh['container']!=before['container'] or fresh['boot']!=before['boot'] or fresh['pid']==before['pid'] or fresh['started_at']==before['started']:raise ValueError('fresh runtime binding')
+  if fresh['stopped_journal_sha256']!=stopped['stopped_journal_raw_sha256']:raise ValueError('stopped journal hash binding')
+  accepted.append({'fresh_runtime':fresh,'gate_release':{'stage':'exact_gate_released','observed_at':timestamp(result['observed_at']),'runtime_acceptance':'not_observed'}})
+ if len(accepted)!=1:raise ValueError('expected exactly one accepted gate result')
+ return {'availability':'observed','snapshot':before,'stop_proof':stopped,
+         'accepted_installation':accepted[0],'attempts_without_result':missing,
+         'initial_install_refusal':{'availability':'not_saved','cause':'unclassified'},
+         'scope':'Stop and exact gate-release observations only; no zero-outage or old LAN socket continuity proof'}
+
+
 def private_root(root):
  info=root.lstat()
  if os.geteuid()!=0 or not stat.S_ISDIR(info.st_mode) or info.st_uid!=1000 or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('root observer requires UID1000 private root')
@@ -90,6 +176,7 @@ def main():
   path=root/name
   if not path.exists():result['historical_packet_receipts'][name]={'availability':'missing'};continue
   result['historical_packet_receipts'][name]={'availability':'observed','observations':packets(read_private(path))}
+ result['controlled_restart']=controlled_restart(root)
  initial=args.initial_refusal
  if initial.name!='genuine-reboot-recovery.json' or initial.is_symlink() or not initial.is_file() or initial.stat().st_size>2097152:raise ValueError('initial receipt shape')
  result['initial_refusal_receipt']={'path':'docs/evidence/azure-s2s-20261010/genuine-reboot-recovery.json','sha256':hashlib.sha256(initial.read_bytes()).hexdigest(),'preserved':True}
