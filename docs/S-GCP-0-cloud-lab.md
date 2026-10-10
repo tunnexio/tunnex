@@ -36,3 +36,7 @@ All cloud operations execute via SSH on the designated bastion. Do not modify de
 Record exact names, locations, create status and observed identifiers in a key-free ledger. Existing same-name resources must match ownership/plan before reuse. Cleanup in dependency order: tests/CP stop; DNS records/policy/zone; Classic static routes/tunnel/forwarding rules/target gateway; HA BGP peers/interfaces/tunnels/external peer/gateway/router; VMs/firewalls/static IPs/subnets/VPCs. Teardown is scoped to exact ledger resources and held until human has inspected the lab. Reconciliation/delete failure is recorded, never handled with broad cleanup.
 
 Implementation, local acceptance, live qualification and production publication remain separate. No live acceptance has passed at this checkpoint.
+
+## Current deployment preparation
+
+SSH is restored. Frozen `3d0951e8` native AMD64 image and isolated content checks passed on the owned gateway VM. The approved exact `10.70.0.0/24` route via `10.70.0.1` on ens4 with source `10.70.0.2`, protocol242 and metric50000 was added after collision checks; exact before/after receipt preserves all other routes. Loopback-only two-hop SSH forwards expose the genuine test CP only to the owned gateway; health HTTP200 is observed. No gateway enrollment/start or Google tunnel traffic is yet accepted. Automatic review requires direct approval for normal join-token issuance and private remote delivery; the human question is pending.
