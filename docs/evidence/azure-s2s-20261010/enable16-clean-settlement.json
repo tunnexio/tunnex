@@ -48,6 +48,25 @@
     "receipt_sha256": "28eaaf7e30944adda3f2bba456c1a07701075db4e7ff60315b76c296869ad87c",
     "no_dns_probes": true
   },
-  "remaining": ["FQDN controller timeout remains unresolved and no FQDN grant issued", "Default mode stability and rekey qualification", "New cleanup source actual live withdrawal", "Remaining profiles, faults and UI acceptance"],
+  "bounded_default_stability": {
+    "sample_count": 12,
+    "first_elapsed_seconds": 0.377,
+    "last_elapsed_seconds": 110.419,
+    "all_strict_native_and_fresh_normal_bgp_route_checks_passed": true,
+    "maximum_runtime_age_seconds": 9.79,
+    "summary_sha256": "eb22fdf743677793a7052b74d2bd1295355521442dbac0a852c0ce21a1dc8fee",
+    "scope": "Twelve snapshots only; no scheduled rekey or future remote-initiation guarantee"
+  },
+  "fqdn_current_node": {
+    "one_actual_noerror_rpc": {"created_at": "2026-10-10T15:49:18.35753Z", "completion_seconds": 4.797, "error_code_present": false},
+    "later_requests_expired": true,
+    "no_fqdn_grant": true,
+    "observed_refusal_examples": [{"operation": "dns_before_proof", "stage": "dns_guard_full_read", "elapsed_ms": 1921, "context_state": "active"}, {"operation": "dns_after_proof", "stage": "dns_native_proof", "elapsed_ms": 1162, "context_state": "deadline"}],
+    "peer_cpu_count": 2,
+    "current_endpoint_workers": 4,
+    "source_derived_workload_per_four_endpoint_a_aaaa_lookup": {"complete_native_proofs": 16, "vici_command_connections": 192, "dedicated_full_guard_reads_minimum": 16},
+    "causality_limit": "Repeated proof workload supports deadline pressure as a hypothesis. Fixed full-read diagnostics combine IO, mismatch and expiry; no individual component has a measured causal attribution. Historical resolver-unavailable totals do not describe this node."
+  },
+  "remaining": ["FQDN controller timeout remains unresolved and no FQDN grant issued", "Scheduled rekey qualification", "New cleanup source actual live withdrawal", "Remaining profiles, faults and UI acceptance"],
   "production_ready": false
 }
