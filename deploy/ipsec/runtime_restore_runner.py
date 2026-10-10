@@ -20,10 +20,53 @@ import uuid
 import runtime_stop_proof as proof
 
 
+def zero_tuple(value):
+    # Go fixed wire arrays retain the exact empty inactive slot. The receipt
+    # helper subsequently validates the complete strict typed journal/checksum.
+    if isinstance(value, dict):
+        return all(zero_tuple(v) for v in value.values())
+    if isinstance(value, list):
+        return not value
+    return value is None or value is False or value == 0 or value in ('', '00000000-0000-0000-0000-000000000000')
+
+
+def active_count(entry):
+    contract = entry.get('ContractVersion')
+    if type(contract) is not int:
+        raise ValueError('invalid restoration contract')
+    allocation = entry['Allocation']
+    profile = allocation.get('ProfileID', '')
+    if contract == 4 and profile == 'gcp-classic-static-ipv4-v1':
+        count = 1
+    elif contract == 3 and profile in ('', 'gcp-ha-bgp-ipv4-v1'):
+        count = 2
+    elif contract == 2 and profile == '':
+        count = 2
+    else:
+        raise ValueError('unsupported restoration profile/contract')
+    bgp = contract == 3
+    if bool(allocation.get('BGP')) != bgp or bool(entry.get('BGP')) != bgp:
+        raise ValueError('mixed restoration transport')
+    if (contract == 2) != bool(entry.get('Recovery')):
+        raise ValueError('mixed restoration recovery duty')
+    for rows in (allocation['Tunnels'], entry['Engines'], entry['Observed']):
+        if len(rows) != 2 or (count == 1 and not zero_tuple(rows[1])):
+            raise ValueError('invalid restoration cardinality')
+    for i in range(count):
+        engine, tunnel = entry['Engines'][i], allocation['Tunnels'][i]
+        if (engine.get('ProfileID', '') != profile or bool(engine.get('BGP')) != bgp
+                or engine['TunnelID'] != tunnel['TunnelID'] or tunnel['Slot'] != i + 1
+                or tunnel['Selected'] != (not bgp and i == 0)):
+            raise ValueError('mixed restoration tunnel binding')
+    return count
+
+
 def active_entry(document):
     entries = [e for e in document['Payload']['Entries'] if e['Phase'] != 'retained_refusal']
-    if len(entries) != 1 or entries[0]['Phase'] != 'applied' or entries[0].get('ContractVersion') != 2:
-        raise ValueError('requires exactly one applied recovery obligation')
+    if (len(entries) != 1 or entries[0]['Phase'] != 'applied'
+            or entries[0].get('AbsenceOnly') or entries[0].get('ResetCleanup')):
+        raise ValueError('requires exactly one applied restoration obligation')
+    active_count(entries[0])
     return entries[0]
 
 
@@ -54,28 +97,49 @@ def sync_directory(path):
 
 
 def restored(before, after, ns):
-    old_epoch = (before.get('Restoration') or {}).get('Epoch', 0)
-    r = after.get('Restoration') or {}
-    prior_duty = before.get('Recovery') or {}
-    expected_slot = prior_duty.get('PendingTo') if prior_duty.get('Stage') == 'pending' else prior_duty.get('SelectedSlot')
-    return (after['DeliveryID'] == before['DeliveryID'] and after['Phase'] == 'applied'
-            and r.get('Epoch') == old_epoch + 1
-            and after['Allocation']['Namespace'] == ns
-            and after['Allocation']['Generation'] != before['Allocation']['Generation']
-            and len(after['Observed']) == 2
-            and all(o['Namespace'] == ns and o['InterfaceIndex'] > 0 for o in after['Observed'])
-            and (after.get('Recovery') or {}).get('Stage') in ('', 'completed')
-            and (after.get('Recovery') or {}).get('PendingFrom', 0) == 0
-            and (after.get('Recovery') or {}).get('PendingTo', 0) == 0
-            and expected_slot in (1, 2)
-            and (after.get('Recovery') or {}).get('SelectedSlot') == expected_slot
-            and (after.get('Recovery') or {}).get('Sequence') == prior_duty.get('Sequence'))
+    try:
+        count = active_count(before)
+        if after.get('AbsenceOnly') or after.get('ResetCleanup'):
+            return False
+        if active_count(after) != count or after['ContractVersion'] != before['ContractVersion']:
+            return False
+        if after['Allocation'].get('ProfileID', '') != before['Allocation'].get('ProfileID', ''):
+            return False
+        for i in range(count):
+            a, b, o = after['Allocation']['Tunnels'][i], before['Allocation']['Tunnels'][i], after['Observed'][i]
+            if (a['TunnelID'] != b['TunnelID'] or {k: v for k, v in after['Engines'][i].items() if k != 'LocalAddress'}
+                    != {k: v for k, v in before['Engines'][i].items() if k != 'LocalAddress'}
+                    or o.get('Namespace') != ns or type(o.get('InterfaceIndex')) is not int or o['InterfaceIndex'] <= 0
+                    or o.get('InterfaceName') != a['Name'] or o.get('XFRMID') != a['XFRMID']):
+                return False
+        old_epoch = (before.get('Restoration') or {}).get('Epoch', 0)
+        r = after.get('Restoration') or {}
+        if not (after['DeliveryID'] == before['DeliveryID'] and after['Phase'] == 'applied'
+                and r.get('Epoch') == old_epoch + 1
+                and after['Allocation']['Namespace'] == ns
+                and after['Allocation']['Generation'] != before['Allocation']['Generation']):
+            return False
+        if before['ContractVersion'] != 2:
+            return True  # Classic has one static duty; HA has BGP, never recovery slots.
+        prior = before['Recovery']
+        expected = prior.get('PendingTo') if prior.get('Stage') == 'pending' else prior.get('SelectedSlot')
+        recovery = after['Recovery']
+        return (recovery.get('Stage') in ('', 'completed')
+                and recovery.get('PendingFrom', 0) == 0 and recovery.get('PendingTo', 0) == 0
+                and expected in (1, 2) and recovery.get('SelectedSlot') == expected
+                and recovery.get('Sequence') == prior.get('Sequence'))
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 def tunnels_installed(text, entry):
     # Human swanctl output has unindented IKE headers and indented CHILD lines.
     blocks = re.split(r'(?m)(?=^tnx-ipsec-)', text)
-    for e in entry['Engines']:
+    try:
+        count = active_count(entry)
+    except (ValueError, KeyError, TypeError):
+        return False
+    for e in entry['Engines'][:count]:
         b = e['Binding']
         name = 'tnx-ipsec-%s-d%s-c%s-s%s' % (e['TunnelID'], b['DesiredRevision'], b['ConfigurationRevision'], e['SecretRevision'])
         found = False
@@ -91,7 +155,11 @@ def tunnels_installed(text, entry):
 
 
 def links_owned(links, entry):
-    for allocated, observed in zip(entry['Allocation']['Tunnels'], entry['Observed']):
+    try:
+        count = active_count(entry)
+    except (ValueError, KeyError, TypeError):
+        return False
+    for allocated, observed in zip(entry['Allocation']['Tunnels'][:count], entry['Observed'][:count]):
         matches = [link for link in links if link.get('ifname') == allocated['Name']]
         if len(matches) != 1:
             return False
@@ -224,7 +292,7 @@ def run(args):
         # The gate blocks startup from reusing old ownership if Linux recycles the
         # namespace inode. Only remove this run's exact gate after receipt fsync.
         release_gate(gate, gate_raw, gate_identity)
-        print('Bound receipt installed; awaiting journal recovery and both tunnel sessions.', flush=True)
+        print('Bound receipt installed; awaiting journal restoration and active tunnel sessions.', flush=True)
         while time.monotonic() < deadline:
             after = active_entry(proof.private_read(args.journal))
             if restored(before_entry, after, ns):
@@ -241,9 +309,10 @@ def run(args):
                         result = {'version': 1, 'status': 'controller-and-tunnels-restored',
                                   'scope': 'controlled-supervisor-container-restart',
                                   'epoch': after['Restoration']['Epoch'], 'payload_verified': False,
-                                  'started_utc': started_utc, 'stop_to_both_established_seconds': round(time.monotonic() - stop_started, 3)}
+                                  'started_utc': started_utc, 'active_tunnel_count': active_count(after),
+                                  'stop_to_active_established_seconds': round(time.monotonic() - stop_started, 3)}
                         proof.private_write(directory / 'result.json', result)
-                        print('PASS: controller restoration and both fresh tunnel sessions. Client payload verification remains separate.', flush=True)
+                        print('PASS: controller restoration and all active fresh tunnel sessions. Client payload verification remains separate.', flush=True)
                         return result
                 except subprocess.CalledProcessError:
                     pass

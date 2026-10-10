@@ -4,12 +4,18 @@ import json
 import unittest
 
 import runtime_restore_runner as runner
+from test_runtime_restore_profiles import entry as profile_entry
 
 
 class RestorationAcceptanceTests(unittest.TestCase):
     def setUp(self):
         self.before = {'DeliveryID': 'delivery', 'Phase': 'applied', 'Allocation': {'Namespace': 'net:[1]', 'Generation': 'old'}, 'Restoration': {'Epoch': 1}, 'Recovery': {'Stage': 'completed', 'SelectedSlot': 2, 'Sequence': 4}}
         self.after = {'DeliveryID': 'delivery', 'Phase': 'applied', 'Allocation': {'Namespace': 'net:[2]', 'Generation': 'new'}, 'Restoration': {'Epoch': 2}, 'Observed': [{'Namespace': 'net:[2]', 'InterfaceIndex': 7}, {'Namespace': 'net:[2]', 'InterfaceIndex': 8}], 'Recovery': {'Stage': 'completed', 'SelectedSlot': 2, 'Sequence': 4, 'PendingFrom': 0, 'PendingTo': 0}}
+
+        for target, namespace in ((self.before, 'net:[1]'), (self.after, 'net:[2]')):
+            shape = profile_entry('', 2, namespace)
+            target.update(ContractVersion=2, Engines=shape['Engines'], Observed=shape['Observed'])
+            target['Allocation']['Tunnels'] = shape['Allocation']['Tunnels']
 
     def test_reserved_epoch_alone_not_success(self):
         self.assertTrue(runner.restored(self.before, self.after, 'net:[2]'))
@@ -48,6 +54,10 @@ class RestorationAcceptanceTests(unittest.TestCase):
 
     def test_both_exact_sessions_required(self):
         entry = {'Engines': [{'TunnelID': 'one', 'SecretRevision': 2, 'Binding': {'DesiredRevision': 3, 'ConfigurationRevision': 4}}, {'TunnelID': 'two', 'SecretRevision': 2, 'Binding': {'DesiredRevision': 3, 'ConfigurationRevision': 4}}]}
+        shape = profile_entry('', 2)
+        entry.update(ContractVersion=2, Allocation=shape['Allocation'], Observed=shape['Observed'], Recovery=shape['Recovery'])
+        for i, name in enumerate(('one', 'two')):
+            entry['Allocation']['Tunnels'][i]['TunnelID'] = name
         text = '\n'.join('tnx-ipsec-%s-d3-c4-s2: #1, ESTABLISHED, IKEv2\n  tnx-ipsec-%s-d3-c4-s2: #1, reqid 7, INSTALLED, TUNNEL' % (name, name) for name in ('one', 'two'))
         self.assertTrue(runner.tunnels_installed(text, entry))
         self.assertFalse(runner.tunnels_installed(text.replace('two-d3-c4-s2', 'two-d3-c4-s1'), entry))
@@ -55,6 +65,10 @@ class RestorationAcceptanceTests(unittest.TestCase):
 
     def test_observed_kernel_link_ownership_required(self):
         entry = {'Allocation': {'Tunnels': [{'Name': 'x1', 'Alias': 'owned1', 'XFRMID': 1}, {'Name': 'x2', 'Alias': 'owned2', 'XFRMID': 2}]}, 'Observed': [{'InterfaceIndex': 11}, {'InterfaceIndex': 12}]}
+        shape = profile_entry('', 2)
+        entry.update(ContractVersion=2, Engines=shape['Engines'], Recovery=shape['Recovery'])
+        for i, tunnel in enumerate(entry['Allocation']['Tunnels']):
+            tunnel.update(TunnelID=str(i), Slot=i+1, Selected=i == 0)
         links = [{'ifname': 'x%d' % i, 'ifalias': 'owned%d' % i, 'ifindex': 10+i, 'linkinfo': {'info_kind': 'xfrm', 'info_data': {'if_id': i}}} for i in (1, 2)]
         self.assertTrue(runner.links_owned(links, entry))
         links[0]['linkinfo']['info_data']['if_id'] = '0x1'

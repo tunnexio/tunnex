@@ -121,7 +121,7 @@ func assembleDelivery(journal, evidence []byte, boot, ns string, selected uuid.U
 			return nil, errors.New("duplicate active delivery")
 		}
 		seen[candidate.DeliveryID] = true
-		if candidate.Phase != ipsec.RuntimeApplied || (candidate.ContractVersion != 2 && candidate.ContractVersion != 3) || candidate.AbsenceOnly || candidate.ResetCleanup != nil {
+		if candidate.Phase != ipsec.RuntimeApplied || (candidate.ContractVersion != 2 && candidate.ContractVersion != 3 && candidate.ContractVersion != 4) || candidate.AbsenceOnly || candidate.ResetCleanup != nil {
 			return nil, errors.New("unsupported obligation")
 		}
 		if selected == uuid.Nil || candidate.DeliveryID == selected {
@@ -137,7 +137,7 @@ func assembleDelivery(journal, evidence []byte, boot, ns string, selected uuid.U
 	if active == 0 || active > 256 || (selected == uuid.Nil && active != 1) || (selected != uuid.Nil && !seen[selected]) {
 		return nil, errors.New("expected exactly one active obligation")
 	}
-	if e.Phase != ipsec.RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3) || e.AbsenceOnly || e.ResetCleanup != nil || e.Engines[0].Binding.GatewayID != j.Payload.OwnerID {
+	if e.Phase != ipsec.RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && e.ContractVersion != 4) || e.AbsenceOnly || e.ResetCleanup != nil || e.Engines[0].Binding.GatewayID != j.Payload.OwnerID {
 		return nil, errors.New("unsupported obligation")
 	}
 	if p.Snapshot.Namespace.Inode == 0 || ns == e.Allocation.Namespace || e.Allocation.Namespace != fmt.Sprintf("net:[%d]", p.Snapshot.Namespace.Inode) || (e.Restoration != nil && e.Restoration.BootID != p.Snapshot.Boot) || (e.BGPProcess != nil && e.BGPProcess.BootID != p.Snapshot.Boot) {
