@@ -7,9 +7,15 @@ class PublicOnly(unittest.TestCase):
             p=pathlib.Path(d)/'public';p.write_text('ssh-ed25519 '+base64.b64encode(raw).decode()+' comment\n')
             real=os.fstat
             def root(fd):
-                s=real(fd);return types.SimpleNamespace(st_mode=s.st_mode,st_uid=0,st_size=s.st_size)
+                s=real(fd);return types.SimpleNamespace(st_mode=s.st_mode,st_uid=0,st_size=s.st_size,st_nlink=s.st_nlink,st_dev=s.st_dev,st_ino=s.st_ino,st_mtime_ns=s.st_mtime_ns,st_ctime_ns=s.st_ctime_ns)
             with unittest.mock.patch.object(m.os,'fstat',side_effect=root):
                 key,fp=m.public_key(str(p));self.assertEqual(key.split()[0],'ssh-ed25519');self.assertTrue(fp.startswith('SHA256:'));self.assertNotIn('comment',key)
+                p.chmod(0o666)
+                with self.assertRaises(ValueError):m.public_key(str(p))
+                p.chmod(0o600)
+                hard=pathlib.Path(d)/'hard';os.link(p,hard)
+                with self.assertRaises(ValueError):m.public_key(str(p))
+                hard.unlink()
                 p.write_text('ssh-rsa '+base64.b64encode(raw).decode())
                 with self.assertRaises(ValueError):m.public_key(str(p))
                 p.write_text('ssh-ed25519 '+base64.b64encode(raw+b'extra').decode())
