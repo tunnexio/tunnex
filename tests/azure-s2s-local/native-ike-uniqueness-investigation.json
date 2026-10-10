@@ -6,7 +6,7 @@
   "image_tag": "tunnex-azure-s2s-native:20261010-ec57c0ee",
   "observed_swanctl_version": "6.1.0",
   "scope": "Disposable local network-none container, owned namespace/veth pair, synthetic credentials, NET_ADMIN and SYS_ADMIN with container AppArmor/seccomp disabled; no host mounts, downloads, cloud execution, production edits, controller authority or traffic grants.",
-  "version_limit": "This is not native evidence for the owned Azure peer's strongSwan 6.0.7-r1.",
+  "version_limit": "Local fixture reports 6.1.0. Source pins the managed /opt/tunnex-ipsec/libexec/ipsec/charon to 6.1.0 and DaemonClient.Inspect requires VICI version 6.1.0. The package/CLI report 6.0.7-r1 does not identify that managed daemon. Root reports successful live Inspect; exact live binary attestation remains separate. This local matrix does not establish live Azure causality.",
   "candidate_prevention": "FAIL",
   "completed_cases": [
     {
@@ -48,5 +48,11 @@
     "azure-uniqueness-rekey.sh": "a09fffba0745641fbc7e859e19087cce2199f88c3d5f03aa4152339fd6aa8f84",
     "azure-uniqueness-barrier.sh": "93d8282a26fa39aa54761d1e8bef7fbca6ef24d56e9d6eb6aea2637ac298cb2d"
   },
-  "decision": "Do not ship this candidate as a duplicate-IKE prevention fix. Preserve strict duplicate/selector refusal. Exact 6.0.7 native qualification and normal owned lifecycle qualification remain separate."
+  "decision": "Do not ship this candidate as a duplicate-IKE prevention fix. Preserve strict duplicate/selector refusal. Live managed-binary attestation and normal owned lifecycle qualification remain separate.",
+  "version_source_evidence": {
+    "daemon_executable": "apps/node/internal/ipsec/daemon_process_linux.go:22",
+    "inspect_version_requirement": "apps/node/internal/ipsec/daemon.go:93-103",
+    "pinned_source": "deploy/ipsec/PROVENANCE.json:3-4",
+    "correction": "Earlier attribution of package-reported 6.0.7-r1 to the owned managed daemon was unsupported."
+  }
 }
