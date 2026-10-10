@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Client-only reviewed CAS/reset/public-serial recovery. Run on designated bastion."""
+"""Exact owned test VM CAS/reset/public-serial recovery. Run on designated bastion."""
 import argparse,base64,hashlib,json,os,pathlib,stat,subprocess,sys,time,urllib.request,uuid
 PROJECT='project-0048836f-6ba1-4a14-8da';ZONE='asia-south2-b';NAME='tn-gcps2s-20261010-local-client';ID='4751969643435150303';IP='10.70.0.10'
 BASE='https://compute.googleapis.com/compute/v1/projects/'+PROJECT
+NETWORK='tn-gcps2s-20261010-peer'
+ROLES={'local-client':('tn-gcps2s-20261010-local-client','4751969643435150303','10.70.0.10','tn-gcps2s-20261010-peer'),'ha-target':('tn-gcps2s-20261010-ha-target','7595462031766211538','10.80.0.10','tn-gcps2s-20261010-ha'),'classic-target':('tn-gcps2s-20261010-classic-target','139156170322758560','10.81.0.10','tn-gcps2s-20261010-classic')}
 INSTANCE='/zones/'+ZONE+'/instances/'+NAME
+def configure_role(role):
+    global NAME,ID,IP,NETWORK,INSTANCE
+    NAME,ID,IP,NETWORK=ROLES[role]
+    INSTANCE='/zones/'+ZONE+'/instances/'+NAME
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
@@ -64,10 +70,10 @@ with tempfile.TemporaryDirectory(prefix='tnx-hostkey-',dir='/run') as directory:
 
 def identity(instance):
     nic=instance['networkInterfaces'][0]
-    if str(instance.get('id'))!=ID or instance.get('name')!=NAME or nic.get('networkIP')!=IP or not nic.get('network','').endswith('/projects/'+PROJECT+'/global/networks/tn-gcps2s-20261010-peer') or instance.get('status')!='RUNNING':raise ValueError('exact running owned client required')
+    if str(instance.get('id'))!=ID or instance.get('name')!=NAME or nic.get('networkIP')!=IP or not nic.get('network','').endswith('/projects/'+PROJECT+'/global/networks/'+NETWORK) or instance.get('status')!='RUNNING':raise ValueError('exact running owned client required')
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--evidence-dir',required=True);p.add_argument('--publisher',required=True);p.add_argument('--publisher-sha256',required=True);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--role',choices=sorted(ROLES),default='local-client');p.add_argument('--evidence-dir',required=True);p.add_argument('--publisher',required=True);p.add_argument('--publisher-sha256',required=True);a=p.parse_args();configure_role(a.role)
     parent=pathlib.Path(a.evidence_dir);s=os.lstat(parent)
     if not stat.S_ISDIR(s.st_mode) or s.st_uid!=os.getuid() or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('owned private evidence directory required')
     fd=os.open(a.publisher,os.O_RDONLY|os.O_NOFOLLOW)
@@ -77,7 +83,7 @@ def main():
         helper=os.read(fd,65537)
     finally:os.close(fd)
     if hashlib.sha256(helper).hexdigest()!=a.publisher_sha256:raise ValueError('reviewed helper hash required')
-    attempt=str(uuid.uuid4());run=parent/('client-'+attempt);run.mkdir(mode=0o700)
+    attempt=str(uuid.uuid4());run=parent/(('client' if a.role=='local-client' else a.role)+'-'+attempt);run.mkdir(mode=0o700)
     def save(name,value):
         fd=os.open(run/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         with os.fdopen(fd,'w') as f:json.dump(value,f);f.write('\n');f.flush();os.fsync(f.fileno())
@@ -107,7 +113,7 @@ def main():
     prepared=api(INSTANCE);identity(prepared)
     if metadata_items(prepared['metadata'])!=installed:raise ValueError('complete metadata readback mismatch')
     save('installed-metadata.json',prepared['metadata'])
-    # No stop/retry/recreation: one genuine normal reset of this exact fixture only.
+    # No stop/retry/recreation: one genuine normal reset of this selected exact fixture only.
     reset=wait(api(INSTANCE+'/reset','POST',{}));deadline=time.monotonic()+120;found=None;carry=''
     while time.monotonic()<deadline:
         output=api(INSTANCE+'/serialPort?port=1&start='+str(offset));offset=int(output['next'])

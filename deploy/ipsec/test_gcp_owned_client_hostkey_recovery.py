@@ -36,6 +36,17 @@ class Preservation(unittest.TestCase):
         with self.assertRaises(ValueError):m.parse_marker(encoded.replace('"instance_id":','"instance_id":"foreign","instance_id":'),attempt)
         bad=dict(marker,public_key='ssh-ed25519 '+base64.b64encode(bytes(51)).decode())
         with self.assertRaises(ValueError):m.parse_marker(json.dumps(bad),attempt)
+    def test_exact_three_roles_cannot_select_gateway_or_wrong_network(self):
+        try:
+            for role,expected in m.ROLES.items():
+                m.configure_role(role)
+                self.assertEqual((m.NAME,m.ID,m.IP,m.NETWORK),expected)
+                row={'id':m.ID,'name':m.NAME,'status':'RUNNING','networkInterfaces':[{'networkIP':m.IP,'network':'https://compute.googleapis.com/compute/v1/projects/'+m.PROJECT+'/global/networks/'+m.NETWORK}]}
+                m.identity(row)
+                row['networkInterfaces'][0]['network']='https://compute.googleapis.com/compute/v1/projects/'+m.PROJECT+'/global/networks/wrong'
+                with self.assertRaises(ValueError):m.identity(row)
+            with self.assertRaises(KeyError):m.configure_role('gateway')
+        finally:m.configure_role('local-client')
     def test_url_duplicate_and_wrong_identity_refuse(self):
         with self.assertRaises(ValueError):m.startup([{'key':'startup-script-url','value':'https://example.invalid/script'}],b'helper','attempt')
         with self.assertRaises(ValueError):m.metadata_items({'items':[{'key':'a','value':'1'},{'key':'a','value':'2'}]})
