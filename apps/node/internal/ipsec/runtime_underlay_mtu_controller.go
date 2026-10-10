@@ -28,7 +28,7 @@ func (c *RuntimeController) ensureUnderlayMTUs(ctx context.Context, e RuntimeJou
 	outer := [2]uint32{}
 	need := false
 	for i, underlay := range env.Underlays {
-		ceiling, ok := awsIPv4InnerMTU(underlay.OuterMTU)
+		ceiling, ok := runtimeProfileInnerMTU(e.Allocation.ProfileID, underlay.OuterMTU)
 		if !ok || underlay.InterfaceIndex <= 0 || !underlay.LocalAddress.Is4() || snap.ownership[i] != e.Observed[i] || snap.ownership[i].InterfaceIndex == 0 || !snap.address[i] || snap.mtu[i] < 68 {
 			return false, ErrRuntimeController
 		}

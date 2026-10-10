@@ -186,9 +186,13 @@ func runtimeStatusMatchesDelivery(d ipsec.RuntimeDelivery, report ipsec.RuntimeS
 	if !validIPsecStatusReport(report) || report.DeliveryID != d.ID || report.DesiredRevision != d.DesiredRevision || report.ConfigurationRevision != m.ConfigurationRevision {
 		return false
 	}
-	dynamic := m.ProfileID == "aws-bgp-ipv4-v1"
+	dynamic := m.ProfileID == "aws-bgp-ipv4-v1" || m.ProfileID == ipsec.GCPHABGPProfile
+	bgpVersion := 1
+	if m.ProfileID == ipsec.GCPHABGPProfile {
+		bgpVersion = 2
+	}
 	if dynamic {
-		if m.BGP == nil || m.BGPVersion == nil || *m.BGPVersion != 1 || m.RecoveryVersion != nil {
+		if m.BGP == nil || m.BGPVersion == nil || *m.BGPVersion != bgpVersion || m.RecoveryVersion != nil {
 			return false
 		}
 	} else if m.ProfileID != "aws-static-ipv4-v1" || m.BGP != nil || m.BGPVersion != nil || report.BGP != nil {

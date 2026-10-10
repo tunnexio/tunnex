@@ -16,7 +16,7 @@ func (a *KernelApplier) LowerTunnelMTUs(ctx context.Context, p KernelAllocation,
 	ceilings := [2]uint32{}
 	for i, value := range outer {
 		var ok bool
-		ceilings[i], ok = awsIPv4InnerMTU(value)
+		ceilings[i], ok = runtimeProfileInnerMTU(p.ProfileID, value)
 		if !ok {
 			return ErrKernelApply
 		}

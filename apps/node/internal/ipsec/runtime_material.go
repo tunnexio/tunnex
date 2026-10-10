@@ -10,7 +10,7 @@ import (
 
 func runtimeDeliveryValid(d RuntimeDelivery, org, node uuid.UUID, kind string) bool {
 	m := d.Manifest
-	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1") || !validDigest(d.OwnershipDigest) {
+	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile) || !validDigest(d.OwnershipDigest) {
 		return false
 	}
 	if kind == "cleanup" {
@@ -74,6 +74,9 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		return fail()
 	}
 	out := RuntimeJournalEntry{RetainedGuardPredecessors: append([]RuntimeRetainedGuardPredecessor(nil), m.Manifest.RetainedGuardPredecessors...), DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
+	if m.Manifest.ProfileID == GCPHABGPProfile {
+		out.Allocation.ProfileID = GCPHABGPProfile
+	}
 	if bgp {
 		out.ContractVersion = 3
 		copyConfig := *m.Manifest.BGP
@@ -113,6 +116,7 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 			out.Allocation.Tunnels[i].BGP = &KernelBGPTransport{Peer: cloud}
 		}
 		out.Engines[i] = EngineTunnel{BGP: bgp, Binding: Binding{OrgID: org, GatewayID: node, ConnectionID: m.Manifest.ConnectionID, ConfigurationRevision: m.Manifest.ConfigurationRevision, DesiredRevision: m.DesiredRevision}, TunnelID: t.ID, SecretRevision: t.SecretRevision, XFRMID: t.XFRMID, ReqID: t.ReqID, LocalAddress: public, LocalIdentity: public, RemoteAddress: peer, RemoteIdentity: peer, LocalPrefixes: local, RemotePrefixes: remote}
+		out.Engines[i].ProfileID = out.Allocation.ProfileID
 		if !validEngineTunnel(out.Engines[i]) || (secrets && (m.Secrets[i].TunnelID != t.ID || m.Secrets[i].Revision != t.SecretRevision || !validEnginePSK([]byte(m.Secrets[i].PSK)))) {
 			return fail()
 		}

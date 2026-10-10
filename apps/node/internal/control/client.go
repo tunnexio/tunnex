@@ -259,6 +259,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	if version := c.ipsecBGPCapability(); version == 1 {
 		payload["ipsec_bgp_version"] = version
 	}
+	if c.ipsecGCPHACapability() == 1 {
+		payload["ipsec_gcp_ha_version"] = 1
+	}
 	if !ps.FlowLogLastObservedAt.IsZero() {
 		payload["flow_log_last_observed_at"] = ps.FlowLogLastObservedAt.UTC().Format(time.RFC3339Nano)
 	}

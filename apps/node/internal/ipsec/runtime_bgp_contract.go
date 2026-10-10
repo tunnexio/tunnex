@@ -4,13 +4,20 @@ import "net/netip"
 
 // runtimeBGPContract identifies bounded intent, never runtime qualification.
 func runtimeBGPContract(m RuntimeManifest) (bool, error) {
-	if m.ProfileID != "aws-bgp-ipv4-v1" {
+	if m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile {
 		if m.BGP != nil || m.BGPVersion != nil {
 			return false, ErrRuntimeController
 		}
 		return false, nil
 	}
-	if m.BGPVersion == nil || *m.BGPVersion != 1 || m.BGP == nil || m.RecoveryVersion != nil || !validBGPConfig(*m.BGP) {
+	version := 1
+	if m.ProfileID == GCPHABGPProfile {
+		version = 2
+	}
+	if m.BGPVersion == nil || *m.BGPVersion != version || m.BGP == nil || m.RecoveryVersion != nil || !validBGPConfig(*m.BGP) {
+		return false, ErrRuntimeController
+	}
+	if m.ProfileID == GCPHABGPProfile && !validGCPBGPConfig(*m.BGP) {
 		return false, ErrRuntimeController
 	}
 	return true, nil
@@ -27,11 +34,11 @@ func validJournalBGP(r RuntimeJournalEntry) bool {
 		}
 		return true
 	}
-	if r.BGP == nil || !validBGPConfig(*r.BGP) || !r.Allocation.BGP || r.Recovery != nil {
+	if r.BGP == nil || !validBGPConfig(*r.BGP) || (r.Allocation.ProfileID == GCPHABGPProfile && !validGCPBGPConfig(*r.BGP)) || !r.Allocation.BGP || r.Recovery != nil {
 		return false
 	}
 	for i, e := range r.Engines {
-		if !e.BGP || r.Allocation.Tunnels[i].BGP == nil {
+		if !e.BGP || e.ProfileID != r.Allocation.ProfileID || r.Allocation.Tunnels[i].BGP == nil {
 			return false
 		}
 	}

@@ -28,7 +28,8 @@ var ErrKernelApply = errors.New("IPsec owned kernel operation refused")
 // KernelAllocation is nonsecret journal data, persisted before the first mutation.
 // Names and IDs are proposals, never proof of ownership. Collisions refuse.
 type KernelAllocation struct {
-	BGP                      bool `json:",omitempty"`
+	ProfileID                string `json:",omitempty"`
+	BGP                      bool   `json:",omitempty"`
 	Namespace                string
 	Generation, ConnectionID uuid.UUID
 	Tunnels                  [2]KernelTunnelAllocation
@@ -63,7 +64,7 @@ func KernelTunnelAlias(generation, tunnel uuid.UUID) string {
 }
 
 func validKernelAllocation(p KernelAllocation) bool {
-	if !validKernelNamespace(p.Namespace) || p.Generation == uuid.Nil || p.ConnectionID == uuid.Nil {
+	if !validRuntimeProviderProfile(p.ProfileID) || !validKernelNamespace(p.Namespace) || p.Generation == uuid.Nil || p.ConnectionID == uuid.Nil {
 		return false
 	}
 	for i, t := range p.Tunnels {
@@ -477,8 +478,8 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 		// Mutate only after exact alias/name/XFRM ownership has been observed.
 		// Reapply also upgrades legacy default-MTU allocations in place.
 		// Preserve a smaller operator-qualified MTU; never raise it to the ceiling.
-		if s.mtu[i] == 0 || s.mtu[i] > AWSIPv4TunnelMTU {
-			if a.mutate(ctx, p, "link", "set", "dev", t.Name, "mtu", strconv.Itoa(AWSIPv4TunnelMTU)) != nil {
+		if s.mtu[i] == 0 || s.mtu[i] > uint64(runtimeProfileMTU(p.ProfileID)) {
+			if a.mutate(ctx, p, "link", "set", "dev", t.Name, "mtu", strconv.Itoa(int(runtimeProfileMTU(p.ProfileID)))) != nil {
 				return fail()
 			}
 		}
@@ -512,7 +513,7 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 		return fail()
 	}
 	for i, t := range p.Tunnels {
-		if s.mtu[i] == 0 || s.mtu[i] > AWSIPv4TunnelMTU || !s.address[i] || !s.up[i] || s.ownership[i].InterfaceIndex == 0 || (t.Selected && len(s.routes[i]) != len(t.RemotePrefixes)) || (p.BGP && (len(s.routes[i]) != 1 || !s.routes[i][netip.PrefixFrom(t.BGP.Peer, 32)])) {
+		if s.mtu[i] == 0 || s.mtu[i] > uint64(runtimeProfileMTU(p.ProfileID)) || !s.address[i] || !s.up[i] || s.ownership[i].InterfaceIndex == 0 || (t.Selected && len(s.routes[i]) != len(t.RemotePrefixes)) || (p.BGP && (len(s.routes[i]) != 1 || !s.routes[i][netip.PrefixFrom(t.BGP.Peer, 32)])) {
 			return fail()
 		}
 	}
