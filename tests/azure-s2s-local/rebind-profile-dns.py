@@ -176,13 +176,17 @@ def execute(phase,client,root,setup,transition=None,state_path=None):
    state['stage']='revoked';write(path,state)
   elif phase in ('rebind','reconcile'):
    if state['stage'] not in ('revoked','rebind_sent','rebound') or policies():raise ValueError('grants must remain absent during rebind')
-   if transition is None or transition['prior']['id']!=state['old_connection'] or transition['target']['id']==state['old_connection']:raise ValueError('actual profile transition allocation')
+   if transition is None:raise ValueError('actual profile transition allocation')
+   prior_id=transition.get('original_prior',{}).get('id') if transition.get('purpose')=='baseline' else transition['prior']['id']
+   if prior_id!=state['old_connection'] or transition['target']['id']==state['old_connection']:raise ValueError('actual profile transition allocation')
    old=connection(state['old_connection'],True)
    if old.get('desired_intent')!='deleted' or old.get('application_state')!='not_applied' or not old.get('finalized_at'):raise ValueError('old normal finalization required')
    new=connection(transition['target']['id'])
    if new.get('desired_intent')!='enabled' or new.get('application_state')!='applied' or new.get('deleted_at') or new.get('finalized_at'):raise ValueError('new enabled Applied normal connection required')
    contract=client.call('GET',base+'/ipsec/connections/'+new['id']+'/configuration')
-   if contract['profile_id'] not in PROFILES or contract['configuration']['local_prefixes']!=['10.233.10.0/24'] or contract['configuration']['remote_prefixes']!=['10.231.0.0/16']:raise ValueError('new owned profile/prefixes')
+   if contract['profile_id']=='azure-active-active-bgp-ipv4-v1':restored_bgp_binding(transition,state['old_connection'],contract,connection(transition['prior']['id'],True))
+   elif contract['profile_id'] not in PROFILES:raise ValueError('new owned profile')
+   if contract['configuration']['local_prefixes']!=['10.233.10.0/24'] or contract['configuration']['remote_prefixes']!=['10.231.0.0/16']:raise ValueError('new owned profile/prefixes')
    revision=contract['configuration_revision']
    if type(revision)!=int or revision<1:raise ValueError('actual configuration revision')
    context=client.call('GET',context_path)
@@ -227,6 +231,14 @@ def execute(phase,client,root,setup,transition=None,state_path=None):
    policies()
   else:raise ValueError('phase')
  return {'version':1,'phase':phase,'stage':state['stage'],'observed_at':datetime.now(timezone.utc).isoformat(),'resolver_context_rebound':state['stage']=='rebound','scope':'Normal API authority/context operations only; no withdrawal, DNS generation or packet readiness proof'}
+
+
+def restored_bgp_binding(transition,old_id,contract,test):
+ if transition.get('version')!=1 or transition.get('purpose')!='baseline' or transition.get('original_prior',{}).get('id')!=old_id or transition['prior']['id']==old_id or transition['target']['id'] in (old_id,transition['prior']['id']):raise ValueError('exact maximum-prefix restoration lineage')
+ if test.get('id')!=transition['prior']['id'] or test.get('desired_intent')!='deleted' or test.get('application_state')!='not_applied' or test.get('cleanup_state') not in ('not_required','retained_guard') or not test.get('deleted_at') or not test.get('finalized_at'):raise ValueError('test connection finalization required')
+ original=transition['original_configuration']
+ source=original['configuration']
+ if original.get('profile_id')!='azure-active-active-bgp-ipv4-v1' or source.get('local_prefixes')!=['10.233.10.0/24'] or source.get('remote_prefixes')!=['10.231.0.0/16'] or source.get('bgp',{}).get('maximum_prefixes')!=8 or len(source.get('tunnels',[]))!=2 or contract.get('profile_id')!=original['profile_id'] or contract.get('configuration')!=source:raise ValueError('exact restored original AA BGP configuration')
 
 
 def main():

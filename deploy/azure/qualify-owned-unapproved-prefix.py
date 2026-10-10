@@ -119,14 +119,15 @@ def read_vnet():
  vnet(raw);return raw
 
 
-def run(phase,state_path,review=None,candidate='10.235.77.0/24'):
+def run(phase,state_path,review=None,candidate='10.235.77.0/24',evidence_check=None,reservation=None):
+ check=evidence_check or evidence
  if socket.gethostname()!='bastion-host':raise ValueError('bastion hostname required')
  network=ipaddress.ip_network(candidate,strict=True)
  if network.version!=4 or network.prefixlen!=24 or not network.subnet_of(ipaddress.ip_network('10.0.0.0/8')):raise ValueError('bounded candidate prefix')
  now=datetime.now(timezone.utc)
  if phase=='prepare':
   if state_path.exists() or state_path.is_symlink():raise ValueError('existing experiment; inspect instead')
-  evidence(review,candidate,now);discovery=cloud_binding();cloud_ranges(candidate);baseline=read_vnet();external=external_properties()
+  check(review,candidate,now);discovery=cloud_binding();cloud_ranges(candidate);baseline=read_vnet();external=external_properties()
   state={'version':1,'stage':'prepared','candidate':candidate,'vnet_id':VNET,'baseline':baseline,'protected_sha256':digest(protected(baseline)),'discovery':discovery,'external':external,'external_sha256':digest(external)}
   private_write(state_path,state)
  else:
@@ -144,7 +145,7 @@ def run(phase,state_path,review=None,candidate='10.235.77.0/24'):
    return {'version':1,'phase':phase,'saved_stage':state['stage'],'current_prefix_state':classification,'observed_at':now.isoformat(),'scope':'Resource observation only; advertisement and native rejection unproven'}
   if phase=='add':
    if state['stage']!='prepared' or vnet(current)!=original:raise ValueError('addition already reserved; reconcile')
-   evidence(review,candidate,now);cloud_ranges(candidate);target=added
+   check(review,candidate,now);cloud_ranges(candidate);target=added
   elif phase=='restore':
    if state['stage'] not in ('add_sent','added','restore_sent') or vnet(current) not in (original,added):raise ValueError('restoration boundary')
    target=original
@@ -153,8 +154,9 @@ def run(phase,state_path,review=None,candidate='10.235.77.0/24'):
   fresh=read_vnet()
   if digest(external_properties())!=state['external_sha256']:raise ValueError('protected DNS or LB properties changed')
   if protected(fresh)!=protected(current) or vnet(fresh)!=vnet(current):raise ValueError('concurrent VNet change')
-  if phase=='add':evidence(review,candidate,datetime.now(timezone.utc))
+  if phase=='add':check(review,candidate,datetime.now(timezone.utc))
   if vnet(current)!=target:
+   if reservation is not None:reservation(phase,state)
    state['stage']=phase+'_sent';private_write(state_path,state)
    # One mutation only. Ambiguous failures retain the sent reservation for read-only reconciliation.
    returned=lab.az('network','vnet','update','--ids',VNET,'--subscription',lab.SUBSCRIPTION,'--address-prefixes',*target,'--query','id')
