@@ -25,4 +25,10 @@ class Tests(unittest.TestCase):
   for bad in [dict(binding,networkUrl=url.replace('https://','http://')),dict(binding,networkUrl=url.replace(p.PROJECT,'foreign-project')),dict(binding,networkUrl=url+'-foreign'),dict(binding,networkUrl=url+'?x=1'),dict(binding,networkUrl=url+'#fragment'),dict(binding,networkUrl=url.replace('compute.googleapis.com','user@compute.googleapis.com')),dict(binding,networkUrl=url.replace('compute.googleapis.com','compute.googleapis.com:443')),dict(binding,kind='foreign'),dict(binding,extra='unknown')]:
    z['privateVisibilityConfig']['networks']=[bad]
    with self.assertRaises(ValueError):p.validate_identity('ha',n,z)
+ def test_tc100_separate_classic_fixture_preserves40_and_app(self):
+  old=p.record('classic');new=p.record('classic',True);self.assertEqual(new['name'],'tc-large.classic.gcp.s2s-qa.tunnex.app.');self.assertEqual(len(new['rrdatas']),100);self.assertEqual(set(new['rrdatas']),{'10.81.0.'+str(n)for n in range(100,200)})
+  before={(old['name'],'A'):old};after=dict(before);after[(new['name'],'A')]=new;p.preserve(before,after,new)
+  after[(old['name'],'A')]=dict(old,ttl=60)
+  with self.assertRaises(ValueError):p.preserve(before,after,new)
+  with self.assertRaises(ValueError):p.record('ha',True)
 if __name__=='__main__':unittest.main()

@@ -29,4 +29,13 @@ class Tests(unittest.TestCase):
   self.assertEqual(sock.recv.call_count,3)
   values=[x.args[0]for x in sock.settimeout.call_args_list]
   self.assertEqual(values,[4,4,3,2,1])
+ def test_tc100_requires_actual_udp_tc_then_exact_tcp100(self):
+  name='tc-large.classic.gcp.s2s-qa.tunnex.app.';q=p.question(name);answers=b''.join(b'\xc0\x0c'+struct.pack('!HHIH',1,1,30,4)+bytes([10,81,0,n])for n in range(100,200));full=struct.pack('!6H',42,0x8100,1,100,0,0)+q+answers;truncated=struct.pack('!6H',42,0x8300,1,0,0,0)+q
+  sock=mock.MagicMock();sock.__enter__.return_value=sock;sock.recvfrom.return_value=(truncated,('10.81.0.2',53))
+  with mock.patch.object(p.socket,'socket',return_value=sock),mock.patch.object(p.secrets,'randbelow',return_value=42),mock.patch.object(p,'tcp_query',return_value=full)as tcp:
+   r=p.probe('classic','tc-large');self.assertTrue(r['accepted']);self.assertTrue(r['tcp_fallback_used']);tcp.assert_called_once();self.assertEqual(r['full']['answer_count'],100)
+  sock.recvfrom.return_value=(full,('10.81.0.2',53))
+  with mock.patch.object(p.socket,'socket',return_value=sock),mock.patch.object(p.secrets,'randbelow',return_value=42),mock.patch.object(p,'tcp_query')as tcp:
+   self.assertFalse(p.probe('classic','tc-large')['accepted']);tcp.assert_not_called()
+  with self.assertRaises(ValueError):p.probe('ha','tc-large')
 if __name__=='__main__':unittest.main()

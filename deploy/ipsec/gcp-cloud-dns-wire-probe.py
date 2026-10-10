@@ -71,9 +71,11 @@ def validate_answers(full,profile,label):
  if label=='nx-qualification':return full['rcode']==3 and full['answer_count']==0 and not full['a']and not full['cname']
  if full['rcode']!=0:return False
  if label=='alias':return full['answer_count']==2 and full['cname']==[{'owner':name,'target':'app.'+zone}]and full['a']==[{'owner':'app.'+zone,'address':target}]
- expected={prefix+str(n)for n in range(100,140)}if label=='large'else{target}
+ if label=='tc-large'and profile!='classic':raise ValueError('TC probe Classic only')
+ expected={prefix+str(n)for n in range(100,200 if label=='tc-large'else 140)}if label in ['large','tc-large']else{target}
  return addresses==expected and not full['cname']and all(x['owner']==name for x in full['a'])and full['answer_count']==len(expected)
 def probe(profile,label):
+ if label=='tc-large'and profile!='classic':raise ValueError('TC probe Classic only')
  resolver,zone,target,prefix=PROFILES[profile];name=label+'.'+zone;id=secrets.randbelow(65536);wire=struct.pack('!6H',id,0x100,1,0,0,0)+question(name)
  with socket.socket(socket.AF_INET,socket.SOCK_DGRAM)as s:
   s.settimeout(4);s.bind((SOURCE,0));s.sendto(wire,(resolver,53));data,peer=s.recvfrom(65535)
@@ -81,15 +83,16 @@ def probe(profile,label):
  udp=response(data,id,name,False);fallback=udp['tc'];full=response(tcp_query(resolver,wire),id,name,True)if fallback else response(data,id,name,True)
  ok=validate_answers(full,profile,label)
  if fallback:ok=ok and udp['rcode']==full['rcode']
- if label=='large':ok=ok and fallback and udp['rcode']==full['rcode']and full['answer_count']==40
+ if label in ['large','tc-large']:ok=ok and fallback and udp['rcode']==full['rcode']and full['answer_count']==(100 if label=='tc-large'else 40)
  return {'profile':profile,'source':SOURCE,'resolver':resolver,'name':name,'query_has_edns':False,'udp':udp,'tcp_fallback_used':fallback,'full':full,'accepted':ok,'scope':'ordinary fixed wire DNS only; separate API lease/guard/FQDN evidence required'}
 def main():
- p=argparse.ArgumentParser();p.add_argument('--profile',choices=PROFILES,required=True);p.add_argument('--receipt',required=True);a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--profile',choices=PROFILES,required=True);p.add_argument('--receipt',required=True);p.add_argument('--case',choices=['original','tc-large'],default='original');a=p.parse_args()
+ if a.case=='tc-large'and a.profile!='classic':raise ValueError('TC probe Classic only')
  parent=pathlib.Path(a.receipt).parent;s=os.lstat(parent)
  if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('private receipt parent')
  fd=os.open(a.receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);r={'started':True,'profile':a.profile,'completed':False,'utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'results':[]}
  try:
-  for name in ['app','alias','nx-qualification','large']:r['results'].append(probe(a.profile,name))
+  for name in (['tc-large']if a.case=='tc-large'else['app','alias','nx-qualification','large']):r['results'].append(probe(a.profile,name))
   r.update(completed=True,accepted=all(x['accepted']for x in r['results']))
  except Exception as e:r.update(accepted=False,error_type=type(e).__name__);raise
  finally:

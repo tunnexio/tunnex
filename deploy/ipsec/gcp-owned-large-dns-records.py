@@ -20,9 +20,10 @@ def rr_map(rows):
   if key in out:raise ValueError('duplicate RRset')
   out[key]={'name':r['name'],'type':r['type'],'ttl':r['ttl'],'rrdatas':sorted(r.get('rrdatas',[]))}
  return out
-def record(profile):
- _,prefix=TARGETS[profile]
- return {'name':'large.'+profile+'.gcp.s2s-qa.tunnex.app.','type':'A','ttl':30,'rrdatas':sorted(prefix+str(n)for n in range(100,140))}
+def record(profile,tc_large=False):
+ if tc_large and profile!='classic':raise ValueError('TC fixture Classic only')
+ _,prefix=TARGETS[profile];label='tc-large'if tc_large else'large';end=200 if tc_large else 140
+ return {'name':label+'.'+profile+'.gcp.s2s-qa.tunnex.app.','type':'A','ttl':30,'rrdatas':sorted(prefix+str(n)for n in range(100,end))}
 def exact_network_url(value,name):
  if not isinstance(value,str):return False
  try:p=urllib.parse.urlsplit(value)
@@ -43,13 +44,13 @@ def preserve(before,after,expected):
  wanted=dict(before);wanted[(expected['name'],expected['type'])]=expected
  if after!=wanted:raise ValueError('all prior RRsets/exact new record preservation')
 def main():
- p=argparse.ArgumentParser();p.add_argument('--profile',choices=TARGETS,required=True);p.add_argument('--receipt',required=True);p.add_argument('--apply',action='store_true');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--profile',choices=TARGETS,required=True);p.add_argument('--receipt',required=True);p.add_argument('--apply',action='store_true');p.add_argument('--tc-large',action='store_true');a=p.parse_args()
  parent=pathlib.Path(a.receipt).parent;s=os.lstat(parent)
  if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('private receipt parent')
  fd=os.open(a.receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);r={'started':True,'profile':a.profile,'apply_requested':a.apply,'completed':False,'created':False,'utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
  try:
   n='tn-gcps2s-20261010-'+a.profile;z=n+'-qa-zone';network=gcloud('compute','networks','describe',n);zone=gcloud('dns','managed-zones','describe',z);validate_identity(a.profile,network,zone)
-  before=rr_map(gcloud('dns','record-sets','list','--zone='+z));expected=record(a.profile);decision=decide(before,expected)
+  before=rr_map(gcloud('dns','record-sets','list','--zone='+z));expected=record(a.profile,a.tc_large);decision=decide(before,expected)
   r.update(zone=z,network_id=network['id'],dns_name=expected['name'],rrset=expected,decision=decision,baseline_record_count=len(before),baseline_rrsets=list(before.values()))
   # Only explicit reviewed --apply can create; exact existing records are no-op.
   if a.apply and decision=='absent':
@@ -57,7 +58,7 @@ def main():
   after=rr_map(gcloud('dns','record-sets','list','--zone='+z))
   if a.apply or decision=='exact_exists':preserve(before,after,expected)
   elif after!=before:raise ValueError('read-only plan baseline changed')
-  r.update(completed=True,prior_records_exact_preserved=True,current_record_count=len(after),scope='Only exact owned diagnostic40-A record; no application grant or hosting claim')
+  r.update(completed=True,prior_records_exact_preserved=True,current_record_count=len(after),scope='Only exact owned diagnostic'+str(len(expected['rrdatas']))+'-A record; no application grant or hosting claim')
  except Exception as e:r['error_type']=type(e).__name__;raise
  finally:
   with os.fdopen(fd,'w')as f:json.dump(r,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
