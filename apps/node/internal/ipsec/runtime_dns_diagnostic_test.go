@@ -113,7 +113,7 @@ func renewDNSDiagnosticGuard(t *testing.T, f *dnsOwnerViewFixture) {
 	a := f.c.active[f.material.Manifest.ConnectionID]
 	i := guardFixture()
 	i.OwnerID = f.material.Manifest.NodeID
-	i.Revision++
+	i.Revision = f.manifest.Revision + 1
 	i.Connections[0].ID = a.Entry.Allocation.ConnectionID
 	i.Connections[0].Tunnels = a.Entry.Observed
 	i.Connections[0].Grants = a.Grants
@@ -127,7 +127,7 @@ func renewDNSDiagnosticGuard(t *testing.T, f *dnsOwnerViewFixture) {
 	f.observed.Store(g.ExpectedJSON)
 	f.publish(t)
 }
-func TestDNSDiagnosticBenignPublishedRenewalRemainsRefusedButClassified(t *testing.T) {
+func TestDNSBenignPublishedGuardRenewalRevalidatesExactCurrentTemplate(t *testing.T) {
 	f := newDNSOwnerViewFixture(t, nil)
 	original := f.c.dnsView.Load().entries[f.material.Manifest.ConnectionID]
 	var diagnostic RuntimeDiagnostic
@@ -139,15 +139,15 @@ func TestDNSDiagnosticBenignPublishedRenewalRemainsRefusedButClassified(t *testi
 		return nil
 	}
 	f.publish(t)
-	if _, err := f.prove(context.Background()); err == nil {
-		t.Fatal("diagnostic changed original denial into authority")
+	if _, err := f.prove(context.Background()); err != nil {
+		t.Fatal("benign exact-authority guard renewal refused", err)
 	}
 	current := f.c.dnsView.Load().entries[f.material.Manifest.ConnectionID]
 	if current.epoch != original.epoch || !sameDNSOwnerInputs(current.active, original.active) {
 		t.Fatal("fixture changed authority")
 	}
-	if diagnostic.Stage != "dns_guard_superseded_verified" || f.guardReads.Load() != 2 {
-		t.Fatalf("benign renewal not independently classified: %+v reads%d", diagnostic, f.guardReads.Load())
+	if diagnostic.Refused || f.guardReads.Load() != 3 {
+		t.Fatalf("current template not independently bracketed: %+v reads%d", diagnostic, f.guardReads.Load())
 	}
 }
 func TestDNSDiagnosticRenewalWithWrongNativeTableRemainsRefused(t *testing.T) {
@@ -160,7 +160,73 @@ func TestDNSDiagnosticRenewalWithWrongNativeTableRemainsRefused(t *testing.T) {
 		return nil
 	}
 	f.publish(t)
-	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_guard_current_refused" {
+	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_guard_full_read" {
 		t.Fatalf("wrong native table accepted/misclassified: %+v", diagnostic)
+	}
+}
+
+func TestDNSGuardRevalidationRefusesChangedAuthorityAndDigestChurn(t *testing.T) {
+	for _, name := range []string{"owner_epoch", "grants", "original_lease", "current_lease", "native_table", "digest_churn", "deadline", "original_lease_during", "current_lease_during"} {
+		t.Run(name, func(t *testing.T) {
+			f := newDNSOwnerViewFixture(t, nil)
+			id := f.material.Manifest.ConnectionID
+			previous := f.c.dnsView.Load()
+			owner := previous.entries[id]
+			entry := owner.active.Entry
+			renewDNSDiagnosticGuard(t, f)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			switch name {
+			case "owner_epoch":
+				f.c.withdrawDNSOwnerView(id)
+			case "grants":
+				a := f.c.active[id]
+				a.Grants = append([]GuardGrant(nil), a.Grants[1:]...)
+				f.c.active[id] = a
+				f.publish(t)
+			case "original_lease", "current_lease":
+				a := f.c.active[id]
+				a.Authority = dnsTestAuthority(t, a.Identity)
+				f.c.active[id] = a
+				f.publish(t)
+				if name == "original_lease" {
+					owner.active.Authority.Invalidate()
+				} else {
+					a.Authority.Invalidate()
+				}
+			case "original_lease_during", "current_lease_during":
+				a := f.c.active[id]
+				a.Authority = dnsTestAuthority(t, a.Identity)
+				f.c.active[id] = a
+				f.publish(t)
+				run := f.c.guard.reader.run
+				f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+					raw, err := run(ctx, args...)
+					if name == "original_lease_during" {
+						owner.active.Authority.Invalidate()
+					} else {
+						a.Authority.Invalidate()
+					}
+					return raw, err
+				}
+			case "native_table":
+				f.observed.Store(`{"nftables":[]}`)
+			case "digest_churn":
+				run := f.c.guard.reader.run
+				f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+					raw, err := run(ctx, args...)
+					renewDNSDiagnosticGuard(t, f)
+					return raw, err
+				}
+			case "deadline":
+				cancel()
+			}
+			if f.c.revalidateDNSGuardSnapshot(ctx, id, owner, previous, entry, entry.Observed[0].InterfaceIndex, entry.Engines[0].ReqID) {
+				t.Fatal("changed or expired authority accepted")
+			}
+			if f.guardReads.Load() > 1 {
+				t.Fatal("retry loop exceeded one current-template check", f.guardReads.Load())
+			}
+		})
 	}
 }

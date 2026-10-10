@@ -195,12 +195,11 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	}
 	if permitted, guardStage := view.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
 		stage = guardStage
-		if guardStage == "dns_guard_full_read" {
-			if diagnostic := c.diagnoseSupersededDNSGuard(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID); diagnostic != "" {
-				stage = diagnostic
-			}
+		// A committed renewal may supersede this loaded template. Try exactly one
+		// current immutable template, retaining the original owner/lease/epoch.
+		if guardStage != "dns_guard_full_read" || !c.revalidateDNSGuardSnapshot(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
+			return fail()
 		}
-		return fail()
 	}
 	stage = "dns_source_before"
 	before, err := view.observer.source(source, a.Environment.LocalIngressIndices)
@@ -423,38 +422,29 @@ func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, ent
 	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil, "dns_guard_full_read"
 }
 
-// This bounded probe classifies a stale snapshot race; it NEVER changes the
-// original refusal into permission or renews any authority.
-func (c *RuntimeController) diagnoseSupersededDNSGuard(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) string {
-	if c == nil || c.config.Diagnostic == nil || ctx.Err() != nil {
-		return ""
+// revalidateDNSGuardSnapshot retries only an independently published newer
+// template once. It cannot manufacture a grant, change owner epoch, extend
+// original/current authority, or continue through another digest change.
+func (c *RuntimeController) revalidateDNSGuardSnapshot(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) bool {
+	if c == nil || previous == nil || ctx.Err() != nil {
+		return false
 	}
 	latest := c.dnsView.Load()
 	if latest == nil || latest.guard.Digest == previous.guard.Digest {
-		return ""
+		return false
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
-		return ""
-	}
-	now := time.Now().UnixNano()
-	for {
-		prior := c.dnsGuardProbeAfter.Load()
-		if now < prior {
-			return ""
-		}
-		if c.dnsGuardProbeAfter.CompareAndSwap(prior, now+int64(time.Second)) {
-			break
-		}
+		return false
 	}
 	if !latest.resolverGuardPermits(ctx, entry, index, reqid) {
-		return "dns_guard_current_refused"
+		return false
 	}
 	current := c.dnsView.Load()
 	if current == nil || current.guard.Digest != latest.guard.Digest {
-		return "dns_guard_current_refused"
+		return false
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok || ctx.Err() != nil {
-		return "dns_guard_current_refused"
+		return false
 	}
-	return "dns_guard_superseded_verified"
+	return true
 }
