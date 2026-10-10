@@ -1,0 +1,175 @@
+{
+  "scope": "Owned local Docker emulator only; no Google cloud or production qualification",
+  "source": "f1675dd3a2120092fb5058467eedf772fcffce76",
+  "node_sha256": "72352e13ce725c4ecd87d79df76467803b4a4e071cf12206aa372f47ff47ce8e",
+  "helper_sha256": "606dd810adc151ea9439d92eca4338be9c4262048958bddc447d996d3447deb8",
+  "peer_fixture_sha256": "865878f482aca57362c498e25e376ddc0d02184e93a549a4da32d1ac4f2f27ce",
+  "restoration": {
+    "supported_runner_exit": 0,
+    "run": "696effbf-f373-4c24-a18f-7772e6e138e1",
+    "fresh_current_sa": true,
+    "root_reported_epoch": 2,
+    "root_reported_normal_cp_up_utc": "12:00:33",
+    "helper_old_reader_epoch1_refusal": "RED invalid persisted journal; integrated strict reader GREEN",
+    "peer_stage": "PASS",
+    "peer_initiate": "refused; not counted",
+    "peer_serve": "strict native ready"
+  },
+  "mtu": {
+    "gateway_underlay": "33.0.0.50 eth1 index3",
+    "peer_underlay": "33.0.0.60 eth0 index2",
+    "original": 1500,
+    "lowered": 1400,
+    "gateway_xfrm_normal_controller": 1326,
+    "peer_xfrm_fixture": 1326,
+    "original_physical_and_peer_mtu_restored": true,
+    "manual_gateway_authority_or_xfrm_mutation": false,
+    "tcp_mss_tested": false
+  },
+  "limits": [
+    "One initial1400 timeout before repeated exact successes remains unclassified",
+    "DF1298 sent but reply timed out; no boundary delivery claim",
+    "Gateway retains controller-owned lower XFRM ceiling after physical restore"
+  ],
+  "evidence": {
+    "post-supported-resume-payload.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "lower1400-df.json": {
+      "sha256": "8b38bdfb1522c5ce226da3b646aedda5bdf2eb78013bd5d1c1977f41cddca57c",
+      "result": [
+        {
+          "size": 1400,
+          "df": true,
+          "errno": 90,
+          "timeout": false,
+          "path_mtu": 1326
+        },
+        {
+          "size": 1298,
+          "df": true,
+          "errno": null,
+          "timeout": true,
+          "path_mtu": 1326
+        },
+        {
+          "size": 1299,
+          "df": true,
+          "errno": 90,
+          "timeout": false,
+          "path_mtu": 1326
+        }
+      ]
+    },
+    "lower1400-df-small.json": {
+      "sha256": "d7e27fcb3a7e38b0ff224f2bb79664e4f5e51bf99818007b10ada7a68cd194c4",
+      "result": {
+        "df": true,
+        "size": 1200,
+        "exact": true,
+        "reply_len": 1222,
+        "path_mtu": 1326
+      }
+    },
+    "lower1400-payload.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "mtu-restored.json": {
+      "sha256": "a05cdee03b530225c976026e10446189be0ce686977288d46d15725d745512e3",
+      "result": [
+        {
+          "container": "tunnexgcps2slifecycle1010-gateway-1",
+          "interface": "eth1",
+          "index": 3,
+          "mtu": 1500,
+          "address": "33.0.0.50"
+        },
+        {
+          "container": "tunnex-gcp-lifecycle-owned1010-peer",
+          "interface": "eth0",
+          "index": 2,
+          "mtu": 1500,
+          "address": "33.0.0.60"
+        }
+      ]
+    },
+    "post-mtu-restore-payload.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    }
+  }
+}
