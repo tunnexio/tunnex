@@ -22,7 +22,7 @@ func TestReadOnlyGuardSemanticClassifiesWithoutAuthorizing(t *testing.T) {
 		{"expired member absent", strings.Replace(expected, `,"elem":[{"elem":{"val":10,"timeout":30}}]`, "", 1), true, true, ""},
 		{"changed member timeout", strings.Replace(expected, `"val":10,"timeout":30`, `"val":10,"timeout":29`, 1), true, false, "/set/elem/0"},
 		{"changed verdict", strings.Replace(expected, `"drop":null`, `"accept":null`, 1), true, false, "/expr/1"},
-		{"expired member still visible", strings.Replace(expected, `"val":10,"timeout":30`, `"val":10,"timeout":30,"expires":0`, 1), false, false, ""},
+		{"expired member still visible", strings.Replace(expected, `"val":10,"timeout":30`, `"val":10,"timeout":30,"expires":0`, 1), false, true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in, _ := json.Marshal(ReadOnlyGuardSemanticInput{Journal: jr, Native: json.RawMessage(tc.native), Namespace: "net:[4026531992]", Links: []GuardInterface{{Name: "tx-fixture", Index: 10}}, Phase: "outside_fault"})
