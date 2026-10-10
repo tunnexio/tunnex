@@ -232,17 +232,20 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 	if os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL") != "1" {
 		t.Skip("explicit owned scheduler control only")
 	}
-	fail := func() { t.Helper(); t.Fatal("owned_scheduler_control_refused") }
+	stage := "request-path"
+	fail := func() { t.Helper(); t.Fatal("owned_scheduler_control_refused", stage) }
 	path := os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST")
 	if !strings.HasPrefix(path, "/run/tunnex-ipsec/azure-scheduler-request-") || strings.Contains(path, "..") || strings.ContainsAny(path, "\n\r") {
 		fail()
 		return
 	}
+	stage = "request-private-read"
 	raw, st, err := remediationRead(path)
 	if err != nil || st.Mode&0777 != 0600 || st.Uid != 0 {
 		fail()
 		return
 	}
+	stage = "request-decode"
 	var request struct {
 		Binding                                                  azureSchedulerBinding
 		Delivery                                                 string
@@ -257,32 +260,38 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		fail()
 		return
 	}
+	stage = "node-identity"
 	node, err := os.ReadFile("/proc/1/exe")
 	if os.Geteuid() != 0 || err != nil || !validDigest(request.NodeSHA) || remediationSHA(node) != request.NodeSHA || request.CharonPID <= 1 || !validDigest(request.CharonSHA) {
 		fail()
 		return
 	}
+	stage = "journal-read"
 	journal, jst, err := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
 	var envelope runtimeJournalEnvelope
 	if err != nil || json.Unmarshal(journal, &envelope) != nil || journalChecksum(envelope.Payload) != envelope.Checksum {
 		fail()
 		return
 	}
+	stage = "binding-history"
 	entry, retained, err := azureSchedulerEntry(envelope.Payload, request.Binding)
 	if err != nil || entry.DeliveryID.String() != request.Delivery || retained != request.RetainedIdentity {
 		fail()
 		return
 	}
+	stage = "render-identity"
 	config, configErr := azureSchedulerConfig(entry.Engines[:entry.Allocation.activeTunnelCount()])
 	if configErr != nil || !validDigest(request.ConfigSHA) || remediationSHA([]byte(config)) != request.ConfigSHA {
 		fail()
 		return
 	}
+	stage = "namespace"
 	ns, err := os.Readlink("/proc/self/ns/net")
 	if err != nil || ns != entry.Allocation.Namespace {
 		fail()
 		return
 	}
+	stage = "daemon-identity"
 	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", request.CharonPID))
 	fields := strings.Fields(string(stat)[strings.LastIndex(string(stat), ")")+1:])
 	binary, be := os.ReadFile(daemonExecutable)
@@ -292,6 +301,7 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	stage = "guard-read"
 	daemon, err := azureSchedulerOwnedDaemon(request.CharonPID, request.CharonSHA, stat)
 	guard, ge := NewGuardReader("/usr/sbin/nft")
 	if err != nil || ge != nil || azureSchedulerCombinedGuard(envelope.Payload.Guards, ns, func(g runtimeGuardTemplate) bool {
@@ -300,12 +310,18 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		fail()
 		return
 	}
+	stage = "journal-bracket"
 	after, ast, err := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
 	if err != nil || ctx.Err() != nil || jst.Dev != ast.Dev || jst.Ino != ast.Ino || !bytes.Equal(journal, after) {
 		fail()
 		return
 	}
-	if azureSchedulerControl(ctx, daemon, entry.Engines[:entry.Allocation.activeTunnelCount()], request.Action, request.Mode, request.Slot) != nil || ctx.Err() != nil {
+	controlErr := azureSchedulerControl(ctx, daemon, entry.Engines[:entry.Allocation.activeTunnelCount()], request.Action, request.Mode, request.Slot)
+	stage = azureSchedulerFixedStage(controlErr)
+	if ctx.Err() != nil {
+		stage = "action-context"
+	}
+	if controlErr != nil || ctx.Err() != nil {
 		fail()
 		return
 	}

@@ -126,8 +126,18 @@ def owned_control(m,action,slot=0):
  # Input remains root-owned 0600 inside the owned container. Neither stdout nor
  # argv carries request material. No arbitrary config or command is passed.
  subprocess.run(['docker','exec','-i',m['container'],'/bin/sh','-c','umask 077; cat > '+path],input=json.dumps(request).encode(),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True,timeout=10)
- result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL=1','-e','TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeyControl$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=40)
- if result.returncode:raise ValueError('owned_control_refused')
+ result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL=1','-e','TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeyControl$','-test.count=1'],capture_output=True,timeout=40)
+ if result.returncode:
+  stage=fixed_control_failure(result.stdout)
+  proof.private_write(Path(m['evidence_dir'])/('control-refused-'+str(uuid.uuid4())+'.json'),{'action':action,'stage':stage,'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
+  raise ValueError('owned_control_refused')
+
+def fixed_control_failure(output):
+ allowed={'request-path','request-private-read','request-decode','node-identity','journal-read','binding-history','render-identity','namespace','daemon-identity','guard-read','journal-bracket','loaded-request','loaded-context','loaded-schema','arguments','render','load-request','load-response','action-request','action-response','action-context','terminate-no-match','terminate-partial','control-refused'}
+ matches=re.findall(rb'owned_scheduler_control_refused ([a-z-]+)(?:\s|$)',output)
+ if len(matches)!=1:return 'unclassified'
+ value=matches[0].decode('ascii')
+ return value if value in allowed else 'unclassified'
 
 def owned_mutation(m,*args):
  if args[0]=='--load-conns':

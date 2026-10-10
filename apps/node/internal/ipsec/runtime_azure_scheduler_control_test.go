@@ -99,10 +99,62 @@ func azureSchedulerLoadedMatch(events []viciMessage, engines []EngineTunnel, mod
 	}
 	return len(seen) == len(engines)
 }
+
+// Fixed stage errors are test-only diagnostics. They never carry daemon text,
+// selectors, connection names, or response payloads.
+type azureSchedulerControlStage string
+
+func (s azureSchedulerControlStage) Error() string { return string(s) }
+func azureSchedulerFixedStage(err error) string {
+	s, ok := err.(azureSchedulerControlStage)
+	if !ok {
+		return "control-refused"
+	}
+	switch s {
+	case "loaded-request", "loaded-context", "loaded-schema", "arguments", "render", "load-request", "load-response", "action-request", "action-response", "action-context", "terminate-no-match", "terminate-partial":
+		return string(s)
+	}
+	return "control-refused"
+}
 func azureSchedulerVerifyLoaded(ctx context.Context, d *DaemonClient, engines []EngineTunnel, mode string) error {
 	_, events, err := d.request(ctx, "list-conns", "list-conn", nil)
-	if err != nil || ctx.Err() != nil || !azureSchedulerLoadedMatch(events, engines, mode) {
-		return ErrDaemonProtocol
+	if err != nil {
+		return azureSchedulerControlStage("loaded-request")
+	}
+	if ctx.Err() != nil {
+		return azureSchedulerControlStage("loaded-context")
+	}
+	if !azureSchedulerLoadedMatch(events, engines, mode) {
+		return azureSchedulerControlStage("loaded-schema")
+	}
+	return nil
+}
+func azureSchedulerControlSuccess(ctx context.Context, d *DaemonClient, command string, message viciMessage) error {
+	out, _, err := d.request(ctx, command, "", message)
+	prefix := "action"
+	if command == "load-conn" {
+		prefix = "load"
+	}
+	if err != nil {
+		return azureSchedulerControlStage(prefix + "-request")
+	}
+	success, ok := viciString(out, "success")
+	if !ok || success != "yes" {
+		// Exact documented counts identify finite refusal classes only. success=no
+		// remains failure; no-match is never rewritten as success for restoration.
+		if command == "terminate" {
+			matches, mo := viciUint(out, "matches", 32)
+			terminated, to := viciUint(out, "terminated", 32)
+			if mo && to {
+				if matches == 0 {
+					return azureSchedulerControlStage("terminate-no-match")
+				}
+				if terminated < matches {
+					return azureSchedulerControlStage("terminate-partial")
+				}
+			}
+		}
+		return azureSchedulerControlStage(prefix + "-response")
 	}
 	return nil
 }
@@ -126,10 +178,10 @@ func azureSchedulerLoadMessages(engines []EngineTunnel, mode string) ([]viciMess
 }
 func azureSchedulerControl(ctx context.Context, d *DaemonClient, engines []EngineTunnel, action, mode string, slot int) error {
 	if ctx.Err() != nil || d == nil || d.request == nil || (action != "verify" && action != "load-production" && action != "load-accelerated" && action != "terminate" && action != "initiate") {
-		return ErrDaemonProtocol
+		return azureSchedulerControlStage("arguments")
 	}
-	if azureSchedulerVerifyLoaded(ctx, d, engines, mode) != nil {
-		return ErrDaemonProtocol
+	if err := azureSchedulerVerifyLoaded(ctx, d, engines, mode); err != nil {
+		return err
 	}
 	switch action {
 	case "verify":
@@ -138,11 +190,11 @@ func azureSchedulerControl(ctx context.Context, d *DaemonClient, engines []Engin
 		target := strings.TrimPrefix(action, "load-")
 		messages, err := azureSchedulerLoadMessages(engines, target)
 		if err != nil {
-			return err
+			return azureSchedulerControlStage("render")
 		}
 		for _, message := range messages {
-			if d.success(ctx, "load-conn", message) != nil {
-				return ErrDaemonProtocol
+			if err := azureSchedulerControlSuccess(ctx, d, "load-conn", message); err != nil {
+				return err
 			}
 		}
 		return azureSchedulerVerifyLoaded(ctx, d, engines, target)
@@ -155,8 +207,11 @@ func azureSchedulerControl(ctx context.Context, d *DaemonClient, engines []Engin
 		if action == "initiate" {
 			message["child"] = viciText(name)
 		}
-		if d.success(ctx, action, message) != nil || ctx.Err() != nil {
-			return ErrDaemonProtocol
+		if err := azureSchedulerControlSuccess(ctx, d, action, message); err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return azureSchedulerControlStage("action-context")
 		}
 		return nil
 	}
@@ -346,5 +401,36 @@ func TestAzureSchedulerStrongSwan61SemanticReadbackRefusals(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAzureSchedulerControlResponseSemanticsPreserved(t *testing.T) {
+	for name, test := range map[string]struct {
+		response viciMessage
+		want     string
+	}{
+		"no-match":           {viciMessage{"success": viciText("no"), "matches": viciText("0"), "terminated": viciText("0"), "errmsg": viciText("private text must never escape")}, "terminate-no-match"},
+		"partial":            {viciMessage{"success": viciText("no"), "matches": viciText("2"), "terminated": viciText("1")}, "terminate-partial"},
+		"malformed-counts":   {viciMessage{"success": viciText("no"), "matches": viciText("private"), "terminated": viciText("0")}, "action-response"},
+		"missing-success":    {viciMessage{"matches": viciText("1"), "terminated": viciText("1")}, "action-response"},
+		"documented-success": {viciMessage{"success": viciText("yes"), "matches": viciText("1"), "terminated": viciText("1")}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			d := &DaemonClient{request: func(context.Context, string, string, viciMessage) (viciMessage, []viciMessage, error) {
+				calls++
+				return test.response, nil, nil
+			}}
+			err := azureSchedulerControlSuccess(context.Background(), d, "terminate", nil)
+			if (err == nil) != (test.want == "") || (err != nil && azureSchedulerFixedStage(err) != test.want) || calls != 1 {
+				t.Fatal("response semantics or fixed classification changed")
+			}
+			if err != nil && strings.Contains(err.Error(), "private") {
+				t.Fatal("raw response leaked")
+			}
+		})
+	}
+	if azureSchedulerFixedStage(fmt.Errorf("private arbitrary error")) != "control-refused" || azureSchedulerFixedStage(azureSchedulerControlStage("private")) != "control-refused" {
+		t.Fatal("unknown category leaked")
 	}
 }

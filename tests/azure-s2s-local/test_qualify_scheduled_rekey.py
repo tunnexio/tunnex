@@ -170,3 +170,12 @@ class OwnedControlTests(unittest.TestCase):
   with patch.object(q,'owned_control',side_effect=ValueError('refused')):
    with self.assertRaises(ValueError):q.owned_mutation(m,'--load-conns','--file','/run/tunnex-ipsec/owned-accelerated.conf')
   self.assertEqual(m['timer_mode'],'production')
+
+class ControlFailureProjectionTests(unittest.TestCase):
+ def test_only_single_known_fixed_stage_is_projected(self):
+  self.assertEqual(q.fixed_control_failure(b'file.go:100: owned_scheduler_control_refused journal-bracket\n'),'journal-bracket')
+  for value in (b'private arbitrary response',b'owned_scheduler_control_refused private-selector\n',b'owned_scheduler_control_refused loaded-schema\nowned_scheduler_control_refused guard-read\n'):
+   self.assertEqual(q.fixed_control_failure(value),'unclassified')
+ def test_daemon_text_is_not_part_of_projection(self):
+  result=q.fixed_control_failure(b'private hostname and payload\nfile.go:100: owned_scheduler_control_refused terminate-no-match\n')
+  self.assertEqual(result,'terminate-no-match');self.assertNotIn('private',result)

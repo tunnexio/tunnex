@@ -163,3 +163,11 @@ Readback follows the packaged 6.1.0 schema: PSK authentication is rendered as
 `pre-shared key`; configured `dpd_action=clear` maps to `ACTION_NONE` and reads as
 `none`. This preserves the configured semantics; restart/trap and other auth
 classes still refuse. Exact proposal checks reject weaker/extra transforms.
+
+A failed bootstrap/rollback is not scheduled-rekey evidence. Preserve the first
+failure chain as well as restoration failure. Test-helper diagnostics classify
+only fixed journal/binding/guard/bracket and loaded request/schema/control stages.
+VICI terminate `success=no` with zero matches remains refusal, including rollback;
+partial termination also refuses. Arbitrary daemon error text is never retained
+in a new diagnostic. These labels do not authorize retry, timer restoration over
+a superseded desired revision, or helper/manifest replacement in an active run.
