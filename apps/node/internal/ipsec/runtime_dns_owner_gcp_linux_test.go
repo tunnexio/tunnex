@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -84,13 +85,16 @@ func TestDNSOwnerViewGCPNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	privateTemp, err := os.MkdirTemp("/run", "gcp-dns-owner-component-")
+	privateTemp, err := os.MkdirTemp("/run", "gd-")
 	if err != nil {
 		t.Fatal("owned private component state directory refused", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(privateTemp) })
 	t.Setenv("TMPDIR", privateTemp)
-	journal := journalDir(t)
+	journal := filepath.Join(privateTemp, "j")
+	if err := os.Mkdir(journal, 0700); err != nil {
+		t.Fatal(err)
+	}
 	c, err := NewRuntimeController(RuntimeControllerConfig{OrgID: m.Manifest.OrgID, GatewayID: m.Manifest.NodeID, JournalDir: journal, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Daemon: daemon.Client, DaemonAlive: daemon.Alive, Environment: environment}, nativeRuntimeLease{})
 	if err != nil {
 		t.Fatal(err)
