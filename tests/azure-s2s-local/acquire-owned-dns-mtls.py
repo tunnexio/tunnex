@@ -20,7 +20,7 @@ def private_write(path,raw):
  finally:os.close(fd)
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--state-dir',type=Path,required=True);p.add_argument('--output-dir',type=Path,required=True)
- a=p.parse_args();stage='owned_private_inputs'
+ a=p.parse_args();stage='owned_private_inputs';http_status=None
  try:
   if os.geteuid()!=0 or socket.gethostname()!='tunnex-peer':raise ValueError('owned root host')
   gated.private_directory(a.output_dir)
@@ -28,11 +28,12 @@ def main():
   context=ssl.create_default_context(cafile=str(a.state_dir/'ca.pem'));context.load_cert_chain(str(a.state_dir/'cert.pem'),str(a.state_dir/'key.pem'))
   class OwnedHTTPS(http.client.HTTPSConnection):
    def connect(self):self.sock=context.wrap_socket(socket.create_connection(('127.0.0.1',48446),timeout=10),server_hostname='tunnex-control')
-  for method,path,body,name in [('GET','/agent/desired',None,'desired.json'),('POST','/agent/ipsec/connections/'+CONNECTION+'/material',json.dumps({'desired_revision':6}),'material.json')]:
+  for method,path,body,name in [('GET','/agent/desired-state',None,'desired.json'),('POST','/agent/ipsec/connections/'+CONNECTION+'/material',json.dumps({'desired_revision':6}),'material.json')]:
    stage='normal_mtls_'+name.split('.')[0]
    c=OwnedHTTPS('tunnex-control',timeout=10)
    try:
     c.request(method,path,body=body,headers={'Content-Type':'application/json'});response=c.getresponse();raw=response.read((2<<20)+1)
+    http_status=response.status if response.status in (200,400,401,403,404,409,429,500,502,503,504) else None
     if response.status!=200 or len(raw)>2<<20:raise ValueError('normal mTLS refused')
     value=json.loads(raw)
     if not isinstance(value,dict):raise ValueError('normal object response required')
@@ -42,5 +43,5 @@ def main():
   if any(gated.private_bytes(a.state_dir/name,65536)!=raw for name,raw in credentials.items()):raise ValueError('credentials changed')
   print(json.dumps({'stage':'normal_mtls_dns_inputs_saved','http_status':200,'private_saved':True,'no_body_printed':True,'observed_at':gated.stamp()}));return 0
  except (OSError,ValueError,KeyError,TypeError,http.client.HTTPException):
-  print(json.dumps({'stage':stage,'error_code':'normal_mtls_dns_capture_refused','observed_at':gated.stamp()}));return 1
+  print(json.dumps({'stage':stage,'error_code':'normal_mtls_dns_capture_refused','http_status':http_status,'observed_at':gated.stamp()}));return 1
 if __name__=='__main__':raise SystemExit(main())
