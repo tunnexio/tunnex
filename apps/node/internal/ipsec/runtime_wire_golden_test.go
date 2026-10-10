@@ -11,7 +11,13 @@ import (
 // The input bytes/digests are emitted independently by the API's actual typed
 // manifest. Hashing a node-generated fixture would miss field-order drift.
 func TestRuntimeManifestAPIGoldenWire(t *testing.T) {
-	raw, err := os.ReadFile("testdata/api_runtime_manifest_golden.json")
+	testRuntimeManifestAPIGolden(t, "testdata/api_runtime_manifest_golden.json", 3)
+}
+func TestRuntimeManifestAPIGCPGoldenWire(t *testing.T) {
+	testRuntimeManifestAPIGolden(t, "testdata/api_gcp_runtime_manifest_golden.json", 2)
+}
+func testRuntimeManifestAPIGolden(t *testing.T, path string, count int) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +26,7 @@ func TestRuntimeManifestAPIGoldenWire(t *testing.T) {
 		Manifest json.RawMessage `json:"manifest"`
 		SHA256   string          `json:"sha256"`
 	}
-	if json.Unmarshal(raw, &cases) != nil || len(cases) != 3 {
+	if json.Unmarshal(raw, &cases) != nil || len(cases) != count {
 		t.Fatal("invalid independent API fixture")
 	}
 	for _, tc := range cases {
@@ -37,6 +43,16 @@ func TestRuntimeManifestAPIGoldenWire(t *testing.T) {
 			d := RuntimeDelivery{ID: uuid.MustParse("eeeeeeee-0000-0000-0000-000000000001"), DesiredRevision: m.DesiredRevision, Kind: "apply", OwnershipDigest: tc.SHA256, Manifest: m}
 			if !runtimeDeliveryValid(d, m.OrgID, m.NodeID, "apply") {
 				t.Fatal("API-produced delivery digest refused")
+			}
+			if m.ProfileID == GCPClassicStaticProfile {
+				if count, err := runtimeTransportContract(m); err != nil || count != 1 || m.Tunnels[1] != (RuntimeTunnel{}) {
+					t.Fatal("API Classic inactive slot/cardinality drift")
+				}
+				changed := m
+				changed.Tunnels[1].Slot = 2
+				if _, err := runtimeTransportContract(changed); err == nil {
+					t.Fatal("API Classic nonzero inactive slot admitted")
+				}
 			}
 			d.Manifest.DesiredRevision++
 			if runtimeDeliveryValid(d, m.OrgID, m.NodeID, "apply") {
