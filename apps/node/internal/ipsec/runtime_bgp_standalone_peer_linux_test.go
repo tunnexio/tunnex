@@ -463,11 +463,15 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 			if routeErr != nil || !localAssigned {
 				t.Fatal("peer underlay source unassigned")
 			}
-			rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.20.0.2 ip daddr 10.10.0.2 tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.20.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d accept\n", lan.Index, xi, xi, c.CustomTunnels[slot].ReqID)
-			rules += fmt.Sprintf("insert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.20.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", underlay.Index, c.CustomTunnels[slot].ReqID, c.CustomTunnels[slot].RemoteAddress)
+			localTarget, remoteTarget := netip.MustParseAddr("10.20.0.2"), netip.MustParseAddr("10.10.0.2")
+			if c.ProfileID == GCPHABGPProfile {
+				localTarget, remoteTarget = c.LocalTarget, c.RemoteTarget
+			}
+			rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d accept\n", lan.Index, xi, localTarget, remoteTarget, xi, localTarget, remoteTarget, c.CustomTunnels[slot].ReqID)
+			rules += fmt.Sprintf("insert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", underlay.Index, localTarget, remoteTarget, c.CustomTunnels[slot].ReqID, c.CustomTunnels[slot].RemoteAddress)
 			for i, ok := range healthy {
 				if ok {
-					rules += fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.10.0.2 ip daddr 10.20.0.2 tcp dport 18080 ipsec in reqid %d accept\n", gc.Tunnels[i].InterfaceIndex, lan.Index, c.CustomTunnels[i].ReqID)
+					rules += fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp dport 18080 ipsec in reqid %d accept\n", gc.Tunnels[i].InterfaceIndex, lan.Index, remoteTarget, localTarget, c.CustomTunnels[i].ReqID)
 				}
 			}
 			child, done := context.WithTimeout(context.Background(), 2*time.Second)
