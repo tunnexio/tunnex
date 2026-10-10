@@ -51,6 +51,8 @@ class ActivationTests(unittest.TestCase):
             self.assertEqual(check[2]['profile_id'], 'azure-active-active-bgp-ipv4-v1')
             create = next(call for call in calls if call[0] == 'POST' and call[1].endswith('/connections'))
             self.assertNotIn('desired_intent', create[2])
+            self.assertEqual(create[2]['configuration']['local_prefixes'], ['10.233.10.0/24'])
+            self.assertEqual(create[2]['configuration']['bgp']['router_id'], '10.233.10.1')
             self.assertEqual(create[2]['configuration']['tunnels'][0]['psk'], create[2]['configuration']['tunnels'][1]['psk'])
             enable = next(call for call in calls if call[1].endswith('/intent'))
             self.assertEqual(enable[3], 7)

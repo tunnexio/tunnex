@@ -77,11 +77,11 @@ def configuration(psk):
                   'custom_policy': 'aes256-sha256-dh14-pfs2048',
                   'use_policy_based_traffic_selectors': False, 'nat_enabled': False},
         'mode': 'ipv4-bgp', 'customer_outside_address': '20.219.28.146',
-        'local_prefixes': ['10.232.1.0/24'], 'remote_prefixes': ['10.231.0.0/16'],
+        'local_prefixes': ['10.233.10.0/24'], 'remote_prefixes': ['10.231.0.0/16'],
         'tunnels': [dict(outside_address=outside, inside_cidr='169.254.10.1/32',
                          customer_inside_address='169.254.10.1', cloud_inside_address=inside, psk=psk)
                     for outside, inside in [('52.140.60.21', '169.254.21.2'), ('20.219.125.34', '169.254.22.2')]],
-        'bgp': {'local_asn': 65000, 'remote_asn': 65515, 'router_id': '10.232.1.4', 'maximum_prefixes': 8}}
+        'bgp': {'local_asn': 65000, 'remote_asn': 65515, 'router_id': '10.233.10.1', 'maximum_prefixes': 8}}
 
 
 def main():
