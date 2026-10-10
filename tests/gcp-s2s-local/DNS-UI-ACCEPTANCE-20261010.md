@@ -72,3 +72,15 @@ Normal verified owner registered `GCP lifecycle qualification local`, Site `01a1
 | --- | --- |
 | `/private/tmp/gcp-ui-lifecycle-range-overlap-refused.png` | `5bbc8ca29fc16a9e9d9e038c3e44b7c16186a8c89c9dbad7161314934bb0de49` |
 | `/private/tmp/gcp-ui-lifecycle-site76-approved.png` | `d99e08b7b3cd009a833cb96159e6de7244bc1fc22e3b2a3f9bf49fa613c5db6a` |
+
+## Fresh native-source Classic role readback
+
+Owner/admin/member used normal login and read `gcp-classic-lifecycle-owned-1010`, fresh connection `56125c63-10de-4e3c-8636-49a22d8c82e0`, tunnel `7265a26c-d8e3-4617-a70b-074247178211`, genuinely enrolled node `01a1255f-38b1-78a2-9937-0bfadae9fca8`, Site `01a1255c-323d-74ec-a690-ca42f8271a86`. Root reports native `aa72e085` source and unchanged API source; UI source remains `978bc7f76b95ca89f486bf8a58bdb6f2c047dd6a`. Desired revision2 is root's normal API confirmation; UI shows configuration revision1.
+
+Actual inventory was Applied. Details showed local10.76/24, remote10.75/24, customer33.0.0.50 and peer33.0.0.60, with exactly one Tunnel1 Up; no BGP or invented second tunnel. Fresh timestamps (browser local IST) were 16:10:44 owner, 16:10:57 admin, 16:11:28 member. Member menu contained Connection details only, with Create connection count0 and no management actions. All checks were read-only aside from ordinary login/navigation: no grants, settings, DNS, capability or proof changes. The old recreated Classic row read Cleanup pending; no current old-lab Up claim is made. Controlled supervisor stop/proof/restoration was still pending at this capture; Applied/Up are distinct from actual packets and that lifecycle proof. Google/FQDN blockers remain.
+
+| Fresh-source screenshot | SHA-256 |
+| --- | --- |
+| `/private/tmp/gcp-ui-fresh-classic-owner-up.png` | `41b9c0d08652c9bd9f96f3996bf72f09c89cba691447720ad2b7f22ee61c4119` |
+| `/private/tmp/gcp-ui-fresh-classic-admin-up.png` | `aee7312d4617601a28725fab809fa9baec44fb4cb7334edcb98ee43da3328069` |
+| `/private/tmp/gcp-ui-fresh-classic-member-up-readonly.png` | `faa85b646b795d70775a360a0b33bfbf79904b109d0400372f36ddefac1e24cd` |
