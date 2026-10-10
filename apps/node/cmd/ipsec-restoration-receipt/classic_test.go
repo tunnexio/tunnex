@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAssemblyClassicWholeJournalAndStoppedIdentity(t *testing.T) {
@@ -24,9 +25,13 @@ func TestAssemblyClassicWholeJournalAndStoppedIdentity(t *testing.T) {
 	p.Snapshot.Boot = uuid.NewString()
 	p.Snapshot.Container = strings.Repeat("a", 64)
 	p.Snapshot.Namespace.Inode = 41
+	p.Snapshot.PID = 101
+	p.Snapshot.Started = "2026-10-10T10:00:00Z"
 	p.Termination.Container = p.Snapshot.Container
 	p.Termination.Action = "die"
-	p.Termination.TimeNS = 10
+	p.Termination.TimeNS = time.Date(2026, 10, 10, 10, 0, 1, 0, time.UTC).UnixNano()
+	p.VerifiedNS = p.Termination.TimeNS + 100000000
+	var lastJournal, lastEvidence []byte
 	run := func(e ipsec.RuntimeJournalEntry, ns string) ([]byte, error) {
 		payload := struct {
 			Guards   []any
@@ -42,6 +47,7 @@ func TestAssemblyClassicWholeJournalAndStoppedIdentity(t *testing.T) {
 		}{payload, digest(raw)})
 		p.StoppedJournalRawSHA256 = digest(j)
 		raw, _ = json.Marshal(p)
+		lastJournal, lastEvidence = j, raw
 		return assemble(j, raw, p.Snapshot.Boot, ns)
 	}
 	raw, err := run(e, "net:[42]")
@@ -55,8 +61,67 @@ func TestAssemblyClassicWholeJournalAndStoppedIdentity(t *testing.T) {
 		t.Fatal("entry omitted from exact receipt")
 	}
 	if _, err = run(e, "net:[41]"); err == nil {
-		t.Fatal("old namespace accepted")
+		t.Fatal("same namespace without explicit fresh observation accepted")
 	}
+	f := freshRuntime{Version: 1, Kind: "supervisor-confirmed-fresh-runtime", Container: p.Snapshot.Container, Boot: p.Snapshot.Boot, Namespace: "net:[41]", PID: 102, PIDStartTicks: 10, StartedAt: "2026-10-10T10:00:02Z", StopEvidenceSHA256: digest(lastEvidence), StoppedJournalSHA256: digest(lastJournal), CurrentJournalSHA256: digest(lastJournal), StartupGateSHA256: strings.Repeat("b", 64), StartupGateDevice: 1, StartupGateInode: 2}
+	fresh, _ := json.Marshal(f)
+	if _, err = assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, fresh, lastJournal); err != nil {
+		t.Fatal("independently fresh instance with recycled namespace refused", err)
+	}
+	for name, mutate := range map[string]func(*freshRuntime){"same PID": func(f *freshRuntime) { f.PID = p.Snapshot.PID }, "old started": func(f *freshRuntime) { f.StartedAt = p.Snapshot.Started }, "wrong boot": func(f *freshRuntime) { f.Boot = uuid.NewString() }, "wrong container": func(f *freshRuntime) { f.Container = strings.Repeat("c", 64) }, "wrong namespace": func(f *freshRuntime) { f.Namespace = "net:[99]" }, "wrong stop digest": func(f *freshRuntime) { f.StopEvidenceSHA256 = strings.Repeat("c", 64) }, "wrong journal digest": func(f *freshRuntime) { f.StoppedJournalSHA256 = strings.Repeat("c", 64) }, "missing gate": func(f *freshRuntime) { f.StartupGateInode = 0 }, "missing process identity": func(f *freshRuntime) { f.PIDStartTicks = 0 }} {
+		t.Run(name, func(t *testing.T) {
+			bad := f
+			mutate(&bad)
+			b, _ := json.Marshal(bad)
+			if _, err := assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, b, lastJournal); err == nil {
+				t.Fatal("unbound fresh evidence accepted")
+			}
+		})
+	}
+	type envelope struct {
+		Payload struct {
+			Guards   []json.RawMessage
+			Version  int
+			OwnerID  uuid.UUID
+			Sequence uint64
+			Entries  []ipsec.RuntimeJournalEntry
+		}
+		Checksum string
+	}
+	var doc envelope
+	json.Unmarshal(lastJournal, &doc)
+	current := func() []byte {
+		r, _ := json.Marshal(doc.Payload)
+		doc.Checksum = digest(r)
+		r, _ = json.Marshal(doc)
+		return r
+	}
+	doc.Payload.Sequence++
+	changed := current()
+	f.CurrentJournalSHA256 = digest(changed)
+	fresh, _ = json.Marshal(f)
+	if _, err = assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, fresh, changed); err != nil {
+		t.Fatal("normal guard sequence advance refused", err)
+	}
+	for name, mutate := range map[string]func(){"changed entry": func() { doc.Payload.Entries[0].OwnershipDigest = strings.Repeat("c", 64) }, "changed owner": func() { doc.Payload.OwnerID = uuid.New() }, "changed version": func() { doc.Payload.Version = 9 }, "sequence rollback": func() { doc.Payload.Sequence = 0 }} {
+		t.Run(name, func(t *testing.T) {
+			json.Unmarshal(lastJournal, &doc)
+			mutate()
+			bad := current()
+			f.CurrentJournalSHA256 = digest(bad)
+			b, _ := json.Marshal(f)
+			if _, err := assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, b, bad); err == nil {
+				t.Fatal("current lineage mutation accepted")
+			}
+		})
+	}
+	bad := append(append([]byte{}, lastJournal...), []byte(" {}")...)
+	f.CurrentJournalSHA256 = digest(bad)
+	fresh, _ = json.Marshal(f)
+	if _, err = assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, fresh, bad); err == nil {
+		t.Fatal("current checksum/envelope corruption accepted")
+	}
+
 	for name, mutate := range map[string]func(*ipsec.RuntimeJournalEntry){"wrong profile": func(e *ipsec.RuntimeJournalEntry) { e.Allocation.ProfileID = ipsec.GCPHABGPProfile }, "inactive engine": func(e *ipsec.RuntimeJournalEntry) { e.Engines[1] = e.Engines[0] }, "inactive allocation": func(e *ipsec.RuntimeJournalEntry) { e.Allocation.Tunnels[1] = e.Allocation.Tunnels[0] }, "inactive ownership": func(e *ipsec.RuntimeJournalEntry) { e.Observed[1] = e.Observed[0] }, "wrong contract": func(e *ipsec.RuntimeJournalEntry) { e.ContractVersion = 3 }, "invented cloud addressing": func(e *ipsec.RuntimeJournalEntry) {
 		e.Allocation.Tunnels[0].InsideAddress = netip.MustParsePrefix("169.254.10.1/30")
 	}} {

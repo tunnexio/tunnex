@@ -224,6 +224,37 @@ def preflight(args):
     return identity, entry, target, previous, fd
 
 
+def observe_fresh_runtime(before, stopped, journal_raw, current_journal, current, ns, gate, gate_raw, gate_identity):
+    cid = before['container']
+    state = current['state']
+    pid = state['Pid']
+    if (current['id'] != cid or not state['Running'] or state.get('Restarting')
+            or pid <= 0 or pid == before['pid'] or state['StartedAt'] == before['started']
+            or proof.boot() != before['boot']):
+        raise ValueError('fresh container instance not independently observed')
+    if Path('/proc/%d/cgroup' % pid).read_text().strip() != '0::/docker/' + cid:
+        raise ValueError('fresh runtime is outside the exact dedicated container cgroup')
+    process = Path('/proc/%d/stat' % pid).read_text()
+    ticks = int(process.rsplit(') ', 1)[1].split()[19])
+    if ticks <= 0 or os.readlink('/proc/%d/ns/net' % pid) != ns:
+        raise ValueError('fresh runtime process identity invalid')
+    info = Path(gate).lstat()
+    if (info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600
+            or not stat.S_ISREG(info.st_mode) or not os.path.samestat(info, gate_identity)
+            or proof.private_bytes(gate) != gate_raw):
+        raise ValueError('retained startup gate changed')
+    if proof.inspect(cid) != current or proof.boot() != before['boot']:
+        raise ValueError('fresh runtime changed during observation')
+    return {'version': 1, 'kind': 'supervisor-confirmed-fresh-runtime',
+            'container': cid, 'boot': before['boot'], 'namespace': ns, 'pid': pid,
+            'pid_start_ticks': ticks, 'started_at': state['StartedAt'],
+            'stop_evidence_sha256': hashlib.sha256(stopped).hexdigest(),
+            'stopped_journal_sha256': hashlib.sha256(journal_raw).hexdigest(),
+            'current_journal_sha256': hashlib.sha256(current_journal).hexdigest(),
+            'startup_gate_sha256': hashlib.sha256(gate_raw).hexdigest(),
+            'startup_gate_device': info.st_dev, 'startup_gate_inode': info.st_ino}
+
+
 def run(args):
     identity, before_entry, target, previous, lock = preflight(args)
     cid = identity['id']
@@ -259,65 +290,7 @@ def run(args):
         print('Exact stop proof captured; starting same container.', flush=True)
         proof.command('docker', 'start', cid)
         stopped = False
-        deadline = time.monotonic() + args.timeout
-        current = proof.inspect(cid)
-        while not current['state']['Running'] or current['state']['Pid'] <= 0:
-            if time.monotonic() >= deadline:
-                raise TimeoutError('container failed to start')
-            time.sleep(1)
-            current = proof.inspect(cid)
-        pid = current['state']['Pid']
-        ns = os.readlink('/proc/%d/ns/net' % pid)
-        new_boot = proof.boot()
-        if new_boot != before['boot'] or current['state']['StartedAt'] == before.get('started'):
-            raise ValueError('expected a fresh container runtime in the same host boot')
-        proof.state_mount(current, args.journal)
-        assembled = directory / 'receipt.json'
-        proof.command(str(args.receipt_helper), '-journal', str(directory / 'stopped-journal.json'),
-                      '-evidence', str(directory / 'stopped.json'), '-boot', new_boot,
-                      '-namespace', ns, '-out', str(assembled))
-        raw = proof.private_bytes(assembled)
-        # Do not overwrite an unknown receipt or follow a changed path.
-        now_previous = proof.private_bytes(target) if os.path.lexists(target) else None
-        if now_previous != previous:
-            raise ValueError('receipt changed while restart was in progress')
-        again = proof.inspect(cid)
-        if again['state']['Pid'] != pid or again['state']['StartedAt'] != current['state']['StartedAt'] or not again['state']['Running']:
-            raise ValueError('new runtime changed before receipt installation')
-        temporary = target.parent / ('.restore-' + str(uuid.uuid4()) + '.tmp')
-        write_bytes(temporary, raw)
-        os.replace(temporary, target)
-        sync_directory(target.parent)
-        receipt_installed = True
-        # The gate blocks startup from reusing old ownership if Linux recycles the
-        # namespace inode. Only remove this run's exact gate after receipt fsync.
-        release_gate(gate, gate_raw, gate_identity)
-        print('Bound receipt installed; awaiting journal restoration and active tunnel sessions.', flush=True)
-        while time.monotonic() < deadline:
-            after = active_entry(proof.private_read(args.journal))
-            if restored(before_entry, after, ns):
-                try:
-                    sas = proof.command('docker', 'exec', '-e', 'STRONGSWAN_CONF=' + args.strongswan_conf,
-                                        cid, args.swanctl, '--list-sas', '--uri', args.vici)
-                    links = json.loads(proof.command('docker', 'exec', cid, 'ip', '-j', '-d', 'link', 'show'))
-                    if tunnels_installed(sas, after) and links_owned(links, after):
-                        final = proof.inspect(cid)
-                        if (not final['state']['Running'] or final['state']['Pid'] != pid
-                                or final['state']['StartedAt'] != current['state']['StartedAt']
-                                or os.readlink('/proc/%d/ns/net' % pid) != ns or proof.boot() != new_boot):
-                            raise ValueError('runtime identity changed during acceptance')
-                        result = {'version': 1, 'status': 'controller-and-tunnels-restored',
-                                  'scope': 'controlled-supervisor-container-restart',
-                                  'epoch': after['Restoration']['Epoch'], 'payload_verified': False,
-                                  'started_utc': started_utc, 'active_tunnel_count': active_count(after),
-                                  'stop_to_active_established_seconds': round(time.monotonic() - stop_started, 3)}
-                        proof.private_write(directory / 'result.json', result)
-                        print('PASS: controller restoration and all active fresh tunnel sessions. Client payload verification remains separate.', flush=True)
-                        return result
-                except subprocess.CalledProcessError:
-                    pass
-            time.sleep(2)
-        raise TimeoutError('bounded recovery wait expired; journal and receipt preserved')
+        return finish_restoration(args, cid, before_entry, before, directory, journal_raw, target, previous, gate, gate_raw, gate_identity, stop_started, started_utc)
     except Exception:
         if stopped:
             # Restore the same process container only; no cleanup, receipts, or CP toggles.
@@ -326,24 +299,165 @@ def run(args):
                 print('Container restarted after proof failure; recovery remains unproven.', flush=True)
             except Exception:
                 print('Container restart failed; operator recovery required.', flush=True)
-        proof.private_write(directory / 'failure.json', {'version': 1, 'status': 'failed', 'receipt_installed': receipt_installed, 'startup_gate_present': os.path.lexists(gate)})
+        proof.private_write(directory / 'failure.json', {'version': 1, 'status': 'failed', 'receipt_installed': target.exists() and proof.private_bytes(target) != previous, 'startup_gate_present': os.path.lexists(gate)})
         if os.path.lexists(gate):
             print('Startup gate retained: runtime restoration remains refused until explicit recovery.', flush=True)
         raise
     finally:
         os.close(lock)
 
+def finish_restoration(args, cid, before_entry, before, directory, journal_raw, target, previous, gate, gate_raw, gate_identity, stop_started, started_utc):
+    deadline = time.monotonic() + args.timeout
+    current = proof.inspect(cid)
+    while not current['state']['Running'] or current['state']['Pid'] <= 0:
+        if time.monotonic() >= deadline:
+            raise TimeoutError('container failed to start')
+        time.sleep(1)
+        current = proof.inspect(cid)
+    pid = current['state']['Pid']
+    ns = os.readlink('/proc/%d/ns/net' % pid)
+    new_boot = proof.boot()
+    if new_boot != before['boot'] or current['state']['StartedAt'] == before.get('started'):
+        raise ValueError('expected a fresh container runtime in the same host boot')
+    if proof.state_mount(current, args.journal) != before['state_mount']:
+        raise ValueError('original state mount changed')
+    current_journal = proof.private_bytes(args.journal)
+    journal_entries_unchanged(journal_raw, current_journal)
+    write_bytes(directory / 'current-journal.json', current_journal)
+    fresh = observe_fresh_runtime(before, proof.private_bytes(directory / 'stopped.json'),
+                                  journal_raw, current_journal, current, ns, gate, gate_raw, gate_identity)
+    proof.private_write(directory / 'fresh-runtime.json', fresh)
+    assembled = directory / 'receipt.json'
+    proof.command(str(args.receipt_helper), '-journal', str(directory / 'stopped-journal.json'),
+                  '-evidence', str(directory / 'stopped.json'), '-boot', new_boot,
+                  '-namespace', ns, '-fresh-runtime', str(directory / 'fresh-runtime.json'),
+                  '-startup-gate', str(gate), '-current-journal', str(directory / 'current-journal.json'), '-out', str(assembled))
+    raw = proof.private_bytes(assembled)
+    # Do not overwrite an unknown receipt or follow a changed path.
+    now_previous = proof.private_bytes(target) if os.path.lexists(target) else None
+    if now_previous != previous:
+        raise ValueError('receipt changed while restart was in progress')
+    again = proof.inspect(cid)
+    if again['state']['Pid'] != pid or again['state']['StartedAt'] != current['state']['StartedAt'] or not again['state']['Running']:
+        raise ValueError('new runtime changed before receipt installation')
+    journal_entries_unchanged(journal_raw, proof.private_bytes(args.journal))
+    gate_now = gate.lstat()
+    if not os.path.samestat(gate_now, gate_identity) or proof.private_bytes(gate) != gate_raw:
+        raise ValueError('startup gate changed before receipt installation')
+    temporary = target.parent / ('.restore-' + str(uuid.uuid4()) + '.tmp')
+    write_bytes(temporary, raw)
+    os.replace(temporary, target)
+    sync_directory(target.parent)
+    receipt_installed = True
+    # The gate blocks startup from reusing old ownership if Linux recycles the
+    # namespace inode. Only remove this run's exact gate after receipt fsync.
+    release_gate(gate, gate_raw, gate_identity)
+    print('Bound receipt installed; awaiting journal restoration and active tunnel sessions.', flush=True)
+    while time.monotonic() < deadline:
+        after = active_entry(proof.private_read(args.journal))
+        if restored(before_entry, after, ns):
+            try:
+                sas = proof.command('docker', 'exec', '-e', 'STRONGSWAN_CONF=' + args.strongswan_conf,
+                                    cid, args.swanctl, '--list-sas', '--uri', args.vici)
+                links = json.loads(proof.command('docker', 'exec', cid, 'ip', '-j', '-d', 'link', 'show'))
+                if tunnels_installed(sas, after) and links_owned(links, after):
+                    final = proof.inspect(cid)
+                    if (not final['state']['Running'] or final['state']['Pid'] != pid
+                            or final['state']['StartedAt'] != current['state']['StartedAt']
+                            or os.readlink('/proc/%d/ns/net' % pid) != ns or proof.boot() != new_boot):
+                        raise ValueError('runtime identity changed during acceptance')
+                    result = {'version': 1, 'status': 'controller-and-tunnels-restored',
+                              'scope': 'controlled-supervisor-container-restart',
+                              'epoch': after['Restoration']['Epoch'], 'payload_verified': False,
+                              'started_utc': started_utc, 'active_tunnel_count': active_count(after),
+                              'stop_to_active_established_seconds': round(time.monotonic() - stop_started, 3)}
+                    proof.private_write(directory / 'result.json', result)
+                    print('PASS: controller restoration and all active fresh tunnel sessions. Client payload verification remains separate.', flush=True)
+                    return result
+            except subprocess.CalledProcessError:
+                pass
+        time.sleep(2)
+    raise TimeoutError('bounded recovery wait expired; journal and receipt preserved')
+
+def journal_entries_unchanged(stopped, current):
+    before = json.loads(stopped)['Payload']
+    after = json.loads(current)['Payload']
+    if (before['Entries'] != after['Entries'] or before['OwnerID'] != after['OwnerID']
+            or before['Version'] != after['Version'] or after['Sequence'] < before['Sequence']):
+        raise ValueError('immutable journal lineage changed')
+    # Complete checksum, typed entries and guard validity are independently
+    # checked by the receipt helper's product reader on both private snapshots.
+
+
+def resume(args):
+    if os.geteuid() != 0:
+        raise ValueError('requires Docker host root')
+    directory = Path(args.resume_evidence_dir)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError('original evidence directory must be root-owned mode 0700')
+    helper=Path(args.receipt_helper)
+    helper_info=helper.lstat()
+    if not stat.S_ISREG(helper_info.st_mode) or helper_info.st_uid!=0 or helper_info.st_mode & 0o022 or not os.access(helper,os.X_OK):
+        raise ValueError('unsafe receipt helper')
+    before = proof.private_read(directory / 'before.json')
+    stopped = proof.private_read(directory / 'stopped.json')
+    journal_raw = proof.private_bytes(directory / 'stopped-journal.json')
+    if (stopped['snapshot'] != before
+            or hashlib.sha256(journal_raw).hexdigest() != stopped['stopped_journal_raw_sha256']):
+        raise ValueError('captured stop proof or current journal changed; explicit diagnosis required')
+    journal_entries_unchanged(journal_raw, proof.private_bytes(args.journal))
+    current = proof.inspect(args.container)
+    if proof.command('docker', 'inspect', '--format', '{{.HostConfig.RestartPolicy.Name}}', current['id']) != 'no':
+        raise ValueError('automatic Docker restart policy must remain disabled')
+    if current['id'] != before['container'] or proof.state_mount(current, args.journal) != before['state_mount']:
+        raise ValueError('original container/state mount changed')
+    gate = Path(args.journal).parent / 'restoration-startup-gate'
+    gate_raw = proof.private_bytes(gate)
+    expected = json.dumps({'Version': 1, 'SupervisorRun': directory.name, 'ContainerID': before['container']}, sort_keys=True).encode()
+    record = proof.private_read(directory / 'startup-gate.json')
+    if (gate_raw != expected or record['file'] != str(gate)
+            or record['sha256'] != hashlib.sha256(gate_raw).hexdigest()):
+        raise ValueError('existing startup gate is not owned by the original run')
+    gate_identity = gate.lstat()
+    before_entry = active_entry(json.loads(journal_raw))
+    target = Path(args.journal).parent / ('restore-' + before_entry['DeliveryID'] + '.json')
+    previous = proof.private_bytes(directory / 'previous-receipt.json') if os.path.lexists(directory / 'previous-receipt.json') else None
+    now_previous = proof.private_bytes(target) if os.path.lexists(target) else None
+    if previous != now_previous:
+        raise ValueError('receipt already changed; resume refused')
+    lock = os.open(Path(args.journal).parent / '.restoration-supervisor.lock', os.O_RDWR | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(lock)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError('unsafe supervisor lock')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Historical gate dev/inode was not persisted by older runners. Observe
+        # and hold its CURRENT exact identity after matching the original private
+        # hash/run/container record; never invent a historical inode claim.
+        attempt = directory / ('resume-' + str(uuid.uuid4()))
+        attempt.mkdir(mode=0o700)
+        write_bytes(attempt / 'stopped.json', proof.private_bytes(directory / 'stopped.json'))
+        write_bytes(attempt / 'stopped-journal.json', journal_raw)
+        return finish_restoration(args, before['container'], before_entry, before, attempt,
+                                  journal_raw, target, previous, gate, gate_raw, gate_identity,
+                                  time.monotonic(), datetime.datetime.now(datetime.timezone.utc).isoformat())
+    finally:
+        os.close(lock)
+
+
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for option in ('container', 'journal', 'receipt-helper', 'evidence-dir', 'swanctl', 'vici', 'strongswan-conf'):
         p.add_argument('--' + option, required=True)
+    p.add_argument('--resume-evidence-dir', help='explicitly resume the exact captured stopped run; never synthesize stop proof')
     p.add_argument('--timeout', type=int, required=True)
     p.add_argument('--stop-timeout', type=int, required=True)
     args = p.parse_args()
     if not 10 <= args.timeout <= 600 or not 1 <= args.stop_timeout <= 20:
         p.error('bounded timeout required: recovery 10..600 seconds; stop 1..20 seconds')
-    run(args)
+    resume(args) if args.resume_evidence_dir else run(args)
 
 
 if __name__ == '__main__':

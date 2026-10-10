@@ -147,20 +147,22 @@ class OrchestrationTests(unittest.TestCase):
                     Path(a[a.index('-out') + 1]).write_text('{"valid":"receipt"}')
                 return '[]' if 'ip' in a else ''
             current = {'state': {'Running': True, 'Pid': 99, 'StartedAt': 'new'}}
-            before = {'namespace': {'inode': 2}, 'boot': 'same-boot', 'started': 'old'}
+            before = {'namespace': {'inode': 2}, 'boot': 'same-boot', 'started': 'old', 'state_mount': None}
             evidence = {'stopped_journal_raw_sha256': hashlib.sha256(b'{}').hexdigest()}
             def release_gate(path, raw, identity):
                 self.assertTrue(target.exists(), 'receipt must be durable before gate release')
                 self.assertEqual(Path(path).read_bytes(), raw)
                 Path(path).unlink()
-            with patch.object(runner, 'release_gate', side_effect=release_gate), \
+            with patch.object(runner, 'observe_fresh_runtime', return_value={'verified':'fresh'}), \
+                 patch.object(runner, 'journal_entries_unchanged'), \
+                 patch.object(runner, 'release_gate', side_effect=release_gate), \
                  patch.object(runner, 'preflight', return_value=({'id': 'exact-id'}, fixture.before, target, None, lock)), \
                  patch.object(runner.proof, 'snapshot', return_value=before), \
                  patch.object(runner.proof, 'prove', return_value=evidence), \
                  patch.object(runner.proof, 'command', side_effect=command), \
                  patch.object(runner.proof, 'inspect', return_value=current), \
                  patch.object(runner.proof, 'boot', return_value='same-boot'), \
-                 patch.object(runner.proof, 'state_mount'), \
+                 patch.object(runner.proof, 'state_mount', return_value=None), \
                  patch.object(runner.proof, 'private_bytes', side_effect=lambda p: Path(p).read_bytes()), \
                  patch.object(runner.proof, 'private_read', return_value={'Payload': {'Entries': [dict(after, ContractVersion=2)]}}), \
                  patch.object(runner.os, 'readlink', return_value='net:[2]'), \
