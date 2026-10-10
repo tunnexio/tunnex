@@ -480,7 +480,7 @@ it.each(["azure-active-active-bgp-ipv4-v1", "azure-active-standby-bgp-ipv4-v1", 
  if(dynamic) expect((screen.getByLabelText("Azure gateway ASN") as HTMLInputElement).value).toBe("65515");
  else expect(screen.queryByLabelText("Azure gateway ASN")).toBeNull();
  fireEvent.click(screen.getByRole("button", {name:"Next: tunnels"}));
- for(let n=1;n<=count;n++) for(const [field,value] of Object.entries({"outside IP":n===1?"8.8.8.8":"1.1.1.1","inside CIDR":n===1?"169.254.21.0/30":"169.254.21.4/30","customer IP":n===1?"169.254.21.1":"169.254.21.5","cloud IP":n===1?"169.254.21.2":"169.254.21.6",PSK:`Synthetic.Azure_${n}`})) {
+ for(let n=1;n<=count;n++) for(const [field,value] of Object.entries({"outside IP":n===1?"8.8.8.8":"1.1.1.1","inside CIDR":dynamic?"169.254.20.1/32":n===1?"169.254.21.0/30":"169.254.21.4/30","customer IP":dynamic?"169.254.20.1":n===1?"169.254.21.1":"169.254.21.5","cloud IP":n===1?"169.254.21.2":"169.254.21.6",PSK:"Synthetic.Azure_1"})) {
    const runtime=!dynamic&&field!=="outside IP"&&field!=="PSK"?"Tunnex runtime ":"";
    fireEvent.change(screen.getByLabelText(`Tunnel ${n} ${runtime}${field}`), {target:{value}});
  }
@@ -508,7 +508,7 @@ it("imports bounded Tunnex Azure JSON only after preflight without saving or exp
  render(view()); await prepareBGPForm();
  const configuration={...bgpReadback.configuration, profile_id:"azure-active-standby-bgp-ipv4-v1", transport_version:1,tunnel_count:1,
  azure:{gateway_sku:"VpnGw2AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false},
- tunnels:[{outside_address:"8.8.8.8",inside_cidr:"169.254.21.0/30",customer_inside_address:"169.254.21.1",cloud_inside_address:"169.254.21.2",psk:"Synthetic.Import.Secret"}]};
+ tunnels:[{outside_address:"8.8.8.8",inside_cidr:"169.254.20.1/32",customer_inside_address:"169.254.20.1",cloud_inside_address:"169.254.21.2",psk:"Synthetic.Import.Secret"}]};
  const file=new File([JSON.stringify(configuration)],"azure.json",{type:"application/json"}); Object.defineProperty(file,"text",{value:async()=>JSON.stringify(configuration)});
  fireEvent.change(screen.getByLabelText("Import Tunnex Azure JSON"),{target:{files:[file]}});
  await waitFor(()=>expect((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).value).toBe(configuration.profile_id));
@@ -535,4 +535,13 @@ it.each(["oversized", "foreign-prefix", "unsupported-profile", "bad-json"])("ref
 it("exports only explicit nonsecret Azure review fields, never arbitrary configuration fields", () => {
  const provider={...bgpReadback,profile_id:"azure-active-active-bgp-ipv4-v1",configuration:{...bgpReadback.configuration,azure:{gateway_sku:"VpnGw1AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false,psk:"secret"},psk:"secret",tunnels:[{outside_address:"8.8.8.8",inside_cidr:"169.254.21.0/30",customer_inside_address:"169.254.21.1",cloud_inside_address:"169.254.21.2",psk:"secret"}]}};
  const text=JSON.stringify(azureSettingsReview(provider as any)); expect(text).not.toContain("secret"); expect(text).not.toContain("psk"); expect(text).toContain("VpnGw1AZ");
+});
+it.each(["psk", "customer-prefix"])("refuses inconsistent Azure active-active %s before preflight", async kind => {
+ render(view()); await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"azure-active-active-bgp-ipv4-v1"}});
+ fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"})); fillBGPTunnels();
+ if(kind==="customer-prefix") for(const n of [1,2]) fireEvent.change(screen.getByLabelText(`Tunnel ${n} PSK`),{target:{value:"Synthetic.SharedAzure"}});
+ fireEvent.click(screen.getByRole("button",{name:"Save disabled connection"}));
+ await screen.findByText(kind==="psk"?/must use the same PSK/:/same customer APIPA address and its \/32/);
+ expect(mock.post).not.toHaveBeenCalled();
 });
