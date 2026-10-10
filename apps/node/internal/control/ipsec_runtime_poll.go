@@ -3,8 +3,10 @@ package control
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
+	"reflect"
 	"time"
 )
 
@@ -80,6 +82,12 @@ func PollIPsecRuntime(ctx context.Context, client IPsecRuntimeTransport, control
 // Missing results retain the ordinary Apply path and its material validation.
 type IPsecRuntimeMaintainer interface {
 	MaintainIPsecRuntime(context.Context, []ipsec.RuntimeMaterial) ([]ipsec.RuntimeMaintenanceResult, error)
+}
+
+// IPsecRuntimeObservedMaintainer reports actual post-commit observations while
+// gathering the page. Telemetry cannot substitute for a complete validated ACK.
+type IPsecRuntimeObservedMaintainer interface {
+	MaintainIPsecRuntimeObserved(context.Context, []ipsec.RuntimeMaterial, func(context.Context, ipsec.RuntimeDelivery, ipsec.RuntimeStatusReport) error) ([]ipsec.RuntimeMaintenanceResult, error)
 }
 
 // PollIPsecRuntimeValidated reports a complete nonempty application pass. The
@@ -312,7 +320,48 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 		}
 		return 0, nil
 	}
-	results, err := maintainer.MaintainIPsecRuntime(ctx, materials)
+	observed := map[uuid.UUID]string{}
+	published := map[uuid.UUID]bool{}
+	observationRejected := false
+	var results []ipsec.RuntimeMaintenanceResult
+	var err error
+	if observer, ok := maintainer.(IPsecRuntimeObservedMaintainer); ok {
+		results, err = observer.MaintainIPsecRuntimeObserved(ctx, materials, func(observationCtx context.Context, delivery ipsec.RuntimeDelivery, report ipsec.RuntimeStatusReport) error {
+			index, known := byDelivery[delivery.ID]
+			if !known || ctx.Err() != nil || observationCtx.Err() != nil || !reflect.DeepEqual(delivery, materials[index].RuntimeDelivery) || !runtimeStatusMatchesDelivery(delivery, report) {
+				observationRejected = true
+				return ErrIPsecControl
+			}
+			if _, duplicate := observed[delivery.ID]; duplicate {
+				observationRejected = true
+				return ErrIPsecControl
+			}
+			raw, err := json.Marshal(report)
+			if err != nil {
+				observationRejected = true
+				return ErrIPsecControl
+			}
+			observed[delivery.ID] = string(raw)
+			reportCtx, cancel := context.WithTimeout(observationCtx, 5*time.Second)
+			defer cancel()
+			// Optional observers cannot detach report IO from the polling owner.
+			stopParentCancel := context.AfterFunc(ctx, cancel)
+			defer stopParentCancel()
+			// A report RPC failure marks telemetry failed without revoking a
+			// separately valid native commit solely because HTTP is unavailable.
+			if client.IPsecReportStatus(reportCtx, delivery.Manifest.ConnectionID, report) != nil {
+				failed = true
+			} else {
+				published[delivery.ID] = true
+			}
+			return nil
+		})
+	} else {
+		results, err = maintainer.MaintainIPsecRuntime(ctx, materials)
+	}
+	if observationRejected {
+		return 0, ErrIPsecControl
+	}
 	if err != nil {
 		if len(results) != 0 {
 			return 0, ErrIPsecControl
@@ -337,6 +386,12 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 		if ack.Kind != "apply" || ack.Result != "applied" || ack.DesiredRevision != pending[index].DesiredRevision || ack.OwnershipDigest != m.OwnershipDigest || !runtimeStatusMatchesDelivery(m.RuntimeDelivery, result.Report) {
 			return 0, ErrIPsecControl
 		}
+		if before, ok := observed[ack.DeliveryID]; ok {
+			raw, err := json.Marshal(result.Report)
+			if err != nil || before != string(raw) {
+				return 0, ErrIPsecControl
+			}
+		}
 		maintained[ack.DeliveryID] = result
 	}
 	for i, material := range materials {
@@ -345,8 +400,10 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 			if ctx.Err() != nil {
 				return 0, ErrIPsecControl
 			}
-			if client.IPsecReportStatus(ctx, item.ConnectionID, result.Report) != nil {
-				failed = true
+			if _, alreadySent := published[material.ID]; !alreadySent {
+				if client.IPsecReportStatus(ctx, item.ConnectionID, result.Report) != nil {
+					failed = true
+				}
 			}
 			if client.IPsecAcknowledge(ctx, item.ConnectionID, result.Acknowledgement) != nil {
 				failed = true

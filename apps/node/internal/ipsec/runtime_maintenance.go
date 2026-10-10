@@ -16,6 +16,14 @@ import (
 // Omitted results require ordinary Apply; successful results repair the existing
 // delivery acknowledgement even if an earlier CP acknowledgement was lost.
 func (c *RuntimeController) MaintainIPsecRuntime(ctx context.Context, materials []RuntimeMaterial) ([]RuntimeMaintenanceResult, error) {
+	return c.MaintainIPsecRuntimeObserved(ctx, materials, nil)
+}
+
+// MaintainIPsecRuntimeObserved publishes each fresh post-commit native status
+// without waiting for other owners' status IO. This callback carries telemetry
+// only; the complete result set still gates every Apply acknowledgement.
+// The callback runs under the runtime owner lock and must not reenter it.
+func (c *RuntimeController) MaintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
 	if c == nil {
 		return nil, ErrRuntimeController
 	}
@@ -29,13 +37,17 @@ func (c *RuntimeController) MaintainIPsecRuntime(ctx context.Context, materials 
 			return nil, ErrRuntimeController
 		}
 	}
-	return c.maintainIPsecRuntime(ctx, materials, NewPermitLeaseAuthority, c.bgpQualificationCurrent)
+	return c.maintainIPsecRuntimeObserved(ctx, materials, NewPermitLeaseAuthority, c.bgpQualificationCurrent, publish)
 }
 
 // The private core runs after the same platform/BGP qualification as Apply.
 // The constructor is supplied only by the public boundary (or virtual-clock
 // tests), and Begin starts its deadline BEFORE the normal CP request.
 func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool) ([]RuntimeMaintenanceResult, error) {
+	return c.maintainIPsecRuntimeObserved(ctx, materials, authority, bgpCurrent, nil)
+}
+
+func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
 	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || len(materials) > 256 {
 		return nil, ErrRuntimeController
 	}
@@ -230,6 +242,20 @@ func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials 
 		}
 		if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 			return fail()
+		}
+		if publish != nil {
+			if publish(ctx, m, report) != nil {
+				return fail()
+			}
+			// External report IO cannot turn a now-expired or replaced candidate
+			// into an applied result. The full-set check below remains required.
+			current, ok = c.active[id]
+			if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
+				return fail()
+			}
+			if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
+				return fail()
+			}
 		}
 		result = append(result, RuntimeMaintenanceResult{Acknowledgement: RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, Report: report})
 	}
