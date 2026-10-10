@@ -179,14 +179,22 @@ def parse_sample(text,engines):
  return values
 def sample(m):return parse_sample(swan(m,'--list-sas'),m['engines'])
 def check(m):identity(m);api_authority(m,rollback=m.get('_restoring') is True);verify_conns(m)
+# Pinned strongSwan 6.1.0 vici_config.c:check_lifetimes defaults CHILD
+# rand_time to life_time-rekey_time (600s); child_cfg.c:apply_jitter
+# subtracts 0..600s. Allow the existing 45s observation window plus 1s
+# countdown rounding, without changing any production/accelerated timers.
+FRESH_OBSERVATION_SECONDS=45
+CHILD_FRESH_MIN_SECONDS=3000-(3600-3000)-FRESH_OBSERVATION_SECONDS-1
+def child_timer_fresh(item):
+ return CHILD_FRESH_MIN_SECONDS<=item.get('child_remaining_seconds',-1)<=3000
 def fresh(m,engine,maximum=None):
  check(m);name=common.name(engine);before=sample(m).get(name,{}).get('ike_serial')
  swan(m,'--terminate','--ike',name,'--timeout','20');check(m)
  swan(m,'--initiate','--child',name,'--ike',name,'--timeout','20')
- end=time.monotonic()+45
+ end=time.monotonic()+FRESH_OBSERVATION_SECONDS
  while time.monotonic()<end:
   check(m);item=sample(m).get(name)
-  if item and item['ike_serial']!=before and (0<item['remaining_seconds']<=maximum if maximum else 25900<=item['remaining_seconds']<=28800) and 2690<=item.get('child_remaining_seconds',-1)<=3000:return item
+  if item and item['ike_serial']!=before and (0<item['remaining_seconds']<=maximum if maximum else 25900<=item['remaining_seconds']<=28800) and child_timer_fresh(item):return item
   time.sleep(1)
  raise ValueError('fresh_timer_not_verified')
 
