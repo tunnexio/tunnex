@@ -1,0 +1,42 @@
+{
+  "revision": 20,
+  "helper_source": "ce2853c4",
+  "result": "read_only_measurement_complete",
+  "all_seven_final_consistency_checks": true,
+  "environment_observe_ms": 319,
+  "commands": {
+    "address": {
+      "count": 2,
+      "summed_ms": 4
+    },
+    "full_ruleset": {
+      "count": 2,
+      "summed_ms": 44
+    },
+    "link": {
+      "count": 2,
+      "summed_ms": 3
+    },
+    "main_route": {
+      "count": 2,
+      "summed_ms": 3
+    },
+    "route_get": {
+      "count": 4,
+      "summed_ms": 4
+    },
+    "rule": {
+      "count": 2,
+      "summed_ms": 3
+    },
+    "unexpected": {
+      "count": 0,
+      "summed_ms": 0
+    }
+  },
+  "residual_census_and_parse_ms": 256,
+  "scope": "Residual includes four uninstrumented iptables executions plus parsing/validation/bookkeeping; no pure parser or CPU causality claim",
+  "normal_after_applied20_both_up_bgp_established": true,
+  "authority": false,
+  "in_memory_epoch_observed": false
+}

@@ -209,6 +209,9 @@ func attachRecoveryStatusGuard(t *testing.T, c *RuntimeController, entry Runtime
 	g.Remote = entry.Engines[0].RemotePrefixes
 	index := int(entry.Recovery.SelectedSlot) - 1
 	g.PermittedInterfaceIndices = []int{entry.Observed[index].InterfaceIndex}
+	// Both native fixture tunnels are independently up, as in the production
+	// static guard's reply observation; outbound selection remains slot-specific.
+	g.ReplyIngressIndices = []int{entry.Observed[0].InterfaceIndex, entry.Observed[1].InterfaceIndex}
 	g.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: entry.Observed[index].InterfaceIndex, ReqID: entry.Engines[index].ReqID, Peer: entry.Engines[index].RemoteAddress, UnderlayInterfaceIndex: 3}}
 	g.Grants = []GuardGrant{{Source: g.Local[0], Destination: g.Remote[0], Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}
 	manifest, err := RenderGuard(intent)
@@ -237,7 +240,7 @@ func attachRecoveryStatusGuard(t *testing.T, c *RuntimeController, entry Runtime
 }
 
 func TestRecoveryGuardPermitRequiresCurrentExactMembers(t *testing.T) {
-	for _, kind := range []string{"interface", "sa", "ambiguous template", "read failure"} {
+	for _, kind := range []string{"interface", "sa", "reply", "ambiguous template", "read failure"} {
 		t.Run(kind, func(t *testing.T) {
 			entry, _, _, _ := runtimeProofFixture()
 			entry.Recovery = &RuntimeRecoveryState{SelectedSlot: 2, Sequence: 1, Stage: "completed"}
@@ -247,10 +250,13 @@ func TestRecoveryGuardPermitRequiresCurrentExactMembers(t *testing.T) {
 				t.Fatal("positive exact readback refused")
 			}
 			switch kind {
-			case "interface", "sa":
+			case "interface", "sa", "reply":
 				name := guardLeaseName(entry.Allocation.ConnectionID)
 				if kind == "sa" {
 					name = guardSALeaseName(entry.Allocation.ConnectionID)
+				}
+				if kind == "reply" {
+					name = guardReplyLeaseName(entry.Allocation.ConnectionID)
 				}
 				var doc map[string][]map[string]any
 				if err := json.Unmarshal([]byte(*observed), &doc); err != nil {
