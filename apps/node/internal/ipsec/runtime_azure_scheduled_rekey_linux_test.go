@@ -253,6 +253,7 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		CharonPID                                                int
 		CharonSHA, CharonStart, NodeSHA, ConfigSHA, Action, Mode string
 		Slot                                                     int
+		WatchdogMonotonicDeadlineNS                              int64
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -260,6 +261,19 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		fail()
 		return
 	}
+	stage = "request-ceiling"
+	var clock unix.Timespec
+	if unix.ClockGettime(unix.CLOCK_MONOTONIC, &clock) != nil {
+		fail()
+		return
+	}
+	budget, budgetErr := azureSchedulerControlBudget(clock.Nano(), request.WatchdogMonotonicDeadlineNS)
+	if budgetErr != nil {
+		fail()
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
 	stage = "node-identity"
 	node, err := os.ReadFile("/proc/1/exe")
 	if os.Geteuid() != 0 || err != nil || !validDigest(request.NodeSHA) || remediationSHA(node) != request.NodeSHA || request.CharonPID <= 1 || !validDigest(request.CharonSHA) {
@@ -299,8 +313,6 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		fail()
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	stage = "guard-read"
 	daemon, err := azureSchedulerOwnedDaemon(request.CharonPID, request.CharonSHA, stat)
 	guard, ge := NewGuardReader("/usr/sbin/nft")
@@ -312,7 +324,8 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 	}
 	stage = "journal-bracket"
 	after, ast, err := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
-	if err != nil || ctx.Err() != nil || jst.Dev != ast.Dev || jst.Ino != ast.Ino || !bytes.Equal(journal, after) {
+	stage = azureSchedulerJournalStage(err, ctx.Err(), err == nil && jst.Dev == ast.Dev && jst.Ino == ast.Ino, journal, after)
+	if stage != "" {
 		fail()
 		return
 	}

@@ -1,6 +1,7 @@
 package ipsec
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Configuration comes from the real stage material constructor with a mock
@@ -312,4 +314,63 @@ func azureSchedulerNativeProof(ctx context.Context, e RuntimeJournalEntry, d Dae
 		}
 	}
 	return routes.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true)
+}
+
+// The host request uses CLOCK_MONOTONIC, shared across these owned namespaces.
+// Never grant more than the original 30s native maximum or 420s attempt ceiling.
+func azureSchedulerControlBudget(now, ceiling int64) (time.Duration, error) {
+	if now <= 0 || ceiling <= now || ceiling-now > int64(420*time.Second) {
+		return 0, ErrDaemonProtocol
+	}
+	return min(time.Duration(ceiling-now), 30*time.Second), nil
+}
+func azureSchedulerJournalStage(readErr, contextErr error, sameFile bool, before, after []byte) string {
+	if readErr != nil {
+		return "journal-reread"
+	}
+	if contextErr != nil {
+		return "journal-context"
+	}
+	if !sameFile {
+		return "journal-identity"
+	}
+	if !bytes.Equal(before, after) {
+		return "journal-bytes"
+	}
+	return ""
+}
+func TestAzureSchedulerControlBudgetAndJournalStages(t *testing.T) {
+	now := int64(time.Hour)
+	for _, tc := range []struct {
+		delta   time.Duration
+		want    time.Duration
+		refused bool
+	}{
+		{420 * time.Second, 30 * time.Second, false}, {10 * time.Second, 10 * time.Second, false},
+		{0, 0, true}, {-time.Second, 0, true}, {421 * time.Second, 0, true},
+	} {
+		got, e := azureSchedulerControlBudget(now, now+int64(tc.delta))
+		if (e != nil) != tc.refused || got != tc.want {
+			t.Fatal("ceiling classification changed")
+		}
+	}
+	if _, e := azureSchedulerControlBudget(0, int64(time.Second)); e == nil {
+		t.Fatal("invalid clock accepted")
+	}
+	for _, tc := range []struct {
+		read, ctx error
+		same      bool
+		after     []byte
+		want      string
+	}{
+		{ErrDaemonProtocol, context.Canceled, false, nil, "journal-reread"},
+		{nil, context.DeadlineExceeded, false, nil, "journal-context"},
+		{nil, nil, false, nil, "journal-identity"},
+		{nil, nil, true, []byte("changed"), "journal-bytes"},
+		{nil, nil, true, []byte("original"), ""},
+	} {
+		if got := azureSchedulerJournalStage(tc.read, tc.ctx, tc.same, []byte("original"), tc.after); got != tc.want {
+			t.Fatal("journal refusal order changed")
+		}
+	}
 }

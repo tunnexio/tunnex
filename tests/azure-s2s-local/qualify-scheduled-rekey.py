@@ -128,10 +128,15 @@ def swan(m,*args):
   identity(m);api_authority(m);verify_conns(m)
   return owned_mutation(m,*args)
  finally:os.close(fd)
+def native_control_ceiling(m):
+ deadline=m.get('watchdog_monotonic_deadline')
+ now=time.monotonic()
+ if not isinstance(deadline,(int,float)) or not 0<deadline-now<=420:raise ValueError('native_control_ceiling_refused')
+ return int(deadline*1_000_000_000)
 def owned_control(m,action,slot=0):
  native=m['native'];authority=m['authority']
  binding={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
- request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot}
+ request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot,'WatchdogMonotonicDeadlineNS':native_control_ceiling(m)}
  path='/run/tunnex-ipsec/azure-scheduler-request-'+str(uuid.uuid4())+'.json'
  # Input remains root-owned 0600 inside the owned container. Neither stdout nor
  # argv carries request material. No arbitrary config or command is passed.
@@ -143,7 +148,7 @@ def owned_control(m,action,slot=0):
   raise ValueError('owned_control_refused')
 
 def fixed_control_failure(output):
- allowed={'request-path','request-private-read','request-decode','node-identity','journal-read','binding-history','render-identity','namespace','daemon-identity','guard-read','journal-bracket','loaded-request','loaded-context','loaded-schema','arguments','render','load-request','load-response','action-request','action-response','action-context','terminate-no-match','terminate-partial','control-refused'}
+ allowed={'request-path','request-private-read','request-decode','node-identity','journal-read','binding-history','render-identity','namespace','daemon-identity','guard-read','journal-bracket','journal-reread','journal-context','journal-identity','journal-bytes','request-ceiling','loaded-request','loaded-context','loaded-schema','arguments','render','load-request','load-response','action-request','action-response','action-context','terminate-no-match','terminate-partial','control-refused'}
  matches=re.findall(rb'owned_scheduler_control_refused ([a-z-]+)(?:\s|$)',output)
  if len(matches)!=1:return 'unclassified'
  value=matches[0].decode('ascii')

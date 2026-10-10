@@ -36,6 +36,14 @@ class SchedulerTests(unittest.TestCase):
   # Initiation takes 20s; final checks/readback cross the observation deadline.
   with patch.object(q,'check'),patch.object(q.common,'name',return_value='owned'),patch.object(q,'sample',side_effect=[{'owned':{'ike_serial':1}},{'owned':item}]),patch.object(q,'swan'),patch.object(q.time,'monotonic',side_effect=[100,120,121,166]):
    self.assertEqual(q.fresh({}, {},120),item)
+ def test_native_control_ceiling_is_original_attempt_only(self):
+  with patch.object(q.time,'monotonic',return_value=100):
+   self.assertEqual(q.native_control_ceiling({'watchdog_monotonic_deadline':520}),520_000_000_000)
+   for deadline in (None,100,99,521,float('inf'),float('nan')):
+    with self.assertRaises(ValueError):q.native_control_ceiling({'watchdog_monotonic_deadline':deadline})
+ def test_fixed_journal_refusal_classes(self):
+  for stage in ('journal-reread','journal-context','journal-identity','journal-bytes','request-ceiling'):
+   self.assertEqual(q.fixed_control_failure(('owned_scheduler_control_refused '+stage+'\n').encode()),stage)
  def test_unexpected_timers_refused(self):
   with self.assertRaises(ValueError):q.accelerated('rekey_time = 120s',1)
  def test_original_socket_identity_survives_response_timeout(self):
