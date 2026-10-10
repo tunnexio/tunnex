@@ -1,0 +1,56 @@
+{
+  "enable_receipt": [
+    {
+      "action": "enable",
+      "profile": "ha",
+      "started": true,
+      "scope": "normal owner API only; no native readiness claim"
+    },
+    {
+      "id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+      "desired_revision": 2,
+      "desired_intent": "enabled",
+      "application_state": "pending",
+      "cleanup_state": "not_required"
+    },
+    {
+      "completed": true
+    }
+  ],
+  "fresh_public_status": {
+    "connection": {
+      "id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+      "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+      "gateway_node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+      "desired_revision": 2,
+      "desired_intent": "enabled",
+      "cleanup_state": "not_required",
+      "application_state": "pending",
+      "finalized_at": null
+    },
+    "status": {
+      "observed_at": "2026-10-10T14:43:53.117754Z",
+      "active_slot": null,
+      "tunnels": [
+        {
+          "id": "b03bada6-b799-4732-ad77-1a6b457d1d3f",
+          "slot": 1,
+          "selected": false,
+          "status": "up"
+        },
+        {
+          "id": "1c626ff9-cc99-4c8b-a316-90b190c7497e",
+          "slot": 2,
+          "selected": false,
+          "status": "up"
+        }
+      ]
+    },
+    "revision_stable_during_collection": true,
+    "collected_at_utc": "2026-10-10T14:43:54.419915+00:00",
+    "scope": "public API receipt only; native SA/route/guard and payload evidence collected separately"
+  },
+  "enable_chunk": "423617",
+  "status_chunk": "4760ba",
+  "scope": "HA enable only; public tunnels up but application pending, no native route/full guard readiness claim; Classic disabled, no grants or target resets"
+}
