@@ -150,3 +150,12 @@ func validateCurrentJournal(stopped, current []byte) error {
 	}
 	return nil
 }
+
+// Legacy invocation executes in the target namespace. A host supervisor may
+// instead name only an independently verified fresh container process.
+func validateExecutionContext(hostBoot, selfNamespace, targetBoot, targetNamespace string, verifiedFresh bool) error {
+	if hostBoot != targetBoot || (!verifiedFresh && selfNamespace != targetNamespace) {
+		return errors.New("helper runtime context mismatch")
+	}
+	return nil
+}

@@ -207,7 +207,7 @@ func main() {
 	}
 	currentBoot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	currentNS, nsErr := os.Readlink("/proc/self/ns/net")
-	if err != nil || nsErr != nil || strings.TrimSpace(string(currentBoot)) != *boot || currentNS != *ns {
+	if err != nil || nsErr != nil || strings.TrimSpace(string(currentBoot)) != *boot {
 		fail()
 	}
 	j, e := privateRead(*journal, 4<<20)
@@ -240,8 +240,16 @@ func main() {
 			fail()
 		}
 	}
+	if validateExecutionContext(strings.TrimSpace(string(currentBoot)), currentNS, *boot, *ns, len(fresh) > 0) != nil {
+		fail()
+	}
 	raw, e := assembleDeliveryFresh(j, p, *boot, *ns, selected, fresh, current)
 	if e != nil {
+		fail()
+	}
+	// Assembly reads both complete journals. Recheck the independent target
+	// process and retained gate afterward, before publishing any receipt bytes.
+	if len(fresh) > 0 && verifyFreshCurrent(fresh, *gatePath, *boot, *ns) != nil {
 		fail()
 	}
 	f, e := os.OpenFile(*out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
