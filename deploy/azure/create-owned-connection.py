@@ -16,10 +16,10 @@ state=pathlib.Path.home()/'.tunnex-azure-s2s-01a12505';state.mkdir(mode=0o700,ex
 key=state/'lab-psk'
 if not key.exists():key.write_text(secrets.token_hex(16));key.chmod(0o600)
 props={'connectionType':'IPsec','connectionProtocol':'IKEv2','virtualNetworkGateway1':{'id':gw['id']},'localNetworkGateway2':{'id':lng},'enableBgp':True,'sharedKey':key.read_text().strip(),'usePolicyBasedTrafficSelectors':False,'routingWeight':10,'ipsecPolicies':[{'saLifeTimeSeconds':3600,'saDataSizeKilobytes':102400000,'ipsecEncryption':'AES256','ipsecIntegrity':'SHA256','ikeEncryption':'AES256','ikeIntegrity':'SHA256','dhGroup':'DHGroup14','pfsGroup':'PFS2048'}]}
-body=state/'connection-properties.json';body.write_text(json.dumps(props));body.chmod(0o600)
+body=state/'connection-properties.json';body.write_text(json.dumps({'location':'southindia','tags':{'owner':owner,'purpose':'owned-s2s-test'},'properties':props}));body.chmod(0o600)
 # Private output files prevent unexpected provider errors from echoing credential bodies.
 with (state/'connection-result.log').open('w') as out:
     outpath=state/'connection-result.log';outpath.chmod(0o600)
-    result=subprocess.run(['az','resource','create','-g',rg,'-n','tunnex-connection','--resource-type','Microsoft.Network/connections','--api-version','2024-05-01','-l','southindia','--properties','@'+str(body),'--tags','owner='+owner,'purpose=owned-s2s-test','-o','none','--only-show-errors'],stdout=out,stderr=out)
+    result=subprocess.run(['az','resource','create','-g',rg,'-n','tunnex-connection','--resource-type','Microsoft.Network/connections','--api-version','2024-05-01','-l','southindia','--is-full-object','--properties','@'+str(body),'-o','none','--only-show-errors'],stdout=out,stderr=out)
 if result.returncode:raise SystemExit('Owned connection creation refused; inspect private error category without exposing secrets')
 print('Owned one-LNG shared-key BGP connection created; live tunnel acceptance pending')

@@ -2,7 +2,7 @@
 
 Date: 2026-10-10. Integration branch: `azure-s2s`.
 Worktree: `/Users/pawangupta/.codex/worktrees/65f0/tunnex`.
-Status: parallel development started; no live Azure acceptance yet.
+Status: four-profile implementation and focused local qualification passed; owned cloud gateway enrolled; live Azure tunnel acceptance pending.
 
 ## Contract and boundaries
 
@@ -19,15 +19,15 @@ All Git work stays local. Provider, runtime and UI agents use `/private/tmp/azur
 | Story | Scope | Shared reuse | Azure-specific change | Dependency | Acceptance | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | AZ-S2S-0 | Inventory/contracts/compatibility | Actual AWS/GCP source audit and ownership | SKU, route-based IKE, BGP/static, ASN/APIPA/topology contract | None | Official contract and inventory; unsupported cases refused | In progress; SSH/account/inventory verified |
-| AZ-S2S-1 | Provider/API/storage | CAS, revisions, RBAC, licence, encrypted PSK storage | Four profiles, per-peer endpoints/inside/ASN validation, additive schema | 0 | Disabled save, tenancy/roles/CAS, backward-compatible AWS/GCP | Provider agent active |
-| AZ-S2S-2 | Import/config generation | Existing validated per-peer material and masked config | Explicit reviewed Azure input/policy contract, safe import/generation | 1 | Independent peers, invalid settings refused, stored configuration accurate | Provider agent active |
-| AZ-S2S-3 | Shared runtime | IPsec/XFRM/strongSwan/FRR, guards/leases/journal | Profile/capability/version adapter and cardinality | 1–2 | Daemon capabilities, fail-closed apply and owned cleanup | Runtime agent active |
-| AZ-S2S-4 | Routing/BGP/security | Exact prefix filters, limits/recovery, per-prefix selection | Azure initiation and ASN/inside peers | 3 | No default/subprefix/local/WAN leak; actual accepted/installed routes | Runtime agent active |
+| AZ-S2S-1 | Provider/API/storage | CAS, revisions, RBAC, licence, encrypted PSK storage | Four profiles, per-peer endpoints/inside/ASN validation, additive schema | 0 | Disabled save, tenancy/roles/CAS, backward-compatible AWS/GCP | Implemented; focused API/DB and four-profile normal HTTP passed |
+| AZ-S2S-2 | Import/config generation | Existing validated per-peer material and masked config | Explicit reviewed Azure input/policy contract, safe import/generation | 1 | Independent peers, invalid settings refused, stored configuration accurate | Implemented; focused API/DB and four-profile normal HTTP passed |
+| AZ-S2S-3 | Shared runtime | IPsec/XFRM/strongSwan/FRR, guards/leases/journal | Profile/capability/version adapter and cardinality | 1–2 | Daemon capabilities, fail-closed apply and owned cleanup | Implemented; focused native/runtime passed; live forwarding pending |
+| AZ-S2S-4 | Routing/BGP/security | Exact prefix filters, limits/recovery, per-prefix selection | Azure initiation and ASN/inside peers | 3 | No default/subprefix/local/WAN leak; actual accepted/installed routes | Implemented; focused native/runtime passed; live forwarding pending |
 | AZ-S2S-5 | Static support | Existing static routes/guards/expiry/recreation | Azure supported static topology and policy | 3 | One/two-peer static traffic, disabled settings, expiry/recovery | In progress |
 | AZ-S2S-6 | Telemetry/truthful health | SA/BGP/route observation and freshness | Azure provider admission/status capability | 3–5 | Never UP from apply/fixture; IPsec/BGP/routes/app separate | In progress |
-| AZ-S2S-7 | UI/UX | Existing Site-to-site theme, forms, tables/health | Azure creation/import/details and topology validation | 1–6 | Admin/member, responsive, independent per-tunnel truth | UI agent active |
+| AZ-S2S-7 | UI/UX | Existing Site-to-site theme, forms, tables/health | Azure creation/import/details and topology validation | 1–6 | Admin/member, responsive, independent per-tunnel truth | Implemented; owner/mobile browser passed; other roles/import ongoing |
 | AZ-S2S-8 | DNS/customer application | Conditional forwarding/zone profiles/lease policy | Private Resolver inbound endpoint and linked private zone guidance | 4–5 | UDP/TCP53, CNAME/NXDOMAIN/TC fallback, failover/expiry/negative, private FQDN→app | UI/DNS agent active; live pending |
-| AZ-S2S-9 | Lifecycle/reliability | Restore journal, disable/delete/recreate, rotation/CAS/roles | Azure provider/cardinality restoration | 3–8 | Genuine restart, fresh/existing TCP/UDP, PSK maintenance and finalized cleanup | Local implementation pending |
+| AZ-S2S-9 | Lifecycle/reliability | Restore journal, disable/delete/recreate, rotation/CAS/roles | Azure provider/cardinality restoration | 3–8 | Genuine restart, fresh/existing TCP/UDP, PSK maintenance and finalized cleanup | Implemented; native component restart/cleanup passed; genuine live restart pending |
 | AZ-S2S-10 | Owned Azure E2E | Common unchanged test evidence only with coverage proof | Real Azure gateway identity, failover downtime, MTU/DNS/app receipts | 0–9 | Source/build/resource bound key-free evidence, both directions; local/live/blocked separate | Live pending |
 
 ## Official references
@@ -46,4 +46,8 @@ Implemented, local-pass, live-pass, blocked and unsupported are independent labe
 
 ## Owned lab checkpoint
 
-Resource group `tunnex-azure-s2s-20261010`, owner tag `azure-s2s-01a12505`. Managed gateway `azure-vpn` VpnGw1AZ active-active is still provisioning; target and peer VMs succeeded. Private HTTP/UDP target service is active. Resolver provisioning awaits the Azure VNet lock held by gateway creation. No IPsec/BGP/application/DNS live acceptance yet. Existing `demo` and `NetworkWatcherRG` resources remain untouched.
+Resource group `tunnex-azure-s2s-20261010`, owner tag `azure-s2s-01a12505`. Managed gateway `azure-vpn` VpnGw1AZ active-active and both VMs succeeded. Private HTTP/UDP target service is active. Owned peer native gateway enrolled and bound through normal APIs; real local route is 10.232.1.0/24 on eth0. Tagged resolver and first inbound endpoint exist; DNS provisioning continues. No IPsec/BGP/application/DNS live acceptance yet. Existing `demo` and `NetworkWatcherRG` resources remain untouched.
+
+## Actual API boundary regressions
+
+Genuine node enrollment exposed a dropped `ipsec_azure_version` in the API heartbeat sink. Local commit `19b80238` preserves and validates the reported value through storage and eligibility; authenticated HTTP regression passes without capability seeding. Shared GCP status decoder correction `d50ee448` adds transport/cardinality metadata; Azure followup `3a451571` permits standby BGP with exact-zero inactive slots. Authenticated report-to-persisted-status regressions cover Azure standby BGP and Classic compatibility. Owned cloud CP runs this corrected source; this proves admission/reporting, not Azure SA or traffic.
