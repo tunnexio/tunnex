@@ -17,3 +17,23 @@ Qualification sequence:
 5. With both VPN slots faulted, test the name again and HTTP; prove protected DNS has no public/cross-profile fallback and application packets do not escape WAN. Restore only owned faults, obtain current healthy reports, and retest under a current bounded grant if authorized.
 
 Cleanup removes only this probe's owned grant and receipt process handle as applicable. Preserve the existing HTTP server, LB rule, health probe, frontend/backend VM, private resolver, zone, DNS record and app probe. Evidence should distinguish LB forwarding, DNS, policy enforcement, source preservation and selected-path behavior. No result is implied by this design or the earlier direct-VM application proof.
+
+## Normal API and namespace DNS sequence
+
+Package `qualify-lb-api.py` beside unchanged `enroll-local.py`, and `probe-private-lb.py` beside unchanged `probe-packets.py`. The API helper runs on the peer CP host against its normal loopback API48083 using private `.runtime` owner accounts/setup. It requires the existing DNS4/direct-app2/reverse2 rule IDs, verifies they remain present before and after its actions, and saves separate `lb-api-setup.json` mode0600. It never edits `dns-api-setup.json`, zero-trust mode, resolver contexts, existing resources/rules or entitlement. Its only resource is LB `10.231.1.10/32` TCP8080 and its only grant source is `.2/32`; every new grant expires in30..300seconds. Readiness/applied revision remain an explicit lead prerequisite, not inferred by the helper.
+
+Render the office dnsmasq template with actual inbound endpoints `.2.4` and `.2.20`, start only the owned namespace loopback resolver, and syntax-check it first. For normal libc DNS, create an owned0600 resolver file containing only `nameserver 127.0.0.1` and `options timeout:1 attempts:1`. Run each client probe in an **additional mount namespace** inside the existing network namespace:
+
+```sh
+ip netns exec azure-s2s-client unshare --mount --propagation private sh -c '
+  mount --bind "$1" /etc/resolv.conf
+  exec python3 "$2" --receipt "$3" --seconds "$4" --timeout 1
+' owned-lb-probe "$OWNED_RESOLV_FILE" "$LB_PROBE" "$NEW_RECEIPT" 60
+```
+
+The bind mount is process-scoped and does not replace host or peer namespace resolver files. Inspect `/etc/resolv.conf` symlink/mount layout first; if the bind target is unsuitable, stop and use the existing supported process-scoped resolver setup. Do not mount over shared host files outside this private mount namespace. Run from the already inventoried owned source `.2`; no public resolver or hosts/service-IP mapping is permitted.
+
+1. After current gateway readiness and DNS grants are confirmed, review all policies/resources for any broad grant covering LB TCP8080; refuse default-deny proof if one exists. API `prepare` creates only the LB resource, no rule. Run a short probe: DNS-confirmed samples and zero HTTP success establish this separate default-deny observation.
+2. API `grant --expiry-seconds 90`, confirm its actual applied rule/revision, then run a60second probe. After at least two successful persistent samples sharing one local port, API `revoke` from a separate lead-controlled session around20seconds into that same probe. Require both fresh and reused-socket successes to stop within the documented enforcement bound; post-revoke failure on a new connection alone is insufficient.
+3. Clear prior state with the explicit revoke phase (expired rule404 is accepted only for the saved owned ID). API `grant --expiry-seconds 30`, confirm application promptly and start another60second probe. Require pre-expiry persistent successes on one port, then both fresh/existing traffic denied after actual expiry. If too little pre-expiry time remains, mark inconclusive and use a newly authorized bounded run; do not extend a live grant silently.
+4. API `read` and explicit `revoke` retain the separate receipt/state and verify protected rule IDs still present. Stop only the owned office resolver and remove only its owned resolver file/process-scoped mount after observations. The helper does not create or delete any LB/backend/rule or consume licence/trial.
