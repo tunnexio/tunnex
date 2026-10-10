@@ -34,7 +34,7 @@ func validStandaloneServices(c standalonePeerConfig) bool {
 		}
 		seen[s] = true
 	}
-	return true
+	return validStandaloneReverseServices(c)
 }
 
 func standaloneStaticServiceRules(services []standalonePeerService, xfrm, lan, underlay int, reqid uint32, peer netip.Addr) string {

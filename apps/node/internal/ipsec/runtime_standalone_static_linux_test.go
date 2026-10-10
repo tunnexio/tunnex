@@ -129,6 +129,7 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 				services := []standalonePeerService{{Source: remoteTarget, Destination: localTarget, Protocol: "tcp", Port: 18080}}
 				services = append(services, c.Services...)
 				rules := standaloneStaticServiceRules(services, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
+				rules += standaloneStaticReverseServiceRules(c.ReverseServices, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
 				if nft(rules) != nil {
 					t.Fatal("static simulator ACL refused")
 				}

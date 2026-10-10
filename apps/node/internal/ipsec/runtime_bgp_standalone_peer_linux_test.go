@@ -34,6 +34,7 @@ type standalonePeerInterface struct {
 }
 type standalonePeerConfig struct {
 	Services                  []standalonePeerService
+	ReverseServices           []standalonePeerService
 	ProfileID                 string
 	LocalTarget, RemoteTarget netip.Addr
 	Scenario                  string
@@ -51,7 +52,7 @@ func validStandalonePeer(c standalonePeerConfig) bool {
 	if c.ProfileID != "" {
 		return validStandaloneGCPPeer(c)
 	}
-	if len(c.Services) != 0 || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
+	if len(c.Services) != 0 || len(c.ReverseServices) != 0 || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
 		return false
 	}
 	if _, err := bgp.RenderConfig(c.BGPConfig); err != nil {
@@ -510,7 +511,9 @@ func TestStandalonePeerConfigRejectsAuthorityAndIdentityChanges(t *testing.T) {
 	if !validStandalonePeer(c) {
 		t.Fatal("legal standalone config refused")
 	}
-	for name, mutate := range map[string]func(*standalonePeerConfig){"gateway activation": func(c *standalonePeerConfig) { c.ActivationPerformed = true }, "foreign XFRMID": func(c *standalonePeerConfig) { c.CustomTunnels[0].XFRMID++ }, "generation alias": func(c *standalonePeerConfig) { c.Interfaces[0].Alias = "foreign" }, "unapproved export": func(c *standalonePeerConfig) {
+	for name, mutate := range map[string]func(*standalonePeerConfig){"reverse service": func(c *standalonePeerConfig) {
+		c.ReverseServices = []standalonePeerService{{Source: netip.MustParseAddr("10.20.0.2"), Destination: netip.MustParseAddr("10.10.0.2"), Protocol: "tcp", Port: 18081}}
+	}, "gateway activation": func(c *standalonePeerConfig) { c.ActivationPerformed = true }, "foreign XFRMID": func(c *standalonePeerConfig) { c.CustomTunnels[0].XFRMID++ }, "generation alias": func(c *standalonePeerConfig) { c.Interfaces[0].Alias = "foreign" }, "unapproved export": func(c *standalonePeerConfig) {
 		c.BGPConfig.LocalPrefixes = []netip.Prefix{netip.MustParsePrefix("10.30.0.0/24")}
 	}, "missing peer": func(c *standalonePeerConfig) { c.CustomTunnels = c.CustomTunnels[:1] }} {
 		t.Run(name, func(t *testing.T) {

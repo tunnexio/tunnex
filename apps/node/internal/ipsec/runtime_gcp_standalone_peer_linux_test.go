@@ -141,7 +141,7 @@ func nativeStandaloneGCPStage(t *testing.T, c standalonePeerConfig) {
 }
 
 func validStandaloneGCPHAPeer(c standalonePeerConfig) bool {
-	if len(c.Services) != 0 || c.Scenario != "gcp-ha" || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" || c.BGPConfig.RemoteASN == 7224 {
+	if len(c.Services) != 0 || len(c.ReverseServices) != 0 || c.Scenario != "gcp-ha" || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" || c.BGPConfig.RemoteASN == 7224 {
 		return false
 	}
 	if _, err := bgp.RenderConfig(c.BGPConfig); err != nil {
