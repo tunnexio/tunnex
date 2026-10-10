@@ -159,8 +159,15 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 		return fail()
 	}
 	index := a.Entry.Observed[slot-1].InterfaceIndex
-	if index <= 0 || !view.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
+	revalidationUsed := false
+	if index <= 0 {
 		return fail()
+	}
+	if permitted, fullRead := view.resolverGuardPermitsRead(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
+		if !fullRead || c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID) == "" {
+			return fail()
+		}
+		revalidationUsed = true
 	}
 	before, err := view.observer.source(source, a.Environment.LocalIngressIndices)
 	if err != nil {
@@ -184,12 +191,28 @@ func (c *RuntimeController) proveResolverDNS(ctx context.Context, config fqdnrpc
 	if latest == nil {
 		return fail()
 	}
-	// Benign table renewal can happen during the independent reads. Check the
-	// exact current published template too; changed target epochs remain refused.
-	if latest.guard.Digest != view.guard.Digest && !latest.resolverGuardPermits(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
-		return fail()
+	// Initial and final reads share one supersession retry. Both the original
+	// owner/authority and the current native template must remain unchanged.
+	checkedDigest := latest.guard.Digest
+	if latest.guard.Digest != view.guard.Digest {
+		permitted, fullRead := latest.resolverGuardPermitsRead(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+		current := c.dnsView.Load()
+		if !permitted || current == nil || current.guard.Digest != checkedDigest {
+			if revalidationUsed || !permitted && !fullRead {
+				return fail()
+			}
+			checkedDigest = c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+			if checkedDigest == "" {
+				return fail()
+			}
+			revalidationUsed = true
+		}
 	}
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok || ctx.Err() != nil {
+		return fail()
+	}
+	current := c.dnsView.Load()
+	if current == nil || current.guard.Digest != checkedDigest {
 		return fail()
 	}
 	return runtimeDNSProof{DeliveryID: a.Entry.DeliveryID, Identity: a.Identity, Binding: binding, Source: source, Resolver: resolver, Slot: slot, InterfaceIndex: index, SourceInterfaceIndex: before, Namespace: a.Entry.Allocation.Namespace, epoch: owner.epoch, authority: a.Authority}, nil
@@ -308,22 +331,27 @@ func dnsResolverRouteMatches(raw []byte, wantInterface string, source, resolver 
 }
 
 func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) bool {
+	permitted, _ := v.resolverGuardPermitsRead(ctx, entry, index, reqid)
+	return permitted
+}
+
+func (v *runtimeDNSOwnerView) resolverGuardPermitsRead(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) (bool, bool) {
 	if v == nil || v.observer.guardReader == nil {
-		return false
+		return false, false
 	}
 	g := v.guard
 	if g.Namespace != entry.Allocation.Namespace {
-		return false
+		return false, false
 	}
 	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
 	if !ok {
-		return false
+		return false, false
 	}
 	required := map[string]string{guardLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(index), guardReplyLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(index), guardSALeaseName(entry.Allocation.ConnectionID): strconv.FormatUint(uint64(reqid), 10)}
 	for _, object := range objects {
 		fields, ok := object.(map[string]any)
 		if !ok {
-			return false
+			return false, false
 		}
 		set, ok := fields["set"].(map[string]any)
 		if !ok {
@@ -336,33 +364,59 @@ func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry Ru
 		}
 		members, ok := set["elem"].([]any)
 		if !ok {
-			return false
+			return false, false
 		}
 		found := false
 		for _, m := range members {
 			member, ok := m.(map[string]any)
 			if !ok {
-				return false
+				return false, false
 			}
 			element, ok := member["elem"].(map[string]any)
 			if !ok {
-				return false
+				return false, false
 			}
 			value, ok := element["val"].(json.Number)
 			if !ok {
-				return false
+				return false, false
 			}
 			if value.String() == want {
 				found = true
 			}
 		}
 		if !found {
-			return false
+			return false, false
 		}
 		delete(required, name)
 	}
 	if len(required) != 0 {
-		return false
+		return false, false
 	}
-	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil
+	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil, true
+}
+
+// Retry only a different independently published immutable guard, once. The
+// caller retains its original owner epoch and lease; no authority is renewed.
+func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) string {
+	if c == nil || previous == nil || ctx.Err() != nil {
+		return ""
+	}
+	latest := c.dnsView.Load()
+	if latest == nil || latest.guard.Digest == previous.guard.Digest {
+		return ""
+	}
+	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
+		return ""
+	}
+	if !latest.resolverGuardPermits(ctx, entry, index, reqid) {
+		return ""
+	}
+	current := c.dnsView.Load()
+	if current == nil || current.guard.Digest != latest.guard.Digest {
+		return ""
+	}
+	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok || ctx.Err() != nil {
+		return ""
+	}
+	return latest.guard.Digest
 }

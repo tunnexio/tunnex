@@ -59,6 +59,9 @@ func newDNSOwnerProfileFixture(t *testing.T, material RuntimeMaterial, proof fun
 	i.OwnerID = m.Manifest.NodeID
 	i.Connections[0].ID = entry.Allocation.ConnectionID
 	i.Connections[0].Tunnels = entry.Observed
+	if entry.Allocation.activeTunnelCount() == 1 {
+		i.Connections[0].TunnelCount = 1
+	}
 	i.Connections[0].Grants = grants
 	i.Connections[0].ReplyIngressIndices = []int{10}
 	i.Connections[0].EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: 10, ReqID: entry.Engines[0].ReqID, Peer: entry.Engines[0].RemoteAddress, UnderlayInterfaceIndex: 2}}
@@ -68,7 +71,11 @@ func newDNSOwnerProfileFixture(t *testing.T, material RuntimeMaterial, proof fun
 	}
 	f.observed.Store(f.manifest.ExpectedJSON)
 	reader := &GuardReader{namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, interfaces: func() ([]GuardInterface, error) {
-		return []GuardInterface{{Name: "eth0", Index: 2}, {Name: entry.Observed[0].InterfaceName, Index: 10}, {Name: entry.Observed[1].InterfaceName, Index: 11}}, nil
+		links := []GuardInterface{{Name: "eth0", Index: 2}}
+		for _, owned := range entry.Observed[:entry.Allocation.activeTunnelCount()] {
+			links = append(links, GuardInterface{Name: owned.InterfaceName, Index: owned.InterfaceIndex})
+		}
+		return links, nil
 	}, run: func(context.Context, ...string) ([]byte, error) {
 		f.guardReads.Add(1)
 		return []byte(f.observed.Load().(string)), nil
