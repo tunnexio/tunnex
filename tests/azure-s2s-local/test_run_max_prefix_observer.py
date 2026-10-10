@@ -47,6 +47,11 @@ class WrapperTests(unittest.TestCase):
   self.assertTrue(m.authority_equal(normal,fresh))
   with self.assertRaises(ValueError):m.p.build(fresh,attestation,immutable,'baseline',clock)
   fresh['runtime_observation']='not_requested';self.assertEqual(m.p.build(fresh,attestation,immutable,'post-limit',clock)['mode'],'post-limit')
+ def test_same_container_unreviewed_restart_refuses(self):
+  value={'Id':m.p.CONTAINER,'Name':'/tunnex-azure-cloud-gateway','Config':{'Labels':{'tunnex.owner':'azure-s2s-01a12505'}},'Image':'sha256:'+m.p.IMAGE,'State':{'Running':True,'Pid':100,'StartedAt':'2026-10-10T23:00:00Z'}}
+  with patch.object(m,'command',return_value=json.dumps([value]).encode()) as calls:
+   with self.assertRaises(ValueError):m.identity()
+   self.assertEqual(calls.call_count,1)
  def test_wrong_host_no_commands(self):
   with patch.object(m.os,'geteuid',return_value=0),patch.object(m.socket,'gethostname',return_value='foreign'),patch.object(m,'command') as calls:
    with self.assertRaises(ValueError):m.run(None)

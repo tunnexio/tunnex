@@ -16,7 +16,8 @@ s=importlib.util.spec_from_file_location('prepare',Path(__file__).with_name('pre
 STAGE='preflight'
 ROOT=Path('/home/ubuntu/tunnex-azure-lab')
 PRIVATE=ROOT/'tests/azure-s2s-local/.runtime'
-SOURCE=ROOT/'reviewed-max-prefix-observer-v2-669e541e'
+SOURCE=ROOT/'reviewed-max-prefix-observer-v3-54-50f92a3f'
+EXPECTED_STARTED='2026-10-10T22:33:37.620918269Z'
 PROOF_SHA='d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f'
 STOP_SHA='92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79'
 MACHINE='43945b1283804c5c840685c4c9082b0a'
@@ -50,7 +51,7 @@ def identity():
  values=json.loads(command(['docker','inspect',p.CONTAINER]))
  if len(values)!=1:raise ValueError('container')
  d=values[0];state=d['State']
- if d['Id']!=p.CONTAINER or d['Name']!='/tunnex-azure-cloud-gateway' or d['Config']['Labels'].get('tunnex.owner')!='azure-s2s-01a12505' or d['Image']!='sha256:'+p.IMAGE or not state['Running'] or type(state['Pid'])!=int or state['Pid']<1:raise ValueError('identity')
+ if d['Id']!=p.CONTAINER or d['Name']!='/tunnex-azure-cloud-gateway' or d['Config']['Labels'].get('tunnex.owner')!='azure-s2s-01a12505' or d['Image']!='sha256:'+p.IMAGE or state['StartedAt']!=EXPECTED_STARTED or not state['Running'] or type(state['Pid'])!=int or state['Pid']<1:raise ValueError('identity')
  pid=state['Pid'];ns=os.stat('/proc/'+str(pid)+'/ns/net')
  node=command(['docker','exec','-u0',p.CONTAINER,'sha256sum','/proc/1/exe']).decode().split()[0]
  if node!=p.NODE:raise ValueError('node hash')
@@ -103,6 +104,7 @@ def extract(raw,returncode,binding):
 
 def run(args):
  global STAGE
+ if any(not __import__('re').fullmatch('[0-9a-f]{64}',v) for v in (p.CONTAINER,p.IMAGE,p.NODE)):raise ValueError('v3 identity unbound')
  if os.geteuid()!=0 or socket.gethostname()!='tunnex-peer':raise ValueError('owned peer root')
  if args.state.parent!=PRIVATE or args.normal.parent!=PRIVATE:raise ValueError('existing private input location')
  lock=os.open(PRIVATE/'maxproof-observer.lock',os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW,0o600)
