@@ -32,6 +32,12 @@ class LBAPIScopeTests(unittest.TestCase):
                 probe.fqdn_detail_projection({**detail, **change}, setup, state, binding, now)
         not_ready = {**detail, 'resource': {**resource, 'state': 'resolving'}, 'status_source': 'latest_generation'}
         self.assertFalse(probe.fqdn_detail_projection(not_ready, setup, state, binding, now)['ready'])
+        failed = {**not_ready, 'resource': {**resource, 'state': 'failed'}, 'server_reason': 'timeout'}
+        self.assertEqual(probe.fqdn_detail_projection(failed, setup, state, binding, now)['failure_code'], 'timeout')
+        failed['server_reason'] = 'PRIVATE-DIAGNOSTIC'
+        projection = probe.fqdn_detail_projection(failed, setup, state, binding, now)
+        self.assertEqual(projection['failure_code'], 'unrecognized_server_reason')
+        self.assertNotIn('PRIVATE-DIAGNOSTIC', str(projection))
     def test_normal_grant_contract_uses_list_and_preserves_eight_rules(self):
         connection_id = '11111111-1111-4111-8111-111111111111'
         setup = {'org_id': 'org', 'site_id': 'site', 'gateway_id': 'gateway'}

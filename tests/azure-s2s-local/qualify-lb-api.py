@@ -81,6 +81,14 @@ def fqdn_detail_projection(detail, setup, state, binding, now):
     if resource.get('state') not in ('draft', 'unconfigured', 'resolving', 'healthy', 'stale', 'failed', 'nxdomain') or detail.get('status_source') not in ('resource_configuration', 'resolver_configuration', 'latest_generation', 'active_generation'):
         raise lab.LabError('Unknown FQDN status contract')
     value.update(state=resource['state'], status_source=detail['status_source'])
+    # Public detail exposes persisted failure as server_reason, not a mailbox
+    # failure_code/status alias. Only the stable lifecycle vocabulary is safe.
+    reason = detail.get('server_reason')
+    reasons = {'nxdomain', 'servfail', 'timeout', 'disagreement', 'overflow', 'last_good_expired', 'invalid_answer', 'unbound_context', 'NXDOMAIN', 'SERVFAIL'}
+    if reason in reasons:
+        value['failure_code'] = reason
+    elif reason is not None:
+        value['failure_code'] = 'unrecognized_server_reason'
     if resource['state'] != 'healthy' or detail['status_source'] != 'active_generation' or detail.get('resolver_ready') is not True:
         return value
     generation = resource.get('generation')
@@ -181,7 +189,8 @@ def main():
             save()
             if args.phase == 'fqdn-read':
                 verify_protected()
-                print('Owned FQDN projected readiness=' + str(state['fqdn_observation']['ready']) + '; no packet success inference.')
+                observation = state['fqdn_observation']
+                print(json.dumps({key: observation[key] for key in ('ready', 'state', 'status_source', 'failure_code') if key in observation}))
                 return
             if not state['fqdn_observation']['ready']:
                 raise lab.LabError('Actual fresh FQDN generation not ready; no grant')
