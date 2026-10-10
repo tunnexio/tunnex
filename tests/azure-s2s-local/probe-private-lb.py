@@ -46,6 +46,12 @@ def project(status, body):
     return {**identity, 'http_status': status,
             'success': status == 200 and identity['owned_service_confirmed'] and identity['source_preservation'] == 'preserved'}
 
+def socket_identity(connection, previous_port):
+    reused = connection is not None and connection.sock is not None
+    port = connection.sock.getsockname()[1] if reused else None
+    return {'reused_existing_socket': reused, 'local_port': port,
+            'same_local_port_as_previous_persistent': reused and port == previous_port}
+
 def write_receipt(path, value):
     path = path.absolute()
     if any(p.is_symlink() for p in (path, *path.parents)) or not path.parent.is_dir():
@@ -88,6 +94,10 @@ def main():
                     break
                 budget = min(args.timeout, remaining)
                 entry = {'kind': kind, 'observed_at': stamp(), 'success': False}
+                if kind == 'persistent_http':
+                    entry.update(socket_identity(persistent, previous_port))
+                else:
+                    entry.update(reused_existing_socket=False, local_port=None, same_local_port_as_previous_persistent=False)
                 connection = None
                 before = time.monotonic()
                 signal.setitimer(signal.ITIMER_REAL, budget)
@@ -100,6 +110,10 @@ def main():
                         persistent = connection
                     connection.request('GET', '/', headers={'Host': HOST, 'Connection': 'keep-alive'})
                     port = connection.sock.getsockname()[1]
+                    # Preserve observed socket identity even if response reading
+                    # times out across revoke/expiry and cleanup closes it.
+                    entry.update(local_port=port, reused_existing_socket=reused,
+                                 same_local_port_as_previous_persistent=(reused and port == previous_port))
                     response = connection.getresponse()
                     body = response.read(16385)
                     entry.update(project(response.status, body))
