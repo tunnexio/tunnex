@@ -12,9 +12,16 @@ import sys
 spec=importlib.util.spec_from_file_location('azure_enrollment',Path(__file__).with_name('enroll-local.py'))
 lab=importlib.util.module_from_spec(spec);spec.loader.exec_module(lab)
 
+def delete_saved_rule(client,path):
+ # Only a known saved owned rule reaching its server-side terminal state is
+ # idempotent cleanup. Permission errors and other404s must remain failures.
+ try:client.call('DELETE',path)
+ except lab.LabError as error:
+  if error.status!=404 or error.code!='rule_not_found':raise
+
 def main():
  p=argparse.ArgumentParser(description=__doc__)
- p.add_argument('phase',choices=['prepare','dns-grant','app-grant','app-revoke','app-expiry','dns-revoke','fqdn-enable','fqdn-grant','fqdn-revoke','read'])
+ p.add_argument('phase',choices=['prepare','dns-grant','app-grant','app-revoke','app-expiry','dns-revoke','fqdn-enable','fqdn-grant','fqdn-revoke','reverse-prepare','reverse-grant','reverse-revoke','read'])
  p.add_argument('--private-root',type=Path,required=True)
  p.add_argument('--connection-id',required=True)
  p.add_argument('--source-prefix',default='10.233.10.0/24',help='Actually approved Site prefix and current connection local prefix')
@@ -43,14 +50,15 @@ def main():
  statepath=private/'dns-api-setup.json'
  state=json.loads(statepath.read_text()) if statepath.exists() else {'connection_id':a.connection_id,'source_address':a.source_address,'resolver_source':a.resolver_source,'dns_rules':[],'app_rules':[],'fqdn_rules':[]}
  if any(state[k]!=v for k,v in [('connection_id',a.connection_id),('source_address',a.source_address),('resolver_source',a.resolver_source)]):raise lab.LabError('Refuse changing existing qualification identity')
+ state.setdefault('reverse_rules',[])
  def save():lab.private_write(statepath,json.dumps(state,indent=2))
- def grant(resource,kind='resource',expiry=None):
-  body={'src_kind':'cidr','src_cidr':a.source_address+'/32','dst_kind':kind,'dst_'+kind+'_id':resource}
+ def grant(resource,kind='resource',expiry=None,source=None):
+  body={'src_kind':'cidr','src_cidr':(source or a.source_address)+'/32','dst_kind':kind,'dst_'+kind+'_id':resource}
   if expiry:body['expires_at']=expiry
   return client.call('POST',base+'/policies',body)['id']
  def revoke(key):
   for ident in list(state[key]):
-   client.call('DELETE',base+'/policies/'+ident);state[key].remove(ident);save()
+   delete_saved_rule(client,base+'/policies/'+ident);state[key].remove(ident);save()
  if a.phase=='prepare':
   if 'resources' in state:raise lab.LabError('Already prepared; use explicit grant/revoke phases')
   # Broad pre-existing grants would invalidate default-deny evidence.
@@ -92,6 +100,17 @@ def main():
  elif a.phase=='fqdn-revoke':revoke('fqdn_rules')
  elif a.phase=='app-revoke':revoke('app_rules')
  elif a.phase=='dns-revoke':revoke('dns_rules')
+ elif a.phase=='reverse-prepare':
+  if not any(ipaddress.ip_address('10.231.1.4') in ipaddress.ip_network(prefix) for prefix in stored['remote_prefixes']):raise lab.LabError('Actual cloud source absent from connection remote prefixes')
+  state.setdefault('reverse_resources',{})
+  for protocol,port in (('tcp',8082),('udp',8083)):
+   if protocol not in state['reverse_resources']:
+    resource=client.call('POST',base+'/resources',{'name':'Azure owned reverse '+protocol,'cidr':'10.233.10.2/32','protocol':protocol,'port_low':port,'port_high':port})
+    state['reverse_resources'][protocol]=resource['id'];save()
+ elif a.phase=='reverse-grant':
+  if state['reverse_rules']:raise lab.LabError('Reverse grants already present')
+  for ident in state['reverse_resources'].values():state['reverse_rules'].append(grant(ident,source='10.231.1.4'));save()
+ elif a.phase=='reverse-revoke':revoke('reverse_rules')
  elif a.phase=='read':
   state['observed_rules']=client.call('GET',base+'/policies');state['observed_at']=datetime.now(timezone.utc).isoformat();save()
  print('API phase completed: '+a.phase+'; traffic and expiry enforcement require actual LAN probes.')

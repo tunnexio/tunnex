@@ -23,19 +23,19 @@ def receipt(path,value):
  with os.fdopen(fd,'w') as out:json.dump(value,out,indent=2)
  path.chmod(0o600)
 
-def observed_http_identity(body, expected_source):
+def observed_http_identity(body, expected_source, expected_service="azure-s2s-owned-app"):
  result={'owned_service_confirmed':False,'source_preservation':'diagnostic_unknown'}
  try:
   if len(body)>16384: return result
   value=json.loads(body)
-  if not isinstance(value,dict) or value.get('service')!='azure-s2s-owned-app':return result
+  if not isinstance(value,dict) or value.get('service')!=expected_service:return result
   result['owned_service_confirmed']=True
   raw=value.get('client_ip')
   if not isinstance(raw,str):return result
   address=ipaddress.ip_address(raw)
   if address.version!=4 or str(address)!=raw:return result
   # The response is untrusted: retain only bounded owned/LAN/Docker addresses.
-  if address in ipaddress.ip_network('10.233.10.0/24'):
+  if address in ipaddress.ip_network('10.233.10.0/24') or raw=='10.231.1.4':
    result['server_observed_client_ip']=raw
    result['source_preservation']='preserved' if raw==expected_source else 'owned_lan_source_mismatch'
   elif raw=='10.232.1.4' or address in ipaddress.ip_network('172.16.0.0/12'):
@@ -47,7 +47,8 @@ def observed_http_identity(body, expected_source):
 
 def main():
  p=argparse.ArgumentParser(description=__doc__)
- p.add_argument('--source',choices=['10.233.10.2','10.233.10.3'],required=True)
+ p.add_argument('--direction',choices=['forward','reverse'],default='forward')
+ p.add_argument('--source',choices=['10.233.10.2','10.233.10.3','10.231.1.4'],required=True)
  p.add_argument('--receipt',type=Path,required=True)
  p.add_argument('--seconds',type=int,default=60)
  p.add_argument('--interval',type=float,default=1.0)
@@ -55,12 +56,15 @@ def main():
  p.add_argument('--dns-resolver',action='append',default=[],help='Explicit actual proxy/resolver IPv4; repeat for each boundary')
  a=p.parse_args()
  if not 1<=a.seconds<=60 or not .2<=a.interval<=5 or not .2<=a.timeout<=2:raise ValueError('Bounded duration/interval/timeout required')
+ if (a.direction=='reverse') != (a.source=='10.231.1.4'):raise ValueError('Direction requires actual bounded source')
+ target,tcp_port,udp_port,service=(TARGET,8080,8081,'azure-s2s-owned-app') if a.direction=='forward' else ('10.233.10.2',8082,8083,'azure-s2s-owned-lan-app')
+ if a.direction=='reverse' and a.dns_resolver:raise ValueError('Reverse probe has no DNS context')
  for resolver in a.dns_resolver:
   if resolver not in ('10.231.2.4','10.231.2.20','10.233.10.1'):raise ValueError('Unrelated DNS resolver refused')
  # Fail early if the actual namespace does not own the selected source.
  check=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);check.bind((a.source,0));check.close()
  start=time.monotonic();end=start+a.seconds
- output={'started_at':stamp(),'source_address':a.source,'service':{'address':TARGET,'tcp_port':8080,'udp_port':8081},'packet_duration_bound_seconds':a.seconds,'dns_queries_run_after_packet_window':True,'scope':'Actual packet observations only; no capability, policy, health or cloud readiness inference','samples':[],'dns':[]}
+ output={'started_at':stamp(),'source_address':a.source,'direction':a.direction,'service':{'address':target,'tcp_port':tcp_port,'udp_port':udp_port},'packet_duration_bound_seconds':a.seconds,'dns_queries_run_after_packet_window':True,'scope':'Actual packet observations only; no capability, policy, health or cloud readiness inference','samples':[],'dns':[]}
  tcp=None;udp=None
  counters={key:{'success':0,'failure':0,'last_success_monotonic':None,'maximum_observed_success_gap_seconds':0} for key in ('fresh_tcp','existing_tcp','fresh_udp','existing_udp')}
  def observe(key,operation):
@@ -74,12 +78,12 @@ def main():
    previous=counter['last_success_monotonic']
    if previous is not None:counter['maximum_observed_success_gap_seconds']=max(counter['maximum_observed_success_gap_seconds'],before-previous)
    counter['last_success_monotonic']=before
- def new_tcp():return http.client.HTTPConnection(TARGET,8080,timeout=a.timeout,source_address=(a.source,0))
+ def new_tcp():return http.client.HTTPConnection(target,tcp_port,timeout=a.timeout,source_address=(a.source,0))
  def request(connection):
   connection.request('GET','/',headers={'Connection':'keep-alive'})
   local_port=connection.sock.getsockname()[1] if connection.sock else None
   response=connection.getresponse();status=response.status;version=response.version;will_close=response.will_close;body=response.read(16385)
-  identity=observed_http_identity(body,a.source)
+  identity=observed_http_identity(body,a.source,service)
   return {**identity,'success':200<=status<400 and identity['owned_service_confirmed'] and identity['source_preservation']=='preserved','http_response_success':200<=status<400,'http_status':status,'http_version':version,'local_port':local_port,'server_closes_connection':will_close}
  def fresh_tcp():
   connection=new_tcp()
@@ -94,7 +98,7 @@ def main():
   except (OSError,http.client.HTTPException,ValueError):
    tcp.close();tcp=None;raise
  def new_udp():
-  connection=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);connection.settimeout(a.timeout);connection.bind((a.source,0));connection.connect((TARGET,8081));return connection
+  connection=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);connection.settimeout(a.timeout);connection.bind((a.source,0));connection.connect((target,udp_port));return connection
  def echo(connection):
   payload=('azure-owned-probe-'+str(time.monotonic_ns())).encode();connection.send(payload);answer=connection.recv(4096)
   if answer!=payload:raise ValueError('Echo mismatch')

@@ -15,9 +15,10 @@ SITE_NAME = "Azure local qualification site"
 LOCAL_PREFIX = "10.241.10.0/24"
 
 class LabError(Exception):
-    def __init__(self,message,status=None):
+    def __init__(self,message,status=None,code=None):
         super().__init__(message)
         self.status=status
+        self.code=code
 
 class Client:
     def __init__(self, account):
@@ -43,7 +44,7 @@ class Client:
                         code = candidate
             except (ValueError, TypeError):
                 pass
-            raise LabError(f"{method} {path}: HTTP {error.code}, code {code}", error.code) from None
+            raise LabError(f"{method} {path}: HTTP {error.code}, code {code}", error.code, code) from None
         except (OSError, ValueError):
             raise LabError("Owned local API unavailable or invalid response") from None
 
