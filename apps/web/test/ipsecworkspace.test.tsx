@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() }));
 vi.mock("../src/lib/api", async (original) => ({ ...await original<object>(), api: { GET: mock.get, POST: mock.post, PUT: mock.put, DELETE: mock.del } }));
-import { IPsecWorkspace } from "../src/components/IPsecWorkspace";
+import { IPsecWorkspace, azureSettingsReview } from "../src/components/IPsecWorkspace";
 import { MemoryRouter } from "react-router-dom";
 import type { Site } from "../src/lib/api";
 const sites = [{ id: "site-a", name: "Office" }] as Site[];
@@ -501,4 +501,38 @@ it("refuses Azure enable from AWS or GCP BGP support alone", async () => {
  render(view()); await screen.findByRole("button", {name:"Office to cloud"});
  await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
  expect((await connectionMenu("Office to cloud")).queryByRole("menuitem", {name:"Enable Office to cloud"})).toBeNull();
+});
+
+it("imports bounded Tunnex Azure JSON only after preflight without saving or exposing its secret", async () => {
+ mock.post.mockResolvedValue({data:{valid:true}});
+ render(view()); await prepareBGPForm();
+ const configuration={...bgpReadback.configuration, profile_id:"azure-active-standby-bgp-ipv4-v1", transport_version:1,tunnel_count:1,
+ azure:{gateway_sku:"VpnGw2AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false},
+ tunnels:[{outside_address:"8.8.8.8",inside_cidr:"169.254.21.0/30",customer_inside_address:"169.254.21.1",cloud_inside_address:"169.254.21.2",psk:"Synthetic.Import.Secret"}]};
+ const file=new File([JSON.stringify(configuration)],"azure.json",{type:"application/json"}); Object.defineProperty(file,"text",{value:async()=>JSON.stringify(configuration)});
+ fireEvent.change(screen.getByLabelText("Import Tunnex Azure JSON"),{target:{files:[file]}});
+ await waitFor(()=>expect((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).value).toBe(configuration.profile_id));
+ expect((screen.getByLabelText("Azure VPN Gateway SKU") as HTMLSelectElement).value).toBe("VpnGw2AZ");
+ expect(mock.post.mock.calls.every(([path])=>path.endsWith("configuration-check"))).toBe(true);
+ expect(screen.queryByText("Synthetic.Import.Secret")).toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
+ expect((screen.getByLabelText("Tunnel 1 PSK") as HTMLInputElement).type).toBe("password");
+ expect((screen.getByLabelText("Tunnel 1 PSK") as HTMLInputElement).value).toBe("Synthetic.Import.Secret");
+ fireEvent.click(screen.getByRole("button",{name:"Cancel"}));
+ fireEvent.click(screen.getByRole("button",{name:"New connection"}));
+ expect(screen.queryByDisplayValue("Synthetic.Import.Secret")).toBeNull();
+});
+it.each(["oversized", "foreign-prefix", "unsupported-profile", "bad-json"])("refuses %s Azure JSON without preflight or echoed contents", async kind => {
+ render(view()); await prepareBGPForm();
+ const config={...bgpReadback.configuration,profile_id:"azure-active-standby-bgp-ipv4-v1",azure:{},local_prefixes:kind==="foreign-prefix"?["10.99.0.0/16"]:["10.10.0.0/16"]};
+ if(kind==="unsupported-profile") config.profile_id="azure-unsupported";
+ const text=kind==="bad-json"?"Synthetic.Private.Secret":JSON.stringify(config);
+ const file=new File([text],"azure.json"); Object.defineProperty(file,"text",{value:async()=>text}); if(kind==="oversized") Object.defineProperty(file,"size",{value:65537});
+ fireEvent.change(screen.getByLabelText("Import Tunnex Azure JSON"),{target:{files:[file]}});
+ await screen.findByText(/Azure JSON was not imported/);
+ expect(mock.post).not.toHaveBeenCalled(); expect(screen.queryByText("Synthetic.Private.Secret")).toBeNull();
+});
+it("exports only explicit nonsecret Azure review fields, never arbitrary configuration fields", () => {
+ const provider={...bgpReadback,profile_id:"azure-active-active-bgp-ipv4-v1",configuration:{...bgpReadback.configuration,azure:{gateway_sku:"VpnGw1AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false,psk:"secret"},psk:"secret",tunnels:[{outside_address:"8.8.8.8",inside_cidr:"169.254.21.0/30",customer_inside_address:"169.254.21.1",cloud_inside_address:"169.254.21.2",psk:"secret"}]}};
+ const text=JSON.stringify(azureSettingsReview(provider as any)); expect(text).not.toContain("secret"); expect(text).not.toContain("psk"); expect(text).toContain("VpnGw1AZ");
 });
