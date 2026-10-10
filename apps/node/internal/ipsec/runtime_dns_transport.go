@@ -207,6 +207,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 		return fail()
 	}
 	stage = "dns_guard"
+	revalidationUsed := false
 	index := a.Entry.Observed[slot-1].InterfaceIndex
 	if index <= 0 {
 		return fail()
@@ -218,6 +219,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 		if guardStage != "dns_guard_full_read" || !c.revalidateDNSGuardSnapshot(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
 			return fail()
 		}
+		revalidationUsed = true
 	}
 	stage = "dns_source_before"
 	before, err := view.observer.source(source, a.Environment.LocalIngressIndices)
@@ -247,16 +249,35 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	if latest == nil {
 		return fail()
 	}
-	// Benign table renewal can happen during the independent reads. Check the
-	// exact current published template too; changed target epochs remain refused.
+	// The final read must bind a stable published template. The entire proof
+	// shares one supersession retry, including the earlier native guard read.
+	checkedDigest := latest.guard.Digest
 	if latest.guard.Digest != view.guard.Digest {
-		if permitted, guardStage := latest.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
-			stage = "dns_latest_" + guardStage[len("dns_"):]
-			return fail()
+		permitted, guardStage := latest.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+		current := c.dnsView.Load()
+		stable := current != nil && current.guard.Digest == checkedDigest
+		if !permitted || !stable {
+			stage = "dns_latest_guard_stability"
+			if !permitted {
+				stage = "dns_latest_" + guardStage[len("dns_"):]
+			}
+			if revalidationUsed || !permitted && guardStage != "dns_guard_full_read" {
+				return fail()
+			}
+			checkedDigest = c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+			if checkedDigest == "" {
+				return fail()
+			}
+			revalidationUsed = true
 		}
 	}
 	stage = "dns_epoch"
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok || ctx.Err() != nil {
+		return fail()
+	}
+	stage = "dns_latest_guard_stability"
+	current := c.dnsView.Load()
+	if current == nil || current.guard.Digest != checkedDigest {
 		return fail()
 	}
 	return runtimeDNSProof{DeliveryID: a.Entry.DeliveryID, Identity: a.Identity, Binding: binding, Source: source, Resolver: resolver, Slot: slot, InterfaceIndex: index, SourceInterfaceIndex: before, Namespace: a.Entry.Allocation.Namespace, epoch: owner.epoch, authority: a.Authority}, nil
@@ -444,25 +465,29 @@ func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, ent
 // template once. It cannot manufacture a grant, change owner epoch, extend
 // original/current authority, or continue through another digest change.
 func (c *RuntimeController) revalidateDNSGuardSnapshot(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) bool {
+	return c.revalidateDNSGuardSnapshotDigest(ctx, connection, owner, previous, entry, index, reqid) != ""
+}
+
+func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) string {
 	if c == nil || previous == nil || ctx.Err() != nil {
-		return false
+		return ""
 	}
 	latest := c.dnsView.Load()
 	if latest == nil || latest.guard.Digest == previous.guard.Digest {
-		return false
+		return ""
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok {
-		return false
+		return ""
 	}
 	if !latest.resolverGuardPermits(ctx, entry, index, reqid) {
-		return false
+		return ""
 	}
 	current := c.dnsView.Load()
 	if current == nil || current.guard.Digest != latest.guard.Digest {
-		return false
+		return ""
 	}
 	if _, ok := c.currentDNSOwnerEntry(connection, owner); !ok || ctx.Err() != nil {
-		return false
+		return ""
 	}
-	return true
+	return latest.guard.Digest
 }
