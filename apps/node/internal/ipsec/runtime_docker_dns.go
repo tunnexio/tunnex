@@ -273,6 +273,20 @@ func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool 
 							key = chain + ":" + proto
 							expected = candidate
 						}
+						// Some nft/iptables versions expose the protocol port matcher
+						// opaquely. Admit only its exact protocol-matched shape;
+						// the independent iptables-save census proves the hidden
+						// source/destination ports and translation for all six rules.
+						opaque := []any{
+							map[string]any{"match": map[string]any{"op": "==", "left": map[string]any{"meta": map[string]any{"key": "l4proto"}}, "right": proto}},
+							match("ip", address, "127.0.0.11"),
+							map[string]any{"xt": map[string]any{"type": "match", "name": proto}},
+							map[string]any{"xt": map[string]any{"type": "target", "name": target}},
+						}
+						if equal(clean, opaque) {
+							key = chain + ":" + proto
+							expected = opaque
+						}
 					}
 				default:
 					return false
