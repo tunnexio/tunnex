@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -530,5 +531,138 @@ func TestAzureMaxProofVTYBoundWireRefusesMalformedAndBoundedReplies(t *testing.T
 	defer server.Close()
 	if _, err := azureProofVTYWire(client, "configure terminal", 64); err == nil {
 		t.Fatal("mutation command accepted")
+	}
+}
+
+func azureProofCanonical(d DaemonInventory, k KernelInventory, x XFRMInventory) string {
+	canonical := func(items []any) []string {
+		result := []string{}
+		for _, item := range items {
+			raw, _ := json.Marshal(item)
+			result = append(result, string(raw))
+		}
+		sort.Strings(result)
+		return result
+	}
+	sas := []any{}
+	for _, sa := range d.SAs {
+		children := append([]DaemonChild(nil), sa.Children...)
+		for i := range children {
+			children[i].BytesIn = 0
+			children[i].BytesOut = 0
+		}
+		sort.Slice(children, func(i, j int) bool { return children[i].UniqueID < children[j].UniqueID })
+		sa.Children = children
+		sas = append(sas, sa)
+	}
+	links := []any{}
+	for _, v := range k.Links {
+		links = append(links, v)
+	}
+	routes := []any{}
+	for _, v := range k.Routes {
+		routes = append(routes, v)
+	}
+	states := []any{}
+	for _, v := range x.States {
+		states = append(states, v)
+	}
+	policies := []any{}
+	for _, v := range x.Policies {
+		policies = append(policies, v)
+	}
+	conns := append([]string(nil), d.Connections...)
+	keys := append([]string(nil), d.SharedKeys...)
+	sort.Strings(conns)
+	sort.Strings(keys)
+	raw, _ := json.Marshal([]any{conns, keys, canonical(sas), k.Namespace, canonical(links), canonical(routes), x.Namespace, canonical(states), canonical(policies)})
+	return stringDigest(raw)
+}
+
+func azureProofTrafficCounters(before, after DaemonInventory) (bool, error) {
+	type key struct{ ike, child uint64 }
+	previous := map[key]DaemonChild{}
+	for _, ike := range before.SAs {
+		for _, child := range ike.Children {
+			id := key{ike.UniqueID, child.UniqueID}
+			if _, ok := previous[id]; ok {
+				return false, fmt.Errorf("traffic_counter_identity_refused")
+			}
+			previous[id] = child
+		}
+	}
+	advanced := false
+	for _, ike := range after.SAs {
+		for _, child := range ike.Children {
+			id := key{ike.UniqueID, child.UniqueID}
+			old, ok := previous[id]
+			if !ok {
+				return false, fmt.Errorf("traffic_counter_identity_refused")
+			}
+			delete(previous, id)
+			if child.BytesIn < old.BytesIn || child.BytesOut < old.BytesOut {
+				return false, fmt.Errorf("traffic_counter_decreased")
+			}
+			advanced = advanced || child.BytesIn > old.BytesIn || child.BytesOut > old.BytesOut
+		}
+	}
+	if len(previous) != 0 {
+		return false, fmt.Errorf("traffic_counter_identity_refused")
+	}
+	return advanced, nil
+}
+
+func TestAzureMaxProofTrafficAdvancePreservesOnlyIdentityBracket(t *testing.T) {
+	_, e, _, before, k, x, status, routes := azureMaxProofFixture(t)
+	raw, _ := json.Marshal(before)
+	var after DaemonInventory
+	json.Unmarshal(raw, &after)
+	after.SAs[0].Children[0].BytesIn += 123
+	after.SAs[0].Children[0].BytesOut += 456
+	oldBefore, _ := json.Marshal(before.SAs)
+	oldAfter, _ := json.Marshal(after.SAs)
+	if bytes.Equal(oldBefore, oldAfter) {
+		t.Fatal("old full-child counter comparison must differ")
+	}
+	if azureProofCanonical(before, k, x) != azureProofCanonical(after, k, x) {
+		t.Fatal("traffic changed ownership identity")
+	}
+	if advanced, err := azureProofTrafficCounters(before, after); err != nil || !advanced {
+		t.Fatal("monotonic traffic refused")
+	}
+	if azureMaxProofBaseline(e, before, k, x, status, routes) != nil || azureMaxProofBaseline(e, after, k, x, status, routes) != nil {
+		t.Fatal("exact strict snapshots refused")
+	}
+	for _, field := range []string{"spi", "child", "selector", "reqid", "ifid", "extra_sa", "decreased"} {
+		t.Run(field, func(t *testing.T) {
+			var changed DaemonInventory
+			json.Unmarshal(raw, &changed)
+			switch field {
+			case "spi":
+				changed.SAs[0].Children[0].SPIIn++
+			case "child":
+				changed.SAs[0].Children[0].State = "REKEYING"
+			case "selector":
+				changed.SAs[0].Children[0].LocalPrefixes = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+			case "reqid":
+				changed.SAs[0].Children[0].ReqID++
+			case "ifid":
+				changed.SAs[0].Children[0].IfIDIn++
+			case "extra_sa":
+				changed.SAs = append(changed.SAs, changed.SAs[0])
+			case "decreased":
+				previous := after
+				if _, err := azureProofTrafficCounters(previous, before); err == nil {
+					t.Fatal("counter decrease accepted")
+				}
+				return
+			}
+			if azureProofCanonical(before, k, x) == azureProofCanonical(changed, k, x) {
+				t.Fatal("native identity change normalized")
+			}
+			if azureMaxProofBaseline(e, changed, k, x, status, routes) == nil {
+				t.Fatal("strict validator accepted identity change")
+			}
+		})
 	}
 }

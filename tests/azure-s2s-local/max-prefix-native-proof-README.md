@@ -20,4 +20,6 @@ The original hash-pinned proof must bind the archived journal, the same owner/ma
 
 Managed daemon version means the existing `DaemonClient.Inspect` VICI `version` read enforces `6.1.0`; the observer also compares the running executable with the packaged binary hash. It invokes no packaged CLI version probe.
 
+The two-pass identity hash excludes only CHILD `BytesIn` and `BytesOut`, which are checked separately for monotonicity against the exact unchanged IKE/CHILD unique IDs. Counter decreases, missing/duplicate identities or any SA/SPI/selector/reqid/ifID/state change refuse. Each pass still runs all strict native validators. Success records only `traffic_counters_monotonic_advanced` (boolean); refusals separate process/native-identity/BGP/counter brackets without exposing native payloads. Offline counter advancement proves the old full-child comparison could falsely refuse; it does not establish the cause of any historical live refusal.
+
 Local verification: focused portable journal/native projection tests and Linux cross-compilation. The Linux live process/socket/VTY path remains unexecuted and requires root review before any owned-container invocation.

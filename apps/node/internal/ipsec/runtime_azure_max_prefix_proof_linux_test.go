@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -438,46 +437,6 @@ func azureProofVTY(ctx context.Context, e RuntimeJournalEntry) (bgpengine.Status
 	}
 	return status, routes, nil
 }
-func azureProofCanonical(d DaemonInventory, k KernelInventory, x XFRMInventory) string {
-	canonical := func(items []any) []string {
-		result := []string{}
-		for _, item := range items {
-			raw, _ := json.Marshal(item)
-			result = append(result, string(raw))
-		}
-		sort.Strings(result)
-		return result
-	}
-	sas := []any{}
-	for _, sa := range d.SAs {
-		children := append([]DaemonChild(nil), sa.Children...)
-		sort.Slice(children, func(i, j int) bool { return children[i].UniqueID < children[j].UniqueID })
-		sa.Children = children
-		sas = append(sas, sa)
-	}
-	links := []any{}
-	for _, v := range k.Links {
-		links = append(links, v)
-	}
-	routes := []any{}
-	for _, v := range k.Routes {
-		routes = append(routes, v)
-	}
-	states := []any{}
-	for _, v := range x.States {
-		states = append(states, v)
-	}
-	policies := []any{}
-	for _, v := range x.Policies {
-		policies = append(policies, v)
-	}
-	conns := append([]string(nil), d.Connections...)
-	keys := append([]string(nil), d.SharedKeys...)
-	sort.Strings(conns)
-	sort.Strings(keys)
-	raw, _ := json.Marshal([]any{conns, keys, canonical(sas), k.Namespace, canonical(links), canonical(routes), x.Namespace, canonical(states), canonical(policies)})
-	return remediationSHA(raw)
-}
 
 // Opt-in root-owned container observer only. Normal test runs perform no live reads.
 func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
@@ -600,8 +559,18 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	}
 	da, ka, xa, statusAfter, routesAfter := collect()
 	last, err := azureProofDaemonIdentity(ctx, binding)
-	if err != nil || last != first || azureProofCanonical(d, k, x) != azureProofCanonical(da, ka, xa) || !reflect.DeepEqual(status, statusAfter) || !reflect.DeepEqual(routes, routesAfter) {
-		t.Fatal("native_bracket_changed")
+	if err != nil || last != first {
+		t.Fatal("process_bracket_changed")
+	}
+	if azureProofCanonical(d, k, x) != azureProofCanonical(da, ka, xa) {
+		t.Fatal("native_identity_bracket_changed")
+	}
+	if !reflect.DeepEqual(status, statusAfter) || !reflect.DeepEqual(routes, routesAfter) {
+		t.Fatal("bgp_bracket_changed")
+	}
+	trafficAdvanced, err := azureProofTrafficCounters(d, da)
+	if err != nil {
+		t.Fatal("traffic_counter_bracket_refused")
 	}
 	after, ast, err := azureProofRead(azureProofJournal, runtimeJournalLimit)
 	if err != nil || !os.SameFile(st, ast) || !bytes.Equal(raw, after) || ctx.Err() != nil {
@@ -609,6 +578,7 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	}
 	projection := azureMaxProofProjection(payload, entry, binding, time.Now(), remediationSHA(raw), da, ka, xa, statusAfter, routesAfter)
 	projection["historical_boot_entry_count"] = len(historical)
+	projection["traffic_counters_monotonic_advanced"] = trafficAdvanced
 	if binding.HistoricalBoot != nil {
 		projection["historical_proof_sha256"] = binding.HistoricalBoot.ProofSHA256
 		projection["historical_stopped_journal_sha256"] = binding.HistoricalBoot.StoppedJournalSHA256
