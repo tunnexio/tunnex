@@ -53,9 +53,10 @@ def main():
             except urllib.error.HTTPError as e:
                 if missing and e.code==404:return None
                 raise ValueError('normal API refused') from None
-        licence=request('/license');assert licence['state']=='valid' and 'fqdn_resources' in licence['features']
+        licence=request('/license')
+        if licence.get('state')!='valid' or 'fqdn_resources' not in licence.get('features',[]):raise ValueError('valid FQDN licence required')
         prefix='/organizations/'+private.ORG
-        assert request(prefix+'/fqdn-resources/setting')['enabled']
+        if request(prefix+'/fqdn-resources/setting').get('enabled') is not True:raise ValueError('normal organization FQDN opt-in required')
         path=prefix+'/fqdn-resolver-contexts/'+SITE+'/'+NODE
         before=request(path,missing=True);body=build(before,m['profiles'])
         def live():
