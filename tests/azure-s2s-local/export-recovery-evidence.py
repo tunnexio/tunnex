@@ -15,11 +15,11 @@ FILES=('postboot-reenabled-packets.json','anchored-active-restart-cbdf882f-packe
 KINDS=('fresh_tcp','existing_tcp','fresh_udp','existing_udp')
 
 
-def read_private(path):
+def read_private(path, owner=0):
  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
  with os.fdopen(fd,'rb') as stream:
   info=os.fstat(stream.fileno())
-  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>2097152:raise ValueError('private receipt shape')
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=owner or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>2097152:raise ValueError('private receipt shape')
   return json.load(stream)
 
 
@@ -66,23 +66,37 @@ def packets(value):
  return output
 
 
+def private_root(root):
+ info=root.lstat()
+ if os.geteuid()!=0 or not stat.S_ISDIR(info.st_mode) or info.st_uid!=1000 or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('root observer requires UID1000 private root')
+ # Reject symlink ancestors before passing the same exact path to sudo.
+ if root.absolute()!=root.resolve():raise ValueError('private root path')
+ return root.resolve()
+
+
+def current_read_command(root):
+ return ['sudo','-u','#1000','--','python3',str(Path(__file__).resolve().with_name('lifecycle-live.py')),'read','--private-root',str(root)]
+
+
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
  parser.add_argument('--private-root',required=True,type=Path)
  parser.add_argument('--output',required=True,type=Path)
+ parser.add_argument('--initial-refusal',required=True,type=Path,help='Packaged unchanged genuine-reboot-recovery.json; SHA only')
  parser.add_argument('--read-current',action='store_true',help='Execute lifecycle-live.py read against fixed localhost normal API; never changes intent')
  args=parser.parse_args();root=args.private_root
  info=root.lstat()
- if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or info.st_mode&0o077:raise ValueError('private root')
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=owner or info.st_mode&0o077:raise ValueError('private root')
  result={'exported_at':datetime.now(timezone.utc).isoformat(),'scope':'Historical packet observations and optional fresh normal API status; no restoration authorization or production readiness claim','historical_packet_receipts':{},'current_status':{'availability':'not_requested'},'warm_restart_summary':{'availability':'not_projected_without_verified_schema'},'cleanup_revision_5_receipt':{'availability':'not_saved'},'enable_revision_6_receipt':{'availability':'not_saved'}}
  for name in FILES:
   path=root/name
   if not path.exists():result['historical_packet_receipts'][name]={'availability':'missing'};continue
   result['historical_packet_receipts'][name]={'availability':'observed','observations':packets(read_private(path))}
- initial=Path(__file__).resolve().parents[2]/'docs/evidence/azure-s2s-20261010/genuine-reboot-recovery.json'
+ initial=args.initial_refusal
+ if initial.name!='genuine-reboot-recovery.json' or initial.is_symlink() or not initial.is_file() or initial.stat().st_size>2097152:raise ValueError('initial receipt shape')
  result['initial_refusal_receipt']={'path':'docs/evidence/azure-s2s-20261010/genuine-reboot-recovery.json','sha256':hashlib.sha256(initial.read_bytes()).hexdigest(),'preserved':True}
  if args.read_current:
-  run=subprocess.run(['python3',str(Path(__file__).with_name('lifecycle-live.py')),'read','--private-root',str(root)],capture_output=True,text=True,timeout=40)
+  run=subprocess.run(current_read_command(root),capture_output=True,text=True,timeout=40)
   if run.returncode:result['current_status']={'availability':'read_failed'}
   else:
    # Independently re-project the reader output; never copy unknown nested fields.
@@ -90,7 +104,7 @@ def main():
    if value.get('phase')!='read' or value.get('cas_request_sent') is not False:raise ValueError('read-only receipt')
    spec=importlib.util.spec_from_file_location('recovery_lifecycle',Path(__file__).with_name('lifecycle-live.py'))
    lifecycle=importlib.util.module_from_spec(spec);spec.loader.exec_module(lifecycle)
-   setup=read_private(root/'api-setup.json');allocation=read_private(root/'azure-live-activation.json')
+   setup=read_private(root/'api-setup.json',1000);allocation=read_private(root/'azure-live-activation.json',1000)
    # The child omits binding IDs after validation; restore only owned inputs.
    bound={**value['connection'],'org_id':setup['org_id'],'site_id':setup['site_id'],'gateway_node_id':setup['gateway_id']}
    connection=lifecycle.connection_projection(bound,setup,allocation['id'])

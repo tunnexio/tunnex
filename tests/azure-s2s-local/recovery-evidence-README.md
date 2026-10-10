@@ -1,8 +1,9 @@
 Run the source-only exporter on the owned peer after recovery. It performs no cloud commands and changes no connection intent:
 
 ```sh
-python3 tests/azure-s2s-local/export-recovery-evidence.py \
+sudo python3 tests/azure-s2s-local/export-recovery-evidence.py \
   --private-root tests/azure-s2s-local/.runtime \
+  --initial-refusal docs/evidence/azure-s2s-20261010/genuine-reboot-recovery.json \
   --read-current \
   --output tests/azure-s2s-local/.runtime/recovery-export.json
 ```
@@ -12,3 +13,5 @@ The output must be a new filename. Inputs are fixed private, owner-only receipt 
 The initial `genuine-reboot-recovery.json` remains unchanged and is identified by its SHA-256. It records the initial `6e53e071` saved-refusal failure. Root separately observed normal cleanup revision 5 acknowledgement, enable revision 6, both tunnels up, and post-boot packets on `cbdf882f`; exact saved cleanup/enable receipt files are unavailable, so the exporter explicitly records that limitation. `postboot-reenabled-packets.json` and the failed warm restart's `anchored-active-restart-cbdf882f-packets.json` are exported separately. The warm restart summary is omitted until its schema is independently verified.
 
 `--read-current` runs the existing normal API lifecycle **read** phase, then revalidates a typed projection of desired revision/intent, application and cleanup states, tunnel states, BGP peer counters and owned route count. It never assumes current tunnels are up. Read failure is recorded without raw errors. Current status does not establish application reachability; historical packet observations do not establish present readiness. The lifecycle reader writes its separate private read receipt as usual.
+
+Run the exporter as root. It accepts only the exact UID 1000-owned, mode 0700 private directory without symlink ancestors. Fixed packet inputs must be root-owned mode 0600. The normal API reader runs through `sudo -u #1000`; its private setup/allocation inputs must be UID 1000-owned mode 0600. No other owners are accepted. The merged output is root-owned mode 0600. Package the unchanged initial refusal JSON alongside the helpers and pass its explicit path; a repository checkout is not required.
