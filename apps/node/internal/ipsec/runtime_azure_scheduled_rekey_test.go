@@ -408,3 +408,29 @@ func TestAzureSchedulerClockBinding(t *testing.T) {
 		t.Fatal("different boot accepted")
 	}
 }
+
+func azureSchedulerRequestBudget(now, ceiling int64, action string, preflight bool) (time.Duration, error) {
+	if preflight && (action != "verify" || ceiling <= now || ceiling-now > int64(30*time.Second)) {
+		return 0, ErrDaemonProtocol
+	}
+	return azureSchedulerControlBudget(now, ceiling)
+}
+func TestAzureSchedulerReadOnlyRequestCeiling(t *testing.T) {
+	now := int64(time.Hour)
+	for _, tc := range []struct {
+		action    string
+		preflight bool
+		delta     time.Duration
+		refused   bool
+	}{
+		{"verify", true, 30 * time.Second, false}, {"verify", true, 31 * time.Second, true},
+		{"initiate", true, time.Second, true}, {"load-accelerated", true, time.Second, true},
+		{"terminate", true, time.Second, true}, {"verify", true, 0, true},
+		{"verify", false, 420 * time.Second, false}, {"initiate", false, 0, true},
+	} {
+		_, err := azureSchedulerRequestBudget(now, now+int64(tc.delta), tc.action, tc.preflight)
+		if (err != nil) != tc.refused {
+			t.Fatal("read-only ceiling binding changed")
+		}
+	}
+}

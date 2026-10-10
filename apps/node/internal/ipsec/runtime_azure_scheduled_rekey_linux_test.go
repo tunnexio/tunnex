@@ -255,6 +255,7 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		Slot                                                     int
 		WatchdogMonotonicDeadlineNS                              int64
 		BootID                                                   string
+		PreflightReadOnly                                        bool
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -274,7 +275,7 @@ func TestAzureOwnedScheduledRekeyControl(t *testing.T) {
 		fail()
 		return
 	}
-	budget, budgetErr := azureSchedulerControlBudget(clock.Nano(), request.WatchdogMonotonicDeadlineNS)
+	budget, budgetErr := azureSchedulerRequestBudget(clock.Nano(), request.WatchdogMonotonicDeadlineNS, request.Action, request.PreflightReadOnly)
 	if budgetErr != nil {
 		fail()
 		return

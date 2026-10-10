@@ -44,6 +44,27 @@ class SchedulerTests(unittest.TestCase):
  def test_fixed_journal_refusal_classes(self):
   for stage in ('journal-reread','journal-context','journal-identity','journal-bytes','request-ceiling'):
    self.assertEqual(q.fixed_control_failure(('owned_scheduler_control_refused '+stage+'\n').encode()),stage)
+ def test_pre_watchdog_verify_is_read_only_bounded(self):
+  with patch.object(q.time,'monotonic',return_value=100):
+   self.assertEqual(q.native_control_ceiling({},'verify'),130_000_000_000)
+   self.assertEqual(q.native_control_ceiling({'watchdog_monotonic_deadline':120},'verify'),120_000_000_000)
+   for action in ('initiate','terminate','load-accelerated','load-production'):
+    with self.assertRaises(ValueError):q.native_control_ceiling({},action)
+   for bad in (None,99,100,float('nan')):
+    for action in ('verify','initiate'):
+     with self.assertRaises(ValueError):q.native_control_ceiling({'watchdog_monotonic_deadline':bad},action)
+ def test_initial_verify_dispatch_has_no_mutation_or_attempt_claim(self):
+  native={'delivery':'d','retained_identity':'r','charon_pid':2,'charon_sha':'sha','charon_start_ticks':'1','config':'fixed'}
+  authority=dict(org='o',gateway='g',connection='c',site='s',desired=52,configuration=1,profile='p')
+  m=dict(native=native,authority=authority,node_sha='node',container='cid',container_helper='helper')
+  result=Mock(returncode=0)
+  with patch.object(q.Path,'read_text',return_value='boot'),patch.object(q.time,'monotonic',return_value=100),patch.object(q.subprocess,'run',return_value=result) as run:
+   q.verify_conns(m)
+  request=json.loads(run.call_args_list[0].kwargs['input'])
+  self.assertEqual(request['Action'],'verify');self.assertTrue(request['PreflightReadOnly'])
+  self.assertEqual(request['WatchdogMonotonicDeadlineNS'],130_000_000_000)
+  self.assertNotIn('watchdog_monotonic_deadline',m)
+  self.assertEqual(run.call_count,2)
  def test_unexpected_timers_refused(self):
   with self.assertRaises(ValueError):q.accelerated('rekey_time = 120s',1)
  def test_original_socket_identity_survives_response_timeout(self):

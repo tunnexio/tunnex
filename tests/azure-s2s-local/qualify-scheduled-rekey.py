@@ -128,15 +128,16 @@ def swan(m,*args):
   identity(m);api_authority(m);verify_conns(m)
   return owned_mutation(m,*args)
  finally:os.close(fd)
-def native_control_ceiling(m):
- deadline=m.get('watchdog_monotonic_deadline')
+def native_control_ceiling(m,action=None):
  now=time.monotonic()
+ if action=='verify' and 'watchdog_monotonic_deadline' not in m:return int((now+30)*1_000_000_000)
+ deadline=m.get('watchdog_monotonic_deadline')
  if not isinstance(deadline,(int,float)) or not 0<deadline-now<=420:raise ValueError('native_control_ceiling_refused')
  return int(deadline*1_000_000_000)
 def owned_control(m,action,slot=0):
  native=m['native'];authority=m['authority']
  binding={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
- request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot,'WatchdogMonotonicDeadlineNS':native_control_ceiling(m),'BootID':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+ request={'Binding':binding,'Delivery':native['delivery'],'RetainedIdentity':native['retained_identity'],'CharonPID':native['charon_pid'],'CharonSHA':native['charon_sha'],'CharonStart':native['charon_start_ticks'],'NodeSHA':m['node_sha'],'ConfigSHA':hashlib.sha256(native['config'].encode()).hexdigest(),'Action':action,'Mode':'rollback' if m.get('_restoring') else m.get('timer_mode','production'),'Slot':slot,'WatchdogMonotonicDeadlineNS':native_control_ceiling(m,action),'PreflightReadOnly':action=='verify' and 'watchdog_monotonic_deadline' not in m,'BootID':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
  path='/run/tunnex-ipsec/azure-scheduler-request-'+str(uuid.uuid4())+'.json'
  # Input remains root-owned 0600 inside the owned container. Neither stdout nor
  # argv carries request material. No arbitrary config or command is passed.
@@ -144,7 +145,7 @@ def owned_control(m,action,slot=0):
  result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_CONTROL=1','-e','TUNNEX_AZURE_SCHEDULED_REKEY_REQUEST='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeyControl$','-test.count=1'],capture_output=True,timeout=40)
  if result.returncode:
   stage=fixed_control_failure(result.stdout)
-  proof.private_write(Path(m['evidence_dir'])/('control-refused-'+str(uuid.uuid4())+'.json'),{'action':action,'stage':stage,'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
+  proof.private_write(Path(m.get('control_diagnostic_dir') or m['evidence_dir'])/('control-refused-'+str(uuid.uuid4())+'.json'),{'action':action,'stage':stage,'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
   raise ValueError('owned_control_refused')
 
 def fixed_control_failure(output):
