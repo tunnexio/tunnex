@@ -18,6 +18,17 @@ import urllib.request
 import uuid
 
 API = 'http://127.0.0.1:48083'
+STAGE = 'arguments'
+
+
+class APIError(ValueError):
+    def __init__(self, status=None):
+        self.status = status
+
+
+def stage(value):
+    global STAGE
+    STAGE = value
 
 
 def private_read(path):
@@ -65,9 +76,9 @@ class Client:
                     raise ValueError('API response exceeds limit')
                 return json.loads(data) if data else None
         except urllib.error.HTTPError as error:
-            raise ValueError('API request failed with HTTP ' + str(error.code)) from None
+            raise APIError(error.code) from None
         except urllib.error.URLError:
-            raise ValueError('API transport unavailable') from None
+            raise APIError() from None
 
 
 def configuration(psk):
@@ -93,6 +104,7 @@ def main():
     parser.add_argument('--application-port', type=int, default=80)
     args = parser.parse_args()
     root = os.path.abspath(args.private_root)
+    stage('private_root')
     info = os.lstat(root)
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
         raise ValueError('private root must be an owned private directory')
@@ -102,20 +114,27 @@ def main():
             del tunnel['psk']
         print(json.dumps({'configuration': config, 'application_reachability': 'not_probed'}, sort_keys=True))
         return
+    stage('private_accounts')
     accounts = json.loads(private_read(root + '/ui-accounts.json'))
+    stage('private_setup')
     setup = json.loads(private_read(root + '/api-setup.json'))
     # Match the normal local enrollment helper account schema.
     if isinstance(accounts, dict):
         accounts = accounts.get('accounts', list(accounts.values()))
+    stage('owner_account')
     owner = next(a for a in accounts if a.get('email') == 'browser-owner@azure-s2s.local')
     client = Client()
+    stage('owner_login')
     client.call('POST', '/api/v1/auth/login', {'email': owner['email'], 'password': owner['password']})
+    stage('owner_identity')
     client.call('GET', '/api/v1/auth/me')
+    stage('organization_lookup')
     organizations = client.call('GET', '/api/v1/organizations')
     if isinstance(organizations, dict):
         organizations = organizations.get('organizations', [])
     if not any(o['id'] == setup['org_id'] and o['slug'] == 'azure-s2s-local' for o in organizations):
         raise ValueError('owned lab organization mismatch')
+    stage('setup_identity_validation')
     for key in ['org_id', 'site_id', 'gateway_id']:
         uuid.UUID(setup[key])
     prefix = '/api/v1/organizations/' + setup['org_id'] + '/ipsec'
@@ -123,24 +142,34 @@ def main():
     if args.phase == 'create':
         if not args.psk_file:
             raise ValueError('create requires a private PSK file')
+        stage('private_psk')
         psk = private_read(args.psk_file).decode().rstrip('\r\n')
         if not 8 <= len(psk) <= 64 or any(ord(c) < 32 or ord(c) == 127 for c in psk):
             raise ValueError('invalid private PSK input')
         config = configuration(psk)
+        stage('configuration_check')
         client.call('POST', prefix + '/configuration-check', config)
+        stage('allocated_state_guard')
         if os.path.exists(state_path):
             raise ValueError('activation state already exists; inspect status before retrying')
         state = {'id': str(uuid.uuid4()), 'tunnel_ids': [str(uuid.uuid4()), str(uuid.uuid4())]}
+        stage('allocated_state_write')
         private_write(state_path, state)
+        stage('connection_create')
         client.call('POST', prefix + '/connections', dict(state, name='Azure owned live active-active BGP',
                     site_id=setup['site_id'], gateway_node_id=setup['gateway_id'], configuration=config))
+    stage('allocated_state_read')
     state = json.loads(private_read(state_path))
     path = prefix + '/connections/' + str(uuid.UUID(state['id']))
+    stage('connection_read')
     connection = client.call('GET', path)
+    stage('connection_binding_validation')
     if connection['gateway_node_id'] != setup['gateway_id'] or connection['site_id'] != setup['site_id']:
         raise ValueError('activation connection binding mismatch')
     if args.phase == 'enable':
+        stage('intent_enable_cas')
         connection = client.call('PUT', path + '/intent', {'intent': 'enabled'}, connection['desired_revision'])
+    stage('runtime_status_read')
     status = client.call('GET', path + '/status')
     status['tunnels'] = [{k: t.get(k) for k in ['id', 'slot', 'status', 'selected']} for t in status.get('tunnels', [])]
     if status.get('bgp'):
@@ -148,10 +177,12 @@ def main():
         status['bgp'] = {k: bgp.get(k) for k in ['version', 'sequence']}
         status['bgp']['peers'] = [{k: p.get(k) for k in ['slot', 'state', 'accepted_prefixes', 'installed_prefixes', 'rejected_prefixes']} for p in bgp.get('peers', [])]
         status['bgp']['routes'] = [{k: r.get(k) for k in ['prefix', 'slot']} for r in bgp.get('routes', [])]
+    stage('status_projection')
     output = {'connection': {k: connection.get(k) for k in ['id', 'desired_revision', 'desired_intent', 'application_state', 'cleanup_state']},
               'runtime': {k: status.get(k) for k in ['observed_at', 'recovery_version', 'active_slot', 'selection_sequence', 'tunnels', 'bgp']},
               'application_reachability': 'not_probed'}
     if args.application_address:
+        stage('application_probe')
         address = ipaddress.IPv4Address(args.application_address)
         if address not in ipaddress.IPv4Network('10.231.0.0/16') or not 1 <= args.application_port <= 65535:
             raise ValueError('application probe must use the owned remote prefix and valid port')
@@ -166,7 +197,11 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ValueError, KeyError, StopIteration, OSError, UnicodeError):
+    except (ValueError, KeyError, StopIteration, OSError, UnicodeError, TypeError) as error:
         # Do not expose exceptions that could contain credentials or response content.
-        print(json.dumps({'error': 'activation failed; inspect private inputs, API availability, and current desired revision'}))
+        category = 'api' if isinstance(error, APIError) else ('filesystem' if isinstance(error, OSError) else 'input_or_response_shape')
+        diagnostic = {'error': 'activation_failed', 'stage': STAGE, 'category': category}
+        if isinstance(error, APIError) and error.status is not None:
+            diagnostic['http_status'] = error.status
+        print(json.dumps(diagnostic, sort_keys=True))
         raise SystemExit(1)
