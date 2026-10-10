@@ -17,6 +17,7 @@ beforeEach(() => {
  mock.GET.mockImplementation(async (path: string) => {
   if(path.endsWith("/settings")) return {data:{enabled:false,revision:1}};
   if(path.endsWith("/connections")) return {data:{next_cursor:null,items:[record]}};
+  if(path.endsWith("/configuration")) return {data:{profile_id:"aws-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{},{}]}}};
   if(path.endsWith("/status")) return {data:{tunnels:[{id:"tunnel-a",slot:1,status:"unknown",selected:true},{id:"tunnel-b",slot:2,status:"unknown",selected:false}]}};
   return {data:record};
  });
@@ -78,4 +79,16 @@ it("submits only once while a rotation is in flight",async()=>{
 });
 it("does not offer rotation when successor revision cannot be represented safely",async()=>{
  const original=mock.GET.getMockImplementation()!; mock.GET.mockImplementation((path:string)=>path.endsWith("/connections")?Promise.resolve({data:{next_cursor:null,items:[{...record,desired_revision:Number.MAX_SAFE_INTEGER}]}}):original(path)); render(view()); expect((await connectionMenu()).queryByRole("menuitem",{name:/Rotate keys/})).toBeNull();
+});
+it("rotates exactly the existing Classic single-slot key without a second input",async()=>{
+ const original=mock.GET.getMockImplementation()!;
+ mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:"gcp-classic-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{}]}}}:path.endsWith("/status")?{data:{tunnels:[{id:"classic-tunnel",slot:1,status:"unknown",selected:true}]}}:original(path));
+ render(view());await open();expect(screen.queryByLabelText("Tunnel 2 new PSK")).toBeNull();
+ fireEvent.change(screen.getByLabelText("Tunnel 1 new PSK"),{target:{value:"Synthetic.Classic1"}});fireEvent.click(screen.getByRole("button",{name:"Save new keys"}));
+ await waitFor(()=>expect(mock.POST).toHaveBeenCalledTimes(1));expect(mock.POST.mock.calls[0][1].body).toEqual({expected_desired_revision:4,tunnels:[{tunnel_id:"classic-tunnel",psk:"Synthetic.Classic1"}]});
+});
+it("refuses Classic rotation if status contains a foreign second slot",async()=>{
+ const original=mock.GET.getMockImplementation()!;
+ mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:"gcp-classic-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{}]}}}:original(path));
+ render(view());fireEvent.click((await connectionMenu()).getByRole("menuitem",{name:/Rotate keys/}));await screen.findByText(/Could not load tunnel identities/);expect(screen.queryByLabelText("Tunnel 1 new PSK")).toBeNull();expect(mock.POST).not.toHaveBeenCalled();
 });

@@ -21,7 +21,8 @@ type Eligibility = components["schemas"]["IPsecEligibility"];
 function canEnableConfiguration(provider: Provider, eligibility: Eligibility): boolean {
   if (!eligibility.eligible) return false;
   if (provider.profile_id === "aws-static-ipv4-v1" && provider.configuration?.mode === "ipv4-static") return true;
-  if (provider.profile_id === "gcp-ha-bgp-ipv4-v1") return provider.configuration?.mode === "ipv4-bgp" && eligibility.bgp?.eligible === true && eligibility.gcp_ha?.eligible === true;
+  if (provider.profile_id === "gcp-classic-static-ipv4-v1") return provider.configuration?.mode === "ipv4-static" && provider.configuration.tunnels.length === 1 && eligibility.gcp_classic?.eligible === true;
+  if (provider.profile_id === "gcp-ha-bgp-ipv4-v1") return provider.configuration?.mode === "ipv4-bgp" && provider.configuration.tunnels.length === 2 && eligibility.bgp?.eligible === true && eligibility.gcp_ha?.eligible === true;
   return provider.profile_id === "aws-bgp-ipv4-v1" && provider.configuration?.mode === "ipv4-bgp" && eligibility.bgp?.eligible === true;
 }
 function privateASN(value: string): boolean {
@@ -221,7 +222,7 @@ function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: str
             ["Customer ASN", result.configuration.bgp.local_asn], [result.profile_id.startsWith("gcp-") ? "Cloud Router ASN" : "AWS ASN", result.configuration.bgp.remote_asn],
             ["Router ID", result.configuration.bgp.router_id], ["Maximum prefixes per peer", result.configuration.bgp.maximum_prefixes],
           ].map(([label, value]) => <div key={label}><dt className="text-ink-secondary">{label}</dt><dd className="font-mono">{value}</dd></div>)}</dl>}
-        <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} mode={result.configuration.mode === "ipv4-bgp" ? "ipv4-bgp" : "ipv4-static"} approvedRemotePrefixes={result.configuration.remote_prefixes} /></div>
+        <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} mode={result.configuration.mode === "ipv4-bgp" ? "ipv4-bgp" : "ipv4-static"} approvedRemotePrefixes={result.configuration.remote_prefixes} profileId={result.profile_id} /></div>
       </div>}</>}
   </section>;
 }
@@ -268,7 +269,7 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
   const [ids] = useState(() => ({ id: crypto.randomUUID(), tunnels: [crypto.randomUUID(), crypto.randomUUID()] }));
   const [step, setStep] = useState(1); const [name, setName] = useState(""); const [site, setSite] = useState(""); const [gateway, setGateway] = useState("");
   const [nodes, setNodes] = useState<Node[]>([]); const [subnets, setSubnets] = useState<SiteSubnet[]>([]); const [local, setLocal] = useState<string[]>([]);
-  const [customer, setCustomer] = useState(""); const [remote, setRemote] = useState(""); const [tunnels, setTunnels] = useState(() => [blankTunnel(), blankTunnel()]);
+  const [customer, setCustomer] = useState(""); const [remote, setRemote] = useState(""); const [tunnels, setTunnels] = useState(() => initialProfile === "gcp-classic-static-ipv4-v1" ? [blankTunnel()] : [blankTunnel(), blankTunnel()]);
   const [profile, setProfile] = useState<IPsecCreateProfile>(initialProfile);
   const gcp = profile !== "aws";
   const classic = profile === "gcp-classic-static-ipv4-v1";
@@ -286,19 +287,19 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
   const currentEligibility = eligibility?.key === pair ? eligibility.value : null;
   const selectedGateways = nodes.filter(node => node.site_id === site && node.status === "active");
   const bgpPrepared = mode === "ipv4-static" || (privateASN(localASN) && (privateASN(remoteASN) || (!gcp && remoteASN === "7224")) && Number(localASN) !== Number(remoteASN) && routerID.trim() && /^\d+$/.test(maximumPrefixes) && Number(maximumPrefixes) >= 1 && Number(maximumPrefixes) <= 64);
-  const prepared = !classic && name.trim() && site && selectedGateways.some(node => node.id === gateway) && local.length && customer && remote.trim() && bgpPrepared;
-  function cancel() { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onCancel(); }
+  const prepared = name.trim() && site && selectedGateways.some(node => node.id === gateway) && local.length && customer && remote.trim() && bgpPrepared;
+  function cancel() { frozen.current = null; setTunnels(classic ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); onCancel(); }
   async function recover(id: string) {
     const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId, connectionId: id } } }));
     if (!alive.current) return false;
-    if (result.ok) { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onSaved(id, result.data.name); return true; }
+    if (result.ok) { frozen.current = null; setTunnels(classic ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); onSaved(id, result.data.name); return true; }
     return false;
   }
   async function save() {
     if (saving.current || (!uncertain && (!prepared || !currentEligibility?.eligible))) return;
     saving.current = true; setBusy(true); setError("");
     let posted = false;
-    const input: CreateInput = frozen.current ?? { id: ids.id, name, site_id: site, gateway_node_id: gateway, tunnel_ids: ids.tunnels, configuration: { mode, ...(profile === "aws" ? {} : { profile_id: profile }), ...(mode === "ipv4-bgp" ? { bgp: { local_asn: Number(localASN), remote_asn: Number(remoteASN), router_id: routerID.trim(), maximum_prefixes: Number(maximumPrefixes) } } : {}), customer_outside_address: customer, local_prefixes: local, remote_prefixes: remote.split(/[\s,]+/).filter(Boolean), tunnels: tunnels.map(tunnel => ({ ...tunnel })) } };
+    const input: CreateInput = frozen.current ?? { id: ids.id, name, site_id: site, gateway_node_id: gateway, tunnel_ids: ids.tunnels.slice(0, classic ? 1 : 2), configuration: { mode, ...(profile === "aws" ? {} : { profile_id: profile }), ...(mode === "ipv4-bgp" ? { bgp: { local_asn: Number(localASN), remote_asn: Number(remoteASN), router_id: routerID.trim(), maximum_prefixes: Number(maximumPrefixes) } } : {}), customer_outside_address: customer, local_prefixes: local, remote_prefixes: remote.split(/[\s,]+/).filter(Boolean), tunnels: tunnels.map(tunnel => ({ ...tunnel })) } };
     try {
       // Resolve an earlier write before testing whether a new write is currently allowed.
       if (uncertain && await recover(input.id)) return;
@@ -313,7 +314,7 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
       frozen.current = input; posted = true;
       const result = await api.POST("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId } }, body: input });
       if (!alive.current) return;
-      if (result.data && !result.error) { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onSaved(result.data.id, result.data.name); return; }
+      if (result.data && !result.error) { frozen.current = null; setTunnels(classic ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); onSaved(result.data.id, result.data.name); return; }
       if (result.response?.status === 409 && await recover(input.id)) return;
       if (!uncertain && result.response && result.response.status < 500 && result.response.status !== 409) { frozen.current = null; setUncertain(false); setError("Configuration was not saved. Review gateway support, network ownership and conflicts."); }
       else { setUncertain(true); setError("Save result unknown. Retry uses the same connection ID."); }
@@ -330,8 +331,8 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
       <fieldset disabled={busy || uncertain} className="ipsec-setup-fields">
         {step === 1 ? <>
           <Field label="Name"><Input required value={name} maxLength={255} onChange={event => setName(event.target.value)} placeholder="Office to cloud" /></Field>
-          <Field label="Cloud VPN profile"><Select value={profile} onChange={event => { const selected = event.target.value as typeof profile; setProfile(selected); setMode(selected === "gcp-ha-bgp-ipv4-v1" ? "ipv4-bgp" : "ipv4-static"); setTunnels([blankTunnel(), blankTunnel()]); }}><option value="aws">AWS Site-to-Site VPN</option><option value="gcp-ha-bgp-ipv4-v1">Google Cloud HA VPN · BGP</option><option value="gcp-classic-static-ipv4-v1">Google Cloud Classic VPN · static</option></Select></Field>
-          {gcp && <p className="text-xs text-ink-secondary">{classic ? "Classic uses one route-based static tunnel. Saving this profile is unavailable until gateway and API support is ready." : "Use two HA VPN tunnel endpoints, one on each Google Cloud interface (0 and 1), with Cloud Router BGP. A single local gateway does not provide host redundancy or an availability SLA."}</p>}
+          <Field label="Cloud VPN profile"><Select value={profile} onChange={event => { const selected = event.target.value as typeof profile; setProfile(selected); setMode(selected === "gcp-ha-bgp-ipv4-v1" ? "ipv4-bgp" : "ipv4-static"); setTunnels(selected === "gcp-classic-static-ipv4-v1" ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); }}><option value="aws">AWS Site-to-Site VPN</option><option value="gcp-ha-bgp-ipv4-v1">Google Cloud HA VPN · BGP</option><option value="gcp-classic-static-ipv4-v1">Google Cloud Classic VPN · static</option></Select></Field>
+          {gcp && <p className="text-xs text-ink-secondary">{classic ? "Classic uses one route-based static tunnel. Configure exact local and remote routes plus the cloud return route. Inside BGP addresses do not apply." : "Use two HA VPN tunnel endpoints, one on each Google Cloud interface (0 and 1), with Cloud Router BGP. A single local gateway does not provide host redundancy or an availability SLA."}</p>}
           <Field label="Routing"><Select disabled={gcp} value={mode} onChange={event => setMode(event.target.value as Configuration["mode"])}><option value="ipv4-static">Static routes</option><option value="ipv4-bgp">Dynamic routing (BGP)</option></Select></Field>
           <div className="ipsec-setup-grid"><Field label="Local network"><Select required value={site} onChange={event => { setSite(event.target.value); setGateway(""); setLocal([]); setSubnets([]); setEligibility(null); }}><option value="">Choose a network</option>{sites.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</Select></Field>
             <Field label="Gateway"><Select required value={gateway} onChange={event => { setGateway(event.target.value); setEligibility(null); }}><option value="">Choose a gateway</option>{selectedGateways.map(node => <option key={node.id} value={node.id}>{node.name}</option>)}</Select></Field></div>
@@ -348,16 +349,17 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
           </fieldset>}
         </> : <><section aria-label="Connection review" className="space-y-3 rounded border border-line bg-surface-inset p-4">
           <h3 className="font-semibold text-ink-heading">Review connection</h3>
-          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"><div><dt className="text-ink-secondary">Profile</dt><dd>{gcp ? "Google Cloud HA VPN" : "AWS Site-to-Site VPN"}</dd></div><div><dt className="text-ink-secondary">Routing</dt><dd>{mode === "ipv4-bgp" ? "Dynamic routing (BGP)" : "Static routes"}</dd></div><div><dt className="text-ink-secondary">Connection</dt><dd>{name}</dd></div><div><dt className="text-ink-secondary">Local ranges</dt><dd>{local.join(", ")}</dd></div><div><dt className="text-ink-secondary">Remote ranges</dt><dd>{remote}</dd></div></dl>
+          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"><div><dt className="text-ink-secondary">Profile</dt><dd>{classic ? "Google Cloud Classic VPN" : gcp ? "Google Cloud HA VPN" : "AWS Site-to-Site VPN"}</dd></div><div><dt className="text-ink-secondary">Routing</dt><dd>{mode === "ipv4-bgp" ? "Dynamic routing (BGP)" : "Static routes"}</dd></div><div><dt className="text-ink-secondary">Connection</dt><dd>{name}</dd></div><div><dt className="text-ink-secondary">Local ranges</dt><dd>{local.join(", ")}</dd></div><div><dt className="text-ink-secondary">Remote ranges</dt><dd>{remote}</dd></div></dl>
           {mode === "ipv4-bgp" && <p className="text-sm text-ink-secondary">Customer ASN {localASN} · {gcp ? "Cloud Router" : "AWS"} ASN {remoteASN} · Router ID {routerID} · Maximum {maximumPrefixes} prefixes per peer</p>}
           <p className="text-xs text-ink-secondary">This connection is saved disabled. Access policies control traffic when you enable it.</p>
-        </section><div className="ipsec-setup-grid">{tunnels.map((tunnel, i) => <div key={i} className="ipsec-tunnel-fields"><h3>Tunnel {i + 1}{gcp ? ` · GCP interface ${i}` : ""}</h3>{([
+        </section><div className="ipsec-setup-grid">{tunnels.map((tunnel, i) => <div key={i} className="ipsec-tunnel-fields"><h3>Tunnel {i + 1}{gcp && !classic ? ` · GCP interface ${i}` : ""}</h3>{([
           ["outside_address", "outside IP"], ["inside_cidr", "inside CIDR"], ["customer_inside_address", "customer IP"], ["cloud_inside_address", "cloud IP"], ["psk", "PSK"],
-        ] as const).map(([field, label]) => <Field key={field} label={`Tunnel ${i + 1} ${label}`}><Input required type={field === "psk" ? "password" : "text"} autoComplete={field === "psk" ? "new-password" : "off"} spellCheck={false} value={tunnel[field]} onChange={event => setTunnels(old => old.map((value, n) => n === i ? { ...value, [field]: event.target.value } : value))} /></Field>)}</div>)}</div></>}
+        ] as const).filter(([field]) => !classic || field === "outside_address" || field === "psk").map(([field, label]) => <Field key={field} label={`Tunnel ${i + 1} ${label}`}><Input required type={field === "psk" ? "password" : "text"} autoComplete={field === "psk" ? "new-password" : "off"} spellCheck={false} value={tunnel[field]} onChange={event => setTunnels(old => old.map((value, n) => n === i ? { ...value, [field]: event.target.value } : value))} /></Field>)}</div>)}</div></>}
       </fieldset>
       <div className="ipsec-setup-readiness"><p role="status" className="text-ink-secondary">{checking ? "Checking gateway support…" : currentEligibility ? eligibilityText[currentEligibility.reason] : "Choose a network and gateway to check support."}</p>{site && gateway && <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => setCheckAttempt(value => value + 1)}>Check support</Button>}</div>
       {mode === "ipv4-bgp" && currentEligibility?.eligible && !currentEligibility.bgp?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this BGP configuration disabled. Enabling requires a gateway with fresh BGP support.</p>}
       {gcp && !classic && currentEligibility?.eligible && !currentEligibility.gcp_ha?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this HA configuration disabled. Enabling requires fresh Google Cloud HA VPN support from this gateway.</p>}
+      {classic && currentEligibility?.eligible && !currentEligibility.gcp_classic?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this Classic configuration disabled. Enabling requires fresh Google Cloud Classic VPN support from this gateway.</p>}
       <ErrorText>{error}</ErrorText>
       <div className="ipsec-setup-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy}>Next: tunnels</Button> : <Button type="submit" disabled={busy || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}</div>
     </form>

@@ -33,13 +33,15 @@ function validBGP(report: Report, approved: string[]): boolean {
 }
 const colors = { up: "text-ok", down: "text-danger", unknown: "text-ink-secondary" } as const;
 
-export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-static", approvedRemotePrefixes = [] }: { orgId: string; connectionId: string; tunnels: Tunnel[]; mode?: Mode; approvedRemotePrefixes?: string[] }) {
+export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-static", approvedRemotePrefixes = [], profileId }: { orgId: string; connectionId: string; tunnels: Tunnel[]; mode?: Mode; approvedRemotePrefixes?: string[]; profileId?: string }) {
   const [snapshot, setSnapshot] = useState<{ key: string; report: Report } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const classic = profileId === "gcp-classic-static-ipv4-v1";
+  const expectedCount = classic ? 1 : 2;
   const dynamic = mode === "ipv4-bgp";
-  const key = `${orgId}:${connectionId}:${mode}:${JSON.stringify(approvedRemotePrefixes)}`;
+  const key = `${orgId}:${connectionId}:${mode}:${profileId ?? "legacy"}:${expectedCount}:${JSON.stringify(approvedRemotePrefixes)}`;
   useEffect(() => {
     let cancelled = false;
     let pending = false;
@@ -52,11 +54,11 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
       if (cancelled) return;
       setNow(Date.now());
       const report = result.ok ? result.data : null;
-      const valid = report && Array.isArray(report.tunnels) && report.tunnels.length === 2 && report.tunnels.every(t => t !== null && typeof t === "object" && typeof t.id === "string" && t.id.length > 0 && typeof t.selected === "boolean" && (t.status === "up" || t.status === "down" || t.status === "unknown")) && report.tunnels[0].slot === 1 && report.tunnels[1].slot === 2 && report.tunnels[0].id !== report.tunnels[1].id;
+      const valid = report && Array.isArray(report.tunnels) && tunnels.length === expectedCount && !(classic && dynamic) && report.tunnels.length === expectedCount && report.tunnels.every((t, i) => t !== null && typeof t === "object" && typeof t.id === "string" && t.id.length > 0 && typeof t.selected === "boolean" && t.slot === i + 1 && (t.status === "up" || t.status === "down" || t.status === "unknown")) && new Set(report.tunnels.map(t => t.id)).size === expectedCount;
       const selectionValid = valid && report && (dynamic ? validBGP(report, approvedRemotePrefixes) : report.bgp == null && (report.recovery_version == null
         ? report.selection_sequence == null && report.active_slot == null
         : report.recovery_version === 1 && Number.isSafeInteger(report.selection_sequence) && report.selection_sequence! > 0 &&
-          (report.active_slot == null || ((report.active_slot === 1 || report.active_slot === 2) && report.tunnels?.find(t => t?.slot === report.active_slot)?.status === "up"))));
+          (report.active_slot == null || ((Number.isSafeInteger(report.active_slot) && report.active_slot! >= 1 && report.active_slot! <= expectedCount) && report.tunnels?.find(t => t?.slot === report.active_slot)?.status === "up"))));
       setSnapshot(valid && selectionValid ? { key, report } : null);
       setUnavailable(!valid || !selectionValid);
     }
@@ -76,7 +78,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
     </div>
     <div className="overflow-x-auto rounded border border-line">
       <table className="w-full text-left text-sm" aria-label="IPsec tunnel state">
-        <thead className="border-b border-line bg-surface-inset text-xs text-ink-secondary"><tr>{["Tunnel", "Outside IP address", "Inside IPv4 CIDR", dynamic ? "IPsec status" : "Status", ...(dynamic ? ["BGP peer", "Accepted prefixes", "Installed prefixes", "Rejected prefixes"] : ["Path"]), "Last observed"].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
+        <thead className="border-b border-line bg-surface-inset text-xs text-ink-secondary"><tr>{["Tunnel", "Outside IP address", ...(!classic ? ["Inside IPv4 CIDR"] : []), dynamic ? "IPsec status" : "Status", ...(dynamic ? ["BGP peer", "Accepted prefixes", "Installed prefixes", "Rejected prefixes"] : ["Path"]), "Last observed"].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
         <tbody>{tunnels.map((tunnel, i) => {
           const health = report?.tunnels.find(t => t.slot === i + 1);
           const status = fresh && health ? health.status : "unknown";
@@ -85,7 +87,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
           return <tr key={`${connectionId}:${i}`} className="border-b border-line last:border-0">
             <th scope="row" className="px-4 py-4 font-medium text-ink-heading whitespace-nowrap">Tunnel {i + 1}</th>
             <td className="px-4 py-4 font-mono text-xs">{tunnel.outside_address}</td>
-            <td className="px-4 py-4 font-mono text-xs">{tunnel.inside_cidr}</td>
+            {!classic && <td className="px-4 py-4 font-mono text-xs">{tunnel.inside_cidr}</td>}
             <td className="px-4 py-4"><span role="status" aria-label={`Tunnel ${i + 1} ${labels[status]}`} title={status === "up" ? "Encrypted tunnel established. Application reachability is separate." : status === "down" ? "Gateway reports the tunnel is not established." : "No current verified tunnel report."} className={`inline-flex items-center gap-2 font-medium ${colors[status]}`}><span aria-hidden="true" className="h-2 w-2 rounded-full bg-current" />{labels[status]}</span></td>
             {dynamic ? <>
               <td className="px-4 py-4"><span role="status" aria-label={`Tunnel ${i + 1} BGP ${peer ? peerLabels[peer.state] : "Unknown"}`} className={peer?.state === "established" ? "text-ok" : "text-ink-secondary"}>{peer ? peerLabels[peer.state] : "Unknown"}</span></td>
@@ -120,7 +122,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
       return <details key={i} className="rounded border border-line text-sm">
         <summary aria-label={`Tunnel ${i + 1} troubleshooting`} className="cursor-pointer px-4 py-3 font-medium text-ink-heading focus-visible:outline focus-visible:outline-2">Tunnel {i + 1} details</summary>
         <div className="border-t border-line px-4 py-4">
-          <dl className="tnx-resource-facts"><div><dt>Customer inside IP</dt><dd className="font-mono">{tunnel.customer_inside_address}</dd></div><div><dt>Cloud inside IP</dt><dd className="font-mono">{tunnel.cloud_inside_address}</dd></div></dl>
+          {classic ? <p className="text-xs text-ink-secondary">Classic route-based static routing uses no BGP inside addresses. Check the approved remote routes and the cloud return route.</p> : <dl className="tnx-resource-facts"><div><dt>Customer inside IP</dt><dd className="font-mono">{tunnel.customer_inside_address}</dd></div><div><dt>Cloud inside IP</dt><dd className="font-mono">{tunnel.cloud_inside_address}</dd></div></dl>}
           <ul className="mt-4 space-y-1 text-xs text-ink-secondary">{troubleshooting[status].map(check => <li key={check}>{check}</li>)}</ul>
           {dynamic && <p className="mt-3 text-xs text-ink-secondary">{fresh && report?.bgp && report.bgp.peers[i].state !== "unknown" ? report.bgp.peers[i].state === "established" ? "BGP peer established. Check each approved prefix above, access policies, and return routes." : "Check the configured local and remote ASNs, inside addresses, and remote BGP peer configuration." : "No fresh BGP peer or route evidence yet. Refresh status and check gateway connectivity."}</p>}
         </div>
