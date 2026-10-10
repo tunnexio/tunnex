@@ -47,6 +47,24 @@ class OwnershipTests(unittest.TestCase):
   self.assertNotIn('enable',command);self.assertNotIn('disable',command)
 
 
+class RFC3339TimestampTests(unittest.TestCase):
+ def test_docker_nanoseconds_preserved_with_python310_parse_input(self):
+  value='2026-10-10T13:02:09.667123456Z'
+  original=export.datetime
+  with patch.object(export,'datetime') as parser:
+   parser.fromisoformat.side_effect=original.fromisoformat
+   self.assertEqual(export.timestamp(value),value)
+   parser.fromisoformat.assert_called_once_with('2026-10-10T13:02:09.667123+00:00')
+
+ def test_fractional_precisions_and_offsets_preserved(self):
+  for value in ['2026-10-10T13:02:09Z','2026-10-10T13:02:09.1Z','2026-10-10T13:02:09.123456Z','2026-10-10T13:02:09.123456789+05:30','2026-10-10T13:02:09.123456789-04:00']:
+   with self.subTest(value=value):self.assertEqual(export.timestamp(value),value)
+
+ def test_malformed_calendar_precision_timezone_refused(self):
+  for value in ['2026-02-30T13:02:09Z','2026-10-10 13:02:09Z','2026-10-10T13:02:09','2026-10-10T13:02:09.Z','2026-10-10T13:02:09.1234567890Z','2026-10-10T13:02:09+24:00','2026-10-10T13:02:09+01:60','2026-10-10T13:02:60Z','2026-10-10T13:02:09ZSECRET']:
+   with self.subTest(value=value),self.assertRaisesRegex(ValueError,'timestamp shape'):export.timestamp(value)
+
+
 class ControlledEvidenceTests(unittest.TestCase):
  def snapshot(self):
   return {'version':1,'container':'a'*64,'boot':'00000000-0000-4000-8000-000000000001','pid':100,'started':'2026-10-10T13:00:00Z','observed_ns':10,'namespace':{'device':1,'inode':2},'journal_raw_sha256':'b'*64,'journal_entries_sha256':'c'*64,'journal':'secret-path'}

@@ -32,10 +32,16 @@ def number(value):
 
 
 def timestamp(value):
- if not isinstance(value,str) or len(value)>64:raise ValueError('timestamp')
- parsed=datetime.fromisoformat(value.replace('Z','+00:00'))
- if parsed.tzinfo is None:raise ValueError('timestamp timezone')
- return parsed.isoformat()
+ # Python3.10 rejects RFC3339Nano; validate calendar/offset with at most six
+ # fractional digits, but retain the original observed precision in evidence.
+ if not isinstance(value,str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})',value):raise ValueError('timestamp shape')
+ compatible=re.sub(r'(\.[0-9]{6})[0-9]{1,3}(?=Z|[+-])',r'\1',value).replace('Z','+00:00')
+ try:
+  parsed=datetime.fromisoformat(compatible)
+  offset=value[-6:] if not value.endswith('Z') else None
+  if parsed.tzinfo is None or offset is not None and (int(offset[1:3])>23 or int(offset[4:6])>59):raise ValueError('timestamp shape')
+ except ValueError:raise ValueError('timestamp shape') from None
+ return value
 
 
 def packets(value):

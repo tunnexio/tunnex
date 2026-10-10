@@ -48,9 +48,23 @@ def diagnostic(error):
  if isinstance(error,subprocess.TimeoutExpired):return {'category':'bounded_read_timeout'}
  if isinstance(error,OSError):return {'category':'filesystem_refused'}
  if isinstance(error,TypeError):return {'category':'unexpected_type'}
- known={'snapshot version','identity/hash shape','boot identity','timestamp','timestamp timezone','bounded lifecycle integer','stop proof shape','termination binding','termination ordering','fresh runtime kind','namespace identity','root evidence directory','snapshot/proof binding','attempt identity','attempt bound','gate result shape','fresh runtime binding','stopped journal hash binding','expected exactly one accepted gate result','private receipt shape','root observer requires UID1000 private root','private root path'}
+ known={'snapshot version','identity/hash shape','boot identity','timestamp','timestamp shape','timestamp timezone','bounded lifecycle integer','stop proof shape','termination binding','termination ordering','fresh runtime kind','namespace identity','root evidence directory','snapshot/proof binding','attempt identity','attempt bound','gate result shape','fresh runtime binding','stopped journal hash binding','expected exactly one accepted gate result','private receipt shape','root observer requires UID1000 private root','private root path'}
  if isinstance(error,ValueError) and str(error) in known:return {'category':'strict_validation_refused','validation':str(error).replace(' ','_').replace('/','_')}
  return {'category':'strict_projection_or_ownership_refused'}
+
+
+def lifecycle_fields(value,prefix,check,fresh=False):
+ checks=[('container',export.hex_digest),('boot',export.boot_id),
+         ('pid',lambda value:export.integer(value,1)),
+         ('started_at' if fresh else 'started',export.timestamp)]
+ if fresh:
+  checks += [(key,export.hex_digest) for key in ('stop_evidence_sha256','stopped_journal_sha256','current_journal_sha256','startup_gate_sha256')]
+  checks += [(key,lambda value:export.integer(value,1)) for key in ('pid_start_ticks','startup_gate_device','startup_gate_inode')]
+ else:
+  checks += [('observed_ns',lambda value:export.integer(value,1))]
+  checks += [(key,export.hex_digest) for key in ('journal_raw_sha256','journal_entries_sha256')]
+ for key,validator in checks:
+  check(prefix+':field:'+key,lambda key=key,validator=validator:validator(value[key]))
 
 
 def controlled_stages(root,check):
@@ -61,6 +75,8 @@ def controlled_stages(root,check):
  for name,projector in [('before.json',export.stop_snapshot),('stopped.json',export.stopped_proof)]:
   holder={}
   if check('controlled:'+name+':read_private',lambda:holder.update(value=export.read_private(directory/name))):
+   if name=='before.json':lifecycle_fields(holder['value'],'controlled:before.json',check)
+   elif isinstance(holder['value'].get('snapshot'),dict):lifecycle_fields(holder['value']['snapshot'],'controlled:stopped.json:snapshot',check)
    check('controlled:'+name+':projection',lambda:values.update({name:projector(holder['value'])}))
  if len(values)==2:
   def binding():
@@ -88,6 +104,7 @@ def controlled_stages(root,check):
     export.timestamp(value['observed_at'])
    if check('controlled:result.json:shape',result_shape):accepted+=1
   if check('controlled:fresh-runtime.json:read_private',lambda:fresh.update(value=export.read_private(path/'fresh-runtime.json'))):
+   lifecycle_fields(fresh['value'],'controlled:fresh-runtime.json',check,fresh=True)
    if check('controlled:fresh-runtime.json:projection',lambda:fresh.update(projected=export.fresh_runtime(fresh['value']))) and len(values)==2:
     def fresh_binding():
      before=values['before.json'];value=fresh['projected']
