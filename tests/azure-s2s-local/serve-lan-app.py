@@ -13,6 +13,7 @@ import time
 
 spec=importlib.util.spec_from_file_location('owned_probe',Path(__file__).with_name('probe-packets.py'))
 probe=importlib.util.module_from_spec(spec);spec.loader.exec_module(probe)
+LARGE_BODY=b'0123456789abcdef'*4096
 
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
@@ -36,8 +37,8 @@ def main():
   protocol_version='HTTP/1.1'
   def do_GET(self):
    record('tcp_requests',self.client_address[0])
-   body=json.dumps({'service':'azure-s2s-owned-lan-app','client_ip':self.client_address[0]}).encode()
-   self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+   body=LARGE_BODY if self.path=='/large' else json.dumps({'service':'azure-s2s-owned-lan-app','client_ip':self.client_address[0]}).encode()
+   self.send_response(200);self.send_header('Content-Type','application/octet-stream' if self.path=='/large' else 'application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
   def log_message(self,*args):pass
   def handle(self):
    try:super().handle()

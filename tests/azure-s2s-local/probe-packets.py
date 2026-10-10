@@ -14,6 +14,13 @@ import subprocess
 import time
 
 TARGET='10.231.1.4'
+LARGE_BODY=b'0123456789abcdef'*4096
+
+def udp_payload(size,nonce):
+ prefix=('azure-owned-probe-'+str(nonce)+':').encode()
+ if size not in (64,1200,1362,2000,4096) or len(prefix)>size:raise ValueError('Bounded UDP payload required')
+ padding=(b'0123456789abcdef'*((size+15)//16))[:size-len(prefix)]
+ return prefix+padding
 
 def stamp():return datetime.now(timezone.utc).isoformat()
 def receipt(path,value):
@@ -53,6 +60,8 @@ def main():
  p.add_argument('--seconds',type=int,default=60)
  p.add_argument('--interval',type=float,default=1.0)
  p.add_argument('--timeout',type=float,default=1.0)
+ p.add_argument('--udp-bytes',type=int,choices=[64,1200,1362,2000,4096],default=64)
+ p.add_argument('--tcp-large',action='store_true',help='Verify owned identity then exact64KiB /large on the same TCP socket')
  p.add_argument('--dns-resolver',action='append',default=[],help='Explicit actual proxy/resolver IPv4; repeat for each boundary')
  a=p.parse_args()
  if not 1<=a.seconds<=60 or not .2<=a.interval<=5 or not .2<=a.timeout<=2:raise ValueError('Bounded duration/interval/timeout required')
@@ -64,7 +73,7 @@ def main():
  # Fail early if the actual namespace does not own the selected source.
  check=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);check.bind((a.source,0));check.close()
  start=time.monotonic();end=start+a.seconds
- output={'started_at':stamp(),'source_address':a.source,'direction':a.direction,'service':{'address':target,'tcp_port':tcp_port,'udp_port':udp_port},'packet_duration_bound_seconds':a.seconds,'dns_queries_run_after_packet_window':True,'scope':'Actual packet observations only; no capability, policy, health or cloud readiness inference','samples':[],'dns':[]}
+ output={'started_at':stamp(),'source_address':a.source,'direction':a.direction,'udp_payload_bytes':a.udp_bytes,'tcp_large_requested':a.tcp_large,'service':{'address':target,'tcp_port':tcp_port,'udp_port':udp_port},'packet_duration_bound_seconds':a.seconds,'dns_queries_run_after_packet_window':True,'scope':'Actual packet observations only; no capability, policy, health or cloud readiness inference','samples':[],'dns':[]}
  tcp=None;udp=None
  counters={key:{'success':0,'failure':0,'last_success_monotonic':None,'maximum_observed_success_gap_seconds':0} for key in ('fresh_tcp','existing_tcp','fresh_udp','existing_udp')}
  def observe(key,operation):
@@ -84,7 +93,15 @@ def main():
   local_port=connection.sock.getsockname()[1] if connection.sock else None
   response=connection.getresponse();status=response.status;version=response.version;will_close=response.will_close;body=response.read(16385)
   identity=observed_http_identity(body,a.source,service)
-  return {**identity,'success':200<=status<400 and identity['owned_service_confirmed'] and identity['source_preservation']=='preserved','http_response_success':200<=status<400,'http_status':status,'http_version':version,'local_port':local_port,'server_closes_connection':will_close}
+  result={**identity,'success':200<=status<400 and identity['owned_service_confirmed'] and identity['source_preservation']=='preserved','http_response_success':200<=status<400,'http_status':status,'http_version':version,'local_port':local_port,'server_closes_connection':will_close}
+  if a.tcp_large:
+   connection.request('GET','/large',headers={'Connection':'keep-alive'})
+   large_port=connection.sock.getsockname()[1] if connection.sock else None
+   large=connection.getresponse();data=large.read(65537)
+   matched=data==LARGE_BODY and large.getheader('Content-Length')=='65536'
+   result.update(large_http_status=large.status,large_received_bytes=len(data),large_exact_match=matched,large_same_socket=(large_port==local_port and not will_close))
+   result['success']=result['success'] and large.status==200 and matched and result['large_same_socket']
+  return result
  def fresh_tcp():
   connection=new_tcp()
   try:return request(connection)
@@ -100,9 +117,8 @@ def main():
  def new_udp():
   connection=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);connection.settimeout(a.timeout);connection.bind((a.source,0));connection.connect((target,udp_port));return connection
  def echo(connection):
-  payload=('azure-owned-probe-'+str(time.monotonic_ns())).encode();connection.send(payload);answer=connection.recv(4096)
-  if answer!=payload:raise ValueError('Echo mismatch')
-  return {'echo_bytes':len(answer),'local_port':connection.getsockname()[1]}
+  payload=udp_payload(a.udp_bytes,time.monotonic_ns());connection.send(payload);answer=connection.recv(4097)
+  return {'success':answer==payload,'sent_bytes':len(payload),'echo_bytes':len(answer),'echo_exact_match':answer==payload,'local_port':connection.getsockname()[1]}
  def fresh_udp():
   connection=new_udp()
   try:return echo(connection)
