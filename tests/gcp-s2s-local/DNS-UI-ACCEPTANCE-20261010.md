@@ -51,3 +51,15 @@ Root reports API source `90ef` and native source `15eb` for this test. Root's in
 | --- | --- |
 | `/private/tmp/gcp-ui-emulated-classic-old-key-down.png` | `3bc16208973770d5d37557bcf6efdccbc0659cfc9bde5e7cd80f66b9399040f1` |
 | `/private/tmp/gcp-ui-emulated-classic-new-key-up.png` | `1e5e7842d9577462eca71508448f80f8fe826f42fc961d870405eb6e7ad547d9` |
+
+## Genuine local HA public status and roles
+
+Admin, owner and member signed in normally and opened `gcp-ha-owned-emulator-1010`, actual owned connection `27e56a4f-b74e-43b2-9c7d-2ac10caf9c09` (root reported desired revision 2; UI configuration revision 1). All three read exactly two Up IPsec tunnels and Established BGP peers. Tunnel 1 uses `33.0.0.30`, inside `169.254.74.0/30`; Tunnel 2 uses `33.0.0.31`, inside `169.254.74.4/30`. Each peer reports one accepted prefix; installed counts are 1 and 0 respectively. The explicit installed route table shows only approved `10.74.0.0/24` via Tunnel 1. Rejected prefix counts are No data, not fabricated zero.
+
+Fresh observations were 15:30:38 admin, 15:31:02 owner, 15:31:27 member. Member inventory had no Create connection or feature management action; the HA menu exposed Connection details only, with no Enable/Disable/Rotate/Delete. Member could read the same configuration/status/routes. No access grant or connection mutation was performed for these captures. Root was immediately notified that captures were complete so normal cleanup could precede the owned peer deadline. Reported tunnel/BGP/routes remain separate from root's actual packet fault/restoration/grant/revoke/expiry evidence. This is local emulator acceptance, not Google Cloud or single-host availability proof.
+
+| HA screenshot | SHA-256 |
+| --- | --- |
+| `/private/tmp/gcp-ui-emulated-ha-admin-two-up.png` | `79b0011e7881f04e7fa57bcb766566ec3001788ed0567cf4601dfc20e4116edb` |
+| `/private/tmp/gcp-ui-emulated-ha-owner-two-up.png` | `abff7d80ef983fe1ac6e551672702b8f0c42892b7bfa9c782fffe5341db171a7` |
+| `/private/tmp/gcp-ui-emulated-ha-member-two-up-readonly.png` | `8ade8b34c2700d3164cf8ce78873937e0c6d1ec79c629ba3418789ccd1f47228` |
