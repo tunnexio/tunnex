@@ -3,21 +3,25 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/tunnexio/tunnex/apps/node/internal/control"
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"time"
 )
 
 // Only fixed categories and bounded durations; never request/response contents.
 type fqdnRPCTiming struct {
-	DispatchUTC             string `json:"dispatch_utc"`
-	DeadlineRemainingMillis int64  `json:"deadline_remaining_ms"`
-	StartDelayMillis        int64  `json:"start_delay_ms"`
-	HandleMillis            int64  `json:"handle_ms"`
-	Status                  string `json:"status"`
-	Result                  string `json:"result"`
-	ReportMillis            int64  `json:"report_ms"`
-	Delivery                string `json:"delivery"`
-	Context                 string `json:"context"`
+	Lookup                  fqdnrpc.LookupTiming `json:"lookup"`
+	ReportHTTPStatus        int                  `json:"report_http_status"`
+	ReportFailure           string               `json:"report_failure"`
+	DispatchUTC             string               `json:"dispatch_utc"`
+	DeadlineRemainingMillis int64                `json:"deadline_remaining_ms"`
+	StartDelayMillis        int64                `json:"start_delay_ms"`
+	HandleMillis            int64                `json:"handle_ms"`
+	Status                  string               `json:"status"`
+	Result                  string               `json:"result"`
+	ReportMillis            int64                `json:"report_ms"`
+	Delivery                string               `json:"delivery"`
+	Context                 string               `json:"context"`
 }
 
 func boundedFQDNMillis(d time.Duration, signed bool) int64 {
@@ -43,11 +47,14 @@ func timedFQDNResolve(ctx context.Context, node string, request fqdnrpc.Request,
 		return response, report(ctx, response)
 	}
 	start := now()
-	response := handle(ctx, node, request)
+	lookupCtx, lookup := fqdnrpc.WithLookupTiming(ctx)
+	response := handle(lookupCtx, node, request)
 	handled := now()
 	err := report(ctx, response)
 	finished := now()
 	event := fqdnRPCTiming{DispatchUTC: dispatch.UTC().Format(time.RFC3339Nano), DeadlineRemainingMillis: boundedFQDNMillis(request.Deadline.Sub(dispatch), true), StartDelayMillis: boundedFQDNMillis(start.Sub(dispatch), false), HandleMillis: boundedFQDNMillis(handled.Sub(start), false), ReportMillis: boundedFQDNMillis(finished.Sub(handled), false), Status: "unknown", Result: "unknown", Delivery: "success", Context: "active"}
+	event.Lookup = lookup.Snapshot()
+	event.ReportHTTPStatus, event.ReportFailure = control.DNSReportDiagnostic(err)
 	switch response.Status {
 	case fqdnrpc.StatusNoError:
 		event.Status = "NOERROR"

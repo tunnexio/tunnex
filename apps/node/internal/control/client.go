@@ -312,7 +312,7 @@ func (c *Client) ReportDNSResolution(ctx context.Context, response fqdnrpc.Respo
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("dns-resolution status %d", resp.StatusCode)
+		return dnsReportHTTPError{status: resp.StatusCode}
 	}
 	return nil
 }

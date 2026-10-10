@@ -13,7 +13,9 @@ import (
 
 func TestFQDNTimingPreservesCallsContextAndResponse(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
-		ctx := context.WithValue(t.Context(), struct{}{}, "private-context")
+		parent, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		ctx := context.WithValue(parent, struct{}{}, "private-context")
 		dispatch := time.Date(2026, 10, 10, 18, 0, 0, 0, time.UTC)
 		request := fqdnrpc.Request{RequestID: "private-nonce", Hostname: "secret-host", Deadline: dispatch.Add(5 * time.Second)}
 		response := fqdnrpc.Response{RequestID: "private-nonce", Hostname: "secret-host", Status: fqdnrpc.Status("untrusted-secret-status"), ErrorCode: "private-error"}
@@ -31,7 +33,17 @@ func TestFQDNTimingPreservesCallsContextAndResponse(t *testing.T) {
 		}
 		got, err := timedFQDNResolve(ctx, "private-node", request, dispatch, enabled, func(c context.Context, node string, r fqdnrpc.Request) fqdnrpc.Response {
 			order = append(order, "handle")
-			if c != ctx || node != "private-node" || !reflect.DeepEqual(r, request) {
+			originalDeadline, _ := ctx.Deadline()
+			handleDeadline, _ := c.Deadline()
+			if !originalDeadline.Equal(handleDeadline) || c.Done() != ctx.Done() {
+				t.Fatal("deadline/cancellation changed")
+			}
+			if enabled {
+				fqdnrpc.RecordLookupPhase(c, "before", time.Millisecond, true)
+				fqdnrpc.RecordLookupPhase(c, "after", 2*time.Millisecond, false)
+				fqdnrpc.RecordLookupExchange(c, false)
+			}
+			if (!enabled && c != ctx) || c.Value(struct{}{}) != "private-context" || node != "private-node" || !reflect.DeepEqual(r, request) {
 				t.Fatal("handle inputs changed")
 			}
 			return response
@@ -57,6 +69,9 @@ func TestFQDNTimingPreservesCallsContextAndResponse(t *testing.T) {
 		e := events[0]
 		if e.DeadlineRemainingMillis != 5000 || e.StartDelayMillis != 100 || e.HandleMillis != 2000 || e.ReportMillis != 200 || e.Status != "unknown" || e.Result != "unknown" || e.Delivery != "failure" || e.Context != "active" {
 			t.Fatalf("incorrect fixed timing %+v", e)
+		}
+		if !e.Lookup.TransportTimingObserved || e.Lookup.BeforeProof.Successful != 1 || e.Lookup.AfterProof.Refused != 1 || e.Lookup.AttemptedExchanges != 1 || e.Lookup.CompletedExchanges != 0 || e.ReportHTTPStatus != 0 || e.ReportFailure != "transport_or_encoding" {
+			t.Fatal("lookup summary or delivery category lost", e)
 		}
 		encoded, _ := json.Marshal(e)
 		if strings.Contains(string(encoded), "private") || strings.Contains(string(encoded), "secret") {

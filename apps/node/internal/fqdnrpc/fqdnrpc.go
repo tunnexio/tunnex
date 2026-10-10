@@ -179,7 +179,8 @@ type DirectResolver struct {
 	Transport BoundTransport
 }
 
-func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) ([]Record, error) {
+func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) (result []Record, resultErr error) {
+	defer func() { finishLookupTiming(ctx, resultErr) }()
 	if !validResolverConfig(config) {
 		return nil, errResolverConfig
 	}
