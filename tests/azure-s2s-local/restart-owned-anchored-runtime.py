@@ -55,6 +55,17 @@ def archive_receipt(runner,entry,target,evidence):
  if not os.path.samestat(identity,target.lstat()) or gated.private_bytes(target,8192)!=raw:raise ValueError('prior receipt changed')
  target.unlink();runner.sync_directory(target.parent)
 
+INSTALLER_STAGES={'prerequisites','actual_stop_evidence','exact_gate_and_journal','fresh_runtime_observation','receipt_assembly','preinstall_identity','exclusive_receipt_install','exact_gate_release'}
+def report_installer_refusal(raw):
+ # Delegated diagnostics are data: only fixed whitelisted categories escape.
+ if len(raw)>16384:return None
+ for line in raw.splitlines():
+  try:value=json.loads(line)
+  except (ValueError,TypeError):continue
+  if isinstance(value,dict) and value.get('stage') in INSTALLER_STAGES and value.get('error_code')=='gated_restoration_refused':
+   return {'stage':'delegated_installer_refused','installer_stage':value['stage'],'error_code':'gated_restoration_refused','observed_at':gated.stamp(),'runtime_acceptance':'not_observed'}
+ return None
+
 def main():
  p=argparse.ArgumentParser(description=__doc__)
  for key in ('container','anchor','journal','evidence-dir','shared-dir','private-root','lifecycle-helper','packet-helper','receipt-helper','receipt-helper-sha256'):p.add_argument('--'+key,required=True)
@@ -149,8 +160,12 @@ def main():
   # Delegate unchanged strict fresh observer/CLI/publication to reviewed manual installer.
   fcntl.flock(lock,fcntl.LOCK_UN);os.close(lock);lock=None
   stage='fresh_receipt_install'
-  result=command('python3',str(Path(__file__).with_name('assemble-gated-restoration.py')),'--container',cid,'--journal',str(journal),'--evidence-dir',str(directory),'--shared-dir',str(shared),'--receipt-helper',a.receipt_helper,'--receipt-helper-sha256',a.receipt_helper_sha256,timeout=45)
-  sys.stdout.buffer.write(result);sys.stdout.flush()
+  result=subprocess.run(['python3',str(Path(__file__).with_name('assemble-gated-restoration.py')),'--container',cid,'--journal',str(journal),'--evidence-dir',str(directory),'--shared-dir',str(shared),'--receipt-helper',a.receipt_helper,'--receipt-helper-sha256',a.receipt_helper_sha256],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=45,check=False)
+  if result.returncode!=0:
+   diagnostic=report_installer_refusal(result.stdout)
+   if diagnostic is not None:print(json.dumps(diagnostic),flush=True)
+   raise ValueError('strict delegated installer refused; gate and proof retained')
+  sys.stdout.buffer.write(result.stdout);sys.stdout.flush()
   gated.event('controlled_restart_receipt_complete_runtime_not_yet_observed')
  except (OSError,ValueError,KeyError,TypeError,ImportError,subprocess.SubprocessError):
   print(json.dumps({'stage':stage,'error_code':'controlled_restart_refused','observed_at':gated.stamp(),'runtime_acceptance':'not_observed'}));return 1

@@ -71,3 +71,11 @@ class DockerHealthIdentityTests(unittest.TestCase):
    self.assertFalse(restart.same_runtime_identity(before,after))
   after=copy.deepcopy(before);after['sandbox']='/foreign/netns'
   self.assertFalse(restart.same_runtime_identity(before,after))
+
+class DelegatedRefusalTests(unittest.TestCase):
+ def test_only_fixed_stage_and_error_escape(self):
+  import json
+  raw=json.dumps({'stage':'exact_gate_and_journal','error_code':'gated_restoration_refused','secret':'never-print'}).encode()
+  result=restart.report_installer_refusal(raw)
+  self.assertEqual(result['installer_stage'],'exact_gate_and_journal');self.assertNotIn('secret',str(result))
+  for bad in (b'private exception text',json.dumps({'stage':'secret-key','error_code':'gated_restoration_refused'}).encode(),b'x'*16385):self.assertIsNone(restart.report_installer_refusal(bad))
