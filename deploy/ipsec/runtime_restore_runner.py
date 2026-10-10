@@ -97,12 +97,48 @@ def acceptance_result(before, after, started_utc, elapsed, resumed=False):
 
 
 def validate_previous_receipt(entry, raw):
-    history = entry.get('Restoration', {}).get('Retired') or []
+    history = (entry.get('Restoration') or {}).get('Retired') or []
     if not history or history[-1]['EvidenceDigest'] != hashlib.sha256(raw).hexdigest():
         raise ValueError('existing receipt is not the exact retained prior restoration receipt')
     receipt = json.loads(raw)
     if receipt['DeliveryID'] != entry['DeliveryID'] or receipt['Namespace'] != entry['Allocation']['Namespace']:
         raise ValueError('previous receipt target differs from current runtime')
+
+
+def validate_unconsumed_identity(entry, raw, archived, fresh, identity, boot, namespace, cgroup, ticks):
+    if entry.get('Restoration') is not None or raw != archived:
+        raise ValueError('receipt is consumed or differs from exact historical bytes')
+    receipt = json.loads(raw)
+    state = identity['state']
+    if (receipt['DeliveryID'] != entry['DeliveryID'] or receipt['BootID'] != boot
+            or receipt['Namespace'] != namespace or fresh['boot'] != boot
+            or fresh['namespace'] != namespace or fresh['container'] != identity['id']
+            or not state['Running'] or state.get('Restarting')
+            or fresh['pid'] != state['Pid'] or fresh['started_at'] != state['StartedAt']
+            or fresh['pid_start_ticks'] != ticks or ticks <= 0
+            or cgroup != '0::/docker/' + identity['id']):
+        raise ValueError('unconsumed receipt target is not the exact current fresh runtime')
+
+
+def validate_unconsumed_receipt(args, entry, raw, identity):
+    directory = Path(args.supersede_unconsumed_evidence_dir)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError('historical attempt must be root-owned mode 0700')
+    archived = proof.private_bytes(directory / 'receipt.json')
+    fresh = proof.private_read(directory / 'fresh-runtime.json')
+    journal_entries_unchanged(proof.private_bytes(directory / 'current-journal.json'), proof.private_bytes(args.journal))
+    pid = identity['state']['Pid']
+    process = Path('/proc/%d/stat' % pid).read_text()
+    ticks = int(process.rsplit(') ', 1)[1].split()[19])
+    validate_unconsumed_identity(entry, raw, archived, fresh, identity, proof.boot(),
+        os.readlink('/proc/%d/ns/net' % pid), Path('/proc/%d/cgroup' % pid).read_text().strip(), ticks)
+    proof.command(str(args.receipt_helper), '-journal', str(directory / 'stopped-journal.json'),
+        '-evidence', str(directory / 'stopped.json'), '-fresh-runtime', str(directory / 'fresh-runtime.json'),
+        '-current-journal', str(directory / 'current-journal.json'), '-boot', fresh['boot'],
+        '-namespace', fresh['namespace'], '-verify-existing', str(directory / 'receipt.json'))
+    if proof.inspect(identity['id']) != identity:
+        raise ValueError('runtime changed during historical receipt verification')
 
 
 def write_bytes(path, raw):
@@ -238,7 +274,12 @@ def preflight(args):
     previous = None
     if os.path.lexists(target):
         previous = proof.private_bytes(target)
-        validate_previous_receipt(entry, previous)
+        if getattr(args, 'supersede_unconsumed_evidence_dir', None):
+            validate_unconsumed_receipt(args, entry, previous, identity)
+        else:
+            validate_previous_receipt(entry, previous)
+    elif getattr(args, 'supersede_unconsumed_evidence_dir', None):
+        raise ValueError('explicit supersession requires an existing receipt')
     # Serialize supervisor runs, without taking the agent's own journal lock.
     lock = Path(args.journal).parent / '.restoration-supervisor.lock'
     fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -298,7 +339,15 @@ def run(args):
         write_bytes(gate, gate_raw)
         gate_identity = gate.lstat()
         proof.private_write(directory / 'startup-gate.json', {'file': str(gate), 'sha256': hashlib.sha256(gate_raw).hexdigest()})
+        if getattr(args, 'supersede_unconsumed_evidence_dir', None):
+            # Recheck after acquiring the supervisor lock and creating this run's
+            # gate, before any stop. The historical receipt never authorizes this stop.
+            validate_unconsumed_receipt(args, before_entry, proof.private_bytes(target), identity)
         before = proof.snapshot(cid, args.journal)
+        if getattr(args, 'supersede_unconsumed_evidence_dir', None):
+            if (before['pid'] != identity['state']['Pid'] or before['started'] != identity['state']['StartedAt']
+                    or proof.inspect(cid) != identity):
+                raise ValueError('exact historical target changed before new stop snapshot')
         proof.private_write(directory / 'before.json', before)
         if previous is not None:
             write_bytes(directory / 'previous-receipt.json', previous)
@@ -475,11 +524,14 @@ def main():
     for option in ('container', 'journal', 'receipt-helper', 'evidence-dir', 'swanctl', 'vici', 'strongswan-conf'):
         p.add_argument('--' + option, required=True)
     p.add_argument('--resume-evidence-dir', help='explicitly resume the exact captured stopped run; never synthesize stop proof')
+    p.add_argument('--supersede-unconsumed-evidence-dir', help='explicit exact prior attempt; verify and preserve receipt before a NEW controlled stop')
     p.add_argument('--timeout', type=int, required=True)
     p.add_argument('--stop-timeout', type=int, required=True)
     args = p.parse_args()
     if not 10 <= args.timeout <= 600 or not 1 <= args.stop_timeout <= 20:
         p.error('bounded timeout required: recovery 10..600 seconds; stop 1..20 seconds')
+    if args.resume_evidence_dir and args.supersede_unconsumed_evidence_dir:
+        p.error('resume and fresh-stop supersession are distinct workflows')
     resume(args) if args.resume_evidence_dir else run(args)
 
 

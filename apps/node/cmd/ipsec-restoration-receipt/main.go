@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -190,6 +191,23 @@ func privateRead(path string, limit int64) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// verifyHistoricalReceipt validates existing bytes only. It does not attest a
+// currently running process, publish a receipt, or authorize a new restoration.
+func verifyHistoricalReceipt(journal, evidence, fresh, current, existing []byte, boot, ns string) error {
+	if len(fresh) == 0 {
+		return errors.New("fresh historical evidence required")
+	}
+	raw, err := assembleDeliveryFresh(journal, evidence, boot, ns, uuid.Nil, fresh, current)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(existing, append(raw, '\n')) {
+		return errors.New("historical receipt differs")
+	}
+	return nil
+}
+
 func main() {
 	journal := flag.String("journal", "", "stopped journal snapshot")
 	evidence := flag.String("evidence", "", "verified supervisor evidence")
@@ -200,10 +218,37 @@ func main() {
 	freshPath := flag.String("fresh-runtime", "", "separate trusted fresh-runtime observation")
 	gatePath := flag.String("startup-gate", "", "exact retained supervisor startup gate")
 	out := flag.String("out", "", "new receipt file; must not exist")
+	verifyPath := flag.String("verify-existing", "", "verify exact historical receipt only; never publish authority")
 	flag.Parse()
 	fail := func() { fmt.Fprintln(os.Stderr, "receipt assembly refused"); os.Exit(1) }
 	if os.Geteuid() != 0 {
 		fail()
+	}
+	if *verifyPath != "" {
+		if *out != "" || *gatePath != "" || *delivery != "" || *freshPath == "" || *currentPath == "" {
+			fail()
+		}
+		j, e := privateRead(*journal, 4<<20)
+		if e != nil {
+			fail()
+		}
+		p, e := privateRead(*evidence, 1<<20)
+		if e != nil {
+			fail()
+		}
+		f, e := privateRead(*freshPath, 8192)
+		if e != nil {
+			fail()
+		}
+		c, e := privateRead(*currentPath, 4<<20)
+		if e != nil {
+			fail()
+		}
+		r, e := privateRead(*verifyPath, 8192)
+		if e != nil || verifyHistoricalReceipt(j, p, f, c, r, *boot, *ns) != nil {
+			fail()
+		}
+		return
 	}
 	currentBoot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	currentNS, nsErr := os.Readlink("/proc/self/ns/net")

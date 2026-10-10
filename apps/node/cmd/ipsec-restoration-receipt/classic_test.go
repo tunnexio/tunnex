@@ -68,6 +68,26 @@ func TestAssemblyClassicWholeJournalAndStoppedIdentity(t *testing.T) {
 	if _, err = assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, fresh, lastJournal); err != nil {
 		t.Fatal("independently fresh instance with recycled namespace refused", err)
 	}
+	historical, err := assembleDeliveryFresh(lastJournal, lastEvidence, p.Snapshot.Boot, "net:[41]", uuid.Nil, fresh, lastJournal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical = append(historical, '\n')
+	if err := verifyHistoricalReceipt(lastJournal, lastEvidence, fresh, lastJournal, historical, p.Snapshot.Boot, "net:[41]"); err != nil {
+		t.Fatal(err)
+	}
+	for name, tuple := range map[string][5][]byte{
+		"changed receipt":    {lastJournal, lastEvidence, fresh, lastJournal, append(append([]byte(nil), historical...), ' ')},
+		"changed journal":    {append(append([]byte(nil), lastJournal...), ' '), lastEvidence, fresh, lastJournal, historical},
+		"changed stop proof": {lastJournal, append(append([]byte(nil), lastEvidence...), ' '), fresh, lastJournal, historical},
+		"missing fresh":      {lastJournal, lastEvidence, nil, lastJournal, historical},
+	} {
+		t.Run("historical "+name, func(t *testing.T) {
+			if verifyHistoricalReceipt(tuple[0], tuple[1], tuple[2], tuple[3], tuple[4], p.Snapshot.Boot, "net:[41]") == nil {
+				t.Fatal("changed historical authority accepted")
+			}
+		})
+	}
 	for name, mutate := range map[string]func(*freshRuntime){"same PID": func(f *freshRuntime) { f.PID = p.Snapshot.PID }, "old started": func(f *freshRuntime) { f.StartedAt = p.Snapshot.Started }, "wrong boot": func(f *freshRuntime) { f.Boot = uuid.NewString() }, "wrong container": func(f *freshRuntime) { f.Container = strings.Repeat("c", 64) }, "wrong namespace": func(f *freshRuntime) { f.Namespace = "net:[99]" }, "wrong stop digest": func(f *freshRuntime) { f.StopEvidenceSHA256 = strings.Repeat("c", 64) }, "wrong journal digest": func(f *freshRuntime) { f.StoppedJournalSHA256 = strings.Repeat("c", 64) }, "missing gate": func(f *freshRuntime) { f.StartupGateInode = 0 }, "missing process identity": func(f *freshRuntime) { f.PIDStartTicks = 0 }} {
 		t.Run(name, func(t *testing.T) {
 			bad := f

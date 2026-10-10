@@ -124,6 +124,12 @@ class OrchestrationTests(unittest.TestCase):
             unlink.assert_called_once_with('/gate')
 
     def test_same_inode_controlled_sequence_releases_gate_only_after_receipt(self):
+        self.exercise_controlled_sequence()
+
+    def test_explicit_supersession_captures_new_stop_and_preserves_old_receipt(self):
+        self.exercise_controlled_sequence(supersede=True)
+
+    def exercise_controlled_sequence(self, supersede=False):
         import os
         import tempfile
         from pathlib import Path
@@ -140,27 +146,33 @@ class OrchestrationTests(unittest.TestCase):
             lock = os.open(Path(tmp) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
             args = SimpleNamespace(evidence_dir=tmp, journal=str(journal), stop_timeout=2, timeout=10,
                                    receipt_helper='/helper', strongswan_conf='/conf', swanctl='/swanctl', vici='unix:///vici')
+            previous = b'{"old":"exact-unconsumed-receipt"}' if supersede else None
+            if previous:
+                target.write_bytes(previous)
+                args.supersede_unconsumed_evidence_dir = '/exact-historical-attempt'
             calls = []
             def command(*a):
                 calls.append(a)
                 if a[0] == '/helper':
                     Path(a[a.index('-out') + 1]).write_text('{"valid":"receipt"}')
                 return '[]' if 'ip' in a else ''
-            current = {'state': {'Running': True, 'Pid': 99, 'StartedAt': 'new'}}
-            before = {'namespace': {'inode': 2}, 'boot': 'same-boot', 'started': 'old', 'state_mount': None}
+            old_identity = {'id': 'exact-id', 'state': {'Running': True, 'Pid': 98, 'StartedAt': 'old'}}
+            current = {'id': 'exact-id', 'state': {'Running': True, 'Pid': 99, 'StartedAt': 'new'}}
+            before = {'namespace': {'inode': 2}, 'boot': 'same-boot', 'started': 'old', 'pid': 98, 'state_mount': None}
             evidence = {'stopped_journal_raw_sha256': hashlib.sha256(b'{}').hexdigest()}
             def release_gate(path, raw, identity):
                 self.assertTrue(target.exists(), 'receipt must be durable before gate release')
                 self.assertEqual(Path(path).read_bytes(), raw)
                 Path(path).unlink()
-            with patch.object(runner, 'observe_fresh_runtime', return_value={'verified':'fresh'}), \
+            with patch.object(runner, 'validate_unconsumed_receipt') as historical_verify, \
+                 patch.object(runner, 'observe_fresh_runtime', return_value={'verified':'fresh'}), \
                  patch.object(runner, 'journal_entries_unchanged'), \
                  patch.object(runner, 'release_gate', side_effect=release_gate), \
-                 patch.object(runner, 'preflight', return_value=({'id': 'exact-id'}, fixture.before, target, None, lock)), \
+                 patch.object(runner, 'preflight', return_value=(old_identity, fixture.before, target, previous, lock)), \
                  patch.object(runner.proof, 'snapshot', return_value=before), \
                  patch.object(runner.proof, 'prove', return_value=evidence), \
                  patch.object(runner.proof, 'command', side_effect=command), \
-                 patch.object(runner.proof, 'inspect', return_value=current), \
+                 patch.object(runner.proof, 'inspect', side_effect=([old_identity, current, current, current] if supersede else [current, current, current])), \
                  patch.object(runner.proof, 'boot', return_value='same-boot'), \
                  patch.object(runner.proof, 'state_mount', return_value=None), \
                  patch.object(runner.proof, 'private_bytes', side_effect=lambda p: Path(p).read_bytes()), \
@@ -179,6 +191,38 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(calls[0][:2], ('docker', 'stop'))
             self.assertEqual(calls[1][:2], ('docker', 'start'))
             self.assertEqual(calls[2][0], '/helper')
+            if supersede:
+                historical_verify.assert_called_once_with(args, fixture.before, previous, old_identity)
+                archived = next(Path(tmp).glob('run-*/previous-receipt.json'))
+                self.assertEqual(archived.read_bytes(), previous)
+                # NEW stop and prove are still ordinary run operations; no resume path.
+                self.assertEqual(calls[0], ('docker', 'stop', '--time', '2', 'exact-id'))
+                self.assertTrue(next(Path(tmp).glob('run-*/stopped.json')).exists())
+
+
+class UnconsumedReceiptTests(unittest.TestCase):
+    def test_explicit_historical_receipt_requires_exact_current_instance(self):
+        cid = 'a' * 64
+        entry = {'DeliveryID': 'delivery', 'Restoration': None}
+        raw = json.dumps({'DeliveryID': 'delivery', 'BootID': 'boot', 'Namespace': 'net:[7]'}).encode()
+        fresh = {'container': cid, 'boot': 'boot', 'namespace': 'net:[7]', 'pid': 102,
+                 'pid_start_ticks': 20, 'started_at': 'new'}
+        identity = {'id': cid, 'state': {'Pid': 102, 'StartedAt': 'new', 'Running': True, 'Restarting': False}}
+        args = [entry, raw, raw, fresh, identity, 'boot', 'net:[7]', '0::/docker/' + cid, 20]
+        # Legacy admission stays RED for unconsumed receipts; explicit bound path GREEN.
+        with self.assertRaises((ValueError, AttributeError)):
+            runner.validate_previous_receipt(entry, raw)
+        runner.validate_unconsumed_identity(*args)
+        for name, index, value in [('receipt', 2, raw + b' '), ('boot', 5, 'other'),
+                ('namespace', 6, 'net:[8]'), ('cgroup', 7, '0::/docker/foreign'), ('ticks', 8, 21)]:
+            with self.subTest(name=name):
+                bad = copy.deepcopy(args); bad[index] = value
+                with self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
+        for key, value in [('Pid', 103), ('StartedAt', 'other'), ('Running', False), ('Restarting', True)]:
+            bad = copy.deepcopy(args); bad[4]['state'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
+        bad = copy.deepcopy(args); bad[0]['Restoration'] = {'Retired': []}
+        with self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
 
 
 if __name__ == '__main__':
