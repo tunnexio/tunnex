@@ -121,3 +121,13 @@ func gcpOutside(raw, field string, slot int, routes []netip.Prefix) (netip.Addr,
 func isBGPProfile(profile string) bool {
 	return profile == "aws-bgp-ipv4-v1" || profile == GCPHAProfile
 }
+
+func activeTunnelCount(profile string) int {
+	if profile == GCPClassicProfile {
+		return 1
+	}
+	return 2
+}
+func classicManifestCompatible(m RuntimeManifest, eligible bool) bool {
+	return eligible && m.ProfileID == GCPClassicProfile && m.TransportVersion != nil && *m.TransportVersion == 1 && m.TunnelCount != nil && *m.TunnelCount == 1 && m.BGP == nil && m.BGPVersion == nil && m.RecoveryVersion == nil && m.Tunnels[1] == (RuntimeTunnel{}) && m.Tunnels[0].Slot == 1 && m.Tunnels[0].Selected && m.Tunnels[0].InsideCIDR == "" && m.Tunnels[0].CustomerInsideAddress == "" && m.Tunnels[0].CloudInsideAddress == ""
+}

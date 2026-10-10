@@ -11,10 +11,11 @@ import (
 )
 
 type Eligibility struct {
-	Eligible bool         `json:"eligible"`
-	Reason   string       `json:"reason"`
-	GCPHA    *Eligibility `json:"gcp_ha,omitempty"`
-	BGP      *Eligibility `json:"bgp,omitempty"`
+	Eligible   bool         `json:"eligible"`
+	Reason     string       `json:"reason"`
+	GCPClassic *Eligibility `json:"gcp_classic,omitempty"`
+	GCPHA      *Eligibility `json:"gcp_ha,omitempty"`
+	BGP        *Eligibility `json:"bgp,omitempty"`
 }
 
 // gatewayEligibilityReason is shared by advisory reads and locked creation.
@@ -99,5 +100,10 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 		gcpReason = "unsupported"
 	}
 	result.GCPHA = &Eligibility{Eligible: gcpReason == "eligible", Reason: gcpReason}
+	classicReason := reason
+	if classicReason == "eligible" && (json.Unmarshal(caps, &cap) != nil || string(cap["ipsec_gcp_classic_version"]) != "1") {
+		classicReason = "unsupported"
+	}
+	result.GCPClassic = &Eligibility{Eligible: classicReason == "eligible", Reason: classicReason}
 	return result, nil
 }

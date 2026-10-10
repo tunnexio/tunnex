@@ -34,6 +34,9 @@ func (s apiServer) GetIPsecEligibility(ctx context.Context, r api.GetIPsecEligib
 	if e.BGP != nil {
 		out.Bgp = &api.IPsecBGPEligibility{Eligible: e.BGP.Eligible, Reason: api.IPsecBGPEligibilityReason(e.BGP.Reason)}
 	}
+	if e.GCPClassic != nil {
+		out.GcpClassic = &api.IPsecBGPEligibility{Eligible: e.GCPClassic.Eligible, Reason: api.IPsecBGPEligibilityReason(e.GCPClassic.Reason)}
+	}
 	if e.GCPHA != nil {
 		out.GcpHa = &api.IPsecBGPEligibility{Eligible: e.GCPHA.Eligible, Reason: api.IPsecBGPEligibilityReason(e.GCPHA.Reason)}
 	}

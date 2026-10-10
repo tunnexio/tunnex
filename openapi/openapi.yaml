@@ -12289,6 +12289,8 @@ components:
           $ref: '#/components/schemas/IPsecBGPEligibility'
         gcp_ha:
           $ref: '#/components/schemas/IPsecBGPEligibility'
+        gcp_classic:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
     IPsecBGPEligibility:
       type: object
       additionalProperties: false
@@ -12328,7 +12330,7 @@ components:
         gateway_node_id: { type: string, format: uuid }
         tunnel_ids:
           type: array
-          minItems: 2
+          minItems: 1
           maxItems: 2
           uniqueItems: true
           items: { type: string, format: uuid }
@@ -12384,7 +12386,7 @@ components:
           items: { type: string, minLength: 1, maxLength: 18 }
         tunnels:
           type: array
-          minItems: 2
+          minItems: 1
           maxItems: 2
           items: { $ref: "#/components/schemas/IPsecConfigurationCheckTunnel" }
     IPsecBGPConfiguration:
@@ -12403,9 +12405,9 @@ components:
       required: [outside_address, inside_cidr, customer_inside_address, cloud_inside_address, psk]
       properties:
         outside_address: { type: string, minLength: 1, maxLength: 15 }
-        inside_cidr: { type: string, minLength: 1, maxLength: 18 }
-        customer_inside_address: { type: string, minLength: 1, maxLength: 15 }
-        cloud_inside_address: { type: string, minLength: 1, maxLength: 15 }
+        inside_cidr: { type: string, minLength: 0, maxLength: 18 }
+        customer_inside_address: { type: string, minLength: 0, maxLength: 15 }
+        cloud_inside_address: { type: string, minLength: 0, maxLength: 15 }
         psk: { type: string, minLength: 8, maxLength: 64, writeOnly: true }
     IPsecConfigurationCheckResult:
       type: object

@@ -26,7 +26,7 @@ func (s apiServer) CreateIPsecProviderConnection(ctx context.Context, req api.Cr
 	if err != nil {
 		return nil, err
 	}
-	if req.Body == nil || len(req.Body.TunnelIds) != 2 {
+	if req.Body == nil || len(req.Body.TunnelIds) < 1 || len(req.Body.TunnelIds) > 2 {
 		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
 	}
 	cfg, err := privateIPsecConfiguration(req.Body.Configuration)
@@ -36,11 +36,16 @@ func (s apiServer) CreateIPsecProviderConnection(ctx context.Context, req api.Cr
 	if err = ipsec.ValidateProviderConfig(cfg); err != nil {
 		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
 	}
+	if len(req.Body.TunnelIds) != len(cfg.Tunnels) {
+		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
+	}
+	var tunnelIDs [2]uuid.UUID
+	copy(tunnelIDs[:], req.Body.TunnelIds)
 	if s.ipsecProviders == nil || s.ipsecSealer == nil {
 		return nil, ipsecProviderError(ipsec.ErrConnectionUnavailable)
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	r, err := s.ipsecProviders.CreateProviderDisabled(ctx, req.OrgId, p.UserID, s.ipsecSealer, ipsec.CreateProviderRequest{ID: req.Body.Id, Name: req.Body.Name, SiteID: req.Body.SiteId, GatewayID: req.Body.GatewayNodeId, TunnelIDs: [2]uuid.UUID{req.Body.TunnelIds[0], req.Body.TunnelIds[1]}, Config: cfg})
+	r, err := s.ipsecProviders.CreateProviderDisabled(ctx, req.OrgId, p.UserID, s.ipsecSealer, ipsec.CreateProviderRequest{ID: req.Body.Id, Name: req.Body.Name, SiteID: req.Body.SiteId, GatewayID: req.Body.GatewayNodeId, TunnelIDs: tunnelIDs, Config: cfg})
 	if err != nil {
 		return nil, ipsecProviderError(err)
 	}

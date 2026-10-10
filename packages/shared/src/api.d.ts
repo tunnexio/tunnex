@@ -10753,6 +10753,7 @@ export interface components {
             reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";
             bgp?: components["schemas"]["IPsecBGPEligibility"];
             gcp_ha?: components["schemas"]["IPsecBGPEligibility"];
+            gcp_classic?: components["schemas"]["IPsecBGPEligibility"];
         };
         /** @description Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority. */
         IPsecBGPEligibility: {

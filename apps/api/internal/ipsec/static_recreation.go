@@ -79,7 +79,7 @@ func staticRecreationCandidates(ctx context.Context, tx pgx.Tx, org, site, node 
 			return nil, createError(err)
 		}
 		total += count
-		if cfg.BGP != nil || cfg.Mode != "ipv4-static" || profile != "aws-static-ipv4-v1" || intent != "deleted" || !finalized || !valid || oldSite != site || oldNode != node || !equalPrefixDomains(locals, cfg.LocalPrefixes) || !equalPrefixDomains(remotes, cfg.RemotePrefixes) || count < 1 || total > maxRetainedGuardPredecessors {
+		if cfg.BGP != nil || cfg.Mode != "ipv4-static" || profile != providerProfile(cfg) || intent != "deleted" || !finalized || !valid || oldSite != site || oldNode != node || !equalPrefixDomains(locals, cfg.LocalPrefixes) || !equalPrefixDomains(remotes, cfg.RemotePrefixes) || count < 1 || total > maxRetainedGuardPredecessors {
 			return nil, ErrConnectionConflict
 		}
 		result = append(result, p)
@@ -139,7 +139,7 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 		if err = rows.Scan(&connection, &raw); err != nil {
 			return createError(err)
 		}
-		if m.BGP != nil || m.BGPVersion != nil || m.ProfileID != "aws-static-ipv4-v1" {
+		if m.BGP != nil || m.BGPVersion != nil || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != GCPClassicProfile) {
 			return ErrConnectionConflict
 		}
 		var lineage []RuntimeDelivery
@@ -148,7 +148,7 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 		}
 		for _, d := range lineage {
 			prior := d.Manifest
-			if d.ID == uuid.Nil || seen[d.ID] || d.Kind != "apply" || !runtimeDigest(d.OwnershipDigest) || prior.ConnectionID != connection || prior.OrgID != m.OrgID || prior.SiteID != m.SiteID || prior.NodeID != m.NodeID || prior.BGP != nil || prior.BGPVersion != nil || prior.ProfileID != "aws-static-ipv4-v1" || !equalPrefixDomains(prior.LocalPrefixes, m.LocalPrefixes) || !equalPrefixDomains(prior.RemotePrefixes, m.RemotePrefixes) {
+			if d.ID == uuid.Nil || seen[d.ID] || d.Kind != "apply" || !runtimeDigest(d.OwnershipDigest) || prior.ConnectionID != connection || prior.OrgID != m.OrgID || prior.SiteID != m.SiteID || prior.NodeID != m.NodeID || prior.BGP != nil || prior.BGPVersion != nil || prior.ProfileID != m.ProfileID || !equalPrefixDomains(prior.LocalPrefixes, m.LocalPrefixes) || !equalPrefixDomains(prior.RemotePrefixes, m.RemotePrefixes) {
 				return ErrConnectionConflict
 			}
 			ref, present := byDelivery[d.ID]

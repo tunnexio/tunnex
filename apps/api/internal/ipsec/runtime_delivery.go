@@ -47,14 +47,14 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if !fresh && e != nil {
 		return invalid(createError(e))
 	}
-	if fresh && manifest.BGP == nil && locked.recoveryEligible {
+	if fresh && manifest.BGP == nil && manifest.ProfileID != GCPClassicProfile && locked.recoveryEligible {
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
 	}
-	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) {
+	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) {
 		return invalid(ErrConnectionIneligible)
 	}
 	raw, digest := runtimeHash(manifest)
@@ -68,7 +68,7 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 		return invalid(ErrConnectionConflict)
 	}
 	result := RuntimeMaterial{RuntimeDelivery: delivery, Policy: policy}
-	for i, t := range tunnels {
+	for i, t := range tunnels[:activeTunnelCount(manifest.ProfileID)] {
 		var sealed string
 		e = tx.QueryRow(ctx, `SELECT sealed_psk FROM ipsec_tunnel_secrets WHERE org_id=$1 AND connection_id=$2 AND tunnel_id=$3 AND secret_revision=$4 FOR UPDATE`, p.OrgID, id, t.ID, t.SecretRevision).Scan(&sealed)
 		if e != nil {
@@ -265,7 +265,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)

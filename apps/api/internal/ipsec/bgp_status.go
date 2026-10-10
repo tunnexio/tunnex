@@ -13,7 +13,7 @@ import (
 
 func validBGPStatus(m RuntimeManifest, r RuntimeStatusReport) bool {
 	b := r.BGP
-	if !runtimeBGPCompatible(m, true) || b == nil || b.Version != 1 || b.Sequence == 0 || b.Sequence > 9007199254740991 || r.RecoveryVersion != nil || r.ActiveSlot != nil || r.SelectionSequence != nil || b.Routes == nil || len(b.Routes) > len(m.RemotePrefixes) {
+	if r.TransportVersion != nil || r.TunnelCount != nil || !runtimeBGPCompatible(m, true) || b == nil || b.Version != 1 || b.Sequence == 0 || b.Sequence > 9007199254740991 || r.RecoveryVersion != nil || r.ActiveSlot != nil || r.SelectionSequence != nil || b.Routes == nil || len(b.Routes) > len(m.RemotePrefixes) {
 		return false
 	}
 	allowed := map[string]bool{}

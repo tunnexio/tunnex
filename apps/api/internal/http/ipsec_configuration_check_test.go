@@ -95,3 +95,23 @@ func TestIPsecConfigurationCheckAuthorityBeforeParsing(t *testing.T) {
 		})
 	}
 }
+
+func TestGCPClassicConfigurationPreflightRoute(t *testing.T) {
+	org := uuid.New()
+	p := &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: rbac.RoleOwner}}
+	router, err := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), Deps{AuthFn: func(*http.Request) *authctx.Principal { return p }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"profile_id":"gcp-classic-static-ipv4-v1","mode":"ipv4-static","customer_outside_address":"9.9.9.9","local_prefixes":["10.10.0.0/16"],"remote_prefixes":["10.20.0.0/16"],"tunnels":[{"outside_address":"8.8.8.8","inside_cidr":"","customer_inside_address":"","cloud_inside_address":"","psk":"0-GCP-secret!"}]}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/organizations/"+org.String()+"/ipsec/configuration-check", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("Classic preflight status%d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Fatal("secret projection")
+	}
+}

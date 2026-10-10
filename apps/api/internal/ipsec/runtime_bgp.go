@@ -3,6 +3,12 @@ package ipsec
 // runtimeBGPCompatible protects apply/material/lease authorization. Cleanup
 // intentionally uses exact immutable lineage without requiring current capability.
 func runtimeBGPCompatible(m RuntimeManifest, eligible bool) bool {
+	if m.ProfileID == GCPClassicProfile {
+		return classicManifestCompatible(m, true)
+	}
+	if m.TransportVersion != nil || m.TunnelCount != nil {
+		return false
+	}
 	if !isBGPProfile(m.ProfileID) {
 		return m.ProfileID == "aws-static-ipv4-v1" && m.BGP == nil && m.BGPVersion == nil
 	}

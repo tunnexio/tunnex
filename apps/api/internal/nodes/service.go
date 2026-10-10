@@ -2164,6 +2164,7 @@ type AppliedPolicy struct {
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion        int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion      int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion    int    `json:"ipsec_gcp_classic_version"`
 	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
@@ -2261,6 +2262,9 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecGCPClassicVersion != 1 {
+		applied.IPsecGCPClassicVersion = 0
+	}
 	if applied.IPsecBGPVersion != 1 || applied.IPsecGCPHAVersion != 1 {
 		applied.IPsecGCPHAVersion = 0
 	}
@@ -2291,6 +2295,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ipsec_config_version":         applied.IPsecConfigVersion,
 		"ipsec_recovery_version":       applied.IPsecRecoveryVersion,
 		"ipsec_bgp_version":            applied.IPsecBGPVersion,
+		"ipsec_gcp_classic_version":    applied.IPsecGCPClassicVersion,
 		"ipsec_gcp_ha_version":         applied.IPsecGCPHAVersion,
 		"ipsec_retained_guard_version": applied.IPsecRetainedGuardVersion,
 		"egress_nat":                   egressNAT,
@@ -2380,6 +2385,7 @@ type NodeCapabilities struct {
 	// Freshness is the server-written policy_reported_at on the same node row.
 	IPsecConfigVersion        int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion      int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion    int    `json:"ipsec_gcp_classic_version"`
 	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`

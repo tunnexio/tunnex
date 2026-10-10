@@ -23,11 +23,12 @@ type CreateTunnel struct {
 	PSK string `json:"-"`
 }
 type CreateDisabledRequest struct {
-	ID        uuid.UUID
-	SiteID    uuid.UUID
-	GatewayID uuid.UUID
-	Name      string
-	Tunnels   [2]CreateTunnel
+	ID          uuid.UUID
+	SiteID      uuid.UUID
+	GatewayID   uuid.UUID
+	Name        string
+	Tunnels     [2]CreateTunnel
+	TunnelCount int
 }
 
 func validCreateRequest(org, actor uuid.UUID, r CreateDisabledRequest) bool {
@@ -39,10 +40,17 @@ func validCreateRequest(org, actor uuid.UUID, r CreateDisabledRequest) bool {
 			return false
 		}
 	}
+	count := r.TunnelCount
+	if count == 0 {
+		count = 2
+	}
+	if count < 1 || count > 2 || count == 1 && r.Tunnels[1] != (CreateTunnel{}) {
+		return false
+	}
 	if r.Tunnels[0].ID == r.Tunnels[1].ID {
 		return false
 	}
-	for _, t := range r.Tunnels {
+	for _, t := range r.Tunnels[:count] {
 		if t.ID == uuid.Nil || !validPSK(t.PSK) {
 			return false
 		}
@@ -70,6 +78,9 @@ func (s *ConnectionStore) CreateDisabled(ctx context.Context, org, actor uuid.UU
 }
 
 func (s *ConnectionStore) createDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateDisabledRequest, provider *StaticConfig) (Connection, error) {
+	if provider == nil && r.TunnelCount != 0 && r.TunnelCount != 2 {
+		return Connection{}, ErrConnectionInvalid
+	}
 	if !validCreateRequest(org, actor, r) {
 		return Connection{}, ErrConnectionInvalid
 	}
@@ -166,7 +177,11 @@ func (s *ConnectionStore) createDisabled(ctx context.Context, org, actor uuid.UU
 	if err = insertStaticRecreationBindings(ctx, tx, result, predecessors); err != nil {
 		return Connection{}, err
 	}
-	for i, t := range r.Tunnels {
+	count := 2
+	if provider != nil {
+		count = activeTunnelCount(providerProfile(*provider))
+	}
+	for i, t := range r.Tunnels[:count] {
 		if _, err = tx.Exec(ctx, `INSERT INTO ipsec_tunnels(id,org_id,connection_id,slot) VALUES($1,$2,$3,$4)`, t.ID, org, result.ID, i+1); err != nil {
 			return Connection{}, createError(err)
 		}

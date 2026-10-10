@@ -29,14 +29,14 @@ type ProviderConfiguration struct {
 }
 
 func (s *ConnectionStore) CreateProviderDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateProviderRequest) (Connection, error) {
-	if r.Config.ProfileID == GCPClassicProfile {
-		return Connection{}, ErrConnectionIneligible
+	if r.Config.ProfileID == GCPClassicProfile && r.TunnelIDs[1] != uuid.Nil {
+		return Connection{}, ErrConnectionInvalid
 	}
 	if ValidateProviderConfig(r.Config) != nil {
 		return Connection{}, ErrConnectionInvalid
 	}
-	identity := CreateDisabledRequest{ID: r.ID, SiteID: r.SiteID, GatewayID: r.GatewayID, Name: r.Name}
-	for i := range identity.Tunnels {
+	identity := CreateDisabledRequest{ID: r.ID, SiteID: r.SiteID, GatewayID: r.GatewayID, Name: r.Name, TunnelCount: activeTunnelCount(providerProfile(r.Config))}
+	for i := range r.Config.Tunnels {
 		identity.Tunnels[i] = CreateTunnel{ID: r.TunnelIDs[i], PSK: r.Config.Tunnels[i].PSK}
 	}
 	return s.createDisabled(ctx, org, actor, sealer, identity, &r.Config)
@@ -83,8 +83,10 @@ func checkProviderRanges(ctx context.Context, tx pgx.Tx, org uuid.UUID, config S
 	outside := []string{config.CustomerOutsideAddress}
 	for _, tunnel := range config.Tunnels {
 		outside = append(outside, tunnel.OutsideAddress)
-		if _, ok := subnetguard.CheckInside(netip.MustParsePrefix(tunnel.InsideCIDR), ranges); !ok {
-			return ErrConnectionConflict
+		if tunnel.InsideCIDR != "" {
+			if _, ok := subnetguard.CheckInside(netip.MustParsePrefix(tunnel.InsideCIDR), ranges); !ok {
+				return ErrConnectionConflict
+			}
 		}
 	}
 	for _, address := range outside {
@@ -109,7 +111,7 @@ func insertProvider(ctx context.Context, tx pgx.Tx, c Connection, r CreateDisabl
 		}
 	}
 	for i, t := range config.Tunnels {
-		if _, err := tx.Exec(ctx, `INSERT INTO ipsec_aws_tunnel_configs(tunnel_id,org_id,connection_id,slot,gateway_node_id,aws_outside_ipv4,inside_cidr,customer_inside_ipv4,aws_inside_ipv4) VALUES($1,$2,$3,$4,$5,$6::inet,$7::cidr,$8::inet,$9::inet)`, r.Tunnels[i].ID, c.OrgID, c.ID, i+1, r.GatewayID, t.OutsideAddress, t.InsideCIDR, t.CustomerInsideAddress, t.CloudInsideAddress); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO ipsec_aws_tunnel_configs(tunnel_id,org_id,connection_id,slot,gateway_node_id,aws_outside_ipv4,inside_cidr,customer_inside_ipv4,aws_inside_ipv4) VALUES($1,$2,$3,$4,$5,$6::inet,NULLIF($7,'')::cidr,NULLIF($8,'')::inet,NULLIF($9,'')::inet)`, r.Tunnels[i].ID, c.OrgID, c.ID, i+1, r.GatewayID, t.OutsideAddress, t.InsideCIDR, t.CustomerInsideAddress, t.CloudInsideAddress); err != nil {
 			return createError(err)
 		}
 	}
@@ -183,7 +185,7 @@ func (s *ConnectionStore) ReadProvider(ctx context.Context, org, id uuid.UUID) (
 	if err = tx.QueryRow(ctx, `SELECT host(customer_outside_ipv4) FROM ipsec_aws_static_configs WHERE org_id=$1 AND connection_id=$2`, org, id).Scan(&config.CustomerOutsideAddress); err != nil {
 		return ProviderConfiguration{}, ErrConnectionUnavailable
 	}
-	rows, err := tx.Query(ctx, `SELECT host(aws_outside_ipv4),inside_cidr::text,host(customer_inside_ipv4),host(aws_inside_ipv4) FROM ipsec_aws_tunnel_configs WHERE org_id=$1 AND connection_id=$2 ORDER BY slot`, org, id)
+	rows, err := tx.Query(ctx, `SELECT host(aws_outside_ipv4),COALESCE(inside_cidr::text,''),COALESCE(host(customer_inside_ipv4),''),COALESCE(host(aws_inside_ipv4),'') FROM ipsec_aws_tunnel_configs WHERE org_id=$1 AND connection_id=$2 ORDER BY slot`, org, id)
 	if err != nil {
 		return ProviderConfiguration{}, ErrConnectionUnavailable
 	}
