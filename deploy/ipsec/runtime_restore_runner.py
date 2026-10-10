@@ -528,8 +528,8 @@ def main():
     p.add_argument('--timeout', type=int, required=True)
     p.add_argument('--stop-timeout', type=int, required=True)
     args = p.parse_args()
-    if not 10 <= args.timeout <= 600 or not 1 <= args.stop_timeout <= 20:
-        p.error('bounded timeout required: recovery 10..600 seconds; stop 1..20 seconds')
+    if not 10 <= args.timeout <= 600 or not 1 <= args.stop_timeout <= 45:
+        p.error('bounded timeout required: recovery 10..600 seconds; stop 1..45 seconds')
     if args.resume_evidence_dir and args.supersede_unconsumed_evidence_dir:
         p.error('resume and fresh-stop supersession are distinct workflows')
     resume(args) if args.resume_evidence_dir else run(args)

@@ -240,3 +240,5 @@ continuity is recorded separately from the scheduler evidence.
 The runner checks exact loaded connection inventory before every `--load-conns`:
 strongSwan unloads connection names missing from that file, so this qualification
 must never be used against a shared daemon containing other connections.
+
+Controlled shutdown now joins the owned IPsec runtime cleanup for at most 20 seconds. Use `--stop-timeout 45` for a controlled Docker stop so this join can finish before Docker forces termination. The runner accepts stop grace from 1 through 45 seconds; the existing 10-second example remains accepted. Recovery observation remains `--timeout 180` in the example and uses its separate unchanged 10..600-second bound. A join timeout reports incomplete cleanup and never supplies restoration proof or adopts stale artifacts.

@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 import unittest
+from unittest import mock
 
 import runtime_restore_runner as runner
 from test_runtime_restore_profiles import entry as profile_entry
@@ -223,6 +224,23 @@ class UnconsumedReceiptTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
         bad = copy.deepcopy(args); bad[0]['Restoration'] = {'Retired': []}
         with self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
+
+
+class StopTimeoutCLITests(unittest.TestCase):
+    def test_exact_stop_grace_bounds_preserve_recovery_wait(self):
+        options = ['runner']
+        for name in ('container', 'journal', 'receipt-helper', 'evidence-dir', 'swanctl', 'vici', 'strongswan-conf'):
+            options += ['--' + name, '/owned']
+        options += ['--timeout', '180']
+        for grace in (1, 10, 45):
+            with self.subTest(grace=grace), mock.patch('sys.argv', options + ['--stop-timeout', str(grace)]), mock.patch.object(runner, 'run') as run:
+                runner.main()
+                self.assertEqual(run.call_args.args[0].stop_timeout, grace)
+                self.assertEqual(run.call_args.args[0].timeout, 180)
+        for grace in (0, 46):
+            with self.subTest(grace=grace), mock.patch('sys.argv', options + ['--stop-timeout', str(grace)]), mock.patch.object(runner, 'run') as run:
+                with self.assertRaises(SystemExit): runner.main()
+                run.assert_not_called()
 
 
 if __name__ == '__main__':
