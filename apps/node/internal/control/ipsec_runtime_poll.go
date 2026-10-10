@@ -72,33 +72,56 @@ func RefreshIPsecRuntimeStatus(ctx context.Context, client IPsecRuntimeTransport
 // PollIPsecRuntime is called serially by the runtime owner. Authority is fetched
 // afresh on every pass; this function retains no material, grants, or lease.
 func PollIPsecRuntime(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
+	_, err := PollIPsecRuntimeValidated(ctx, client, controller)
+	return err
+}
+
+// IPsecRuntimeMaintainer handles only previously applied unchanged deliveries.
+// Missing results retain the ordinary Apply path and its material validation.
+type IPsecRuntimeMaintainer interface {
+	MaintainIPsecRuntime(context.Context, []ipsec.RuntimeMaterial) ([]ipsec.RuntimeMaintenanceResult, error)
+}
+
+// PollIPsecRuntimeValidated reports a complete nonempty application pass. The
+// owner still validates on failed discovery/polling, empty, or cleanup-only work.
+func PollIPsecRuntimeValidated(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) (bool, error) {
 	var cursor *uuid.UUID
 	var failed bool
+	var applied bool
 	seen := map[uuid.UUID]bool{}
 	for pageNumber := 0; pageNumber < 16; pageNumber++ {
 		page, e := client.IPsecPending(ctx, cursor, 100)
 		if e != nil {
-			return ErrIPsecControl
+			return false, ErrIPsecControl
 		}
 		if len(page.Items) > 100 {
-			return ErrIPsecControl
+			return false, ErrIPsecControl
 		}
 		for _, item := range page.Items {
 			if item.ConnectionID == uuid.Nil || item.DesiredRevision <= 0 || seen[item.ConnectionID] {
-				return ErrIPsecControl
+				return false, ErrIPsecControl
 			}
 			seen[item.ConnectionID] = true
 		}
 		// Cleanup on this page takes precedence over renewed activation.
 		for _, kind := range []string{"cleanup", "apply"} {
+			if kind == "apply" {
+				if maintainer, ok := controller.(IPsecRuntimeMaintainer); ok {
+					count, err := pollIPsecMaintainedPage(ctx, client, controller, maintainer, page.Items)
+					applied = applied || count > 0
+					failed = failed || err != nil
+					continue
+				}
+			}
 			for _, item := range page.Items {
 				if item.Kind != "cleanup" && item.Kind != "apply" {
-					return ErrIPsecControl
+					return false, ErrIPsecControl
 				}
 				if item.Kind != kind {
 					continue
 				}
 				if kind == "apply" {
+					applied = true
 					if RefreshIPsecRuntimeStatus(ctx, client, controller) != nil {
 						failed = true
 					}
@@ -116,24 +139,23 @@ func PollIPsecRuntime(ctx context.Context, client IPsecRuntimeTransport, control
 			}
 		}
 		if page.NextCursor == nil {
-			if failed {
-				return ErrIPsecControl
+			if failed || ctx.Err() != nil {
+				return false, ErrIPsecControl
 			}
-			return nil
+			return applied, nil
 		}
 		next := *page.NextCursor
 		if next == uuid.Nil || cursor != nil && bytes.Compare(next[:], cursor[:]) <= 0 || len(page.Items) == 0 || next != page.Items[len(page.Items)-1].ConnectionID {
-			return ErrIPsecControl
+			return false, ErrIPsecControl
 		}
 		cursor = &next
 	}
-	return ErrIPsecControl
+	return false, ErrIPsecControl
 }
 func pollIPsecItem(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier, item ipsec.RuntimePending) error {
 	var ack ipsec.RuntimeAcknowledgement
 	var delivery ipsec.RuntimeDelivery
 	var err error
-	var statusErr error
 	switch item.Kind {
 	case "apply":
 		material, e := client.IPsecMaterial(ctx, item.ConnectionID, item.DesiredRevision)
@@ -149,13 +171,7 @@ func pollIPsecItem(ctx context.Context, client IPsecRuntimeTransport, controller
 		if !runtimeDeliveryMatches(delivery, item) {
 			return ErrIPsecControl
 		}
-		ack, err = controller.Apply(ctx, material)
-		report, observeErr := controller.ObserveIPsecStatus(ctx, delivery)
-		if observeErr != nil || !runtimeStatusMatchesDelivery(delivery, report) {
-			statusErr = ErrIPsecControl
-		} else if client.IPsecReportStatus(ctx, item.ConnectionID, report) != nil {
-			statusErr = ErrIPsecControl
-		}
+		return pollIPsecApplyMaterial(ctx, client, controller, item, material)
 	case "cleanup":
 		cleanup, e := client.IPsecCleanup(ctx, item.ConnectionID, item.DesiredRevision)
 		if e != nil {
@@ -175,7 +191,7 @@ func pollIPsecItem(ctx context.Context, client IPsecRuntimeTransport, controller
 	if client.IPsecAcknowledge(ctx, item.ConnectionID, ack) != nil {
 		return ErrIPsecControl
 	}
-	return statusErr
+	return nil
 }
 func runtimeDeliveryMatches(d ipsec.RuntimeDelivery, item ipsec.RuntimePending) bool {
 	return d.ID != uuid.Nil && d.Kind == item.Kind && d.DesiredRevision == item.DesiredRevision && d.Manifest.ConnectionID == item.ConnectionID && ((item.Kind == "apply" && d.Manifest.DesiredRevision == item.DesiredRevision) || (item.Kind == "cleanup" && d.Manifest.DesiredRevision > 0 && d.Manifest.DesiredRevision < item.DesiredRevision))
@@ -238,4 +254,132 @@ func runtimeStatusMatchesDelivery(d ipsec.RuntimeDelivery, report ipsec.RuntimeS
 		return true
 	}
 	return (m.RecoveryVersion == nil && report.RecoveryVersion == nil) || (m.RecoveryVersion != nil && *m.RecoveryVersion == 1 && report.RecoveryVersion != nil && *report.RecoveryVersion == 1)
+}
+
+func pollIPsecApplyMaterial(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier, item ipsec.RuntimePending, material ipsec.RuntimeMaterial) error {
+	delivery := material.RuntimeDelivery
+	ack, err := controller.Apply(ctx, material)
+	var statusErr error
+	report, observeErr := controller.ObserveIPsecStatus(ctx, delivery)
+	if observeErr != nil || !runtimeStatusMatchesDelivery(delivery, report) {
+		statusErr = ErrIPsecControl
+	} else if client.IPsecReportStatus(ctx, item.ConnectionID, report) != nil {
+		statusErr = ErrIPsecControl
+	}
+	if err != nil || ack.DeliveryID != delivery.ID || ack.DesiredRevision != item.DesiredRevision || ack.Kind != item.Kind {
+		return ErrIPsecControl
+	}
+	if client.IPsecAcknowledge(ctx, item.ConnectionID, ack) != nil {
+		return ErrIPsecControl
+	}
+	return statusErr
+}
+
+// Cleanup has already run for this page. Fresh normal material is retained only
+// through this pass, and every PSK is cleared even on cancellation or rejection.
+func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier, maintainer IPsecRuntimeMaintainer, items []ipsec.RuntimePending) (int, error) {
+	materials := []ipsec.RuntimeMaterial{}
+	pending := []ipsec.RuntimePending{}
+	byDelivery := map[uuid.UUID]int{}
+	failed := false
+	defer func() {
+		for i := range materials {
+			for j := range materials[i].Secrets {
+				materials[i].Secrets[j].PSK = ""
+			}
+		}
+	}()
+	for _, item := range items {
+		if item.Kind != "apply" {
+			continue
+		}
+		material, err := client.IPsecMaterial(ctx, item.ConnectionID, item.DesiredRevision)
+		if err != nil {
+			failed = true
+			continue
+		}
+		materials = append(materials, material)
+		pending = append(pending, item)
+		index := len(materials) - 1
+		if !runtimeDeliveryMatches(material.RuntimeDelivery, item) {
+			return 0, ErrIPsecControl
+		}
+		if _, duplicate := byDelivery[material.ID]; duplicate {
+			return 0, ErrIPsecControl
+		}
+		byDelivery[material.ID] = index
+	}
+	if len(materials) == 0 {
+		if failed {
+			return 0, ErrIPsecControl
+		}
+		return 0, nil
+	}
+	results, err := maintainer.MaintainIPsecRuntime(ctx, materials)
+	if err != nil {
+		if len(results) != 0 {
+			return 0, ErrIPsecControl
+		}
+		failed = true
+	}
+	if ctx.Err() != nil || len(results) > len(materials) {
+		return 0, ErrIPsecControl
+	}
+	maintained := map[uuid.UUID]ipsec.RuntimeMaintenanceResult{}
+	// Validate the entire result envelope before sending even the first ACK.
+	for _, result := range results {
+		ack := result.Acknowledgement
+		index, ok := byDelivery[ack.DeliveryID]
+		if !ok {
+			return 0, ErrIPsecControl
+		}
+		if _, duplicate := maintained[ack.DeliveryID]; duplicate {
+			return 0, ErrIPsecControl
+		}
+		m := materials[index]
+		if ack.Kind != "apply" || ack.Result != "applied" || ack.DesiredRevision != pending[index].DesiredRevision || ack.OwnershipDigest != m.OwnershipDigest || !runtimeStatusMatchesDelivery(m.RuntimeDelivery, result.Report) {
+			return 0, ErrIPsecControl
+		}
+		maintained[ack.DeliveryID] = result
+	}
+	for i, material := range materials {
+		item := pending[i]
+		if result, ok := maintained[material.ID]; ok {
+			if ctx.Err() != nil {
+				return 0, ErrIPsecControl
+			}
+			if client.IPsecReportStatus(ctx, item.ConnectionID, result.Report) != nil {
+				failed = true
+			}
+			if client.IPsecAcknowledge(ctx, item.ConnectionID, result.Acknowledgement) != nil {
+				failed = true
+			}
+			continue
+		}
+	}
+	// Publish the completed maintained commit before an ordinary fallback can
+	// replace or withdraw runtime state. Never report cached positive state after it.
+	for i, material := range materials {
+		if _, ok := maintained[material.ID]; ok {
+			continue
+		}
+		item := pending[i]
+		if RefreshIPsecRuntimeStatus(ctx, client, controller) != nil {
+			failed = true
+		}
+		if observer, ok := controller.(IPsecRecoveryRefresher); ok {
+			observationCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if observer.RefreshIPsecRecovery(observationCtx) != nil {
+				failed = true
+			}
+			cancel()
+		}
+		if pollIPsecApplyMaterial(ctx, client, controller, item, material) != nil {
+			failed = true
+		}
+	}
+	if failed || ctx.Err() != nil {
+		return len(materials), ErrIPsecControl
+	}
+	return len(materials), nil
 }

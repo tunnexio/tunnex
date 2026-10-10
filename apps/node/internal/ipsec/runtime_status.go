@@ -51,6 +51,16 @@ func (c *RuntimeController) ObserveIPsecStatus(ctx context.Context, d RuntimeDel
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.observeIPsecStatusLocked(ctx, d, report, bgp, recovery)
+}
+
+// The owner already holds c.mu; observations and durable sequence publication
+// are identical for ordinary status and a completed unchanged maintenance.
+func (c *RuntimeController) observeIPsecStatusLocked(ctx context.Context, d RuntimeDelivery, report RuntimeStatusReport, bgp, recovery bool) (RuntimeStatusReport, error) {
+	count, err := runtimeTransportContract(d.Manifest)
+	if err != nil {
+		return RuntimeStatusReport{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || c.journal == nil || c.config.Daemon == nil || c.config.DaemonAlive == nil {
 		return report, nil
 	}
