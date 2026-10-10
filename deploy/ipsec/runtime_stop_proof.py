@@ -16,8 +16,10 @@ import subprocess
 import time
 
 
-def command(*args):
-    return subprocess.check_output(args, text=True, timeout=30).strip()
+def command(*args, timeout=30):
+    if not 1 <= timeout <= 50:
+        raise ValueError("bounded command timeout required")
+    return subprocess.check_output(args, text=True, timeout=timeout).strip()
 
 
 def inspect(container):

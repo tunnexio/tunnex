@@ -91,7 +91,7 @@ class OrchestrationTests(unittest.TestCase):
             calls = []
             with patch.object(runner, 'preflight', return_value=({'id': 'exact-id'}, {}, target, None, lock)), \
                  patch.object(runner.proof, 'snapshot', return_value={'scope': 'exact'}), \
-                 patch.object(runner.proof, 'command', side_effect=lambda *a: calls.append(a) or ''), \
+                 patch.object(runner.proof, 'command', side_effect=lambda *a, **kw: calls.append(a) or ''), \
                  patch.object(runner.proof, 'prove', side_effect=ValueError('holder survived')):
                 with self.assertRaisesRegex(ValueError, 'holder survived'):
                     runner.run(args)
@@ -127,10 +127,15 @@ class OrchestrationTests(unittest.TestCase):
     def test_same_inode_controlled_sequence_releases_gate_only_after_receipt(self):
         self.exercise_controlled_sequence()
 
+    def test_controlled_stop_command_bound_supports_exact_grace(self):
+        for grace in (10, 45):
+            with self.subTest(grace=grace):
+                self.exercise_controlled_sequence(stop_timeout=grace)
+
     def test_explicit_supersession_captures_new_stop_and_preserves_old_receipt(self):
         self.exercise_controlled_sequence(supersede=True)
 
-    def exercise_controlled_sequence(self, supersede=False):
+    def exercise_controlled_sequence(self, supersede=False, stop_timeout=2):
         import os
         import tempfile
         from pathlib import Path
@@ -145,14 +150,16 @@ class OrchestrationTests(unittest.TestCase):
             journal = Path(tmp) / 'journal.json'
             journal.write_text('{}')
             lock = os.open(Path(tmp) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
-            args = SimpleNamespace(evidence_dir=tmp, journal=str(journal), stop_timeout=2, timeout=10,
+            args = SimpleNamespace(evidence_dir=tmp, journal=str(journal), stop_timeout=stop_timeout, timeout=10,
                                    receipt_helper='/helper', strongswan_conf='/conf', swanctl='/swanctl', vici='unix:///vici')
             previous = b'{"old":"exact-unconsumed-receipt"}' if supersede else None
             if previous:
                 target.write_bytes(previous)
                 args.supersede_unconsumed_evidence_dir = '/exact-historical-attempt'
             calls = []
-            def command(*a):
+            bounds = []
+            def command(*a, **kw):
+                bounds.append((a, kw))
                 calls.append(a)
                 if a[0] == '/helper':
                     Path(a[a.index('-out') + 1]).write_text('{"valid":"receipt"}')
@@ -190,6 +197,8 @@ class OrchestrationTests(unittest.TestCase):
             self.assertTrue(target.exists())
             self.assertFalse((Path(tmp) / 'restoration-startup-gate').exists())
             self.assertEqual(calls[0][:2], ('docker', 'stop'))
+            self.assertEqual(bounds[0][1], {'timeout': stop_timeout + 5})
+            self.assertTrue(all(not kw for _, kw in bounds[1:]), 'only controlled stop overrides command timeout')
             self.assertEqual(calls[1][:2], ('docker', 'start'))
             self.assertEqual(calls[2][0], '/helper')
             if supersede:

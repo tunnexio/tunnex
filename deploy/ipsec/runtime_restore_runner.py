@@ -355,7 +355,7 @@ def run(args):
         # Mark before invocation: even a CLI timeout may have stopped the runtime.
         stopped = True
         stop_started = time.monotonic()
-        proof.command('docker', 'stop', '--time', str(args.stop_timeout), cid)
+        proof.command('docker', 'stop', '--time', str(args.stop_timeout), cid, timeout=args.stop_timeout + 5)
         evidence = proof.prove(before)
         proof.private_write(directory / 'stopped.json', evidence)
         journal_raw = proof.private_bytes(args.journal)

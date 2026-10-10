@@ -242,3 +242,5 @@ strongSwan unloads connection names missing from that file, so this qualificatio
 must never be used against a shared daemon containing other connections.
 
 Controlled shutdown now joins the owned IPsec runtime cleanup for at most 20 seconds. Use `--stop-timeout 45` for a controlled Docker stop so this join can finish before Docker forces termination. The runner accepts stop grace from 1 through 45 seconds; the existing 10-second example remains accepted. Recovery observation remains `--timeout 180` in the example and uses its separate unchanged 10..600-second bound. A join timeout reports incomplete cleanup and never supplies restoration proof or adopts stale artifacts.
+
+Only the controlled `docker stop` subprocess receives an explicit command timeout of its stop grace plus five seconds (45-second grace gives a 50-second command bound). Other proof, readback, start, and receipt-helper commands retain their 30-second bound. This prevents the observer from abandoning a permitted stop at 30 seconds; it does not extend the recovery deadline.
