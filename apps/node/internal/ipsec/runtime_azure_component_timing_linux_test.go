@@ -20,7 +20,7 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	if os.Getenv("TUNNEX_AZURE_OWNED_COMPONENT_TIMING") != "1" {
 		t.Skip("explicit owned read-only timing only")
 	}
-	const expected = "bd28fea088fde56134ce3ef745ffa997b94fb33530534eb2ee0f3670eee4d2a2"
+	const expected = "3b6181e1dc6d10377d50d10be02e4ffde9c4eda9ccf0fbab0220cd066a351c8b"
 	exe, e := os.ReadFile("/proc/1/exe")
 	if os.Geteuid() != 0 || os.Getenv("TUNNEX_AZURE_EXPECTED_NODE_SHA256") != expected || e != nil || remediationSHA(exe) != expected {
 		t.Fatal("exact_node_refused")
@@ -64,11 +64,11 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	ns, e := os.Readlink("/proc/self/ns/net")
 	boot, be := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if e != nil || be != nil || entry.Phase != RuntimeApplied || entry.ContractVersion != 3 || entry.Allocation.ProfileID != AzureActiveActiveBGPProfile || entry.Allocation.activeTunnelCount() != 2 || entry.Allocation.ConnectionID.String() != "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99" || entry.Allocation.Namespace != ns || entry.Restoration == nil || entry.Restoration.BootID != strings.TrimSpace(string(boot)) || !validJournalBGP(entry) || !validBGPRoutes(entry) {
-		t.Fatal("applied22_scope_refused")
+		t.Fatal("applied24_scope_refused")
 	}
 	for _, engine := range entry.Engines {
-		if engine.Binding.DesiredRevision != 22 {
-			t.Fatal("applied22_binding_refused")
+		if engine.Binding.DesiredRevision != 24 {
+			t.Fatal("applied24_binding_refused")
 		}
 	}
 	guard := payload.Guards[0]
