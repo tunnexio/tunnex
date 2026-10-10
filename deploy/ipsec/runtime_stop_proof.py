@@ -126,6 +126,14 @@ def state_mount(identity, journal):
     return {'source': mount['Source'], 'destination': mount['Destination'], 'type': mount['Type']}
 
 
+def docker_cgroup_paths(container_id):
+    """Only exact Docker cgroup-v2 paths bound to the inspected full ID."""
+    if not isinstance(container_id, str) or not re.fullmatch('[0-9a-f]{64}', container_id):
+        raise ValueError('invalid Docker container identity')
+    return ('/docker/' + container_id,
+            '/system.slice/docker-' + container_id + '.scope')
+
+
 def snapshot(container, journal):
     journal_raw = private_bytes(journal)
     journal_value = json.loads(journal_raw)
@@ -138,8 +146,8 @@ def snapshot(container, journal):
     pid = s['Pid']
     ns = os.stat(f'/proc/{pid}/ns/net')
     cg = Path(f'/proc/{pid}/cgroup').read_text().strip()
-    expected = '0::/docker/' + identity['id']
-    if cg != expected:
+    supported = docker_cgroup_paths(identity['id'])
+    if cg not in tuple('0::' + path for path in supported):
         raise ValueError('unsupported cgroup layout; requires dedicated cgroup v2 Docker host')
     b = boot()
     again = inspect(identity['id'])
@@ -148,7 +156,7 @@ def snapshot(container, journal):
     return {'version': 1, 'boot': b, 'container': identity['id'],
             'pid': pid, 'started': s['StartedAt'], 'sandbox': identity['sandbox'], 'state_mount': mount,
             'namespace': {'device': ns.st_dev, 'inode': ns.st_ino},
-            'cgroup': '/sys/fs/cgroup/docker/' + identity['id'],
+            'cgroup': '/sys/fs/cgroup' + cg[3:],
             'observed_ns': time.time_ns(), 'journal': str(Path(journal).resolve()),
             'journal_entries_sha256': journal_digest,
             'journal_raw_sha256': hashlib.sha256(journal_raw).hexdigest()}
@@ -169,7 +177,7 @@ def validate_stopped(before, identity, current_boot):
 def prove(before):
     if before.get('version') != 1 or not re.fullmatch('[0-9a-f]{64}', before['container']):
         raise ValueError('invalid snapshot')
-    if before['cgroup'] != '/sys/fs/cgroup/docker/' + before['container']:
+    if before['cgroup'] not in tuple('/sys/fs/cgroup' + path for path in docker_cgroup_paths(before['container'])):
         raise ValueError('foreign cgroup')
     current_raw = private_bytes(before['journal'])
     current_journal = json.loads(current_raw)
