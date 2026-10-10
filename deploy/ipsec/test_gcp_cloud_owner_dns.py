@@ -4,6 +4,10 @@ class DNSPlanTests(unittest.TestCase):
  def manifest(self):return [{'profile':'classic','connection_id':'b79d7eda-920a-40c4-9d05-d8959144ea35','configuration_revision':1}]
  def test_baseline_preserved_and_scoped(self):
   p={'id':'old','legacy_default':False,'name':'baseline','provider_hint':'custom','zone_suffixes':['existing.test'],'endpoints':[{'address':'10.2.0.53','port':53,'transport':'udp'}]};before={'profiles':[p]};original=copy.deepcopy(before);body=dns.build(before,self.manifest());self.assertEqual(before,original);self.assertEqual(body['profiles'][0]['endpoints'],p['endpoints']);self.assertEqual(body['profiles'][1]['ipsec_path']['source_address'],'10.70.0.2');self.assertEqual(body['profiles'][1]['zone_suffixes'],['classic.gcp.s2s-qa.tunnex.app']);self.assertEqual(len(body['profiles'][1]['endpoints']),2)
+ def test_server_endpoint_order_matches_prepared_semantics(self):
+  body=dns.build(None,self.manifest());server=copy.deepcopy(body)
+  for p in server['profiles']:p['endpoints'].sort(key=lambda e:(e['address'],e['port'],e['transport']))
+  self.assertEqual(dns.canonical(body),dns.canonical(server));self.assertEqual([e['transport'] for e in body['profiles'][0]['endpoints']],['tcp','udp'])
  def test_replay_legacy_and_bad_revision_refused(self):
   body=dns.build(None,self.manifest())
   for before in ({'profiles':body['profiles']},{'profiles':[{'legacy_default':True}]}):

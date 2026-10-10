@@ -17,7 +17,7 @@ def build(baseline,manifest):
         if type(item['configuration_revision']) is not int or item['configuration_revision']<1:raise ValueError('actual configuration revision required')
         name='GCP cloud QA '+item['profile']
         if any(p['name']==name or any(s==zone or s.endswith('.'+zone) or zone.endswith('.'+s) for s in p['zone_suffixes']) for p in profiles):raise ValueError('existing profile/suffix collision; no replay')
-        profiles.append({'name':name,'provider_hint':'google_cloud','zone_suffixes':[zone],'endpoints':[{'address':ip,'port':53,'transport':t} for t in ('udp','tcp')],'ipsec_path':{'connection_id':item['connection_id'],'configuration_revision':item['configuration_revision'],'source_address':'10.70.0.2'}})
+        profiles.append({'name':name,'provider_hint':'google_cloud','zone_suffixes':[zone],'endpoints':[{'address':ip,'port':53,'transport':t} for t in ('tcp','udp')],'ipsec_path':{'connection_id':item['connection_id'],'configuration_revision':item['configuration_revision'],'source_address':'10.70.0.2'}})
     if len(profiles)>16:raise ValueError('profile limit')
     return {'profiles':profiles}
 def verify_live(item,connection,configuration,status,eligibility,now):
