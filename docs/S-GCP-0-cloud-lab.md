@@ -1,6 +1,6 @@
 # GCP-0 isolated cloud lab
 
-Initial inventory and owned resource creation were recorded on 2026-10-10 through the corrected human-provided bastion. Subsequent SSH access is blocked; this document does not assert current cloud health or successful VPN/DNS traffic.
+Initial inventory and owned resource creation were recorded on 2026-10-10 through the corrected human-provided bastion. The user restored SSH and subsequent bastion and pinned gateway commands succeeded; this document does not assert current cloud health or successful VPN/DNS traffic.
 
 - Bastion: `cyberking9560@34.131.23.179`, host `bastion-host`, existing default VPC; preserve it.
 - Project: `project-0048836f-6ba1-4a14-8da`; billing enabled; Compute API enabled. DNS API not enabled in initial inventory.
@@ -23,11 +23,11 @@ Initial inventory and owned resource creation were recorded on 2026-10-10 throug
 
 ## Creation checkpoint and SSH incident
 
-The [integration epic](EPIC-gcp-site-to-site.md#qualification-checkpoint--2026-10-10) records 39 owned resources created in this project/region: separate peer, HA and Classic VPCs, Cloud Router, two HA tunnels, one Classic tunnel, private targets and a Cloud DNS inbound policy. Initial “DNS API not enabled” above describes the earlier inventory, not a claim about the later creation state. The last observed key-free ownership ledger is `/home/cyberking9560/tn-gcps2s-20261010/resource-ledger.json` on the bastion, inspected before the SSH incident. It has not been reread since the public-key refusal; the path and count are last-observed evidence, not current verification. Project number was `947644326305`. Resource creation is distinct from SA establishment, BGP/routing readiness, application packets and Cloud DNS answers. None of those cloud traffic acceptance checks is verified.
+The [integration epic](EPIC-gcp-site-to-site.md#qualification-checkpoint--2026-10-10) records 39 owned resources created in this project/region: separate peer, HA and Classic VPCs, Cloud Router, two HA tunnels, one Classic tunnel, private targets and a Cloud DNS inbound policy. Initial “DNS API not enabled” above describes the earlier inventory, not a claim about the later creation state. The last observed key-free ownership ledger is `/home/cyberking9560/tn-gcps2s-20261010/resource-ledger.json` on the bastion, reread after SSH restoration. Four exact owned instances were RUNNING; all three owned tunnels reported NO_INCOMING_PACKETS at the refreshed checkpoint. Project number was `947644326305`. Resource creation is distinct from SA establishment, BGP/routing readiness, application packets and Cloud DNS answers. None of those cloud traffic acceptance checks is verified.
 
 After the generated lab SSH public key was moved from project metadata to the four owned VM metadata entries and that exact project key was removed, the existing Mac-to-bastion login began refusing public-key authentication. The user was informed and asked to restore access through Console. This records the observed sequence; it does not establish a complete authentication root cause or guarantee that reverting metadata alone restores access. Private key material and metadata payloads are omitted.
 
-Cloud execution is paused at the designated SSH boundary. No local gcloud/API fallback is used. Existing owned resources are retained for inspection; no broad teardown or modification of unrelated infrastructure is authorized by this checkpoint. Successful isolated Docker emulator tests in the [local control-plane receipt](../tests/gcp-s2s-local/CONTROL-PLANE-ACCEPTANCE-20261010.md) are separate from this cloud lab and do not resolve the SSH blocker.
+Cloud execution has resumed through the designated SSH boundary. No local gcloud/API fallback is used. Existing owned resources are retained for inspection; no broad teardown or modification of unrelated infrastructure is authorized by this checkpoint. Successful isolated Docker emulator tests in the [local control-plane receipt](../tests/gcp-s2s-local/CONTROL-PLANE-ACCEPTANCE-20261010.md) are separate from this cloud lab and do not establish Google Cloud traffic acceptance.
 
 ## Safety and cleanup ownership
 
