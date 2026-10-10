@@ -1,0 +1,93 @@
+{
+  "source": "069978cb",
+  "node_sha256": "3b6181e1dc6d10377d50d10be02e4ffde9c4eda9ccf0fbab0220cd066a351c8b",
+  "image": "sha256:927b761a199ef659808cff590530a936a8fa69ca5ae78941dfd403477cb03b01",
+  "container": "8e81b58de3e15aba6ff5b6613a7440eb6bd25bcae9f88f0a5c24457f3cfadd56",
+  "normal_disable": {
+    "desired_revision": 23,
+    "acknowledged_cleanup": "retained_guard",
+    "observed_at": "2026-10-10T17:29:13.444381Z"
+  },
+  "independent_absence": {
+    "entries": 11,
+    "all_retained": true,
+    "daemon_connections": 0,
+    "daemon_sas": 0,
+    "shared_keys": 0,
+    "sad": 0,
+    "spd": 0,
+    "links": 0,
+    "protocol242_routes": 0,
+    "full_guard": true,
+    "withdrawal_guard": true,
+    "journal_unchanged": true
+  },
+  "deployment": {
+    "original_namespace_preserved": true,
+    "original_state_preserved": true,
+    "prior_gateway_retained_stopped": true,
+    "old_checksum_transcription_refused_before_mutation": true,
+    "corrected_pin_verified_against_local_artifact": true
+  },
+  "normal_enable": {
+    "desired_revision": 24,
+    "applied_observed_at": "2026-10-10T17:32:01.673562Z",
+    "both_tunnels_up": true,
+    "both_bgp_established": true,
+    "approved_route_installed": true
+  },
+  "native_status": {
+    "observed_at": "2026-10-10T17:32:44.268395486Z",
+    "each_ike_count": 1,
+    "each_installed_child_count": 1,
+    "each_sad_count": 2,
+    "each_spd_direction_count": 1,
+    "positive_guard_snapshot": true
+  },
+  "packets": {
+    "started_at": "2026-10-10T17:32:55.360529Z",
+    "duration_seconds": 20,
+    "each_of_four_classes": {
+      "success": 20,
+      "failure": 0
+    },
+    "tcp_exact_64KiB_same_socket": true,
+    "source_preserved": true,
+    "udp_exact_4096": true,
+    "existing_socket_reuse": true,
+    "receipt_sha256": "36e47745d84bde36bcb76b13690bc5aca6387c6e441d4ecb5c4282e445c251b4"
+  },
+  "local_race": {
+    "focused_seconds": 12.012,
+    "frozen_differential_seconds": 12.021,
+    "passed": true
+  },
+  "component_sample": {
+    "observed_between": "2026-10-10T17:33:42.142207Z/2026-10-10T17:33:42.802523Z",
+    "all_seven_final_checks": true,
+    "daemon_ms": 1,
+    "kernel_ms": 2,
+    "xfrm_ms": 1,
+    "environment_ms": 91,
+    "full_guard_ms": 36,
+    "nft_two_reads_ms": 30,
+    "residual_census_and_parse_ms": 49,
+    "captured_docker_parser_ms": 18,
+    "captured_hook_parser_expected_refusal": true,
+    "authority": false,
+    "in_memory_epoch_observed": false
+  },
+  "isolated_fqdn_window": {
+    "start": "2026-10-10T17:34:00Z",
+    "observation": "2026-10-10T17:36:31.901998Z",
+    "four_requests_expired_without_response": true,
+    "original_deadline_seconds": 5,
+    "fresh_generation_proven": false,
+    "grant_issued": false
+  },
+  "limits": [
+    "Separate unpaired component samples do not establish causal speedup.",
+    "Local parser benchmark does not establish DNS timeout correction.",
+    "Twenty-second packets do not prove sustained stability or rekey."
+  ]
+}
