@@ -130,3 +130,67 @@ func TestAzureMaintainedBGPCardinalityAndChangedInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestAzureMaintainedObservationCardinalityAndAuthority(t *testing.T) {
+	for _, profile := range []string{AzureActiveActiveBGPProfile, AzureActiveStandbyBGPProfile} {
+		for _, scenario := range []string{"unchanged", "changed-grants", "canceled"} {
+			t.Run(profile+"/"+scenario, func(t *testing.T) {
+				r, m := azureMaintenanceRig(t, profile)
+				old := r.c.active[m.Manifest.ConnectionID]
+				deadline := old.Authority.deadline
+				if scenario == "changed-grants" {
+					m.Policy.Grants = []RuntimeGrant{{Source: m.Manifest.LocalPrefixes[0], Destination: m.Manifest.RemotePrefixes[0], Protocol: "tcp", PortLow: 53, PortHigh: 53}}
+					runtimeReseal(&m)
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				calls := 0
+				var published RuntimeStatusReport
+				results, err := r.c.maintainIPsecRuntimeObserved(ctx, []RuntimeMaterial{m}, maintenanceAuthority(r), func() bool { return true }, func(_ context.Context, d RuntimeDelivery, report RuntimeStatusReport) error {
+					calls++
+					if !reflect.DeepEqual(d, m.RuntimeDelivery) || report.DeliveryID != m.ID || report.DesiredRevision != m.DesiredRevision {
+						t.Fatal("unbound callback")
+					}
+					current := r.c.active[m.Manifest.ConnectionID]
+					if current.Authority == nil || current.Authority == old.Authority {
+						t.Fatal("callback before replacement native commit")
+					}
+					count, _ := runtimeTransportContract(m.Manifest)
+					for i := 0; i < count; i++ {
+						if report.Tunnels[i].ID != m.Manifest.Tunnels[i].ID || report.Tunnels[i].Slot != i+1 || report.Tunnels[i].Status != "unknown" {
+							t.Fatal("cached Up or wrong Azure slot")
+						}
+					}
+					if count == 1 && (report.Tunnels[1] != (RuntimeTunnelStatus{}) || report.TransportVersion == nil || *report.TransportVersion != 1 || report.TunnelCount == nil || *report.TunnelCount != 1) {
+						t.Fatal("fabricated standby slot")
+					}
+					if count == 2 && (report.TransportVersion != nil || report.TunnelCount != nil) {
+						t.Fatal("active-active wire changed")
+					}
+					published = report
+					if scenario == "canceled" {
+						cancel()
+					}
+					return nil
+				})
+				if old.Authority.deadline != deadline {
+					t.Fatal("original authority extended")
+				}
+				switch scenario {
+				case "changed-grants":
+					if err != nil || len(results) != 0 || calls != 0 {
+						t.Fatal("changed intent streamed or acknowledged", err, calls)
+					}
+				case "canceled":
+					if err == nil || len(results) != 0 || calls != 1 || len(r.c.active) != 0 {
+						t.Fatal("callback cancellation escaped whole-result gate")
+					}
+				default:
+					if err != nil || len(results) != 1 || calls != 1 || !reflect.DeepEqual(results[0].Report, published) {
+						t.Fatal("completed report/result mismatch", err, calls)
+					}
+				}
+			})
+		}
+	}
+}
