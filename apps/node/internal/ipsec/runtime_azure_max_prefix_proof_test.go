@@ -18,17 +18,18 @@ import (
 )
 
 type azureMaxProofBinding struct {
-	Mode                  string    `json:"mode"`
-	OrgID                 uuid.UUID `json:"org_id"`
-	SiteID                uuid.UUID `json:"site_id"`
-	GatewayID             uuid.UUID `json:"gateway_id"`
-	ConnectionID          uuid.UUID `json:"connection_id"`
-	DesiredRevision       int64     `json:"desired_revision"`
-	ConfigurationRevision int64     `json:"configuration_revision"`
-	MaximumPrefixes       int       `json:"maximum_prefixes"`
-	NamespaceDevice       uint64    `json:"namespace_device"`
-	NamespaceInode        uint64    `json:"namespace_inode"`
-	NodeExecutableSHA256  string    `json:"node_executable_sha256"`
+	HistoricalBoot        *azureProofHistoricalPins `json:"historical_boot,omitempty"`
+	Mode                  string                    `json:"mode"`
+	OrgID                 uuid.UUID                 `json:"org_id"`
+	SiteID                uuid.UUID                 `json:"site_id"`
+	GatewayID             uuid.UUID                 `json:"gateway_id"`
+	ConnectionID          uuid.UUID                 `json:"connection_id"`
+	DesiredRevision       int64                     `json:"desired_revision"`
+	ConfigurationRevision int64                     `json:"configuration_revision"`
+	MaximumPrefixes       int                       `json:"maximum_prefixes"`
+	NamespaceDevice       uint64                    `json:"namespace_device"`
+	NamespaceInode        uint64                    `json:"namespace_inode"`
+	NodeExecutableSHA256  string                    `json:"node_executable_sha256"`
 }
 
 func azureProofParentMatches(parent, node int) bool { return node > 0 && parent == node }
@@ -59,6 +60,10 @@ func TestAzureMaxProofParentAndSocketIdentityRefusals(t *testing.T) {
 }
 
 func azureMaxProofEntry(p runtimeJournalPayload, b azureMaxProofBinding, ns string) (RuntimeJournalEntry, error) {
+	return azureMaxProofEntryHistory(p, b, ns, nil)
+}
+
+func azureMaxProofEntryHistory(p runtimeJournalPayload, b azureMaxProofBinding, ns string, historical map[uuid.UUID]bool) (RuntimeJournalEntry, error) {
 	bad := func() (RuntimeJournalEntry, error) { return RuntimeJournalEntry{}, fmt.Errorf("journal_scope_refused") }
 	if !validJournalPayload(p) || p.OwnerID != b.GatewayID || b.OrgID == uuid.Nil || b.SiteID == uuid.Nil || b.ConnectionID == uuid.Nil || b.DesiredRevision < 1 || b.ConfigurationRevision < 1 || (b.Mode != "baseline" && b.Mode != "absence") || len(p.Entries) == 0 || len(p.Guards) != 1 || p.Guards[0].Namespace != ns {
 		return bad()
@@ -68,7 +73,7 @@ func azureMaxProofEntry(p runtimeJournalPayload, b azureMaxProofBinding, ns stri
 	latest := int64(0)
 	for _, e := range p.Entries {
 		// Site mapping is directly recorded, not filled from a normal API response.
-		if e.SiteID != b.SiteID || e.Allocation.Namespace != ns || e.Engines[0].Binding.OrgID != b.OrgID || e.Engines[0].Binding.GatewayID != b.GatewayID {
+		if e.SiteID != b.SiteID || (e.Allocation.Namespace != ns && !historical[e.DeliveryID]) || e.Engines[0].Binding.OrgID != b.OrgID || e.Engines[0].Binding.GatewayID != b.GatewayID {
 			return bad()
 		}
 		if e.Phase != RuntimeRetainedRefusal {
@@ -166,11 +171,14 @@ func azureMaxProofBaseline(e RuntimeJournalEntry, d DaemonInventory, k KernelInv
 }
 
 func azureMaxProofAbsence(p runtimeJournalPayload, d DaemonInventory, k KernelInventory, x XFRMInventory) error {
+	return azureMaxProofAbsenceHistory(p, d, k, x, nil)
+}
+func azureMaxProofAbsenceHistory(p runtimeJournalPayload, d DaemonInventory, k KernelInventory, x XFRMInventory, historical map[uuid.UUID]bool) error {
 	if len(d.SAs) != 0 || len(d.Connections) != 0 || len(d.SharedKeys) != 0 || len(x.States) != 0 || len(x.Policies) != 0 {
 		return fmt.Errorf("native_objects_remain")
 	}
 	for _, e := range p.Entries {
-		if e.Phase != RuntimeRetainedRefusal || k.Namespace != e.Allocation.Namespace || x.Namespace != e.Allocation.Namespace {
+		if e.Phase != RuntimeRetainedRefusal || k.Namespace != x.Namespace || (k.Namespace != e.Allocation.Namespace && !historical[e.DeliveryID]) {
 			return fmt.Errorf("retained_scope_refused")
 		}
 		for _, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {

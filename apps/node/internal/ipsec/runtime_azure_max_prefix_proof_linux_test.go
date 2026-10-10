@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"golang.org/x/sys/unix"
 )
@@ -335,9 +336,12 @@ func azureProofBGPIdentity(ctx context.Context, p bgpengine.ProcessIdentity, boo
 	}
 	return conn.Close()
 }
-func azureProofProcesses(ctx context.Context, p runtimeJournalPayload, e RuntimeJournalEntry, identity azureProofDaemon, baseline bool) error {
+func azureProofProcesses(ctx context.Context, p runtimeJournalPayload, e RuntimeJournalEntry, identity azureProofDaemon, baseline bool, historical map[uuid.UUID]bool) error {
 	live := map[int]bool{}
 	for _, entry := range p.Entries {
+		if historical[entry.DeliveryID] {
+			continue
+		} // Exact archived identity discharged by distinct verified host boot.
 		duties := append([]bgpengine.ProcessIdentity(nil), entry.BGPProcessRetired...)
 		if entry.Phase == RuntimeRetainedRefusal && entry.BGPProcess != nil {
 			duties = append(duties, *entry.BGPProcess)
@@ -507,7 +511,22 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	if err != nil {
 		t.Fatal("whole_journal_checksum_refused")
 	}
-	entry, err := azureMaxProofEntry(payload, binding, first.Namespace)
+	historical := map[uuid.UUID]bool{}
+	if binding.HistoricalBoot != nil {
+		proofRaw, _, err := azureProofRead("/run/tunnex-qualification/historical-reboot-proof.json", 8192)
+		if err != nil {
+			t.Fatal("historical_proof_read_refused")
+		}
+		stoppedRaw, _, err := azureProofRead("/run/tunnex-qualification/historical-stopped-journal.json", runtimeJournalLimit)
+		if err != nil {
+			t.Fatal("historical_journal_read_refused")
+		}
+		historical, err = azureProofHistoricalEntries(payload, proofRaw, stoppedRaw, *binding.HistoricalBoot, first.Boot, first.Namespace, time.Now())
+		if err != nil {
+			t.Fatal("historical_boot_binding_refused")
+		}
+	}
+	entry, err := azureMaxProofEntryHistory(payload, binding, first.Namespace, historical)
 	if err != nil {
 		t.Fatal("whole_journal_scope_refused")
 	}
@@ -531,7 +550,7 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	guard := payload.Guards[0]
 	manifest := GuardManifest{Namespace: guard.Namespace, Revision: guard.Revision, Digest: guard.Digest, ExpectedJSON: guard.ExpectedJSON}
 	collect := func() (DaemonInventory, KernelInventory, XFRMInventory, bgpengine.Status, []bgpengine.LearnedRoute) {
-		if azureProofProcesses(ctx, payload, entry, first, binding.Mode == "baseline") != nil {
+		if azureProofProcesses(ctx, payload, entry, first, binding.Mode == "baseline", historical) != nil {
 			t.Fatal("all_process_duties_refused")
 		}
 		if gr.Check(ctx, manifest) != nil {
@@ -560,7 +579,7 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 				t.Fatal("baseline_native_binding_refused")
 			}
 		} else {
-			if azureMaxProofAbsence(payload, d, k, x) != nil {
+			if azureMaxProofAbsenceHistory(payload, d, k, x, historical) != nil {
 				t.Fatal("all_retained_absence_refused")
 			}
 			links, e := gr.interfaces()
@@ -589,6 +608,12 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 		t.Fatal("journal_bracket_changed")
 	}
 	projection := azureMaxProofProjection(payload, entry, binding, time.Now(), remediationSHA(raw), da, ka, xa, statusAfter, routesAfter)
+	projection["historical_boot_entry_count"] = len(historical)
+	if binding.HistoricalBoot != nil {
+		projection["historical_proof_sha256"] = binding.HistoricalBoot.ProofSHA256
+		projection["historical_stopped_journal_sha256"] = binding.HistoricalBoot.StoppedJournalSHA256
+		projection["host_machine_identity_source"] = "external_root_attestation"
+	}
 	encoded, err := json.Marshal(projection)
 	if err != nil {
 		t.Fatal("typed_projection_refused")
