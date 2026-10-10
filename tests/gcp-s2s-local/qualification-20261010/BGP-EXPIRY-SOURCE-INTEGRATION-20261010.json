@@ -25,5 +25,16 @@
   "logs": {
     "/private/tmp/gcp-bgp-expiry-red.log": "e9a2c9e0631355a49dc91908c643262650f47b1d4345149c893a11e9f3238c7c",
     "/private/tmp/gcp-bgp-expiry-full.log": "ed0e30a851ed161a88f9a4b73dfab529173e1d5ad98d1224977843cd9d36dda9"
+  },
+  "gcp_profile_shape_followup": {
+    "focused_race_seconds": 7.045,
+    "target": "real runtimeMaterialEntry GCP HA contract3, two owned slots",
+    "sibling": "real runtimeMaterialEntry Classic contract4, single owned slot with strict zero inactive engine/ownership",
+    "cases": [
+      "56 seconds original reserve exhausted",
+      "61 seconds original lease expired"
+    ],
+    "proof": "normal modeled journal reserve/apply, route/process checkpoint and successful reconciliation; target actual three permit sets emptied while exact Classic sibling entry/authority/membership preserved",
+    "limit": "modeled native listings; not cloud/native qualification"
   }
 }

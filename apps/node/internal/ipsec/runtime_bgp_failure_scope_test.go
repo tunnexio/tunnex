@@ -15,9 +15,55 @@ import (
 // qualification is intentionally unforgeable; this rig reaches the extracted
 // post-successful-reconcile boundary, with a separately supplied qualification
 // classification. Native platform admission remains a distinct Linux/live gate.
-func bgpFailureScopeRig(t *testing.T) (*RuntimeController, []RuntimeJournalEntry, runtimeActive, *bgpSessionFixture, *[]byte) {
+func bgpFailureScopeRig(t *testing.T, gcp ...bool) (*RuntimeController, []RuntimeJournalEntry, runtimeActive, *bgpSessionFixture, *[]byte) {
 	t.Helper()
 	c, entries, _ := mixedBudgetFixture(t)
+	if len(gcp) == 1 && gcp[0] {
+		for _, index := range []int{0, 3} {
+			old := entries[index]
+			m := gcpMaterialFixture()
+			if index == 3 {
+				m = classicMaterialFixture()
+			}
+			m.Manifest.OrgID = c.config.OrgID
+			m.Manifest.NodeID = c.config.GatewayID
+			m.Manifest.ConnectionID = old.Allocation.ConnectionID
+			m.Manifest.LocalPrefixes = []string{}
+			m.Manifest.RemotePrefixes = []string{}
+			for _, p := range old.Engines[0].LocalPrefixes {
+				m.Manifest.LocalPrefixes = append(m.Manifest.LocalPrefixes, p.String())
+			}
+			for _, p := range old.Engines[0].RemotePrefixes {
+				m.Manifest.RemotePrefixes = append(m.Manifest.RemotePrefixes, p.String())
+			}
+			runtimeReseal(&m)
+			e, _, err := runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, old.Allocation.Namespace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Phase = RuntimeApplied
+			for slot := 0; slot < e.Allocation.activeTunnelCount(); slot++ {
+				e.Observed[slot] = Ownership{Namespace: e.Allocation.Namespace, InterfaceName: e.Allocation.Tunnels[slot].Name, InterfaceIndex: old.Observed[slot].InterfaceIndex, XFRMID: e.Allocation.Tunnels[slot].XFRMID}
+			}
+			if index == 0 {
+				e.BGPRoutes = &RuntimeBGPRoutes{Sequence: 1, Stage: "completed", Owned: []RuntimeBGPRouteTuple{routeTupleFixture(e, 1)}, Target: []RuntimeBGPRouteTuple{routeTupleFixture(e, 1)}}
+				c.bgpProcesses[e.DeliveryID] = c.bgpProcesses[old.DeliveryID]
+				delete(c.bgpProcesses, old.DeliveryID)
+			}
+			a := c.active[old.Allocation.ConnectionID]
+			a.Entry = e
+			a.Identity.DeliveryID = e.DeliveryID
+			a.Identity.Binding = e.Engines[0].Binding
+			a.Authority = NewPermitLeaseAuthority()
+			r, err := a.Authority.Begin(a.Identity)
+			if err != nil || a.Authority.Accept(PermitLeaseResponse{PermitLeaseRequest: r, TTLMillis: 60000}) != nil {
+				t.Fatal("GCP authority")
+			}
+			c.active[e.Allocation.ConnectionID] = a
+			entries[index] = e
+		}
+	}
+
 	j, err := OpenRuntimeJournal(journalDir(t), c.config.GatewayID)
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +137,9 @@ func bgpFailureScopeRig(t *testing.T) (*RuntimeController, []RuntimeJournalEntry
 	links := []GuardInterface{}
 	for _, e := range entries {
 		for _, o := range e.Observed {
+			if o.InterfaceIndex == 0 {
+				continue
+			}
 			links = append(links, GuardInterface{Name: o.InterfaceName, Index: o.InterfaceIndex})
 		}
 	}
@@ -398,6 +447,45 @@ func TestBGPActiveContinuityPublishesOnlyFreshCurrentCandidate(t *testing.T) {
 		current := c.active[id]
 		if current.Authority != a.Authority || !reflect.DeepEqual(current.Entry, a.Entry) || !reflect.DeepEqual(current.Grants, a.Grants) {
 			t.Fatal("sibling changed")
+		}
+	}
+}
+
+func TestGCPHAExpiredContinuityPreservesClassicSibling(t *testing.T) {
+	for _, elapsed := range []time.Duration{56 * time.Second, 61 * time.Second} {
+		c, entries, old, _, raw := bgpFailureScopeRig(t, true)
+		if old.Entry.Allocation.ProfileID != GCPHABGPProfile {
+			t.Fatal("target not real HA")
+		}
+		classic := entries[3]
+		if classic.ContractVersion != 4 || !validClassicJournal(classic) || !reflect.DeepEqual(classic.Engines[1], EngineTunnel{}) || classic.Observed[1] != (Ownership{}) {
+			t.Fatal("Classic inactive slot")
+		}
+		fresh := NewPermitLeaseAuthority()
+		r, err := fresh.Begin(old.Identity)
+		if err != nil || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: r, TTLMillis: 60000}) != nil {
+			t.Fatal("fresh")
+		}
+
+		old.Authority.elapsed = func() time.Duration { return elapsed }
+		if c.reconcileActiveBGP(context.Background(), entries) != nil {
+			t.Fatal("reconcile")
+		}
+		latest, _ := c.journal.Entries()
+		if !c.expiredBGPContinuityDenied(context.Background(), old, latest, fresh, old.Identity, func() bool { return true }) {
+			t.Fatalf("classification invalid: journal=%v routes=%v current=%+v old=%+v", validJournalBGP(old.Entry), validBGPRoutes(old.Entry), latest[0].BGPRoutes, old.Entry.BGPRoutes)
+		}
+		before := bgpScopeMembers(t, *raw, bgpScopeNames(classic.Allocation.ConnectionID))
+		sibling := c.active[classic.Allocation.ConnectionID]
+		if _, err := c.finishBGPApplyContinuity(context.Background(), entries, old, true, fresh, old.Identity, func() bool { return true }); err == nil {
+			t.Fatal("exhausted accepted")
+		}
+		after := c.active[classic.Allocation.ConnectionID]
+		if after.Authority != sibling.Authority || !reflect.DeepEqual(after.Entry, sibling.Entry) || !reflect.DeepEqual(before, bgpScopeMembers(t, *raw, bgpScopeNames(classic.Allocation.ConnectionID))) {
+			t.Fatal("Classic sibling altered")
+		}
+		if !bgpScopeEmpty(t, *raw, bgpScopeNames(old.Entry.Allocation.ConnectionID)) {
+			t.Fatal("HA not denied")
 		}
 	}
 }
