@@ -1,0 +1,8 @@
+{"phase": "lease", "started": true}
+{"source_site_id": "01a12500-95ae-7728-b901-54f20df98cc1", "verified_singleton_source_prefix": "10.70.0.0/24", "temporary_source_kind": "cidr", "original_source_kind": "site", "effective_source_unchanged": true}
+{"disabled_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"}
+{"disabled_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"}
+{"created_temporary_id": "01a12717-7501-78d0-a2d0-22ce77934f44", "expires_at": "2026-10-10T18:35:00.929610Z", "body": {"dst_kind": "resource", "dst_resource_id": "01a12659-7de0-79ad-8a39-03d62cbcb3d5", "expires_at": "2026-10-10T18:35:00.929610Z", "src_kind": "cidr", "src_site_id": null, "src_cidr": "10.70.0.0/24"}}
+{"created_temporary_id": "01a12717-7508-7f71-9f83-eb265d2ea1f8", "expires_at": "2026-10-10T18:35:00.929610Z", "body": {"dst_kind": "resource", "dst_resource_id": "01a12659-f410-74f3-8d4d-3b0dbbac1729", "expires_at": "2026-10-10T18:35:00.929610Z", "src_kind": "cidr", "src_site_id": null, "src_cidr": "10.70.0.0/24"}}
+{"leased": true, "expires_at": "2026-10-10T18:35:00.929610Z", "restore_required": true}
+{"completed": true}
