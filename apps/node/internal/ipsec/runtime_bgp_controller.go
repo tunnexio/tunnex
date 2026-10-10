@@ -408,7 +408,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		c.bgpStaged = map[uuid.UUID]bool{}
 	}
 	stage = "restored_transport"
-	recreate, missingTransport, err := c.bgpRestoredTransportAbsent(ctx, e, entries, authority, identity)
+	recreate, missingTransport, err := c.bgpRestoredTransportAbsent(ctx, e, entries, authority, identity, env)
 	if err != nil {
 		return fail()
 	}
@@ -586,9 +586,12 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 // bgpRestoredTransportAbsent keeps trusted reset intent Applied while proving
 // whether its deliberately cleared ownership can be recreated. It grants no
 // authority and writes no kernel object or journal entry.
-func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e RuntimeJournalEntry, entries []RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity) (bool, bool, error) {
+func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e RuntimeJournalEntry, entries []RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity, environment RuntimeEnvironment) (bool, bool, error) {
 	if e.Phase != RuntimeApplied || c.bgpStaged[e.DeliveryID] {
 		return false, false, nil
+	}
+	if e.Allocation.ProfileID == GCPHABGPProfile && (e.Restoration == nil || e.Restoration.Epoch == 0) {
+		return c.bgpOrdinaryDaemonAbsent(ctx, e, entries, authority, identity, environment)
 	}
 	if e.Restoration == nil {
 		if e.Observed == ([2]Ownership{}) {
