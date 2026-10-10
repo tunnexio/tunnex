@@ -10,7 +10,7 @@ gw=json.loads(call('network','vnet-gateway','show','-g',rg,'-n','azure-vpn','-o'
 if gw['provisioningState']!='Succeeded':raise SystemExit('Gateway provisioning pending')
 call('network','vnet-gateway','update','-g',rg,'-n','azure-vpn','--enable-bgp','true','--set','bgpSettings.bgpPeeringAddresses[0].customBgpIpAddresses=["169.254.21.2"]','bgpSettings.bgpPeeringAddresses[1].customBgpIpAddresses=["169.254.22.2"]','-o','none')
 peer=call('network','public-ip','show','-g',rg,'-n','peer-ip','--query','ipAddress','-o','tsv').strip()
-call('network','local-gateway','create','-g',rg,'-n','tunnex-local','-l','southindia','--gateway-ip-address',peer,'--local-address-prefixes','10.232.1.0/24','--asn','65000','--bgp-peering-address','169.254.21.1','--tags','owner='+owner,'purpose=owned-s2s-test','-o','none')
+call('network','local-gateway','create','-g',rg,'-n','tunnex-local','-l','southindia','--gateway-ip-address',peer,'--asn','65000','--bgp-peering-address','169.254.10.1','--tags','owner='+owner,'purpose=owned-s2s-test','-o','none')
 lng=call('network','local-gateway','show','-g',rg,'-n','tunnex-local','--query','id','-o','tsv').strip()
 state=pathlib.Path.home()/'.tunnex-azure-s2s-01a12505';state.mkdir(mode=0o700,exist_ok=True)
 key=state/'lab-psk'
