@@ -1,0 +1,647 @@
+{
+  "observed_at": "2026-10-10T20:15:51.596113+00:00",
+  "source_commit": "3b519d35e00dd4b486b00514e96e9cdc7543b33e",
+  "source_node_tree": "a0f5a2c67c9a16fe8760353c4285a9dc73215622",
+  "binary_sha256": "0f1832ea8f797c5ba15ad93719e6337c4df5b45853da80d5ebfd55832c8c4886",
+  "image": "sha256:03d84d06ef7409b9ccc42fc70e23011db303b93dc181b12571b5859f1f55b8ec",
+  "container": "0ca8856293ea8142f190ee45b74f44c159d2d77a5e8ecfd004414160495c2fea",
+  "container_started_at": "2026-10-10T20:00:44.719160351Z",
+  "normal_readback": {
+    "phase": "read",
+    "observed_at": "2026-10-10T20:05:58.647268+00:00",
+    "cas_request_sent": false,
+    "before_revision": 42,
+    "connection": {
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 42,
+      "desired_intent": "enabled",
+      "application_state": "applied",
+      "cleanup_state": "retained_guard"
+    },
+    "runtime": {
+      "observed_at": "2026-10-10T20:05:57.703537+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "slot": 1,
+          "status": "up",
+          "selected": false
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "slot": 2,
+          "status": "up",
+          "selected": false
+        }
+      ],
+      "bgp": {
+        "version": 1,
+        "sequence": 42308,
+        "peers": [
+          {
+            "slot": 1,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1
+          },
+          {
+            "slot": 2,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ]
+      }
+    },
+    "cleanup_readback_settled": false,
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "native_classification": {
+    "observed_at": "2026-10-10T20:06:12.507407323Z",
+    "source": "Actual TestAzureOwnedNativeStatusDiagnostic stdout from the reviewed read-only test executable af3e623130ed96b74e369c8a4348b25f79845ba8dff705653bb1250771b78d32",
+    "journal_phase": "applied",
+    "slots": [
+      {"slot": 1, "status": "up", "category": "native_observation", "ike_matches": 1, "installed_children": 1, "sad_matches": 2, "spd_directions": {"fwd": 1, "in": 1, "out": 1}},
+      {"slot": 2, "status": "up", "category": "native_observation", "ike_matches": 1, "installed_children": 1, "sad_matches": 2, "spd_directions": {"fwd": 1, "in": 1, "out": 1}}
+    ],
+    "positive_observed_parser_accepts": true,
+    "withdrawal_template_matches": true,
+    "cleanup_process_recorded": true,
+    "cleanup_routes_recorded": true,
+    "retired_duties": 0,
+    "limits": "A single native classification uses existing exact child/SPI/ownership validators and withdrawal-template readback. It is not a full positive guard or historical DNS refusal certificate."
+  },
+  "packet_window": {
+    "started_at": "2026-10-10T20:06:11.475363+00:00",
+    "counters": {
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "checks": {
+      "all_four_zero_failure": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true
+    },
+    "receipt_sha256": "3ce6243c3a60c66d6465bdcd015245769df090d3ec407b44c59e3fa68909f1d0",
+    "acceptance_passed": true,
+    "seconds": 60,
+    "application_request_timeout_seconds": 2
+  },
+  "diagnostic": {
+    "observed_at": "2026-10-10T20:15:02.070657+00:00",
+    "container": "0ca8856293ea8142f190ee45b74f44c159d2d77a5e8ecfd004414160495c2fea",
+    "image": "sha256:03d84d06ef7409b9ccc42fc70e23011db303b93dc181b12571b5859f1f55b8ec",
+    "private_raw_log_sha256": "d149efbc36ff00a865b6fecdb871175248451a051c7d76c47c0592aaf59dde53",
+    "dns_refusals": [
+      {
+        "time": "2026-10-10T20:02:05.795711692Z",
+        "operation": "dns_exchange",
+        "stage": "dns_socket_udp",
+        "elapsed_ms": 3464,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 3002,
+        "socket_stage": "body",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:02:21.044473631Z",
+        "operation": "dns_exchange",
+        "stage": "dns_socket_udp",
+        "elapsed_ms": 3572,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 3000,
+        "socket_stage": "body",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:03:42.060411095Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 946,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:04:27.174308411Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 434,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:05:09.185233812Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 189,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:05:11.106806662Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 73,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:05:56.855165101Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_route",
+        "elapsed_ms": 1357,
+        "context_state": "deadline",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 63,
+        "guard_verification_ms": 32,
+        "guard_failure_class": "none",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:07:07.225766309Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 193,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:07:54.568140925Z",
+        "operation": "dns_before_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 73,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:07:56.859097357Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 491,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:09:11.964230194Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 205,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:10:22.248168828Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_guard_full_read",
+        "elapsed_ms": 502,
+        "context_state": "deadline",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 19,
+        "guard_verification_ms": 41,
+        "guard_failure_class": "context_deadline",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "context_inactive"
+      },
+      {
+        "time": "2026-10-10T20:10:27.242357848Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 1002,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:11:09.898255139Z",
+        "operation": "dns_before_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 168,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:11:11.878733289Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 450,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:11:56.975497149Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_guard_full_read",
+        "elapsed_ms": 1378,
+        "context_state": "deadline",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 48,
+        "guard_verification_ms": 109,
+        "guard_failure_class": "context_deadline",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "context_inactive"
+      },
+      {
+        "time": "2026-10-10T20:12:39.799386779Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 156,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:12:41.959575924Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 1,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T20:14:11.960406116Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 500,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      }
+    ],
+    "rpc_timings": [
+      {
+        "dispatch_utc": "2026-10-10T20:09:32.322833814Z",
+        "deadline_remaining_ms": 4902,
+        "start_delay_ms": 0,
+        "handle_ms": 4417,
+        "report_ms": 34,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:09:47.322540813Z",
+        "deadline_remaining_ms": 4899,
+        "start_delay_ms": 0,
+        "handle_ms": 2073,
+        "report_ms": 23,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:10:17.489473595Z",
+        "deadline_remaining_ms": 4738,
+        "start_delay_ms": 0,
+        "handle_ms": 4758,
+        "report_ms": 30,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:10:22.442113443Z",
+        "deadline_remaining_ms": 4796,
+        "start_delay_ms": 0,
+        "handle_ms": 4799,
+        "report_ms": 46,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:10:22.783840039Z",
+        "deadline_remaining_ms": 4454,
+        "start_delay_ms": 4,
+        "handle_ms": 4485,
+        "report_ms": 20,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:02.324587318Z",
+        "deadline_remaining_ms": 4897,
+        "start_delay_ms": 0,
+        "handle_ms": 4467,
+        "report_ms": 32,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:06.995368891Z",
+        "deadline_remaining_ms": 4860,
+        "start_delay_ms": 0,
+        "handle_ms": 4843,
+        "report_ms": 37,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:07.217892141Z",
+        "deadline_remaining_ms": 4638,
+        "start_delay_ms": 2,
+        "handle_ms": 4690,
+        "report_ms": 43,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:17.409772889Z",
+        "deadline_remaining_ms": 4823,
+        "start_delay_ms": 0,
+        "handle_ms": 2180,
+        "report_ms": 22,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:47.349015953Z",
+        "deadline_remaining_ms": 4873,
+        "start_delay_ms": 0,
+        "handle_ms": 4488,
+        "report_ms": 32,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:52.13486519Z",
+        "deadline_remaining_ms": 4821,
+        "start_delay_ms": 0,
+        "handle_ms": 4845,
+        "report_ms": 36,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:11:52.535162317Z",
+        "deadline_remaining_ms": 4421,
+        "start_delay_ms": 1,
+        "handle_ms": 4501,
+        "report_ms": 39,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:12:32.326549901Z",
+        "deadline_remaining_ms": 4896,
+        "start_delay_ms": 0,
+        "handle_ms": 4529,
+        "report_ms": 35,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:12:37.104981181Z",
+        "deadline_remaining_ms": 4852,
+        "start_delay_ms": 1,
+        "handle_ms": 4783,
+        "report_ms": 33,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:12:37.355419337Z",
+        "deadline_remaining_ms": 4601,
+        "start_delay_ms": 4,
+        "handle_ms": 4599,
+        "report_ms": 40,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:13:17.455995628Z",
+        "deadline_remaining_ms": 4779,
+        "start_delay_ms": 0,
+        "handle_ms": 4592,
+        "report_ms": 33,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:14:02.331992994Z",
+        "deadline_remaining_ms": 4890,
+        "start_delay_ms": 0,
+        "handle_ms": 4561,
+        "report_ms": 34,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:14:07.11179528Z",
+        "deadline_remaining_ms": 4843,
+        "start_delay_ms": 0,
+        "handle_ms": 4863,
+        "report_ms": 37,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:14:07.465717706Z",
+        "deadline_remaining_ms": 4490,
+        "start_delay_ms": 1,
+        "handle_ms": 4515,
+        "report_ms": 32,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:14:47.334148087Z",
+        "deadline_remaining_ms": 4889,
+        "start_delay_ms": 0,
+        "handle_ms": 4406,
+        "report_ms": 37,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      }
+    ],
+    "scope": "Fixed scalar diagnostic observations only; last actual guard bracket timings, independent native commands and original five-second DNS deadlines remain unchanged"
+  },
+  "dns_generation_window": {
+    "started_at": "2026-10-10T20:12:27.451233+00:00",
+    "finished_at": "2026-10-10T20:14:28.615020+00:00",
+    "container": "0ca8856293ea8142f190ee45b74f44c159d2d77a5e8ecfd004414160495c2fea",
+    "read_count": 119,
+    "boundary_stale_read_count": 0,
+    "fresh_after_start_count": 0,
+    "distinct_new_generations": [],
+    "last_observation": {
+      "read_at": "2026-10-10T20:14:27.421321+00:00",
+      "observation": {
+        "resource_id": "01a125fe-521b-75ae-b4d1-fbda9a4e279c",
+        "resolver_config_id": "01a12555-cc55-7759-b33e-15670c452e88",
+        "resolver_config_version": 1,
+        "resolver_profile_id": "08dbae5d-db11-4e5e-9efe-959b0d707742",
+        "configuration_revision": 1,
+        "dns_source_address": "10.233.10.1",
+        "ready": false,
+        "state": "failed",
+        "status_source": "latest_generation",
+        "failure_code": "timeout"
+      }
+    },
+    "passed": false,
+    "limits": [
+      "DNS generation readiness only; no FQDN application enforcement or deadline acceptance.",
+      "Original five-second per-lookup deadline and ordinary DNS grants unchanged."
+    ]
+  },
+  "fqdn_application_grant_present": false,
+  "overlapping_lb_ip_grant_present": false,
+  "limits": [
+    "Successful DNS generations and a sixty-second TCP/UDP window do not establish sustained DNS stability, FQDN application enforcement, scheduled rekey or remaining profile acceptance.",
+    "Payload-free post-publication diagnostics retain socket/native proof/deadline refusals. A passing current native classifier does not identify historical invariant failure.",
+    "Original five-second per-lookup deadline, one strict supersession retry and fresh independent checks remain unchanged.",
+    "DNS timestamp helper at0b4b0380 passed six actual Ubuntu tests; preserved preceding observation runs stopped at freshness/parser boundaries, so are not completed windows."
+  ]
+}
