@@ -103,7 +103,7 @@ func TestAzureOwnedNativeStatusDiagnostic(t *testing.T) {
 	}
 	const journalPath = "/var/lib/tunnex-node/ipsec/journal.json"
 	const viciPath = "/run/tunnex-ipsec/charon.vici"
-	const ipPath = "/usr/sbin/ip"
+	const ipPath = "/sbin/ip"
 	parent := filepath.Dir(journalPath)
 	resolved, err := filepath.EvalSymlinks(parent)
 	if err != nil || resolved != parent {
