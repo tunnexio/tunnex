@@ -104,8 +104,9 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 		rows = append(rows, map[string]any{"component": component, "elapsed_ms": time.Since(start).Milliseconds(), "passed": err == nil, "context_active": ctx.Err() == nil})
 		return err == nil
 	}
+	var finalChecks map[string]bool
 	emit := func(stage string, counts map[string]int) {
-		safe, _ := json.Marshal(map[string]any{"stage": stage, "measurements": rows, "counts": counts, "authority": false, "in_memory_epoch_observed": false})
+		safe, _ := json.Marshal(map[string]any{"stage": stage, "measurements": rows, "counts": counts, "authority": false, "in_memory_epoch_observed": false, "final_checks": finalChecks})
 		t.Log("AZURE_OWNED_COMPONENT_TIMING " + string(safe))
 	}
 	var d DaemonInventory
@@ -152,7 +153,21 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	afterK, ke := kernel.Read(ctx)
 	afterX, xe := xreader.Read(ctx)
 	after, ast := read()
-	stable := de == nil && ke == nil && xe == nil && strict(afterD, afterK, afterX) && reflect.DeepEqual(connectionKernelSnapshot(entry, k), connectionKernelSnapshot(entry, afterK)) && reflect.DeepEqual(connectionXFRMSnapshot(entry, x), connectionXFRMSnapshot(entry, afterX)) && os.SameFile(st, ast) && bytes.Equal(raw, after) && ctx.Err() == nil
+	nativeReaderOK := de == nil && ke == nil && xe == nil
+	finalChecks = map[string]bool{
+		"native_reader_ok":      nativeReaderOK,
+		"strict_native_ok":      nativeReaderOK && strict(afterD, afterK, afterX),
+		"kernel_snapshot_equal": nativeReaderOK && reflect.DeepEqual(connectionKernelSnapshot(entry, k), connectionKernelSnapshot(entry, afterK)),
+		"xfrm_snapshot_equal":   nativeReaderOK && reflect.DeepEqual(connectionXFRMSnapshot(entry, x), connectionXFRMSnapshot(entry, afterX)),
+		"journal_same_inode":    os.SameFile(st, ast),
+		"journal_same_bytes":    bytes.Equal(raw, after),
+		"context_active":        ctx.Err() == nil,
+	}
+	stable := true
+	for _, passed := range finalChecks {
+		stable = stable && passed
+	}
+
 	if !stable {
 		emit("final_native_or_journal_refused", counts)
 		t.Fatal("final_native_or_journal_refused")
