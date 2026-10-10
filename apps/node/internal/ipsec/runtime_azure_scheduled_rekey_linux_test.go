@@ -35,12 +35,17 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		return
 	}
 	var envelope runtimeJournalEnvelope
-	if json.Unmarshal(raw, &envelope) != nil || !validJournalPayload(envelope.Payload) || journalChecksum(envelope.Payload) != envelope.Checksum || len(envelope.Payload.Entries) != 1 || len(envelope.Payload.Guards) != 1 {
+	if json.Unmarshal(raw, &envelope) != nil || !validJournalPayload(envelope.Payload) || journalChecksum(envelope.Payload) != envelope.Checksum {
 		fail()
 		return
 	}
-	entry := envelope.Payload.Entries[0]
-	if entry.Phase != RuntimeApplied || !IsAzureRuntimeProfile(entry.Allocation.ProfileID) || (entry.ContractVersion != 2 && entry.ContractVersion != 4) {
+	var expectedBinding azureSchedulerBinding
+	if json.Unmarshal([]byte(os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_BINDING")), &expectedBinding) != nil {
+		fail()
+		return
+	}
+	entry, retainedIdentity, e := azureSchedulerEntry(envelope.Payload, expectedBinding)
+	if e != nil {
 		fail()
 		return
 	}
@@ -148,8 +153,12 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		fail()
 		return
 	}
-	g := envelope.Payload.Guards[0]
-	if gr.Check(ctx, GuardManifest{Namespace: g.Namespace, Revision: g.Revision, Digest: g.Digest, ExpectedJSON: g.ExpectedJSON}) != nil {
+	// A journal can retain the alternate template of a guarded replacement.
+	// Exactly one complete template must match the actual combined guard. Never
+	// drop retained denial objects or synthesize a smaller active-only template.
+	if azureSchedulerCombinedGuard(envelope.Payload.Guards, ns, func(g runtimeGuardTemplate) bool {
+		return gr.Check(ctx, GuardManifest{Namespace: g.Namespace, Revision: g.Revision, Digest: g.Digest, ExpectedJSON: g.ExpectedJSON}) == nil
+	}) != nil {
 		fail()
 		return
 	}
@@ -194,7 +203,7 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		return
 	}
 	defer file.Close()
-	if json.NewEncoder(file).Encode(map[string]any{"charon_start_ticks": charonFields[19], "charon_pid": charonPID, "charon_sha": charonSHA, "profile": entry.Allocation.ProfileID, "delivery": entry.DeliveryID, "binding": engines[0].Binding, "engines": engines, "config": config, "children": children, "strict_native": true, "full_guard": true}) != nil || file.Sync() != nil {
+	if json.NewEncoder(file).Encode(map[string]any{"retained_identity": retainedIdentity, "retained_count": len(envelope.Payload.Entries) - 1, "charon_start_ticks": charonFields[19], "charon_pid": charonPID, "charon_sha": charonSHA, "profile": entry.Allocation.ProfileID, "delivery": entry.DeliveryID, "binding": engines[0].Binding, "engines": engines, "config": config, "children": children, "strict_native": true, "full_guard": true}) != nil || file.Sync() != nil {
 		fail()
 	}
 }

@@ -14,7 +14,9 @@ Install the reviewed test binary privately at
 `/run/tunnex-ipsec/azure-scheduler.test` inside the exact owned gateway, mode0700.
 Keep a root-owned host copy mode0600 for independent SHA256 comparison.
 The native test is default skipped, read-only when explicitly enabled, and uses
-fresh strict journal checksum, native CHILD/SPI/kernel proof, full guard readback,
+fresh strict journal checksum over every retained obligation, exact active
+org/site/gateway/connection/profile/desired/config binding selection, native
+CHILD/SPI/kernel proof, full combined guard readback,
 packaged daemon validation and per-VICI-connection SO_PEERCRED/executable/start
 identity. It never creates a controller or changes journal/kernel/daemon state.
 Private snapshots use O_EXCL0600 and never emit raw journal/VICI/XFRM data.
@@ -77,3 +79,24 @@ not the private LB/FQDN or public-fallback proof.
 Results explicitly say accelerated scheduled IKE only. Natural production
 CHILD scheduling and an eight-hour IKE-duration soak remain separate unproved
 acceptance. Manual swanctl rekey is never scheduler proof.
+
+The journal may contain retained history (including the actual nineteen-entry
+lab shape). Every entry still passes validJournalPayload, retained-reference,
+cleanup/restoration/BGP/history validation before selection. All entries must
+belong to the expected org/site/gateway; every other obligation must be retained,
+never applying/pending/another active binding. Retained history is pinned by a
+canonical digest, independent of entry ordering. A rollback/changed history
+refuses. Up to two recorded guard templates are supported only when exactly one
+complete template in the current namespace matches strict full readback. Zero
+or two matching templates refuse; no active-only guard is generated.
+
+Normal lease refresh is not journal authority: leases remain unserialized.
+RuntimeStore.Material reuses the persisted apply DeliveryID for a desired
+revision; a new DeliveryID is not treated as an ordinary lease refresh. Stable
+identity includes delivery, full Binding (including policy revision), engines,
+production configuration, retained history and daemon process identity. Journal
+sequence, fresh guard revision and observed CHILD/SPI changes are not compared
+across samples, but all are validated anew on every complete snapshot. The
+before/after journal bytes must still match within each snapshot; concurrent
+journal/guard refresh refuses rather than accepting mixed proof. No lease,
+guard, history or authority check is dropped.

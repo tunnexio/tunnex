@@ -68,12 +68,20 @@ def api_authority(m):
  if 'authority' in m and projection!=m['authority']:raise ValueError('normal_authority_changed')
  return projection
 
+def same_snapshot_authority(before,after):
+ # Lease TTLs are not serialized in the journal. Journal sequence/guard refresh
+ # and native CHILD identities are fresh evidence, not stable material identity.
+ # DeliveryID remains stable for the same desired revision in RuntimeStore.Material.
+ keys=('profile','delivery','binding','engines','config','charon_pid','charon_sha','charon_start_ticks','retained_identity')
+ return all(key in before and key in after and before[key]==after[key] for key in keys)
+
 def snapshot(m):
  identity(m);authority=api_authority(m)
  path='/run/tunnex-ipsec/azure-scheduler-'+str(uuid.uuid4())+'.json'
  # The helper binary is already installed privately by the operator; never run
  # a binary selected by journal data or copy a binary into a live container.
- result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT=1','-e','TUNNEX_AZURE_EXPECTED_NODE_SHA256='+m['node_sha'],'-e','TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeySnapshot$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=25)
+ expected={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
+ result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_BINDING='+json.dumps(expected,separators=(',',':')),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT=1','-e','TUNNEX_AZURE_EXPECTED_NODE_SHA256='+m['node_sha'],'-e','TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeySnapshot$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=25)
  if result.returncode:raise ValueError('strict_native_snapshot_refused')
  raw=proof.command('docker','exec',m['container'],'cat',path)
  value=json.loads(raw)
@@ -81,7 +89,7 @@ def snapshot(m):
  if value['profile']!=authority['profile'] or value['strict_native'] is not True or value['full_guard'] is not True or len(value['engines'])!=PROFILES[value['profile']]:raise ValueError('native_profile_refused')
  binding=value['binding']
  if (binding['OrgID']!=authority['org'] or binding['GatewayID']!=authority['gateway'] or binding['ConnectionID']!=authority['connection'] or binding['DesiredRevision']!=authority['desired'] or binding['ConfigurationRevision']!=authority['configuration']):raise ValueError('native_authority_binding_refused')
- if 'native' in m and any(value[key]!=m['native'][key] for key in ('profile','delivery','binding','engines','config','charon_pid','charon_sha','charon_start_ticks')):raise ValueError('native_material_changed')
+ if 'native' in m and not same_snapshot_authority(m['native'],value):raise ValueError('native_material_changed')
  identity(m);api_authority(m)
  return value
 

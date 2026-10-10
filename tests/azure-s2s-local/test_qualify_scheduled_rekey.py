@@ -1,4 +1,5 @@
 import importlib.util
+import copy
 from pathlib import Path
 import unittest
 from unittest.mock import Mock,patch
@@ -42,6 +43,16 @@ class SchedulerTests(unittest.TestCase):
   client=Mock();client.call.side_effect=[{'id':'connection','org_id':'org','site_id':'site','gateway_node_id':'gateway','desired_intent':'enabled','application_state':'pending'},{}]
   with patch.object(q.proof,'private_read',side_effect=[{'owner':{'email':'browser-owner@azure-s2s.local'}},{'org_id':'org','site_id':'site','gateway_id':'gateway'}]),patch.object(q.lab,'Client',return_value=client),self.assertRaises(ValueError):q.api_authority({'accounts':'accounts','setup':'setup','connection':'connection'})
   self.assertEqual([call.args[0] for call in client.call.call_args_list],['GET','GET'])
+ def test_lease_sequence_and_child_refresh_are_not_binding_changes(self):
+  before={key:'fixed' for key in ('profile','delivery','binding','engines','config','charon_pid','charon_sha','charon_start_ticks','retained_identity')}
+  before.update(children=[{'spi_in':10}],sequence=42,guard_revision=50)
+  after=copy.deepcopy(before);after.update(children=[{'spi_in':20}],sequence=43,guard_revision=51)
+  self.assertTrue(q.same_snapshot_authority(before,after))
+  for key in ('delivery','binding','engines','config','retained_identity','charon_start_ticks'):
+   changed=copy.deepcopy(after);changed[key]='different'
+   self.assertFalse(q.same_snapshot_authority(before,changed),key)
+ def test_missing_identity_field_is_not_refresh(self):
+  self.assertFalse(q.same_snapshot_authority({},{}))
  def test_no_socket_does_not_reconnect(self):
   connection=Mock();connection.sock=None
   self.assertFalse(q.http_attempt(connection,43123)['success']);connection.connect.assert_not_called();connection.request.assert_not_called()
