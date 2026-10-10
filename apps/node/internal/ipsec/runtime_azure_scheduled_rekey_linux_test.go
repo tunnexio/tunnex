@@ -23,33 +23,39 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 	if os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT") != "1" {
 		t.Skip("explicit owned scheduler diagnostic only")
 	}
-	fail := func() { t.Helper(); t.Fatal("owned_scheduler_snapshot_refused") }
+	stage := "node-identity"
+	fail := func() { t.Helper(); t.Fatal("owned_scheduler_snapshot_refused", stage) }
 	expected := os.Getenv("TUNNEX_AZURE_EXPECTED_NODE_SHA256")
 	exe, e := os.ReadFile("/proc/1/exe")
 	if os.Geteuid() != 0 || e != nil || !validDigest(expected) || remediationSHA(exe) != expected {
 		fail()
 		return
 	}
+	stage = "journal-read"
 	raw, st, e := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "journal-validate"
 	var envelope runtimeJournalEnvelope
 	if json.Unmarshal(raw, &envelope) != nil || !validJournalPayload(envelope.Payload) || journalChecksum(envelope.Payload) != envelope.Checksum {
 		fail()
 		return
 	}
+	stage = "binding-decode"
 	var expectedBinding azureSchedulerBinding
 	if json.Unmarshal([]byte(os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_BINDING")), &expectedBinding) != nil {
 		fail()
 		return
 	}
+	stage = "binding-history"
 	entry, retainedIdentity, e := azureSchedulerEntry(envelope.Payload, expectedBinding)
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "namespace"
 	ns, e := os.Readlink("/proc/self/ns/net")
 	if e != nil || entry.Allocation.Namespace != ns {
 		fail()
@@ -57,18 +63,21 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	stage = "daemon-pid"
 	pidRaw, e := os.ReadFile("/run/tunnex-ipsec/charon.pid")
 	charonPID, e2 := strconv.Atoi(strings.TrimSpace(string(pidRaw)))
 	if e != nil || e2 != nil || charonPID <= 1 {
 		fail()
 		return
 	}
+	stage = "daemon-binary"
 	charonBinary, e := os.ReadFile(daemonExecutable)
 	if e != nil {
 		fail()
 		return
 	}
 	charonSHA := remediationSHA(charonBinary)
+	stage = "daemon-process"
 	charonStat, e := os.ReadFile(fmt.Sprintf("/proc/%d/stat", charonPID))
 	if e != nil {
 		fail()
@@ -79,42 +88,50 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		fail()
 		return
 	}
+	stage = "daemon-client"
 	daemon, e := azureSchedulerOwnedDaemon(charonPID, charonSHA, charonStat)
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "package"
 	probe, e := newRuntimePlatformProbe("/sbin/ip", "/usr/sbin/nft", daemon, func() bool { return true })
 	if e != nil || probe.packaged(ctx) != nil {
 		fail()
 		return
 	}
+	stage = "daemon-read"
 	d, e := daemon.Inspect(ctx)
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "kernel-reader"
 	kr, e := NewKernelReader("/sbin/ip")
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "kernel-read"
 	k, e := kr.Read(ctx)
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "xfrm-reader"
 	xr, e := NewXFRMReader("/sbin/ip")
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "native-proof"
 	x, e := xr.Read(ctx)
 	routeProof, routeErr := NewKernelApplier("/sbin/ip")
 	if e != nil || routeErr != nil || azureSchedulerNativeProof(ctx, entry, d, k, x, routeProof) != nil {
 		fail()
 		return
 	}
+	stage = "guard-reader"
 	gr, e := NewGuardReader("/usr/sbin/nft")
 	if e != nil {
 		fail()
@@ -123,12 +140,14 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 	// A journal can retain the alternate template of a guarded replacement.
 	// Exactly one complete template must match the actual combined guard. Never
 	// drop retained denial objects or synthesize a smaller active-only template.
+	stage = "combined-guard"
 	if azureSchedulerCombinedGuard(envelope.Payload.Guards, ns, func(g runtimeGuardTemplate) bool {
 		return gr.Check(ctx, GuardManifest{Namespace: g.Namespace, Revision: g.Revision, Digest: g.Digest, ExpectedJSON: g.ExpectedJSON}) == nil
 	}) != nil {
 		fail()
 		return
 	}
+	stage = "inventory-count"
 	count := entry.Allocation.activeTunnelCount()
 	engines := entry.Engines[:count]
 	if len(d.Connections) != count || len(d.SAs) != count || len(d.SharedKeys) != count {
@@ -137,11 +156,13 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 	}
 	children := []map[string]any{}
 	for _, engine := range engines {
+		stage = "owned-child"
 		sa, child, retired, e := ownedRuntimeChildren(engine, d)
 		if e != nil || sa == nil || !sa.Established || child == nil || !child.Installed {
 			fail()
 			return
 		}
+		stage = "owned-spi"
 		in, out, e := ownedRuntimeSPIStates(engine, child, retired, x)
 		if e != nil || in != 1 || out != 1 {
 			fail()
@@ -149,35 +170,43 @@ func TestAzureOwnedScheduledRekeySnapshot(t *testing.T) {
 		}
 		children = append(children, map[string]any{"name": engineName(engine), "child_id": child.UniqueID, "spi_in": child.SPIIn, "spi_out": child.SPIOut, "retired": retired != nil})
 	}
+	stage = "loaded-parameters"
 	if azureSchedulerVerifyLoaded(ctx, daemon, engines, os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_TIMER_MODE")) != nil {
 		fail()
 		return
 	}
+	stage = "render"
 	config, e := azureSchedulerConfig(engines)
 	if e != nil {
 		fail()
 		return
 	}
+	stage = "journal-bracket"
 	after, ast, e := remediationRead("/var/lib/tunnex-node/ipsec/journal.json")
-	if e != nil || ctx.Err() != nil || st.Dev != ast.Dev || st.Ino != ast.Ino || !bytes.Equal(raw, after) {
+	stage = azureSchedulerJournalStage(e, ctx.Err(), e == nil && st.Dev == ast.Dev && st.Ino == ast.Ino, raw, after)
+	if stage != "" {
 		fail()
 		return
 	}
+	stage = "output-path"
 	output := os.Getenv("TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT")
 	if !strings.HasPrefix(output, "/run/tunnex-ipsec/azure-scheduler-") || strings.Contains(output, "..") || strings.ContainsAny(output, "\n\r") {
 		fail()
 		return
 	}
+	stage = "output-open"
 	file, e := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
 		fail()
 		return
 	}
 	defer file.Close()
+	stage = "output-context"
 	if ctx.Err() != nil {
 		fail()
 		return
 	}
+	stage = "output-write"
 	if json.NewEncoder(file).Encode(map[string]any{"retained_identity": retainedIdentity, "retained_count": len(envelope.Payload.Entries) - 1, "charon_start_ticks": charonFields[19], "charon_pid": charonPID, "charon_sha": charonSHA, "profile": entry.Allocation.ProfileID, "delivery": entry.DeliveryID, "binding": engines[0].Binding, "engines": engines, "config": config, "children": children, "strict_native": true, "full_guard": true}) != nil || file.Sync() != nil || ctx.Err() != nil {
 		fail()
 	}

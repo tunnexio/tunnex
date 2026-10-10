@@ -92,8 +92,12 @@ def snapshot(m):
  # The helper binary is already installed privately by the operator; never run
  # a binary selected by journal data or copy a binary into a live container.
  expected={'OrgID':authority['org'],'GatewayID':authority['gateway'],'ConnectionID':authority['connection'],'SiteID':authority['site'],'DesiredRevision':authority['desired'],'ConfigurationRevision':authority['configuration'],'ProfileID':authority['profile']}
- result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_BINDING='+json.dumps(expected,separators=(',',':')),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_TIMER_MODE='+m.get('timer_mode','production'),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT=1','-e','TUNNEX_AZURE_EXPECTED_NODE_SHA256='+m['node_sha'],'-e','TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeySnapshot$','-test.count=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=25)
- if result.returncode:raise ValueError('strict_native_snapshot_refused')
+ result=subprocess.run(['docker','exec','-e','TUNNEX_AZURE_SCHEDULED_REKEY_BINDING='+json.dumps(expected,separators=(',',':')),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_TIMER_MODE='+m.get('timer_mode','production'),'-e','TUNNEX_AZURE_SCHEDULED_REKEY_SNAPSHOT=1','-e','TUNNEX_AZURE_EXPECTED_NODE_SHA256='+m['node_sha'],'-e','TUNNEX_AZURE_SCHEDULED_REKEY_OUTPUT='+path,m['container'],m['container_helper'],'-test.run=^TestAzureOwnedScheduledRekeySnapshot$','-test.count=1'],capture_output=True,timeout=25)
+ if result.returncode:
+  diagnostic=Path(m.get('control_diagnostic_dir') or m['evidence_dir'])
+  proof.private_write(diagnostic/('snapshot-output-'+str(uuid.uuid4())+'.json'),{'stdout':result.stdout[:65536].decode('utf-8','replace'),'stderr':result.stderr[:65536].decode('utf-8','replace')})
+  proof.private_write(diagnostic/('snapshot-refused-'+str(uuid.uuid4())+'.json'),{'stage':fixed_snapshot_failure(result.stdout),'utc':datetime.datetime.now(datetime.timezone.utc).isoformat()})
+  raise ValueError('strict_native_snapshot_refused')
  raw=proof.command('docker','exec',m['container'],'cat',path)
  value=json.loads(raw)
  # Snapshot is nonsecret, but is retained only in the private manifest.
@@ -103,6 +107,13 @@ def snapshot(m):
  if 'native' in m and not same_snapshot_authority(m['native'],value):raise ValueError('native_material_changed')
  identity(m);api_authority(m)
  return value
+
+def fixed_snapshot_failure(output):
+ allowed={'node-identity','journal-read','journal-validate','binding-decode','binding-history','namespace','daemon-pid','daemon-binary','daemon-process','daemon-client','package','daemon-read','kernel-reader','kernel-read','xfrm-reader','native-proof','guard-reader','combined-guard','inventory-count','owned-child','owned-spi','loaded-parameters','render','journal-bracket','journal-reread','journal-context','journal-identity','journal-bytes','output-path','output-open','output-context','output-write'}
+ matches=re.findall(rb'owned_scheduler_snapshot_refused ([a-z-]+)(?:\s|$)',output)
+ if len(matches)!=1:return 'unclassified'
+ value=matches[0].decode('ascii')
+ return value if value in allowed else 'unclassified'
 
 def accelerated(config,count):
  # The input is solely the exact Go-generated connection tree. Only parent IKE

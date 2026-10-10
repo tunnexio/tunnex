@@ -65,6 +65,22 @@ class SchedulerTests(unittest.TestCase):
   self.assertEqual(request['WatchdogMonotonicDeadlineNS'],130_000_000_000)
   self.assertNotIn('watchdog_monotonic_deadline',m)
   self.assertEqual(run.call_count,2)
+ def test_fixed_snapshot_failure_never_exports_raw_text(self):
+  for stage in ('combined-guard','journal-bracket','native-proof','loaded-parameters'):
+   self.assertEqual(q.fixed_snapshot_failure(('private text\nowned_scheduler_snapshot_refused '+stage+'\n').encode()),stage)
+  for raw in (b'raw private error',b'owned_scheduler_snapshot_refused unknown\n',b'owned_scheduler_snapshot_refused native-proof\nowned_scheduler_snapshot_refused render\n'):
+   self.assertEqual(q.fixed_snapshot_failure(raw),'unclassified')
+ def test_snapshot_refusal_saved_to_preflight_directory(self):
+  authority=dict(org='o',gateway='g',connection='c',site='s',desired=52,configuration=1,profile='p')
+  result=Mock(returncode=1,stdout=b'owned_scheduler_snapshot_refused combined-guard\n',stderr=b'private')
+  with tempfile.TemporaryDirectory() as directory:
+   m=dict(container='cid',container_helper='helper',node_sha='sha',control_diagnostic_dir=directory,evidence_dir=directory+'/nonexistent-attempt')
+   with patch.object(q,'identity'),patch.object(q,'api_authority',return_value=authority),patch.object(q.subprocess,'run',return_value=result),patch.object(q.proof,'private_write') as write:
+    with self.assertRaisesRegex(ValueError,'strict_native_snapshot_refused'):q.snapshot(m)
+   self.assertEqual(write.call_count,2)
+   self.assertEqual(write.call_args.args[1]['stage'],'combined-guard')
+   self.assertTrue(all(call.args[0].parent==Path(directory) for call in write.call_args_list))
+   self.assertFalse(Path(m['evidence_dir']).exists())
  def test_unexpected_timers_refused(self):
   with self.assertRaises(ValueError):q.accelerated('rekey_time = 120s',1)
  def test_original_socket_identity_survives_response_timeout(self):
