@@ -2166,6 +2166,7 @@ type AppliedPolicy struct {
 	IPsecRecoveryVersion      int    `json:"ipsec_recovery_version"`
 	IPsecGCPClassicVersion    int    `json:"ipsec_gcp_classic_version"`
 	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
+	IPsecAzureVersion         int    `json:"ipsec_azure_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
 	Version                   int    `json:"policy_version"`
@@ -2262,6 +2263,9 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 {
+		applied.IPsecAzureVersion = 0
+	}
 	if applied.IPsecConfigVersion != 1 || applied.IPsecGCPClassicVersion != 1 {
 		applied.IPsecGCPClassicVersion = 0
 	}
@@ -2297,6 +2301,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ipsec_bgp_version":            applied.IPsecBGPVersion,
 		"ipsec_gcp_classic_version":    applied.IPsecGCPClassicVersion,
 		"ipsec_gcp_ha_version":         applied.IPsecGCPHAVersion,
+		"ipsec_azure_version":          applied.IPsecAzureVersion,
 		"ipsec_retained_guard_version": applied.IPsecRetainedGuardVersion,
 		"egress_nat":                   egressNAT,
 		"egress_ipv6":                  egressIPv6,
@@ -2387,6 +2392,7 @@ type NodeCapabilities struct {
 	IPsecRecoveryVersion      int    `json:"ipsec_recovery_version"`
 	IPsecGCPClassicVersion    int    `json:"ipsec_gcp_classic_version"`
 	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
+	IPsecAzureVersion         int    `json:"ipsec_azure_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
 	EgressNAT                 bool   `json:"egress_nat"`
