@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/netip"
 	"os"
 	"reflect"
 	"strings"
@@ -110,6 +111,7 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 		commands[name] = &commandTiming{}
 	}
 	var wrappedElapsed time.Duration
+	var firstNFT []byte
 	wrap := func(run func(context.Context, ...string) ([]byte, error)) func(context.Context, ...string) ([]byte, error) {
 		return func(ctx context.Context, args ...string) ([]byte, error) {
 			name := "unexpected"
@@ -124,6 +126,9 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 			start := time.Now()
 			output, err := run(ctx, args...)
 			elapsed := time.Since(start)
+			if name == "full_ruleset" && firstNFT == nil && err == nil {
+				firstNFT = append([]byte(nil), output...)
+			}
 			row := commands[name]
 			row.Count++
 			row.elapsed += elapsed
@@ -144,7 +149,7 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	timed := func(component string, call func() error) bool {
 		start := time.Now()
 		err := call()
-		rows = append(rows, map[string]any{"component": component, "elapsed_ms": time.Since(start).Milliseconds(), "passed": err == nil, "context_active": ctx.Err() == nil})
+		rows = append(rows, map[string]any{"component": component, "count": 1, "elapsed_ms": time.Since(start).Milliseconds(), "passed": err == nil, "context_active": ctx.Err() == nil})
 		return err == nil
 	}
 	var finalChecks map[string]bool
@@ -196,6 +201,37 @@ func TestAzureOwnedComponentTimingNative(t *testing.T) {
 	if !environmentOK || !guardOK {
 		emit("component_refused", counts)
 		t.Fatal("component_refused")
+	}
+	// Extra commands/parser calls are diagnostic only; Observe is unchanged.
+	protected := append(append([]netip.Prefix{}, entry.Engines[0].LocalPrefixes...), entry.Engines[0].RemotePrefixes...)
+	var listing []byte
+	versionOK := timed("extra_iptables_version", func() error {
+		version, err := runKernelCommand(ctx, "/usr/sbin/iptables-nft-save", "-V")
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(string(version)), "iptables-nft-save v") || !strings.HasSuffix(strings.TrimSpace(string(version)), " (nf_tables)") {
+			return ErrKernelRead
+		}
+		return nil
+	})
+	listingOK := timed("extra_iptables_nat", func() error {
+		var err error
+		listing, err = runKernelCommand(ctx, "/usr/sbin/iptables-nft-save", "-t", "nat")
+		return err
+	})
+	hookOK := timed("captured_hook_parser", func() error {
+		if !runtimeHookCensus(firstNFT, protected) {
+			return ErrKernelRead
+		}
+		return nil
+	})
+	dockerOK := timed("captured_docker_parser", func() error {
+		if !runtimeDockerDNSCensus(firstNFT, listing, protected) {
+			return ErrKernelRead
+		}
+		return nil
+	})
+	if !versionOK || !listingOK || firstNFT == nil || hookOK || !dockerOK || ctx.Err() != nil {
+		emit("extra_census_refused", counts)
+		t.Fatal("extra_census_refused")
 	}
 	afterD, de := daemon.Inspect(ctx)
 	afterK, ke := kernel.Read(ctx)
