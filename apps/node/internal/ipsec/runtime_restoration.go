@@ -384,6 +384,10 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 }
 
 func retiredJournalVersion(e RuntimeJournalEntry) int {
+	// Classic single-slot shape requires the current reader even when flattened.
+	if e.ContractVersion == 4 {
+		return 10
+	}
 	if hasHistoryContinuation(e) {
 		return 8
 	}
