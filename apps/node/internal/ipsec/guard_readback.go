@@ -446,11 +446,11 @@ func normalizeGuardHostPrefix(match, left map[string]any) {
 var errGuardConnectionNotPermitted = errors.New("IPsec connection permit is absent")
 
 func verifyGuardConnectionReadback(expected, observed []byte, links []GuardInterface, id uuid.UUID) error {
-	if id == uuid.Nil || VerifyGuardWithdrawal(expected, observed, links) != nil {
+	if id == uuid.Nil {
 		return ErrGuardReadback
 	}
-	want, ok := normalizedGuardObjects(expected)
-	if !ok {
+	want, err := verifyGuardWithdrawalSnapshot(expected, observed, links)
+	if err != nil {
 		return ErrGuardReadback
 	}
 	required := map[string]any{guardLeaseName(id): nil, guardReplyLeaseName(id): nil, guardSALeaseName(id): nil}
