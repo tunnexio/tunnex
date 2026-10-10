@@ -223,7 +223,15 @@ func (c *RuntimeController) proveBGPCurrentTimed(ctx context.Context, e RuntimeJ
 		return ErrRuntimeController
 	}
 	environmentStarted := phaseStart()
-	current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+	var current RuntimeEnvironment
+	var err error
+	if inspector, ok := c.config.Environment.(interface {
+		observeTimed(context.Context, KernelAllocation, [2]EngineTunnel, func(runtimeEnvironmentTiming)) (RuntimeEnvironment, error)
+	}); timing != nil && ok {
+		current, err = inspector.observeTimed(ctx, e.Allocation, e.Engines, func(v runtimeEnvironmentTiming) { phases.Environment = v })
+	} else {
+		current, err = c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+	}
 	phaseEnd(environmentStarted, &phases.EnvironmentMillis)
 	if err != nil || !reflect.DeepEqual(current, env) {
 		reason := "environment_changed"

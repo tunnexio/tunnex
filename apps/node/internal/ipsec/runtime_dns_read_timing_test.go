@@ -83,7 +83,7 @@ func TestDNSReadTimingDefaultOffAndRateBound(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		var events []RuntimeDiagnostic
 		c := &RuntimeController{config: RuntimeControllerConfig{DNSReadTiming: enabled, Diagnostic: func(d RuntimeDiagnostic) { events = append(events, d) }}}
-		detail := runtimeDNSReadTiming{Native: runtimeNativePhaseTiming{RouteMillis: 1, RecoveryMillis: 2, EnvironmentMillis: 3, ElapsedMillis: 7, RemainingAtEntryMillis: 100}, GuardBracketCount: 1, GuardCommandMillis: 3, GuardVerificationMillis: 7, GuardFailureClass: "target_not_permitted", SocketMillis: 20, SocketStage: "body"}
+		detail := runtimeDNSReadTiming{Native: runtimeNativePhaseTiming{Environment: runtimeEnvironmentTiming{CommandMillis: 2, VerificationMillis: 1, CommandCount: 18}, RouteMillis: 1, RecoveryMillis: 2, EnvironmentMillis: 3, ElapsedMillis: 7, RemainingAtEntryMillis: 100}, GuardBracketCount: 1, GuardCommandMillis: 3, GuardVerificationMillis: 7, GuardFailureClass: "target_not_permitted", SocketMillis: 20, SocketStage: "body"}
 		c.emitDNSRuntimeDiagnostic(context.Background(), "dns_proof", "dns_guard_full_read", uuid.Nil, time.Now(), true, detail)
 		c.emitDNSRuntimeDiagnostic(context.Background(), "dns_proof", "dns_guard_full_read", uuid.Nil, time.Now(), true, detail)
 		if len(events) != 1 || (events[0].DNSReadTiming != nil) != enabled {

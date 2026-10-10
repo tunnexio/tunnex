@@ -15,6 +15,9 @@ import (
 // Docker's opaque xt targets need independent nft-backed iptables semantics.
 // Only its complete loopback DNS topology is admitted; table names are not proof.
 func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte, protected []netip.Prefix) bool {
+	return runtimeQualifiedHookCensusWithCommands(ctx, nftPath, raw, protected, runKernelCommand)
+}
+func runtimeQualifiedHookCensusWithCommands(ctx context.Context, nftPath string, raw []byte, protected []netip.Prefix, run func(context.Context, string, ...string) ([]byte, error)) bool {
 	rows, ok := runtimeCensusRows(raw)
 	if !ok {
 		return false
@@ -43,11 +46,11 @@ func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte,
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	path := filepath.Join(filepath.Dir(nftPath), "iptables-nft-save")
-	version, err := runKernelCommand(ctx, path, "-V")
+	version, err := run(ctx, path, "-V")
 	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(version)), "iptables-nft-save v") || !strings.HasSuffix(strings.TrimSpace(string(version)), " (nf_tables)") {
 		return false
 	}
-	listing, err := runKernelCommand(ctx, path, "-t", "nat")
+	listing, err := run(ctx, path, "-t", "nat")
 	return err == nil && runtimeDockerDNSCensusRows(rows, listing, protected)
 }
 
