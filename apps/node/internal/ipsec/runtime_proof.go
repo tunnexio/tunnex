@@ -4,11 +4,17 @@ import (
 	"context"
 	"net/netip"
 	"reflect"
+	"time"
 )
 
 // proveRuntime correlates independent VICI and keyless kernel observations. It
 // does not confer authority: the caller still requires a fresh exact CP lease.
-func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) (resultErr error) {
+	stage := "proof_readers"
+	started := time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "runtime_proof", stage, e.Allocation.ConnectionID, started, resultErr != nil)
+	}()
 	xr, err := NewXFRMReader(c.config.IPPath)
 	if err != nil {
 		return ErrRuntimeController
@@ -17,40 +23,53 @@ func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEn
 	if err != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_xfrm_before"
 	before, err := xr.Read(ctx)
 	if err != nil || before.Namespace != e.Allocation.Namespace {
 		return ErrRuntimeController
 	}
+	stage = "proof_daemon_before"
 	daemon, err := c.config.Daemon.Inspect(ctx)
 	if err != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_kernel_before"
 	kernel, err := kr.Read(ctx)
 	if err != nil || kernel.Namespace != e.Allocation.Namespace {
 		return ErrRuntimeController
 	}
+	stage = "proof_inventory_before"
 	if runtimeInventoryMatches(e, daemon, kernel, before) != nil {
 		return ErrRuntimeController
 	}
 	// Environment includes independent hook and physical route qualification.
+	stage = "proof_environment_observe"
 	again, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
-	if err != nil || !reflect.DeepEqual(again, env) {
+	if err != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_environment_binding"
+	if !reflect.DeepEqual(again, env) {
+		return ErrRuntimeController
+	}
+	stage = "proof_xfrm_after"
 	after, err := xr.Read(ctx)
 	if err != nil || !reflect.DeepEqual(connectionXFRMSnapshot(e, before), connectionXFRMSnapshot(e, after)) || !c.config.DaemonAlive() {
 		return ErrRuntimeController
 	}
 	// Reprove the requested connection against a fresh complete independent
 	// snapshot; unrelated namespace changes cannot supply target ownership.
+	stage = "proof_daemon_after"
 	daemonAfter, err := c.config.Daemon.Inspect(ctx)
 	if err != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_kernel_after"
 	kernelAfter, err := kr.Read(ctx)
 	if err != nil || !reflect.DeepEqual(connectionKernelSnapshot(e, kernel), connectionKernelSnapshot(e, kernelAfter)) || runtimeInventoryMatches(e, daemonAfter, kernelAfter, after) != nil || !c.config.DaemonAlive() || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_complete"
 	return nil
 }
 

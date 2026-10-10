@@ -163,13 +163,20 @@ func (c *RuntimeController) BGPCapability() int {
 	return 0
 }
 
-func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) (resultErr error) {
+	stage := "proof_bgp_journal"
+	started := time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "bgp_proof", stage, e.Allocation.ConnectionID, started, resultErr != nil)
+	}()
 	if !validJournalBGP(e) || !validBGPRoutes(e) || e.ContractVersion != 3 || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
 		return ErrRuntimeController
 	}
+	stage = "proof_bgp_routes"
 	if c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true) != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_bgp_status"
 	statuses := c.observeRecovery(ctx, e)
 	up := false
 	for _, state := range statuses {
@@ -178,13 +185,20 @@ func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJourna
 		}
 		up = up || state == "up"
 	}
+	stage = "proof_bgp_any_up"
 	if !up {
 		return ErrRuntimeController
 	}
+	stage = "proof_environment_observe"
 	current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
-	if err != nil || !reflect.DeepEqual(current, env) {
+	if err != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_environment_binding"
+	if !reflect.DeepEqual(current, env) {
+		return ErrRuntimeController
+	}
+	stage = "proof_complete"
 	return nil
 }
 func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remaining time.Duration) (GuardConnection, error) {
