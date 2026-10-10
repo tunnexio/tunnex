@@ -1017,11 +1017,14 @@ func (c *RuntimeController) proveCurrent(ctx context.Context, e RuntimeJournalEn
 	return c.proveCurrentObserved(ctx, e, env, nil)
 }
 func (c *RuntimeController) proveCurrentObserved(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string)) error {
+	return c.proveCurrentTimed(ctx, e, env, observe, nil)
+}
+func (c *RuntimeController) proveCurrentTimed(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string), timing func(runtimeNativePhaseTiming)) error {
 	if c.prove != nil {
 		return c.prove(ctx, e, env)
 	}
 	if e.ContractVersion == 3 {
-		return c.proveBGPCurrentObserved(ctx, e, env, observe)
+		return c.proveBGPCurrentTimed(ctx, e, env, observe, timing)
 	}
 	return c.proveRuntime(ctx, e, env)
 }

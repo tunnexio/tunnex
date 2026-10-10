@@ -72,7 +72,13 @@ func (c *RuntimeController) claimDNSDiagnostic(now time.Time) bool {
 	}
 }
 
+// Native phase timings describe existing BGP proof calls only. They confer no authority.
+type runtimeNativePhaseTiming struct {
+	RouteMillis, RecoveryMillis, EnvironmentMillis, ElapsedMillis, RemainingAtEntryMillis int64
+}
+
 type runtimeDNSReadTiming struct {
+	Native                                                                runtimeNativePhaseTiming
 	GuardCommandMillis, GuardVerificationMillis, SocketMillis             int64
 	GuardBracketCount                                                     int
 	GuardFailureClass, SocketStage, GuardRevalidation, NativeFailureClass string
@@ -93,6 +99,11 @@ func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operat
 
 // This private telemetry can never contain an error body or DNS data.
 func validDNSReadTiming(t runtimeDNSReadTiming) bool {
+	for _, value := range []int64{t.Native.RouteMillis, t.Native.RecoveryMillis, t.Native.EnvironmentMillis, t.Native.ElapsedMillis, t.Native.RemainingAtEntryMillis} {
+		if value < 0 || value > 60000 {
+			return false
+		}
+	}
 	if t.GuardCommandMillis < 0 || t.GuardVerificationMillis < 0 || t.SocketMillis < 0 || t.GuardCommandMillis > 60000 || t.GuardVerificationMillis > 60000 || t.SocketMillis > 60000 || t.GuardBracketCount < 0 || t.GuardBracketCount > 4 {
 		return false
 	}

@@ -148,7 +148,9 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	var observeGuard func(guardReadTiming)
 	var observeRevalidation func(string)
 	var observeNative func(string)
+	var observeNativeTiming func(runtimeNativePhaseTiming)
 	if c != nil && c.config.DNSReadTiming {
+		observeNativeTiming = func(phases runtimeNativePhaseTiming) { guardTiming.Native = phases }
 		observeNative = func(reason string) { guardTiming.NativeFailureClass = reason }
 		observeRevalidation = func(reason string) { guardTiming.GuardRevalidation = reason }
 		observeGuard = func(t guardReadTiming) {
@@ -224,7 +226,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 		return fail()
 	}
 	stage = "dns_native_proof"
-	if view.observer.controller.proveCurrentObserved(ctx, a.Entry, a.Environment, observeNative) != nil {
+	if view.observer.controller.proveCurrentTimed(ctx, a.Entry, a.Environment, observeNative, observeNativeTiming) != nil {
 		return fail()
 	}
 	stage = "dns_route_slot"

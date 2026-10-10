@@ -166,6 +166,29 @@ func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJourna
 	return c.proveBGPCurrentObserved(ctx, e, env, nil)
 }
 func (c *RuntimeController) proveBGPCurrentObserved(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string)) error {
+	return c.proveBGPCurrentTimed(ctx, e, env, observe, nil)
+}
+func (c *RuntimeController) proveBGPCurrentTimed(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string), timing func(runtimeNativePhaseTiming)) error {
+	var phases runtimeNativePhaseTiming
+	var started time.Time
+	if timing != nil {
+		started = time.Now()
+		if deadline, ok := ctx.Deadline(); ok && deadline.After(started) {
+			phases.RemainingAtEntryMillis = deadline.Sub(started).Milliseconds()
+		}
+		defer func() { phases.ElapsedMillis = time.Since(started).Milliseconds(); timing(phases) }()
+	}
+	phaseStart := func() time.Time {
+		if timing == nil {
+			return time.Time{}
+		}
+		return time.Now()
+	}
+	phaseEnd := func(start time.Time, elapsed *int64) {
+		if timing != nil {
+			*elapsed = time.Since(start).Milliseconds()
+		}
+	}
 	reported := false
 	report := func(reason string) {
 		if !reported {
@@ -177,11 +200,16 @@ func (c *RuntimeController) proveBGPCurrentObserved(ctx context.Context, e Runti
 		report("binding_invalid")
 		return ErrRuntimeController
 	}
-	if c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true) != nil {
+	routeStarted := phaseStart()
+	routeErr := c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true)
+	phaseEnd(routeStarted, &phases.RouteMillis)
+	if routeErr != nil {
 		report("route_read_or_binding")
 		return ErrRuntimeController
 	}
+	recoveryStarted := phaseStart()
 	statuses := c.observeRecoveryObserved(ctx, e, report)
+	phaseEnd(recoveryStarted, &phases.RecoveryMillis)
 	up := false
 	for _, state := range statuses {
 		if state != "up" && state != "down" {
@@ -194,7 +222,9 @@ func (c *RuntimeController) proveBGPCurrentObserved(ctx context.Context, e Runti
 		report("all_tunnels_down")
 		return ErrRuntimeController
 	}
+	environmentStarted := phaseStart()
 	current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+	phaseEnd(environmentStarted, &phases.EnvironmentMillis)
 	if err != nil || !reflect.DeepEqual(current, env) {
 		reason := "environment_changed"
 		if err != nil {
