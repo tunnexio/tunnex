@@ -12,7 +12,8 @@
       "fingerprint_blocks": 0,
       "sha256_fingerprint_tokens": 0,
       "public_hostkey_candidates": 0,
-      "hostkey_marker_present": false
+      "hostkey_marker_present": false,
+      "authenticated_guest_attributes_hostkeys": "absent"
     },
     {
       "name": "tn-gcps2s-20261010-ha-target",
@@ -24,7 +25,8 @@
       "fingerprint_blocks": 0,
       "sha256_fingerprint_tokens": 0,
       "public_hostkey_candidates": 0,
-      "hostkey_marker_present": false
+      "hostkey_marker_present": false,
+      "authenticated_guest_attributes_hostkeys": "absent"
     },
     {
       "name": "tn-gcps2s-20261010-classic-target",
@@ -36,11 +38,15 @@
       "fingerprint_blocks": 0,
       "sha256_fingerprint_tokens": 0,
       "public_hostkey_candidates": 0,
-      "hostkey_marker_present": false
+      "hostkey_marker_present": false,
+      "authenticated_guest_attributes_hostkeys": "absent"
     }
   ],
   "known_hosts_unchanged": true,
   "scan_only_acceptance": false,
   "listener_readiness_verified": false,
-  "secrets_output": false
+  "secrets_output": false,
+  "guest_attributes_read_only": true,
+  "metadata_unchanged": true,
+  "official_reference": "https://docs.cloud.google.com/solutions/connecting-securely"
 }
