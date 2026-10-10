@@ -1,0 +1,46 @@
+{
+  "source_head": "c414444c",
+  "source_changes_from_retained_deployed_snapshot": [
+    "apps/api/internal/fqdnresolver/controlrpc.go",
+    "apps/api/internal/fqdnresolver/controlrpc_test.go",
+    "apps/api/internal/fqdnresolver/scheduler.go",
+    "apps/api/internal/fqdnresolver/scheduler_test.go"
+  ],
+  "binary_sha256": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+  "previous_binary_sha256": "51b18574d02d77b7f5c024935a3e6079c433d17bdd8cb4c3d9b76a5f48e2ca16",
+  "target": "linux/amd64",
+  "toolchain": "go1.26.9",
+  "CGO_ENABLED": 0,
+  "go_flags": [
+    "-mod=readonly",
+    "-trimpath"
+  ],
+  "local_fqdnresolver_race": {
+    "passed": true,
+    "seconds": 2.081
+  },
+  "deployment": {
+    "owned_api_process_hash_verified": true,
+    "healthz_passed": true,
+    "gateway_changed": false,
+    "normal_read_at": "2026-10-10T17:15:18.316016Z",
+    "desired_revision": 22,
+    "applied": true,
+    "both_tunnels_up": true,
+    "both_bgp_established": true,
+    "approved_route_installed": true,
+    "original_binary_retained": true
+  },
+  "post_deploy_window": {
+    "observed_at": "2026-10-10T17:17:40.635254Z",
+    "requests": 3,
+    "all_expired_without_response": true,
+    "deadline_seconds": 5,
+    "fqdn_fresh_generation_proven": false,
+    "grant_issued": false
+  },
+  "limits": [
+    "Local causal tests prove timestamp defects; post-deploy expired requests do not prove live correction.",
+    "No DNS deadline, identity, freshness or authority gate relaxed."
+  ]
+}
