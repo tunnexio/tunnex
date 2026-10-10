@@ -30,7 +30,7 @@ func runtimeBGPProcessConfig(e RuntimeJournalEntry) (bgpengine.Config, error) {
 	}
 	return c, nil
 }
-func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJournalEntry) error {
+func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJournalEntry, environments ...RuntimeEnvironment) error {
 	if c.bgpProcesses == nil {
 		c.bgpProcesses = map[uuid.UUID]runtimeBGPSession{}
 	}
@@ -84,7 +84,18 @@ func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJourna
 			}
 			return ErrRuntimeJournal
 		}
-		process, err = startRuntimeBGPSession(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint)
+		if e.Allocation.ProfileID == GCPHABGPProfile {
+			if len(environments) != 1 {
+				return ErrRuntimeController
+			}
+			proof, proofErr := c.gcpBGPLocalExportProof(e, cfg, environments[0])
+			if proofErr != nil {
+				return proofErr
+			}
+			process, err = startRuntimeBGPSessionWithLocalExportProof(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint, proof)
+		} else {
+			process, err = startRuntimeBGPSession(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint)
+		}
 	}
 	if err != nil || process == nil {
 		return ErrRuntimeController
@@ -512,7 +523,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		}
 	}
 	stage = "session_start"
-	if c.startBGPSession(ctx, e) != nil {
+	if c.startBGPSession(ctx, e, env) != nil {
 		return fail()
 	}
 	entries, err = c.journal.Entries()

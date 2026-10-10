@@ -23,3 +23,7 @@ func proveUncertainRuntimeBGPProcess(id bgpengine.ProcessIdentity) error { retur
 func recoverUncertainRuntimeBGPProcess(id bgpengine.ProcessIdentity) error {
 	return ErrRuntimeController
 }
+
+func startRuntimeBGPSessionWithLocalExportProof(context.Context, string, uuid.UUID, uint64, bgpengine.Config, func(bgpengine.ProcessIdentity) error, bgpengine.LocalExportProof) (runtimeBGPSession, error) {
+	return nil, ErrRuntimeController
+}

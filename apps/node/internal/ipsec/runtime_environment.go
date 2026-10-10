@@ -238,6 +238,19 @@ func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
 	return true
 }
 func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
+	return r.observe(ctx, a, engines, false)
+}
+
+// ObserveLocalExports applies export-only protocol restrictions to the same
+// bounded, namespace-stable inventory used by ordinary environment proof.
+func (r *runtimeEnvironmentInspector) ObserveLocalExports(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
+	if a.ProfileID != GCPHABGPProfile || !a.BGP {
+		return RuntimeEnvironment{}, ErrRuntimeEnvironment
+	}
+	return r.observe(ctx, a, engines, true)
+}
+
+func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel, localExports bool) (RuntimeEnvironment, error) {
 	fail := func() (RuntimeEnvironment, error) { return RuntimeEnvironment{}, ErrRuntimeEnvironment }
 	if r == nil || r.ip == nil || r.nft == nil || r.namespace == nil || !validKernelAllocation(a) {
 		return fail()
@@ -385,6 +398,9 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 				continue // A gateway host is never proof of prefix coverage.
 			}
 			if _, routed := row["gateway"]; gcp && routed && !runtimeRoutedLocalPrefix(row, p, prefix, routeRows, physical, assigned) {
+				return fail()
+			}
+			if localExports && (p != prefix || !runtimeLocalExportProtocol(row["protocol"])) {
 				return fail()
 			}
 			if found != 0 && found != index {
@@ -576,4 +592,17 @@ func runtimeRoutedLocalPrefix(route map[string]json.RawMessage, p, approved neti
 		}
 	}
 	return matches == 1
+}
+
+func runtimeLocalExportProtocol(raw json.RawMessage) bool {
+	var named string
+	if json.Unmarshal(raw, &named) == nil {
+		switch named {
+		case "kernel", "static", "boot", "2", "3", "4", "242":
+			return true
+		}
+		return false
+	}
+	n, ok := kernelNumber(raw, 32)
+	return ok && (n == 2 || n == 3 || n == 4 || n == 242)
 }
