@@ -61,6 +61,14 @@ def live_journal(path, device, inode):
   finally: os.close(file_fd)
  finally: os.close(fd)
 
+def gateway_lan(rows):
+ if not isinstance(rows,list) or len(rows)!=1: raise ValueError('gateway_lan')
+ row=rows[0]
+ if row.get('ifname')!='az-s2s-lan' or 'UP' not in row.get('flags',[]): raise ValueError('gateway_lan')
+ addresses=row.get('addr_info',[])
+ matching=[v for v in addresses if v.get('family')=='inet' and v.get('local')==SOURCE]
+ if len(matching)!=1 or matching[0].get('prefixlen')!=24: raise ValueError('gateway_lan_source')
+
 def listening_acknowledged(raw,interface):
  pattern=rb'(?m)^tcpdump: listening on '+re.escape(interface.encode())+rb', link-type [^\r\n]+$'
  matches=re.findall(pattern,raw)
@@ -175,8 +183,9 @@ def run(args):
  if any(b.get(k)is not True for k in required) or b.get('revision')!=46 or b.get('preserved_grant_count')!=8 or b.get('preserved_grant_ids_match')is not True or sorted(map(tuple,b.get('endpoint_pairs',[])))!=PAIRS: raise ValueError('attestation')
  if abs(time.time()-stamp(b['observed_at']))>15: raise ValueError('attestation_age')
  stage('identity');initial=identity()
- stage('interfaces');interfaces=b['xfrm_interfaces']+['az-s2s-client']
+ stage('interfaces');interfaces=b['xfrm_interfaces']+['az-s2s-lan']
  if len(set(interfaces))!=3 or any(not re.fullmatch(r'[a-zA-Z0-9_-]{1,15}',v) for v in interfaces): raise ValueError('interfaces')
+ gateway_lan(json.loads(command(['nsenter','-t',str(initial[0]),'-n','ip','-j','address','show','dev','az-s2s-lan'])))
  stage('state_mount')
  mounts=json.loads(command(['docker','inspect',CID]))[0]['Mounts']
  state=[v['Source'] for v in mounts if v['Destination']=='/var/lib/tunnex-node']
@@ -189,7 +198,7 @@ def run(args):
  entries=[e for e in payload['Entries'] if e['Phase']=='applied' and e['Engines'][0]['Binding']['DesiredRevision']==46]
  if len(entries)!=1 or [t['Name'] for t in entries[0]['Allocation']['Tunnels']]!=b['xfrm_interfaces']: raise ValueError('snapshot_interfaces')
  stage('tools')
- for tool in ('tcpdump','ss','nsenter'): command(['sh','-c','command -v "$1"','sh',tool])
+ for tool in ('tcpdump','ss','nsenter','ip'): command(['sh','-c','command -v "$1"','sh',tool])
  conntrack_available=subprocess.run(['sh','-c','command -v conntrack'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2).returncode==0
  stage('evidence')
  directory=pathlib.Path(args.evidence_dir);directory.mkdir(mode=0o700,exist_ok=False)

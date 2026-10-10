@@ -1,6 +1,17 @@
 import importlib.util,pathlib,unittest
 spec=importlib.util.spec_from_file_location('capture',pathlib.Path(__file__).with_name('capture-natural-dns46.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Correlation(unittest.TestCase):
+ def test_gateway_source_binding(self):
+  good={'ifname':'az-s2s-lan','flags':['UP'],'addr_info':[{'family':'inet','local':m.SOURCE,'prefixlen':24}]}
+  m.gateway_lan([good])
+  import copy
+  for change in ('wrong_source','wrong_prefix','down','duplicate'):
+   row=copy.deepcopy(good)
+   if change=='wrong_source':row['addr_info'][0]['local']='10.233.10.2'
+   if change=='wrong_prefix':row['addr_info'][0]['prefixlen']=32
+   if change=='down':row['flags']=[]
+   if change=='duplicate':row['addr_info']*=2
+   with self.assertRaises(ValueError):m.gateway_lan([row])
  def test_refusal_has_fixed_stage_only(self):
   for value in m.STAGES:
    m.stage(value);self.assertEqual(m.refusal(),{'status':'refused','category':'owned_capture_refused','stage':value})
