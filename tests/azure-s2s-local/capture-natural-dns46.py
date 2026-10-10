@@ -29,6 +29,36 @@ def private(path,limit=8<<20):
   return raw
  finally: os.close(fd)
 
+def live_journal(path, device, inode):
+ # Ubuntu ownership is explicitly tolerated ancestry, not protected ancestry.
+ p=pathlib.Path(path)
+ if not p.is_absolute() or str(p)!=os.path.normpath(str(p)): raise ValueError('live_path')
+ fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
+ try:
+  walked=''
+  for part in p.parts[1:-1]:
+   walked+='/'+part
+   next_fd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+   os.close(fd);fd=next_fd;st=os.fstat(fd)
+   ubuntu=walked=='/home/ubuntu' or walked.startswith('/home/ubuntu/')
+   if st.st_uid not in ({0,1000} if ubuntu else {0}) or st.st_mode&0o022: raise ValueError('live_ancestry')
+  file_fd=os.open(p.name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=fd)
+  try:
+   st=os.fstat(file_fd)
+   if st.st_uid!=0 or st.st_mode&0o777!=0o600 or (st.st_dev,st.st_ino)!=(device,inode) or st.st_size>8<<20: raise ValueError('live_file')
+   with os.fdopen(file_fd,'rb',closefd=False) as stream: raw=stream.read((8<<20)+1)
+   if len(raw)>8<<20: raise ValueError('live_bound')
+   return raw
+  finally: os.close(file_fd)
+ finally: os.close(fd)
+
+def capture_health(log,returncode):
+ captured=re.findall(rb'(?m)^(\d+) packets captured$',log)
+ received=re.findall(rb'(?m)^(\d+) packets received by filter$',log)
+ dropped=re.findall(rb'(?m)^(\d+) packets dropped by kernel$',log)
+ if returncode!=0 or any(len(v)!=1 for v in (captured,received,dropped)): raise ValueError('capture_counters')
+ return {'captured':int(captured[0]),'received':int(received[0]),'dropped':int(dropped[0])}
+
 def save(path,raw):
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
  with os.fdopen(fd,'wb') as stream: stream.write(raw);stream.flush();os.fsync(stream.fileno())
@@ -76,7 +106,7 @@ def packets(raw):
   out.append(row)
  return out
 
-def correlate(rows,diagnostics,rpcs):
+def correlate(rows,diagnostics,rpcs,complete=False,coverage=None):
  result=[]
  for d in diagnostics:
   if d.get('operation')!='dns_exchange' or d.get('socket_ms')!=3000 or d.get('socket_stage') not in ('dial','body'): continue
@@ -95,6 +125,14 @@ def correlate(rows,diagnostics,rpcs):
     syns=[r for r in sent if r.get('flags',0)&2 and not r.get('flags',0)&16]
     replies=[r for r in received if r.get('flags',0)&18==18 and any(r['ack']==(s['seq']+1)&0xffffffff for s in syns)]
     item.update(classification='unique_flow_header_match',reply_observed=bool(replies),syn_count=len(syns),handshake_ack_observed=any(r.get('flags',0)&16 and any(r['ack']==(s['seq']+1)&0xffffffff for s in replies) for r in sent))
+  if item['classification']=='unique_flow_header_match':
+   outgoing_indices={r.get('capture_index') for r in sent if r.get('capture_index') in (0,1)}
+   reply_indices={r.get('capture_index') for r in replies if r.get('capture_index') in (0,1)}
+   item['request_xfrm_count']=len(outgoing_indices)
+   item['reply_xfrm_count']=len(reply_indices)
+   item['same_tunnel_reply_observed']=bool(outgoing_indices & reply_indices)
+   item['opposite_tunnel_reply_observed']=bool(reply_indices-outgoing_indices) and len(outgoing_indices)==1
+   if not complete or coverage is not None and not (coverage[0]<=start and end<=coverage[1]): item['classification']='indeterminate'
   result.append(item)
  return result
 
@@ -110,9 +148,15 @@ def run(args):
  if len(set(interfaces))!=3 or any(not re.fullmatch(r'[a-zA-Z0-9_-]{1,15}',v) for v in interfaces): raise ValueError('interfaces')
  mounts=json.loads(command(['docker','inspect',CID]))[0]['Mounts']
  state=[v['Source'] for v in mounts if v['Destination']=='/var/lib/tunnex-node']
- if len(state)!=1 or b['journal_path']!=state[0]+'/ipsec/journal.json': raise ValueError('state_mount')
- if sha(private(b['journal_path']))!=b['journal_sha256']: raise ValueError('journal_attestation')
- for tool in ('tcpdump','ss','conntrack','nsenter'): command(['sh','-c','command -v "$1"','sh',tool])
+ if len(state)!=1 or b['live_journal_path']!=state[0]+'/ipsec/journal.json': raise ValueError('state_mount')
+ live=live_journal(b['live_journal_path'],b['live_journal_device'],b['live_journal_inode'])
+ snapshot=private(b['snapshot_journal_path'])
+ if sha(live)!=b['journal_sha256'] or sha(snapshot)!=b['journal_sha256']: raise ValueError('journal_attestation')
+ payload=json.loads(snapshot)['Payload']
+ entries=[e for e in payload['Entries'] if e['Phase']=='applied' and e['Engines'][0]['Binding']['DesiredRevision']==46]
+ if len(entries)!=1 or [t['Name'] for t in entries[0]['Allocation']['Tunnels']]!=b['xfrm_interfaces']: raise ValueError('snapshot_interfaces')
+ for tool in ('tcpdump','ss','nsenter'): command(['sh','-c','command -v "$1"','sh',tool])
+ conntrack_available=subprocess.run(['sh','-c','command -v conntrack'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2).returncode==0
  directory=pathlib.Path(args.evidence_dir);directory.mkdir(mode=0o700,exist_ok=False)
  if str(directory.resolve())!=str(directory) or directory.stat().st_uid!=0: raise ValueError('evidence_directory')
  save(directory/'attestation.json',baseline_raw);started=utc();processes=[];streams=[];capture_started=time.monotonic()
@@ -120,7 +164,9 @@ def run(args):
   for i,interface in enumerate(interfaces):
    log=open(directory/f'capture-{i}.log','xb');os.chmod(log.name,0o600);streams.append(log)
    proc=subprocess.Popen(['nsenter','-t',str(initial[0]),'-n','tcpdump','-U','-Z','root','-n','-i',interface,'-s','160','-C','8','-W','1','-w',str(directory/f'capture-{i}.pcap'),'host',SOURCE,'and','(','host','10.231.2.4','or','host','10.231.2.20',')','and','port','53'],stdout=subprocess.DEVNULL,stderr=log);processes.append(proc)
+  capture_ready=time.time();capture_stopped=[]
   def end_capture():
+   capture_stopped.append(time.time())
    for p in processes:
     if p.poll()is None:p.send_signal(signal.SIGINT)
   timer=threading.Timer(max(0,40-(time.monotonic()-capture_started)),end_capture);timer.daemon=True;timer.start()
@@ -131,7 +177,7 @@ def run(args):
    sample={'observed_at':utc(),'ss':'\n'.join(v for v in socket_rows if f'pid={initial[0]},' in v)}
    # Raw samples stay private; parsing does not claim they identify a timed-out socket.
    sample['conntrack']=[]
-   for proto in ('udp','tcp'):
+   for proto in (('udp','tcp') if conntrack_available else ()):
     for endpoint in sorted(ENDPOINTS):
      result=subprocess.run(['nsenter','-t',str(initial[0]),'-n','conntrack','-L','-p',proto,'--orig-src',SOURCE,'--orig-dst',endpoint,'--dport','53'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=2)
      if result.returncode: raise ValueError('conntrack_read')
@@ -140,6 +186,7 @@ def run(args):
    if stop-time.monotonic()>1: time.sleep(1)
  finally:
   if 'timer' in locals():timer.cancel()
+  if 'capture_stopped' in locals() and not capture_stopped:capture_stopped.append(time.time())
   for p in processes:
    if p.poll()is None:p.send_signal(signal.SIGINT)
   for p in processes:
@@ -155,12 +202,16 @@ def run(args):
   except ValueError:continue
   if v.get('msg')=='ipsec_runtime_diagnostic_refused':diagnostics.append({k:v[k] for k in ('time','operation','stage','socket_ms','socket_stage') if k in v})
   if v.get('msg')=='fqdn_rpc_timing':rpcs.append({k:v[k] for k in ('dispatch_utc','handle_ms') if k in v})
- rows=[];hashes=[]
+ rows=[];hashes=[];health=[]
  for i in range(3):
   path=directory/f'capture-{i}.pcap';os.chmod(path,0o600);raw=private(str(path))
   if len(raw)>=8_000_000: raise ValueError('capture_rotation')
-  hashes.append(sha(raw));rows+=packets(raw)
- result={'version':1,'started_at':started,'ended_at':utc(),'scope':'Read-only natural RPC header correlation; no authority or readiness claim','packet_header_count':len(rows),'socket_sample_count':index,'capture_sha256':hashes,'correlations':correlate(rows,diagnostics,rpcs)}
+  hashes.append(sha(raw))
+  parsed=packets(raw)
+  for row in parsed: row['capture_index']=i
+  rows+=parsed
+  health.append(capture_health(private(str(directory/f'capture-{i}.log')),processes[i].returncode))
+ result={'version':1,'started_at':started,'ended_at':utc(),'scope':'Read-only natural RPC header correlation; no authority or readiness claim','packet_header_count':len(rows),'socket_sample_count':index,'capture_sha256':hashes,'capture_health':health,'supporting_conntrack_available':conntrack_available,'correlations':correlate(rows,diagnostics,rpcs,all(v['dropped']==0 for v in health),(capture_ready,capture_stopped[0]))}
  save(directory/'summary.json',json.dumps(result,indent=2).encode());print(json.dumps(result))
 
 if __name__=='__main__':
