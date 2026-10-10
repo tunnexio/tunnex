@@ -449,7 +449,18 @@ func verifyGuardConnectionReadback(expected, observed []byte, links []GuardInter
 	if id == uuid.Nil {
 		return ErrGuardReadback
 	}
-	want, err := verifyGuardWithdrawalSnapshot(expected, observed, links)
+	want, ok := normalizedGuardObjects(expected)
+	if !ok {
+		return ErrGuardReadback
+	}
+	return verifyGuardConnectionObjectsReadback(want, observed, links, id)
+}
+
+func verifyGuardConnectionObjectsReadback(expected []any, observed []byte, links []GuardInterface, id uuid.UUID) error {
+	if id == uuid.Nil || len(expected) == 0 {
+		return ErrGuardReadback
+	}
+	want, err := verifyGuardWithdrawalObjectsSnapshot(expected, observed, links)
 	if err != nil {
 		return ErrGuardReadback
 	}

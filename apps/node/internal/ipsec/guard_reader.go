@@ -65,6 +65,22 @@ func (r *GuardReader) checkConnection(ctx context.Context, manifest GuardManifes
 	})
 }
 
+// snapshot is created and consumed within one resolver proof. Exact raw binding
+// prevents using another template; it never retains parsed observed authority.
+type guardExpectedSnapshot struct {
+	raw     string
+	objects []any
+}
+
+func (r *GuardReader) checkConnectionSnapshot(ctx context.Context, manifest GuardManifest, id uuid.UUID, snapshot guardExpectedSnapshot) error {
+	if id == uuid.Nil || snapshot.raw != manifest.ExpectedJSON || len(snapshot.objects) == 0 {
+		return ErrGuardRead
+	}
+	return r.check(ctx, manifest, func(_, observed []byte, links []GuardInterface) error {
+		return verifyGuardConnectionObjectsReadback(snapshot.objects, observed, links, id)
+	})
+}
+
 func (r *GuardReader) check(ctx context.Context, manifest GuardManifest, verify func([]byte, []byte, []GuardInterface) error) error {
 	if r == nil || r.run == nil || r.namespace == nil || r.interfaces == nil || ctx.Err() != nil || !validKernelNamespace(manifest.Namespace) {
 		return ErrGuardRead

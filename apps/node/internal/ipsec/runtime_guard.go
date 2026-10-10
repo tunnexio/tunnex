@@ -24,6 +24,15 @@ func VerifyGuardWithdrawal(expected, observed []byte, links []GuardInterface) er
 
 // The returned intent belongs only to this readback; retain positive members.
 func verifyGuardWithdrawalSnapshot(expected, observed []byte, links []GuardInterface) ([]any, error) {
+	want, ok := normalizedGuardObjects(expected)
+	if !ok {
+		return nil, ErrGuardReadback
+	}
+	return verifyGuardWithdrawalObjectsSnapshot(want, observed, links)
+}
+
+// want is locally normalized from the exact expected bytes for this read only.
+func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []GuardInterface) ([]any, error) {
 	mapping := map[string]int{}
 	indices := map[int]bool{}
 	for _, l := range links {
@@ -32,10 +41,6 @@ func verifyGuardWithdrawalSnapshot(expected, observed []byte, links []GuardInter
 		}
 		mapping[l.Name] = l.Index
 		indices[l.Index] = true
-	}
-	want, ok := normalizedGuardObjects(expected)
-	if !ok {
-		return nil, ErrGuardReadback
 	}
 	got, ok := normalizedGuardWithdrawalObjectsWithInterfaces(observed, mapping)
 	if !ok || len(want) != len(got) {
