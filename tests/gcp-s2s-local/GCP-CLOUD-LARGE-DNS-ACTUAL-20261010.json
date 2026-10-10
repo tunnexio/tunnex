@@ -1,0 +1,43 @@
+{
+  "source_sha256": "a3245d9519a67d075b6fc426b8fe03cbecc4cd0f05c2dea6fc1b7d85db2cd602",
+  "source_reviews": "parent and UI independent PASS; actual old7210shape RED/current4testsGREEN",
+  "scope": "Only two private diagnostic QA large40A RRsets; no app/DNS grants, wire queries, resolver or FQDN changes. Existing4RRsets in each zone exactpreserved; oldfirstrefusal retained.",
+  "operations": [
+    {
+      "profile": "ha",
+      "network_id": "6379914247511756275",
+      "managed_zone": "tn-gcps2s-20261010-ha-qa-zone",
+      "dns_name": "large.ha.gcp.s2s-qa.tunnex.app.",
+      "ttl": 30,
+      "rrdata_count": 40,
+      "created": true,
+      "completed": true,
+      "prior_records_exact_preserved": true,
+      "baseline_record_count": 4,
+      "current_record_count": 5,
+      "chunk": "61de6c",
+      "receipt_sha256": "594cf9678c60a94afdebf4a146267c1d8a6f06f62bcfbd302b5f60a5ede7b015",
+      "baseline_rrsets_sha256": "a1ceb819b7532d556f6619215633d8f6dad6b134af5a8bc35813f074013f3c57",
+      "private_receipt_path": "/home/cyberking9560/tn-gcps2s-20261010/dns-large-a3245d95/evidence/ha-large-v2.json",
+      "mode": "0600"
+    },
+    {
+      "profile": "classic",
+      "network_id": "3397467516692614609",
+      "managed_zone": "tn-gcps2s-20261010-classic-qa-zone",
+      "dns_name": "large.classic.gcp.s2s-qa.tunnex.app.",
+      "ttl": 30,
+      "rrdata_count": 40,
+      "created": true,
+      "completed": true,
+      "prior_records_exact_preserved": true,
+      "baseline_record_count": 4,
+      "current_record_count": 5,
+      "chunk": "9cf765",
+      "receipt_sha256": "99eddb9023b7cee3958a9eaf14d64730d231a4cc84b1005d413e7f5e3210626d",
+      "baseline_rrsets_sha256": "aff557e2f6d405e2ebf568328fb4b14f0a4043c782c122a4e25a8f3eb966782b",
+      "private_receipt_path": "/home/cyberking9560/tn-gcps2s-20261010/dns-large-a3245d95/evidence/classic-large-v1.json",
+      "mode": "0600"
+    }
+  ]
+}
