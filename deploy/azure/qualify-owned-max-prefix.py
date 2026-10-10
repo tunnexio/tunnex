@@ -70,6 +70,7 @@ def run(phase,state_path,receipt,review=None,proof=None):
  def check(r,c,t):return evidence(r,c,t,receipt,proof)
  def reservation(action,state):
   if state.get('qualification')!='owned_maximum_prefix':raise ValueError('exclusive owned experiment binding')
+  normal(receipt,datetime.now(timezone.utc),state['normal_binding'])
   api.reserve(state_path.with_name(state_path.name+'.'+action+'-reserved'))
  result=prefix.run(phase,state_path,review,evidence_check=check,reservation=reservation)
  if phase=='prepare':
