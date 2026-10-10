@@ -99,6 +99,6 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
       <p className="mt-2">A gateway and approved ranges at each location, one reachable public WireGuard hub, access policies and return routes. Links are configured automatically.</p>
     </details>
     </>}
-    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
+    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onAzure={() => { setCreateProfile("azure-active-active-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
   </div>;
 }

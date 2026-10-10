@@ -469,3 +469,35 @@ it("switches Classic back to HA with two clean tunnel drafts",async()=>{
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
  expect(screen.getByLabelText("Tunnel 2 PSK")).toBeTruthy();expect(screen.getByLabelText("Tunnel 2 inside CIDR")).toBeTruthy();expect(screen.queryByDisplayValue("Synthetic.Classic1")).toBeNull();expect(mock.post).not.toHaveBeenCalled();
 });
+
+it.each(["azure-active-active-bgp-ipv4-v1", "azure-active-standby-bgp-ipv4-v1", "azure-active-active-static-ipv4-v1", "azure-active-standby-static-ipv4-v1"])("saves Azure %s with its independent topology and routing contract", async profile => {
+ mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id}});
+ render(view()); await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"), {target:{value:profile}});
+ const dynamic = profile.includes("-bgp-"); const count = profile.includes("-standby-") ? 1 : 2;
+ expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(true);
+ expect(screen.getByText(/Match the custom IKE/)).toBeTruthy();
+ if(dynamic) expect((screen.getByLabelText("Azure gateway ASN") as HTMLInputElement).value).toBe("65515");
+ else expect(screen.queryByLabelText("Azure gateway ASN")).toBeNull();
+ fireEvent.click(screen.getByRole("button", {name:"Next: tunnels"}));
+ for(let n=1;n<=count;n++) for(const [field,value] of Object.entries({"outside IP":n===1?"8.8.8.8":"1.1.1.1","inside CIDR":n===1?"169.254.21.0/30":"169.254.21.4/30","customer IP":n===1?"169.254.21.1":"169.254.21.5","cloud IP":n===1?"169.254.21.2":"169.254.21.6",PSK:`Synthetic.Azure_${n}`})) {
+   const runtime=!dynamic&&field!=="outside IP"&&field!=="PSK"?"Tunnex runtime ":"";
+   fireEvent.change(screen.getByLabelText(`Tunnel ${n} ${runtime}${field}`), {target:{value}});
+ }
+ if(count===1) expect(screen.queryByLabelText("Tunnel 2 outside IP")).toBeNull();
+ expect(screen.queryByText(/GCP interface/)).toBeNull();
+ fireEvent.click(screen.getByRole("button", {name:"Save disabled connection"}));
+ await waitFor(()=>expect(mock.post.mock.calls.some(([path])=>path.endsWith("/connections"))).toBe(true));
+ const body=mock.post.mock.calls.find(([path])=>path.endsWith("/connections"))![1].body;
+ expect(body.tunnel_ids).toHaveLength(count); expect(body.configuration.tunnels).toHaveLength(count);
+ expect(body.configuration.profile_id).toBe(profile); expect(body.configuration.mode).toBe(dynamic?"ipv4-bgp":"ipv4-static");
+ if(count===1) expect(body.configuration).toMatchObject({transport_version:1,tunnel_count:1});
+ if(!dynamic) expect(body.configuration).not.toHaveProperty("bgp");
+});
+it("refuses Azure enable from AWS or GCP BGP support alone", async () => {
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"azure-active-active-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true},gcp_ha:{eligible:true}}}:original(path,opts));
+ render(view()); await screen.findByRole("button", {name:"Office to cloud"});
+ await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
+ expect((await connectionMenu("Office to cloud")).queryByRole("menuitem", {name:"Enable Office to cloud"})).toBeNull();
+});

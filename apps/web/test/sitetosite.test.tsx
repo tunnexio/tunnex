@@ -196,7 +196,8 @@ it("routes AWS through provider selection and does not reopen a cancelled draft 
     expect(logo?.getAttribute("focusable")).toBe("false");
     if (provider !== "self_managed") expect(logo?.querySelector("image")?.getAttribute("href")).toMatch(/^data:image\/(?:svg\+xml|png);base64,/);
   }
-  for (const name of [/Azure/, /On-premises/]) {
+  expect((screen.getByRole("button", { name: /Azure/ }) as HTMLButtonElement).disabled).toBe(false);
+  for (const name of [/On-premises/]) {
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   }
   fireEvent.click(screen.getByRole("button", { name: /AWS Site-to-Site/ }));

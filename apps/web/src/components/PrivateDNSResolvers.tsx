@@ -13,7 +13,7 @@ import { useAuth } from "../lib/auth";
 type IPsecConnection=components["schemas"]["IPsecConnection"];
 const providers: Array<{ id: FQDNResolverProvider; name: string; icon?: IconName; guidance: string }> = [
   { id: "aws", name: "AWS", guidance: "Route 53 Resolver inbound endpoint or VPC DNS forwarder reachable from this gateway." },
-  { id: "azure", name: "Microsoft Azure", guidance: "Azure DNS Private Resolver inbound endpoint or private DNS forwarder reachable from this gateway." },
+  { id: "azure", name: "Microsoft Azure", guidance: "Use Azure DNS Private Resolver inbound private IPs over approved tunnel routes, with the private zones linked to its VNet. Do not use 168.63.129.16 from outside Azure." },
   { id: "google_cloud", name: "Google Cloud", guidance: "Cloud DNS inbound server-policy IPs in the VPN region, reachable through the approved tunnel. Use a conditional forwarder for each private zone." },
   { id: "on_premises", name: "On-premises", icon: "building-2", guidance: "Private DNS resolver reachable from this gateway path." },
 ];
