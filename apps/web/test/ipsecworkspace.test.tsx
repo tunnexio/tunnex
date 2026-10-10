@@ -80,6 +80,13 @@ it("deletes only after confirmation using the displayed revision", async () => {
  await waitFor(() => expect(mock.del).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId: "org-a", connectionId: record.id }, header: { "If-Match": '"1"' } } }));
  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
+it("blocks another stale deletion attempt until the operator closes and refreshes", async () => {
+ mock.del.mockResolvedValue({error:{},response:{status:409}});
+ render(view()); fireEvent.click((await connectionMenu("Office to cloud")).getByRole("menuitem",{name:"Delete Office to cloud"}));
+ const submit=screen.getByRole("button",{name:"Delete connection"}); fireEvent.click(submit);
+ await screen.findByText("Could not confirm deletion. Close and refresh before retrying.");
+ expect((submit as HTMLButtonElement).disabled).toBe(true); fireEvent.click(submit); expect(mock.del).toHaveBeenCalledTimes(1);
+});
 it("shows unsupported gateway readiness without enabling a save", async () => {
  const original = mock.get.getMockImplementation()!;
  mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/eligibility") ? { data: { eligible: false, reason: "unsupported" } } : original(path, opts));
@@ -148,6 +155,7 @@ it("retains a failed intent dialog and requires refresh after conflict",async()=
  mock.put.mockResolvedValue({error:{},response:{status:409}});render(view());
  fireEvent.click((await connectionMenu("Office to cloud")).getByRole("menuitem",{name:"Disable Office to cloud"}));fireEvent.click(screen.getByRole("button",{name:"Disable connection"}));
  await screen.findByText("Could not confirm the change. Close and refresh before retrying.");expect(screen.getByRole("dialog")).toBeTruthy();
+ const retry=screen.getByRole("button",{name:"Disable connection"});expect((retry as HTMLButtonElement).disabled).toBe(true);fireEvent.click(retry);expect(mock.put).toHaveBeenCalledTimes(1);
 });
 it("rechecks support before enabling and refuses a gateway that became unsupported",async()=>{
  const original=mock.get.getMockImplementation()!;let supported=true;

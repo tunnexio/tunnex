@@ -231,7 +231,7 @@ function ChangeIntent({ orgId, connection, onClose, onChanged }: { orgId: string
   const intent = connection.desired_intent === "enabled" ? "disabled" : "enabled";
   const label = intent === "enabled" ? "Enable" : "Disable";
   async function change() {
-    if (busy || !Number.isSafeInteger(connection.desired_revision)) return;
+    if (busy || error || !Number.isSafeInteger(connection.desired_revision)) return;
     setBusy(true); setError("");
     try {
       if (intent === "enabled") {
@@ -250,18 +250,18 @@ function ChangeIntent({ orgId, connection, onClose, onChanged }: { orgId: string
     } catch { if (alive.current) setError("Could not confirm the change. Close and refresh before retrying."); }
     finally { if (alive.current) setBusy(false); }
   }
-  return <Modal title={`${label} connection?`} onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={busy || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void change()}>{label} connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">{intent === "enabled" ? "Apply this configuration on its gateway. Access policies control which traffic is allowed." : "Stop tunnel traffic. Gateway cleanup may remain pending while the gateway is offline."}</p><ErrorText>{error}</ErrorText></Modal>;
+  return <Modal title={`${label} connection?`} onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={busy || !!error || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void change()}>{label} connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">{intent === "enabled" ? "Apply this configuration on its gateway. Access policies control which traffic is allowed." : "Stop tunnel traffic. Gateway cleanup may remain pending while the gateway is offline."}</p><ErrorText>{error}</ErrorText></Modal>;
 }
 function DeleteConnection({ orgId, connection, onClose, onDeleted }: { orgId: string; connection: Connection; onClose: () => void; onDeleted: () => void }) {
   const alive = useLifetime(); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   async function remove() {
-    if (busy || !Number.isSafeInteger(connection.desired_revision)) return;
+    if (busy || error || !Number.isSafeInteger(connection.desired_revision)) return;
     setBusy(true); setError("");
     try { const result = await api.DELETE("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId, connectionId: connection.id }, header: { "If-Match": `"${connection.desired_revision}"` } } }); if (!alive.current) return; if (result.error || !result.data) setError("Could not confirm deletion. Close and refresh before retrying."); else onDeleted(); }
     catch { if (alive.current) setError("Could not confirm deletion. Close and refresh before retrying."); }
     finally { if (alive.current) setBusy(false); }
   }
-  return <Modal title="Delete connection?" onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="danger" disabled={busy || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void remove()}>Delete connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">Removes the tunnel and credentials after gateway cleanup. Safety guards and reserved ranges remain for previously delivered tunnels.</p><ErrorText>{error}</ErrorText></Modal>;
+  return <Modal title="Delete connection?" onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="danger" disabled={busy || !!error || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void remove()}>Delete connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">Removes the tunnel and credentials after gateway cleanup. Safety guards and reserved ranges remain for previously delivered tunnels.</p><ErrorText>{error}</ErrorText></Modal>;
 }
 const blankTunnel = (): Configuration["tunnels"][number] => ({ outside_address: "", inside_cidr: "", customer_inside_address: "", cloud_inside_address: "", psk: "" });
 function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSaved }: { initialProfile?: IPsecCreateProfile; orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string, name: string) => void }) {
