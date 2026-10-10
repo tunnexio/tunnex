@@ -3446,7 +3446,7 @@ export interface paths {
         put?: never;
         /**
          * Validate an IPsec configuration without saving it
-         * @description Requires verified human ipsec:manage. Checks only the proposed AWS static IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
+         * @description Requires verified human ipsec:manage. Checks the proposed AWS static or BGP IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
          */
         post: operations["checkIPsecConfiguration"];
         delete?: never;
@@ -10084,7 +10084,19 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        FQDNResolverIPsecPath: {
+            /** Format: uuid */
+            connection_id: string;
+            /** Format: int64 */
+            configuration_revision: number;
+            /**
+             * Format: ipv4
+             * @description Private IPv4 address owned by the selected gateway, inside an approved local connection prefix. Runtime ownership and lease are verified before every DNS query.
+             */
+            source_address: string;
+        };
         FQDNResolverProfile: {
+            ipsec_path?: components["schemas"]["FQDNResolverIPsecPath"];
             /**
              * Format: uuid
              * @description Immutable profile provenance bound to gateway DNS requests and answer generations.
@@ -10103,6 +10115,7 @@ export interface components {
             legacy_default: boolean;
         };
         FQDNResolverProfileRequest: {
+            ipsec_path?: components["schemas"]["FQDNResolverIPsecPath"];
             name: string;
             /** @enum {string} */
             provider_hint: "aws" | "azure" | "google_cloud" | "on_premises";
@@ -10738,6 +10751,13 @@ export interface components {
             eligible: boolean;
             /** @enum {string} */
             reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";
+            bgp?: components["schemas"]["IPsecBGPEligibility"];
+        };
+        /** @description Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority. */
+        IPsecBGPEligibility: {
+            eligible: boolean;
+            /** @enum {string} */
+            reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";
         };
         IPsecPSKRotationInput: {
             /** Format: int64 */
@@ -10767,6 +10787,7 @@ export interface components {
         };
         IPsecProviderNetworkConfiguration: {
             mode: string;
+            bgp?: components["schemas"]["IPsecBGPConfiguration"];
             customer_outside_address: string;
             local_prefixes: string[];
             remote_prefixes: string[];
@@ -10780,11 +10801,22 @@ export interface components {
         };
         IPsecConfigurationCheckInput: {
             /** @enum {string} */
-            mode: "ipv4-static";
+            mode: "ipv4-static" | "ipv4-bgp";
+            bgp?: components["schemas"]["IPsecBGPConfiguration"];
             customer_outside_address: string;
             local_prefixes: string[];
             remote_prefixes: string[];
             tunnels: components["schemas"]["IPsecConfigurationCheckTunnel"][];
+        };
+        /** @description Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime. */
+        IPsecBGPConfiguration: {
+            /** Format: uint32 */
+            local_asn: number;
+            /** Format: uint32 */
+            remote_asn: number;
+            router_id: string;
+            /** @description Maximum accepted prefixes per BGP peer. Installed destinations across both peers remain bounded by the approved remote prefix list. */
+            maximum_prefixes: number;
         };
         IPsecConfigurationCheckTunnel: {
             outside_address: string;
@@ -10805,7 +10837,30 @@ export interface components {
             /** @description Configured traffic path; does not imply reachability. */
             selected: boolean;
         };
+        IPsecBGPPeerStatus: {
+            slot: number;
+            /** @enum {string} */
+            state: "unknown" | "idle" | "connect" | "active" | "opensent" | "openconfirm" | "established";
+            accepted_prefixes: number;
+            installed_prefixes: number;
+            /** @description Present only when the gateway can measure rejected prefixes. */
+            rejected_prefixes?: number;
+        };
+        IPsecBGPRouteStatus: {
+            /** @description Exact approved IPv4 prefix with a verified installed route. */
+            prefix: string;
+            slot: number;
+        };
+        IPsecBGPStatus: {
+            /** @enum {integer} */
+            version: 1;
+            /** Format: uint64 */
+            sequence: number;
+            peers: components["schemas"]["IPsecBGPPeerStatus"][];
+            routes: components["schemas"]["IPsecBGPRouteStatus"][];
+        };
         IPsecConnectionStatus: {
+            bgp?: components["schemas"]["IPsecBGPStatus"];
             /**
              * @description Explicit recovery contract of the observed delivery.
              * @enum {integer}

@@ -49,3 +49,31 @@ func TestAgentIPsecErrorNeverWritesMaterial(t *testing.T) {
 		t.Fatal("failed transaction leaked material")
 	}
 }
+
+func TestAgentIPsecBGPWireCardinalityAndStrictDecode(t *testing.T) {
+	for _, tc := range []struct {
+		body  string
+		valid bool
+	}{
+		{`{"bgp":{"version":1,"sequence":1,"peers":[{"slot":1,"state":"idle","accepted_prefixes":0,"installed_prefixes":0},{"slot":2,"state":"idle","accepted_prefixes":0,"installed_prefixes":0}],"routes":[]}}`, true},
+		{`{"bgp":{"version":1,"sequence":1,"peers":[{"slot":1}],"routes":[]}}`, false},
+		{`{"bgp":{"version":1,"sequence":1,"peers":[{"slot":1},{"slot":2},{"slot":3}],"routes":[]}}`, false},
+		{`{"bgp":{"version":1,"sequence":1,"sequence":2,"peers":[{"slot":1},{"slot":2}],"routes":[]}}`, false},
+		{`{"bgp":{"version":1,"sequence":1,"peers":[{"slot":1,"secret":"private-marker"},{"slot":2}],"routes":[]}}`, false},
+	} {
+		var wire struct {
+			BGP *agentIPsecBGPWire `json:"bgp"`
+		}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/agent/ipsec/connections/x/status", strings.NewReader(tc.body))
+		decoded := decodeAgentIPsec(w, r, &wire)
+		_, cardinality := wire.BGP.runtimeStatus()
+		if (decoded && cardinality) != tc.valid || strings.Contains(w.Body.String(), "private-marker") {
+			t.Fatal("BGP wire boundary failed", tc.body, w.Code)
+		}
+	}
+	b := &agentIPsecBGPWire{Peers: make([]ipsec.RuntimeBGPPeerStatus, 2), Routes: make([]ipsec.RuntimeBGPRoute, 65)}
+	if _, ok := b.runtimeStatus(); ok {
+		t.Fatal("unbounded route report accepted")
+	}
+}

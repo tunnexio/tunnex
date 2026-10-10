@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
+	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
 // CompileIPsecRuntimePolicy must run inside the runtime transaction after its
@@ -21,7 +22,34 @@ func CompileIPsecRuntimePolicy(ctx context.Context, q *sqlc.Queries, input ipsec
 	if err != nil {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
 	}
-	return compileIPsecRuntimePolicy(snapshot, input)
+	rows, err := q.ListIPsecDNSResolverProfiles(ctx, input.OrgID)
+	if err != nil {
+		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+	}
+	declared := []IPsecDNSProfile{}
+	for _, row := range rows {
+		if row.GatewayID != input.NodeID {
+			continue
+		}
+		profile, err := DecodeIPsecDNSProfile(row)
+		if err != nil {
+			return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+		}
+		declared = append(declared, profile)
+	}
+	result, err := compileIPsecRuntimePolicy(snapshot, input)
+	if err != nil {
+		return result, err
+	}
+	// Proxy entitlement uses ordinary WG policy before the forwarded IPsec compiler filters local cloud prefixes.
+	var proxyAllows []policyspec.AllowEntry
+	if snapshot.Mode == ModeEnforcing {
+		proxyAllows = Compile(snapshot)[input.NodeID].Allow
+	}
+	if err := attachRuntimeDNSProfiles(&result, declared, input, proxyAllows); err != nil {
+		return ipsec.RuntimePolicy{}, err
+	}
+	return hashRuntimePolicy(result, input)
 }
 func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
 	if input.OrgID == uuid.Nil || input.NodeID == uuid.Nil || input.SiteID == uuid.Nil || input.ConnectionID == uuid.Nil {
@@ -83,12 +111,17 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 		y, _ := json.Marshal(result.Grants[b])
 		return string(x) < string(y)
 	})
+	return hashRuntimePolicy(result, input)
+}
+func hashRuntimePolicy(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
 	// Bind the hash to this exact connection even when its effective policy is
 	// empty. Hash only canonical nonsecret forwarding authority, never PSKs.
 	raw, err := json.Marshal(struct {
 		Org, Node, Site, Connection uuid.UUID
 		Grants                      []ipsec.RuntimeGrant
-	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants})
+		DNSResolverGrants           []ipsec.RuntimeDNSResolverGrant `json:"dns_resolver_grants,omitempty"`
+		DNSResolverProfiles         []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles})
 	if err != nil {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
 	}

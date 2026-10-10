@@ -33,7 +33,7 @@ func (s apiServer) CreateIPsecProviderConnection(ctx context.Context, req api.Cr
 	if err != nil {
 		return nil, err
 	}
-	if err = ipsec.ValidateAWSStaticConfig(cfg); err != nil {
+	if err = ipsec.ValidateAWSConfig(cfg); err != nil {
 		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
 	}
 	if s.ipsecProviders == nil || s.ipsecSealer == nil {
@@ -61,6 +61,9 @@ func (s apiServer) GetIPsecProviderConfiguration(ctx context.Context, req api.Ge
 	out := api.IPsecProviderConfiguration{ProfileId: r.ProfileID, ConfigurationRevision: r.ConfigurationRevision}
 	if c := r.Config; c != nil {
 		out.Configuration = &api.IPsecProviderNetworkConfiguration{Mode: c.Mode, CustomerOutsideAddress: c.CustomerOutsideAddress, LocalPrefixes: c.LocalPrefixes, RemotePrefixes: c.RemotePrefixes, Tunnels: make([]api.IPsecProviderNetworkTunnel, len(c.Tunnels))}
+		if b := c.BGP; b != nil {
+			out.Configuration.Bgp = &api.IPsecBGPConfiguration{LocalAsn: b.LocalASN, RemoteAsn: b.RemoteASN, RouterId: b.RouterID, MaximumPrefixes: b.MaximumPrefixes}
+		}
 		for i, t := range c.Tunnels {
 			out.Configuration.Tunnels[i] = api.IPsecProviderNetworkTunnel{OutsideAddress: t.OutsideAddress, InsideCidr: t.InsideCIDR, CustomerInsideAddress: t.CustomerInsideAddress, CloudInsideAddress: t.CloudInsideAddress}
 		}

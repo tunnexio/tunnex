@@ -39,7 +39,14 @@ type ResolverConfig struct {
 // revision. LegacyDefault exists only for migrated/legacy flat clients; new
 // profile-native writes require explicit zone suffixes and fail closed when no
 // suffix matches.
+type ResolverIPsecPath struct {
+	ConnectionID          uuid.UUID `json:"connection_id"`
+	ConfigurationRevision int64     `json:"configuration_revision"`
+	SourceAddress         string    `json:"source_address"`
+}
+
 type ResolverProfile struct {
+	IPsecPath     *ResolverIPsecPath `json:"ipsec_path,omitempty"`
 	ID            uuid.UUID
 	Name          string
 	ProviderHint  string
@@ -106,6 +113,20 @@ func validateProfiles(in []ResolverProfile) error {
 		}
 		if in[i].LegacyDefault && len(in[i].ZoneSuffixes) != 0 {
 			return apierr.BadRequest("invalid_resolver_suffixes", "a legacy default profile cannot also declare DNS suffixes")
+		}
+		if in[i].IPsecPath != nil {
+			path := in[i].IPsecPath
+			source, err := netip.ParseAddr(strings.TrimSpace(path.SourceAddress))
+			if path.ConnectionID == uuid.Nil || path.ConfigurationRevision < 1 || err != nil || !source.Is4() || !source.IsPrivate() || in[i].LegacyDefault {
+				return apierr.BadRequest("invalid_resolver_ipsec_path", "select an IPsec connection revision and a private local IPv4 source with explicit DNS zones")
+			}
+			path.SourceAddress = source.String()
+			for _, endpoint := range in[i].Endpoints {
+				addr, err := netip.ParseAddr(strings.TrimSpace(endpoint.Address))
+				if err != nil || !addr.Is4() || (endpoint.Port != 0 && endpoint.Port != 53) {
+					return apierr.BadRequest("invalid_resolver_ipsec_endpoint", "IPsec DNS requires literal IPv4 resolver endpoints on port 53")
+				}
+			}
 		}
 		if err := validateEndpoints(in[i].Endpoints); err != nil {
 			return err
@@ -212,7 +233,7 @@ func resolverConfig(ctx context.Context, q resolverConfigQuerier, org, site, gat
 }
 
 func configProfiles(ctx context.Context, q resolverConfigQuerier, configID, org uuid.UUID) ([]ResolverProfile, error) {
-	rows, err := q.Query(ctx, `SELECT id,name,provider_hint,legacy_default FROM fqdn_resolver_context_profiles WHERE config_id=$1 AND org_id=$2 ORDER BY ordinal`, configID, org)
+	rows, err := q.Query(ctx, `SELECT id,name,provider_hint,legacy_default,ipsec_connection_id,ipsec_configuration_revision,host(ipsec_source_address) FROM fqdn_resolver_context_profiles WHERE config_id=$1 AND org_id=$2 ORDER BY ordinal`, configID, org)
 	if err != nil {
 		return nil, err
 	}
@@ -220,8 +241,14 @@ func configProfiles(ctx context.Context, q resolverConfigQuerier, configID, org 
 	var out []ResolverProfile
 	for rows.Next() {
 		var profile ResolverProfile
-		if err := rows.Scan(&profile.ID, &profile.Name, &profile.ProviderHint, &profile.LegacyDefault); err != nil {
+		var connection *uuid.UUID
+		var revision *int64
+		var source *string
+		if err := rows.Scan(&profile.ID, &profile.Name, &profile.ProviderHint, &profile.LegacyDefault, &connection, &revision, &source); err != nil {
 			return nil, err
+		}
+		if connection != nil && revision != nil && source != nil {
+			profile.IPsecPath = &ResolverIPsecPath{ConnectionID: *connection, ConfigurationRevision: *revision, SourceAddress: *source}
 		}
 		out = append(out, profile)
 	}
@@ -303,6 +330,13 @@ func (s *Service) SetResolverProfiles(ctx context.Context, org, site, gateway, a
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))`, org, site, gateway); err != nil {
 		return ResolverConfig{}, err
 	}
+	for _, profile := range profiles {
+		if profile.IPsecPath != nil {
+			if err := validateIPsecResolverPath(ctx, tx, org, site, gateway, profile); err != nil {
+				return ResolverConfig{}, err
+			}
+		}
+	}
 	var next int64
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(max(version),0)+1 FROM fqdn_resolver_context_configs WHERE org_id=$1 AND site_id=$2 AND gateway_id=$3`, org, site, gateway).Scan(&next); err != nil {
 		return ResolverConfig{}, err
@@ -329,7 +363,13 @@ func (s *Service) SetResolverProfiles(ctx context.Context, org, site, gateway, a
 		} else {
 			profile.ID = uuid.New()
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint,legacy_default) VALUES($1,$2,$3,$4,$5,$6,$7)`, profile.ID, out.ID, org, ordinal, profile.Name, profile.ProviderHint, profile.LegacyDefault); err != nil {
+		var pathConnection, pathRevision, pathSource any
+		if profile.IPsecPath != nil {
+			pathConnection = profile.IPsecPath.ConnectionID
+			pathRevision = profile.IPsecPath.ConfigurationRevision
+			pathSource = profile.IPsecPath.SourceAddress
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint,legacy_default,ipsec_connection_id,ipsec_configuration_revision,ipsec_source_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::inet)`, profile.ID, out.ID, org, ordinal, profile.Name, profile.ProviderHint, profile.LegacyDefault, pathConnection, pathRevision, pathSource); err != nil {
 			return ResolverConfig{}, writeErr(err)
 		}
 		for _, suffix := range profile.ZoneSuffixes {

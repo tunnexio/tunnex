@@ -139,7 +139,7 @@ func TestIPsecConnectionStaticErrors(t *testing.T) {
 		err    error
 		status int
 		code   string
-	}{{ipsec.ErrConnectionInvalid, 400, "invalid_ipsec_connection"}, {ipsec.ErrConnectionNotFound, 404, "ipsec_connection_not_found"}, {ipsec.ErrConnectionConflict, 409, "ipsec_connection_conflict"}, {errors.New("private details"), 500, "ipsec_connection_unavailable"}} {
+	}{{ipsec.ErrConnectionInvalid, 400, "invalid_ipsec_connection"}, {ipsec.ErrConnectionNotFound, 404, "ipsec_connection_not_found"}, {ipsec.ErrConnectionConflict, 409, "ipsec_connection_conflict"}, {ipsec.ErrCleanupInProgress, 409, "ipsec_cleanup_in_progress"}, {errors.New("private details"), 500, "ipsec_connection_unavailable"}} {
 		_, err := (apiServer{ipsecConnections: &connectionFake{err: tc.err}}).GetIPsecConnection(ctx, api.GetIPsecConnectionRequestObject{OrgId: org, ConnectionId: id})
 		if !hasCode(err, tc.status, tc.code) || strings.Contains(err.Error(), "private") {
 			t.Fatalf("unsafe error: %v", err)

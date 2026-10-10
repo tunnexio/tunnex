@@ -1307,6 +1307,8 @@ type Querier interface {
 	ListGroupMembers(ctx context.Context, arg ListGroupMembersParams) ([]ListGroupMembersRow, error)
 	// Compiler input: every (group, user) pair in the org.
 	ListGroupMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListGroupMembershipsByOrgRow, error)
+	// lint:cross-org — explicitly scoped to the authenticated organization; caller filters exact gateway.
+	ListIPsecDNSResolverProfiles(ctx context.Context, orgID uuid.UUID) ([]ListIPsecDNSResolverProfilesRow, error)
 	ListIPsecProviderReservations(ctx context.Context, orgID uuid.UUID) ([]ListIPsecProviderReservationsRow, error)
 	// ── idp-origin membership (the reconcile target) ─────────────────────────────────
 	// Current idp-origin members of one group (user id + recorded directory external id). Filtered to

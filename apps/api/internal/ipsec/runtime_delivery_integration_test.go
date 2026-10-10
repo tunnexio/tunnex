@@ -248,6 +248,7 @@ func TestRuntimeCapacityNeverStrandsCleanup(t *testing.T) {
 	for i := 0; i < 64; i++ {
 		c, e = store.SetIntent(ctx, org, actor, c.ID, c.DesiredRevision, "enabled")
 		if e != nil {
+			logGatewayEligibility(t, p, identity.GatewayID)
 			t.Fatalf("enable %d: %v", i, e)
 		}
 		if _, e = store.Material(ctx, principal, c.ID, c.DesiredRevision, sealer); e != nil {

@@ -50,6 +50,7 @@ func (s *PostgresStore) ActiveGenerations(ctx context.Context, orgID uuid.UUID) 
 SELECT g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
        g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at,
        cfg.id,cfg.version,profile.id,profile.name,profile.provider_hint,COALESCE(g.resolver_match_suffix,''),
+       CASE WHEN profile.ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',profile.ipsec_connection_id,'configuration_revision',profile.ipsec_configuration_revision,'source_address',host(profile.ipsec_source_address)) END,
        (SELECT COALESCE(jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal),'[]'::jsonb)
           FROM fqdn_resolver_context_profile_endpoints e
          WHERE e.profile_id=profile.id AND e.org_id=profile.org_id),
@@ -71,7 +72,7 @@ JOIN fqdn_resolver_context_configs cfg
 JOIN fqdn_resolver_context_profiles profile
   ON profile.config_id=cfg.id AND profile.org_id=cfg.org_id
  AND profile.id=COALESCE(g.resolver_profile_id,cfg.id)
-WHERE g.org_id=$1 AND g.state='active'
+WHERE g.org_id=$1 AND g.state='active' AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
   AND (
     (profile.legacy_default AND COALESCE(g.resolver_match_suffix,'')=''
       AND NOT EXISTS (
@@ -125,17 +126,22 @@ ORDER BY g.resource_id`, orgID)
 		var profile uuid.UUID
 		var configVersion int64
 		var profileName, profileProvider, matchedSuffix string
-		var endpointJSON []byte
+		var endpointJSON, pathJSON []byte
 		var raw []string
 		if err := rows.Scan(&g.OrgID, &g.ResourceID, &g.Hostname, &g.Protocol, &g.PortLow, &g.PortHigh,
 			&g.Sequence, &site, &gateway, &g.TTL, &g.ResolvedAt, &config, &configVersion,
-			&profile, &profileName, &profileProvider, &matchedSuffix, &endpointJSON, &raw); err != nil {
+			&profile, &profileName, &profileProvider, &matchedSuffix, &pathJSON, &endpointJSON, &raw); err != nil {
 			return nil, err
 		}
 		g.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
 		g.ResolverConfig = ResolverConfig{
 			ID: config.String(), Version: configVersion, ProfileID: profile.String(),
 			ProfileName: profileName, ProfileProvider: profileProvider, MatchedSuffix: matchedSuffix,
+		}
+		if len(pathJSON) > 0 {
+			if err := json.Unmarshal(pathJSON, &g.ResolverConfig.IPsecPath); err != nil {
+				return nil, err
+			}
 		}
 		if err := json.Unmarshal(endpointJSON, &g.ResolverConfig.Endpoints); err != nil || !g.Context.valid() || !g.ResolverConfig.valid() || len(raw) == 0 || len(raw) > MaxAnswers {
 			return nil, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
