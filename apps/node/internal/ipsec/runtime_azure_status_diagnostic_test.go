@@ -189,7 +189,7 @@ func TestAzureOwnedNativeStatusDiagnostic(t *testing.T) {
 		t.Fatal("actual key-free XFRM read refused")
 	}
 	entry := entries[0]
-	guardReader, err := NewGuardReader("/sbin/nft")
+	guardReader, err := NewGuardReader("/usr/sbin/nft")
 	if err != nil {
 		t.Fatal("fixed guard reader refused")
 	}
