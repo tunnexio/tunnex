@@ -18,12 +18,12 @@ import (
 // Existing obligations restore refusal synchronously before any WireGuard
 // forwarding. New hosts discover opt-in in the background and bind no IKE ports
 // until authoritative opt-in is true. There is no local capability override.
-func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport) error {
+func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport) (func() error, error) {
 	dir := filepath.Join(stateDir, "ipsec")
 	org, node, err := ipsec.ReadRuntimeJournalIdentity(dir)
 	existing := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return errors.New("IPsec saved refusal unavailable")
+		return nil, errors.New("IPsec saved refusal unavailable")
 	}
 	var controller *ipsec.RuntimeController
 	construct := func() error {
@@ -56,19 +56,19 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 	}
 	if existing {
 		if err = construct(); err != nil {
-			return errors.New("IPsec saved refusal unavailable")
+			return nil, errors.New("IPsec saved refusal unavailable")
 		}
 	}
-	go func() {
+	shutdown := launchIPsecRuntime(ctx, func(ctx context.Context) (result error) {
 		var process *ipsec.DaemonProcess
 		qualified := false
 		var bgpRetry bgpQualificationRetry
 		defer func() {
 			if process != nil {
-				process.Close()
+				result = errors.Join(result, process.Close())
 			}
 			if controller != nil {
-				controller.Close()
+				result = errors.Join(result, controller.Close())
 			}
 		}()
 		ticker := time.NewTicker(5 * time.Second)
@@ -163,8 +163,8 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			case <-ticker.C:
 			}
 		}
-	}()
-	return nil
+	})
+	return shutdown, nil
 }
 
 type boundIPsecClient struct {

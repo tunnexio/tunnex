@@ -220,10 +220,16 @@ func main() {
 		}
 	}
 	dnsTransport := &ipsec.DNSRuntimeTransport{}
-	if err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport); err != nil {
+	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport)
+	if err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
 	}
+	defer func() {
+		if err := shutdownIPsec(); err != nil {
+			logger.Error("ipsec_runtime_shutdown_incomplete")
+		}
+	}()
 	// WireGuard key: generated locally and persisted; the private key never
 	// leaves the node. Re-key = delete the file -> a new key is generated and its
 	// pubkey re-reported.
