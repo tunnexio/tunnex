@@ -80,7 +80,7 @@ func (c *RuntimeController) recoveryGuardDenials(ctx context.Context, entries []
 	for _, l := range links {
 		mapping[l.Name] = l.Index
 	}
-	objects, ok := normalizedGuardObjectsWithInterfaces(raw, mapping)
+	objects, ok := normalizedGuardWithdrawalObjectsWithInterfaces(raw, mapping)
 	if !ok {
 		return nil, ErrGuardReadback
 	}
