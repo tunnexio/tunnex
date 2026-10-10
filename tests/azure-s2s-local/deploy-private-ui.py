@@ -15,6 +15,10 @@ import tempfile
 OWNER = 'azure-s2s-01a12505'
 NAME = 'tunnex-azure-private-ui'
 BASE = Path('/home/ubuntu/tunnex-azure-lab')
+CONFIG_DEST = '/etc/nginx/azure-private.conf'
+CONFIG_SOURCE = str(BASE / 'private-ui/nginx.conf')
+HTML_SOURCE = str(BASE / 'private-ui/html')
+CONFIG_SHA256 = '8bef35d145b7f6b0ef614167cf2911045fed9cb795d942e46dacbc8304f0c770'
 
 
 def digest(data):
@@ -58,7 +62,9 @@ def inspect(cid=NAME):
     if (row['Name'] != '/' + NAME or row['Config'].get('Labels', {}).get('tunnex.owner') != OWNER
             or not row['State']['Running'] or row['HostConfig']['NetworkMode'] != 'host'
             or row['Config'].get('User') not in {'101', '101:101'}
-            or 'ALL' not in (row['HostConfig'].get('CapDrop') or [])):
+            or 'ALL' not in (row['HostConfig'].get('CapDrop') or [])
+            or row['Config'].get('Entrypoint') != ['nginx']
+            or row['Config'].get('Cmd') != ['-c', CONFIG_DEST, '-g', 'daemon off;']):
         raise ValueError('container ownership or isolation refused')
     return row
 
@@ -88,13 +94,17 @@ def main():
     row = inspect()
     cid = row['Id']
     mounts = {m['Destination']: m for m in row['Mounts'] if m['Type'] == 'bind'}
-    if '/srv/azure-private-ui' not in mounts or '/etc/nginx/nginx.conf' not in mounts:
+    if ('/srv/azure-private-ui' not in mounts or CONFIG_DEST not in mounts
+            or mounts['/srv/azure-private-ui']['Source'] != HTML_SOURCE
+            or mounts[CONFIG_DEST]['Source'] != CONFIG_SOURCE
+            or mounts['/srv/azure-private-ui'].get('RW') is not False
+            or mounts[CONFIG_DEST].get('RW') is not False):
         raise ValueError('expected private UI mounts required')
     html = owned_path(mounts['/srv/azure-private-ui']['Source'])
-    config = owned_path(mounts['/etc/nginx/nginx.conf']['Source'])
-    if not html.is_dir() or digest(config.read_bytes()) != digest(files['nginx.conf']):
+    config = owned_path(mounts[CONFIG_DEST]['Source'])
+    if not html.is_dir() or digest(config.read_bytes()) != CONFIG_SHA256 or digest(files['nginx.conf']) != CONFIG_SHA256:
         raise ValueError('existing same-origin nginx layout differs')
-    subprocess.run(['docker', 'exec', cid, 'nginx', '-t'], capture_output=True, timeout=10, check=True)
+    subprocess.run(['docker', 'exec', cid, 'nginx', '-t', '-c', CONFIG_DEST], capture_output=True, timeout=10, check=True)
     # Static-only overlay: retain old hashed assets for already-open browser tabs.
     # Publish index last; bind-mounted directory inode and nginx process stay intact.
     targets = []
@@ -115,7 +125,7 @@ def main():
         print(json.dumps({'reviewed': True, 'static_files': len(targets), 'nginx_unchanged': True}))
         return
     for target, data in sorted(targets, key=lambda v: (v[0].name == 'index.html', str(v[0]))):
-        if inspect(cid)['Id'] != cid or digest(config.read_bytes()) != digest(files['nginx.conf']):
+        if inspect(cid)['Id'] != cid or digest(config.read_bytes()) != CONFIG_SHA256 or digest(files['nginx.conf']) != CONFIG_SHA256:
             raise ValueError('deployment identity changed')
         target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
         owned_path(target.parent)
