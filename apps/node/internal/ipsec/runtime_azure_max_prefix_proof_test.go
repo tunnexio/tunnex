@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/netip"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -27,6 +29,33 @@ type azureMaxProofBinding struct {
 	NamespaceDevice       uint64    `json:"namespace_device"`
 	NamespaceInode        uint64    `json:"namespace_inode"`
 	NodeExecutableSHA256  string    `json:"node_executable_sha256"`
+}
+
+func azureProofParentMatches(parent, node int) bool { return node > 0 && parent == node }
+
+func azureProofSocketMatches(actual, expected bgpengine.FileIdentity) bool {
+	return expected.Device > 0 && expected.Inode > 0 && actual == expected && actual.Mode == uint32(os.ModeSocket|0600)
+}
+
+func TestAzureMaxProofParentAndSocketIdentityRefusals(t *testing.T) {
+	if !azureProofParentMatches(1, 1) || azureProofParentMatches(2, 1) || azureProofParentMatches(0, 0) {
+		t.Fatal("managed parent predicate")
+	}
+	want := bgpengine.FileIdentity{Device: 1, Inode: 2, Mode: uint32(os.ModeSocket | 0600)}
+	if !azureProofSocketMatches(want, want) {
+		t.Fatal("matching socket refused")
+	}
+	for _, actual := range []bgpengine.FileIdentity{
+		{Device: 2, Inode: 2, Mode: want.Mode}, {Device: 1, Inode: 3, Mode: want.Mode},
+		{Device: 1, Inode: 2, Mode: uint32(os.ModeSocket | 0660)}, {Device: 1, Inode: 2, Mode: 0600},
+	} {
+		if azureProofSocketMatches(actual, want) {
+			t.Fatal("changed socket accepted")
+		}
+	}
+	if azureProofSocketMatches(bgpengine.FileIdentity{}, bgpengine.FileIdentity{}) {
+		t.Fatal("missing attestation accepted")
+	}
 }
 
 func azureMaxProofEntry(p runtimeJournalPayload, b azureMaxProofBinding, ns string) (RuntimeJournalEntry, error) {
@@ -406,5 +435,92 @@ func TestAzureMaxProofRequiresWholeJournalChecksum(t *testing.T) {
 	raw, _ = json.Marshal(envelope)
 	if _, err := decodeRuntimeJournalSnapshot(raw); err == nil {
 		t.Fatal("modified retained duty accepted under stale checksum")
+	}
+}
+
+// FRR VTY frames terminate with three NUL bytes and a command return code.
+// Read through the same connection whose SO_PEERCRED and pathname were checked.
+func azureProofVTYWire(conn net.Conn, command string, limit int) ([]byte, error) {
+	if command != "show bgp ipv4 unicast summary json" && command != "show bgp ipv4 unicast json" {
+		return nil, fmt.Errorf("vty_command_refused")
+	}
+	request := []byte(command + "\x00")
+	for len(request) > 0 {
+		n, err := conn.Write(request)
+		if err != nil || n == 0 {
+			return nil, fmt.Errorf("vty_write_refused")
+		}
+		request = request[n:]
+	}
+	out := []byte{}
+	chunk := make([]byte, 4096)
+	for {
+		n, err := conn.Read(chunk)
+		if n > 0 {
+			out = append(out, chunk[:n]...)
+		}
+		if len(out) > limit+4 {
+			return nil, fmt.Errorf("vty_bound_refused")
+		}
+		if i := bytes.Index(out, []byte{0, 0, 0}); i >= 0 {
+			if len(out) < i+4 && err == nil {
+				continue
+			}
+			if len(out) != i+4 || out[i+3] != 0 || i > limit || bytes.IndexByte(out[:i], 0) >= 0 {
+				return nil, fmt.Errorf("vty_frame_refused")
+			}
+			return out[:i], nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("vty_read_refused")
+		}
+	}
+}
+
+func TestAzureMaxProofVTYBoundWireRefusesMalformedAndBoundedReplies(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		chunks [][]byte
+		limit  int
+		ok     bool
+	}{
+		{"split_terminator", [][]byte{[]byte(`{"routes":{}}`), {0}, {0, 0}, {0}}, 64, true},
+		{"nonzero_return", [][]byte{{'{', '}', 0, 0, 0, 1}}, 64, false},
+		{"truncated_return", [][]byte{{'{', '}', 0, 0, 0}}, 64, false},
+		{"trailing_bytes", [][]byte{{'{', '}', 0, 0, 0, 0, 1}}, 64, false},
+		{"oversized", [][]byte{[]byte(`{"routes":{}}`), {0, 0, 0, 0}}, 2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, server := net.Pipe()
+			defer client.Close()
+			client.SetDeadline(time.Now().Add(time.Second))
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				defer server.Close()
+				request := make([]byte, 128)
+				_, _ = server.Read(request)
+				for _, chunk := range tc.chunks {
+					if _, err := server.Write(chunk); err != nil {
+						return
+					}
+				}
+			}()
+			out, err := azureProofVTYWire(client, "show bgp ipv4 unicast json", tc.limit)
+			if (err == nil) != tc.ok {
+				t.Fatalf("expected success=%v", tc.ok)
+			}
+			if tc.ok && string(out) != `{"routes":{}}` {
+				t.Fatal("reply mismatch")
+			}
+			client.Close()
+			<-done
+		})
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	if _, err := azureProofVTYWire(client, "configure terminal", 64); err == nil {
+		t.Fatal("mutation command accepted")
 	}
 }

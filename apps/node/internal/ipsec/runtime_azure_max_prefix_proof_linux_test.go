@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -30,6 +29,7 @@ const azureProofBindingPath = "/run/tunnex-qualification/max-prefix-binding.json
 
 type azureProofProcess struct {
 	PID        int
+	ParentPID  int
 	Ticks      uint64
 	Namespace  string
 	Executable bgpengine.FileIdentity
@@ -99,6 +99,10 @@ func azureProofProc(pid int) (azureProofProcess, error) {
 	if len(fields) < 20 || fields[0] == "Z" {
 		return p, fmt.Errorf("process_state_refused")
 	}
+	p.ParentPID, e = strconv.Atoi(fields[1])
+	if e != nil || p.ParentPID < 0 {
+		return p, fmt.Errorf("process_parent_refused")
+	}
 	p.Ticks, e = strconv.ParseUint(fields[19], 10, 64)
 	if e != nil || p.Ticks == 0 {
 		return p, fmt.Errorf("process_ticks_refused")
@@ -155,6 +159,29 @@ func azureProofPeer(ctx context.Context, path string, wanted int) (net.Conn, int
 	}
 	return conn, int(cred.Pid), nil
 }
+func azureProofBoundPeer(ctx context.Context, path string, pid int, expected bgpengine.FileIdentity) (net.Conn, error) {
+	check := func() bool {
+		st, err := os.Lstat(path)
+		if err != nil {
+			return false
+		}
+		id, err := azureProofFileIdentity(st)
+		return err == nil && azureProofSocketMatches(id, expected)
+	}
+	if !check() {
+		return nil, fmt.Errorf("socket_identity_refused")
+	}
+	conn, _, err := azureProofPeer(ctx, path, pid)
+	if err != nil {
+		return nil, err
+	}
+	if !check() {
+		conn.Close()
+		return nil, fmt.Errorf("socket_identity_changed")
+	}
+	return conn, nil
+}
+
 func azureProofDaemonIdentity(ctx context.Context, b azureMaxProofBinding) (azureProofDaemon, error) {
 	var result azureProofDaemon
 	ns, e := os.Readlink("/proc/self/ns/net")
@@ -187,7 +214,7 @@ func azureProofDaemonIdentity(ctx context.Context, b azureMaxProofBinding) (azur
 	}
 	conn.Close()
 	result.Charon, e = azureProofProc(pid)
-	if e != nil || result.Charon.Namespace != ns {
+	if e != nil || result.Charon.Namespace != ns || !azureProofParentMatches(result.Charon.ParentPID, result.Node.PID) {
 		return result, fmt.Errorf("managed_charon_process_refused")
 	}
 	packageRaw, e := os.ReadFile(daemonExecutable)
@@ -270,7 +297,6 @@ func azureProofBGPIdentity(ctx context.Context, p bgpengine.ProcessIdentity, boo
 	if e != nil || len(names) != len(p.Files) {
 		return fmt.Errorf("bgp_artifact_set_refused")
 	}
-	// One non-recorded read-only proof invocation does not own the supervisor lock.
 	// Directory metadata is checked; no locks/artifacts are acquired or modified.
 	expected := map[string]bgpengine.FileIdentity{}
 	for _, file := range p.Files {
@@ -357,17 +383,6 @@ func azureProofProcesses(ctx context.Context, p runtimeJournalPayload, e Runtime
 	return nil
 }
 
-type azureProofBuffer struct {
-	bytes.Buffer
-	Limit int
-}
-
-func (b *azureProofBuffer) Write(p []byte) (int, error) {
-	if b.Len()+len(p) > b.Limit {
-		return 0, fmt.Errorf("bounded_vty_refused")
-	}
-	return b.Buffer.Write(p)
-}
 func azureProofVTY(ctx context.Context, e RuntimeJournalEntry) (bgpengine.Status, []bgpengine.LearnedRoute, error) {
 	cfg, err := runtimeBGPProcessConfig(e)
 	if err != nil || e.BGPProcess == nil {
@@ -381,25 +396,25 @@ func azureProofVTY(ctx context.Context, e RuntimeJournalEntry) (bgpengine.Status
 	if err != nil || string(actual) != text {
 		return bgpengine.Status{}, nil, fmt.Errorf("bgp_config_content_refused")
 	}
-	binary := "/opt/tunnex-bgp/vtysh"
-	st, err := os.Lstat(binary)
-	if err != nil || !st.Mode().IsRegular() || st.Mode().Perm()&0022 != 0 || st.Mode().Perm()&0111 == 0 || azureProofParents(binary) != nil {
-		return bgpengine.Status{}, nil, fmt.Errorf("vty_package_refused")
-	}
-	if _, err = azureProofFileIdentity(st); err != nil {
-		return bgpengine.Status{}, nil, err
+	var socket bgpengine.FileIdentity
+	for _, f := range e.BGPProcess.Files {
+		if f.Name == "bgpd.vty" {
+			socket = f.File
+		}
 	}
 	read := func(command string, limit int) ([]byte, error) {
 		child, stop := context.WithTimeout(ctx, 2*time.Second)
 		defer stop()
-		cmd := exec.CommandContext(child, binary, "--vty_socket", e.BGPProcess.Directory, "-d", "bgpd", "-c", command)
-		out := azureProofBuffer{Limit: limit}
-		cmd.Stdout = &out
-		cmd.Stderr = &out
-		if cmd.Run() != nil {
-			return nil, fmt.Errorf("vty_read_refused")
+		conn, err := azureProofBoundPeer(child, filepath.Join(e.BGPProcess.Directory, "bgpd.vty"), e.BGPProcess.Children[1].PID, socket)
+		if err != nil {
+			return nil, err
 		}
-		return out.Bytes(), nil
+		defer conn.Close()
+		deadline, _ := child.Deadline()
+		if conn.SetDeadline(deadline) != nil {
+			return nil, fmt.Errorf("vty_deadline_refused")
+		}
+		return azureProofVTYWire(conn, command, limit)
 	}
 	summary, err := read("show bgp ipv4 unicast summary json", 65536)
 	if err != nil {
@@ -509,7 +524,7 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 		t.Fatal("guard_reader_refused")
 	}
 	transport := viciTransport{dial: func(ctx context.Context) (net.Conn, error) {
-		conn, _, e := azureProofPeer(ctx, azureProofVICI, first.Charon.PID)
+		conn, e := azureProofBoundPeer(ctx, azureProofVICI, first.Charon.PID, first.Socket)
 		return conn, e
 	}}
 	daemon := &DaemonClient{request: transport.call}
