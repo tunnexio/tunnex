@@ -8,7 +8,7 @@ import socket
 import stat
 import subprocess
 import uuid
-SOURCE=Path('/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v4-finalized54')
+SOURCE=Path('/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v5-binary-bound54')
 PRIVATE=Path('/home/ubuntu/tunnex-azure-lab/tests/azure-s2s-local/.runtime')
 M=PRIVATE/'maximum-prefix-M-20261010-8eb31c7e.json'
 D=PRIVATE/'dns-profile-transition-9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99.json'

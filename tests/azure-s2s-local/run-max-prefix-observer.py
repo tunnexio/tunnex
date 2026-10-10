@@ -16,7 +16,7 @@ s=importlib.util.spec_from_file_location('prepare',Path(__file__).with_name('pre
 STAGE='preflight'
 ROOT=Path('/home/ubuntu/tunnex-azure-lab')
 PRIVATE=ROOT/'tests/azure-s2s-local/.runtime'
-SOURCE=ROOT/'reviewed-max-prefix-observer-v4-finalized54'
+SOURCE=ROOT/'reviewed-max-prefix-observer-v5-binary-bound54'
 EXPECTED_STARTED='2026-10-10T22:33:37.620918269Z'
 PROOF_SHA='d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f'
 STOP_SHA='92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79'
@@ -25,7 +25,9 @@ MACHINE='43945b1283804c5c840685c4c9082b0a'
 def command(args,timeout=15):
  return subprocess.run(args,check=True,capture_output=True,timeout=timeout).stdout
 
-def read_owned(path,owner):
+OBSERVER_BYTES=13791412
+
+def read_owned(path,owner,*,maximum=10485760,exact_size=None):
  path=Path(path)
  historical={PRIVATE/'azure-genuine-reboot-proof.json':PROOF_SHA,PRIVATE/'azure-stopped-journal.json':STOP_SHA}
  parent_owner=1000 if owner==0 and path in historical else owner
@@ -35,8 +37,8 @@ def read_owned(path,owner):
  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
  try:
   st=os.fstat(fd)
-  if st.st_uid!=owner or stat.S_IMODE(st.st_mode)!=0o600 or not stat.S_ISREG(st.st_mode) or st.st_size>10485760:raise ValueError('private file')
-  with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read(10485761)
+  if st.st_uid!=owner or stat.S_IMODE(st.st_mode)!=0o600 or not stat.S_ISREG(st.st_mode) or st.st_size>maximum or (exact_size is not None and st.st_size!=exact_size):raise ValueError('private file')
+  with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read(maximum+1)
   after=os.fstat(fd)
   if len(raw)!=st.st_size or (st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise ValueError('file changed')
   if path in historical and hashlib.sha256(raw).hexdigest()!=historical[path]:raise ValueError('historical hash')
@@ -121,7 +123,7 @@ def run(args):
  fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  normal=json.loads(read_owned(args.normal,1000));immutable=json.loads(read_owned(args.state,1000))
  if immutable['purpose'] not in ('limit','baseline'):raise ValueError('purpose')
- if hashlib.sha256(read_owned(args.binary,0)).hexdigest()!=p.OBSERVER:raise ValueError('binary')
+ if hashlib.sha256(read_owned(args.binary,0,maximum=OBSERVER_BYTES,exact_size=OBSERVER_BYTES)).hexdigest()!=p.OBSERVER:raise ValueError('binary')
  STAGE='identity_before';before=identity()
  STAGE='normal_before';finalized=normal.get('kind')=='owned_finalized_prior_authority'
  if finalized and args.mode!='absence':raise ValueError('finalized absence only')
