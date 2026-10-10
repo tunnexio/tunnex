@@ -1,0 +1,29 @@
+{
+  "base_source": "dc913498227734026673fe570524cb810e1b2811",
+  "incoming_patch_sha256": "f658ae175666e4409a9a69252964652be17f7369c838af5424b9107320841e02",
+  "scope": "source-only BGP exhausted continuity isolation; no cloud/API/kernel execution",
+  "changed_production": [
+    "apps/node/internal/ipsec/runtime_bgp_controller.go"
+  ],
+  "red": {
+    "method": "temporary exact pre-fix post-reconcile boundary extraction, removed before final patch",
+    "cases": [
+      "56 seconds commit reserve",
+      "61 seconds expired"
+    ],
+    "result": "healthy sibling owners globally withdrawn"
+  },
+  "green": {
+    "focused_race_seconds": 52.937,
+    "full_ipsec_seconds": 55.273,
+    "full_bgp_seconds": 1.107,
+    "full_fqdnrpc_seconds": 8.451,
+    "linux_arm64_build": "PASS"
+  },
+  "coverage_limit": "incoming modeled mixedBudgetFixture has three AWS BGP owners and two AWS static owners; full suite includes preserved GCP tests, no explicit native GCP BGP expiry or cloud acceptance claim",
+  "preserved_gcp_same_namespace_sha256": "835c303da3658bb27242f7da34cd789a2e6e9d02f28c620628be18cc6cee7c4d",
+  "logs": {
+    "/private/tmp/gcp-bgp-expiry-red.log": "e9a2c9e0631355a49dc91908c643262650f47b1d4345149c893a11e9f3238c7c",
+    "/private/tmp/gcp-bgp-expiry-full.log": "ed0e30a851ed161a88f9a4b73dfab529173e1d5ad98d1224977843cd9d36dda9"
+  }
+}

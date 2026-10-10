@@ -557,16 +557,9 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	if c.reconcileActiveBGP(ctx, entries) != nil {
 		return fail()
 	}
-	entries, err = c.journal.Entries()
-	if err == nil && continuous {
-		current, ok := c.active[id]
-		if !ok || current.Identity != active.Identity {
-			return fail()
-		}
-		// Reconciliation used the old lease, including denial-before-route changes.
-		// Only now may a fresh lease replace its authority and extend NFT timeouts.
-		current.Identity, current.Authority = identity, authority
-		c.active[id] = current
+	entries, err = c.finishBGPApplyContinuity(ctx, entries, active, continuous, authority, identity, c.bgpQualificationCurrent)
+	if err != nil {
+		return RuntimeAcknowledgement{}, err
 	}
 	stage = "combined_guard"
 	if err != nil || c.installActive(ctx, entries) != nil {
@@ -581,6 +574,94 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		}
 	}
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
+}
+
+// finishBGPApplyContinuity is the existing post-reconcile publication boundary.
+// The caller reaches it only after successful reconciliation, and supplies a
+// fresh BGP qualification observation. Tests exercise this boundary without
+// manufacturing a native BGP platform qualification for public Apply.
+func (c *RuntimeController) finishBGPApplyContinuity(ctx context.Context, entries []RuntimeJournalEntry, active runtimeActive, continuous bool, authority *PermitLeaseAuthority, identity PermitLeaseIdentity, bgpCurrent func() bool) ([]RuntimeJournalEntry, error) {
+	id := active.Entry.Allocation.ConnectionID
+	fail := func() ([]RuntimeJournalEntry, error) {
+		delete(c.active, id)
+		_, _ = c.refuse(ctx, entries)
+		return nil, ErrRuntimeController
+	}
+	latest, err := c.journal.Entries()
+	if err != nil {
+		return fail()
+	}
+	if continuous {
+		current, ok := c.active[id]
+		if !ok || current.Identity != active.Identity {
+			// A successful reconciliation can remove this exact exhausted owner,
+			// close its known session and commit empty owned routes. Refuse this
+			// Apply without touching other owners only after that full proof.
+			if !ok && c.expiredBGPContinuityDenied(ctx, active, latest, authority, identity, bgpCurrent) {
+				c.withdrawDNSOwnerView(id)
+				if c.guard != nil && c.guard.withdrawConnection(ctx, active.Entry.Allocation.Namespace, id) == nil && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && bgpCurrent() {
+					if _, err := authority.RemainingForApply(identity, 5*time.Second); err == nil {
+						return nil, ErrRuntimeController
+					}
+				}
+			}
+			return fail()
+		}
+		// Reconciliation used the old lease, including denial-before-route changes.
+		// Only now may a fresh lease replace its authority and extend NFT timeouts.
+		current.Identity, current.Authority = identity, authority
+		c.active[id] = current
+	}
+	return latest, nil
+}
+
+// expiredBGPContinuityDenied classifies only the exact completed withdrawal
+// reached after successful reconciliation. It adds no authority and cannot turn
+// a different identity, still-valid reserve, unknown route/process or revoked
+// platform qualification into a connection-local refusal.
+func (c *RuntimeController) expiredBGPContinuityDenied(ctx context.Context, old runtimeActive, latest []RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity, bgpCurrent func() bool) bool {
+	e := old.Entry
+	if ctx.Err() != nil || (bgpCurrent == nil || !bgpCurrent()) || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !validJournalBGP(e) || !validBGPRoutes(e) || e.ContractVersion != 3 || e.Phase != RuntimeApplied || e.AbsenceOnly || e.BGPProcess == nil || e.BGPProcess.Stage != "ready" || e.BGPRoutes == nil || e.BGPRoutes.Stage != "completed" || e.BGPRoutes.Sequence == ^uint64(0) || old.Identity != identity || identity.Binding != e.Engines[0].Binding || identity.DeliveryID != e.DeliveryID || identity.Binding.OrgID != c.config.OrgID || identity.Binding.GatewayID != c.config.GatewayID || old.Authority == nil || authority == nil || authority == old.Authority || c.bgpProcesses[e.DeliveryID] != nil {
+		return false
+	}
+	ns, err := c.namespace()
+	if err != nil || ns != e.Allocation.Namespace || old.Environment.Namespace != ns {
+		return false
+	}
+	// Inspect only the original identity/deadline under its own lock. A revoked
+	// identity or backwards clock is unknown. Exhaustion includes the exact
+	// five-second commit reserve enforced by RemainingForApply, without extending
+	// the original lease or admitting the fresh candidate.
+	old.Authority.mu.Lock()
+	now, clockOK := old.Authority.nowLocked()
+	expired := clockOK && old.Authority.identity == identity && old.Authority.deadline > 0 && old.Authority.deadline-now <= 5*time.Second
+	old.Authority.mu.Unlock()
+	if !expired {
+		return false
+	}
+	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
+		return false
+	}
+	found := false
+	for _, current := range latest {
+		if current.DeliveryID != e.DeliveryID {
+			continue
+		}
+		if found || current.BGPProcess == nil || current.BGPProcess.Stage != "cleaned" || current.BGPRoutes == nil || current.BGPRoutes.Stage != "completed" || current.BGPRoutes.Sequence != e.BGPRoutes.Sequence+1 || len(current.BGPRoutes.Owned) != 0 || len(current.BGPRoutes.Target) != 0 {
+			return false
+		}
+		// These are the only two legitimate durable changes made by this
+		// successful reconciliation. All owner/native/configuration/history
+		// inputs remain exact; no namespace or restoration identity is adopted.
+		wanted := copyDNSEntry(e)
+		wanted.BGPProcess.Stage = "cleaned"
+		wanted.BGPRoutes = current.BGPRoutes
+		if !reflect.DeepEqual(wanted, current) {
+			return false
+		}
+		found = true
+	}
+	return found && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive()
 }
 
 // bgpRestoredTransportAbsent keeps trusted reset intent Applied while proving
