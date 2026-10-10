@@ -62,6 +62,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 	go func() {
 		var process *ipsec.DaemonProcess
 		qualified := false
+		var bgpRetry bgpQualificationRetry
 		defer func() {
 			if process != nil {
 				process.Close()
@@ -121,20 +122,28 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 							}
 							if probeErr == nil {
 								qualified = true
-								// BGP support is independently observed without peers/listeners;
-								// failure preserves the already qualified static runtime.
-								bgpStarted := time.Now()
-								bgpStage := "bgp_preflight"
-								bgpReceipt, bgpErr := bgp.QualifyPreflight(ctx, dir)
+							} else {
+								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
+							}
+						}
+						// Retry independent native BGP observation after transient startup refusal.
+						// The static receipt remains available; cleanup and polling still run.
+						if qualified && page.IPsecEnabled && bgpRetry.due(time.Now()) {
+							bgpStarted := time.Now()
+							bgpStage := "bgp_preflight_residue"
+							bgpErr := bgpPreflightResidueClear(dir)
+							if bgpErr == nil {
+								bgpStage = "bgp_preflight"
+								var bgpReceipt *bgp.PreflightQualification
+								bgpReceipt, bgpErr = bgp.QualifyPreflight(ctx, dir)
 								if bgpErr == nil {
 									bgpStage = "bgp_attach"
 									bgpErr = controller.AttachBGPQualification(bgpReceipt)
 								}
-								if bgpErr != nil {
-									logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
-								}
-							} else {
-								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
+							}
+							bgpRetry.completed(time.Now(), bgpErr == nil)
+							if bgpErr != nil {
+								logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}
 						}
 						// Cleanup remains available without activation qualification; Apply requires
