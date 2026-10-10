@@ -1,0 +1,33 @@
+{
+  "scope": "isolated synthetic-lease component; no CP/cloud proof",
+  "source_commit": "f92fac12",
+  "binary_sha256": "db7ae3c3053fa72dbed6024099a5af6410fa5cc6cd1b73df77b502527558aa8b",
+  "receiver_sha256": "777a8978eaade87758cc72075b15a222dde383abdafbc283e5dbc0ddc4cd367b",
+  "image_id": "sha256:7350786a0eeff8352b0ae522f3e7d8a852bd42d065c34539e19c0261290ac7de",
+  "profile": "gcp-ha-bgp-ipv4-v1",
+  "markers": [
+    "cleanup",
+    "cleanup_exchange",
+    "exchange",
+    "proof"
+  ],
+  "counters": {
+    "version": 1,
+    "counts": {
+      "tcp:app.localemulated.gcp.lab.test.": {
+        "queries": 1,
+        "answers": 1,
+        "truncated": 0,
+        "nxdomain": 0
+      },
+      "udp:app.localemulated.gcp.lab.test.": {
+        "queries": 1,
+        "answers": 1,
+        "truncated": 0,
+        "nxdomain": 0
+      }
+    }
+  },
+  "post_cleanup_counters_unchanged": true,
+  "result": "PASS"
+}
