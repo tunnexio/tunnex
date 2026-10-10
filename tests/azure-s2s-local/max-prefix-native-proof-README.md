@@ -1,0 +1,15 @@
+# Independent native max-prefix observer
+
+Source-only qualification observer: `apps/node/internal/ipsec/runtime_azure_max_prefix_proof_linux_test.go`. No native or cloud execution was performed for this change. It constructs no controller, adopts no process, writes no journal, and sends only native read commands.
+
+Build the node package test binary for the actual owned Linux architecture. Review and attest that binary's source/hash separately before invoking `TestAzureOwnedMaxPrefixNativeProof` in the actual gateway container with `TUNNEX_AZURE_MAX_PREFIX_NATIVE_PROOF=1`. The observer requires root and a private root-owned, no-symlink file at `/run/tunnex-qualification/max-prefix-binding.json`.
+
+The binding has exactly these fields: `mode` (`baseline` or `absence`), `org_id`, `site_id`, `gateway_id`, `connection_id`, `desired_revision`, `configuration_revision`, `maximum_prefixes` (1 or 8), `namespace_device`, `namespace_inode`, `node_executable_sha256`. Obtain these from fresh independent normal immutable binding and actual container identity reads; never manufacture a receipt from this example. Journal SiteID is present and is checked directly. Absence desired revision must match the actual journal CleanupDesiredRevision.
+
+Success emits exactly one `AZURE_MAX_PREFIX_NATIVE_PROOF ` line followed by typed JSON suitable for private extraction. A failing or skipped test produces no receipt. Retain harness output privately; never substitute harness success text for the typed line. The projection reports actual native counts and actual parsed FRR counters/routes. It does not attest control-plane ACK, Azure advertisements, packets, image identity, or readiness beyond these observations.
+
+The observer validates the whole bounded/checksummed journal, every retained entry/process retirement duty, the full stored guard and withdrawal (absence), exact owned tunnel/SAD/SPD bindings, root socket peer credentials, managed daemon version, independent FRR VTY counters/RIB, executable identities and namespace. Two complete observations bracket unchanged process/socket/config/journal identities. Any extra candidate route, duplicate IKE, partial SPD, counter disagreement, missing route or changed observation refuses baseline.
+
+The offline fixture contains nineteen retained entries plus one active entry. Retained entries must belong to the same Site and namespace as the observed gateway; historical entries from another namespace refuse rather than being counted as absent. Compacted hash history is checksum/chain validated but its omitted individual process identities cannot be independently reinspected. If actual history violates these scope prerequisites, stop and review a separate attestation design; do not remove history or relax the observer.
+
+Local verification: focused portable journal/native projection tests and Linux cross-compilation. The Linux live process/socket/VTY path remains unexecuted and requires root review before any owned-container invocation.
