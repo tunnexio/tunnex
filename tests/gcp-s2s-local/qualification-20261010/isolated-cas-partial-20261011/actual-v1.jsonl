@@ -1,0 +1,8 @@
+{"started":true,"apply":true,"browser_version":"149.0.7827.55","runner_sha256":"76eeec74e0ba769d006f8e9aee6581bc72b1f97b34a735e44b27df69c781da83","browser_sha256":"b1b9e2dd063115031f08eadc10ed381ca0fa05b2284baff8f721d87f5f0f61b7","membership_verified":true,"key_exported":false}
+{"planned_id":"5bc23a04-f9f4-432e-9527-dbbbb016db14","tunnel_id":"7e7aa02c-50a2-4546-a8aa-bd598a2e0b3e","name":"GCP isolated CAS 5bc23a04","never_enable":true}
+{"created_id":"5bc23a04-f9f4-432e-9527-dbbbb016db14","desired_revision":1}
+{"phase":"first_save","http_status":200,"expected_desired_revision":1}
+{"phase":"stale_save","http_status":409,"expected_desired_revision":1,"draft_cleared":true}
+{"cas_accepted":true,"desired_revision":2,"configuration_revision":1,"first_rotation_retained_by_revision":true,"secret_readback_claim":false}
+{"cleanup_complete":false,"error_type":"Error","phase":"cleanup"}
+{"overall_accepted":false,"read_only_prepare":false}
