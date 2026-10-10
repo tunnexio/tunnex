@@ -298,6 +298,7 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 		return
 	}
 	var owned *RouteTuple
+	var dnsManifest *GuardManifest
 	mutate := func(op string, r RouteTuple) error {
 		child, stop := context.WithTimeout(context.Background(), 2*time.Second)
 		defer stop()
@@ -398,8 +399,22 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 				target = &tuple
 			}
 		}
-		if err := deny(); err != nil {
-			t.Fatal("peer denial refused")
+		if c.DNSOwnerComponent && dnsManifest != nil && target != nil && reflect.DeepEqual(owned, target) {
+			check, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			gr, err := NewGuardReader("/usr/sbin/nft")
+			if err == nil {
+				err = gr.Check(check, *dnsManifest)
+			}
+			cancel()
+			if err != nil {
+				_ = deny()
+				t.Fatal("DNS peer previous exact guard changed")
+			}
+		}
+		if !c.DNSOwnerComponent || dnsManifest == nil || target == nil || !reflect.DeepEqual(owned, target) {
+			if err := deny(); err != nil {
+				t.Fatal("peer denial refused")
+			}
 		}
 		if err := verify(); err != nil {
 			t.Fatal(err)
@@ -466,31 +481,50 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 			if routeErr != nil || !localAssigned {
 				t.Fatal("peer underlay source unassigned")
 			}
-			localTarget, remoteTarget := netip.MustParseAddr("10.20.0.2"), netip.MustParseAddr("10.10.0.2")
-			if c.ProfileID == GCPHABGPProfile {
-				localTarget, remoteTarget = c.LocalTarget, c.RemoteTarget
-			}
-			rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d accept\n", lan.Index, xi, localTarget, remoteTarget, xi, localTarget, remoteTarget, c.CustomTunnels[slot].ReqID)
-			rules += fmt.Sprintf("insert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", underlay.Index, localTarget, remoteTarget, c.CustomTunnels[slot].ReqID, c.CustomTunnels[slot].RemoteAddress)
-			for i, ok := range healthy {
-				if ok {
-					rules += fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp dport 18080 ipsec in reqid %d accept\n", gc.Tunnels[i].InterfaceIndex, lan.Index, remoteTarget, localTarget, c.CustomTunnels[i].ReqID)
-				}
-			}
 			if c.DNSOwnerComponent {
-				rules += standaloneHADNSServiceRules(c, gc.Tunnels, healthy, slot, lan.Index, underlay.Index)
-			}
-			child, done := context.WithTimeout(context.Background(), 2*time.Second)
-			cmd := exec.CommandContext(child, "/usr/sbin/nft", "-f", "-")
-			cmd.Stdin = bytes.NewBufferString(rules)
-			err = cmd.Run()
-			deadline := child.Err() == context.DeadlineExceeded
-			done()
-			if err != nil {
-				if deadline {
-					t.Fatal("explicit peer simulator target permission deadline exceeded")
+				manifest, err := standaloneHADNSManifest(c, guard, healthy, slot, lan.Index, underlay.Index)
+				if err != nil {
+					t.Fatal("DNS peer exact guard render refused")
 				}
-				t.Fatalf("explicit peer simulator target permission command refused: %v", err)
+				apply, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				cmd := exec.CommandContext(apply, "/usr/sbin/nft", "-j", "-f", "-")
+				cmd.Stdin = bytes.NewBufferString(manifest.NFTJSON)
+				err = cmd.Run()
+				gr, readErr := NewGuardReader("/usr/sbin/nft")
+				if err == nil && readErr == nil {
+					readErr = gr.Check(apply, manifest)
+				}
+				cancel()
+				if err != nil || readErr != nil || verify() != nil || !p.Alive() {
+					_ = deny()
+					t.Fatal("DNS peer exact atomic guard readback refused")
+				}
+				dnsManifest = &manifest
+				t.Log("STANDALONE_DNS_PEER_READY")
+			} else {
+				localTarget, remoteTarget := netip.MustParseAddr("10.20.0.2"), netip.MustParseAddr("10.10.0.2")
+				if c.ProfileID == GCPHABGPProfile {
+					localTarget, remoteTarget = c.LocalTarget, c.RemoteTarget
+				}
+				rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d accept\n", lan.Index, xi, localTarget, remoteTarget, xi, localTarget, remoteTarget, c.CustomTunnels[slot].ReqID)
+				rules += fmt.Sprintf("insert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr %s ip daddr %s tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", underlay.Index, localTarget, remoteTarget, c.CustomTunnels[slot].ReqID, c.CustomTunnels[slot].RemoteAddress)
+				for i, ok := range healthy {
+					if ok {
+						rules += fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp dport 18080 ipsec in reqid %d accept\n", gc.Tunnels[i].InterfaceIndex, lan.Index, remoteTarget, localTarget, c.CustomTunnels[i].ReqID)
+					}
+				}
+				child, done := context.WithTimeout(context.Background(), 2*time.Second)
+				cmd := exec.CommandContext(child, "/usr/sbin/nft", "-f", "-")
+				cmd.Stdin = bytes.NewBufferString(rules)
+				err = cmd.Run()
+				deadline := child.Err() == context.DeadlineExceeded
+				done()
+				if err != nil {
+					if deadline {
+						t.Fatal("explicit peer simulator target permission deadline exceeded")
+					}
+					t.Fatalf("explicit peer simulator target permission command refused: %v", err)
+				}
 			}
 		}
 		if !p.Alive() {
