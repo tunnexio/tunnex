@@ -39,7 +39,7 @@ def main():
             psk="syntheticAzure"+secrets.token_hex(12)
             config={"profile_id":profile,"azure":{"gateway_sku":"VpnGw1AZ","vpn_type":"RouteBased","ike_version":2,"custom_policy":"aes256-sha256-dh14-pfs2048","use_policy_based_traffic_selectors":False,"nat_enabled":False},"mode":"ipv4-"+routing,"customer_outside_address":"9.9.9.9","local_prefixes":[state['local_prefix']],"remote_prefixes":["10.242.10.0/24"],"tunnels":[]}
             for i in range(count):
-                config["tunnels"].append({"outside_address":("8.8.8.8","8.8.4.4")[i],"inside_cidr":"169.254.20.1/32" if routing=="bgp" else f"169.254.{30+i}.0/30","customer_inside_address":"169.254.20.1" if routing=="bgp" else f"169.254.{30+i}.1","cloud_inside_address":f"169.254.{21+i}.2" if routing=="bgp" else f"169.254.{30+i}.2","psk":psk})
+                config["tunnels"].append({"outside_address":("208.67.222.222","208.67.220.220")[i],"inside_cidr":"169.254.11.1/32" if routing=="bgp" else f"169.254.{70+i}.0/30","customer_inside_address":"169.254.11.1" if routing=="bgp" else f"169.254.{70+i}.1","cloud_inside_address":f"169.254.{21+i}.77" if routing=="bgp" else f"169.254.{70+i}.2","psk":psk})
             if routing=="bgp":config["bgp"]={"local_asn":13335,"remote_asn":65515,"router_id":"10.241.10.1","maximum_prefixes":8}
             for role in ("owner","admin"):clients[role].call("POST",prefix+"/configuration-check",config)
             expect_error(clients["member"],"POST",prefix+"/configuration-check",403,config)
