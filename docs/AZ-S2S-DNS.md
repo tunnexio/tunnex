@@ -40,6 +40,36 @@ Record the tested source commit, binary hashes, runtime image, profile, tunnel t
 
 Some response semantics, such as controlled truncation, may require an owned custom authoritative server in addition to the managed resolver. Its coverage must be identified separately; it does not prove that Azure Private Resolver produced the same response.
 
+## Ordinary office resolver fixture
+
+Use the standard dnsmasq template `deploy/ipsec/azure-office-forwarder.conf.template` inside the already owned LAN peer namespace. This is an isolated office resolver fixture, not a second product DNS transport. Substitute only the two inventoried Azure inbound IPv4 addresses. The upstream socket source is explicitly `10.233.10.2`; the namespace must own that address and already route both inbound endpoints through the approved VPN. The resolver listens only on namespace loopback. No resolv.conf, hosts file, cache, global upstream, or static application address is used. Only `azure-s2s.test` and its subdomains have upstreams; unrelated suffixes cannot fall back to public DNS. dnsmasq supports conditional upstream selection and both DNS transports; see its [official manual](https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html).
+
+The lead executes these commands through the designated bastion, after inspecting the actual namespace and rendered configuration. `PEER_NAMESPACE`, `FORWARDER_CONF` and `FORWARDER_PID` denote owned resources; retain the foreground process handle or exact PID and terminate only that process at cleanup. Do not replace host/system resolver configuration or restart an existing resolver.
+
+Current owned lab values reported by the lead are namespace `azure-s2s-client`, inbound endpoints `10.231.2.4` and `10.231.2.20`, source `10.233.10.2`, service CNAME `service.azure-s2s.test` to `app.azure-s2s.test`, and separately granted application TCP 8080 / UDP 8081. Render these resolver addresses into the template; the application answer remains obtained from DNS, never inserted into the forwarder configuration. The fixture has not been executed locally; dnsmasq syntax and actual namespace behavior must be checked on the bastion.
+
+```sh
+ip netns exec "$PEER_NAMESPACE" ip -4 address show
+ip netns exec "$PEER_NAMESPACE" ip route get "$INBOUND_1" from 10.233.10.2
+ip netns exec "$PEER_NAMESPACE" ip route get "$INBOUND_2" from 10.233.10.2
+ip netns exec "$PEER_NAMESPACE" dnsmasq --test --conf-file="$FORWARDER_CONF"
+ip netns exec "$PEER_NAMESPACE" dnsmasq --keep-in-foreground --conf-file="$FORWARDER_CONF" --pid-file="$FORWARDER_PID"
+```
+
+From another bastion session, query the office resolver by explicit namespace-loopback server. Test A/CNAME, genuine NXDOMAIN, large TXT, TCP, and UDP truncation with TCP retry; retain actual query output and namespace packet captures. Replace the sample names with the actual inventoried records, without copying their answers into configuration.
+
+```sh
+ip netns exec "$PEER_NAMESPACE" dig @127.0.0.1 service.azure-s2s.test A +time=3 +tries=1
+ip netns exec "$PEER_NAMESPACE" dig @127.0.0.1 service.azure-s2s.test A +tcp +time=3 +tries=1
+ip netns exec "$PEER_NAMESPACE" dig @127.0.0.1 missing-owned.azure-s2s.test A +time=3 +tries=1
+ip netns exec "$PEER_NAMESPACE" dig @127.0.0.1 large.azure-s2s.test TXT +bufsize=512 +time=3 +tries=1
+ip netns exec "$PEER_NAMESPACE" dig @127.0.0.1 unrelated.example A +time=3 +tries=1
+```
+
+For name-to-application proof, use an application client that resolves through this resolver at runtime. For HTTP TCP, curl supports `--dns-servers 127.0.0.1` only when built with c-ares; check `curl -V` before using it. Otherwise use an existing standard client/library with an explicit resolver option, or a process-scoped libc resolver configuration in a disposable mount namespace. Do not use `--resolve`, hosts entries, or static service-IP configuration. Authorize application traffic separately for source `10.233.10.2`; a successful DNS query must not grant its application port.
+
+For upstream failover, identify the actually selected endpoint from packet capture, then apply the existing owned fault mechanism only to that endpoint on UDP and TCP 53. With cache disabled, repeat both queries and observe source `10.233.10.2` reach the remaining approved endpoint. Record observed delay; server preference is not a fixed primary/secondary promise. Fail both endpoints, repeat the private query, and prove no other DNS destination receives it. Remove only the owned fault and terminate only the fixture resolver. These are recipe steps until real captures and results are recorded; they do not imply live acceptance or bypass the product FQDN entitlement gate.
+
 ## Profile-specific receipt gate
 
 Use `python3 deploy/ipsec/check_azure_walk.py RECEIPT.json`. Four pending templates cover active-active/active-standby and static/BGP profiles. All require `live-azure`; AWS/GCP/emulator receipts are rejected. Standby coverage does not certify two-peer failover. BGP coverage additionally requires exact import/export/default/subprefix/prefix-limit selection and APIPA initiation evidence; static coverage requires exact route/selector and return-path proof. Never replace pending checks with pass based on a successful JSON/hash check.
