@@ -1,0 +1,124 @@
+{
+  "environment": "live-gcp",
+  "scope": "Fresh same-grant Classic TCP/UDP packet acceptance after immutable same-identity source replacement; HA remains failed/pending. Earlier UDP timeout cause remains unclassified.",
+  "production_source": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "image_id": "sha256:347bcb66318aa1b8ef1e949c6f57e28506e56a1497f2f4ae15b9ab74b8fed4c6",
+  "container_id": "5f77c5857fa78b0533eb4fddc46cc4a0e9c69369d8e7987ee068b88ec7ba8c2f",
+  "node_sha256": "e085ef4f608b37d6211904c634e3c6cef52cfdb5892e0ae7a8a2f18e8dd37132",
+  "node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+  "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+  "desired_revision": 2,
+  "configuration_revision": 1,
+  "created_receipt_sha256": "c1e107f2d1ce0f555310c72105dda7353537603e21a6b24b8ed23c6fe31176da",
+  "packet_receipt_sha256": "c694f6998ecb36d50e4a299596dfb636f270c2137dcd5d7213409ad3217ef434",
+  "api_baseline_preservation_receipt_sha256": "3d0f219b878ca9f158946cc5963c72ef1689c627d53951de815967f7930401bf",
+  "earlier_failed_packet_receipt_sha256": "e52953ca325bfe3af24cb84d72411201a5f7a43c3de3a9ff803e986fb6dc08cb",
+  "packet": {
+    "started": true,
+    "profile": "classic",
+    "expected": "allow",
+    "source_sha256": "523abe34a2e7f630d08ce74c08e8b15e03267fd202638b689faad63f094ca4b6",
+    "started_at_utc": "2026-10-10T15:50:01Z",
+    "completed": true,
+    "results": [
+      {
+        "probe": {
+          "protocol": "tcp",
+          "destination": "10.81.0.10",
+          "source": "10.70.0.10",
+          "nonce": "efa7cb9c-1333-4e9a-b72d-4ed641eaca4e",
+          "payload_sha256": "3c89b80691818e00185274e4e623529345fee238e0eacb1f1dacdf8c1bd65230",
+          "request_sha256": "23f8d6762fe33305bda21bfee87503f7088961df13a15aa416bdf9c42be41f4f",
+          "exact_response": true,
+          "outcome": "response",
+          "response_sha256": "8417b0ea861499dcd85a7ba5c4c93d4263e8cac5b734f9377eafd1be57865478",
+          "elapsed_ms": 8.838
+        },
+        "receiver_ready": {
+          "ready": true,
+          "target": "10.81.0.10",
+          "interface": "ens4",
+          "control": {
+            "protocol": "tcp",
+            "destination": "10.81.0.10",
+            "source": "10.81.0.10",
+            "nonce": "31521748-2831-4376-a098-0998f77583bb",
+            "payload_sha256": "84b78916cdb1b34c12f7882c6f1a2bdc8acb0635c75026a3f2dc2f12a4f35348",
+            "request_sha256": "763fc12bc7f4aaddaf96c7cf5de84e83041eb7bbfcceb3a9cf304f947fde6f72",
+            "exact_response": true,
+            "outcome": "response",
+            "response_sha256": "8417b0ea861499dcd85a7ba5c4c93d4263e8cac5b734f9377eafd1be57865478",
+            "elapsed_ms": 0.573
+          }
+        },
+        "receiver": {
+          "stopped_by_request": true,
+          "counts": {
+            "exact_payload": 1,
+            "syn": 1,
+            "other_tuple": 3,
+            "unsupported": 0
+          },
+          "capture_packets": 7,
+          "capture_drops": 0,
+          "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+          "scope": "bounded raw receiver observation; no policy authority"
+        },
+        "accepted": true,
+        "expectation": "allow",
+        "scope": "packet observation only; native guard/SA/route and API grant evidence are separate"
+      },
+      {
+        "probe": {
+          "protocol": "udp",
+          "destination": "10.81.0.10",
+          "source": "10.70.0.10",
+          "nonce": "f591d942-ceea-4288-9f78-55a1fc6add4d",
+          "payload_sha256": "86558039030faf4bcbf6a34e71ae7c7f4472409079f892003a1b3049b09aeb5b",
+          "exact_response": true,
+          "outcome": "response",
+          "response_sha256": "86558039030faf4bcbf6a34e71ae7c7f4472409079f892003a1b3049b09aeb5b",
+          "elapsed_ms": 4.629
+        },
+        "receiver_ready": {
+          "ready": true,
+          "target": "10.81.0.10",
+          "interface": "ens4",
+          "control": {
+            "protocol": "udp",
+            "destination": "10.81.0.10",
+            "source": "10.81.0.10",
+            "nonce": "e9f7027e-be9c-4dee-8f42-467e58e626d6",
+            "payload_sha256": "a31af98f1a9e6dc9aae6c877747db2dbafc64aa9d9a6e068b537ac3d92011532",
+            "exact_response": true,
+            "outcome": "response",
+            "response_sha256": "a31af98f1a9e6dc9aae6c877747db2dbafc64aa9d9a6e068b537ac3d92011532",
+            "elapsed_ms": 0.262
+          }
+        },
+        "receiver": {
+          "stopped_by_request": true,
+          "counts": {
+            "exact_payload": 1,
+            "syn": 0,
+            "other_tuple": 0,
+            "unsupported": 0
+          },
+          "capture_packets": 3,
+          "capture_drops": 0,
+          "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+          "scope": "bounded raw receiver observation; no policy authority"
+        },
+        "accepted": true,
+        "expectation": "allow",
+        "scope": "packet observation only; native guard/SA/route and API grant evidence are separate"
+      }
+    ],
+    "accepted": true,
+    "executed_at_utc": "2026-10-10T15:50:02Z"
+  },
+  "limits": [
+    "This actual packet gate is not full lifecycle, HA, DNS, automatic FQDN, CI or production readiness.",
+    "Individual packet RTT is not an SLA or reliability estimate."
+  ]
+}
