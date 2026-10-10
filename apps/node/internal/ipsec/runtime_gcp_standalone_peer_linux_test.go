@@ -24,7 +24,7 @@ func validStandaloneGCPPeer(c standalonePeerConfig) bool {
 	}
 	// This peer is an external emulator. Only the genuine enrolled gateway can
 	// obtain a lease, acknowledge a delivery or grant access to its clients.
-	if c.ProfileID != GCPClassicStaticProfile || c.Scenario != "gcp-static" || len(c.CustomTunnels) != 1 || len(c.Interfaces) != 1 || len(c.PSKs) != 1 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" || !reflect.DeepEqual(c.BGPConfig, bgp.Config{}) {
+	if c.DNSOwnerComponent || c.ProfileID != GCPClassicStaticProfile || c.Scenario != "gcp-static" || len(c.CustomTunnels) != 1 || len(c.Interfaces) != 1 || len(c.PSKs) != 1 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" || !reflect.DeepEqual(c.BGPConfig, bgp.Config{}) {
 		return false
 	}
 	e, f := c.CustomTunnels[0], c.Interfaces[0]
@@ -141,7 +141,7 @@ func nativeStandaloneGCPStage(t *testing.T, c standalonePeerConfig) {
 }
 
 func validStandaloneGCPHAPeer(c standalonePeerConfig) bool {
-	if len(c.Services) != 0 || len(c.ReverseServices) != 0 || c.Scenario != "gcp-ha" || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" || c.BGPConfig.RemoteASN == 7224 {
+	if len(c.ReverseServices) != 0 || c.Scenario != "gcp-ha" || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" || c.BGPConfig.RemoteASN == 7224 {
 		return false
 	}
 	if _, err := bgp.RenderConfig(c.BGPConfig); err != nil {
@@ -169,7 +169,7 @@ func validStandaloneGCPHAPeer(c standalonePeerConfig) bool {
 			return false
 		}
 	}
-	return true
+	return validStandaloneHADNSComponent(c)
 }
 
 func standaloneGCPHAFixture() standalonePeerConfig {

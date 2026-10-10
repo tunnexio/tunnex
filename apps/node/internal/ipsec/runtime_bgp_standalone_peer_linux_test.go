@@ -33,6 +33,7 @@ type standalonePeerInterface struct {
 	Metric          uint32 `json:"metric"`
 }
 type standalonePeerConfig struct {
+	DNSOwnerComponent         bool
 	Services                  []standalonePeerService
 	ReverseServices           []standalonePeerService
 	ProfileID                 string
@@ -52,7 +53,7 @@ func validStandalonePeer(c standalonePeerConfig) bool {
 	if c.ProfileID != "" {
 		return validStandaloneGCPPeer(c)
 	}
-	if len(c.Services) != 0 || len(c.ReverseServices) != 0 || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
+	if c.DNSOwnerComponent || len(c.Services) != 0 || len(c.ReverseServices) != 0 || len(c.CustomTunnels) != 2 || len(c.Interfaces) != 2 || len(c.PSKs) != 2 || c.PeerGatewayID == uuid.Nil || c.Generation == uuid.Nil || c.ActivationPerformed || c.GatewayCPAuthority != "real CP only; this standalone peer cannot acknowledge deliveries" {
 		return false
 	}
 	if _, err := bgp.RenderConfig(c.BGPConfig); err != nil {
@@ -475,6 +476,9 @@ func TestBGPStandalonePeerNative(t *testing.T) {
 				if ok {
 					rules += fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr %s ip daddr %s tcp dport 18080 ipsec in reqid %d accept\n", gc.Tunnels[i].InterfaceIndex, lan.Index, remoteTarget, localTarget, c.CustomTunnels[i].ReqID)
 				}
+			}
+			if c.DNSOwnerComponent {
+				rules += standaloneHADNSServiceRules(c, gc.Tunnels, healthy, slot, lan.Index, underlay.Index)
 			}
 			child, done := context.WithTimeout(context.Background(), 2*time.Second)
 			cmd := exec.CommandContext(child, "/usr/sbin/nft", "-f", "-")
