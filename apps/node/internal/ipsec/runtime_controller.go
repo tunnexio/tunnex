@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -74,6 +75,7 @@ type RuntimeController struct {
 	recoveryObserve         func(context.Context, RuntimeJournalEntry) [2]string
 	recoverySwitch          func(context.Context, KernelAllocation, [2]Ownership, uint8) error
 	mu                      sync.Mutex
+	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
 	config                  RuntimeControllerConfig
 	journal                 *RuntimeJournal
 	guard                   *RuntimeGuard
@@ -129,6 +131,7 @@ func (c *RuntimeController) capabilityFor(goos, goarch string) int {
 func (c *RuntimeController) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.withdrawDNSOwnerView(uuid.Nil)
 	c.closed = true
 	c.started = false
 	c.active = nil
@@ -188,6 +191,7 @@ func (c *RuntimeController) Start(ctx context.Context) error {
 	return nil
 }
 func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournalEntry) (GuardManifest, error) {
+	c.withdrawDNSOwnerView(uuid.Nil)
 	ns, e := c.namespace()
 	if e != nil {
 		return GuardManifest{}, ErrRuntimeController
@@ -235,6 +239,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		stage = "journal_inventory"
 		entries, e := c.journal.Entries()
 		if e == nil && len(entries) > 0 {
+			c.withdrawDNSOwnerView(uuid.Nil)
 			c.active = nil
 			_, _ = c.refuse(ctx, entries)
 		}
@@ -252,6 +257,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	if e != nil {
 		return fail()
 	}
+	c.withdrawChangedDNSMaterial(m, grants)
 	if entry.ContractVersion == 3 && !c.bgpQualificationCurrent() {
 		return fail()
 	} // BGP transport alone never grants runtime capability.
@@ -264,6 +270,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	// taking the ordinary same-namespace recreation path before proof arrives.
 	stage = "startup_gate"
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
 		return fail()
@@ -351,6 +358,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		stage = "bgp_apply"
 		ack, err := c.applyBGP(ctx, m, entries, pos, env, grants)
 		if err == nil && c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.withdrawDNSOwnerView(uuid.Nil)
 			c.active = nil
 			fresh, _ := c.journal.Entries()
 			_, _ = c.refuse(ctx, fresh)
@@ -367,6 +375,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		stage = "static_apply"
 		ack, err := c.applyRecovery(ctx, m, entries, pos, env, grants)
 		if err == nil && c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.withdrawDNSOwnerView(uuid.Nil)
 			c.active = nil
 			_, _ = c.refuse(ctx, entries)
 			return fail()
@@ -471,6 +480,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	if !c.started || c.closed || ctx.Err() != nil || !cleanup.RetainGuard || !runtimeCleanupValid(cleanup, c.config.OrgID, c.config.GatewayID) || cleanup.CoversDeliveryRevision <= 0 || cleanup.CoversDeliveryRevision >= cleanup.DesiredRevision || len(cleanup.Lineage) == 0 || len(cleanup.Lineage) > 256 {
 		return fail()
 	}
+	c.withdrawDNSOwnerView(cleanup.Manifest.ConnectionID)
 	entries, e := c.journal.Entries()
 	if e != nil {
 		return fail()
@@ -662,6 +672,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 // Other connections keep only their original remaining deadlines; neither a
 // journal template nor this replacement renews their authority.
 func (c *RuntimeController) installActive(ctx context.Context, entries []RuntimeJournalEntry) (resultErr error) {
+	c.reconcileDNSOwnerView()
 	stage := "input"
 	connection := uuid.Nil
 	started := time.Now()
@@ -671,6 +682,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		return ErrRuntimeController
 	}
 	if !c.qualification.current() {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 	}
 	for id, a := range c.active {
@@ -682,6 +694,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		c.emitRuntimeDiagnostic(proofCtx, "install_active", stage, id, proofStarted, a.Entry.Allocation.Namespace != ns || proofErr != nil)
 		proofCancel()
 		if a.Entry.Allocation.Namespace != ns || proofErr != nil {
+			c.withdrawDNSOwnerView(id)
 			delete(c.active, id)
 			continue
 		}
@@ -690,6 +703,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		_, e = a.Authority.RemainingForApply(a.Identity, 5*time.Second)
 		c.emitRuntimeDiagnostic(ctx, "install_active", stage, id, leaseStarted, e != nil)
 		if e != nil {
+			c.withdrawDNSOwnerView(id)
 			delete(c.active, id)
 		}
 	}
@@ -723,6 +737,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				return ErrRuntimeController
 			}
 			if err != nil {
+				c.withdrawDNSOwnerView(id)
 				delete(c.active, id)
 			} else {
 				if a.Entry.ContractVersion == 3 {
@@ -731,6 +746,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 					g, err = c.bgpGuard(observeCtx, a, remaining)
 					observeCancel()
 					if err != nil {
+						c.withdrawDNSOwnerView(id)
 						delete(c.active, id)
 						_, _ = c.refuse(ctx, entries)
 						return ErrRuntimeController
@@ -760,6 +776,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				// decision. Withdraw existing authority before returning; empty reply
 				// observations must never fall back to selected-path permission.
 				if statuses[index] != "up" || (a.Entry.Allocation.activeTunnelCount() == 2 && statuses[1-index] != "up" && statuses[1-index] != "down") {
+					c.withdrawDNSOwnerView(id)
 					delete(c.active, id)
 					_, _ = c.refuse(ctx, entries)
 					return ErrRuntimeController
@@ -782,6 +799,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 					g.TunnelMTUs, err = c.guardTunnelMTUs(mtuCtx, a.Entry, a.Environment, g.PermittedInterfaceIndices, g.ReplyIngressIndices)
 					mtuCancel()
 					if err != nil {
+						c.withdrawDNSOwnerView(id)
 						delete(c.active, id)
 						_, _ = c.refuse(ctx, entries)
 						return ErrRuntimeController
@@ -817,6 +835,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		for _, grant := range g.Grants {
 			if grant.DNSResolver != (DNSResolverBinding{}) {
 				if _, err := observeDNSSource(grant.Source.Addr(), a.Environment.LocalIngressIndices); err != nil {
+					c.withdrawDNSOwnerView(g.ID)
 					delete(c.active, g.ID)
 					_, _ = c.refuse(ctx, entries)
 					return ErrRuntimeController
@@ -825,6 +844,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		}
 		remaining, err := a.Authority.RemainingForApply(a.Identity, 5*time.Second)
 		if err != nil {
+			c.withdrawDNSOwnerView(g.ID)
 			delete(c.active, g.ID)
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController
@@ -847,6 +867,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		if a.Entry.ContractVersion == 3 && len(g.Grants) > 0 {
 			process := c.bgpProcesses[a.Entry.DeliveryID]
 			if process == nil || !process.Alive() {
+				c.withdrawDNSOwnerView(g.ID)
 				delete(c.active, g.ID)
 				_, _ = c.refuse(ctx, entries)
 				return ErrRuntimeController
@@ -860,11 +881,13 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 		return ErrRuntimeController
 	}
 	stage = "combined_guard_replace"
-	if _, e = c.replace(commitCtx, intent); e != nil {
+	manifest, replaceErr := c.replace(commitCtx, intent)
+	if replaceErr != nil {
 		return ErrRuntimeController
 	}
 	stage = "combined_guard_final_binding"
 	if len(c.active) > 0 && !c.qualification.current() {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
@@ -877,6 +900,7 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 			return ErrRuntimeController
 		}
 	}
+	c.publishDNSOwnerView(manifest)
 	return nil
 }
 
@@ -938,11 +962,13 @@ func (c *RuntimeController) Validate(ctx context.Context) (resultErr error) {
 	stage = "journal_inventory"
 	entries, e := c.journal.Entries()
 	if e != nil {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		return ErrRuntimeController
 	}
 	stage = "qualification"
 	if !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		if len(entries) > 0 {
 			if _, err := c.refuse(ctx, entries); err != nil {
@@ -971,6 +997,7 @@ func (c *RuntimeController) Validate(ctx context.Context) (resultErr error) {
 		}
 		for connection, active := range c.active {
 			if active.Entry.ContractVersion == 3 {
+				c.withdrawDNSOwnerView(connection)
 				delete(c.active, connection)
 			}
 		}

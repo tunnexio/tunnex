@@ -38,6 +38,7 @@ func (c *RuntimeController) ensureUnderlayMTUs(ctx context.Context, e RuntimeJou
 	if !need {
 		return false, nil
 	}
+	c.withdrawDNSOwnerView(e.Allocation.ConnectionID)
 	delete(c.active, e.Allocation.ConnectionID)
 	deny := func(ctx context.Context) error {
 		current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
