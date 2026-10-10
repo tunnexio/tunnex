@@ -58,6 +58,35 @@ class Lifecycle(unittest.TestCase):
   return a.operate(phase,type('Client',(),{'call':staticmethod(self.call)})(),self.setup,self.state,**kw)
  def prep(self):self.run_phase('prepare',allocation=self.allocation)
  def remove(self):self.run_phase('disable');self.run_phase('delete')
+ def test_finalized_read_real_metadata_distinct_cleanup_and_no_live_config(self):
+  self.prep();self.remove();saved=json.loads(a.secure.read(self.state));original_config=self.configs[a.ORIGINAL]
+  self.configs[a.ORIGINAL]={k:original_config[k] for k in ('profile_id','configuration_revision')}
+  self.calls=[];receipt=self.run_phase('finalized-read')
+  self.assertEqual(receipt['kind'],'owned_finalized_prior_authority');self.assertNotIn('normal_connection',receipt)
+  self.assertEqual(receipt['saved_cleanup_revision'],41);self.assertEqual(receipt['finalized_authority']['desired_revision'],42)
+  self.assertEqual(receipt['finalized_authority']['historical_site_id'],self.setup['site_id'])
+  self.assertFalse(any(path.endswith('/status') for _,path,_,_ in self.calls))
+  prepare=load('finalized_prepare_test',Path(__file__).with_name('prepare-max-prefix-observer.py'))
+  b={**self.setup,'connection_id':a.ORIGINAL,'desired_revision':41,'configuration_revision':5,'maximum_prefixes':8,'namespace_device':4,'namespace_inode':9}
+  attestation={'observed_at':NOW(),'container_id':prepare.CONTAINER,'image_sha256':prepare.IMAGE,'node_executable_sha256':prepare.NODE,'binding':b,'journal_cleanup_desired_revision':41}
+  result=prepare.build(receipt,attestation,saved,'absence',datetime.now(timezone.utc));self.assertEqual(result['desired_revision'],41)
+  for mutation in ('pending','historical','cleanup','metadata','hash','live_mode'):
+   value=copy.deepcopy(receipt);att=copy.deepcopy(attestation)
+   if mutation=='pending':value['finalized_authority']['cleanup_state']='pending'
+   if mutation=='historical':value['finalized_authority']['historical_site_id']=I(99)
+   if mutation=='cleanup':att['journal_cleanup_desired_revision']=42
+   if mutation=='metadata':value['finalized_authority']['configuration_revision']=6
+   if mutation=='hash':value['saved_prior_configuration_sha256']='a'*64
+   with self.assertRaises(ValueError):prepare.build(value,att,saved,'baseline' if mutation=='live_mode' else 'absence',datetime.now(timezone.utc))
+ def test_finalized_read_refuses_unfinalized_live_config_extra_policy(self):
+  self.prep();self.remove();old=self.configs[a.ORIGINAL];self.configs[a.ORIGINAL]={k:old[k] for k in ('profile_id','configuration_revision')}
+  for change in ('unfinalized','config','policy'):
+   value=copy.deepcopy(self.rows[a.ORIGINAL])
+   if change=='unfinalized':self.rows[a.ORIGINAL]['finalized_at']=None
+   if change=='config':self.configs[a.ORIGINAL]=old
+   if change=='policy':self.grants=[{'id':I(99)}]
+   with self.assertRaises(ValueError):self.run_phase('finalized-read')
+   self.rows[a.ORIGINAL]=value;self.grants=[];self.configs[a.ORIGINAL]={k:old[k] for k in ('profile_id','configuration_revision')}
  def test_original_restore_read_real_empty_policy_proof(self):
   self.grants=[{'id':I(99)}];self.prep()
   # Original prepare/read may retain eight real grants; restore-read for observation must prove empty.

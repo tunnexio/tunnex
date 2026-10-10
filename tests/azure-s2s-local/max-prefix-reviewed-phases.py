@@ -8,11 +8,11 @@ import socket
 import stat
 import subprocess
 import uuid
-SOURCE=Path('/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v3-54-50f92a3f')
+SOURCE=Path('/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v4-finalized54')
 PRIVATE=Path('/home/ubuntu/tunnex-azure-lab/tests/azure-s2s-local/.runtime')
 M=PRIVATE/'maximum-prefix-M-20261010-8eb31c7e.json'
 D=PRIVATE/'dns-profile-transition-9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99.json'
-PHASES=('dns-read','dns-revoke','read','restore-read','disable','delete','create','enable','baseline-prepare','baseline-read','baseline-disable','baseline-delete','baseline-create','baseline-enable','dns-rebind','dns-reconcile','dns-sync-grants')
+PHASES=('dns-read','dns-revoke','read','restore-read','finalized-read','disable','delete','create','enable','baseline-prepare','baseline-read','baseline-finalized-read','baseline-disable','baseline-delete','baseline-create','baseline-enable','dns-rebind','dns-reconcile','dns-sync-grants')
 
 def private_file(path):
  if path is None or path.parent!=PRIVATE or path.resolve()!=path:raise ValueError('private input')

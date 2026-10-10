@@ -99,7 +99,7 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
    original=baseline['original_configuration'];expected=configuration(original,'limit');observed=copy.deepcopy(current['configuration']);expected.pop('profile_id')
    if expected!=observed or current['profile_id']!=PROFILE:raise ValueError('test configuration changed')
   reserve(state_path.with_name(state_path.name+'.prepare-reserved'))
-  state={'version':1,'purpose':purpose,'setup':setup,'prior':{'id':prior,'tunnel_ids':ids},'original_configuration':original,'stage':'prepared'}
+  state={'version':1,'purpose':purpose,'setup':setup,'prior':{'id':prior,'tunnel_ids':ids},'original_configuration':original,'prior_configuration':current,'stage':'prepared'}
   if purpose=='baseline':state['original_prior']=baseline['prior']
   secure.write(state_path,state)
  else:
@@ -157,8 +157,23 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
   state['target']={'id':str(uuid.uuid4()),'tunnel_ids':[str(uuid.uuid4()),str(uuid.uuid4())]};state['stage']='create_reserved';secure.write(state_path,state)
   target=state['target'];path=prefix+target['id']
   client.call('POST',base+'/ipsec/connections',{**target,'name':'Azure owned maximum-prefix '+purpose,'site_id':setup['site_id'],'gateway_node_id':setup['gateway_id'],'configuration':config})
- elif phase not in ('prepare','read','restore-read'):raise ValueError('phase')
+ elif phase not in ('prepare','read','restore-read','finalized-read'):raise ValueError('phase')
  fresh=client.call('GET',path)
+ if phase=='finalized-read':
+  if 'target' in state or target['id']!=prior or not transition.finalized_prior(fresh,transition.prior_projection(fresh,setup,prior)):raise ValueError('finalized prior only')
+  if fresh.get('site_id') is not None or fresh.get('gateway_node_id') is not None:raise ValueError('finalized live binding forbidden')
+  no_grants(client,base)
+  metadata=client.call('GET',path+'/configuration')
+  saved=state.get('prior_configuration')
+  if saved is None:
+   if purpose!='limit':raise ValueError('saved test prior configuration required')
+   saved=state['original_configuration']
+  expected=contract(saved,prior)
+  if set(metadata)!={'profile_id','configuration_revision'} or metadata['profile_id']!=PROFILE or metadata['configuration_revision']!=expected['configuration_revision']:raise ValueError('actual tombstone configuration metadata')
+  cleanup=life.bounded_int(state['cleanup_revision'],1,9223372036854775807)
+  projected=transition.prior_projection(fresh,setup,prior)
+  if projected['desired_revision']<cleanup:raise ValueError('cleanup revision superseded')
+  return {'version':1,'kind':'owned_finalized_prior_authority','phase':phase,'purpose':purpose,'observed_at':datetime.now(timezone.utc).isoformat(),'policy_count':0,'runtime_observation':'not_requested','finalized_authority':{**projected,**{key:setup[key] for key in ('org_id','site_id','gateway_id')},'historical_site_id':fresh['historical_site_id'],'historical_gateway_node_id':fresh['historical_gateway_node_id'],'deleted_at':fresh['deleted_at'],'finalized_at':fresh['finalized_at'],'profile_id':metadata['profile_id'],'configuration_revision':metadata['configuration_revision']},'saved_cleanup_revision':cleanup,'saved_prior_contract':expected,'saved_prior_configuration_sha256':hashlib.sha256(json.dumps(saved,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'scope':'Actual finalized tombstone and surviving public metadata only; saved predelete config explicitly historical; no live authority or native absence proof'}
  projected=transition.prior_projection(fresh,setup,prior) if target['id']==prior else life.connection_projection(fresh,setup,target['id'])
  output={'version':1,'phase':phase,'purpose':purpose,'observed_at':datetime.now(timezone.utc).isoformat(),'connection':projected,'saved_stage':state['stage'],'scope':'Normal API readback only; no BGP/native/packet proof'}
  if fresh['desired_intent']!='deleted':
@@ -170,7 +185,7 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
 
 
 def main():
- parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('phase',choices=('prepare','read','restore-read','disable','delete','create','enable'));parser.add_argument('--private-root',required=True);parser.add_argument('--state',type=Path,required=True);parser.add_argument('--purpose',choices=('limit','baseline'),default='limit');parser.add_argument('--allocation',type=Path);parser.add_argument('--baseline-state',type=Path);parser.add_argument('--psk-file',type=Path);parser.add_argument('--discovery',type=Path);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--native-absence',type=Path);parser.add_argument('--native-sha256');parser.add_argument('--native-binding',type=Path);args=parser.parse_args()
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('phase',choices=('prepare','read','restore-read','finalized-read','disable','delete','create','enable'));parser.add_argument('--private-root',required=True);parser.add_argument('--state',type=Path,required=True);parser.add_argument('--purpose',choices=('limit','baseline'),default='limit');parser.add_argument('--allocation',type=Path);parser.add_argument('--baseline-state',type=Path);parser.add_argument('--psk-file',type=Path);parser.add_argument('--discovery',type=Path);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--native-absence',type=Path);parser.add_argument('--native-sha256');parser.add_argument('--native-binding',type=Path);args=parser.parse_args()
  root=secure.private_root(args.private_root)
  if args.output==args.state or args.output.exists() or args.output.is_symlink():raise ValueError('new separate receipt required')
  for path in (args.state,args.output):

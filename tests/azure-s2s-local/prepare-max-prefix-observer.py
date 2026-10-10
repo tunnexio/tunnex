@@ -29,6 +29,7 @@ def timestamp(value):
  return datetime.fromisoformat(normalized.replace('Z','+00:00'))
 
 def build(normal,attestation,immutable,mode,clock):
+ if normal.get('kind')=='owned_finalized_prior_authority':return finalized_build(normal,attestation,immutable,mode,clock)
  if mode not in ('baseline','absence','post-limit'):raise ValueError('mode')
  for source in (normal,attestation):
   if not 0<=(clock-timestamp(source['observed_at'])).total_seconds()<=60:raise ValueError('fresh input')
@@ -58,6 +59,41 @@ def build(normal,attestation,immutable,mode,clock):
  allowed={'org_id','site_id','gateway_id','connection_id','desired_revision','configuration_revision','maximum_prefixes','namespace_device','namespace_inode'}
  if set(b)-allowed-{'historical_boot'} or not allowed<=set(b):raise ValueError('binding fields')
  result={k:b[k] for k in allowed};result.update(mode=mode,node_executable_sha256=NODE)
+ if 'historical_boot' in b:
+  h=b['historical_boot']
+  if set(h)!={'proof_sha256','stopped_journal_sha256','root_attested_host_machine_id'} or any(not re.fullmatch('[0-9a-f]{64}',h[k]) for k in ('proof_sha256','stopped_journal_sha256')) or not re.fullmatch('[0-9a-f]{32}',h['root_attested_host_machine_id']):raise ValueError('historical pins')
+  result['historical_boot']=h
+ return result
+
+def finalized_build(normal,attestation,immutable,mode,clock):
+ if mode!='absence' or 'target' in immutable or normal.get('phase')!='finalized-read' or normal.get('policy_count')!=0 or normal.get('runtime_observation')!='not_requested':raise ValueError('finalized absence context')
+ for source in (normal,attestation):
+  if not 0<=(clock-timestamp(source['observed_at'])).total_seconds()<=60:raise ValueError('fresh finalized context')
+ a=normal['finalized_authority'];b=attestation['binding'];saved=immutable.get('prior_configuration')
+ if saved is None:
+  if immutable['purpose']!='limit':raise ValueError('saved prior configuration required')
+  saved=immutable['original_configuration']
+ if normal['saved_prior_configuration_sha256']!=hashlib.sha256(json.dumps(saved,sort_keys=True,separators=(',',':')).encode()).hexdigest():raise ValueError('saved archive hash')
+ if a['id']!=immutable['prior']['id'] or a['id']!=b['connection_id'] or a['desired_intent']!='deleted' or a['application_state']!='not_applied' or a['cleanup_state'] not in ('retained_guard','not_required'):raise ValueError('real finalized prior')
+ for key in ('org_id','site_id','gateway_id'):
+  if a[key]!=immutable['setup'][key] or a[key]!=b[key]:raise ValueError('historical owner')
+ if a['historical_site_id']!=a['site_id'] or a['historical_gateway_node_id']!=a['gateway_id']:raise ValueError('historical binding')
+ if timestamp(a['deleted_at'])>timestamp(a['finalized_at']) or timestamp(a['finalized_at'])>clock:raise ValueError('finalized timestamp')
+ cleanup=immutable['cleanup_revision']
+ if type(cleanup)!=int or cleanup<1 or normal['saved_cleanup_revision']!=cleanup or attestation['journal_cleanup_desired_revision']!=cleanup or b['desired_revision']!=cleanup or type(a['desired_revision'])!=int or a['desired_revision']<cleanup:raise ValueError('actual cleanup distinct from normal revision')
+ contract=normal['saved_prior_contract']
+ if contract['id']!=a['id'] or a['profile_id']!=contract['profile_id'] or a['configuration_revision']!=contract['configuration_revision'] or a['configuration_revision']!=b['configuration_revision'] or a['configuration_revision']!=saved['configuration_revision']:raise ValueError('tombstone metadata')
+ # These fields are explicitly archived; no normal_connection or live state is invented.
+ if saved['profile_id']!='azure-active-active-bgp-ipv4-v1' or contract['maximum_prefixes']!=saved['configuration']['bgp']['maximum_prefixes'] or contract['remote_prefixes']!=saved['configuration']['remote_prefixes'] or b['maximum_prefixes']!=contract['maximum_prefixes']:raise ValueError('archive contract')
+ if b['maximum_prefixes'] not in (1,8) or contract['remote_prefixes']!=(['10.231.0.0/16'] if b['maximum_prefixes']==8 else ['10.231.0.0/16','10.235.77.0/24']):raise ValueError('bounded archived prefixes')
+ if attestation['container_id']!=CONTAINER or attestation['image_sha256']!=IMAGE or attestation['node_executable_sha256']!=NODE:raise ValueError('current owned image')
+ allowed={'org_id','site_id','gateway_id','connection_id','desired_revision','configuration_revision','maximum_prefixes','namespace_device','namespace_inode'}
+ if set(b)-allowed-{'historical_boot'} or not allowed<=set(b):raise ValueError('binding fields')
+ for key in ('org_id','site_id','gateway_id','connection_id'):
+  if str(uuid.UUID(b[key]))!=b[key]:raise ValueError('identity')
+ for key in ('namespace_device','namespace_inode','configuration_revision'):
+  if type(b[key])!=int or b[key]<1:raise ValueError('native binding')
+ result={k:b[k] for k in allowed};result.update(mode='absence',node_executable_sha256=NODE)
  if 'historical_boot' in b:
   h=b['historical_boot']
   if set(h)!={'proof_sha256','stopped_journal_sha256','root_attested_host_machine_id'} or any(not re.fullmatch('[0-9a-f]{64}',h[k]) for k in ('proof_sha256','stopped_journal_sha256')) or not re.fullmatch('[0-9a-f]{32}',h['root_attested_host_machine_id']):raise ValueError('historical pins')
