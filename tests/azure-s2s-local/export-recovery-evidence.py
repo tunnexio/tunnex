@@ -84,9 +84,7 @@ def main():
  parser.add_argument('--output',required=True,type=Path)
  parser.add_argument('--initial-refusal',required=True,type=Path,help='Packaged unchanged genuine-reboot-recovery.json; SHA only')
  parser.add_argument('--read-current',action='store_true',help='Execute lifecycle-live.py read against fixed localhost normal API; never changes intent')
- args=parser.parse_args();root=args.private_root
- info=root.lstat()
- if not stat.S_ISDIR(info.st_mode) or info.st_uid!=owner or info.st_mode&0o077:raise ValueError('private root')
+ args=parser.parse_args();root=private_root(args.private_root)
  result={'exported_at':datetime.now(timezone.utc).isoformat(),'scope':'Historical packet observations and optional fresh normal API status; no restoration authorization or production readiness claim','historical_packet_receipts':{},'current_status':{'availability':'not_requested'},'warm_restart_summary':{'availability':'not_projected_without_verified_schema'},'cleanup_revision_5_receipt':{'availability':'not_saved'},'enable_revision_6_receipt':{'availability':'not_saved'}}
  for name in FILES:
   path=root/name

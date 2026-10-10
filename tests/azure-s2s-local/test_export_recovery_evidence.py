@@ -11,6 +11,13 @@ export=importlib.util.module_from_spec(spec);spec.loader.exec_module(export)
 
 
 class OwnershipTests(unittest.TestCase):
+ def test_main_calls_ownership_gate_before_receipt_reads(self):
+  args=['export-recovery-evidence.py','--private-root','/owned/private','--initial-refusal','/package/genuine-reboot-recovery.json','--output','/owned/export.json']
+  with patch('sys.argv',args),patch.object(export,'private_root',side_effect=ValueError('ownership refused')) as gate,patch.object(export,'read_private') as reads:
+   with self.assertRaisesRegex(ValueError,'ownership refused'):export.main()
+   gate.assert_called_once_with(Path('/owned/private'))
+   reads.assert_not_called()
+
  def test_private_directory_accepts_only_root_observer_and_uid1000(self):
   root=Path('/owned/private')
   for uid,mode,observer,accepted in [(1000,0o700,0,True),(0,0o700,0,False),(1001,0o700,0,False),(1000,0o750,0,False),(1000,0o700,1000,False)]:
