@@ -55,7 +55,10 @@ def expected_contract(value):
  for key in ('desired_revision','configuration_revision'):
   if type(value.get(key))!=int or value[key]<1:raise ValueError('expected revision')
  if type(value.get('maximum_prefixes'))!=int:raise ValueError('expected maximum prefix integer')
- if value.get('profile_id')!='azure-active-active-bgp-ipv4-v1' or value.get('remote_prefixes')!=['10.231.0.0/16','10.235.77.0/24'] or value.get('maximum_prefixes')!=1 or value['id']==prefix.CP:raise ValueError('bounded maximum-prefix contract')
+ if value.get('profile_id')!='azure-active-active-bgp-ipv4-v1':raise ValueError('bounded AA BGP profile')
+ if value['id']==prefix.CP:
+  if value.get('remote_prefixes')!=['10.231.0.0/16'] or value.get('maximum_prefixes')!=8:raise ValueError('exact original baseline contract')
+ elif value.get('remote_prefixes')!=['10.231.0.0/16','10.235.77.0/24'] or value.get('maximum_prefixes')!=1:raise ValueError('bounded maximum-prefix contract')
  return value
 
 
@@ -137,7 +140,7 @@ def api_collect(root,expected=None):
   if normal['desired_revision']!=34:raise ValueError('revision34 required')
  else:
   if any(normal.get(key)!=value for key,value in expected.items()) or normal['desired_intent']!='enabled' or normal['application_state']!='applied':raise ValueError('current normal contract changed')
- return envelope('owned_api_ranges',started,ranges,normal_connection=normal,org_id=setup['org_id'],site_id=setup['site_id'],gateway_id=setup['gateway_id'],candidate_reservation=({'connection_id':current_id,'configuration_revision':expected['configuration_revision'],'prefix':'10.235.77.0/24'} if expected else None),counts={'sites':len(sites),'nodes':len(nodes),'resolver_contexts':contexts,'policies':len(policies),'connections':connections})
+ return envelope('owned_api_ranges',started,ranges,normal_connection=normal,org_id=setup['org_id'],site_id=setup['site_id'],gateway_id=setup['gateway_id'],candidate_reservation=({'connection_id':current_id,'configuration_revision':expected['configuration_revision'],'prefix':'10.235.77.0/24'} if expected and current_id!=prefix.CP else None),counts={'sites':len(sites),'nodes':len(nodes),'resolver_contexts':contexts,'policies':len(policies),'connections':connections})
 
 
 def kernel_collect(expected_device,expected_inode):
@@ -231,9 +234,10 @@ def assemble(values,candidate,expected_device,expected_inode,clock,expected=None
  else:
   normal['configuration_revision']=raw['configuration_revision']
   if any(normal.get(key)!=value for key,value in expected.items()) or normal['desired_intent']!='enabled' or normal['application_state']!='applied':raise ValueError('current normal contract changed')
-  if values[0].get('candidate_reservation')!={'connection_id':expected['id'],'configuration_revision':expected['configuration_revision'],'prefix':candidate}:raise ValueError('candidate reservation binding')
+  reservation={'connection_id':expected['id'],'configuration_revision':expected['configuration_revision'],'prefix':candidate} if expected['id']!=prefix.CP else None
+  if values[0].get('candidate_reservation')!=reservation:raise ValueError('candidate reservation binding')
  output=envelope('owned_prefix_range_review',min(times).isoformat(),sorted(set(ranges)),candidate=candidate,normal_connection=normal,source_sha256=[prefix.digest(value) for value in values],namespace=values[1]['namespace'])
- if expected is None:prefix.evidence(output,candidate,clock)
+ if expected is None or expected['id']==prefix.CP:prefix.evidence(output,candidate,clock)
  else:
   output['candidate_reservation']=values[0]['candidate_reservation']
   for item in ranges:

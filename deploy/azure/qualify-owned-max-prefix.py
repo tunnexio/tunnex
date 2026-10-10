@@ -22,6 +22,7 @@ def normal(receipt,clock,expected=None):
  if receipt.get('version')!=1 or receipt.get('purpose')!='limit':raise ValueError('normal maximum-prefix receipt')
  helpers.fresh(receipt['observed_at'],clock)
  value=receipt['normal_connection'];wanted={key:value[key] for key in ('id','desired_revision','configuration_revision','profile_id','remote_prefixes','maximum_prefixes')};collector.expected_contract(wanted)
+ if wanted['id']==prefix.CP:raise ValueError('new maximum-prefix target required')
  if value.get('desired_intent') not in ('enabled','disabled') or value.get('application_state') not in ('applied','pending','not_applied') or receipt.get('policy_count')!=0:raise ValueError('owned nongranted normal status')
  if expected is not None and any(wanted[key]!=expected[key] for key in ('id','configuration_revision','profile_id','remote_prefixes','maximum_prefixes')):raise ValueError('test connection immutable binding changed')
  return wanted

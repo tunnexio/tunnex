@@ -113,6 +113,18 @@ class CloudGuards(unittest.TestCase):
   self.namespace={'device':4,'inode':9}
   self.review={'version':1,'kind':'owned_prefix_range_review','subscription':c.prefix.lab.SUBSCRIPTION,'resource_group':c.prefix.lab.RG,'owner':c.prefix.lab.OWNER,'vnet_id':c.prefix.VNET,'candidate':a.CANDIDATE,'observed_at':NOW(),'normal_connection':self.current,'ranges':['10.231.0.0/16'],'source_sha256':['a'*64]*3,'namespace':self.namespace,'candidate_reservation':{'connection_id':I(8),'configuration_revision':7,'prefix':a.CANDIDATE}}
   self.proof={'version':1,'kind':'owned_max_prefix_baseline','observed_at':NOW(),'connection_id':I(8),'desired_revision':2,'configuration_revision':7,'namespace':self.namespace,'native':{'sad':4,'spd_in':2,'spd_out':2,'spd_fwd':2},'tunnels':[{'slot':n,'state':'up','owned_ike':1,'owned_installed_children':1} for n in (1,2)],'bgp':{'peers':[{'slot':n,'state':'established','accepted_prefixes':1} for n in (1,2)],'routes':['10.231.0.0/16']}}
+ def test_explicit_original_current_revision_collects_without_candidate_exception(self):
+  expected={'id':c.prefix.CP,'desired_revision':40,'configuration_revision':9,'profile_id':a.PROFILE,'remote_prefixes':['10.231.0.0/16'],'maximum_prefixes':8}
+  values=[]
+  for kind,source in [('owned_api_ranges','site_subnet'),('owned_kernel_ranges','kernel_route'),('owned_azure_ranges','azure_subnet')]:values.append(r.envelope(kind,NOW(),[{'source':source,'cidr':'10.231.0.0/16'}]))
+  values[0]['normal_connection']={**expected,'desired_intent':'enabled','application_state':'applied'};values[1]['namespace']=self.namespace
+  result=r.assemble(values,a.CANDIDATE,4,9,datetime.now(timezone.utc),expected)
+  self.assertEqual(result['normal_connection']['desired_revision'],40);self.assertNotIn('candidate_reservation',result)
+  values[0]['ranges'].append({'source':'connection_remote_prefixes','cidr':a.CANDIDATE})
+  with self.assertRaisesRegex(ValueError,'overlap'):r.assemble(values,a.CANDIDATE,4,9,datetime.now(timezone.utc),expected)
+  forged=copy.deepcopy(self.receipt);forged['normal_connection']['id']=c.prefix.CP
+  with self.assertRaises(ValueError):c.normal(forged,datetime.now(timezone.utc))
+
  def test_add_requires_fresh_exact_revision_native_oneprefix_and_no_grants(self):
   c.evidence(self.review,a.CANDIDATE,datetime.now(timezone.utc),self.receipt,self.proof)
   for changed in ('stale','overlap','revision','native','secondprefix','grant'):
