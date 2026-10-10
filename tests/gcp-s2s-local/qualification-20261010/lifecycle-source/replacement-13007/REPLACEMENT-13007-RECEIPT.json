@@ -1,0 +1,103 @@
+{
+  "scope": "actual owned test gateway replacement only; no complete GCP acceptance claim",
+  "old_source": "f1dd3a2605fb03e542f02a93599ab906662ffc2b",
+  "new_source": "13007c405cece2ab3a1a790b1b539980479336a3",
+  "old_container": "75ecbfbcfc4d4bf1d2fd62a4d5fc7bada5cea4ff94d1efb9322b23886995e8e9",
+  "new_container": "75e08240b594ff52874a7e9a9f875e092288f9c88a41d19b76e382277e0aa7da",
+  "image": "sha256:9a051bbdc9eed316bfabf2914e26a1c5f454927665902b0c7e0d2ded8a5374d7",
+  "failure_preservation": "Unexecuted original67c7/8623 had old/new image pins reversed; correctedv2 uses explicit anchored pins and actualcapture regression. Original files retained.",
+  "stop": {
+    "exit_code": 0,
+    "running": false,
+    "oom_killed": false,
+    "readback_errors": [],
+    "retained_binding_matches": true,
+    "immutable_journal_matches": true,
+    "finished_at": "2026-10-10T18:26:54.15362218Z"
+  },
+  "stop_native": {
+    "managed_processes": [],
+    "nft_sha256": "f1f1b3126de42956b343c8f856dd03ba6049cb5e494ef546a0176d4845345944",
+    "sad_count": 0
+  },
+  "guard_verification": {
+    "capture_sha256": "f732440668f0ddd2350e7f51128ff031bab0fea6e3d018c2daa770f8b2dc4e11",
+    "guard_digest": "5c59a970c2f88df40f5c753127b1221831c9909b1f182480efb4fd8764a44aa5",
+    "guard_revision": 33196,
+    "journal_sha256": "482ab1a15dd381a3887ec4581f04c61e3491b95e3532a8804fa55727e2cfec52",
+    "namespace": "net:[4026531840]",
+    "owned_table_prefix_refusal_verified": true,
+    "permit_sets_actually_empty": true,
+    "qualifier_source": "13007c405cece2ab3a1a790b1b539980479336a3",
+    "scope": "fresh captured owned table only; NOT host firewall census, lease/cleanup/restoration authority or packet proof"
+  },
+  "post_native": {
+    "sa_count": "SAD count 6",
+    "peers": {
+      "169.254.100.1": {
+        "state": "Established",
+        "connectionsEstablished": 1,
+        "connectionsDropped": 0
+      },
+      "169.254.100.5": {
+        "state": "Established",
+        "connectionsEstablished": 1,
+        "connectionsDropped": 0
+      }
+    },
+    "bgp_routes": {
+      "Sequence": 4,
+      "Stage": "completed",
+      "Owned": [
+        {
+          "Prefix": "10.80.0.0/24",
+          "Slot": 1,
+          "InterfaceIndex": 6,
+          "Table": 254,
+          "Protocol": 242,
+          "Metric": 50001
+        }
+      ],
+      "Target": [
+        {
+          "Prefix": "10.80.0.0/24",
+          "Slot": 1,
+          "InterfaceIndex": 6,
+          "Table": 254,
+          "Protocol": 242,
+          "Metric": 50001
+        }
+      ]
+    }
+  },
+  "observed_refusal": [
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 69,
+      "level": "WARN",
+      "msg": "ipsec_runtime_diagnostic_refused",
+      "operation": "underlay_mtu",
+      "stage": "mtu_environment_observe",
+      "time": "2026-10-10T18:29:29.14147624Z"
+    }
+  ],
+  "diagnosis": "Classic Environment.Observe refused69ms duringstartup. Later fullpositive/packet and HA2BGP2/native route proofs were reported healthy. DHCP lifetime mismatch is plausible only, not yet causal. Native source-equivalent capture prepared, unexecuted at archive.",
+  "source_helpers": {
+    "replace-phased.pending.remote.py": "67c7cb08eabf9e8a9a4ff49c13f42322f989b9ed7b547af3db7aaed0b88b9364",
+    "run-preflight.py": "862327370bbcd9b2e2c7a65d9989bf05745fa6b3737bf35a7e3f0e9328864b2a",
+    "replace-phased.final-v1.remote.py": "fc124293c40051111b15ae5782e2687d4291211b45728fc273ded6f29c03b0ea",
+    "replace-phased.preflight-v2.remote.py": "531b78047af5ffa49e0c29e7228eed697165c43cb040cce1de174c2142030040",
+    "run-preflight-v2.py": "9e833cc838a618f5cbc6ab7b30957bce1c73334f0a67fad5473f9cf1e8097780",
+    "run-final-phase-v1.py": "0e82c96dc47a5eb01ee7307bdb55db6bd5ea94400879cea9f24fdee162e8838b"
+  },
+  "private_evidence_hashes": {
+    "actual-before.json": "a4d5ecd99e0735085062cc6cb604018cc237c4f95a1d26b1bb565a2349d09ae0",
+    "actual-before-nft.json": "1b2031cd97bb0a16369e5245856fa65e5b7e4e82d328e9ccbffe7cbb298fd6f1",
+    "actual-stopped.json": "a07bf5fc213f7f7ee609076103f17f2f832761b7a50a0c5bc41c4a9608d8fe2e",
+    "actual-created.json": "c1d0fb1c6ee2a878e8e0443a1f0de587c82169e4ea9afa917f35403615d22aef",
+    "actual-fresh-owned-prefix-verification.json": "e74701f21cf8047f87b4a2d1bad8bb531ef27ad5abfa96544bc35d81d9b19fc6",
+    "post-replacement-ha-native-read-v3.json": "b30828697902b629dbab07f6ebf11fd1ed1a331557ac19778b1b3d88dee98a4d",
+    "post-start-safe-diagnostics-v2.json": "b68d01b535795916c0b8992af61a88aa3399f66abe46e92de66dbc49017eadfd"
+  }
+}
