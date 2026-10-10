@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,7 +69,9 @@ func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, link
 		ws, isSet := wf["set"].(map[string]any)
 		if !isSet {
 			if !reflect.DeepEqual(wf, gf) {
-				mark("nonset_mismatch")
+				if classify != nil {
+					mark(guardNonsetMismatchClass(wf, gf))
+				}
 				return nil, ErrGuardReadback
 			}
 			continue
@@ -111,6 +115,59 @@ func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, link
 		}
 	}
 	return want, nil
+}
+
+// Classifies already-compared normalized objects only; never supplies authority.
+func guardNonsetMismatchClass(want, got map[string]any) string {
+	for _, kind := range []string{"table", "chain", "rule"} {
+		w, ok := want[kind].(map[string]any)
+		if !ok {
+			continue
+		}
+		g, ok := got[kind].(map[string]any)
+		if !ok {
+			return "nonset_kind_mismatch"
+		}
+		if kind != "chain" || w["name"] != "owner" || g["name"] != "owner" {
+			return kind + "_mismatch"
+		}
+		wm, gm := map[string]any{}, map[string]any{}
+		for k, v := range w {
+			if k != "comment" {
+				wm[k] = v
+			}
+		}
+		for k, v := range g {
+			if k != "comment" {
+				gm[k] = v
+			}
+		}
+		if !reflect.DeepEqual(wm, gm) {
+			return "owner_structure_mismatch"
+		}
+		wc, wok := w["comment"].(string)
+		gc, gok := g["comment"].(string)
+		wp, gp := strings.Split(wc, ":"), strings.Split(gc, ":")
+		if !wok || !gok || len(wp) != 4 || len(gp) != 4 || wp[0] != "tunnex-ipsec" || gp[0] != wp[0] || wp[1] != gp[1] {
+			return "owner_comment_mismatch"
+		}
+		wr, we := strconv.ParseInt(wp[2], 10, 64)
+		gr, ge := strconv.ParseInt(gp[2], 10, 64)
+		if we != nil || ge != nil || wr <= 0 || gr <= 0 || !validDigest(wp[3]) || !validDigest(gp[3]) {
+			return "owner_comment_mismatch"
+		}
+		if wp[2] != gp[2] && wp[3] != gp[3] {
+			return "owner_revision_digest_mismatch"
+		}
+		if wp[2] != gp[2] {
+			return "owner_revision_mismatch"
+		}
+		if wp[3] != gp[3] {
+			return "owner_digest_mismatch"
+		}
+		return "owner_comment_mismatch"
+	}
+	return "nonset_mismatch"
 }
 
 // RuntimeGuard owns only the journal-bound inet table. The journal stores prior
