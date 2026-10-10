@@ -44,17 +44,21 @@ def startup(items,publisher,attempt):
     if 'startup-script-url' in values or 'startup-script' not in values:raise ValueError('inline original startup script required')
     original=values['startup-script']
     if not original.startswith(('#!/bin/sh\n','#!/bin/bash\n','#!/usr/bin/env bash\n')):raise ValueError('reviewed shell fixture startup only')
-    # Execute preserved original bytes in their own interpreter process: its exit never suppresses publication.
+    interpreter=['/bin/sh'] if original.startswith('#!/bin/sh\n') else ['/bin/bash'] if original.startswith('#!/bin/bash\n') else ['/usr/bin/env','bash']
+    # Read preserved bytes through their declared interpreter; executable tmp mounts are unnecessary.
     driver="""import base64,os,pathlib,subprocess,tempfile
 with tempfile.TemporaryDirectory(prefix='tnx-hostkey-',dir='/run') as directory:
  os.chmod(directory,0o700)
  original=pathlib.Path(directory)/'original';original.write_bytes(base64.b64decode(ORIGINAL));original.chmod(0o700)
  helper=pathlib.Path(directory)/'public-helper';helper.write_bytes(base64.b64decode(HELPER));helper.chmod(0o700)
- result=subprocess.run([str(original)])
+ try:
+  original_status=subprocess.run(INTERPRETER+[str(original)]).returncode
+ except OSError:
+  original_status=126
  publication=subprocess.run(['/usr/bin/python3',str(helper),INSTANCE_ID,ATTEMPT])
- raise SystemExit(result.returncode if result.returncode else publication.returncode)
+ raise SystemExit(original_status if original_status else publication.returncode)
 """
-    driver=driver.replace('ORIGINAL',repr(base64.b64encode(original.encode()).decode())).replace('HELPER',repr(base64.b64encode(publisher).decode())).replace('INSTANCE_ID',repr(ID)).replace('ATTEMPT',repr(attempt))
+    driver=driver.replace('ORIGINAL',repr(base64.b64encode(original.encode()).decode())).replace('HELPER',repr(base64.b64encode(publisher).decode())).replace('INSTANCE_ID',repr(ID)).replace('ATTEMPT',repr(attempt)).replace('INTERPRETER',repr(interpreter))
     wrapped='#!/bin/bash\n/usr/bin/python3 - <<\'TUNNEX_PUBLIC_HOSTKEY_DRIVER\'\n'+driver+'TUNNEX_PUBLIC_HOSTKEY_DRIVER\n'
     return [{'key':i['key'],'value':wrapped if i['key']=='startup-script' else i['value']} for i in items]
 
