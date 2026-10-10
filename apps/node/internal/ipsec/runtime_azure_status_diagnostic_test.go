@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,13 +14,56 @@ import (
 	"time"
 )
 
+type azureCleanupSelectorDiagnostic struct {
+	Count                          int  `json:"count"`
+	EqualsMaterial                 bool `json:"equals_material"`
+	FullyContainedMaterial         bool `json:"fully_contained_material"`
+	FullyContainedMaterialOrInside bool `json:"fully_contained_material_or_inside"`
+	CoversInside                   bool `json:"covers_inside"`
+	HasDefault                     bool `json:"has_default"`
+}
+
+func azureSelectorDiagnostic(observed, approved []netip.Prefix, inside netip.Addr) azureCleanupSelectorDiagnostic {
+	result := azureCleanupSelectorDiagnostic{Count: len(observed), EqualsMaterial: sameEnginePrefixes(observed, approved)}
+	contained := func(allowed []netip.Prefix) bool {
+		if len(observed) == 0 {
+			return false
+		}
+		for _, p := range observed {
+			ok := false
+			for _, a := range allowed {
+				if p.IsValid() && p == p.Masked() && p.Addr().Is4() && p.Bits() >= a.Bits() && a.Contains(p.Addr()) {
+					ok = true
+				}
+			}
+			if !ok {
+				return false
+			}
+		}
+		return true
+	}
+	result.FullyContainedMaterial = contained(approved)
+	allowed := append([]netip.Prefix(nil), approved...)
+	if inside.IsValid() {
+		allowed = append(allowed, netip.PrefixFrom(inside, 32))
+	}
+	result.FullyContainedMaterialOrInside = contained(allowed)
+	for _, p := range observed {
+		result.HasDefault = result.HasDefault || p.Bits() == 0
+		result.CoversInside = result.CoversInside || inside.IsValid() && p.Contains(inside)
+	}
+	return result
+}
+
 type azureCleanupChildDiagnostic struct {
-	NameMatch           bool `json:"name_matches"`
-	InIDMatch           bool `json:"if_id_in_matches"`
-	OutIDMatch          bool `json:"if_id_out_matches"`
-	ReqIDMatch          bool `json:"reqid_matches"`
-	LocalPrefixesMatch  bool `json:"local_prefixes_match"`
-	RemotePrefixesMatch bool `json:"remote_prefixes_match"`
+	LocalSelectors      azureCleanupSelectorDiagnostic `json:"local_selectors"`
+	RemoteSelectors     azureCleanupSelectorDiagnostic `json:"remote_selectors"`
+	NameMatch           bool                           `json:"name_matches"`
+	InIDMatch           bool                           `json:"if_id_in_matches"`
+	OutIDMatch          bool                           `json:"if_id_out_matches"`
+	ReqIDMatch          bool                           `json:"reqid_matches"`
+	LocalPrefixesMatch  bool                           `json:"local_prefixes_match"`
+	RemotePrefixesMatch bool                           `json:"remote_prefixes_match"`
 }
 type azureCleanupIKEDiagnostic struct {
 	LocalAddressMatch  bool                          `json:"local_address_matches"`
@@ -51,7 +95,12 @@ func azureNativeSlotDiagnostic(entry RuntimeJournalEntry, d DaemonInventory, k K
 				item.IKEMatches++
 				binding := azureCleanupIKEDiagnostic{LocalAddressMatch: ike.LocalAddress == tunnel.LocalAddress, RemoteAddressMatch: ike.RemoteAddress == tunnel.RemoteAddress, Children: []azureCleanupChildDiagnostic{}}
 				for _, child := range ike.Children {
-					binding.Children = append(binding.Children, azureCleanupChildDiagnostic{child.Name == engineName(tunnel), child.IfIDIn == tunnel.XFRMID, child.IfIDOut == tunnel.XFRMID, tunnel.ReqID == 0 || child.ReqID == tunnel.ReqID, sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(tunnel, true)), sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(tunnel, false))})
+					localInside := entry.Allocation.Tunnels[index].InsideAddress.Addr()
+					remoteInside := netip.Addr{}
+					if entry.Allocation.Tunnels[index].BGP != nil {
+						remoteInside = entry.Allocation.Tunnels[index].BGP.Peer
+					}
+					binding.Children = append(binding.Children, azureCleanupChildDiagnostic{azureSelectorDiagnostic(child.LocalPrefixes, tunnel.LocalPrefixes, localInside), azureSelectorDiagnostic(child.RemotePrefixes, tunnel.RemotePrefixes, remoteInside), child.Name == engineName(tunnel), child.IfIDIn == tunnel.XFRMID, child.IfIDOut == tunnel.XFRMID, tunnel.ReqID == 0 || child.ReqID == tunnel.ReqID, sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(tunnel, true)), sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(tunnel, false))})
 				}
 				item.CleanupIKES = append(item.CleanupIKES, binding)
 			}
@@ -259,5 +308,29 @@ func TestAzureCleanupDiagnosticReportsExactTupleBooleans(t *testing.T) {
 		if strings.Contains(string(raw), secret) {
 			t.Fatal("raw ownership material emitted")
 		}
+	}
+}
+
+func TestAzureSelectorDiagnosticSeparatesApprovedNarrowing(t *testing.T) {
+	approved := []netip.Prefix{netip.MustParsePrefix("10.20.0.0/16")}
+	inside := netip.MustParseAddr("169.254.21.2")
+	for _, item := range []struct {
+		name                               string
+		selectors                          []netip.Prefix
+		material, withInside, covers, wide bool
+	}{
+		{"material", approved, true, true, false, false},
+		{"subset", []netip.Prefix{netip.MustParsePrefix("10.20.1.0/24")}, true, true, false, false},
+		{"inside", []netip.Prefix{netip.PrefixFrom(inside, 32)}, false, true, true, false},
+		{"foreign", []netip.Prefix{netip.MustParsePrefix("10.21.0.0/16")}, false, false, false, false},
+		{"wide", []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}, false, false, true, true},
+		{"empty", nil, false, false, false, false},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			got := azureSelectorDiagnostic(item.selectors, approved, inside)
+			if got.FullyContainedMaterial != item.material || got.FullyContainedMaterialOrInside != item.withInside || got.CoversInside != item.covers || got.HasDefault != item.wide {
+				t.Fatal("selector class mismatch", got)
+			}
+		})
 	}
 }
