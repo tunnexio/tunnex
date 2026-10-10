@@ -22,7 +22,7 @@ func TestClassicInitialApplyRecordsProvenCurrentBoot(t *testing.T) {
 func TestClassicInitialApplyRefusesChangedIndexBeforeBootBinding(t *testing.T) {
 	testClassicApplyBoot(t, false, true)
 }
-func testClassicApplyBoot(t *testing.T, restored, changedIndex bool) {
+func testClassicApplyBoot(t *testing.T, restored, changedIndex bool, after ...func(*RuntimeController, RuntimeMaterial, *int)) {
 	t.Helper()
 	m := classicMaterialFixture()
 	old, _, entryErr := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
@@ -137,4 +137,8 @@ func testClassicApplyBoot(t *testing.T, restored, changedIndex bool) {
 			t.Fatal("initial boot binding lost active lease")
 		}
 	}
+	for _, check := range after {
+		check(c, m, &daemonMutations)
+	}
+
 }

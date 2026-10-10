@@ -490,8 +490,47 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			_, _ = c.refuse(ctx, entries)
 			return fail()
 		}
+		// Initial Apply commits Phase and boot provenance after the native guard.
+		// Maintenance must retain that exact durable entry, not its Applying copy.
+		committed, readErr := c.journal.Entries()
+		boot, bootErr := resetBootID()
+		if bootErr != nil {
+			readErr = bootErr
+		}
+		active, present := c.active[entry.Allocation.ConnectionID]
+		found := false
+		for _, saved := range committed {
+			if saved.DeliveryID != entry.DeliveryID {
+				continue
+			}
+
+			if found || !present || !classicCommittedEntryMatches(active.Entry, saved, boot) {
+				readErr = ErrRuntimeController
+				break
+			}
+			active.Entry, found = saved, true
+		}
+		if readErr != nil || !found {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+		active.Delivery = m.RuntimeDelivery
+		c.active[entry.Allocation.ConnectionID] = active
 	}
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
+}
+
+// Only the ordinary Applied phase and initial proven boot stamp may advance.
+func classicCommittedEntryMatches(before, saved RuntimeJournalEntry, boot string) bool {
+	if boot == "" || (before.Restoration != nil && before.Restoration.BootID != boot) {
+		return false
+	}
+	before.Phase = RuntimeApplied
+	if before.Restoration == nil {
+		before.Restoration = &RuntimeRestoration{BootID: boot}
+	}
+	return reflect.DeepEqual(before, saved)
 }
 
 func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (RuntimeAcknowledgement, error) {
