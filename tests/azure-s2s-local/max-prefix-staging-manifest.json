@@ -1,0 +1,208 @@
+{
+  "version": 1,
+  "source_commit": "212fc6d72a94ed7d3472f61e7162120f3788a7d0",
+  "scope": "Source-only allowlist. No staging, live reads, API writes, cloud calls, private input copying or bundles performed. Preserve relative repository layout.",
+  "files": [
+    {
+      "path": "tests/azure-s2s-local/qualify-max-prefix-api.py",
+      "sha256": "0e25e456af7f86ae0df4432612cc67507cd16e2e46652df1e0a5b81fc1a81354",
+      "bytes": 16125
+    },
+    {
+      "path": "tests/azure-s2s-local/transition-aa-static.py",
+      "sha256": "ff30c646911968117a501ac493cf214361cec198288e9ae17c52cab04714c9fb",
+      "bytes": 13525
+    },
+    {
+      "path": "tests/azure-s2s-local/rotate-bad-psk.py",
+      "sha256": "42bb1da24b0e70c08abbe6c192528e92bcfa8cd7e9d9d78eccb0fe624fd43f20",
+      "bytes": 8432
+    },
+    {
+      "path": "tests/azure-s2s-local/lifecycle-live.py",
+      "sha256": "2a092f209ef363e4d135293ed957c9d71570a354e1579a9b4e8cd4ab819e0be6",
+      "bytes": 8711
+    },
+    {
+      "path": "tests/azure-s2s-local/activate-live.py",
+      "sha256": "9c0cd48d6fa60d9b8abd23da9376724f50f3857f6b95ff8ba4c3f769851ce6de",
+      "bytes": 12205
+    },
+    {
+      "path": "tests/azure-s2s-local/enroll-local.py",
+      "sha256": "e4099a106ff3a2b6ab38fa0ade1941c0eda8f04e1ba3830f267fd7e58a00a971",
+      "bytes": 7177
+    },
+    {
+      "path": "tests/azure-s2s-local/rebind-profile-dns.py",
+      "sha256": "9418bc19209953bdbed8c7c2820f1e9918a1374873452159a5f21a623c8d56bd",
+      "bytes": 19989
+    },
+    {
+      "path": "tests/azure-s2s-local/qualify-lb-api.py",
+      "sha256": "50c72741607f580865437d58ac8a439ebd70e05dc2cbfa20925991f59886fbf0",
+      "bytes": 17119
+    },
+    {
+      "path": "tests/azure-s2s-local/qualify-dns-api.py",
+      "sha256": "11dc1322aac1e59a292cc8f334a775b4760e43512d1372cd3bc288caf66a6dfc",
+      "bytes": 9162
+    },
+    {
+      "path": "tests/azure-s2s-local/decode-owned-bgp-capture.py",
+      "sha256": "618a9bd6ca8b312c43ad9bc5aaae0cc9a1e11d7139e519af8007ec4da35366a8",
+      "bytes": 11076
+    },
+    {
+      "path": "tests/azure-s2s-local/max-prefix-execution-functions.sh",
+      "sha256": "8bacbb05f34bda0f9ed8efe56496eac170f30d0eebcc409f2463f773ae1fbd94",
+      "bytes": 2348
+    },
+    {
+      "path": "tests/azure-s2s-local/max-prefix-execution-window.md",
+      "sha256": "9394c8c2b9d1bae299722626a9596476a51baf07a994515ad073403bf3ed71b6",
+      "bytes": 6366
+    },
+    {
+      "path": "tests/azure-s2s-local/max-prefix-qualification-README.md",
+      "sha256": "cd25c6c44cf82a84c040c44a6cdcdbc22dd1e3dccd73a707942d8c18da15b44c",
+      "bytes": 11445
+    },
+    {
+      "path": "tests/azure-s2s-local/max-prefix-native-proof-README.md",
+      "sha256": "54733b26c8ec0e7400e113a22f6f852a93c821d3b10c42a5cc2e1201fe8eeb1b",
+      "bytes": 7441
+    },
+    {
+      "path": "tests/azure-s2s-local/owned-prefix-range-review-README.md",
+      "sha256": "ea975a34e405978e8010e3b9771c3b811c3beae20f50f93bedc300b5d075b6c8",
+      "bytes": 6068
+    },
+    {
+      "path": "tests/azure-s2s-local/owned-bgp-capture-README.md",
+      "sha256": "4782e60154cf958bd745379c9f81a3c54f95aca6e05d84a7c13c5f1493ded0ea",
+      "bytes": 4489
+    },
+    {
+      "path": "tests/azure-s2s-local/profile-dns-rebind-README.md",
+      "sha256": "a0bf2f3ad5a3476f9b2c96900a8a9b78b5d14b99c3620ffc887961e1c56fed26",
+      "bytes": 8044
+    },
+    {
+      "path": "deploy/azure/qualify-owned-max-prefix.py",
+      "sha256": "566a6f6a1548a98ad2102aa94366202ef5b75033f3333adacfac7dd60cc2a0b9",
+      "bytes": 7286
+    },
+    {
+      "path": "deploy/azure/qualify-owned-unapproved-prefix.py",
+      "sha256": "cd9bab48dcb1ea3dc22df6473a43f154f87dfa1b872bdf1f8a3e9e3210de3b97",
+      "bytes": 12352
+    },
+    {
+      "path": "deploy/azure/collect-owned-prefix-ranges.py",
+      "sha256": "e9ebfa3efbca4e6f8723fae7296f84b03696eddfb51ab666ab0130ffa05894ad",
+      "bytes": 18503
+    },
+    {
+      "path": "deploy/azure/set-owned-responder-only.py",
+      "sha256": "e9f09fda65be4ec1090d8d5456b76fdfeca29d500fdb9fb6a3d048e99e5cb7e0",
+      "bytes": 7213
+    },
+    {
+      "path": "deploy/azure/discover-owned-profile.py",
+      "sha256": "9011af0eaed535a7472449e2cfa9864372549c62957c8ff20da8574a80bf03e8",
+      "bytes": 7982
+    }
+  ],
+  "role_layout": {
+    "peer": "tests Python sources and wrapper; deploy/azure/collect-owned-prefix-ranges.py and its local import closure (qualify-owned-unapproved-prefix.py, set-owned-responder-only.py, discover-owned-profile.py).",
+    "bastion": "All five deploy Python sources plus qualify-max-prefix-api.py, transition-aa-static.py, rotate-bad-psk.py, lifecycle-live.py, activate-live.py, enroll-local.py under original tests directory. Wrapper optional.",
+    "common_allowlist": "The complete listed 15 Python files can be staged on both hosts for a single reviewed source layout. Documentation and shell wrappers are optional. Imported unrelated mutators must not be invoked."
+  },
+  "dependencies": {
+    "python": "Python standard library only; no pip installation required. Dynamic imports require exact sibling filenames and deploy collector parents[2]/tests relative layout.",
+    "imports": {
+      "qualify-max-prefix-api.py": [
+        "transition-aa-static.py",
+        "rotate-bad-psk.py"
+      ],
+      "transition-aa-static.py": [
+        "lifecycle-live.py"
+      ],
+      "rotate-bad-psk.py": [
+        "lifecycle-live.py"
+      ],
+      "lifecycle-live.py": [
+        "activate-live.py"
+      ],
+      "qualify-owned-max-prefix.py": [
+        "qualify-owned-unapproved-prefix.py",
+        "collect-owned-prefix-ranges.py",
+        "qualify-max-prefix-api.py"
+      ],
+      "collect-owned-prefix-ranges.py": [
+        "qualify-owned-unapproved-prefix.py",
+        "enroll-local.py",
+        "lifecycle-live.py"
+      ],
+      "qualify-owned-unapproved-prefix.py": [
+        "set-owned-responder-only.py"
+      ],
+      "set-owned-responder-only.py": [
+        "discover-owned-profile.py"
+      ],
+      "rebind-profile-dns.py": [
+        "qualify-lb-api.py",
+        "lifecycle-live.py"
+      ],
+      "qualify-lb-api.py": [
+        "enroll-local.py",
+        "lifecycle-live.py"
+      ],
+      "qualify-dns-api.py": [
+        "enroll-local.py"
+      ],
+      "decode-owned-bgp-capture.py": []
+    }
+  },
+  "excluded": [
+    ".runtime/**",
+    ".env",
+    "accounts",
+    "API cookies/tokens",
+    "PSK files",
+    "SSH keys",
+    "ARM private baselines",
+    "private prepared DNS transition state",
+    "captures",
+    "native binding and historical reboot evidence",
+    "compiled binaries"
+  ],
+  "observer": {
+    "separate_root_attested_linux_amd64_sha256": "a55be0165ed8990906457efe0e1714971d7826516a9e579e6feebac329734d6a",
+    "source": "apps/node/internal/ipsec/runtime_azure_max_prefix_proof_linux_test.go and full node/ipsec package/module dependencies; the listed Python files cannot rebuild the observer standalone.",
+    "invocation": "TUNNEX_AZURE_MAX_PREFIX_NATIVE_PROOF=1 <reviewed-test-binary> -test.run ^TestAzureOwnedMaxPrefixNativeProof$ -test.v",
+    "private_input": "/run/tunnex-qualification/max-prefix-binding.json plus unchanged hash-pinned historical evidence if required. Root supplies actual binding/namespace and verifies binary hash separately."
+  },
+  "commands": [
+    "source \"$S/tests/azure-s2s-local/max-prefix-execution-functions.sh\" (performs no actions; set reviewed AZURE_* paths first)",
+    "python3 \"$S/tests/azure-s2s-local/qualify-max-prefix-api.py\" PHASE --private-root \"$P\" --state \"$M\" --purpose limit --output \"$NEW\" [reviewed phase-specific private inputs]",
+    "python3 \"$S/deploy/azure/collect-owned-prefix-ranges.py\" api --private-root \"$P\" --expected-connection-file \"$NORMAL\" --output \"$NEW_API\"",
+    "python3 \"$S/deploy/azure/collect-owned-prefix-ranges.py\" kernel --namespace-device \"$DEV\" --namespace-inode \"$INO\" --output \"$NEW_KERNEL\" (actual owned namespace/root)",
+    "python3 \"$S/deploy/azure/collect-owned-prefix-ranges.py\" azure --output \"$NEW_CLOUD\" (bastion only)",
+    "python3 \"$S/deploy/azure/collect-owned-prefix-ranges.py\" assemble --inputs \"$API\" \"$KERNEL\" \"$CLOUD\" --expected-connection-file \"$NORMAL\" --namespace-device \"$DEV\" --namespace-inode \"$INO\" --output \"$NEW_REVIEW\"",
+    "python3 \"$S/deploy/azure/qualify-owned-max-prefix.py\" PHASE --state \"$C\" --normal-receipt \"$NORMAL\" [--range-review \"$FRESH_REVIEW\" --baseline-proof \"$NATIVE\"] (bastion only)",
+    "python3 \"$S/tests/azure-s2s-local/decode-owned-bgp-capture.py\" --capture \"$PRIVATE_PCAP\" --output \"$NEW_TYPED_OUTPUT\"",
+    "python3 \"$S/tests/azure-s2s-local/rebind-profile-dns.py\" PHASE --private-root \"$P\" --state-file \"$EXISTING_PREPARED_DNS\" [--transition-file \"$RESTORED_BASELINE_STATE\"]",
+    "python3 \"$S/tests/azure-s2s-local/qualify-dns-api.py\" PHASE --private-root \"$P\" --connection-id \"$RESTORED_UUID\" --source-address 10.233.10.2 --resolver-source 10.233.10.1 (explicit dns-grant/app-grant/reverse-grant only)",
+    "python3 \"$S/tests/azure-s2s-local/qualify-lb-api.py\" fqdn-read --private-root \"$P\" --connection-id \"$RESTORED_UUID\""
+  ],
+  "sequence": "Preserve prepared DNS state; read/revoke saved eight and independently prove withdrawal. Disable original, collect strict native absence, delete/finalize, create/enable new max1 UUID. Fresh normal read/native one-prefix baseline/range/cloud snapshots before one add. Capture actual UPDATE and collect post-limit observer. Restore cloud FIRST using immutable restore-read even if runtime is refused; disable/absence/delete max1, create/enable separate baseline UUID with original limit8. Rebind existing DNS state using restored baseline transition; explicitly recreate DNS4/app2/reverse2; sync-grants then normal fqdn-read. Ambiguous writes reconcile read-only, no blind retries.",
+  "dns_saved_binding": {
+    "rebind": "Sets dns-api-setup connection_id/resolver_config_id and lb-api-setup connection_id plus existing fqdn_resource binding to actual new context ID/version/profile/configuration revision/source. Requires actual context replacement/version advancement. Clears old grants and observation caches; retains resource IDs.",
+    "sync_grants": "Requires exact eight actual new policies and unchanged rebound context; stores their protected_policy_ids in lb-api-setup. Does not create grants.",
+    "fqdn_read": "Validates restored UUID/config/context binding and protected saved policy IDs, then reads actual existing FQDN resource detail. Returns actual ready/state/status_source/failure_code; no stale readiness inherited or grant automatically created.",
+    "blockers": "No source binding gap identified. Actual context drift since prepared state, incomplete eight grants, or unavailable fresh generation safely refuses/reports real failure; never overwrite preparation or assume readiness."
+  },
+  "validation": "All 15 Python sources AST-parsed without execution; all 22 listed files matched exact root HEAD blobs before hashing."
+}
