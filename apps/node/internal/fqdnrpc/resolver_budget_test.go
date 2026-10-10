@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-// This fixture models measured independent proof latency, not live networking.
+// Explicit serial baseline models the former endpoint loop and measured
+// independent proof latency, not the production concurrent resolver or live DNS.
 func TestDirectResolverSequentialProofCostConsumesOriginalDeadline(t *testing.T) {
 	config := ResolverConfig{ID: "66666666-6666-6666-6666-666666666666", Version: 4, ProfileID: "77777777-7777-7777-7777-777777777777", MatchedSuffix: "example.test"}
 	for _, address := range []string{"10.20.0.53", "10.20.0.54"} {
@@ -36,7 +37,16 @@ func TestDirectResolverSequentialProofCostConsumesOriginalDeadline(t *testing.T)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	start := time.Now()
-	records, err := resolver.ResolveBound(ctx, "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config)
+	var records []Record
+	var err error
+	for _, endpoint := range config.Endpoints {
+		records, err = resolver.resolveEndpoint(ctx, config, endpoint, "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME})
+		if err != nil {
+			err = errResolverConfig
+			records = nil
+			break
+		}
+	}
 	if !errors.Is(err, errResolverConfig) || len(records) != 0 || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		t.Fatalf("original deadline must refuse incomplete consensus: err=%v records=%d context=%v", err, len(records), ctx.Err())
 	}
