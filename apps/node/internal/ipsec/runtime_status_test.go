@@ -209,6 +209,7 @@ func attachRecoveryStatusGuard(t *testing.T, c *RuntimeController, entry Runtime
 	g.Remote = entry.Engines[0].RemotePrefixes
 	index := int(entry.Recovery.SelectedSlot) - 1
 	g.PermittedInterfaceIndices = []int{entry.Observed[index].InterfaceIndex}
+	g.ReplyIngressIndices = []int{entry.Observed[0].InterfaceIndex, entry.Observed[1].InterfaceIndex}
 	g.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: entry.Observed[index].InterfaceIndex, ReqID: entry.Engines[index].ReqID, Peer: entry.Engines[index].RemoteAddress, UnderlayInterfaceIndex: 3}}
 	g.Grants = []GuardGrant{{Source: g.Local[0], Destination: g.Remote[0], Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}
 	manifest, err := RenderGuard(intent)

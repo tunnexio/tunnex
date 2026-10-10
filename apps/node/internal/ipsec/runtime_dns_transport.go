@@ -392,7 +392,7 @@ func (v *runtimeDNSOwnerView) resolverGuardPermitsRead(ctx context.Context, entr
 	if len(required) != 0 {
 		return false, false
 	}
-	return v.observer.guardReader.Check(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}) == nil, true
+	return v.observer.guardReader.checkConnection(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, entry.Allocation.ConnectionID) == nil, true
 }
 
 // Retry only a different independently published immutable guard, once. The
