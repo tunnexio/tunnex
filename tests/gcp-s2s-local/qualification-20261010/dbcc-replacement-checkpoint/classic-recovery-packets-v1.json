@@ -1,0 +1,103 @@
+{
+  "started": true,
+  "profile": "classic",
+  "expected": "allow",
+  "source_sha256": "523abe34a2e7f630d08ce74c08e8b15e03267fd202638b689faad63f094ca4b6",
+  "started_at_utc": "2026-10-10T19:35:03Z",
+  "completed": true,
+  "results": [
+    {
+      "probe": {
+        "protocol": "tcp",
+        "destination": "10.81.0.10",
+        "source": "10.70.0.10",
+        "nonce": "b807d4e5-1699-4da8-89f0-bd396d2cdf2c",
+        "payload_sha256": "2de8506cf8a790b533de41248b41595ee4e06fdd9e0289ae13d09e92d7af695f",
+        "outcome": "timeout",
+        "error_type": "TimeoutError",
+        "exact_response": false,
+        "elapsed_ms": 3003.259
+      },
+      "receiver_ready": {
+        "ready": true,
+        "target": "10.81.0.10",
+        "interface": "ens4",
+        "control": {
+          "protocol": "tcp",
+          "destination": "10.81.0.10",
+          "source": "10.81.0.10",
+          "nonce": "c6e763dc-fb63-4643-9094-4c174b731733",
+          "payload_sha256": "f7b9f4c78043f1dd36a791d0c0a77715fd76559cd0bedba607da03dbf13a98e9",
+          "request_sha256": "18c79f8fadd0d72712a48c36e958748eb4987da3de30c069949fe1273b9436c8",
+          "exact_response": true,
+          "outcome": "response",
+          "response_sha256": "819a7459ac82264331f9978c2ebdf6d64a09f8846c41210e68fd9b94647593ed",
+          "elapsed_ms": 0.61
+        }
+      },
+      "receiver": {
+        "stopped_by_request": true,
+        "counts": {
+          "exact_payload": 0,
+          "syn": 2,
+          "other_tuple": 0,
+          "unsupported": 0
+        },
+        "capture_packets": 4,
+        "capture_drops": 0,
+        "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+        "scope": "bounded raw receiver observation; no policy authority"
+      },
+      "accepted": false,
+      "expectation": "allow",
+      "scope": "packet observation only; native guard/SA/route and API grant evidence are separate"
+    },
+    {
+      "probe": {
+        "protocol": "udp",
+        "destination": "10.81.0.10",
+        "source": "10.70.0.10",
+        "nonce": "3d83f112-c039-47d5-aba0-94bde136cbf5",
+        "payload_sha256": "039746444e7951eb171fa65c48db6789da83186dc6a3b978aed36e44c1cfb6fb",
+        "outcome": "timeout",
+        "error_type": "TimeoutError",
+        "exact_response": false,
+        "elapsed_ms": 3003.23
+      },
+      "receiver_ready": {
+        "ready": true,
+        "target": "10.81.0.10",
+        "interface": "ens4",
+        "control": {
+          "protocol": "udp",
+          "destination": "10.81.0.10",
+          "source": "10.81.0.10",
+          "nonce": "330b7f29-026c-4816-859f-46db2c07b312",
+          "payload_sha256": "2d8ae8d87dc3df4c48693348a93e07d53c0fce12b633bbcc0da606ea934529ec",
+          "exact_response": true,
+          "outcome": "response",
+          "response_sha256": "2d8ae8d87dc3df4c48693348a93e07d53c0fce12b633bbcc0da606ea934529ec",
+          "elapsed_ms": 0.256
+        }
+      },
+      "receiver": {
+        "stopped_by_request": true,
+        "counts": {
+          "exact_payload": 1,
+          "syn": 0,
+          "other_tuple": 0,
+          "unsupported": 0
+        },
+        "capture_packets": 5,
+        "capture_drops": 0,
+        "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+        "scope": "bounded raw receiver observation; no policy authority"
+      },
+      "accepted": false,
+      "expectation": "allow",
+      "scope": "packet observation only; native guard/SA/route and API grant evidence are separate"
+    }
+  ],
+  "accepted": false,
+  "executed_at_utc": "2026-10-10T19:35:11Z"
+}

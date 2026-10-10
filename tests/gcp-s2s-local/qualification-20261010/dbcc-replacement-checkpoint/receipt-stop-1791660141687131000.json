@@ -1,0 +1,12 @@
+{
+  "phase": "stop",
+  "receipt_sha256": "aa7caa7a064dd527182df1c31d06e12aa1297196784d9ebc389af401bee928a4",
+  "exit_code": 0,
+  "readback_errors": [],
+  "native": {
+    "sad_count": 0,
+    "managed_processes": [],
+    "nft_sha256": "b5d1ab9ceb2176ca9f623db202c90f65559cb676df5fea0be2f5f7a84111bcc7"
+  },
+  "create_start": "REQUIRES SEPARATE ROOT REVIEW; no automatic continuation"
+}

@@ -1,0 +1,75 @@
+{
+  "files": [
+    {
+      "file": "actual-before.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/actual-before.json",
+      "sha256": "031d37c0f7bd4dc256464371d79761ab94661967a7392d3f7349c762752d894b"
+    },
+    {
+      "file": "actual-stopped.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/actual-stopped.json",
+      "sha256": "aa7caa7a064dd527182df1c31d06e12aa1297196784d9ebc389af401bee928a4"
+    },
+    {
+      "file": "actual-created.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/actual-created.json",
+      "sha256": "134f965fb5b51ebc501b7f0688c518f9f926a38039a4eeb124e03f3847a05267"
+    },
+    {
+      "file": "fresh-wg-shape-review.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/fresh-wg-shape-review.json",
+      "sha256": "3511fbca5e09ced71b826cdc83c6045ad140bd3fc0f7b406a4dcc4cbf5666d80"
+    },
+    {
+      "file": "receipt-preflight-1791660073130904000.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/receipt-preflight-1791660073130904000.json",
+      "sha256": "24f6b64dbc7054bb3e663f4ac3678835ef43a886c991b21e7b4e6b11aced5ff1"
+    },
+    {
+      "file": "receipt-stop-1791660141687131000.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/receipt-stop-1791660141687131000.json",
+      "sha256": "b81d83b3b734eba91ef9737d9b299450dafe19d07317583298895d3d36aacd09"
+    },
+    {
+      "file": "receipt-create-start-1791660394474112000.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/receipt-create-start-1791660394474112000.json",
+      "sha256": "5bfa19f86cf80247cbd74ed44df61230101096d1aa0f9e7aca4cf059c00c515b"
+    },
+    {
+      "file": "post-replacement-native-partial-v2.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/post-replacement-native-partial-v2.json",
+      "sha256": "8d08663861f3f81533f25b86b483529006a9c98d5e57c2a59eae4ae4e698c561"
+    },
+    {
+      "file": "post-packet-failure-safe-diag-v3.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/post-packet-failure-safe-diag-v3.json",
+      "sha256": "98d41e6f5976ef611fc7939ed407ad87cfb0a9092fcd685cb2685d6f29a9551a"
+    },
+    {
+      "file": "native-build-receipt.json",
+      "retained_path": "/private/tmp/gcp-cloud-native-build-dbccbc35-20261011/receipt.json",
+      "sha256": "33652d2e0edd7ceea1b386716012b629873afedab7de8330ac6d1916c5813da5"
+    },
+    {
+      "file": "classic-recovery-packets-v1.json",
+      "retained_path": "/private/tmp/gcp-cloud-recovery-dbccbc35-20261011/classic-recovery-packets-v1.json",
+      "sha256": "9c1a42aca98fa45170c34cd209537a370612a494a8769e8ac7f695616ea71d3d"
+    },
+    {
+      "file": "aggregate.jsonl",
+      "retained_path": "/private/tmp/gcp-cloud-recovery-dbccbc35-20261011/strict-positive-v1/aggregate.jsonl",
+      "sha256": "eb93d6f430a4be1428d64b14d8b49294b9c481413caf4a1f5957737086aaf8ba"
+    },
+    {
+      "file": "full-observer-tcp.json",
+      "retained_path": "/private/tmp/gcp-cloud-recovery-dbccbc35-20261011/strict-positive-v1/full-observer-tcp.json",
+      "sha256": "ee27d770c5ca628e5024676507a2f0fed835a9a75b038dd10d2b8040637ebf0e"
+    },
+    {
+      "file": "full-observer-udp.json",
+      "retained_path": "/private/tmp/gcp-cloud-recovery-dbccbc35-20261011/strict-positive-v1/full-observer-udp.json",
+      "sha256": "c0195ac196df5413e903d24b9faa7fdd6c91aed61bf2f9961690c796eb27d2f1"
+    }
+  ],
+  "scope": "Actual deployment/observational receipts; permission and packet acceptance are separate"
+}
