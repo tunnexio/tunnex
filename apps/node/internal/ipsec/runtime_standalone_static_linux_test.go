@@ -99,8 +99,11 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 			return
 		default:
 		}
-		if deny() != nil || verify(true) != nil {
-			t.Fatal("static simulator proof failed")
+		if deny() != nil {
+			t.Fatal("static simulator denial update failed")
+		}
+		if err := verify(true); err != nil {
+			t.Fatalf("static simulator return proof failed: %v", err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		sas, e := d.Inspect(ctx)
