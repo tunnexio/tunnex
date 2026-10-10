@@ -47,14 +47,14 @@ def response(data,id,name,full):
   p=end
  if p!=len(data):raise ValueError('DNS trailing bytes')
  return out
-def tcp_query(resolver,wire):
+def tcp_query(resolver,wire,observe=lambda stage:None):
  deadline=time.monotonic()+4
  with socket.socket(socket.AF_INET,socket.SOCK_STREAM)as s:
   def remaining():
    value=deadline-time.monotonic()
    if value<=0:raise TimeoutError('DNS TCP total deadline')
    s.settimeout(value)
-  s.bind((SOURCE,0));remaining();s.connect((resolver,53));remaining();s.sendall(struct.pack('!H',len(wire))+wire)
+  observe('tcp_bind');s.bind((SOURCE,0));remaining();observe('tcp_connect');s.connect((resolver,53));remaining();observe('tcp_write');s.sendall(struct.pack('!H',len(wire))+wire)
   def exact(n):
    b=b''
    while len(b)<n:
@@ -62,9 +62,9 @@ def tcp_query(resolver,wire):
     if not part:raise ValueError('DNS TCP short frame')
     b+=part
    return b
-  n=struct.unpack('!H',exact(2))[0]
+  observe('tcp_read_length');n=struct.unpack('!H',exact(2))[0]
   if n<12:raise ValueError('DNS TCP bounded frame')
-  return exact(n)
+  observe('tcp_read_body');return exact(n)
 def validate_answers(full,profile,label):
  _,zone,target,prefix=PROFILES[profile];name=label+'.'+zone;addresses={x['address']for x in full['a']}
  if full['other_answers']:return False
@@ -74,28 +74,40 @@ def validate_answers(full,profile,label):
  if label=='tc-large'and profile!='classic':raise ValueError('TC probe Classic only')
  expected={prefix+str(n)for n in range(100,200 if label=='tc-large'else 140)}if label in ['large','tc-large']else{target}
  return addresses==expected and not full['cname']and all(x['owner']==name for x in full['a'])and full['answer_count']==len(expected)
-def probe(profile,label):
+def probe(profile,label,record=lambda value:None):
  if label=='tc-large'and profile!='classic':raise ValueError('TC probe Classic only')
- resolver,zone,target,prefix=PROFILES[profile];name=label+'.'+zone;id=secrets.randbelow(65536);wire=struct.pack('!6H',id,0x100,1,0,0,0)+question(name)
- with socket.socket(socket.AF_INET,socket.SOCK_DGRAM)as s:
-  s.settimeout(4);s.bind((SOURCE,0));s.sendto(wire,(resolver,53));data,peer=s.recvfrom(65535)
- if peer!=(resolver,53):raise ValueError('DNS exact resolver response')
- udp=response(data,id,name,False);fallback=udp['tc'];full=response(tcp_query(resolver,wire),id,name,True)if fallback else response(data,id,name,True)
- ok=validate_answers(full,profile,label)
- if fallback:ok=ok and udp['rcode']==full['rcode']
- if label in ['large','tc-large']:ok=ok and fallback and udp['rcode']==full['rcode']and full['answer_count']==(100 if label=='tc-large'else 40)
- return {'profile':profile,'source':SOURCE,'resolver':resolver,'name':name,'query_has_edns':False,'udp':udp,'tcp_fallback_used':fallback,'full':full,'accepted':ok,'scope':'ordinary fixed wire DNS only; separate API lease/guard/FQDN evidence required'}
+ resolver,zone,target,prefix=PROFILES[profile];direct=label=='tcp-app';query_label='app'if direct else label;name=query_label+'.'+zone;id=secrets.randbelow(65536);wire=struct.pack('!6H',id,0x100,1,0,0,0)+question(name)
+ progress={'profile':profile,'source':SOURCE,'resolver':resolver,'name':name,'id':id,'query_has_edns':False,'tcp_direct_used':direct}
+ def stage(value):progress['stage']=value;record(dict(progress))
+ try:
+  if direct:
+   full=response(tcp_query(resolver,wire,stage),id,name,True);udp=None;fallback=False
+  else:
+   with socket.socket(socket.AF_INET,socket.SOCK_DGRAM)as s:
+    s.settimeout(4);stage('udp_bind');s.bind((SOURCE,0));stage('udp_send');s.sendto(wire,(resolver,53));stage('udp_recv');data,peer=s.recvfrom(65535)
+   if peer!=(resolver,53):raise ValueError('DNS exact resolver response')
+   udp=response(data,id,name,False);progress['udp']=udp;stage('udp_response_validated');fallback=udp['tc']
+   full=response(tcp_query(resolver,wire,stage),id,name,True)if fallback else response(data,id,name,True)
+  ok=validate_answers(full,profile,query_label)
+  if fallback:ok=ok and udp['rcode']==full['rcode']
+  if label in ['large','tc-large']:ok=ok and fallback and udp['rcode']==full['rcode']and full['answer_count']==(100 if label=='tc-large'else 40)
+  return {'profile':profile,'source':SOURCE,'resolver':resolver,'name':name,'query_has_edns':False,'udp':udp,'tcp_fallback_used':fallback,'tcp_direct_used':direct,'full':full,'accepted':ok,'scope':'ordinary fixed wire DNS only; separate API lease/guard/FQDN evidence required'}
+ except Exception as e:
+  progress.update(error_type=type(e).__name__,errno=getattr(e,'errno',None));record(dict(progress));raise
 def main():
- p=argparse.ArgumentParser();p.add_argument('--profile',choices=PROFILES,required=True);p.add_argument('--receipt',required=True);p.add_argument('--case',choices=['original','tc-large'],default='original');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--profile',choices=PROFILES,required=True);p.add_argument('--receipt',required=True);p.add_argument('--case',choices=['original','tc-large','tcp-app'],default='original');a=p.parse_args()
  if a.case=='tc-large'and a.profile!='classic':raise ValueError('TC probe Classic only')
  parent=pathlib.Path(a.receipt).parent;s=os.lstat(parent)
  if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('private receipt parent')
- fd=os.open(a.receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);r={'started':True,'profile':a.profile,'completed':False,'utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'results':[]}
+ fd=os.open(a.receipt,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);r={'started':True,'profile':a.profile,'completed':False,'utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'results':[],'progress':[]}
  try:
-  for name in (['tc-large']if a.case=='tc-large'else['app','alias','nx-qualification','large']):r['results'].append(probe(a.profile,name))
+  def progress(value):
+   r['progress'].append(value);os.lseek(fd,0,os.SEEK_SET);os.ftruncate(fd,0);os.write(fd,json.dumps(r).encode());os.fsync(fd)
+  for name in ([a.case]if a.case!='original'else['app','alias','nx-qualification','large']):r['results'].append(probe(a.profile,name,progress))
   r.update(completed=True,accepted=all(x['accepted']for x in r['results']))
  except Exception as e:r.update(accepted=False,error_type=type(e).__name__);raise
  finally:
+  os.lseek(fd,0,os.SEEK_SET);os.ftruncate(fd,0)
   with os.fdopen(fd,'w')as f:json.dump(r,f,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
 if __name__=='__main__':
  try:main()

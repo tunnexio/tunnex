@@ -1,4 +1,4 @@
-import importlib.util,pathlib,struct,unittest
+import importlib.util,json,os,pathlib,struct,tempfile,unittest
 from unittest import mock
 s=importlib.util.spec_from_file_location('p',pathlib.Path(__file__).with_name('gcp-cloud-dns-wire-probe.py'));p=importlib.util.module_from_spec(s);s.loader.exec_module(p)
 class Tests(unittest.TestCase):
@@ -38,4 +38,22 @@ class Tests(unittest.TestCase):
   with mock.patch.object(p.socket,'socket',return_value=sock),mock.patch.object(p.secrets,'randbelow',return_value=42),mock.patch.object(p,'tcp_query')as tcp:
    self.assertFalse(p.probe('classic','tc-large')['accepted']);tcp.assert_not_called()
   with self.assertRaises(ValueError):p.probe('ha','tc-large')
+ def test_udp_tc_header_preserved_before_tcp_timeout(self):
+  name='tc-large.classic.gcp.s2s-qa.tunnex.app.';sock=mock.MagicMock();sock.__enter__.return_value=sock;sock.recvfrom.return_value=(struct.pack('!6H',42,0x8300,1,0,0,0)+p.question(name),('10.81.0.2',53));progress=[]
+  def failed_tcp(resolver,wire,observe):observe('tcp_connect');raise TimeoutError('not logged')
+  with mock.patch.object(p.socket,'socket',return_value=sock),mock.patch.object(p.secrets,'randbelow',return_value=42),mock.patch.object(p,'tcp_query',side_effect=failed_tcp):
+   with self.assertRaises(TimeoutError):p.probe('classic','tc-large',progress.append)
+  self.assertTrue(progress[-1]['udp']['tc']);self.assertEqual(progress[-1]['udp']['id'],42);self.assertEqual(progress[-1]['stage'],'tcp_connect');self.assertEqual(progress[-1]['error_type'],'TimeoutError')
+ def test_direct_tcp_app_never_issues_udp(self):
+  name='app.classic.gcp.s2s-qa.tunnex.app.';wire=struct.pack('!6H',42,0x8100,1,1,0,0)+p.question(name)+b'\xc0\x0c'+struct.pack('!HHIH',1,1,30,4)+bytes([10,81,0,10])
+  with mock.patch.object(p.socket,'socket')as udp,mock.patch.object(p.secrets,'randbelow',return_value=42),mock.patch.object(p,'tcp_query',return_value=wire)as tcp:
+   r=p.probe('classic','tcp-app');self.assertTrue(r['accepted']);self.assertTrue(r['tcp_direct_used']);self.assertIsNone(r['udp']);udp.assert_not_called();tcp.assert_called_once()
+ def test_partial_stage_fsynced_and_final_failure_preserved(self):
+  with tempfile.TemporaryDirectory()as directory:
+   os.chmod(directory,0o700);receipt=pathlib.Path(directory)/'receipt.json'
+   def fail(profile,label,record):
+    record({'stage':'tcp_read_length','udp':{'tc':True,'id':42}});saved=json.loads(receipt.read_text());self.assertTrue(saved['progress'][0]['udp']['tc']);raise TimeoutError('not logged')
+   with mock.patch.object(p,'probe',side_effect=fail),mock.patch('sys.argv',['probe','--profile','classic','--case','tc-large','--receipt',str(receipt)]):
+    with self.assertRaises(TimeoutError):p.main()
+   r=json.loads(receipt.read_text());self.assertFalse(r['accepted']);self.assertFalse(r['completed']);self.assertEqual(r['error_type'],'TimeoutError');self.assertEqual(r['progress'][0]['stage'],'tcp_read_length');self.assertEqual(r['results'],[])
 if __name__=='__main__':unittest.main()
