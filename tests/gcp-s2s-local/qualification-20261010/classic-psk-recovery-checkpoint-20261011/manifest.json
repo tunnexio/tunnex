@@ -1,0 +1,40 @@
+{
+  "files": [
+    {
+      "file": "052-enabled7-api-audit.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/052-enabled7-api-audit.jsonl",
+      "sha256": "c692d87d5ff189575e8ba6aebc91f8a23f7470a1917957391fc04b2d480c97e7"
+    },
+    {
+      "file": "053-enabled7-current-allocation.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/053-enabled7-current-allocation.jsonl",
+      "sha256": "f625ffedbb62783e179184b316db627b088cf003745301bc80b3d4eb2cb5256b"
+    },
+    {
+      "file": "054-enabled7-guard-binding.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/054-enabled7-guard-binding.json",
+      "sha256": "08a947e8c06b6094891575f2e143dfc54deddda8e5347b8387b9f9657894c31f"
+    },
+    {
+      "file": "055-enabled7-fullnative.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/055-enabled7-fullnative.jsonl",
+      "sha256": "5f7a4e9a25beec4e75b597a0ae58da5fb885253c081983f45cf01cde4973a295"
+    },
+    {
+      "file": "056-enabled7-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/056-enabled7-fullguard.json",
+      "sha256": "d4a5699a1b67840a3bf8f44d6572167d7226cd532336df8ae58bff84a39f3995"
+    },
+    {
+      "file": "057-enabled7-classic-packets-allow.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/057-enabled7-classic-packets-allow.json",
+      "sha256": "48bcc89ea03b7d1a126650343faa0d565384d72cd8e068ad211a04589b2c644a"
+    },
+    {
+      "file": "058-enabled7-ha-packets-allow.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/058-enabled7-ha-packets-allow.json",
+      "sha256": "efe3e13d080a60ec1cbd64fde987caa623322e24502c8fee8b5315d422eebbc3"
+    }
+  ],
+  "exact_bytes": true
+}
