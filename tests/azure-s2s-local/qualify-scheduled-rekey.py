@@ -34,7 +34,17 @@ PROFILES={f'azure-{topology}-{mode}-ipv4-v1':1 if topology=='active-standby' els
 def digest_file(path):
  return hashlib.sha256(proof.private_bytes(path)).hexdigest()
 
+def container_helper_path(value=None):
+ if value is None or value=='/run/tunnex-ipsec/azure-scheduler.test':return '/run/tunnex-ipsec/azure-scheduler.test'
+ match=re.fullmatch(r'/run/tunnex-ipsec/azure-scheduler-([0-9a-f-]{36})\.test',value)
+ if not match:raise ValueError('owned_helper_path_required')
+ try:identifier=uuid.UUID(match.group(1))
+ except ValueError:raise ValueError('owned_helper_path_required')
+ if str(identifier)!=match.group(1) or identifier.version!=4 or identifier.variant!=uuid.RFC_4122:raise ValueError('owned_helper_path_required')
+ return value
+
 def identity(m):
+ container_helper_path(m['container_helper'])
  value=proof.inspect(m['container'])
  owner=proof.command('docker','inspect','--format','{{index .Config.Labels "tunnex.owner"}}',m['container'])
  image=proof.command('docker','inspect','--format','{{.Image}}',m['container'])
@@ -257,11 +267,12 @@ def watchdog(directory):
 
 def run(args):
  if os.geteuid()!=0:raise ValueError('host_root_required')
+ helper_path=container_helper_path(getattr(args,'container_helper',None))
  directory=Path(args.evidence_dir)
  if not directory.is_absolute() or directory.parent.resolve()!=directory.parent:raise ValueError('canonical_directory_required')
  directory.mkdir(mode=0o700,exist_ok=False)
  if directory.is_symlink() or directory.parent.is_symlink():raise ValueError('private_directory_refused')
- m=vars(args).copy();m.pop('watchdog');m['container_helper']='/run/tunnex-ipsec/azure-scheduler.test';m['swanctl']='/opt/tunnex-ipsec/sbin/swanctl';m['vici']='unix:///run/tunnex-ipsec/charon.vici';m['strongswan_conf']='/run/tunnex-ipsec/strongswan.conf'
+ m=vars(args).copy();m.pop('watchdog');m['container_helper']=helper_path;m['swanctl']='/opt/tunnex-ipsec/sbin/swanctl';m['vici']='unix:///run/tunnex-ipsec/charon.vici';m['strongswan_conf']='/run/tunnex-ipsec/strongswan.conf'
  value=identity(m);m.update(pid=value['state']['Pid'],started=value['state']['StartedAt'],run_id='azure-scheduler-'+str(uuid.uuid4()))
  inside=proof.command('docker','exec',m['container'],'sha256sum',m['container_helper']).split()[0]
  if inside!=m['helper_sha']:raise ValueError('installed_helper_changed')
@@ -378,7 +389,7 @@ def packet_probe(path):
   proof.private_write(path,{'scope':'owned_source2_existing_application_only','counts':counts,'samples':rows,'production_duration_soak':False})
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--watchdog');p.add_argument('--packet-receipt')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--watchdog');p.add_argument('--packet-receipt');p.add_argument('--container-helper')
  for name in ('container','image','node-sha','helper','helper-sha','accounts','setup','connection','evidence-dir'):p.add_argument('--'+name)
  a=p.parse_args()
  try:

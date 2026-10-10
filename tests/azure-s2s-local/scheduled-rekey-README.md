@@ -171,3 +171,9 @@ VICI terminate `success=no` with zero matches remains refusal, including rollbac
 partial termination also refuses. Arbitrary daemon error text is never retained
 in a new diagnostic. These labels do not authorize retry, timer restoration over
 a superseded desired revision, or helper/manifest replacement in an active run.
+
+Paired attempts may select `--container-helper` only as the existing fixed default
+or `/run/tunnex-ipsec/azure-scheduler-<canonical UUIDv4>.test`. The helper hash and
+path remain pinned in the private manifest/watchdog. This allows a fresh reviewed
+helper to coexist with the current semantic helper and old attempts; it authorizes
+no binary replacement or active watchdog identity rewrite.

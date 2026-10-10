@@ -179,3 +179,12 @@ class ControlFailureProjectionTests(unittest.TestCase):
  def test_daemon_text_is_not_part_of_projection(self):
   result=q.fixed_control_failure(b'private hostname and payload\nfile.go:100: owned_scheduler_control_refused terminate-no-match\n')
   self.assertEqual(result,'terminate-no-match');self.assertNotIn('private',result)
+
+class PairedHelperPathTests(unittest.TestCase):
+ def test_default_preserved_and_uuid4_pair_accepted(self):
+  self.assertEqual(q.container_helper_path(),'/run/tunnex-ipsec/azure-scheduler.test')
+  value='/run/tunnex-ipsec/azure-scheduler-924fbe83-b84a-4fbe-bffe-4c8dcf435012.test'
+  self.assertEqual(q.container_helper_path(value),value)
+ def test_arbitrary_noncanonical_and_other_namespace_paths_refused(self):
+  for value in ('/tmp/helper.test','/run/tunnex-ipsec/azure-scheduler-../../helper.test','/run/tunnex-ipsec/azure-scheduler-924FBE83-b84a-4fbe-bffe-4c8dcf435012.test','/run/tunnex-ipsec/azure-scheduler-00000000-0000-0000-0000-000000000000.test','/run/tunnex-ipsec/charon.test'):
+   with self.assertRaises(ValueError):q.container_helper_path(value)
