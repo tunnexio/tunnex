@@ -397,7 +397,7 @@ func validEngineTunnel(t EngineTunnel) bool {
 	return true
 }
 func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
-	if t.BGP || t.ProfileID == GCPClassicStaticProfile {
+	if t.BGP || t.ProfileID == GCPClassicStaticProfile || IsAzureRuntimeProfile(t.ProfileID) {
 		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
 	}
 	if local {
@@ -424,10 +424,10 @@ func validEnginePSK(psk []byte) bool {
 	return true
 }
 
-// Provider constraints follow the accepted delivery contract. GCP secrets are
+// Provider constraints follow the accepted delivery contract. GCP and Azure secrets are
 // preserved as UTF-8 bytes; the legacy AWS alphabet remains unchanged.
 func validProfileEnginePSK(profile string, psk []byte) bool {
-	if profile != GCPHABGPProfile && profile != GCPClassicStaticProfile {
+	if profile != GCPHABGPProfile && profile != GCPClassicStaticProfile && !IsAzureRuntimeProfile(profile) {
 		return validRuntimeProviderProfile(profile) && validEnginePSK(psk)
 	}
 	if len(psk) < 8 || len(psk) > 64 || !utf8.Valid(psk) || strings.TrimSpace(string(psk)) == "" {

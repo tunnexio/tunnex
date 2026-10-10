@@ -50,7 +50,10 @@ func ProbePeerReachability(ctx context.Context, peers [2]Peer) error {
 	if !ok {
 		return ErrPackage
 	}
-	for _, peer := range peers {
+	for i, peer := range peers {
+		if i == 1 && peer == (Peer{}) {
+			continue
+		}
 		if peer.LinkName == "" || peer.XFRMID == 0 {
 			return ErrPackage
 		}

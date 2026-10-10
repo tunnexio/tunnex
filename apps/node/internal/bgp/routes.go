@@ -60,7 +60,7 @@ func ParseRoutes(raw []byte, c Config, status Status) ([]LearnedRoute, error) {
 				continue
 			}
 			slot := -1
-			for i, peer := range c.Peers {
+			for i, peer := range c.Peers[:c.activePeerCount()] {
 				if path.Peer == peer.Remote.String() {
 					slot = i
 				}

@@ -13,7 +13,7 @@ func runtimeDeliveryValid(d RuntimeDelivery, org, node uuid.UUID, kind string) b
 	if _, err := runtimeTransportContract(m); err != nil {
 		return false
 	}
-	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile && m.ProfileID != GCPClassicStaticProfile) || !validDigest(d.OwnershipDigest) {
+	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile && m.ProfileID != GCPClassicStaticProfile && !IsAzureRuntimeProfile(m.ProfileID)) || !validDigest(d.OwnershipDigest) {
 		return false
 	}
 	if kind == "cleanup" {
@@ -81,7 +81,7 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		return fail()
 	}
 	out := RuntimeJournalEntry{RetainedGuardPredecessors: append([]RuntimeRetainedGuardPredecessor(nil), m.Manifest.RetainedGuardPredecessors...), DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
-	if isGCPRuntimeProfile(m.Manifest.ProfileID) {
+	if isGCPRuntimeProfile(m.Manifest.ProfileID) || IsAzureRuntimeProfile(m.Manifest.ProfileID) {
 		out.Allocation.ProfileID = m.Manifest.ProfileID
 		if count == 1 {
 			out.ContractVersion = 4
@@ -103,7 +103,7 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		}
 		var inside netip.Prefix
 		var cloud netip.Addr
-		if count == 1 {
+		if m.Manifest.ProfileID == GCPClassicStaticProfile {
 			if t.InsideCIDR != "" || t.CustomerInsideAddress != "" || t.CloudInsideAddress != "" {
 				return fail()
 			}

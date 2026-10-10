@@ -36,10 +36,10 @@ func ParseSummary(raw []byte, c Config) (Status, error) {
 			Count  *int   `json:"pfxRcd"`
 		}
 	}
-	if json.Unmarshal(section, &doc) != nil || len(doc.Peers) != 2 {
+	if json.Unmarshal(section, &doc) != nil || len(doc.Peers) != c.activePeerCount() {
 		return out, ErrPackage
 	}
-	for i, p := range c.Peers {
+	for i, p := range c.Peers[:c.activePeerCount()] {
 		peer, ok := doc.Peers[p.Remote.String()]
 		if !ok || peer.Count == nil || *peer.Count < 0 || *peer.Count > c.MaximumPrefixes {
 			return out, ErrPackage

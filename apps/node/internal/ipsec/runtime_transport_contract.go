@@ -7,16 +7,16 @@ import "reflect"
 // inside address, PSK or cloud resource. Profile ownership bounds all shared
 // lifecycle and authority observers to the single active slot.
 func runtimeTransportContract(m RuntimeManifest) (int, error) {
-	if m.ProfileID != GCPClassicStaticProfile {
+	if !IsSingleTunnelProfile(m.ProfileID) {
 		if m.TransportVersion != nil || m.TunnelCount != nil {
 			return 0, ErrRuntimeController
 		}
 		return 2, nil
 	}
-	if m.TransportVersion == nil || *m.TransportVersion != 1 || m.TunnelCount == nil || *m.TunnelCount != 1 || m.BGP != nil || m.BGPVersion != nil || m.RecoveryVersion != nil || m.Tunnels[1] != (RuntimeTunnel{}) {
+	if m.TransportVersion == nil || *m.TransportVersion != 1 || m.TunnelCount == nil || *m.TunnelCount != 1 || (m.ProfileID == GCPClassicStaticProfile && (m.BGP != nil || m.BGPVersion != nil)) || m.RecoveryVersion != nil || m.Tunnels[1] != (RuntimeTunnel{}) {
 		return 0, ErrRuntimeController
 	}
-	if m.Tunnels[0].ID == ([16]byte{}) || m.Tunnels[0].Slot != 1 || !m.Tunnels[0].Selected {
+	if m.Tunnels[0].ID == ([16]byte{}) || m.Tunnels[0].Slot != 1 || m.Tunnels[0].Selected != !IsAzureBGPProfile(m.ProfileID) {
 		return 0, ErrRuntimeController
 	}
 	return 1, nil
@@ -37,6 +37,22 @@ func emptyKernelTunnel(t KernelTunnelAllocation) bool {
 func emptyEngineTunnel(t EngineTunnel) bool { return reflect.DeepEqual(t, EngineTunnel{}) }
 
 func validClassicJournal(e RuntimeJournalEntry) bool {
+	if IsAzureRuntimeProfile(e.Allocation.ProfileID) {
+		if IsSingleTunnelProfile(e.Allocation.ProfileID) && (!emptyKernelTunnel(e.Allocation.Tunnels[1]) || !emptyEngineTunnel(e.Engines[1]) || e.Observed[1] != (Ownership{})) {
+			return false
+		}
+		expected := 0
+		if IsSingleTunnelProfile(e.Allocation.ProfileID) {
+			expected = 4
+		}
+		if IsAzureBGPProfile(e.Allocation.ProfileID) {
+			expected = 3
+		}
+		if e.Allocation.ProfileID == AzureActiveActiveStaticProfile && e.ContractVersion == 2 {
+			return e.Recovery != nil && e.Engines[0].ProfileID == e.Allocation.ProfileID
+		}
+		return e.ContractVersion == expected && e.Recovery == nil && e.Engines[0].ProfileID == e.Allocation.ProfileID
+	}
 	if e.Allocation.ProfileID != GCPClassicStaticProfile {
 		return e.ContractVersion != 4
 	}

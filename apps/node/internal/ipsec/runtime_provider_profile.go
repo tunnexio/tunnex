@@ -13,13 +13,13 @@ const GCPClassicStaticProfile = "gcp-classic-static-ipv4-v1"
 // Empty metadata is the unchanged legacy AWS journal representation. Classic
 // uses a distinct single-tunnel contract throughout its owned lifecycle.
 func validRuntimeProviderProfile(profile string) bool {
-	return profile == "" || isGCPRuntimeProfile(profile)
+	return profile == "" || isGCPRuntimeProfile(profile) || IsAzureRuntimeProfile(profile)
 }
 func runtimeProfileMTU(profile string) uint32 {
 	if isGCPRuntimeProfile(profile) {
 		return 1382
 	}
-	if profile == "" {
+	if profile == "" || IsAzureRuntimeProfile(profile) {
 		return AWSIPv4TunnelMTU
 	}
 	return 0
@@ -83,13 +83,13 @@ func isGCPRuntimeProfile(profile string) bool {
 	return profile == GCPHABGPProfile || profile == GCPClassicStaticProfile
 }
 func (p KernelAllocation) activeTunnelCount() int {
-	if p.ProfileID == GCPClassicStaticProfile {
+	if IsSingleTunnelProfile(p.ProfileID) {
 		return 1
 	}
 	return 2
 }
 func engineTunnelCount(e [2]EngineTunnel) int {
-	if e[0].ProfileID == GCPClassicStaticProfile {
+	if IsSingleTunnelProfile(e[0].ProfileID) {
 		return 1
 	}
 	return 2

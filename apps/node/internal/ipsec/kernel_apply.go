@@ -67,7 +67,7 @@ func validKernelAllocation(p KernelAllocation) bool {
 	if !validRuntimeProviderProfile(p.ProfileID) || !validKernelNamespace(p.Namespace) || p.Generation == uuid.Nil || p.ConnectionID == uuid.Nil {
 		return false
 	}
-	if p.ProfileID == GCPClassicStaticProfile && (p.BGP || !emptyKernelTunnel(p.Tunnels[1])) {
+	if IsSingleTunnelProfile(p.ProfileID) && (!emptyKernelTunnel(p.Tunnels[1]) || p.ProfileID == GCPClassicStaticProfile && p.BGP) {
 		return false
 	}
 	for i, t := range p.Tunnels[:p.activeTunnelCount()] {
@@ -86,7 +86,7 @@ func validKernelAllocation(p KernelAllocation) bool {
 				return false
 			}
 			b := t.BGP.Peer.As4()
-			if b[3]&3 == 0 || b[3]&3 == 3 {
+			if b[3]&3 == 0 || b[3]&3 == 3 || IsAzureBGPProfile(p.ProfileID) && !validAzurePeer(t.BGP.Peer) {
 				return false
 			}
 		} else if t.BGP != nil {

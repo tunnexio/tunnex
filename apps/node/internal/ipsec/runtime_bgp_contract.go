@@ -4,7 +4,7 @@ import "net/netip"
 
 // runtimeBGPContract identifies bounded intent, never runtime qualification.
 func runtimeBGPContract(m RuntimeManifest) (bool, error) {
-	if m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile {
+	if m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile && !IsAzureBGPProfile(m.ProfileID) {
 		if m.BGP != nil || m.BGPVersion != nil {
 			return false, ErrRuntimeController
 		}
@@ -14,10 +14,16 @@ func runtimeBGPContract(m RuntimeManifest) (bool, error) {
 	if m.ProfileID == GCPHABGPProfile {
 		version = 2
 	}
+	if IsAzureBGPProfile(m.ProfileID) {
+		version = 3
+	}
 	if m.BGPVersion == nil || *m.BGPVersion != version || m.BGP == nil || m.RecoveryVersion != nil || !validBGPConfig(*m.BGP) {
 		return false, ErrRuntimeController
 	}
 	if m.ProfileID == GCPHABGPProfile && !validGCPBGPConfig(*m.BGP) {
+		return false, ErrRuntimeController
+	}
+	if IsAzureBGPProfile(m.ProfileID) && !validAzureBGPConfig(*m.BGP) {
 		return false, ErrRuntimeController
 	}
 	return true, nil
@@ -34,7 +40,7 @@ func validJournalBGP(r RuntimeJournalEntry) bool {
 		}
 		return true
 	}
-	if r.BGP == nil || !validBGPConfig(*r.BGP) || (r.Allocation.ProfileID == GCPHABGPProfile && !validGCPBGPConfig(*r.BGP)) || !r.Allocation.BGP || r.Recovery != nil {
+	if r.BGP == nil || !validBGPConfig(*r.BGP) || (r.Allocation.ProfileID == GCPHABGPProfile && !validGCPBGPConfig(*r.BGP)) || (IsAzureBGPProfile(r.Allocation.ProfileID) && !validAzureBGPConfig(*r.BGP)) || !r.Allocation.BGP || r.Recovery != nil {
 		return false
 	}
 	for i, e := range r.Engines[:r.Allocation.activeTunnelCount()] {

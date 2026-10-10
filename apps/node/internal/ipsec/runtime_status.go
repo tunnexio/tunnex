@@ -371,7 +371,10 @@ func projectBGPStatus(entry RuntimeJournalEntry, observed bgpengine.Status, tunn
 		installed[route.Slot-1]++
 		out.Routes = append(out.Routes, RuntimeBGPRoute{Prefix: route.Prefix.String(), Slot: int(route.Slot)})
 	}
-	for i, peer := range observed.Peers {
+	if entry.Allocation.activeTunnelCount() == 1 && observed.Peers[1] != (bgpengine.PeerStatus{}) {
+		return nil
+	}
+	for i, peer := range observed.Peers[:entry.Allocation.activeTunnelCount()] {
 		switch peer.State {
 		case "unknown", "idle", "connect", "active", "opensent", "openconfirm", "established":
 		default:

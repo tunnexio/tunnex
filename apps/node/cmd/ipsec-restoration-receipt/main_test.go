@@ -28,6 +28,7 @@ func TestAssemblyBindsProofAndCanonicalEntry(t *testing.T) {
 	retired.CleanupID = uuid.New()
 	retired.CleanupDesiredRevision = 2
 	retired.CoveredDeliveryRevision = 1
+	journalVersion := 2
 	journalBytes := func(entries []ipsec.RuntimeJournalEntry) []byte {
 		payload := struct {
 			Guards   []any
@@ -35,7 +36,7 @@ func TestAssemblyBindsProofAndCanonicalEntry(t *testing.T) {
 			OwnerID  uuid.UUID
 			Sequence uint64
 			Entries  []ipsec.RuntimeJournalEntry
-		}{nil, 2, owner, 1, entries}
+		}{nil, journalVersion, owner, 1, entries}
 		raw, _ := json.Marshal(payload)
 		b, _ := json.Marshal(struct {
 			Payload  any
@@ -64,6 +65,38 @@ func TestAssemblyBindsProofAndCanonicalEntry(t *testing.T) {
 		t.Fatal("incorrect canonical binding")
 	}
 
+	t.Run("Azure standby static receipt", func(t *testing.T) {
+		single := entry
+		single.ContractVersion = 4
+		single.Recovery = nil
+		single.Allocation.ProfileID = ipsec.AzureActiveStandbyStaticProfile
+		single.Engines[0].ProfileID = ipsec.AzureActiveStandbyStaticProfile
+		single.Engines[1] = ipsec.EngineTunnel{}
+		single.Allocation.Tunnels[1] = ipsec.KernelTunnelAllocation{}
+		journalVersion = 10
+		defer func() { journalVersion = 2 }()
+		singleJournal := journalBytes([]ipsec.RuntimeJournalEntry{single})
+		stop := p
+		stop.StoppedJournalRawSHA256 = digest(singleJournal)
+		stopBytes, _ := json.Marshal(stop)
+		out, err := assemble(singleJournal, stopBytes, p.Snapshot.Boot, "net:[42]")
+		if err != nil {
+			t.Fatal("single owned restoration refused", err)
+		}
+		var r receipt
+		json.Unmarshal(out, &r)
+		canonical, _ := json.Marshal(single)
+		if r.EntryDigest != digest(canonical) {
+			t.Fatal("single lineage binding")
+		}
+		single.Engines[1] = entry.Engines[1]
+		bad := journalBytes([]ipsec.RuntimeJournalEntry{single})
+		stop.StoppedJournalRawSHA256 = digest(bad)
+		stopBytes, _ = json.Marshal(stop)
+		if _, err := assemble(bad, stopBytes, p.Snapshot.Boot, "net:[42]"); err == nil {
+			t.Fatal("inactive ownership accepted")
+		}
+	})
 	secondRaw, _ := json.Marshal(entry)
 	var second ipsec.RuntimeJournalEntry
 	json.Unmarshal(secondRaw, &second)
