@@ -63,7 +63,7 @@ func (f *Forwarder) SetResolverProfiles(entries []ResolverProfile) {
 	f.profiles.Store(result)
 }
 
-func (f *Forwarder) answerResolverProfile(id uint16, query []byte, q dnsmessage.Question, source netip.Addr) ([]byte, bool) {
+func (f *Forwarder) answerResolverProfile(id uint16, query []byte, q dnsmessage.Question, source netip.Addr, transport string) ([]byte, bool) {
 	profiles := f.profiles.Load()
 	if profiles == nil {
 		return nil, false
@@ -105,7 +105,7 @@ func (f *Forwarder) answerResolverProfile(id uint16, query []byte, q dnsmessage.
 	defer cancel()
 	for _, endpoint := range p.config.Endpoints {
 		attempt, stop := context.WithTimeout(ctx, 2500*time.Millisecond)
-		response, err := fqdnrpc.ExchangeDNS(attempt, f.transport, p.config, endpoint, query)
+		response, err := fqdnrpc.ExchangeProxyDNS(attempt, f.transport, p.config, endpoint, transport, query)
 		stop()
 		if err == nil {
 			// Do not relay answers from a superseded/removed entitlement table.

@@ -129,7 +129,7 @@ func (f *Forwarder) serveTCPConn(ctx context.Context, conn net.Conn) {
 		if _, err := io.ReadFull(conn, query); err != nil {
 			return
 		}
-		response := f.handle(query, source.Addr().Unmap())
+		response := f.handleTransport(query, source.Addr().Unmap(), "tcp")
 		if len(response) < 12 || len(response) > 65535 {
 			return
 		}

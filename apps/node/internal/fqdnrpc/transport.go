@@ -26,6 +26,22 @@ func ValidResolverConfig(config ResolverConfig) bool { return validResolverConfi
 // profile. A UDP TC answer is retried against the SAME endpoint over TCP; no
 // resolver selection or public/system fallback occurs in this helper.
 func ExchangeDNS(ctx context.Context, transport BoundTransport, config ResolverConfig, endpoint ResolverEndpoint, payload []byte) ([]byte, error) {
+	return exchangeConfiguredDNS(ctx, transport, config, endpoint, "", payload)
+}
+
+// ExchangeProxyDNS preserves the downstream transport. UDP relays a validated
+// TC answer for the client to retry; TCP makes one TCP exchange. UDP retains a
+// configured TCP endpoint. The original endpoint must exactly belong to this
+// immutable profile before deriving its
+// transport. BoundTransport still independently authorizes the derived protocol.
+func ExchangeProxyDNS(ctx context.Context, transport BoundTransport, config ResolverConfig, endpoint ResolverEndpoint, downstream string, payload []byte) ([]byte, error) {
+	if downstream != "udp" && downstream != "tcp" {
+		return nil, errResolverConfig
+	}
+	return exchangeConfiguredDNS(ctx, transport, config, endpoint, downstream, payload)
+}
+
+func exchangeConfiguredDNS(ctx context.Context, transport BoundTransport, config ResolverConfig, endpoint ResolverEndpoint, downstream string, payload []byte) ([]byte, error) {
 	if !validResolverConfig(config) || len(payload) < 12 || len(payload) > 65535 {
 		return nil, errResolverConfig
 	}
@@ -42,10 +58,17 @@ func ExchangeDNS(ctx context.Context, transport BoundTransport, config ResolverC
 	if transport == nil {
 		transport = configlessTransport{}
 	}
-	return exchangeDNSPacket(ctx, transport, config, endpoint, payload)
+	if downstream == "tcp" {
+		endpoint.Transport = "tcp"
+	}
+	return exchangeDNSPacketMode(ctx, transport, config, endpoint, payload, downstream == "")
 }
 
 func exchangeDNSPacket(ctx context.Context, transport BoundTransport, config ResolverConfig, endpoint ResolverEndpoint, payload []byte) ([]byte, error) {
+	return exchangeDNSPacketMode(ctx, transport, config, endpoint, payload, true)
+}
+
+func exchangeDNSPacketMode(ctx context.Context, transport BoundTransport, config ResolverConfig, endpoint ResolverEndpoint, payload []byte, complete bool) ([]byte, error) {
 	var query dnsmessage.Message
 	if query.Unpack(payload) != nil || query.Response || len(query.Questions) != 1 || query.OpCode != 0 {
 		return nil, errResolverConfig
@@ -58,7 +81,7 @@ func exchangeDNSPacket(ctx context.Context, transport BoundTransport, config Res
 	if answer.Unpack(resp) != nil || !answer.Response || answer.ID != query.ID || answer.OpCode != query.OpCode || len(answer.Questions) != 1 || answer.Questions[0] != query.Questions[0] {
 		return nil, errResolverConfig
 	}
-	if answer.Truncated && endpoint.Transport == "udp" {
+	if answer.Truncated && endpoint.Transport == "udp" && complete {
 		tcp := endpoint
 		tcp.Transport = "tcp"
 		resp, err = transport.ExchangeDNS(ctx, config, tcp, payload)
@@ -70,7 +93,7 @@ func exchangeDNSPacket(ctx context.Context, transport BoundTransport, config Res
 			return nil, errResolverConfig
 		}
 	}
-	if answer.Truncated {
+	if answer.Truncated && (complete || endpoint.Transport == "tcp") {
 		return nil, errResolverConfig
 	}
 	if ctx.Err() != nil {
