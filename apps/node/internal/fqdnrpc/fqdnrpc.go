@@ -432,7 +432,12 @@ func canonicalRecords(in []Record) []Record {
 	}
 	unique := out[:1]
 	for _, r := range out[1:] {
-		if r != unique[len(unique)-1] {
+		last := &unique[len(unique)-1]
+		if r.Name == last.Name && r.Type == last.Type && r.Address == last.Address && r.Target == last.Target {
+			if r.TTLSeconds < last.TTLSeconds {
+				last.TTLSeconds = r.TTLSeconds
+			}
+		} else {
 			unique = append(unique, r)
 		}
 	}

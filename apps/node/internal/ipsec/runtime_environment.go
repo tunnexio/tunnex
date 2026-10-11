@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"time"
 )
@@ -193,6 +194,10 @@ func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
 								}
 							}
 						case "mangle":
+							chain, _ := kernelString(o, "chain")
+							if (family == "ip" || family == "ip6") && table == "tunnex" && chain == "forward" && runtimeFQDNConntrackMark(v) {
+								continue
+							}
 							m, ok := kernelObject(v)
 							if !ok || len(m) != 2 {
 								return false
@@ -636,4 +641,25 @@ func runtimeLocalExportProtocol(raw json.RawMessage) bool {
 	}
 	n, ok := kernelNumber(raw, 32)
 	return ok && (n == 2 || n == 3 || n == 4 || n == 242)
+}
+
+// Admit only the production S21 conntrack ownership transform, in its native
+// canonical form. It cannot alter packet routing marks or unrelated ct bits.
+func runtimeFQDNConntrackMark(raw json.RawMessage) bool {
+	var actual, expected any
+	if _, ok := runtimeJSONObject(raw); !ok {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if decoder.Decode(&actual) != nil {
+		return false
+	}
+	const canonical = `{"key":{"ct":{"key":"mark"}},"value":{"|":[{"&":[{"ct":{"key":"mark"}},4060086271]},16777216]}}`
+	decoder = json.NewDecoder(bytes.NewBufferString(canonical))
+	decoder.UseNumber()
+	if decoder.Decode(&expected) != nil {
+		return false
+	}
+	return reflect.DeepEqual(actual, expected)
 }
