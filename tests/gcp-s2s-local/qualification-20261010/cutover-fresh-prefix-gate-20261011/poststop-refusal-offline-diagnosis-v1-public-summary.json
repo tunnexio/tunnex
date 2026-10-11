@@ -1,0 +1,11 @@
+{
+  "capture_sha256": "c6aeca4e8b42b0823636e8f4c3d4259384cc283cddbb67602a26d881e023aabc",
+  "production_VerifyGuardWithdrawal": "PASS",
+  "unmodified_poststop_qualifier": "REFUSED",
+  "cause": "six actual permit sets retain nonempty positive-expiry members; complete known-table subset verification does not establish actual empty permit sets",
+  "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "offline_test": "TestActualRefusalDiagnostic PASS0.985s",
+  "live_actions": false,
+  "gate_changed": false,
+  "private_original_sha256": "f5e107c817d0515d573914f1b97a599924c531dda0e7587db3eb797677530863"
+}

@@ -1,0 +1,8 @@
+{
+  "container_id": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+  "created_receipt_sha256": "f62ba2156e91caa4ffee2891a382f6f7a11a971bfe6f93823562890e822be95f",
+  "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "operation": "start",
+  "status": "attempted; unknown result requires GET-only reconciliation",
+  "private_original_sha256": "64939e318b46bd49fb6f22e469d3eac7a8fb3683454d81dd465eae8b4cdbc100"
+}

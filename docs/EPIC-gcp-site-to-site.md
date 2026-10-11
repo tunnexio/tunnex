@@ -275,3 +275,8 @@ Normal9c3 stop observed exit0/SAD0/no daemons and preserved retained state. Firs
 ### Current owned gateway0249 started; readiness pending
 
 Normal create/start completed after a fresh strict gate, following the preserved initial live-permit refusal. Exact public startup measurement43345e binds source0249/imagec0ca/CIDf15e/node21074, same enrollment/boot/namespace and measured HA6/7/Classic20/SAD6. Full current guard, payload, cutover readiness, rekey and fault are not accepted by this measurement. Prior9c3 acceptance remains historical; production publication is separate.
+
+
+### Fresh strict poststop gate and API reconciliation
+
+Later fresh captureb4d7 contained six genuinely empty permit sets; unchanged full production prefix-DENY proof0098 bound its exact hash. Durable create/start receipts followed that strict gate, and normal post-cutover API baseline reconciliation passed. The earlier live-permit refusal remains unchanged. Full current native/guard/payload readiness, rekey/fault and production publication remain separate.
