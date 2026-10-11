@@ -109,7 +109,7 @@ def bindings():
  query=helpers.QUERY[:-1]+',policies:ipsecPolicies,bgp:enableBgp,ingress:ingressNatRules,egress:egressNatRules,protocol:connectionProtocol,type:connectionType}'
  view=lab.az('network','vpn-connection','show','--ids',CONNECTION,'--subscription',lab.SUBSCRIPTION,'--query',query)
  discovery={'connection_id':CONNECTION,'gateway_id':GATEWAY,'local_gateway_id':BASE+'localNetworkGateways/tunnex-local'}
- if helpers.projection(view,discovery)['mode']!='Default':raise ValueError('Default connection required')
+ if helpers.projection(view,discovery)['mode'] not in ('Default','ResponderOnly'):raise ValueError('supported initial negotiation mode required')
  required={'ikeEncryption':'AES256','ikeIntegrity':'SHA256','dhGroup':'DHGroup14','ipsecEncryption':'AES256','ipsecIntegrity':'SHA256','pfsGroup':'PFS2048'}
  if view['protocol']!='IKEv2' or view['type']!='IPsec' or view.get('ingress') or view.get('egress') or type(view['bgp'])!=bool or not isinstance(view['policies'],list) or len(view['policies'])!=1 or any(view['policies'][0].get(key)!=value for key,value in required.items()):raise ValueError('owned connection contract')
  lng=lab.az('network','local-gateway','show','--ids',discovery['local_gateway_id'],'--subscription',lab.SUBSCRIPTION,'--query','{id:id,owner:tags.owner,outside:gatewayIpAddress,asn:bgpSettings.asn,bgp:bgpSettings.bgpPeeringAddress,prefixes:localNetworkAddressSpace.addressPrefixes,state:provisioningState}')
