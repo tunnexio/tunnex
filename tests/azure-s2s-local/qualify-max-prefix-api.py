@@ -83,6 +83,24 @@ def no_grants(client,base):
  if policies!=[]:raise ValueError('all owned grants must be explicitly withdrawn')
 
 
+def checked_create_configuration(state,client,setup,purpose,psk,discovery):
+ base='/api/v1/organizations/'+setup['org_id']
+ # Validate recorded AA endpoints directly; never reinterpret a slot as standby.
+ proof_previous=copy.deepcopy(state['original_configuration'])
+ secure.config_identity(proof_previous)
+ if discovery.get('active_active') is not True or discovery.get('enable_bgp') is not True or discovery.get('owner')!='azure-s2s-01a12505' or discovery.get('subscription')!='34e2f259-b462-40bf-8f4a-06a3930d99e6':raise ValueError('actual owned AA BGP discovery')
+ observed=instant(discovery['observed_at'])
+ if not 0<=(datetime.now(timezone.utc)-observed).total_seconds()<=60:raise ValueError('fresh topology required')
+ arm='/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/'
+ for name,resource in [('connection_id','connections/tunnex-connection'),('gateway_id','virtualNetworkGateways/azure-vpn'),('local_gateway_id','localNetworkGateways/tunnex-local')]:
+  if discovery.get(name,'').lower()!=(arm+resource).lower():raise ValueError('exact ARM ownership binding')
+ source=proof_previous['configuration']
+ if discovery.get('resource_group')!='tunnex-azure-s2s-20261010' or discovery.get('sku')!=source['azure']['gateway_sku'] or discovery.get('vpn_type')!='RouteBased' or discovery.get('local_asn')!=source['bgp']['local_asn'] or discovery.get('remote_asn')!=source['bgp']['remote_asn'] or discovery.get('customer_bgp_address')!='169.254.10.1':raise ValueError('exact gateway policy/BGP binding')
+ if discovery.get('customer_outside_address')!=source['customer_outside_address'] or len(discovery.get('public_endpoints',[]))!=2 or [{'outside_address':v['outside_address'],'cloud_inside_address':v['cloud_inside_address']} for v in source['tunnels']]!=discovery['public_endpoints']:raise ValueError('exact endpoints/APIPA')
+ no_grants(client,base);config=configuration(proof_previous,purpose,psk);client.call('POST',base+'/ipsec/configuration-check',config)
+ return config
+
+
 def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseline=None,psk=None,discovery=None,absence=None,absence_bytes=None,absence_hash=None,native_binding=None):
  base='/api/v1/organizations/'+setup['org_id'];prefix=base+'/ipsec/connections/'
  if phase=='prepare':
@@ -154,19 +172,7 @@ def operate(phase,client,setup,state_path,allocation=None,purpose='limit',baseli
   if psk is None or discovery is None:raise ValueError('private key/fresh discovery required')
   if absence is None or native_binding!=state.get('native_binding'):raise ValueError('fresh independent prior absence required')
   native_absence(absence,absence_bytes,absence_hash,native_binding,setup,prior,state['cleanup_revision'])
-  # Validate recorded AA endpoints directly; never reinterpret a slot as standby.
-  proof_previous=copy.deepcopy(state['original_configuration'])
-  secure.config_identity(proof_previous)
-  if discovery.get('active_active') is not True or discovery.get('enable_bgp') is not True or discovery.get('owner')!='azure-s2s-01a12505' or discovery.get('subscription')!='34e2f259-b462-40bf-8f4a-06a3930d99e6':raise ValueError('actual owned AA BGP discovery')
-  observed=instant(discovery['observed_at'])
-  if not 0<=(datetime.now(timezone.utc)-observed).total_seconds()<=60:raise ValueError('fresh topology required')
-  arm='/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/'
-  for name,resource in [('connection_id','connections/tunnex-connection'),('gateway_id','virtualNetworkGateways/azure-vpn'),('local_gateway_id','localNetworkGateways/tunnex-local')]:
-   if discovery.get(name,'').lower()!=(arm+resource).lower():raise ValueError('exact ARM ownership binding')
-  source=proof_previous['configuration']
-  if discovery.get('resource_group')!='tunnex-azure-s2s-20261010' or discovery.get('sku')!=source['azure']['gateway_sku'] or discovery.get('vpn_type')!='RouteBased' or discovery.get('local_asn')!=source['bgp']['local_asn'] or discovery.get('remote_asn')!=source['bgp']['remote_asn'] or discovery.get('customer_bgp_address')!='169.254.10.1':raise ValueError('exact gateway policy/BGP binding')
-  if discovery.get('customer_outside_address')!=source['customer_outside_address'] or len(discovery.get('public_endpoints',[]))!=2 or [{'outside_address':v['outside_address'],'cloud_inside_address':v['cloud_inside_address']} for v in source['tunnels']]!=discovery['public_endpoints']:raise ValueError('exact endpoints/APIPA')
-  no_grants(client,base);config=configuration(proof_previous,purpose,psk);client.call('POST',base+'/ipsec/configuration-check',config)
+  config=checked_create_configuration(state,client,setup,purpose,psk,discovery)
   reserve(state_path.with_name(state_path.name+'.create-reserved'))
   state['target']={'id':str(uuid.uuid4()),'tunnel_ids':[str(uuid.uuid4()),str(uuid.uuid4())]};state['stage']='create_reserved';secure.write(state_path,state)
   target=state['target'];path=prefix+target['id']

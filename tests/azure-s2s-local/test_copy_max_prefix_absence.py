@@ -12,6 +12,12 @@ class Copy(unittest.TestCase):
   st={'setup':ids,'prior':{'id':ids['connection_id']},'cleanup_revision':55};return r,b,st
  def test_exact_typed_samebytes_context(self):
   r,b,st=self.fixture();m.verify(r,b,st,datetime.now(timezone.utc))
+ def test_new_proof_requires_exact_executable_binding(self):
+  r,b,st=self.fixture();b['node_executable_sha256']='d'*64;r['node_executable_sha256']='d'*64
+  m.verify(r,b,st,datetime.now(timezone.utc))
+  for value in ('e'*64,'D'*64,'',None):
+   r['node_executable_sha256']=value
+   with self.assertRaises(ValueError):m.verify(r,b,st,datetime.now(timezone.utc))
  def test_foreign_extra_nonzero_superseded(self):
   for change in ('extra','objects','revision','connection'):
    r,b,st=self.fixture()

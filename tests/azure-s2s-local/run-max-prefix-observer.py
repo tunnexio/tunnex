@@ -107,6 +107,7 @@ def extract(raw,returncode,binding):
  if returncode!=0 or b'--- SKIP:' in raw or len(lines)!=1 or b'--- PASS: TestAzureOwnedMaxPrefixNativeProof' not in raw:raise ValueError('observer result')
  value=json.loads(lines[0]);kind={'baseline':'owned_max_prefix_baseline','absence':'owned_native_cleanup_absence','post-limit':'owned_max_prefix_shutdown_observation'}[binding['mode']]
  if value.get('version')!=1 or value.get('kind')!=kind:raise ValueError('receipt kind')
+ if value.get('node_executable_sha256')!=binding.get('node_executable_sha256') or not isinstance(value.get('node_executable_sha256'),str) or not __import__('re').fullmatch('[0-9a-f]{64}',value['node_executable_sha256']):raise ValueError('actual receipt executable provenance')
  for key in ('org_id','site_id','gateway_id','connection_id','desired_revision','configuration_revision'):
   if value.get(key)!=binding[key]:raise ValueError('receipt binding')
  if not 0<=(datetime.now(timezone.utc)-p.timestamp(value['observed_at'])).total_seconds()<=60:raise ValueError('fresh observer')

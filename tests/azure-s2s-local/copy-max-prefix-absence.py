@@ -15,7 +15,9 @@ s=importlib.util.spec_from_file_location('observer',Path(__file__).with_name('ru
 
 def verify(receipt,binding,state,clock):
  allowed={'version','kind','observed_at','org_id','site_id','gateway_id','connection_id','desired_revision','configuration_revision','journal_sha256','journal_entries','scope','azure_connection_id','guard_retained','namespace_device','namespace_inode','owned_ike','owned_children','owned_sad','owned_spd','owned_interfaces','owned_routes','historical_boot_entry_count','traffic_counters_monotonic_advanced','historical_proof_sha256','historical_stopped_journal_sha256','host_machine_identity_source'}
+ allowed.add('node_executable_sha256')
  if set(receipt)-allowed or receipt.get('version')!=1 or receipt.get('kind')!='owned_native_cleanup_absence' or receipt.get('guard_retained') is not True or binding['mode']!='absence' or receipt['scope']!='Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness':raise ValueError('exact typed absence')
+ if 'node_executable_sha256' in receipt and (not isinstance(receipt['node_executable_sha256'],str) or not re.fullmatch('[0-9a-f]{64}',receipt['node_executable_sha256']) or receipt['node_executable_sha256']!=binding.get('node_executable_sha256')):raise ValueError('actual observed executable binding')
  if not 0<=(clock-m.p.timestamp(receipt['observed_at'])).total_seconds()<=60:raise ValueError('fresh receipt')
  for key in ('org_id','site_id','gateway_id'):
   if receipt[key]!=state['setup'][key] or binding[key]!=receipt[key]:raise ValueError('owned identity')

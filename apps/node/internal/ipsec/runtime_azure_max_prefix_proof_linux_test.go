@@ -607,6 +607,9 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 		t.Fatal("journal_bracket_changed")
 	}
 	projection := azureMaxProofProjection(payload, entry, binding, time.Now(), remediationSHA(raw), da, ka, xa, statusAfter, routesAfter)
+	// The receipt binds the actual process observed in every bracket, rather
+	// than only a separately supplied expected executable hash.
+	projection["node_executable_sha256"] = last.Node.Hash
 	projection["historical_boot_entry_count"] = len(historical)
 	projection["traffic_counters_monotonic_advanced"] = trafficAdvanced
 	if binding.Mode == "post-limit" {
