@@ -65,7 +65,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	if recoveryErr != nil {
 		return fail()
 	}
-	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
+	if !validAzureRecreationManifest(m.Manifest) {
+		return fail()
+	}
+	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp && m.Manifest.AzureBGPRecreationVersion == nil) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
 		return fail()
 	}
 	local, ok := runtimePrefixes(m.Manifest.LocalPrefixes)
@@ -81,6 +84,9 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		return fail()
 	}
 	out := RuntimeJournalEntry{RetainedGuardPredecessors: append([]RuntimeRetainedGuardPredecessor(nil), m.Manifest.RetainedGuardPredecessors...), DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
+	if m.Manifest.AzureBGPRecreationVersion != nil {
+		out.AzureBGPRecreationVersion = *m.Manifest.AzureBGPRecreationVersion
+	}
 	if isGCPRuntimeProfile(m.Manifest.ProfileID) || IsAzureRuntimeProfile(m.Manifest.ProfileID) {
 		out.Allocation.ProfileID = m.Manifest.ProfileID
 		if count == 1 {

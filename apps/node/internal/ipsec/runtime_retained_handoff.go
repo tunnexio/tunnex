@@ -51,6 +51,9 @@ func sameHandoffDomain(a, b RuntimeJournalEntry) bool {
 			return false
 		}
 	}
+	if a.AzureBGPRecreationVersion == 1 {
+		return sameAzureBGPRecreationDomain(a, b)
+	}
 	return a.ContractVersion != 3 && b.ContractVersion != 3 && a.BGP == nil && b.BGP == nil && a.SiteID == b.SiteID && x.OrgID == y.OrgID && x.GatewayID == y.GatewayID && exactHandoffPrefixes(a.Engines[0].LocalPrefixes, b.Engines[0].LocalPrefixes) && exactHandoffPrefixes(a.Engines[0].RemotePrefixes, b.Engines[0].RemotePrefixes)
 }
 func validRetainedGuardJournal(entries []RuntimeJournalEntry) bool {
@@ -59,7 +62,10 @@ func validRetainedGuardJournal(entries []RuntimeJournalEntry) bool {
 		byID[e.DeliveryID] = e
 	}
 	for _, e := range entries {
-		if !validRetainedGuardReferences(e.RetainedGuardPredecessors, e.Allocation.ConnectionID, e.DeliveryID, e.ContractVersion == 3 || e.BGP != nil) {
+		if !validAzureRecreationEntry(e) {
+			return false
+		}
+		if !validRetainedGuardReferences(e.RetainedGuardPredecessors, e.Allocation.ConnectionID, e.DeliveryID, (e.ContractVersion == 3 || e.BGP != nil) && e.AzureBGPRecreationVersion != 1) {
 			return false
 		}
 		refs := map[uuid.UUID]bool{}
@@ -164,6 +170,9 @@ func (c *RuntimeController) admitRetainedGuardHandoff(ctx context.Context, entri
 	}
 	for _, ref := range successor.RetainedGuardPredecessors {
 		old := byID[ref.DeliveryID]
+		if successor.AzureBGPRecreationVersion == 1 && c.proveAzureBGPPredecessorAbsent(ctx, old) != nil {
+			return ErrRuntimeController
+		}
 		// Cleaned historical namespace proof never authorizes object adoption.
 		// Inspect current exact IDs, names, aliases, inside addresses and all SA/routes.
 		old.Allocation.Namespace = ns

@@ -50,6 +50,7 @@ type RuntimeResetCleanup struct {
 }
 
 type RuntimeJournalEntry struct {
+	AzureBGPRecreationVersion int                               `json:",omitempty"`
 	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:",omitempty"`
 	BGPProcessHistory         *RuntimeHistoryContinuation       `json:",omitempty"`
 	BGPProcessRetired         []bgpengine.ProcessIdentity       `json:",omitempty"`
@@ -235,7 +236,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -252,6 +253,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	}
 	for _, r := range p.Entries {
 		if (r.ContractVersion == 4 && p.Version < 10) || !validClassicJournal(r) {
+			return false
+		}
+		if r.AzureBGPRecreationVersion != 0 && p.Version < 11 {
 			return false
 		}
 		if len(r.RetainedGuardPredecessors) > 0 && p.Version < 9 {
@@ -308,8 +312,17 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 10 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10) {
+	if next.Version < old.Version || next.Version > 11 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11) {
 		return false
+	}
+	if next.Version == 11 && old.Version < 11 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.AzureBGPRecreationVersion == 1
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 10 && old.Version < 10 {
 		upgrade := false
@@ -480,6 +493,9 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
+		if entry.AzureBGPRecreationVersion == 1 && next.Version < 11 {
+			next.Version = 11
+		}
 		if entry.ContractVersion == 4 && next.Version < 10 {
 			next.Version = 10
 		}

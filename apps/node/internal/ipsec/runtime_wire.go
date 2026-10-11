@@ -74,6 +74,7 @@ type RuntimeManifest struct {
 	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
 	BGPVersion                *int                              `json:"bgp_version,omitempty"`
 	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
+	AzureBGPRecreationVersion *int                              `json:"azure_bgp_recreation_version,omitempty"`
 }
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`

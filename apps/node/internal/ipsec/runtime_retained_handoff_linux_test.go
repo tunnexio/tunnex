@@ -15,6 +15,10 @@ import (
 // keyless SA/kernel absence and NFT ownership/readback are real; no cloud lease
 // or IPsec peer is manufactured by this fixture.
 func TestNativeRetainedGuardHandoffAbsenceAndReadback(t *testing.T) {
+	testNativeRetainedHandoff(t, false)
+}
+func TestNativeAzureBGPRecreationAbsenceAndReadback(t *testing.T) { testNativeRetainedHandoff(t, true) }
+func testNativeRetainedHandoff(t *testing.T, azure bool) {
 	if os.Getenv("TUNNEX_IPSEC_RETAINED_HANDOFF_LAB") != "1" {
 		t.Skip("isolated retained handoff fixture only")
 	}
@@ -41,6 +45,11 @@ func TestNativeRetainedGuardHandoffAbsenceAndReadback(t *testing.T) {
 		t.Fatal(err)
 	}
 	old, successor, _ := retainedHandoffFixture(t)
+	if azure {
+		_, old = azureRecreationMaterial(t, nil, []string{"10.231.0.0/16"}, 8)
+		old = retainedAzure(old)
+		_, successor = azureRecreationMaterial(t, []RuntimeJournalEntry{old}, []string{"10.231.0.0/16", "10.235.77.0/24"}, 1)
+	}
 	old.Allocation.Namespace = ns
 	successor.Allocation.Namespace = ns
 	dir := journalDir(t)
@@ -66,7 +75,7 @@ func TestNativeRetainedGuardHandoffAbsenceAndReadback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &RuntimeController{journal: j, guard: g, replace: g.Replace, namespace: func() (string, error) { return ns, nil }, config: RuntimeControllerConfig{OrgID: old.Engines[0].Binding.OrgID, GatewayID: old.Engines[0].Binding.GatewayID, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Daemon: daemon.Client, DaemonAlive: daemon.Alive}}
+	c := &RuntimeController{journal: j, guard: g, replace: g.Replace, namespace: func() (string, error) { return ns, nil }, config: RuntimeControllerConfig{OrgID: old.Engines[0].Binding.OrgID, GatewayID: old.Engines[0].Binding.GatewayID, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Daemon: daemon.Client, DaemonAlive: daemon.Alive}}
 	if err := c.Start(ctx); err != nil {
 		t.Fatal("native predecessor startup denial", err)
 	}
@@ -77,6 +86,16 @@ func TestNativeRetainedGuardHandoffAbsenceAndReadback(t *testing.T) {
 	if c.admitRetainedGuardHandoff(ctx, []RuntimeJournalEntry{old}, successor) != nil {
 		t.Fatal("complete native absence refused")
 	}
+	if azure {
+		run("/sbin/ip", "link", "add", "tnx-peer-test", "type", "dummy")
+		run("/sbin/ip", "link", "set", "dev", "tnx-peer-test", "up")
+		run("/sbin/ip", "-4", "route", "add", old.Allocation.Tunnels[0].BGP.Peer.String()+"/32", "dev", "tnx-peer-test", "proto", "242", "metric", "50001")
+		if c.admitRetainedGuardHandoff(ctx, []RuntimeJournalEntry{old}, successor) == nil {
+			t.Fatal("renamed peer route survivor accepted")
+		}
+		run("/sbin/ip", "link", "delete", "tnx-peer-test")
+	}
+
 	// A renamed non-XFRM survivor carrying exact ownership alias must refuse.
 	run("/sbin/ip", "link", "add", "tnx-hand-test", "type", "dummy")
 	run("/sbin/ip", "link", "set", "tnx-hand-test", "alias", old.Allocation.Tunnels[0].Alias)

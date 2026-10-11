@@ -84,6 +84,7 @@ func validRestoration(r RuntimeJournalEntry) bool {
 		// complete outer payload resolves the exact immutable predecessor graph.
 		structural := h.Entry
 		structural.RetainedGuardPredecessors = nil
+		structural.AzureBGPRecreationVersion = 0
 		if !validJournalPayload(runtimeJournalPayload{Version: retiredJournalVersion(structural), OwnerID: r.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{structural}}) {
 			return false
 		}

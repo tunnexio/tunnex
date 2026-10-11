@@ -221,7 +221,7 @@ func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournal
 	if projectionErr != nil {
 		return GuardManifest{}, ErrRuntimeController
 	}
-	in := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired}
+	in := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired, RefusalPrefixes: retainedRefusalPrefixes(entries, projected, retired)}
 	seen := map[uuid.UUID]GuardConnection{}
 	for _, entry := range projected {
 		if entry.Engines[0].Binding.OrgID != c.config.OrgID || entry.Engines[0].Binding.GatewayID != c.config.GatewayID {
@@ -771,7 +771,7 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 	if projectionErr != nil {
 		return ErrRuntimeController
 	}
-	intent := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired}
+	intent := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired, RefusalPrefixes: retainedRefusalPrefixes(entries, projected, retired)}
 	seen := map[uuid.UUID]bool{}
 	for _, entry := range projected {
 		id := entry.Allocation.ConnectionID

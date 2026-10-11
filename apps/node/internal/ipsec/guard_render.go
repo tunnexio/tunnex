@@ -79,7 +79,8 @@ type GuardIntent struct {
 	OwnerID          uuid.UUID
 	Revision         int64
 	Connections      []GuardConnection
-	RetainedLeaseIDs []uuid.UUID `json:",omitempty"`
+	RetainedLeaseIDs []uuid.UUID    `json:",omitempty"`
+	RefusalPrefixes  []netip.Prefix `json:",omitempty"`
 }
 
 // GuardManifest is rendered intent, NOT an applied/readback receipt.
@@ -115,18 +116,20 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 	// both original and current tuples before ANY connection can permit it.
 	// A second refusal-only hook observes conventional SNAT after priority 90.
 	// Qualification must still reject later modifying hooks; this is not a hook census.
+	protected := append([]netip.Prefix(nil), canonical.RefusalPrefixes...)
 	for _, c := range canonical.Connections {
-		for _, prefix := range c.Remote {
-			for _, original := range []bool{true, false} {
-				for _, field := range []string{"saddr", "daddr"} {
-					for _, status := range []string{"dnat", "snat"} {
-						rule := guardNATDrop(prefix, field, status, original)
-						forward.add(rule)
-						input.add(rule)
-						output.add(rule)
-						post.add(rule)
-						postnat.add(rule)
-					}
+		protected = append(protected, c.Remote...)
+	}
+	for _, prefix := range protected {
+		for _, original := range []bool{true, false} {
+			for _, field := range []string{"saddr", "daddr"} {
+				for _, status := range []string{"dnat", "snat"} {
+					rule := guardNATDrop(prefix, field, status, original)
+					forward.add(rule)
+					input.add(rule)
+					output.add(rule)
+					post.add(rule)
+					postnat.add(rule)
 				}
 			}
 		}
@@ -263,6 +266,15 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 			return GuardManifest{}, ErrGuardIntent
 		}
 	}
+	for _, p := range canonical.RefusalPrefixes {
+		dst, src := guardPrefixDrop("daddr", p), guardPrefixDrop("saddr", p)
+		forward.add(dst)
+		forward.add(src)
+		output.add(dst)
+		output.add(src)
+		input.add(src)
+		post.add(dst)
+	}
 	nft := fmt.Sprintf("add table inet tunnex_ipsec\nflush table inet tunnex_ipsec\nadd chain inet tunnex_ipsec owner\ndelete chain inet tunnex_ipsec owner\n%stable inet tunnex_ipsec {\n%s  chain owner {\n    comment \"tunnex-ipsec:%s:%d:%s\"\n  }\n  chain forward_guard {\n    type filter hook forward priority -10; policy accept;\n%s  }\n  chain output_guard {\n    type filter hook output priority -10; policy accept;\n%s  }\n  chain input_guard {\n    type filter hook input priority -10; policy accept;\n%s  }\n  chain postrouting_guard {\n    type filter hook postrouting priority 90; policy accept;\n%s  }\n  chain postnat_guard {\n    type filter hook postrouting priority 300; policy accept;\n%s  }\n}\n", setPreamble.String(), setText.String(), canonical.OwnerID, canonical.Revision, digest, forward.String(), output.String(), input.String(), post.String(), postnat.String())
 	if len(nft) > 1<<20 {
 		return GuardManifest{}, ErrGuardIntent
@@ -336,6 +348,13 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 	}
 	out := in
 	out.Connections = append([]GuardConnection(nil), in.Connections...)
+	if len(in.RefusalPrefixes) > 0 {
+		var ok bool
+		out.RefusalPrefixes, ok = guardPrefixes(in.RefusalPrefixes)
+		if !ok {
+			return GuardIntent{}, false
+		}
+	}
 	out.RetainedLeaseIDs = append([]uuid.UUID(nil), in.RetainedLeaseIDs...)
 	if len(out.RetainedLeaseIDs) > 256 {
 		return GuardIntent{}, false
@@ -531,6 +550,13 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		}
 		for _, index := range c.LocalIngressIndices {
 			if indices[index] {
+				return GuardIntent{}, false
+			}
+		}
+	}
+	for _, p := range out.RefusalPrefixes {
+		for _, q := range append(append([]netip.Prefix(nil), allRemote...), allLocal...) {
+			if p.Overlaps(q) {
 				return GuardIntent{}, false
 			}
 		}

@@ -71,13 +71,16 @@ func TestBGPControllerQualificationNative(t *testing.T) {
 		expected = 1
 	}
 	before := controller.BGPCapability()
+	if controller.AzureBGPRecreationCapability() != expected {
+		t.Fatal("new capability not bound to actual qualification")
+	}
 	if before != expected {
 		t.Fatal("lifecycle gate not respected", before)
 	}
 	if err = controller.Close(); err != nil {
 		t.Fatal("owned controller close", err)
 	}
-	if controller.BGPCapability() != 0 || controller.Capability() != 0 {
+	if controller.BGPCapability() != 0 || controller.Capability() != 0 || controller.AzureBGPRecreationCapability() != 0 {
 		t.Fatal("closed controller advertises support")
 	}
 	proof := map[string]any{"actual_namespace": ns, "base_capability": 1, "bgp_capability_before_close": before, "bgp_capability_after_close": 0, "actual_preflight_current": receipt.Current(), "one_shot_binding": true, "lease_authority": "none; lease client always refuses", "configured_peers": 0}
