@@ -5,6 +5,7 @@ package ipsec
 import (
 	"bytes"
 	"context"
+	"github.com/google/uuid"
 	"os"
 	"os/exec"
 	"testing"
@@ -87,6 +88,16 @@ func testNativeRetainedHandoff(t *testing.T, azure bool) {
 		t.Fatal("complete native absence refused")
 	}
 	if azure {
+		// Synthetic old-boot metadata is a negative fixture, not a reboot proof.
+		// Native absence and missing FRR metadata cannot discharge that history.
+		oldBoot := old
+		oldBoot.Restoration = &RuntimeRestoration{BootID: uuid.NewString()}
+		if oldBoot.BGPProcess != nil || len(oldBoot.BGPProcessRetired) != 0 {
+			t.Fatal("no-process boot fixture unexpectedly has FRR metadata")
+		}
+		if c.proveAzureBGPDutiesAbsent(ctx, oldBoot) == nil {
+			t.Fatal("old boot without process metadata bypassed reset proof")
+		}
 		run("/sbin/ip", "link", "add", "tnx-peer-test", "type", "dummy")
 		run("/sbin/ip", "link", "set", "dev", "tnx-peer-test", "up")
 		run("/sbin/ip", "-4", "route", "add", old.Allocation.Tunnels[0].BGP.Peer.String()+"/32", "dev", "tnx-peer-test", "proto", "242", "metric", "50001")
