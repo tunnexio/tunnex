@@ -115,7 +115,7 @@ func TestRuntimeFQDNGuardMarkedOriginalLeaseAndExactReply(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, s := range []string{"ct mark set ((ct mark & 0xf0ffffff) | 0x01000000)", "ct mark & 0x0f000000 == 0x01000000", "ip saddr 10.10.0.8/32 ip daddr 10.20.0.9/32", "tcp dport 8081", "meta oif @lease_"} {
+	for _, s := range []string{"ct mark set ((ct mark & 0xf1ffffff) | 0x01000000)", "ct mark & 0x0f000000 == 0x01000000", "ip saddr 10.10.0.8/32 ip daddr 10.20.0.9/32", "tcp dport 8081", "meta oif @lease_"} {
 		if !strings.Contains(m.NFT, s) {
 			t.Fatal("missing strict grant", s)
 		}
