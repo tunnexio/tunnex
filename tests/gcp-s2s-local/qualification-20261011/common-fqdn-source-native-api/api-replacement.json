@@ -1,0 +1,15 @@
+{
+  "completed": true,
+  "cid": "3e5e04145c3ffd0506a181d34788f27a61789f4ee9074d76fd467016d3dde2c2",
+  "health_http200": true,
+  "installed_and_running_public_elf_sha256": "ff2764c20fed6495c9e47459d3bcb06c59a4c3a9d7437b17b591cdec720a550a",
+  "normal_baseline_preserved": true,
+  "root_source": "6c29f541e8c59f743a6fdf83d578d28164863ead",
+  "same_container_config_preserved": true,
+  "source_api_tree": "423987f01938d77c19b33643d9a8dad4ad734a5e",
+  "started_at": "2026-10-11T06:13:14.652947015Z",
+  "receipt_sha256": "83039ecf76b3f3071250486efcb9312d49b5795ee852a7e81e430d8c312b7d40",
+  "scope": "bounded local API replacement health and configured baseline only",
+  "generation_acceptance_claimed": false,
+  "live_fqdn_application_acceptance_claimed": false
+}

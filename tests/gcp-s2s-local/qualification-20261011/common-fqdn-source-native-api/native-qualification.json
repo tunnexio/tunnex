@@ -1,0 +1,50 @@
+{
+  "scope": "isolated native nft marked guard grammar/readback; Classic1 and HA2; zero sends; no cloud or serving proof",
+  "checkpoints": [
+    {
+      "binary_sha256": "c9e28722f9a4bd6904dbd898391fa9c215bffe47a4fc54a20dc3b8e2f45e27d8",
+      "elapsed_seconds": 0.211,
+      "image": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+      "qualification_source_sha256": "728b9791000cf839a30771d68e42b2d03548104fbc6d8a83ad5a3dacc4b45bca",
+      "returncode": 1,
+      "version": 2,
+      "product_accepted": false,
+      "receipt_sha256": "8df7e3a84c558b3f939255b8f0b816b984585714b65c17697ce999f52670fccb"
+    },
+    {
+      "binary_sha256": "bda4475b0df7707844d0a1d88020f2419f4895d0bf7cf31795201c7c13639f69",
+      "elapsed_seconds": 0.178,
+      "image": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+      "qualification_source_sha256": "92ebf0e63c4ab01d53c041c72525c484cc9b4ba94a9c01d4e12e933c9fcc173a",
+      "returncode": 1,
+      "version": 3,
+      "product_accepted": false,
+      "receipt_sha256": "d4570285a75882780566bd0c21b0deeaabf3d1e5266727fcec6c122a9e300854"
+    },
+    {
+      "binary_sha256": "0e47050efd266f2f14b9c7854a56f4c2b3a3b8734112a5ebdf08936d7656b15d",
+      "elapsed_seconds": 5.832999833000001,
+      "image": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+      "qualification_source_sha256": "81c9a5f5b3ba3e3abef1c5a72dfa169c00279ab29bb1b46b92571f553880bfaf",
+      "returncode": 1,
+      "version": 4,
+      "product_accepted": false,
+      "receipt_sha256": "aa73fbc2b7e0659748de957aea7f0147829a648812c313f9fbd2a791d696c498"
+    },
+    {
+      "binary_sha256": "dce14bb505004d35f6a0a6652686f7dd293d5bb7ac5f0fc81ee153d665fea753",
+      "elapsed_seconds": 11.310712292,
+      "image": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+      "qualification_source_sha256": "b6e77c326608745771c733347ca2ed80d0d52edf3dbfd7a4f5159e45a7414622",
+      "returncode": 0,
+      "version": 5,
+      "product_accepted": true,
+      "receipt_sha256": "aada5743af004f468af128044d69be57aeb54ef82f86e5e7c5663017d3f5c4cb"
+    }
+  ],
+  "positive_lease_expiry_full_withdrawal_qualified_v5": true,
+  "production_verifier_relaxed": false,
+  "live_fqdn_application_acceptance_claimed": false,
+  "canonical_renderer_source_commit": "001ceae97d047f630fdbe23365af160569b3a4be",
+  "canonical_renderer_receipt_sha256": "ed1dbcc3352f0fd8bbbd502e5a0ec330a3ceaf3c49a4cd74e6c4e7cb46d52c39"
+}
