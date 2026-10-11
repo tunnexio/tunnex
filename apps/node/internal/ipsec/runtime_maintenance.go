@@ -49,11 +49,15 @@ func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials 
 	return c.maintainIPsecRuntimeObserved(ctx, materials, authority, bgpCurrent, nil)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
+func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) (resultOut []RuntimeMaintenanceResult, resultErr error) {
+	started := time.Now()
+	stage, connection := "maintenance_input", uuid.Nil
+	defer func() { c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, resultErr != nil) }()
 	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || len(materials) > 256 {
 		c.deniedClassicTransports = nil
 		return nil, ErrRuntimeController
 	}
+	stage = "maintenance_journal"
 	entries, err := c.journal.Entries()
 	if err != nil {
 		c.deniedClassicTransports = nil
@@ -78,9 +82,11 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 		}
 		return nil, ErrRuntimeController
 	}
+	stage = "maintenance_startup_gate"
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
 		return fail()
 	}
+	stage = "maintenance_namespace"
 	ns, err := c.namespace()
 	if err != nil {
 		return fail()
@@ -90,7 +96,9 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	input := make([]RuntimeJournalEntry, len(materials))
 	grants := make([][]GuardGrant, len(materials))
 	connections, deliveries := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+	stage = "maintenance_material"
 	for i, m := range materials {
+		connection = m.Manifest.ConnectionID
 		input[i], grants[i], err = runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 		id := m.Manifest.ConnectionID
 		if err != nil || connections[id] || deliveries[m.ID] {
@@ -101,10 +109,13 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	// Match ordinary Apply: revoke changed published DNS inputs before any
 	// blocking environment/native/lease IO can leave an old query permission open.
 	for i, m := range materials {
+		connection = m.Manifest.ConnectionID
+		stage = "maintenance_material_withdraw"
 		c.withdrawChangedDNSMaterial(m, grants[i])
 		if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
 			return fail()
 		}
+		stage = "maintenance_material_current"
 		if !c.fqdnGrantsCurrent(grants[i]) {
 			return fail()
 		}
@@ -121,6 +132,8 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	changed := false
 	for i, m := range materials {
 		id := m.Manifest.ConnectionID
+		connection, stage = id, "maintenance_eligibility"
+		eligibilityStarted := time.Now()
 		old, ok := c.active[id]
 		eligible := false
 		if ok {
@@ -171,10 +184,12 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 					}
 				}
 				if eligible {
+					stage = "maintenance_eligibility_proof"
 					eligible = c.maintenanceCurrent(ctx, old, bgpCurrent) == nil
 				}
 			}
 		}
+		c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, eligibilityStarted, !eligible)
 		if !eligible {
 			if ok {
 				delete(staged, id)
@@ -183,6 +198,7 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 			}
 			continue
 		}
+		stage = "maintenance_authority"
 		fresh := authority()
 		if fresh == nil {
 			return fail()
@@ -191,18 +207,23 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 		if beginErr != nil {
 			return fail()
 		}
+		stage = "maintenance_lease"
 		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce})
 		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
 			return fail()
 		}
 		// The old authority must still bridge this collection; a response arriving
 		// after it expires cannot recreate a missing permit from cached transport.
+		stage = "maintenance_bridge_proof"
+		bridgeStarted := time.Now()
 		if c.maintenanceCurrent(ctx, old, bgpCurrent) != nil {
+			c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, bridgeStarted, true)
 			delete(staged, id)
 			c.withdrawDNSOwnerView(id)
 			changed = true
 			continue
 		}
+		stage = "maintenance_fresh_authority"
 		if _, err = fresh.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 			return fail()
 		}
@@ -216,12 +237,14 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	}
 	// Original authorities remain untouched and externally visible until the
 	// exact combined guard transaction and final native/lease checks succeed.
+	stage, connection = "maintenance_bgp_freshness", uuid.Nil
 	for _, a := range candidates {
 		if a.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent()) {
 			return failHAFreshness()
 		}
 	}
 	haFreshnessFailed := false
+	stage, connection = "maintenance_combined_guard", uuid.Nil
 	if c.installActiveCandidates(ctx, entries, staged, candidates, c.active, func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 			return false
@@ -242,11 +265,13 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	result := make([]RuntimeMaintenanceResult, 0, len(maintained))
 	for _, m := range maintained {
 		id := m.Manifest.ConnectionID
+		connection, stage = id, "maintenance_candidate"
 		candidate := candidates[id]
 		current, ok := c.active[id]
 		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
 			return fail()
 		}
+		stage = "maintenance_report_contract"
 		bgp, bgpErr := runtimeBGPContract(m.Manifest)
 		recovery, recoveryErr := runtimeRecoveryContract(m.Manifest)
 		count, transportErr := runtimeTransportContract(m.Manifest)
@@ -262,23 +287,28 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 		for i, t := range m.Manifest.Tunnels[:count] {
 			report.Tunnels[i] = RuntimeTunnelStatus{ID: t.ID, Slot: t.Slot, Status: "unknown", Selected: t.Selected}
 		}
+		stage = "maintenance_status"
 		report, err = c.observeIPsecStatusLocked(ctx, m, report, bgp, recovery)
 		if err != nil || bgpErr != nil || recoveryErr != nil || (bgp && (bgpCurrent == nil || !bgpCurrent())) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 			return fail()
 		}
+		stage = "maintenance_candidate_authority"
 		if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 			return fail()
 		}
 		if publish != nil {
+			stage = "maintenance_publish"
 			if publish(ctx, m, report) != nil {
 				return fail()
 			}
 			// External report IO cannot turn a now-expired or replaced candidate
 			// into an applied result. The full-set check below remains required.
+			stage = "maintenance_publish_binding"
 			current, ok = c.active[id]
 			if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 				return fail()
 			}
+			stage = "maintenance_candidate_authority"
 			if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 				return fail()
 			}
@@ -289,11 +319,13 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	// A later owner's status IO can consume an earlier candidate's remaining
 	// deadline. Validate the complete result set once more before any external ACK.
 	for _, m := range maintained {
+		connection, stage = m.Manifest.ConnectionID, "maintenance_final_binding"
 		candidate := candidates[m.Manifest.ConnectionID]
 		current, ok := c.active[m.Manifest.ConnectionID]
 		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
+		stage = "maintenance_candidate_authority"
 		if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 			return fail()
 		}
@@ -304,32 +336,47 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 // maintenanceCurrent is read-only: both original permit and scoped actual
 // native guard remain required. Fresh learned duties must equal the completed
 // BGP-owned tuples, otherwise ordinary Apply/reconciliation is required.
-func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeActive, bgpCurrent func() bool) error {
+func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeActive, bgpCurrent func() bool) (resultErr error) {
+	started := time.Now()
+	stage := "maintenance_current_authority_before"
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "maintenance_current", stage, old.Entry.Allocation.ConnectionID, started, resultErr != nil)
+	}()
 	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 		return ErrRuntimeController
 	}
 	proofCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if c.proveCurrent(proofCtx, old.Entry, old.Environment) != nil || c.maintenanceGuard(proofCtx, old.Entry) != nil {
+	stage = "maintenance_current_native"
+	if c.proveCurrent(proofCtx, old.Entry, old.Environment) != nil {
 		return ErrRuntimeController
 	}
+	stage = "maintenance_current_guard"
+	if c.maintenanceGuard(proofCtx, old.Entry) != nil {
+		return ErrRuntimeController
+	}
+	stage = "maintenance_current_bgp_qualification"
 	if old.Entry.ContractVersion == 3 {
 		if bgpCurrent == nil || !bgpCurrent() {
 			return ErrRuntimeController
 		}
 		e := old.Entry
+		stage = "maintenance_current_bgp_process"
 		p := c.bgpProcesses[e.DeliveryID]
 		if p == nil || !p.Alive() {
 			return ErrRuntimeController
 		}
+		stage = "maintenance_current_bgp_status"
 		status, err := p.Observe(proofCtx)
 		if err != nil {
 			return ErrRuntimeController
 		}
+		stage = "maintenance_current_bgp_routes"
 		routes, err := p.ObserveRoutes(proofCtx, status)
 		if err != nil {
 			return ErrRuntimeController
 		}
+		stage = "maintenance_current_bgp_health"
 		health := c.observeRecovery(proofCtx, e)
 		for _, state := range health {
 			if state != "up" && state != "down" {
@@ -342,13 +389,16 @@ func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeA
 				target = append(target, RuntimeBGPRouteTuple{Prefix: r.Prefix, Slot: uint8(r.Slot), InterfaceIndex: e.Observed[r.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(r.Slot)})
 			}
 		}
+		stage = "maintenance_current_bgp_binding"
 		if !p.Alive() || !bgpCurrent() || !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
 			return ErrRuntimeController
 		}
 	}
+	stage = "maintenance_current_final_qualification"
 	if proofCtx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 		return ErrRuntimeController
 	}
+	stage = "maintenance_current_authority_after"
 	_, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second)
 	return err
 }
