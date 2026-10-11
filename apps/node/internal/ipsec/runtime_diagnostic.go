@@ -18,6 +18,15 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if operation == "maintenance_eligibility" {
+		switch stage {
+		case "eligibility_active", "eligibility_current", "eligibility_lineage", "eligibility_observe", "eligibility_namespace", "eligibility_phase", "eligibility_contract", "eligibility_entry_current", "eligibility_active_entry", "eligibility_delivery", "eligibility_environment", "eligibility_grants", "eligibility_identity", "eligibility_authority", "eligibility_recovery", "eligibility_bgp", "eligibility_proof":
+			return true
+		default:
+			return false
+		}
+	}
+
 	if operation == "maintenance" {
 		switch stage {
 		case "maintenance_authority", "maintenance_bgp_freshness", "maintenance_bridge_proof", "maintenance_candidate", "maintenance_candidate_authority", "maintenance_combined_guard", "maintenance_eligibility", "maintenance_eligibility_proof", "maintenance_final_binding", "maintenance_fresh_authority", "maintenance_input", "maintenance_journal", "maintenance_lease", "maintenance_material", "maintenance_material_current", "maintenance_material_withdraw", "maintenance_namespace", "maintenance_publish", "maintenance_publish_binding", "maintenance_report_contract", "maintenance_startup_gate", "maintenance_status":

@@ -1,4 +1,6 @@
-# Current ec dedicated gateway checkpoint
+# Historical ec dedicated gateway checkpoint
+
+Current gateway: [maintenance diagnostic successor](../maintenance-diagnostic-successor-readiness/README.md). The ec observations below are preserved historical evidence.
 
 The measured diagnostic successor passed the bounded native, all eight independent application/DNS guard checks, and fresh HA/Classic TCP/UDP payload checkpoint in 13.759411083 seconds. Normal nine-resource/device-zero reconciliation passed. The controlled replacement retained its original failed CREATE observation; the subsequent strict fresh observation restored the gateway. Stop and measured successor receipt hashes are recorded in public-evidence.json.
 

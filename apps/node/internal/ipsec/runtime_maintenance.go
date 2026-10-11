@@ -136,6 +136,7 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 		eligibilityStarted := time.Now()
 		old, ok := c.active[id]
 		eligible := false
+		eligibilityStage := "eligibility_active"
 		if ok {
 			// The complete journal is trusted; exact delivery must appear once and no
 			// unresolved competing lineage may be hidden by the current active map.
@@ -155,6 +156,10 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 					lineage = false
 				}
 			}
+			eligibilityStage = "eligibility_current"
+			if current != nil {
+				eligibilityStage = "eligibility_lineage"
+			}
 			if current != nil && lineage {
 				env, observeErr := c.config.Environment.Observe(ctx, input[i].Allocation, input[i].Engines)
 				same := input[i]
@@ -173,23 +178,38 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 					same.Recovery = current.Recovery
 				}
 				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.Policy.Hash}
-				eligible = observeErr == nil && env.Namespace == ns && same.Phase == RuntimeApplied && (same.ContractVersion == 2 || same.ContractVersion == 3 || (same.ContractVersion == 4 && same.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(same))) && reflect.DeepEqual(same, *current) && reflect.DeepEqual(old.Entry, same) && reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) && reflect.DeepEqual(old.Environment, env) && reflect.DeepEqual(old.Grants, grants[i]) && old.Identity == identity && old.Authority != nil
+				eligible = maintenanceEligibilityTerm(&eligibilityStage, "eligibility_observe", func() bool { return observeErr == nil }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_namespace", func() bool { return env.Namespace == ns }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_phase", func() bool { return same.Phase == RuntimeApplied }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_contract", func() bool {
+						return (same.ContractVersion == 2 || same.ContractVersion == 3 || (same.ContractVersion == 4 && same.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(same)))
+					}) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_entry_current", func() bool { return reflect.DeepEqual(same, *current) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_active_entry", func() bool { return reflect.DeepEqual(old.Entry, same) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_delivery", func() bool { return reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_environment", func() bool { return reflect.DeepEqual(old.Environment, env) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, grants[i]) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool { return old.Identity == identity }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_authority", func() bool { return old.Authority != nil })
 				if eligible {
 					if same.ContractVersion == 2 {
+						eligibilityStage = "eligibility_recovery"
 						prepared, known := c.recoveryPrepared[m.ID]
 						eligible = known && reflect.DeepEqual(prepared, env) && validJournalRecovery(same) && same.Recovery.Stage == "completed"
 					}
 					if same.ContractVersion == 3 {
+						eligibilityStage = "eligibility_bgp"
 						eligible = validJournalBGP(same) && same.BGPProcess != nil && same.BGPProcess.Stage == "ready" && same.BGPRoutes != nil && same.BGPRoutes.Stage == "completed"
 					}
 				}
 				if eligible {
 					stage = "maintenance_eligibility_proof"
+					eligibilityStage = "eligibility_proof"
 					eligible = c.maintenanceCurrent(ctx, old, bgpCurrent) == nil
 				}
 			}
 		}
-		c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, eligibilityStarted, !eligible)
+		c.emitRuntimeDiagnostic(ctx, "maintenance_eligibility", eligibilityStage, id, eligibilityStarted, !eligible)
 		if !eligible {
 			if ok {
 				delete(staged, id)
@@ -416,4 +436,11 @@ func (c *RuntimeController) maintenanceGuard(ctx context.Context, e RuntimeJourn
 	}
 	g := templates[0]
 	return c.guard.reader.checkConnection(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, e.Allocation.ConnectionID)
+}
+
+// maintenanceEligibilityTerm records only the next predicate already being evaluated.
+// Its caller retains the original short-circuit order; no predicate is repeated.
+func maintenanceEligibilityTerm(stage *string, label string, predicate func() bool) bool {
+	*stage = label
+	return predicate()
 }

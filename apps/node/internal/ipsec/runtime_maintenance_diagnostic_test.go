@@ -48,10 +48,10 @@ func TestMaintenanceDiagnosticScopedWithdrawalParity(t *testing.T) {
 				if d.Operation == "maintenance_current" && d.Stage == "maintenance_current_native" && d.Refused && d.ConnectionID == id {
 					native++
 				}
-				if d.Operation == "maintenance" && d.Stage == "maintenance_eligibility_proof" && d.Refused && d.ConnectionID == id {
+				if d.Operation == "maintenance_eligibility" && d.Stage == "eligibility_proof" && d.Refused && d.ConnectionID == id {
 					scoped++
 				}
-				if d.Operation == "maintenance" && !d.Refused {
+				if (d.Operation == "maintenance" || d.Operation == "maintenance_eligibility") && !d.Refused {
 					finished++
 				}
 			}

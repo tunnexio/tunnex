@@ -1,0 +1,47 @@
+{
+  "completed": true,
+  "exit_code": 0,
+  "elapsed_seconds": 25.538474750000002,
+  "passed_top_count": 22,
+  "test_names": [
+    "TestMaintenanceDiagnosticScopedWithdrawalParity",
+    "TestMaintenanceDiagnosticCurrentOrderAndError",
+    "TestMaintenanceDiagnosticGlobalPublishFailure",
+    "TestMaintenanceDiagnosticClosedVocabulary",
+    "TestGCPBaselineRetainedFQDNRefreshDoesNotWithdrawClassic",
+    "TestGCPMaintenanceTransientClassicProofPublishesPrefixOnlyWithoutApplyError",
+    "TestGCPHACommitFreshnessChangeClassicSibling",
+    "TestGCPMaintainedRestoredClassic",
+    "TestGCPMaintainedHAClassicPair",
+    "TestGCPMaintainedStrictRefusal",
+    "TestMaintainedNativeObservationDoesNotWaitForOtherReports",
+    "TestMaintainedObservationCallbackCannotAcknowledgeInvalidAuthority",
+    "TestMaintainedObservedCompleteSetDeadlineStillGatesResults",
+    "TestFiveProviderMaintainedRenewalDeadline",
+    "TestMaintainedChangedDNSInputsWithdrawBeforeEnvironmentIO",
+    "TestMaintainedRenewalStrictFallback",
+    "TestMaintainedResultsRecheckFirstDeadlineAfterLastReport",
+    "TestOrdinaryBGPPublicationIsSecretFreeAndBound",
+    "TestMaintenanceEligibilityFirstFailurePreservesShortCircuit",
+    "TestMaintenanceEligibilityClosedDiagnosticVocabulary",
+    "TestMaintenanceEligibilityActualClassicRevokeMissingActive",
+    "TestMaintenanceEligibilityActualEnvironmentMismatchNoClassicRenewal"
+  ],
+  "fail_count": 0,
+  "skip_count": 0,
+  "source_before": {
+    "runtime_maintenance.go": "eaad97c158b55046749a159ee3e65b0a8c1ab8febc9077138a76f2a8a238300f",
+    "runtime_diagnostic.go": "3fd9aa1838f8dc6cb4c6e253afecfd6d272dcd026c4a4c4c392fdac44cc5a009",
+    "runtime_maintenance_diagnostic_test.go": "cdbc3e472c069a61d38e11b3f2c251a28c2a56e03ae53ff9e59f363bf9d353b7",
+    "runtime_maintenance_eligibility_diagnostic_test.go": "0a2836cd8587484b33f654ba17fa31e04af4636776527bf303d81e2dded7cfa0"
+  },
+  "source_after": {
+    "runtime_maintenance.go": "eaad97c158b55046749a159ee3e65b0a8c1ab8febc9077138a76f2a8a238300f",
+    "runtime_diagnostic.go": "3fd9aa1838f8dc6cb4c6e253afecfd6d272dcd026c4a4c4c392fdac44cc5a009",
+    "runtime_maintenance_diagnostic_test.go": "cdbc3e472c069a61d38e11b3f2c251a28c2a56e03ae53ff9e59f363bf9d353b7",
+    "runtime_maintenance_eligibility_diagnostic_test.go": "0a2836cd8587484b33f654ba17fa31e04af4636776527bf303d81e2dded7cfa0"
+  },
+  "log_sha256": "dd3000ab2b917cd40650eae2f59ec70d2a7ff299352ef8dcc3dc8068f07f81a5",
+  "serving_mutations": 0,
+  "scope": "Diagnostic-only first original eligibility refusal stage; exact predicate order and authority behavior unchanged; model tests do not identify the unique live cause."
+}

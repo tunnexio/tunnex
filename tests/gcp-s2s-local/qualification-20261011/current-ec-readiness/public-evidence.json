@@ -72,5 +72,65 @@
   "continuous_availability_asserted": false,
   "selected_tcp_cycles_run": 1,
   "selected_tcp_cycles_accepted": 0,
-  "failed_simultaneous_pair_attempts": 17
+  "failed_simultaneous_pair_attempts": 17,
+  "checkpoint_role": "historical_ec_checkpoint",
+  "current_successor": {
+    "source": "5dc834df49446b1c84a52e55c801f60a2b2e11ff",
+    "node_tree": "1d4cc07ca45a0dd1d2f6482c2256b1fcd2a61021",
+    "image": "sha256:a596a105d2a70e56fabeceaf1f735f141af26c5427ef99335abee2f9ef72bc93",
+    "node_sha256": "5b718980eda0bb068835dcaf86e0cfa5c81f25b504559a42a6296f9499a3f3cd",
+    "container_id": "c2904d31d3bb897192770bd585ee78f1e79ab5527a5e36314fa33a534f655296",
+    "pid": 3380828,
+    "pid_start_ticks": 10069760,
+    "started_at": "2026-10-11T18:08:06.245585826Z",
+    "wg_index": 47,
+    "wg_mtu": 1380,
+    "wg_peer_count": 0,
+    "native_all8_guard_fresh_ha_classic_tcpudp_completed": true,
+    "native_guard_payload_receipt_sha256": "b810edf3d74d8f83de69d2825e137dd0773cf31db2d61637930561f4ca16c3dd",
+    "elapsed_seconds": 13.565814625000002,
+    "api_generation_qualified": false,
+    "normal9_device0_receipt_sha256": "3d8ffd2301902bfc06be06b5febe666b5cad16bf815ddba6c618e70d9c1d5d54",
+    "api_source": "a2e7c5bffa6327a66c6cec839c0fd1e5a9d3c439",
+    "application_cycle_status": "failed_after_withdrawal_guard; cleanup_passed",
+    "inverse_status": "pending",
+    "scoped_story_count": "9/11",
+    "gcp9_open": true,
+    "gcp10_open": true,
+    "causal_attribution_asserted": false,
+    "continuous_availability_asserted": false,
+    "ci_publication_production_qualified": false,
+    "scope": "instrumentation-only successor; separate bounded native/guard/payload and normal API graph checkpoints",
+    "stopped_receipt_sha256": "f7f0167643780f9f720d82891bbb48e68da829f599e6a3d2a31fe802e06b7a24",
+    "created_receipt_sha256": "c7727a3606fa3d2a2f6f6c143a91c4d52fdfe1541789e38e65c144f56bc10c5d",
+    "started_receipt_sha256": "3874643a6cff0711c611332025e09b0ef9cd82821be754f160c8a87a377dccd0",
+    "selected_tcp_allow_receipt_sha256": "192f767709ee623f06a8124fc63328f5f54582d0d9e52964046131850abfb45b",
+    "selected_tcp_full_cycle_receipt_sha256": "c1ca3d3dac9aaee6d5eb638d8888d7d716ef7d5122eee3add2696219648eb9d3",
+    "selected_tcp_allow_elapsed_seconds": 11.383207292,
+    "selected_tcp_receiver_counts": {
+      "tcp": 1,
+      "udp": 0
+    },
+    "selected_tcp_cleanup_errors": [],
+    "selected_tcp_postwithdraw_packet_deny_ran": false,
+    "selected_udp_ran": false,
+    "maintenance_first60_projection_sha256": "2b7e1badbbef4cbebff9d3a1cf6ecdaa700389a61a6eda24937651d67b1a70d9",
+    "maintenance_last26_projection_sha256": "9d46caa658b03beefa94a680a85cfb3e003acea0a52406658a7ebbbbf87d9f70",
+    "maintenance_refusal_stages": [
+      {
+        "operation": "maintenance",
+        "stage": "maintenance_eligibility",
+        "context_state": "active",
+        "elapsed_ms": 103,
+        "time": "2026-10-11T18:30:57.608029721Z"
+      },
+      {
+        "operation": "maintenance",
+        "stage": "maintenance_eligibility",
+        "context_state": "active",
+        "elapsed_ms": 0,
+        "time": "2026-10-11T18:31:12.80288052Z"
+      }
+    ]
+  }
 }
