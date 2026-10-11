@@ -76,6 +76,20 @@ func ProveCleanedProcessAbsent(ctx context.Context, id ProcessIdentity, bootDisc
 // ProveCleanedHistoryAbsent checks every extant compacted generation directory.
 // Hash-chain tombstones are discharged history, never deletion/adoption authority.
 func ProveCleanedHistoryAbsent(ctx context.Context, parent, prefix string, count uint64) error {
+	return proveHistoryAbsent(ctx, parent, prefix, count, 0)
+}
+
+// ProveHistoryAbsentExcept permits only one independently verified live
+// generation. Every other matching generation, including later orphan
+// directories, must be empty and have no matching daemon.
+func ProveHistoryAbsentExcept(ctx context.Context, parent, prefix string, liveGeneration uint64) error {
+	if liveGeneration == 0 {
+		return ErrPackage
+	}
+	return proveHistoryAbsent(ctx, parent, prefix, ^uint64(0), liveGeneration)
+}
+
+func proveHistoryAbsent(ctx context.Context, parent, prefix string, count, except uint64) error {
 	if ctx.Err() != nil || count == 0 || !privateAncestors(parent) {
 		return ErrPackage
 	}
@@ -92,7 +106,7 @@ func ProveCleanedHistoryAbsent(ctx context.Context, parent, prefix string, count
 		if err != nil || generation == 0 || strconv.FormatUint(generation, 10) != suffix {
 			return ErrPackage
 		}
-		if generation > count {
+		if generation > count || generation == except {
 			continue
 		}
 		path := filepath.Join(parent, entry.Name())
@@ -163,7 +177,7 @@ func ProveCleanedHistoryAbsent(ctx context.Context, parent, prefix string, count
 				continue
 			}
 			generation, err := strconv.ParseUint(strings.TrimPrefix(filepath.Base(candidate), prefix), 10, 64)
-			if err != nil || generation == 0 || generation <= count {
+			if err != nil || generation == 0 || generation <= count && generation != except {
 				return ErrPackage
 			}
 		}

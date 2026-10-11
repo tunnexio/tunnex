@@ -335,7 +335,49 @@ func azureProofBGPIdentity(ctx context.Context, p bgpengine.ProcessIdentity, boo
 	}
 	return conn.Close()
 }
+
+// Generation census is independent of the archived boot/process discharge.
+// The selected live generation is verified separately; no earlier artifacts
+// (including compacted history) may survive.
+func azureProofHistoryCensus(ctx context.Context, p runtimeJournalPayload, selected RuntimeJournalEntry, baseline bool, parent string) error {
+	limit := ^uint64(0)
+	if baseline {
+		if selected.BGPProcess == nil || selected.BGPProcess.Generation == 0 {
+			return fmt.Errorf("active_bgp_generation_refused")
+		}
+		limit = selected.BGPProcess.Generation
+	}
+	deliveries := map[uuid.UUID]bool{}
+	for _, entry := range p.Entries {
+		deliveries[entry.DeliveryID] = true
+		if entry.Restoration != nil {
+			for _, retired := range entry.Restoration.Retired {
+				deliveries[retired.Entry.DeliveryID] = true
+			}
+		}
+	}
+	for delivery := range deliveries {
+		if delivery == uuid.Nil {
+			return fmt.Errorf("bgp_history_delivery_refused")
+		}
+		prefix := "bgp-" + delivery.String() + "-g"
+		var err error
+		if baseline && delivery == selected.DeliveryID {
+			err = bgpengine.ProveHistoryAbsentExcept(ctx, parent, prefix, limit)
+		} else {
+			err = bgpengine.ProveCleanedHistoryAbsent(ctx, parent, prefix, ^uint64(0))
+		}
+		if err != nil {
+			return fmt.Errorf("bgp_history_census_refused")
+		}
+	}
+	return nil
+}
+
 func azureProofProcesses(ctx context.Context, p runtimeJournalPayload, e RuntimeJournalEntry, identity azureProofDaemon, baseline bool, historical map[uuid.UUID]bool) error {
+	if err := azureProofHistoryCensus(ctx, p, e, baseline, filepath.Dir(azureProofJournal)); err != nil {
+		return err
+	}
 	live := map[int]bool{}
 	for _, entry := range p.Entries {
 		if historical[entry.DeliveryID] {
