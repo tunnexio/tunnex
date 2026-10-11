@@ -109,3 +109,24 @@ func (c *Client) ipsecFQDNPolicyCapability() int {
 	}
 	return controller.FQDNPolicyCapability()
 }
+
+// Cross-profile Azure retained recreation is independently qualified; the old
+// Azure reader and same-profile BGP/static flags do not imply this protocol.
+func (c *Client) ipsecAzureProfileRecreationCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil || controller.Capability() != 1 {
+		return 0
+	}
+	return azureProfileRecreationVersion(controller)
+}
+
+func azureProfileRecreationVersion(controller any) int {
+	qualified, ok := controller.(interface{ AzureProfileRecreationCapability() int })
+	if !ok || qualified.AzureProfileRecreationCapability() != 1 {
+		return 0
+	}
+	return 1
+}
