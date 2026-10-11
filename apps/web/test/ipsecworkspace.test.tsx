@@ -522,6 +522,50 @@ it("imports bounded Tunnex Azure JSON only after preflight without saving or exp
  fireEvent.click(screen.getByRole("button",{name:"New connection"}));
  expect(screen.queryByDisplayValue("Synthetic.Import.Secret")).toBeNull();
 });
+it("saves an imported Azure active-active draft only after a fresh check with manually replaced shared keys", async () => {
+ mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id,name:opts.body.name}});
+ const storage = vi.spyOn(Storage.prototype, "setItem");
+ try {
+  render(view()); await prepareBGPForm();
+  const imported = {profile_id:"azure-active-active-bgp-ipv4-v1",mode:"ipv4-bgp",
+   azure:{gateway_sku:"VpnGw3AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false},
+   bgp:{local_asn:65017,remote_asn:65515,router_id:"10.10.0.17",maximum_prefixes:32},
+   customer_outside_address:"9.9.9.9",local_prefixes:["10.10.0.0/16"],remote_prefixes:["10.20.0.0/16","10.21.0.0/24"],
+   tunnels:["8.8.8.8","1.1.1.1"].map((outside_address,index)=>({outside_address,inside_cidr:"169.254.20.1/32",customer_inside_address:"169.254.20.1",cloud_inside_address:index===0?"169.254.21.2":"169.254.22.2",psk:"Synthetic.Import_Only"}))};
+  const file = new File([JSON.stringify(imported)],"azure.json",{type:"application/json"});
+  Object.defineProperty(file,"text",{value:async()=>JSON.stringify(imported)});
+  fireEvent.change(screen.getByLabelText("Import Tunnex Azure JSON"),{target:{files:[file]}});
+  await waitFor(()=>expect((screen.getByLabelText("Azure VPN Gateway SKU") as HTMLSelectElement).value).toBe("VpnGw3AZ"));
+  expect(mock.post.mock.calls.map(([path])=>path)).toEqual(["/api/v1/organizations/{orgId}/ipsec/configuration-check"]);
+  fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
+  for(const n of [1,2]) {
+   const key=screen.getByLabelText(`Tunnel ${n} PSK`) as HTMLInputElement;
+   expect(key.type).toBe("password");
+   fireEvent.change(key,{target:{value:"Synthetic.Shared_Replacement"}});
+  }
+  expect(screen.getByRole("region",{name:"Connection review"}).textContent).not.toMatch(/Synthetic\./);
+  const readsBeforeSave=mock.get.mock.calls.length;
+  fireEvent.click(screen.getByRole("button",{name:"Save disabled connection"}));
+  await waitFor(()=>expect(mock.post.mock.calls.filter(([path])=>path.endsWith("/connections"))).toHaveLength(1));
+  const expected={...imported,tunnels:imported.tunnels.map(tunnel=>({...tunnel,psk:"Synthetic.Shared_Replacement"}))};
+  const writes=mock.post.mock.calls;
+  const freshEligibilityIndex=mock.get.mock.calls.findIndex(([path],index)=>index>=readsBeforeSave&&path.endsWith("/eligibility"));
+  expect(freshEligibilityIndex).toBeGreaterThanOrEqual(0);
+  expect(mock.get.mock.calls[freshEligibilityIndex][1]).toEqual({params:{path:{orgId:"org-a"},query:{site_id:"site-a",gateway_node_id:"gateway-a"}}});
+  expect(mock.get.mock.invocationCallOrder[freshEligibilityIndex]).toBeLessThan(mock.post.mock.invocationCallOrder[1]);
+  expect(writes.map(([path])=>path)).toEqual(["/api/v1/organizations/{orgId}/ipsec/configuration-check","/api/v1/organizations/{orgId}/ipsec/configuration-check","/api/v1/organizations/{orgId}/ipsec/connections"]);
+  expect(writes[0][1].body).toEqual(imported);
+  expect(writes[1][1].body).toEqual(expected);
+  expect(writes[2][1].body).toMatchObject({name:"Office BGP",site_id:"site-a",gateway_node_id:"gateway-a",configuration:expected});
+  expect(writes[2][1].body.tunnel_ids).toHaveLength(2);
+  expect(new Set(writes[2][1].body.tunnel_ids).size).toBe(2);
+  expect(mock.put).not.toHaveBeenCalled();
+  expect(mock.del).not.toHaveBeenCalled();
+  await waitFor(()=>expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull());
+  expect(document.body.textContent).not.toMatch(/Synthetic\./);
+  expect(storage.mock.calls.some(args=>args.some(value=>String(value).includes("Synthetic.")))).toBe(false);
+ } finally { storage.mockRestore(); }
+});
 it.each(["oversized", "foreign-prefix", "unsupported-profile", "bad-json"])("refuses %s Azure JSON without preflight or echoed contents", async kind => {
  render(view()); await prepareBGPForm();
  const config={...bgpReadback.configuration,profile_id:"azure-active-standby-bgp-ipv4-v1",azure:{},local_prefixes:kind==="foreign-prefix"?["10.99.0.0/16"]:["10.10.0.0/16"]};
