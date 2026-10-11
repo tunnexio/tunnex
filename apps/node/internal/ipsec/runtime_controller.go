@@ -274,21 +274,25 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	if e != nil {
 		return fail()
 	}
-	stage = "material_contract"
+	stage = "material_entry"
 	entry, grants, e := runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 	if e != nil {
 		return fail()
 	}
 	c.withdrawChangedDNSMaterial(m, grants)
+	stage = "material_fqdn_withdraw"
 	if err := c.withdrawChangedFQDNMaterial(ctx, m, grants); err != nil {
 		return fail()
 	}
+	stage = "material_fqdn_current"
 	if !c.fqdnGrantsCurrent(grants) {
 		return RuntimeAcknowledgement{}, ErrRuntimeController
 	}
+	stage = "material_bgp_qualification"
 	if entry.ContractVersion == 3 && !c.bgpQualificationCurrent() {
 		return fail()
 	} // BGP transport alone never grants runtime capability.
+	stage = "material_contract"
 	entries, e := c.journal.Entries()
 	if e != nil {
 		return fail()
@@ -333,11 +337,13 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	stage = "journal_continuity"
 	if pos < 0 {
 		if c.admitRetainedGuardHandoff(ctx, entries, entry) != nil {
+			stage = "journal_handoff_refused"
 			return fail()
 		}
 		entries = append(entries, entry)
 		pos = len(entries) - 1
 		if c.journal.Save(entries) != nil {
+			stage = "journal_save_refused"
 			return fail()
 		}
 	} else {
@@ -345,6 +351,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		if entry.ContractVersion == 2 || entry.ContractVersion == 3 || entry.ContractVersion == 4 {
 			boot, err := resetBootID()
 			if err != nil {
+				stage = "journal_boot_refused"
 				return fail()
 			}
 			resetNeeded := old.Allocation.Namespace != ns || (old.Restoration != nil && old.Restoration.BootID != boot)
@@ -356,6 +363,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			}
 			if resetNeeded {
 				if c.reserveRestoration(ctx, m, entries, pos, entry, boot) != nil {
+					stage = "journal_restoration_refused"
 					return fail()
 				}
 				old = entries[pos]
@@ -379,6 +387,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			same.Recovery = old.Recovery
 		}
 		if old.Phase == RuntimeCleanupPending || old.Phase == RuntimeRetainedRefusal || !reflect.DeepEqual(old, same) {
+			stage = runtimeJournalContinuityRefusalStage(old, same)
 			return fail()
 		}
 	}
