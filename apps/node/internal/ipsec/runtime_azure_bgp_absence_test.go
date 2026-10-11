@@ -36,8 +36,8 @@ func TestAzureBGPResetCoverageBoundReceipt(t *testing.T) {
 		{"wrong boot", func(e *RuntimeJournalEntry) {
 			e.ResetCleanup = &RuntimeResetCleanup{BootID: uuid.NewString(), Namespace: ns, ReceiptDigest: stringDigest(raw)}
 		}},
-		{"wrong namespace", func(e *RuntimeJournalEntry) {
-			e.ResetCleanup = &RuntimeResetCleanup{BootID: boot, Namespace: "net:[4026533992]", ReceiptDigest: stringDigest(raw)}
+		{"malformed recorded namespace", func(e *RuntimeJournalEntry) {
+			e.ResetCleanup = &RuntimeResetCleanup{BootID: boot, Namespace: "malformed", ReceiptDigest: stringDigest(raw)}
 		}},
 		{"different old boot", func(e *RuntimeJournalEntry) { e.Restoration = &RuntimeRestoration{BootID: uuid.NewString()} }},
 		{"partial coverage", func(e *RuntimeJournalEntry) { e.CoveredDeliveryRevision = 0 }},
@@ -81,5 +81,55 @@ func TestAzureBGPPeerRouteCensusIncludesRenamedDevices(t *testing.T) {
 	}
 	if !azureBGPPeersAbsent(entry, []byte(`[{"dst":"default","dev":"eth0"}]`)) {
 		t.Fatal("unrelated route refused")
+	}
+}
+
+func TestAzureBGPOriginalResetReceiptAfterNamespaceRecreation(t *testing.T) {
+	_, target := azureRecreationMaterial(t, nil, []string{"10.231.0.0/16"}, 8)
+	target = retainedAzure(target)
+	target.Restoration = &RuntimeRestoration{BootID: uuid.NewString()}
+	boot := uuid.NewString()
+	originalNS, currentNS := "net:[4026532992]", "net:[4026533992]"
+	sibling := target
+	sibling.DeliveryID = uuid.New()
+	sibling.CleanupID = uuid.New()
+	sibling.ResetCleanup = &RuntimeResetCleanup{BootID: boot, Namespace: originalNS, ReceiptDigest: stringDigest([]byte("temporary"))}
+	covered, ok := retainedResetCoverage(target, sibling, []RuntimeJournalEntry{target, sibling}, boot, currentNS)
+	if !ok || len(covered) != 2 {
+		t.Fatal("original VM-stop coverage refused after same-boot namespace recreation")
+	}
+	cleanup := RuntimeCleanup{RuntimeDelivery: RuntimeDelivery{ID: sibling.CleanupID, DesiredRevision: sibling.CleanupDesiredRevision}, RetainGuard: true}
+	receipt := runtimeResetReceipt{Version: 1, OwnerID: target.Engines[0].Binding.GatewayID, CleanupID: cleanup.ID, CleanupRevision: cleanup.DesiredRevision, CoveredDigest: resetCoveredDigest(covered), BootID: boot, Namespace: originalNS, Termination: "supervisor-confirmed-vm-stop", EvidenceDigest: stringDigest([]byte("synthetic model VM-stop evidence"))}
+	raw, _ := json.Marshal(receipt)
+	parsed, err := parseResetReceipt(raw, receipt.OwnerID, cleanup, covered, boot, originalNS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted := *parsed
+	if !retainedResetReceiptMatches(parsed, &persisted, boot, currentNS) {
+		t.Fatal("immutable original namespace receipt refused")
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*RuntimeResetCleanup)
+	}{{"wrong boot", func(v *RuntimeResetCleanup) { v.BootID = uuid.NewString() }}, {"wrong digest", func(v *RuntimeResetCleanup) { v.ReceiptDigest = stringDigest(append(raw, ' ')) }}, {"wrong recorded namespace", func(v *RuntimeResetCleanup) { v.Namespace = currentNS }}} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := persisted
+			tc.mutate(&bad)
+			if retainedResetReceiptMatches(parsed, &bad, boot, currentNS) {
+				t.Fatal("foreign receipt accepted")
+			}
+		})
+	}
+	if retainedResetReceiptMatches(nil, &persisted, boot, currentNS) || retainedResetReceiptMatches(parsed, nil, boot, currentNS) {
+		t.Fatal("missing receipt accepted")
+	}
+	for _, set := range [][]RuntimeJournalEntry{covered[:1], {}} {
+		if _, err := parseResetReceipt(raw, receipt.OwnerID, cleanup, set, boot, originalNS); err == nil {
+			t.Fatal("partial coverage accepted")
+		}
+	}
+	if azureBGPPeersAbsent(target, []byte(`[{"dst":"`+target.Allocation.Tunnels[0].BGP.Peer.String()+`/32","dev":"foreign"}]`)) {
+		t.Fatal("receipt discharged foreign current peer route")
 	}
 }

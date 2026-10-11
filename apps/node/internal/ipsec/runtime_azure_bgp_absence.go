@@ -123,7 +123,10 @@ func (c *RuntimeController) retainedResetBootDischarged(ctx context.Context, tar
 			continue
 		}
 		cleanup := RuntimeCleanup{RuntimeDelivery: RuntimeDelivery{ID: sibling.CleanupID, DesiredRevision: sibling.CleanupDesiredRevision}, RetainGuard: true}
-		receipt, err := c.resetCleanupReceipt(cleanup, covered)
+		// VM termination discharged the recorded old boot, not a later anchor.
+		// Parse the protected original bytes against their immutable namespace;
+		// current-namespace native/FRR absence remains independently required.
+		receipt, err := c.resetCleanupReceiptInNamespace(cleanup, covered, boot, sibling.ResetCleanup.Namespace)
 		if err == nil && ctx.Err() == nil && retainedResetReceiptMatches(receipt, sibling.ResetCleanup, boot, ns) {
 			return true
 		}
@@ -132,7 +135,7 @@ func (c *RuntimeController) retainedResetBootDischarged(ctx context.Context, tar
 }
 
 func retainedResetCoverage(target, sibling RuntimeJournalEntry, entries []RuntimeJournalEntry, boot, ns string) ([]RuntimeJournalEntry, bool) {
-	if target.Phase != RuntimeRetainedRefusal || sibling.Phase != RuntimeRetainedRefusal || target.Allocation.ConnectionID != sibling.Allocation.ConnectionID || sibling.ResetCleanup == nil || !validJournalResetCleanup(sibling) || sibling.ResetCleanup.BootID != boot || sibling.ResetCleanup.Namespace != ns || target.Restoration == nil || sibling.Restoration == nil || target.Restoration.BootID == boot || target.Restoration.BootID != sibling.Restoration.BootID || sibling.CleanupID == uuid.Nil || sibling.CleanupDesiredRevision <= 0 || target.Engines[0].Binding.DesiredRevision > sibling.CoveredDeliveryRevision {
+	if target.Phase != RuntimeRetainedRefusal || sibling.Phase != RuntimeRetainedRefusal || target.Allocation.ConnectionID != sibling.Allocation.ConnectionID || sibling.ResetCleanup == nil || !validJournalResetCleanup(sibling) || sibling.ResetCleanup.BootID != boot || !validKernelNamespace(ns) || !validKernelNamespace(sibling.ResetCleanup.Namespace) || target.Restoration == nil || sibling.Restoration == nil || target.Restoration.BootID == boot || target.Restoration.BootID != sibling.Restoration.BootID || sibling.CleanupID == uuid.Nil || sibling.CleanupDesiredRevision <= 0 || target.Engines[0].Binding.DesiredRevision > sibling.CoveredDeliveryRevision {
 		return nil, false
 	}
 	var covered []RuntimeJournalEntry
@@ -149,5 +152,5 @@ func retainedResetCoverage(target, sibling RuntimeJournalEntry, entries []Runtim
 }
 
 func retainedResetReceiptMatches(actual, persisted *RuntimeResetCleanup, boot, ns string) bool {
-	return actual != nil && persisted != nil && actual.BootID == boot && actual.Namespace == ns && *actual == *persisted
+	return actual != nil && persisted != nil && actual.BootID == boot && validKernelNamespace(ns) && validKernelNamespace(persisted.Namespace) && actual.Namespace == persisted.Namespace && *actual == *persisted
 }
