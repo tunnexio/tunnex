@@ -104,7 +104,7 @@ func (v *runtimeFQDNPolicyView) matches(g GuardGrant) bool {
 	for _, f := range v.policy.FQDNGenerations {
 		if f.ResourceID == b.ResourceID.String() && f.Name == b.Name && f.Generation == b.Generation && f.ResolverConfigID == b.ResolverConfigID.String() && f.ResolverConfigVersion == b.ResolverConfigVersion {
 			for _, a := range f.Answers {
-				if a == g.Destination.Addr().String() {
+				if a == g.Destination.String() {
 					generation = true
 				}
 			}

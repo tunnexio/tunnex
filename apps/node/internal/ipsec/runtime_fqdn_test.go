@@ -23,7 +23,7 @@ func fqdnRuntimeFixture(t *testing.T) (RuntimeMaterial, GuardGrant, *nodepolicy.
 	if e != nil || len(g) != 1 {
 		t.Fatal(e, g)
 	}
-	p := &nodepolicy.Compiled{Version: 9, NodeID: m.Manifest.NodeID.String(), Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{{SrcIP: f.Source, DstCIDR: f.Destination, Protocol: f.Protocol, PortLow: 8081, PortHigh: 8081, RuleID: f.RuleID, FQDNManaged: true}}, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: f.ResourceID, Name: f.Name, Generation: f.Generation, ResolverConfigID: f.ResolverConfigID, ResolverConfigVersion: 5, Answers: []string{"10.20.0.9"}}}, DNSResolverProfiles: []nodepolicy.DNSResolverProfile{{ContextConfigID: f.ResolverConfigID, ContextConfigVersion: 5, ProfileID: f.ResolverProfileID, ZoneSuffixes: []string{"example.test"}, IPsecPath: nodepolicy.DNSResolverIPsecPath{ConnectionID: f.ConnectionID, ConfigurationRevision: f.ConfigurationRevision}}}}
+	p := &nodepolicy.Compiled{Version: 9, NodeID: m.Manifest.NodeID.String(), Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{{SrcIP: f.Source, DstCIDR: f.Destination, Protocol: f.Protocol, PortLow: 8081, PortHigh: 8081, RuleID: f.RuleID, FQDNManaged: true}}, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: f.ResourceID, Name: f.Name, Generation: f.Generation, ResolverConfigID: f.ResolverConfigID, ResolverConfigVersion: 5, Answers: []string{"10.20.0.9/32"}}}, DNSResolverProfiles: []nodepolicy.DNSResolverProfile{{ContextConfigID: f.ResolverConfigID, ContextConfigVersion: 5, ProfileID: f.ResolverProfileID, ZoneSuffixes: []string{"example.test"}, IPsecPath: nodepolicy.DNSResolverIPsecPath{ConnectionID: f.ConnectionID, ConfigurationRevision: f.ConfigurationRevision}}}}
 	return m, g[0], p
 }
 
@@ -204,7 +204,7 @@ func fqdnActiveRig(t *testing.T) (*renewalCycleRig, *RuntimeFQDNPolicySource, *n
 	g.FQDN.ConfigurationRevision = a.Entry.Engines[0].Binding.ConfigurationRevision
 	p.NodeID = r.c.config.GatewayID.String()
 	p.Allow[0].SrcIP, p.Allow[0].DstCIDR = g.Source.String(), g.Destination.String()
-	p.FQDNGenerations[0].Answers = []string{g.Destination.Addr().String()}
+	p.FQDNGenerations[0].Answers = []string{g.Destination.String()}
 	p.DNSResolverProfiles[0].IPsecPath.ConnectionID = r.target.String()
 	p.DNSResolverProfiles[0].IPsecPath.ConfigurationRevision = g.FQDN.ConfigurationRevision
 	a.Grants = append(a.Grants, g)
