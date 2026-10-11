@@ -558,7 +558,8 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 	manifest := GuardManifest{Namespace: guard.Namespace, Revision: guard.Revision, Digest: guard.Digest, ExpectedJSON: guard.ExpectedJSON}
 	limitFrames := [][2]azureProofLimitPeer{}
 	collect := func() (DaemonInventory, KernelInventory, XFRMInventory, bgpengine.Status, []bgpengine.LearnedRoute) {
-		if azureProofProcesses(ctx, payload, entry, first, binding.Mode != "absence", historical) != nil {
+		if err := azureProofProcesses(ctx, payload, entry, first, binding.Mode != "absence", historical); err != nil {
+			t.Logf("process_duties_reason=%s", azureProofProcessReason(err))
 			t.Fatal("all_process_duties_refused")
 		}
 		if gr.Check(ctx, manifest) != nil {
@@ -672,4 +673,30 @@ func TestAzureOwnedMaxPrefixNativeProof(t *testing.T) {
 		t.Fatal("typed_projection_refused")
 	}
 	fmt.Println("AZURE_MAX_PREFIX_NATIVE_PROOF " + string(encoded))
+}
+
+// azureProofProcessReason exposes only fixed existing refusal categories.
+// Unknown errors never expose their text, paths, or process identities.
+func azureProofProcessReason(err error) string {
+	if err == nil {
+		return "other"
+	}
+	switch err.Error() {
+	case "bgp_history_census_refused", "retired_process_proof_refused", "active_bgp_process_refused", "process_inventory_refused", "process_deadline_refused", "unbound_managed_bgp_process":
+		return err.Error()
+	default:
+		return "other"
+	}
+}
+func TestAzureMaxProofProcessReasonProjection(t *testing.T) {
+	for _, value := range []string{"bgp_history_census_refused", "retired_process_proof_refused", "active_bgp_process_refused", "process_inventory_refused", "process_deadline_refused", "unbound_managed_bgp_process"} {
+		if got := azureProofProcessReason(fmt.Errorf("%s", value)); got != value {
+			t.Fatal("known reason projection refused")
+		}
+	}
+	for _, err := range []error{nil, fmt.Errorf("private/path secret"), fmt.Errorf("active_bgp_process_refused private/path")} {
+		if azureProofProcessReason(err) != "other" {
+			t.Fatal("unknown reason leaked")
+		}
+	}
 }
