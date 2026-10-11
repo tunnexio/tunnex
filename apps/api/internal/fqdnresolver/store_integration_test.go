@@ -102,7 +102,10 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	hook := &committedHook{t: t, pool: pool, resource: resource}
 	store := NewPostgresStore(pool).WithAfterCommit(hook)
 	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ResolverConfig: ResolverConfig{ID: config.String(), Version: 1, ProfileID: profile.String(), ProfileName: "Private internal", ProfileProvider: "aws", MatchedSuffix: "internal", Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.53"), Port: 53, Transport: "udp"}}}}
-	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	var now time.Time
+	if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal("read owned database clock", err)
+	}
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
 		t.Fatal(err)
 	}
