@@ -7,6 +7,37 @@ import (
 	"time"
 )
 
+func TestIPsecFQDNV2ObservationClockProvenance(t *testing.T) {
+	for _, tc := range []string{"missing_observation", "future_observation", "missing_compiler_clock", "expired_observation", "expiry_before_observation"} {
+		t.Run(tc, func(t *testing.T) {
+			s, in := runtimeFQDNFixture(t)
+			in.FQDNPolicyVersion = 2
+			in.CompiledAt = time.Now().UTC()
+			g := s.FQDNResources[0].Active
+			g.ResolvedAt = in.CompiledAt
+			g.FreshUntil = in.CompiledAt.Add(30 * time.Second)
+			switch tc {
+			case "missing_observation":
+				g.ResolvedAt = time.Time{}
+			case "future_observation":
+				g.ResolvedAt = in.CompiledAt.Add(time.Second)
+			case "missing_compiler_clock":
+				in.CompiledAt = time.Time{}
+			case "expired_observation":
+				g.ResolvedAt = in.CompiledAt.Add(-time.Minute)
+				g.FreshUntil = in.CompiledAt.Add(-time.Second)
+			case "expiry_before_observation":
+				g.ResolvedAt = in.CompiledAt.Add(-time.Second)
+				g.FreshUntil = in.CompiledAt.Add(-2 * time.Second)
+			}
+			p, err := compileIPsecRuntimePolicy(s, in)
+			if err != nil || len(p.FQDNGrants) != 0 || p.FQDNPolicyVersion != 0 || len(p.Grants) != 1 {
+				t.Fatal("invalid observation clock admitted or ordinary grant changed")
+			}
+		})
+	}
+}
+
 func TestIPsecFQDNV2AbsoluteCutoffAndResolverSource(t *testing.T) {
 	snapshot, input := runtimeFQDNFixture(t)
 	input.FQDNPolicyVersion = 2

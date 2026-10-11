@@ -1546,6 +1546,7 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		PortHigh: derefI32(g.PortHigh),
 		Active: &FQDNGeneration{
 			FreshUntil:                 g.ResolvedAt.Add(g.TTL).UTC(),
+			ResolvedAt:                 g.ResolvedAt.UTC(),
 			ResourceID:                 g.ResourceID,
 			SelectedSiteID:             site,
 			SelectedGatewayID:          gateway,

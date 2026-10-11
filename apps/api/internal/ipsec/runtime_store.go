@@ -241,7 +241,7 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 	if e := tx.QueryRow(ctx, `SELECT CASE WHEN status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp() THEN CASE capabilities->'ipsec_fqdn_policy_version' WHEN '2'::jsonb THEN 2 WHEN '1'::jsonb THEN 1 ELSE 0 END ELSE 0 END FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&fqdnVersion); e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
-	input := RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx}
+	input := RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx, CompiledAt: time.Now()}
 	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), input)
 	if e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable

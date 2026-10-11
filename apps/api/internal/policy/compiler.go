@@ -144,6 +144,7 @@ type FQDNResource struct {
 
 type FQDNGeneration struct {
 	FreshUntil                 time.Time
+	ResolvedAt                 time.Time
 	IPsecConnectionID          uuid.UUID
 	IPsecConfigurationRevision int64
 	IPsecSourceAddress         string

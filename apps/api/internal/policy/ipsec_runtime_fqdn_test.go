@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -22,9 +23,9 @@ import (
 func runtimeFQDNFixture(t *testing.T) (Snapshot, ipsec.RuntimePolicyInput) {
 	t.Helper()
 	org, site, node, conn, resource, config, profile, ordinary := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	input := ipsec.RuntimePolicyInput{OrgID: org, SiteID: site, NodeID: node, ConnectionID: conn, ConfigurationRevision: 1, FQDNPolicyVersion: 1, Config: ipsec.StaticConfig{LocalPrefixes: []string{"10.84.2.0/24"}, RemotePrefixes: []string{"10.85.0.0/16"}}}
+	input := ipsec.RuntimePolicyInput{CompiledAt: time.Now().UTC(), OrgID: org, SiteID: site, NodeID: node, ConnectionID: conn, ConfigurationRevision: 1, FQDNPolicyVersion: 1, Config: ipsec.StaticConfig{LocalPrefixes: []string{"10.84.2.0/24"}, RemotePrefixes: []string{"10.85.0.0/16"}}}
 	port := int32(8081)
-	generation := fqdnresolver.ActiveGeneration{OrgID: org, ResourceID: resource, Hostname: "app.corp.example", Protocol: "tcp", PortLow: &port, PortHigh: &port, Context: fqdnresolver.Context{ResolverID: site.String(), GatewayID: node.String()}, ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 3, ProfileID: profile.String(), MatchedSuffix: "corp.example", IPsecPath: &fqdnresolver.ResolverIPsecPath{ConnectionID: conn.String(), ConfigurationRevision: 1, SourceAddress: "10.84.2.254"}, Endpoints: []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.85.0.53"), Port: 53, Transport: "udp"}}}, Addresses: []netip.Addr{netip.MustParseAddr("10.85.1.10")}}
+	generation := fqdnresolver.ActiveGeneration{ResolvedAt: input.CompiledAt, TTL: time.Minute, OrgID: org, ResourceID: resource, Hostname: "app.corp.example", Protocol: "tcp", PortLow: &port, PortHigh: &port, Context: fqdnresolver.Context{ResolverID: site.String(), GatewayID: node.String()}, ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 3, ProfileID: profile.String(), MatchedSuffix: "corp.example", IPsecPath: &fqdnresolver.ResolverIPsecPath{ConnectionID: conn.String(), ConfigurationRevision: 1, SourceAddress: "10.84.2.254"}, Endpoints: []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.85.0.53"), Port: 53, Transport: "udp"}}}, Addresses: []netip.Addr{netip.MustParseAddr("10.85.1.10")}}
 	fqdnResource, err := fqdnResourceFromActiveGeneration(generation, []netip.Prefix{netip.MustParsePrefix("10.85.0.0/16")})
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +65,7 @@ func TestIPsecFQDNRuntimeCurrentExactOutboundProvenance(t *testing.T) {
 func TestIPsecFQDNRuntimeRefusesUnsupportedAndForeignScope(t *testing.T) {
 	cases := map[string]func(*Snapshot, *ipsec.RuntimePolicyInput){
 		"missing capability": func(_ *Snapshot, in *ipsec.RuntimePolicyInput) { in.FQDNPolicyVersion = 0 },
-		"unknown capability": func(_ *Snapshot, in *ipsec.RuntimePolicyInput) { in.FQDNPolicyVersion = 2 },
+		"unknown capability": func(_ *Snapshot, in *ipsec.RuntimePolicyInput) { in.FQDNPolicyVersion = 3 },
 		"unlicensed":         func(s *Snapshot, _ *ipsec.RuntimePolicyInput) { s.FQDNResourcesLicensed = false },
 		"opt out":            func(s *Snapshot, _ *ipsec.RuntimePolicyInput) { s.FQDNResourcesEnabled = false },
 		"foreign Site":       func(s *Snapshot, _ *ipsec.RuntimePolicyInput) { s.FQDNResources[0].Active.SelectedSiteID = uuid.New() },

@@ -20,6 +20,7 @@ type RuntimePolicyInput struct {
 	ConfigurationRevision               int64     `json:"-"`
 	FQDNPolicyVersion                   int       `json:"-"`
 	Transaction                         sqlc.DBTX `json:"-"`
+	CompiledAt                          time.Time `json:"-"`
 }
 type RuntimeGrant struct {
 	Source      string `json:"source"`

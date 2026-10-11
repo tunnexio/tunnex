@@ -45,7 +45,7 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 	resources := make(map[uuid.UUID]FQDNResource)
 	for _, r := range snapshot.FQDNResources {
 		g := r.Active
-		if g == nil || g.SelectedSiteID != input.SiteID || g.SelectedGatewayID != input.NodeID || g.IPsecConnectionID != input.ConnectionID || g.IPsecConfigurationRevision != input.ConfigurationRevision {
+		if g == nil || input.CompiledAt.IsZero() || g.ResolvedAt.IsZero() || g.ResolvedAt.After(input.CompiledAt) || !g.FreshUntil.After(g.ResolvedAt) || !g.FreshUntil.After(input.CompiledAt) || g.SelectedSiteID != input.SiteID || g.SelectedGatewayID != input.NodeID || g.IPsecConnectionID != input.ConnectionID || g.IPsecConfigurationRevision != input.ConfigurationRevision {
 			continue
 		}
 		source, err := netip.ParseAddr(g.IPsecSourceAddress)
