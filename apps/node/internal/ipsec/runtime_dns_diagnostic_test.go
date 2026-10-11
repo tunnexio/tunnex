@@ -62,6 +62,15 @@ func TestRuntimeDNSExchangeDiagnosticStages(t *testing.T) {
 				t.Fatalf("sequence events=%v calls=%v", events, calls)
 			}
 			names := []string{"dns_proof_before", "dns_socket", "dns_proof_after"}
+			if failure == "after" {
+				names[2] = "dns_after_proof_refused"
+			}
+			if failure == "identity" {
+				names[2] = "dns_after_binding_refused"
+			}
+			if failure == "context" {
+				names[2] = "dns_after_context_refused"
+			}
 			for i, v := range events {
 				if v.Stage != names[i] || v.Operation != "dns_exchange" || v.ElapsedMillis < 0 {
 					t.Fatalf("event %+v", v)
@@ -79,6 +88,65 @@ func TestRuntimeDNSExchangeDiagnosticStages(t *testing.T) {
 				if strings.Contains(string(raw), s) {
 					t.Fatal("diagnostic disclosed input")
 				}
+			}
+		})
+	}
+}
+
+func TestDNSAfterDiagnosticShortCircuitOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name                            string
+		proofError, mismatch, cancelled bool
+		stage                           string
+	}{
+		{"success", false, false, false, "dns_proof_after"},
+		{"proof dominates binding and context", true, true, true, "dns_after_proof_refused"},
+		{"binding dominates context", false, true, true, "dns_after_binding_refused"},
+		{"binding", false, true, false, "dns_after_binding_refused"},
+		{"context", false, false, true, "dns_after_context_refused"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fixture := newDNSOwnerViewFixture(t, func(context.Context) error { return nil })
+			proof, err := fixture.prove(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var calls, stages []string
+			n := 0
+			got, e := exchangeResolverDNSObserved(ctx, fqdnrpc.ResolverConfig{}, fqdnrpc.ResolverEndpoint{}, nil,
+				func(context.Context, fqdnrpc.ResolverConfig, fqdnrpc.ResolverEndpoint) (runtimeDNSProof, error) {
+					calls = append(calls, "proof")
+					n++
+					p := proof
+					if n == 2 {
+						if tc.cancelled {
+							cancel()
+						}
+						if tc.mismatch {
+							p.InterfaceIndex++
+						}
+						if tc.proofError {
+							return p, errors.New("private response detail")
+						}
+					}
+					return p, nil
+				}, func(context.Context, fqdnrpc.ResolverEndpoint, netip.Addr, []byte) ([]byte, error) {
+					calls = append(calls, "socket")
+					return []byte("unchanged"), nil
+				},
+				func(s string, _ time.Time, _ bool) { stages = append(stages, s) })
+			if strings.Join(calls, ",") != "proof,socket,proof" || len(stages) != 3 || stages[2] != tc.stage {
+				t.Fatalf("calls=%v stages=%v", calls, stages)
+			}
+			refused := tc.proofError || tc.mismatch || tc.cancelled
+			if refused {
+				if e != ErrRuntimeController || got != nil {
+					t.Fatal("refusal semantics changed")
+				}
+			} else if e != nil || string(got) != "unchanged" {
+				t.Fatal("success semantics changed")
 			}
 		})
 	}

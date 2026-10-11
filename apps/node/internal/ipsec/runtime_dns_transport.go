@@ -91,8 +91,16 @@ func exchangeResolverDNSObserved(ctx context.Context, config fqdnrpc.ResolverCon
 	}
 	started = time.Now()
 	after, err := prove(ctx, config, endpoint)
-	refused := err != nil || !sameResolverDNSProof(after, proof) || ctx.Err() != nil
-	emit("dns_proof_after", started, refused)
+	stage := "dns_proof_after"
+	refused := false
+	if err != nil {
+		stage, refused = "dns_after_proof_refused", true
+	} else if !sameResolverDNSProof(after, proof) {
+		stage, refused = "dns_after_binding_refused", true
+	} else if ctx.Err() != nil {
+		stage, refused = "dns_after_context_refused", true
+	}
+	emit(stage, started, refused)
 	if refused {
 		return nil, ErrRuntimeController
 	}
