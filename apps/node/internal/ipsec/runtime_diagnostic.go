@@ -18,12 +18,21 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if operation == "dns_proof" {
+		switch stage {
+		case "dns_refusal_input", "dns_refusal_endpoint", "dns_refusal_addresses", "dns_refusal_binding", "dns_refusal_view", "dns_refusal_owner", "dns_refusal_active", "dns_refusal_grant", "dns_refusal_authority_before", "dns_refusal_native", "dns_refusal_slot", "dns_refusal_interface", "dns_refusal_guard_initial", "dns_refusal_source_before", "dns_refusal_route", "dns_refusal_source_after", "dns_refusal_authority_after", "dns_refusal_owner_before_final", "dns_refusal_view_final", "dns_refusal_guard_retry_budget", "dns_refusal_guard_retry", "dns_refusal_owner_final", "dns_refusal_guard_final":
+			return true
+		default:
+			return false
+		}
+	}
 	switch operation {
 	case "dns_exchange", "apply", "bgp_apply", "validate", "heartbeat", "install_active", "guard_replace", "bgp_reconcile", "underlay_mtu", "runtime_proof", "bgp_proof", "environment_observe":
 	default:
 		return false
 	}
 	switch stage {
+
 	case "dns_proof_before", "dns_socket", "dns_proof_after", "dns_after_proof_refused", "dns_after_binding_refused", "dns_after_context_refused", "env_input", "env_namespace_before", "env_material", "env_hooks_before", "env_rules_before", "env_links_before", "env_routes_before", "env_addresses_before", "env_local_coverage", "env_peer_routes_before", "env_links_after", "env_rules_after", "env_hooks_after", "env_routes_after", "env_addresses_after", "env_peer_routes_after", "env_namespace_after", "env_complete", "proof_readers", "proof_xfrm_before", "proof_daemon_before", "proof_kernel_before", "proof_inventory_before", "proof_environment_observe", "proof_environment_binding", "proof_xfrm_after", "proof_daemon_after", "proof_kernel_after", "proof_complete", "proof_bgp_journal", "proof_bgp_routes", "proof_bgp_status", "proof_bgp_any_up", "mtu_dependencies", "mtu_environment_observe", "mtu_environment_binding", "mtu_kernel_snapshot", "mtu_owned_ceiling", "mtu_unchanged", "mtu_lowering", "mtu_final_environment_observe", "mtu_final_environment_binding", "mtu_lowered", "input", "qualification", "material_contract", "journal_inventory", "startup_gate", "delivery_lineage", "environment", "journal_continuity", "bgp_apply", "static_apply", "bgp_qualification", "bgp_reconcile", "combined_guard", "permit_lease", "restored_transport", "transport_stage", "transport_initiate", "transport_retry", "native_current_proof", "journal_commit", "underlay_mtu", "active_continuity", "session_cleanup", "session_start", "route_initialization", "authority_binding", "remaining_authority", "native_status", "guard_denial_read", "native_current_proof_and_guard", "final_binding", "journal_sequence", "entry_current_proof", "entry_lease_remaining", "guard_projection", "entry_bgp_observation", "entry_static_observation", "entry_tunnel_mtu", "combined_guard_context", "combined_guard_authority", "entry_dns_source", "combined_guard_qualification", "entry_bgp_process", "combined_guard_replace", "combined_guard_final_binding", "combined_guard_final_lease", "guard_render", "guard_namespace", "guard_interfaces", "guard_table_read", "guard_prior_ownership", "guard_source_bracket", "guard_resolve_journal", "guard_prepare_journal", "guard_atomic_replace", "guard_complete_readback", "guard_finish_journal", "permit_freshness", "peer_summary_observation", "route_observation", "transport_status", "route_journal_binding", "route_guard_withdrawal", "route_commit_readback", "final_permit":
 		return true
 	}
