@@ -2158,8 +2158,9 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
-	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
-	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
+	WireGuardAppliedMTU int    `json:"wireguard_applied_mtu"`
+	AIVPNHTTPReady      bool   `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress    string `json:"ai_vpn_http_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion        int    `json:"ipsec_config_version"`
@@ -2291,7 +2292,11 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
+	if applied.WireGuardAppliedMTU < 1280 || applied.WireGuardAppliedMTU > 1420 {
+		applied.WireGuardAppliedMTU = 0
+	}
 	caps, err := json.Marshal(map[string]any{
+		"wireguard_applied_mtu":        applied.WireGuardAppliedMTU,
 		"ai_vpn_http_ready":            applied.AIVPNHTTPReady,
 		"ai_vpn_http_address":          applied.AIVPNHTTPAddress,
 		"ipsec_config_version":         applied.IPsecConfigVersion,

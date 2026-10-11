@@ -937,6 +937,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 		}
 		flow := flowStatus.Snapshot()
 		ps := control.PolicyStatus{
+			WireGuardAppliedMTU:       r.AppliedWireGuardMTU(),
 			Version:                   v,
 			Hash:                      h,
 			RefusedVersion:            egressMgr.RefusedVersion(),

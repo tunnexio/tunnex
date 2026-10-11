@@ -175,9 +175,10 @@ func (c *Client) AdoptCredentials(certPEM, keyPEM []byte) error {
 // control plane compares this against what it pushed — applied != pushed means the
 // gateway is running STALE policy, which must be visible, never silent.
 type PolicyStatus struct {
-	Version int
-	Hash    string
-	Error   string
+	WireGuardAppliedMTU int
+	Version             int
+	Hash                string
+	Error               string
 	// FailingSince (RFC3339, empty when healthy) is the mismatch onset — the control
 	// plane's stale alarm measures elapsed time from here, not the applied-hash age.
 	FailingSince string
@@ -240,6 +241,7 @@ type PolicyStatus struct {
 // and the applied Zero Trust policy status (S7.2 staleness).
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
 	payload := map[string]any{
+		"wireguard_applied_mtu": ps.WireGuardAppliedMTU,
 		// Only the actual qualified controller may advertise this protocol.
 		"ipsec_config_version":         c.ipsecCapability(),
 		"ipsec_recovery_version":       c.ipsecRecoveryCapability(),
