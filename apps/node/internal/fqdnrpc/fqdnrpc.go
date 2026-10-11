@@ -295,6 +295,9 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConf
 	current := hostname
 	seen := map[string]bool{}
 	var all []Record
+	// Reuse only terminal answers proved by this endpoint's current response.
+	// This is request-local wire data, never a cached native authority/proof.
+	answered := map[RecordType]map[string][]Record{}
 	for depth := 0; depth <= 8; depth++ {
 		if seen[current] {
 			return nil, fmt.Errorf("cname loop")
@@ -305,11 +308,21 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConf
 			if typ == RecordCNAME {
 				continue
 			}
+			if prior := answered[typ][current]; len(prior) != 0 {
+				step = append(step, prior...)
+				continue
+			}
 			got, err := exchange(ctx, endpoint, current, typ)
 			if err != nil {
 				return nil, err
 			}
 			step = append(step, got...)
+			if terminal, records, ok := terminalWireAnswer(current, typ, got); ok {
+				if answered[typ] == nil {
+					answered[typ] = map[string][]Record{}
+				}
+				answered[typ][terminal] = records
+			}
 		}
 		step = canonicalRecords(step)
 		all = append(all, step...)
@@ -329,6 +342,58 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConf
 		}
 	}
 	return nil, fmt.Errorf("cname depth exceeded")
+}
+
+// terminalWireAnswer accepts a complete, unambiguous chain and positive terminal
+// records from one current response of the requested type. NODATA, unrelated
+// records, loops and malformed answers cannot suppress a later query.
+func terminalWireAnswer(hostname string, typ RecordType, records []Record) (string, []Record, bool) {
+	if typ != RecordA && typ != RecordAAAA || !validDirectRecords(hostname, []RecordType{typ, RecordCNAME}, records) {
+		return "", nil, false
+	}
+	edges := map[string]string{}
+	for _, record := range records {
+		if record.TTLSeconds <= 0 || uint64(record.TTLSeconds) > uint64(^uint32(0)) {
+			return "", nil, false
+		}
+		if record.Type == RecordCNAME {
+			if target, exists := edges[record.Name]; exists && target != record.Target {
+				return "", nil, false
+			}
+			edges[record.Name] = record.Target
+		} else if record.Type != typ {
+			return "", nil, false
+		}
+	}
+	current := hostname
+	chain := map[string]bool{}
+	for depth := 0; depth <= 8; depth++ {
+		if chain[current] {
+			return "", nil, false
+		}
+		chain[current] = true
+		target, exists := edges[current]
+		if !exists {
+			var terminal []Record
+			for _, record := range records {
+				if !chain[record.Name] {
+					return "", nil, false
+				}
+				if record.Type != RecordCNAME {
+					if record.Name != current {
+						return "", nil, false
+					}
+					terminal = append(terminal, record)
+				}
+			}
+			if len(terminal) == 0 {
+				return "", nil, false
+			}
+			return current, canonicalRecords(terminal), true
+		}
+		current = target
+	}
+	return "", nil, false
 }
 
 func validResolverConfig(config ResolverConfig) bool {
