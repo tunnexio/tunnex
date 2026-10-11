@@ -1,7 +1,7 @@
 # EPIC — GCP site-to-site VPN
 
 Date: 2026-10-10
-Status: Deployed gateway source remains `9c3ab006c13b72285f43baed1805da1af273ffa7`; the owned local API now runs completion-clock fix `0b3df50e1144cc888a1c567c11ee6566e4663cea`. Actual HA and Classic application TCP/UDP, Classic grant expiry denial, HA DNS A/CNAME/NXDOMAIN, explicit EDNS1232 large-answer UDP-TC→TCP fallback, and normal automatic Classic FQDN generations passed. Actual isolated owner/admin/member desktop/mobile views passed. Controlled MTUv7 passed normal and lowered-path fragmented UDP round trips and 1MiB TCP upload/download; physical MTU1460 and original target source were restored, while all inner interfaces retained1326 with full guard proof. Live HA full recovery/both-path loss, remaining PSK lifecycle and restart/rekey/fault remain open; isolated two-tab CAS passed. Local integration source0249f7cf is not a gateway redeployment. Historical failures are retained. Git changes remain local; CI and production publication are separate.
+Status: The owned gateway now runs source `0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7` (imagec0ca/CIDf15e) after normal same-enrollment replacement; prior9c3 payload/story proofs remain historical; the owned local API now runs completion-clock fix `0b3df50e1144cc888a1c567c11ee6566e4663cea`. Actual HA and Classic application TCP/UDP, Classic grant expiry denial, HA DNS A/CNAME/NXDOMAIN, explicit EDNS1232 large-answer UDP-TC→TCP fallback, and normal automatic Classic FQDN generations passed. Actual isolated owner/admin/member desktop/mobile views passed. Controlled MTUv7 passed normal and lowered-path fragmented UDP round trips and 1MiB TCP upload/download; physical MTU1460 and original target source were restored, while all inner interfaces retained1326 with full guard proof. Live HA full recovery/both-path loss, remaining PSK lifecycle and restart/rekey/fault remain open; isolated two-tab CAS passed. Normal0249 startup and measured SAD6/HA6,7/Classic20 passed; fresh full readiness/payload/rekey/fault qualification remains open. This is owned-lab deployment, not production publication. Historical failures are retained. Git changes remain local; CI and production publication are separate.
 Integration branch: `gcp-s2s` (main baseline `8d344e3051270565d6057fba904fcf8692afa783`).
 Qualification branch: `gcp-s2s-qualification`.
 Decision record: [S-GCP-S2S-decisions.md](S-GCP-S2S-decisions.md).
@@ -270,3 +270,8 @@ Actual063 completed source-bound observation after ordinary policy inputs and th
 ### Cutover stopped; initial strict create gate refused
 
 Normal9c3 stop observed exit0/SAD0/no daemons and preserved retained state. First create-start refused before creation because actual six permit sets had not yet expired; the strict qualifier correctly required true emptiness. GET-only reconciliation observed old stopped/new null. Public hash/count archive preserves this checkpoint; gateway start/cutover remain unaccepted until a later complete gate.
+
+
+### Current owned gateway0249 started; readiness pending
+
+Normal create/start completed after a fresh strict gate, following the preserved initial live-permit refusal. Exact public startup measurement43345e binds source0249/imagec0ca/CIDf15e/node21074, same enrollment/boot/namespace and measured HA6/7/Classic20/SAD6. Full current guard, payload, cutover readiness, rekey and fault are not accepted by this measurement. Prior9c3 acceptance remains historical; production publication is separate.
