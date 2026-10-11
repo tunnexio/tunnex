@@ -1,0 +1,97 @@
+[
+  {
+    "file": "ha-dns-app-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-app-v1.json",
+    "sha256": "30a67c9721a9b6e8bc92aa809755708c3aa3b9441a80f8a8fcbb42aba88ef966"
+  },
+  {
+    "file": "ha-dns-app-v1.jsonl",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-app-v1.jsonl",
+    "sha256": "2a08aa68a9026a359a5e68d87712aeb2db5fc898cb51ace511cb0a51fb0a5565"
+  },
+  {
+    "file": "ha-dns-app-before-tcp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-app-before-tcp-guard-v1.json",
+    "sha256": "e076d5910e3e71693a07dca056deb1ba1871f3e59ae0f41ac891512f61ad1f25"
+  },
+  {
+    "file": "ha-dns-app-before-udp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-app-before-udp-guard-v1.json",
+    "sha256": "5dc434b80e2f5845ca120e48d8f7b5396776bc722e4928790d59ee1e34bb897f"
+  },
+  {
+    "file": "ha-dns-app-after-tcp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-app-after-tcp-guard-v1.json",
+    "sha256": "1c636e6b7a3343118362b8a8c47bc6a8abb73f25b3ff528265e8120da0b4fdf0"
+  },
+  {
+    "file": "ha-dns-app-after-udp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-app-after-udp-guard-v1.json",
+    "sha256": "a4ed1b98b29cb395865bfd1d9be13c1c78f78fa6a42d1ab5fb15d686fa6ff48c"
+  },
+  {
+    "file": "ha-dns-alias-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-alias-v1.json",
+    "sha256": "1ee3022f67b36bda7f23db4e9fd6b5c060b39b219a179992ef9cf2263c1c187d"
+  },
+  {
+    "file": "ha-dns-alias-v1.jsonl",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-alias-v1.jsonl",
+    "sha256": "9351ec0fed206baa5c09e5bec8a8144eaf6e513b7575d9eadb470bf3fa3df641"
+  },
+  {
+    "file": "ha-dns-alias-before-tcp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-alias-before-tcp-guard-v1.json",
+    "sha256": "447a4510e65a63b55e53d5a5f1e331e2da0486bd8e30f460e20ea2769c512392"
+  },
+  {
+    "file": "ha-dns-alias-before-udp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-alias-before-udp-guard-v1.json",
+    "sha256": "fe93037167c4eb23cb643fd0a1fcbf5ab3a37a4ddef71c478271d5ad3ecb11b4"
+  },
+  {
+    "file": "ha-dns-alias-after-tcp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-alias-after-tcp-guard-v1.json",
+    "sha256": "f4016ade56874145b79f9266dc223b9af472fa38ac1570b1d0c1853e7f3e5cbd"
+  },
+  {
+    "file": "ha-dns-alias-after-udp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-alias-after-udp-guard-v1.json",
+    "sha256": "218b970498d8c40fc6daccde2e5efa349f1a78258543166f703ca6b2a51c1135"
+  },
+  {
+    "file": "ha-dns-nx-qualification-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-nx-qualification-v1.json",
+    "sha256": "bbddfe64518fd3ca0fc9a5a97afce055cab0c6bbc2c89a98be0de0c1e349e1b5"
+  },
+  {
+    "file": "ha-dns-nx-qualification-v1.jsonl",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-nx-qualification-v1.jsonl",
+    "sha256": "99cba243c0626a26a1c23f5f8f5fe1053fb1b7f0682ba9d953015ff62488b65e"
+  },
+  {
+    "file": "ha-dns-nx-qualification-before-tcp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-nx-qualification-before-tcp-guard-v1.json",
+    "sha256": "37da8dcd7852cc26cd2eb82059e6bdca899071f6524d6ebd1a148b22db7edb38"
+  },
+  {
+    "file": "ha-dns-nx-qualification-before-udp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-nx-qualification-before-udp-guard-v1.json",
+    "sha256": "55b50f4f66a0b3a81427735ee53777a20fb7f34034ca85bc750214e8d88025a3"
+  },
+  {
+    "file": "ha-dns-nx-qualification-after-tcp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-nx-qualification-after-tcp-guard-v1.json",
+    "sha256": "976a48b3b7485c2f4a02df7d83e8e9098dde8b12fce6d542f0eff972aacddb7e"
+  },
+  {
+    "file": "ha-dns-nx-qualification-after-udp-guard-v1.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/ha-dns-nx-qualification-after-udp-guard-v1.json",
+    "sha256": "a8bf0beaacadb3f772b26f70026524d99e9a56653e3d032894ce61783d065f75"
+  },
+  {
+    "file": "071-poststart-fqdn-generations.jsonl",
+    "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/071-poststart-fqdn-generations.jsonl",
+    "sha256": "28b097750fba00cdbb87a21b2be8b68a4b69411e2e1487544bf3cbb7fdb354fa"
+  }
+]
