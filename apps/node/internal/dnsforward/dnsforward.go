@@ -257,6 +257,10 @@ func (f *Forwarder) AppliedK8sState() AppliedK8sState {
 // handle answers one query from src. Not-in-table -> REFUSED (scoped). In-table -> relay to the resolver;
 // resolver error -> SERVFAIL (fail-static, tunnel untouched). Over the rate limit -> dropped (nil, no reply).
 func (f *Forwarder) handle(query []byte, src netip.Addr) []byte {
+	return f.handleTransport(query, src, "udp")
+}
+
+func (f *Forwarder) handleTransport(query []byte, src netip.Addr, transport string) []byte {
 	if !f.allow(src) {
 		return nil // rate-limited: drop silently
 	}
@@ -286,7 +290,7 @@ func (f *Forwarder) handle(query []byte, src netip.Addr) []byte {
 	// A declared private zone remains authoritative routing even when its
 	// connection is disabled or its lease has expired. Never fall through to a
 	// conflicting LAN rule, host DNS or public resolver on transport failure.
-	if privateResp, handled := f.answerResolverProfile(hdr.ID, query, q, src); handled {
+	if privateResp, handled := f.answerResolverProfile(hdr.ID, query, q, src, transport); handled {
 		return privateResp
 	}
 	res, ok := f.tbl.Load().match(q.Name.String())
