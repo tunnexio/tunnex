@@ -1,0 +1,16 @@
+{
+  "actual_unqualified_capture_sha256": "da43c3f7c01159cb94e1f70424060e77913f565b3712eaa9767a6cc121cbfb1c",
+  "baseline_sha256": "757a1be9d117ba85239d945ce0ab6b0928403953c0dfba45401fb7d739ce9784",
+  "current_normal_baseline_sha256": "1c7dc7ed92f94012059ac677acd07da931d8d26a5112dcf79e11691d53648c1d",
+  "egress_source_sha256": "52f892663107fe0bcc881a3f34dec662f0b8a6e68a1175d09c51d06ca1a39d7e",
+  "new_objects": 24,
+  "normal_input_verified": true,
+  "old_nft_sha256": "1a790f1d5c37294751dda085478f66d063bf62f1b7c9c0cd933cf0d21757e1f5",
+  "old_objects": 22,
+  "other22_order_and_semantics_exact": true,
+  "scope": "offline source qualification of complete WG schema only; no runtime/authority/teardown acceptance; raw handles retained in separate runtime digest",
+  "source_commit": "9c3ab006c13b72285f43baed1805da1af273ffa7",
+  "whole_runtime_wg_sha256": "dfb078b17bb19e6cf4c6b38a07010faa08ca7ca1caf1f5e74435c06441eb3dd3",
+  "whole_schema_sha256": "ac14e9cd861b3260b0c30599fe02b8d4cc9730a5b0e1967cb9e0bb1e0382639e",
+  "original_proof_sha256": "3678eb0404b2e538e37c0b123d39d50a2c697fb8aa484d0e81f9b1c775fd85fe"
+}

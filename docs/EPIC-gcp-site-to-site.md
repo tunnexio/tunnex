@@ -260,3 +260,8 @@ Normal desired7 applied, fresh allocation index20 and production-parsed native i
 ### Isolated browser CAS accepted; historical helper failures retained
 
 Actual first Save200 and stale second Save409 cleared the draft. Normal Delete finalized the new never-enabled fixture at revision3. GET-only reconciliation accepted exact metadata-only configuration200 and full baseline preservation after excluding only the verified owned tombstone; current inventory retains10 connections. Original UI-v1 overallfalse and readonly-v2 SDK-validation failure remain immutable. Human-owned tabs stayed untouched. Strict cutover captures059/060 failed and061 is unqualified; source-preservation proof, restart/rekey/fault remain separate.
+
+
+### Strict current WG24 source qualification
+
+Actual063 completed source-bound observation after ordinary policy inputs and the exact whole24-object renderer schema were qualified offline; earlier059/060 failures and061 unqualified observation remain unchanged. Public hash-only summaries preserve source/runtime/foreign identity without whole NFT or logs. Phased cutover, rekey and fault qualification remain open; schema qualification alone grants no teardown or native authority.
