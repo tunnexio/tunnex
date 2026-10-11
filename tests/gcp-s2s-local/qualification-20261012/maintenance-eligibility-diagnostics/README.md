@@ -4,4 +4,4 @@ The earlier 5dc gateway recorded two active-context `maintenance_eligibility` re
 
 All 22 focused maintenance/control tests passed in 25.538474750 seconds with no failures or skips. Actual controller regressions prove that normal marked FQDN revocation removes only Classic authority before fallback, and that one changed environment field prevents Classic renewal while HA remains eligible. These models distinguish mechanisms; they do not identify the live predicate.
 
-The diagnostic successor has not yet been deployed. GCP-9 and GCP-10 remain open at scoped 9/11.
+Historical checkpoint: at the time of this focused qualification the diagnostic successor had not yet been deployed. The actual 5121 deployment, accepted TCP cycle and current story status are recorded in [current readiness](../current-5121-readiness/README.md). This earlier receipt remains unchanged.

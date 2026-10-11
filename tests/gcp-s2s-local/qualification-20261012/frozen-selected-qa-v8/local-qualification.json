@@ -1,0 +1,9 @@
+{
+  "completed": true,
+  "tests": 11,
+  "source_before_after_equal": true,
+  "receipt_sha256": "19043270524228f7e32418e0d41a6938dbdc93e6eb1e73a109503410fb0a27ce",
+  "production_changed": false,
+  "live_acceptance_inferred": false,
+  "log_sha256": "4b8864efd376f201a786f8ca5f0c4bde6e8a8bf9b793fae9111b3e69d5566d5d"
+}
