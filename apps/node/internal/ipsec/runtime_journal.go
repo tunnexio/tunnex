@@ -28,6 +28,7 @@ const (
 	RuntimeReserved        RuntimePhase = "reserved"
 	RuntimeApplying        RuntimePhase = "applying"
 	RuntimeApplied         RuntimePhase = "applied"
+	RuntimeQuiesced        RuntimePhase = "quiesced"
 	RuntimeCleanupPending  RuntimePhase = "cleanup_pending"
 	RuntimeRetainedRefusal RuntimePhase = "retained_refusal"
 )
@@ -236,7 +237,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11 && p.Version != 12) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -252,6 +253,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 		return false
 	}
 	for _, r := range p.Entries {
+		if r.Phase == RuntimeQuiesced && (p.Version < 12 || !validQuiescedEntry(r)) {
+			return false
+		}
 		if (r.ContractVersion == 4 && p.Version < 10) || !validClassicJournal(r) {
 			return false
 		}
@@ -297,7 +301,7 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 			return false
 		}
 		switch r.Phase {
-		case RuntimeReserved, RuntimeApplying, RuntimeApplied:
+		case RuntimeReserved, RuntimeApplying, RuntimeApplied, RuntimeQuiesced:
 			if r.CleanupID != uuid.Nil || r.CleanupDesiredRevision != 0 || r.CoveredDeliveryRevision != 0 {
 				return false
 			}
@@ -312,8 +316,17 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 11 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11) {
+	if next.Version < old.Version || next.Version > 12 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11 && next.Version != 12) {
 		return false
+	}
+	if next.Version == 12 && old.Version < 12 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.Phase == RuntimeQuiesced
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 11 && old.Version < 11 {
 		upgrade := false
@@ -470,7 +483,16 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		if before.Phase == RuntimeRetainedRefusal && !reflect.DeepEqual(before, after) {
 			return false
 		}
-		allowed := before.Phase == after.Phase || (before.Phase == RuntimeReserved && after.Phase == RuntimeApplying) || (before.Phase == RuntimeApplying && after.Phase == RuntimeApplied) || (before.Phase != RuntimeRetainedRefusal && after.Phase == RuntimeCleanupPending) || (before.Phase == RuntimeCleanupPending && after.Phase == RuntimeRetainedRefusal)
+		if after.Phase == RuntimeQuiesced && (before.Observed != after.Observed || !validQuiescedEntry(after)) {
+			return false
+		}
+		if before.Phase == RuntimeQuiesced && after.Phase == RuntimeQuiesced && !reflect.DeepEqual(before, after) {
+			return false
+		}
+		if before.Phase == RuntimeQuiesced && after.Phase == RuntimeApplying && after.Observed != ([2]Ownership{}) {
+			return false
+		}
+		allowed := (before.Phase == RuntimeApplied && after.Phase == RuntimeQuiesced) || (before.Phase == RuntimeQuiesced && after.Phase == RuntimeApplying) || before.Phase == after.Phase || (before.Phase == RuntimeReserved && after.Phase == RuntimeApplying) || (before.Phase == RuntimeApplying && after.Phase == RuntimeApplied) || (before.Phase != RuntimeRetainedRefusal && after.Phase == RuntimeCleanupPending) || (before.Phase == RuntimeCleanupPending && after.Phase == RuntimeRetainedRefusal)
 		if !allowed || after.CleanupDesiredRevision < before.CleanupDesiredRevision || after.CoveredDeliveryRevision < before.CoveredDeliveryRevision {
 			return false
 		}
@@ -493,6 +515,9 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
+		if entry.Phase == RuntimeQuiesced && next.Version < 12 {
+			next.Version = 12
+		}
 		if entry.AzureBGPRecreationVersion == 1 && next.Version < 11 {
 			next.Version = 11
 		}

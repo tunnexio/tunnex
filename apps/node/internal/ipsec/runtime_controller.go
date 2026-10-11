@@ -178,7 +178,7 @@ func (c *RuntimeController) Start(ctx context.Context) error {
 		}
 	}
 	for _, entry := range entries {
-		if entry.ContractVersion == 3 {
+		if entry.ContractVersion == 3 && entry.Phase != RuntimeQuiesced {
 			ns, err := c.namespace()
 			if err != nil {
 				return ErrRuntimeController

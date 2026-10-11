@@ -13,6 +13,11 @@ func (c *RuntimeController) proveAzureBGPDutiesAbsent(ctx context.Context, e Run
 	if e.Phase != RuntimeRetainedRefusal || !validBGPProcess(e) || !validBGPRoutes(e) || !validRestoration(e) {
 		return ErrRuntimeController
 	}
+	return c.proveStoppedBGPDutiesAbsent(ctx, e)
+}
+
+// Shared BGP absence proof; callers independently establish the negative phase.
+func (c *RuntimeController) proveStoppedBGPDutiesAbsent(ctx context.Context, e RuntimeJournalEntry) error {
 	boot, err := resetBootID()
 	if err != nil {
 		return ErrRuntimeController

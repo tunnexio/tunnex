@@ -467,6 +467,13 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	if err != nil {
 		return fail()
 	}
+	if e.Phase == RuntimeQuiesced {
+		stage = "quiesced_transport"
+		if c.reserveQuiescedApply(ctx, entries, pos, authority, identity) != nil {
+			return fail()
+		}
+		e = entries[pos]
+	}
 	if c.bgpStaged == nil {
 		c.bgpStaged = map[uuid.UUID]bool{}
 	}

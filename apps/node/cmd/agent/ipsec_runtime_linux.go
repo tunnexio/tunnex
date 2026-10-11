@@ -71,6 +71,11 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		qualified := false
 		var bgpRetry bgpQualificationRetry
 		defer func() {
+			if controller != nil && process != nil && ctx.Err() != nil {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+				result = errors.Join(result, controller.Quiesce(stopCtx, process.Close))
+				cancel()
+			}
 			if process != nil {
 				result = errors.Join(result, process.Close())
 			}
