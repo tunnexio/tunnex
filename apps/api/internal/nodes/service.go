@@ -2162,18 +2162,19 @@ type AppliedPolicy struct {
 	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
-	IPsecConfigVersion             int    `json:"ipsec_config_version"`
-	IPsecRecoveryVersion           int    `json:"ipsec_recovery_version"`
-	IPsecGCPClassicVersion         int    `json:"ipsec_gcp_classic_version"`
-	IPsecGCPHAVersion              int    `json:"ipsec_gcp_ha_version"`
-	IPsecAzureBGPRecreationVersion int    `json:"ipsec_azure_bgp_recreation_version"`
-	IPsecFQDNPolicyVersion         int    `json:"ipsec_fqdn_policy_version"`
-	IPsecAzureVersion              int    `json:"ipsec_azure_version"`
-	IPsecBGPVersion                int    `json:"ipsec_bgp_version"`
-	IPsecRetainedGuardVersion      int    `json:"ipsec_retained_guard_version"`
-	Version                        int    `json:"policy_version"`
-	Hash                           string `json:"policy_hash"`
-	Error                          string `json:"policy_error"`
+	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
+	IPsecRecoveryVersion               int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion             int    `json:"ipsec_gcp_classic_version"`
+	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
+	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
+	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
+	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
+	IPsecBGPVersion                    int    `json:"ipsec_bgp_version"`
+	IPsecRetainedGuardVersion          int    `json:"ipsec_retained_guard_version"`
+	Version                            int    `json:"policy_version"`
+	Hash                               string `json:"policy_hash"`
+	Error                              string `json:"policy_error"`
 	// FailingSince (RFC3339, empty when healthy) is the agent-reported mismatch
 	// onset: when apply FIRST started failing. The stale alarm measures from here,
 	// so a normal push that applies cleanly never registers stale (finding #3).
@@ -2266,6 +2267,9 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureProfileRecreationVersion != 1 {
+		applied.IPsecAzureProfileRecreationVersion = 0
+	}
 	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecBGPVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureBGPRecreationVersion != 1 {
 		applied.IPsecAzureBGPRecreationVersion = 0
 	}
@@ -2300,35 +2304,36 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
 	caps, err := json.Marshal(map[string]any{
-		"ai_vpn_http_ready":                  applied.AIVPNHTTPReady,
-		"ai_vpn_http_address":                applied.AIVPNHTTPAddress,
-		"ipsec_config_version":               applied.IPsecConfigVersion,
-		"ipsec_recovery_version":             applied.IPsecRecoveryVersion,
-		"ipsec_bgp_version":                  applied.IPsecBGPVersion,
-		"ipsec_gcp_classic_version":          applied.IPsecGCPClassicVersion,
-		"ipsec_gcp_ha_version":               applied.IPsecGCPHAVersion,
-		"ipsec_azure_version":                applied.IPsecAzureVersion,
-		"ipsec_azure_bgp_recreation_version": applied.IPsecAzureBGPRecreationVersion,
-		"ipsec_fqdn_policy_version":          applied.IPsecFQDNPolicyVersion,
-		"ipsec_retained_guard_version":       applied.IPsecRetainedGuardVersion,
-		"egress_nat":                         egressNAT,
-		"egress_ipv6":                        egressIPv6,
-		"policy_version":                     applied.Version,
-		"policy_hash":                        applied.Hash,
-		"policy_error":                       applied.Error,
-		"policy_failing_since":               applied.FailingSince,
-		"policy_refused_version":             applied.RefusedVersion,
-		"site_link_stale":                    applied.SiteLinkStale, // VESTIGIAL (WF-B D-WFB-1b): still reported+persisted for backward-compat, but NO LONGER CONSUMED — the CP derives site-link health from the ONE liveness derivation (fillSiteLinkVerdict). Retire or re-adopt deliberately in an agent-vN; do not silently resurrect.
-		"site_subnet_unreachable":            applied.SiteSubnetUnreachable,
-		"conntrack_flush_unavailable":        applied.ConntrackFlushUnavailable,
-		"k8s_endpoints_unavailable":          applied.K8sEndpointsUnavailable,
-		"max_policy_version":                 applied.MaxSupportedVersion,
-		"ovpn_health":                        applied.OVPNHealth, // S9.1 4d
-		"dns_resolve_rpc_version":            applied.DNSResolveRPCVersion,
-		"dns_ipsec_resolve_version":          applied.DNSIPsecResolveVersion,
-		"flow_log_state":                     applied.FlowLogState,
-		"flow_log_last_observed_at":          applied.FlowLogLastObservedAt,
-		"flow_log_last_delivered_at":         applied.FlowLogLastDeliveredAt,
+		"ai_vpn_http_ready":                      applied.AIVPNHTTPReady,
+		"ai_vpn_http_address":                    applied.AIVPNHTTPAddress,
+		"ipsec_config_version":                   applied.IPsecConfigVersion,
+		"ipsec_recovery_version":                 applied.IPsecRecoveryVersion,
+		"ipsec_bgp_version":                      applied.IPsecBGPVersion,
+		"ipsec_gcp_classic_version":              applied.IPsecGCPClassicVersion,
+		"ipsec_gcp_ha_version":                   applied.IPsecGCPHAVersion,
+		"ipsec_azure_version":                    applied.IPsecAzureVersion,
+		"ipsec_azure_bgp_recreation_version":     applied.IPsecAzureBGPRecreationVersion,
+		"ipsec_azure_profile_recreation_version": applied.IPsecAzureProfileRecreationVersion,
+		"ipsec_fqdn_policy_version":              applied.IPsecFQDNPolicyVersion,
+		"ipsec_retained_guard_version":           applied.IPsecRetainedGuardVersion,
+		"egress_nat":                             egressNAT,
+		"egress_ipv6":                            egressIPv6,
+		"policy_version":                         applied.Version,
+		"policy_hash":                            applied.Hash,
+		"policy_error":                           applied.Error,
+		"policy_failing_since":                   applied.FailingSince,
+		"policy_refused_version":                 applied.RefusedVersion,
+		"site_link_stale":                        applied.SiteLinkStale, // VESTIGIAL (WF-B D-WFB-1b): still reported+persisted for backward-compat, but NO LONGER CONSUMED — the CP derives site-link health from the ONE liveness derivation (fillSiteLinkVerdict). Retire or re-adopt deliberately in an agent-vN; do not silently resurrect.
+		"site_subnet_unreachable":                applied.SiteSubnetUnreachable,
+		"conntrack_flush_unavailable":            applied.ConntrackFlushUnavailable,
+		"k8s_endpoints_unavailable":              applied.K8sEndpointsUnavailable,
+		"max_policy_version":                     applied.MaxSupportedVersion,
+		"ovpn_health":                            applied.OVPNHealth, // S9.1 4d
+		"dns_resolve_rpc_version":                applied.DNSResolveRPCVersion,
+		"dns_ipsec_resolve_version":              applied.DNSIPsecResolveVersion,
+		"flow_log_state":                         applied.FlowLogState,
+		"flow_log_last_observed_at":              applied.FlowLogLastObservedAt,
+		"flow_log_last_delivered_at":             applied.FlowLogLastDeliveredAt,
 	})
 	if err != nil {
 		return err
@@ -2396,20 +2401,21 @@ type NodeCapabilities struct {
 	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
 	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
 	// Freshness is the server-written policy_reported_at on the same node row.
-	IPsecConfigVersion             int    `json:"ipsec_config_version"`
-	IPsecRecoveryVersion           int    `json:"ipsec_recovery_version"`
-	IPsecGCPClassicVersion         int    `json:"ipsec_gcp_classic_version"`
-	IPsecGCPHAVersion              int    `json:"ipsec_gcp_ha_version"`
-	IPsecAzureBGPRecreationVersion int    `json:"ipsec_azure_bgp_recreation_version"`
-	IPsecFQDNPolicyVersion         int    `json:"ipsec_fqdn_policy_version"`
-	IPsecAzureVersion              int    `json:"ipsec_azure_version"`
-	IPsecBGPVersion                int    `json:"ipsec_bgp_version"`
-	IPsecRetainedGuardVersion      int    `json:"ipsec_retained_guard_version"`
-	EgressNAT                      bool   `json:"egress_nat"`
-	EgressIPv6                     bool   `json:"egress_ipv6"`
-	PolicyVersion                  int    `json:"policy_version"`
-	PolicyHash                     string `json:"policy_hash"`
-	PolicyError                    string `json:"policy_error"`
+	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
+	IPsecRecoveryVersion               int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion             int    `json:"ipsec_gcp_classic_version"`
+	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
+	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
+	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
+	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
+	IPsecBGPVersion                    int    `json:"ipsec_bgp_version"`
+	IPsecRetainedGuardVersion          int    `json:"ipsec_retained_guard_version"`
+	EgressNAT                          bool   `json:"egress_nat"`
+	EgressIPv6                         bool   `json:"egress_ipv6"`
+	PolicyVersion                      int    `json:"policy_version"`
+	PolicyHash                         string `json:"policy_hash"`
+	PolicyError                        string `json:"policy_error"`
 	// PolicyFailingSince (RFC3339) is the agent-reported mismatch ONSET: when apply
 	// first started failing (empty when healthy). The stale window measures from
 	// here, not the applied-hash age -- so a normal push never false-alarms (#3).

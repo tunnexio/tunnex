@@ -43,9 +43,9 @@ func TestAgentAzureReportCapabilityPropagation(t *testing.T) {
 		name, fields    string
 		azure, bgp, gcp bool
 	}{
-		{"supported", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_gcp_classic_version":1,"ipsec_gcp_ha_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":1`, true, true, true},
-		{"future recreation", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":2`, true, true, false},
-		{"missing retained", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_azure_bgp_recreation_version":1`, true, true, false},
+		{"supported", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_gcp_classic_version":1,"ipsec_gcp_ha_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":1,"ipsec_azure_profile_recreation_version":1`, true, true, true},
+		{"future recreation", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":2,"ipsec_azure_profile_recreation_version":2`, true, true, false},
+		{"missing retained", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_azure_bgp_recreation_version":1,"ipsec_azure_profile_recreation_version":1`, true, true, false},
 		{"static only", `,"ipsec_config_version":1,"ipsec_azure_version":1`, true, false, false},
 		{"omitted", `,"ipsec_config_version":1,"ipsec_bgp_version":1`, false, false, false},
 		{"future", `,"ipsec_config_version":1,"ipsec_azure_version":2,"ipsec_bgp_version":1`, false, false, false},
@@ -65,6 +65,9 @@ func TestAgentAzureReportCapabilityPropagation(t *testing.T) {
 				t.Fatal(err)
 			}
 			caps := nodes.Capabilities(raw)
+			if (caps.IPsecAzureProfileRecreationVersion == 1) != (tc.name == "supported") {
+				t.Fatal("profile recreation heartbeat propagation")
+			}
 			if (caps.IPsecAzureBGPRecreationVersion == 1) != (tc.name == "supported") {
 				t.Fatal("recreation heartbeat propagation")
 			}

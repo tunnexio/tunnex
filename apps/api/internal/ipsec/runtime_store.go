@@ -28,17 +28,18 @@ type runtimeState struct {
 	cleanup                     *uuid.UUID
 }
 type runtimeLocked struct {
-	connection                 Connection
-	state                      runtimeState
-	enabled                    bool
-	eligible                   bool
-	recoveryEligible           bool
-	bgpEligible                bool
-	gcpHAEligible              bool
-	azureEligible              bool
-	gcpClassicEligible         bool
-	retainedGuardEligible      bool
-	azureBGPRecreationEligible bool
+	connection                     Connection
+	state                          runtimeState
+	enabled                        bool
+	eligible                       bool
+	recoveryEligible               bool
+	bgpEligible                    bool
+	gcpHAEligible                  bool
+	azureEligible                  bool
+	gcpClassicEligible             bool
+	retainedGuardEligible          bool
+	azureBGPRecreationEligible     bool
+	azureProfileRecreationEligible bool
 }
 
 func runtimeRevision(p *int64) int64 {
@@ -120,6 +121,7 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	out.azureEligible = out.eligible && string(capability["ipsec_azure_version"]) == "1"
 	out.retainedGuardEligible = out.eligible && retainedGuardCapability(caps)
 	out.azureBGPRecreationEligible = out.eligible && azureBGPRecreationCapability(caps)
+	out.azureProfileRecreationEligible = out.eligible && azureProfileRecreationCapability(caps)
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
 		return fail(createError(e))

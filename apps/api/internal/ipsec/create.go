@@ -164,6 +164,11 @@ func (s *ConnectionStore) createDisabled(ctx context.Context, org, actor uuid.UU
 		if len(predecessors) > 0 && (!retainedGuardCapability(capabilities) || provider.ProfileID == AzureActiveActiveBGPProfile && !azureBGPRecreationCapability(capabilities)) {
 			return Connection{}, ErrConnectionIneligible
 		}
+		for _, predecessor := range predecessors {
+			if predecessor.crossProfile && !azureProfileRecreationCapability(capabilities) {
+				return Connection{}, ErrConnectionIneligible
+			}
+		}
 		statement = `INSERT INTO ipsec_connections AS c(id,org_id,name,site_id,gateway_node_id,historical_site_id,historical_gateway_node_id,provider_profile) VALUES($1,$2,$3,$4,$5,$4,$5,$6) RETURNING ` + connectionColumns
 	}
 	args := []any{r.ID, org, r.Name, site, gateway}

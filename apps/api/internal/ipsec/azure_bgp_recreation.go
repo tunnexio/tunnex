@@ -72,7 +72,10 @@ func azureBGPRecreationCapability(raw []byte) bool {
 }
 func (l runtimeLocked) recreationEligible(m RuntimeManifest) bool {
 	if len(m.RetainedGuardPredecessors) == 0 {
-		return m.AzureBGPRecreationVersion == nil
+		return m.AzureBGPRecreationVersion == nil && m.AzureProfileRecreationVersion == nil
+	}
+	if m.AzureProfileRecreationVersion != nil {
+		return isAzureProfile(m.ProfileID) && *m.AzureProfileRecreationVersion == 1 && m.AzureBGPRecreationVersion == nil && l.retainedGuardEligible && l.azureProfileRecreationEligible
 	}
 	if m.ProfileID == AzureActiveActiveBGPProfile {
 		return m.AzureBGPRecreationVersion != nil && *m.AzureBGPRecreationVersion == 1 && l.retainedGuardEligible && l.azureBGPRecreationEligible
