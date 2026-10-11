@@ -27,6 +27,10 @@ CUSTOM=('169.254.21.2','169.254.22.2')
 
 
 def now():return datetime.now(timezone.utc)
+def fresh(value,clock):
+ if not isinstance(value,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})',value):raise ValueError('strict receipt timestamp')
+ normalized=re.sub(r'\.(\d{1,9})(?=Z|[+-])',lambda m:'.'+(m[1]+'000000')[:6],value).replace('Z','+00:00')
+ if not 0<=(clock-datetime.fromisoformat(normalized)).total_seconds()<=60:raise ValueError('stale receipt')
 def digest(value):return common.digest(value)
 
 def output_parent(path):
@@ -76,6 +80,29 @@ def target(baseline):
  return value
 
 
+def restore_payload(baseline):
+ gateway(baseline,True)
+ configs=[]
+ for config in baseline['ipConfigurations']:
+  # Only reviewed writable fields; never replay ARM etags/provisioning metadata.
+  if set(config)-{'id','name','subnet','publicIPAddress','privateIPAllocationMethod','etag','provisioningState'}:raise ValueError('unreviewed restoration IP configuration field')
+  for key in ('subnet','publicIPAddress'):
+   if set(config[key])!={'id'}:raise ValueError('unreviewed restoration subresource')
+  configs.append({key:copy.deepcopy(config[key]) for key in ('name','subnet','publicIPAddress','privateIPAllocationMethod')})
+ peers=[{'ipconfigurationId':peer['ipconfigurationId'],'customBgpIpAddresses':copy.deepcopy(peer['customBgpIpAddresses'])} for peer in baseline['bgpSettings']['bgpPeeringAddresses']]
+ return configs,peers
+
+
+def restoration_binding(current,original):
+ # Root independently attests the current disabled successor; historical original
+ # identity remains distinct, and all Site/node/namespace coordinates stay exact.
+ if not isinstance(current,dict) or set(current)!=set(original)|{'original_connection_id'} or current['original_connection_id']!=original['connection_id']:raise ValueError('restoration lineage binding')
+ for key,value in original.items():
+  if key!='connection_id' and current.get(key)!=value:raise ValueError('restoration ownership/namespace')
+ if str(uuid.UUID(current['connection_id']))!=current['connection_id']:raise ValueError('current allocated UUID')
+ return {key:current[key] for key in original}
+
+
 def bindings():
  if lab.az('account','show','--query','id')!=lab.SUBSCRIPTION:raise ValueError('authorized subscription')
  lab.owned(lab.az('group','show','-n',lab.RG,'--subscription',lab.SUBSCRIPTION,'--query','{id:id,owner:tags.owner}'),'/subscriptions/'+lab.SUBSCRIPTION+'/resourceGroups/'+lab.RG)
@@ -97,7 +124,7 @@ def bindings():
 
 def evidence(cleanup,native,native_bytes,native_hash,expected,clock):
  if not isinstance(native_hash,str) or not re.fullmatch('[0-9a-f]{64}',native_hash) or hashlib.sha256(native_bytes).hexdigest()!=native_hash:raise ValueError('native bytes digest')
- helpers.fresh(cleanup['observed_at'],clock);helpers.fresh(native['observed_at'],clock)
+ fresh(cleanup['observed_at'],clock);fresh(native['observed_at'],clock)
  cp=cleanup['connection']
  if cleanup.get('phase') not in ('read','disable') or cleanup.get('cleanup_readback_settled') is not True or cp.get('desired_intent')!='disabled' or cp.get('application_state')!='not_applied' or cp.get('cleanup_state') not in ('not_required','retained_guard') or type(cp.get('desired_revision'))!=int or cp['desired_revision']<1:raise ValueError('normal cleanup not settled')
  if cp.get('id')!=expected['connection_id']:raise ValueError('CP connection mismatch')
@@ -154,7 +181,7 @@ def run(phase,state_path,expected,cleanup=None,native=None,native_bytes=None,nat
   common.private_write(state_path,state)
  else:
   state=json.loads(helpers.private_read(state_path))
-  if state.get('version')!=1 or state.get('kind')!='owned_standby_conversion' or state.get('gateway_id')!=GATEWAY or state.get('owner')!=lab.OWNER or state.get('subscription')!=lab.SUBSCRIPTION or state.get('stage') not in ('prepared','apply_sent','converted'):raise ValueError('state binding')
+  if state.get('version')!=1 or state.get('kind')!='owned_standby_conversion' or state.get('gateway_id')!=GATEWAY or state.get('owner')!=lab.OWNER or state.get('subscription')!=lab.SUBSCRIPTION or state.get('stage') not in ('prepared','apply_sent','converted','restore_sent','restored'):raise ValueError('state binding')
   if state['baseline_file']!=state_path.name+'.gateway-original.json':raise ValueError('snapshot path')
   raw=helpers.private_read(state_path.with_name(state['baseline_file']))
   if hashlib.sha256(raw).hexdigest()!=state['baseline_sha256']:raise ValueError('snapshot digest')
@@ -182,6 +209,25 @@ def run(phase,state_path,expected,cleanup=None,native=None,native_bytes=None,nat
    connection=bindings()
    if connection!=state['connection']:raise ValueError('postupdate connection changed')
    unused,actual=raw_read_gateway();result=classify(actual,baseline)
+  if phase=='restore':
+   if state['stage'] not in ('apply_sent','converted') or result not in ('original_aa','preserved_as'):raise ValueError('restoration boundary; reconcile only')
+   current_binding=restoration_binding(expected,state['expected'])
+   revision=evidence(cleanup,native,native_bytes,native_hash,current_binding,now())
+   if result=='preserved_as':
+    if lab.az('version').get('azure-cli')!='2.91.0':raise ValueError('reviewed CLI version required')
+    configs,mapping=restore_payload(baseline)
+    reserve_bytes(state_path.with_name(state_path.name+'.restore-reserved'),json.dumps({'version':1,'kind':'owned_standby_single_restore','reserved_at':now().isoformat(),'disabled_revision':revision,'current_connection_id':current_binding['connection_id'],'native_receipt_sha256':native_hash,'baseline_sha256':state['baseline_sha256']}).encode())
+    state.update(stage='restore_sent',restore_sent_at=now().isoformat(),restore_connection_id=current_binding['connection_id']);common.private_write(state_path,state)
+    evidence(cleanup,native,native_bytes,native_hash,current_binding,now())
+    # One narrow topology update, preserving both existing owned PIP resources.
+    returned=lab.az('network','vnet-gateway','update','--ids',GATEWAY,'--subscription',lab.SUBSCRIPTION,'--set','activeActive=true','ipConfigurations='+json.dumps(configs,separators=(',',':')),'bgpSettings.bgpPeeringAddresses='+json.dumps(mapping,separators=(',',':')),'--no-wait','--query','id')
+    if not isinstance(returned,str) or returned.lower()!=GATEWAY.lower():raise ValueError('ambiguous restoration response; reconcile only')
+    if bindings()!=state['connection']:raise ValueError('postrestore connection/LNG changed')
+    unused,actual=raw_read_gateway();result=classify(actual,baseline)
+   if result=='original_aa':
+    state['stage']='restored';state['restored_observed_at']=now().isoformat();common.private_write(state_path,state)
+  if phase in ('read','reconcile') and state['stage']=='restore_sent' and result=='original_aa':
+   state['stage']='restored';state['restored_observed_at']=now().isoformat();common.private_write(state_path,state)
   if result=='preserved_as' and state['stage']=='apply_sent':
    state['stage']='converted';state['completed_observed_at']=now().isoformat();common.private_write(state_path,state)
   return {'version':1,'phase':phase,'stage':state['stage'],'observed_at':now().isoformat(),'gateway_classification':result,'baseline_sha256':state['baseline_sha256'],'retained_configuration':NAMES[0],'retained_custom_apipa':CUSTOM[0],'unused_public_ip_retained':True,'scope':'Topology/property readback only; no tunnel, BGP, DNS or packet readiness'}
@@ -189,14 +235,14 @@ def run(phase,state_path,expected,cleanup=None,native=None,native_bytes=None,nat
 
 
 def main():
- parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('phase',choices=('prepare','apply','read','reconcile'));parser.add_argument('--state',type=Path,required=True);parser.add_argument('--binding',type=Path);parser.add_argument('--cleanup',type=Path);parser.add_argument('--native',type=Path);parser.add_argument('--native-sha256');parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('phase',choices=('prepare','apply','read','reconcile','restore'));parser.add_argument('--state',type=Path,required=True);parser.add_argument('--binding',type=Path);parser.add_argument('--cleanup',type=Path);parser.add_argument('--native',type=Path);parser.add_argument('--native-sha256');parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
  if socket.gethostname()!='bastion-host':raise ValueError('bastion hostname required')
  output_parent(args.output)
- expected=json.loads(helpers.private_read(args.binding)) if args.phase=='prepare' and args.binding else None
- if args.phase=='prepare' and expected is None:raise ValueError('private normal binding required')
- native_bytes=helpers.private_read(args.native) if args.phase=='apply' and args.native else None
- cleanup=json.loads(helpers.private_read(args.cleanup)) if args.phase=='apply' and args.cleanup else None
- if args.phase=='apply' and (native_bytes is None or cleanup is None or args.native_sha256 is None):raise ValueError('fresh cleanup/native input required')
+ expected=json.loads(helpers.private_read(args.binding)) if args.phase in ('prepare','restore') and args.binding else None
+ if args.phase in ('prepare','restore') and expected is None:raise ValueError('private normal binding required')
+ native_bytes=helpers.private_read(args.native) if args.phase in ('apply','restore') and args.native else None
+ cleanup=json.loads(helpers.private_read(args.cleanup)) if args.phase in ('apply','restore') and args.cleanup else None
+ if args.phase in ('apply','restore') and (native_bytes is None or cleanup is None or args.native_sha256 is None):raise ValueError('fresh cleanup/native input required')
  result=run(args.phase,args.state,expected,cleanup,json.loads(native_bytes) if native_bytes else None,native_bytes,args.native_sha256)
  reserve_bytes(args.output,json.dumps(result).encode());print('{"version":1,"standby_projection_written":true}')
 

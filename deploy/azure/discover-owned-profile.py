@@ -88,19 +88,9 @@ def main():
  parser.add_argument('--output',required=True,type=Path)
  args=parser.parse_args()
  if args.subscription!=SUBSCRIPTION:raise ValueError('authorized subscription required')
+ if args.phase=='aa-static':raise ValueError('Use configure-owned-static.py with durable baseline and independent cleanup evidence')
  output_preflight(args.output)
  before=discover(args.subscription,args.connection_id)
- if args.phase=='aa-static':
-  if before['active_active'] is not True or len(before['public_endpoints'])!=2:raise ValueError('AA topology required')
-  # Recheck exact ownership immediately before each narrowly scoped mutation.
-  fresh=discover(args.subscription,args.connection_id)
-  if fresh['gateway_id']!=before['gateway_id'] or fresh['local_gateway_id']!=before['local_gateway_id']:raise ValueError('resource binding changed')
-  az('network','local-gateway','update','--ids',fresh['local_gateway_id'],'--local-address-prefixes','10.233.10.0/24','--query','id')
-  fresh=discover(args.subscription,args.connection_id)
-  if fresh['gateway_id']!=before['gateway_id'] or fresh['local_gateway_id']!=before['local_gateway_id']:raise ValueError('resource binding changed')
-  az('network','vpn-connection','update','--ids',args.connection_id,'--enable-bgp','false','--use-policy-based-traffic-selectors','false','--query','id')
-  before=discover(args.subscription,args.connection_id)
-  if before['enable_bgp'] is not False or before['local_prefixes']!=['10.233.10.0/24']:raise ValueError('static readback mismatch')
  # Output metadata only. No shared-key call, unfiltered object, logs or response bodies.
  fd=os.open(args.output,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
  with os.fdopen(fd,'w') as stream:json.dump(before,stream,indent=2);stream.write('\n')
