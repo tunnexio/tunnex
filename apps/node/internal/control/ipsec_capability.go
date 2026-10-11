@@ -75,3 +75,26 @@ func (c *Client) ipsecAzureCapability() int {
 	}
 	return controller.AzureCapability()
 }
+
+// Azure BGP retained recreation has a separate protocol qualification. Neither
+// the provider reader nor static retained-guard support implies this capability.
+func (c *Client) ipsecAzureBGPRecreationCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil || controller.Capability() != 1 {
+		return 0
+	}
+	return azureBGPRecreationVersion(controller)
+}
+
+// The optional method keeps old controllers explicitly unsupported. This helper
+// is only reached with the actual opaque controller in the advertisement path.
+func azureBGPRecreationVersion(controller any) int {
+	qualified, ok := controller.(interface{ AzureBGPRecreationCapability() int })
+	if !ok || qualified.AzureBGPRecreationCapability() != 1 {
+		return 0
+	}
+	return 1
+}

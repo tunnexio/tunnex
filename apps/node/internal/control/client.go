@@ -259,6 +259,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	if version := c.ipsecBGPCapability(); version == 1 {
 		payload["ipsec_bgp_version"] = version
 	}
+	if version := c.ipsecAzureBGPRecreationCapability(); version == 1 {
+		payload["ipsec_azure_bgp_recreation_version"] = version
+	}
 	if c.ipsecAzureCapability() == 1 {
 		payload["ipsec_azure_version"] = 1
 	}
