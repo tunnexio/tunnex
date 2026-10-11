@@ -33,6 +33,9 @@ func (c *RuntimeController) proveAzureBGPDutiesAbsent(ctx context.Context, e Run
 		}
 	}
 	bootDischarged := c.retainedResetBootDischarged(ctx, e, boot, ns)
+	if e.Restoration != nil && e.Restoration.BootID != boot && !bootDischarged {
+		return ErrRuntimeController
+	}
 	type duty struct {
 		entry   RuntimeJournalEntry
 		retired bool
