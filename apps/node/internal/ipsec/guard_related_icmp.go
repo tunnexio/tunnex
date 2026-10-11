@@ -37,7 +37,7 @@ func guardRemoteFragmentNeeded(c GuardConnection, g GuardGrant, ingress, egress 
 	if g.FQDN.Version == 2 {
 		name := guardFQDNSetName(g)
 		fmt.Fprintf(&b, "ct original ip daddr @%s ", name)
-		expr = append(expr, guardMatch("==", guardOriginalCT("daddr", ""), "@"+name))
+		expr = append(expr, guardMatch("==", guardOriginalCT("ip daddr", ""), "@"+name))
 	}
 	b.WriteString("counter accept\n")
 	expr = append(expr, guardCounter(), guardVerdict("accept"))
