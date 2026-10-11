@@ -1,6 +1,18 @@
+# Current scoped 11/11 acceptance
+
+Scoped 11/11 development and dedicated GCP lab acceptance complete on serving 5121/API a2e: TCP v5 and UDP v9 separately passed full DENY→ALLOW→revoke→DENY cycles; owned CNAME and gateway QA firewall inverses passed; final normal9/device0 bracketed independent native/all-eight-guard/fresh HA/Classic TCPUDP proof (14.617seconds). Two FQDN histories remain retained, not disabled, with zero associated owned grants. QG DNS 8 ALLOW/2 REFUSED and named bounded retry slices passed. No simultaneous pair, continuous availability, CI, push/merge/publication, production readiness or SLA claim.
+
+[Final key-free ledger](final-public-ledger.json) records actual receipt hashes and schema-specific outcomes. Native final qualification uses completed=true; its schema has no accepted field. [V9 diagnostic QA archive](../frozen-selected-qa-v9/README.md) preserves source/local-test provenance; [V5 clock and EMPTY transition archive](../frozen-selected-qa-v5/README.md) and [V8 continuation archive](../frozen-selected-qa-v8/README.md) remain historical qualified dependencies. Their pending snapshots do not override this final ledger.
+
+Full original Cloud DNS six-record baseline was restored by the exact two-owned-record inverse. Exact gateway QA rule deletion completed DONE with foreign15 and owned2-instance preservation. Final API GET before and after native proof preserved configured9/device0, exact2 histories and zero mutations. Historical failures below remain failed and are not relabeled by later success.
+
+[Bounded native observation note](FINAL-NATIVE-BOUNDED-NOTE.json) records one authority-free pending capture followed by strict full capture/guard acceptance. Intermediate leaves are not claimed continuously positive.
+
+## Previously committed checkpoint history
+
 # Current serving5121 application checkpoint
 
-Current serving node5121/APIa2e is qualified in the dedicated lab. Selected TCP v5 completed DENY→ALLOW→revoke→DENY with accepted full cycle and known cleanup. UDP v8 attempt1 failed before grant creation on latest-generation timeout and completed known cleanup; UDP and owned cloud inverses remain pending. QG DNS8ALLOW/2REFUSED is accepted. Scoped status9/11; GCP-9 and GCP-10 remain open. Eleven v8 integrated local QA tests and bounded retry node2tops/5subs plus API PostgreSQL2named tests passed. No continuous availability, simultaneous pair, CI, publication, production readiness or SLA claim.
+Current serving node5121/APIa2e is qualified in the dedicated lab. Selected TCP v5 completed DENY→ALLOW→revoke→DENY with accepted full cycle and known cleanup. UDP v8 attempt1 failed before grant creation on latest-generation timeout and completed known cleanup; UDP and owned cloud inverses remain pending. QG DNS 8 ALLOW/2 REFUSED is accepted. Scoped status9/11; GCP-9 and GCP-10 remain open. Eleven v8 integrated local QA tests and bounded retry node2tops/5subs plus API PostgreSQL2named tests passed. No continuous availability, simultaneous pair, CI, publication, production readiness or SLA claim.
 
 The accepted TCP receipt is e8cb3eb519b025b548d3699179dac4e1e56177148a575fed2fcc537476e4ce4a. UDPv8 attempt1 result c57095f4da834e99cf538158c122f22c57e4c0fd334500308efd0d92f867971f is failed, with no selected grant or ALLOW packet. Read-only diagnostic3cc9cc5548d7ca11ab86c2dbadf4afa7d8c31eb746006ecc195e89d74cdab4c2 recorded48 successful sockets and2 deadline proof-after refusals under the same identity. It does not attribute a particular failed API request or establish a failure cause.
 
