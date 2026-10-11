@@ -1,0 +1,47 @@
+[
+  {
+    "file": "classic-tc-large-native-0249-edns1232-query-v3.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/classic-tc-large-native-0249-edns1232-query-v3.json",
+    "sha256": "8876acb48122e007a95744c698493e3196f7c831525894bcaa762673ea1ecc8e"
+  },
+  {
+    "file": "dns-fallback-diagnostic-0249-edns1232-query-v3.jsonl",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/dns-fallback-diagnostic-0249-edns1232-query-v3.jsonl",
+    "sha256": "fed0091a9efbd29d875120a16b0a9fc98aa24323af4bd172f72936c61e539665"
+  },
+  {
+    "file": "dns-before-tcp-guard-0249-edns1232-query-v3.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/dns-before-tcp-guard-0249-edns1232-query-v3.json",
+    "sha256": "f62da522cc130e8d0f8a60edddc883c77878343e9ad2d82a13b8ec06e2e5d93b"
+  },
+  {
+    "file": "dns-before-udp-guard-0249-edns1232-query-v3.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/dns-before-udp-guard-0249-edns1232-query-v3.json",
+    "sha256": "eda0bf8eeaa213244a3a5c4b54c2c283c156d4ab113370a3022fb3e07bc4cb4a"
+  },
+  {
+    "file": "dns-after-tcp-guard-0249-edns1232-query-v3.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/dns-after-tcp-guard-0249-edns1232-query-v3.json",
+    "sha256": "019a5ae292e488d04e41114bd1bccbed7b88b74aa2651d4cf4ad9a23c6c95339"
+  },
+  {
+    "file": "dns-after-udp-guard-0249-edns1232-query-v3.json",
+    "source": "/private/tmp/gcp-dns-readiness-0249f7cf-20261011/dns-after-udp-guard-0249-edns1232-query-v3.json",
+    "sha256": "01d2bfc0484093d4265ade7dc5f9b30bf4a2558af22d7ec0a2316dd92c4379d3"
+  },
+  {
+    "file": "mailbox-postrestart-v3.json",
+    "source": "/private/tmp/gcp-fqdn-mailbox-diagnostic-20261011/mailbox-postrestart-v3.json",
+    "sha256": "4547ef0a08c4b10e1d96d7cb1b1b42d9116de7d30cb72797e46bcb1ec5101102"
+  },
+  {
+    "file": "mailbox-postrestart-v3-classification.json",
+    "source": "/private/tmp/gcp-fqdn-mailbox-diagnostic-20261011/mailbox-postrestart-v3-classification.json",
+    "sha256": "4577ff0f2f210b676e918a6bf78e31c70f468e0cb4b06712fc041798495f8d0c"
+  },
+  {
+    "file": "read-mailbox-postrestart-v3.py",
+    "source": "/private/tmp/gcp-fqdn-mailbox-diagnostic-20261011/read-mailbox-postrestart-v3.py",
+    "sha256": "f54c7e881ec3c87ed7b5d013c8a56c3aea9af9efe5bc8488eef3f5457e6e8f68"
+  }
+]

@@ -289,3 +289,7 @@ Fresh policy-parser/currentallocation/native067 and fullcapture8d798a with all f
 ## Actual 0249 DNS checkpoint
 
 HA ordinary private A, alias and NXDOMAIN accepted with all full HostOrigin DNS guard proofs before and after. These checks have no receiver observer. Current automatic Classic snapshot071 preserved the baseline and seven configured resources but did not accept all generations: application309 healthy; alias and NX latest timeout. Earlier070 accepted application and NX while alias timed out. Historical accepted generations remain historical; no current completion or causal diagnosis is claimed. Exact public receipts: `tests/gcp-s2s-local/qualification-20261010/0249-ha-dns-fqdn-checkpoint-20261011`.
+
+## Actual 0249 explicit fallback and automatic-generation boundary
+
+The explicit EDNS1232 Classic large query accepted genuine UDP truncation followed by TCP100A, with complete receiver captures, stable selected native identity and independent full guards before/after (receipt8876acb4). This does not relabel the historical no-EDNS timeout. Automatic Classic mailbox metadata remains mixed: app31 NOERROR, alias7 NOERROR/11 resolver_unavailable/13 expired, NX27 NXDOMAIN in the bounded100-row window; latest NX succeeded after071. Exact context2/Profile459d bindings match throughout. Alias cause is unresolved; diagnostics-only candidate is separate and not deployed. Evidence: `tests/gcp-s2s-local/qualification-20261011/0249-edns-mailbox-checkpoint`.
