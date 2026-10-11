@@ -317,7 +317,11 @@ func approvedWithdrawalCause(c WithdrawalCause) bool {
 	}
 }
 
-func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) (err error) {
+func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) error {
+	return retryFQDNSerialization(ctx, nil, func() error { return s.inTxOnce(ctx, w, fn) })
+}
+
+func (s *PostgresStore) inTxOnce(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) (err error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return err

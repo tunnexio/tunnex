@@ -58,29 +58,40 @@ func (m *PostgresGatewayDNSMailbox) Enqueue(ctx context.Context, request Gateway
 			return err
 		}
 	}
-	tx, err := m.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := validateCurrentMailboxContext(ctx, tx, request); err != nil {
-		return err
-	}
-	command, err := tx.Exec(ctx, `
+
+	inserted := false
+	err = retryFQDNSerialization(ctx, func() error {
+		if request.Deadline.Before(m.now()) {
+			return ErrGatewayDNSRPCMalformed
+		}
+		return nil
+	}, func() error {
+		tx, err := m.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := validateCurrentMailboxContext(ctx, tx, request); err != nil {
+			return err
+		}
+		command, err := tx.Exec(ctx, `
 INSERT INTO fqdn_gateway_dns_requests
   (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,resolver_match_suffix,resolver_endpoints,hostname,record_types,deadline,state,resolver_ipsec_path)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13,$14,'pending',$15)
 ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.ResolverConfigID, request.ResolverConfigVersion, request.ResolverProfileID, request.ResolverMatchSuffix, endpoints, request.Hostname, types, request.Deadline, path)
-	if err != nil {
-		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-	if command.RowsAffected() == 1 && m.notifier != nil {
+		if err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		inserted = command.RowsAffected() == 1
+		return nil
+	})
+	if err == nil && inserted && m.notifier != nil {
 		m.notifier.NotifyGatewayDNSRequest(ctx, request.OrgID, request.GatewayID)
 	}
-	return nil
+	return err
 }
 
 // PendingForGateway is consumed by the authenticated selected gateway through
