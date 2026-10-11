@@ -39,7 +39,8 @@ def read():
  if socket.gethostname()!='bastion-host':raise ValueError('bastion hostname required')
  discovery=lab.discover(lab.SUBSCRIPTION,shared.CONNECTION)
  view=lab.az('network','vpn-connection','show','--ids',shared.CONNECTION,'--subscription',lab.SUBSCRIPTION,'--query',shared.helpers.QUERY)
- if shared.helpers.projection(view,discovery)['mode']!='Default' or not discovery['enable_bgp']:raise ValueError('owned Default BGP connection required')
+ mode=shared.helpers.projection(view,discovery)['mode']
+ if mode not in ('Default','ResponderOnly') or not discovery['enable_bgp']:raise ValueError('owned supported-mode BGP connection required')
  peer=str(ipaddress.IPv4Address(discovery['customer_bgp_address']))
  if peer!='169.254.10.1':raise ValueError('exact owned customer peer')
  # Do not assume CLI flattening: retain bounded response privately in memory,
@@ -48,7 +49,7 @@ def read():
  if result.returncode:raise ValueError('advertised CLI read failed')
  if len(result.stdout)+len(result.stderr)>262144:raise ValueError('advertised output bounds')
  projection=parse(result.stdout)
- return {'version':1,'kind':'owned_azure_advertised_routes','observed_at':datetime.now(timezone.utc).isoformat(),'subscription':lab.SUBSCRIPTION,'resource_group':lab.RG,'owner':lab.OWNER,'gateway_id':discovery['gateway_id'],'query_peer':peer,**projection,'scope':'Azure control-plane advertised-route read only; no received NLRI, native BGP acceptance, installed route, maximum-prefix or packet authority'}
+ return {'version':1,'kind':'owned_azure_advertised_routes','observed_at':datetime.now(timezone.utc).isoformat(),'subscription':lab.SUBSCRIPTION,'resource_group':lab.RG,'owner':lab.OWNER,'gateway_id':discovery['gateway_id'],'query_peer':peer,'connection_mode':mode,**projection,'scope':'Azure control-plane advertised-route read only; no received NLRI, native BGP acceptance, installed route, maximum-prefix or packet authority'}
 
 if __name__=='__main__':
  try:print(json.dumps(read(),sort_keys=True))

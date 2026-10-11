@@ -324,7 +324,7 @@ class RealCloudReservation(unittest.TestCase):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory).resolve();root.chmod(0o700);state=root/'cloud.json'
    vnet={'id':c.prefix.VNET,'tags':{'owner':c.prefix.lab.OWNER},'provisioningState':'Succeeded','addressSpace':{'addressPrefixes':['10.231.0.0/16']},'unknownProtectedProperty':{'preserve':True}}
-   discovery={'gateway_id':c.prefix.BASE+'virtualNetworkGateways/azure-vpn','local_gateway_id':c.prefix.BASE+'localNetworkGateways/tunnex-local','active_active':True,'sku':'VpnGw1AZ','vpn_type':'RouteBased','enable_bgp':True,'public_endpoints':[{},{}],'local_prefixes':['10.233.10.0/24']}
+   discovery={'gateway_id':c.prefix.BASE+'virtualNetworkGateways/azure-vpn','local_gateway_id':c.prefix.BASE+'localNetworkGateways/tunnex-local','active_active':True,'sku':'VpnGw1AZ','vpn_type':'RouteBased','enable_bgp':True,'public_endpoints':[{},{}],'local_prefixes':['10.233.10.0/24'],'connection_mode':'ResponderOnly','connection_protected_sha256':'a'*64}
    updates=[];fail=False
    def az(*args):
     updates.append(args);self.assertTrue(state.with_name(state.name+('.add-reserved' if len(updates)==1 else '.restore-reserved')).exists())

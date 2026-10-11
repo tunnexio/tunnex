@@ -15,7 +15,7 @@ class PrefixExperiment(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve();self.root.chmod(0o700);self.state=self.root/'state.json'
   self.vnet={'id':h.VNET,'tags':{'owner':h.lab.OWNER},'provisioningState':'Succeeded','etag':'before','addressSpace':{'addressPrefixes':['10.231.0.0/16']},'subnets':[{'id':h.VNET+'/subnets/workload','addressPrefix':'10.231.1.0/24','delegations':[],'networkSecurityGroup':{'id':'exact-nsg'}}],'dhcpOptions':{'dnsServers':[]},'unknownProtectedProperty':{'must':'remain'}}
-  self.discovery={'gateway_id':h.BASE+'virtualNetworkGateways/azure-vpn','local_gateway_id':h.BASE+'localNetworkGateways/tunnex-local','active_active':True,'sku':'VpnGw1AZ','vpn_type':'RouteBased','enable_bgp':True,'public_endpoints':[{},{}],'local_prefixes':['10.233.10.0/24']}
+  self.discovery={'gateway_id':h.BASE+'virtualNetworkGateways/azure-vpn','local_gateway_id':h.BASE+'localNetworkGateways/tunnex-local','active_active':True,'sku':'VpnGw1AZ','vpn_type':'RouteBased','enable_bgp':True,'public_endpoints':[{},{}],'local_prefixes':['10.233.10.0/24'],'connection_mode':'ResponderOnly','connection_protected_sha256':'a'*64}
   self.review={'version':1,'kind':'owned_prefix_range_review','observed_at':datetime.now(timezone.utc).isoformat(),'subscription':h.lab.SUBSCRIPTION,'resource_group':h.lab.RG,'owner':h.lab.OWNER,'vnet_id':h.VNET,'candidate':'10.235.77.0/24','ranges':['10.231.0.0/16','10.232.0.0/16','10.233.10.0/24','10.244.0.0/16'],'normal_connection':{'id':h.CP,'desired_revision':30,'desired_intent':'enabled','application_state':'applied','profile_id':'azure-active-active-bgp-ipv4-v1','remote_prefixes':['10.231.0.0/16'],'maximum_prefixes':8}}
   self.external={'dns':'preserved','lb':'preserved','resolver':'preserved'};self.updates=[];self.inject_failure=False
   outer=self
@@ -29,6 +29,15 @@ class PrefixExperiment(unittest.TestCase):
    return h.VNET
   self.patches=[patch.object(h.socket,'gethostname',return_value='bastion-host'),patch.object(h,'cloud_binding',side_effect=lambda:copy.deepcopy(self.discovery)),patch.object(h,'cloud_ranges'),patch.object(h,'read_vnet',side_effect=lambda:copy.deepcopy(self.vnet)),patch.object(h,'external_properties',side_effect=lambda:copy.deepcopy(self.external)),patch.object(h.lab,'az',side_effect=azure)]
   for p in self.patches:p.start()
+ def test_mode_and_protected_policy_drift_refuse_before_add(self):
+  for key,value in [('connection_mode','Default'),('connection_protected_sha256','b'*64)]:
+   self.run_phase('prepare');self.discovery[key]=value
+   with self.assertRaises(ValueError):self.run_phase('add')
+   self.assertEqual(self.updates,[]);self.state.unlink();self.discovery[key]='ResponderOnly' if key=='connection_mode' else 'a'*64
+ def test_old_state_missing_mode_binding_refuses(self):
+  self.run_phase('prepare');state=json.loads(self.state.read_text());state['discovery'].pop('connection_mode');self.state.write_text(json.dumps(state))
+  with self.assertRaises((KeyError,ValueError)):self.run_phase('add')
+  self.assertEqual(self.updates,[])
  def tearDown(self):
   for p in self.patches:p.stop()
   self.temp.cleanup()
@@ -84,3 +93,13 @@ class PrefixExperiment(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+class ConnectionModeBinding(unittest.TestCase):
+ def test_supported_mode_kept_and_unsupported_refused(self):
+  for mode in ('Default','ResponderOnly','InitiatorOnly',None):
+   view={'protected':{'enableBgp':True,'connectionType':'IPsec','connectionProtocol':'IKEv2','policy':['exact']}}
+   with patch.object(h.helpers,'projection',return_value={'mode':mode}):
+    if mode in ('Default','ResponderOnly'):
+     value=h.connection_binding(view,{});self.assertEqual(value['connection_mode'],mode);self.assertEqual(value['connection_protected_sha256'],h.digest(view['protected']))
+    else:
+     with self.assertRaises(ValueError):h.connection_binding(view,{})

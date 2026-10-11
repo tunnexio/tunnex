@@ -74,12 +74,20 @@ def evidence(review,candidate,now):
   if ipaddress.ip_network(candidate).overlaps(ipaddress.ip_network(prefix,strict=True)):raise ValueError('candidate range overlap')
 
 
+CONNECTION_QUERY=helpers.QUERY[:-1]+',protected:{tags:tags,location:location,type:type,connectionType:connectionType,connectionProtocol:connectionProtocol,enableBgp:enableBgp,ipsecPolicies:ipsecPolicies,routingWeight:routingWeight,dpdTimeoutSeconds:dpdTimeoutSeconds,usePolicyBasedTrafficSelectors:usePolicyBasedTrafficSelectors,trafficSelectorPolicies:trafficSelectorPolicies,expressRouteGatewayBypass:expressRouteGatewayBypass,useLocalAzureIpAddress:useLocalAzureIpAddress,ingressNatRules:ingressNatRules,egressNatRules:egressNatRules,gateway:virtualNetworkGateway1,localGateway:localNetworkGateway2,enablePrivateLinkFastPath:enablePrivateLinkFastPath}}'
+
+def connection_binding(view,discovery):
+ projected=helpers.projection(view,discovery)
+ if projected['mode'] not in ('Default','ResponderOnly') or not isinstance(view.get('protected'),dict):raise ValueError('supported owned connection projection')
+ protected=view['protected']
+ if protected.get('enableBgp') is not True or protected.get('connectionType')!='IPsec' or protected.get('connectionProtocol')!='IKEv2':raise ValueError('owned BGP IKEv2 projection')
+ return {'connection_mode':projected['mode'],'connection_protected_sha256':digest(protected)}
+
 def cloud_binding():
  discovery=lab.discover(lab.SUBSCRIPTION,CONNECTION)
  if discovery['gateway_id'].lower()!=(BASE+'virtualNetworkGateways/azure-vpn').lower() or discovery['local_gateway_id'].lower()!=(BASE+'localNetworkGateways/tunnex-local').lower() or discovery['active_active'] is not True or discovery['enable_bgp'] is not True:raise ValueError('owned AA BGP binding')
- view=lab.az('network','vpn-connection','show','--ids',CONNECTION,'--subscription',lab.SUBSCRIPTION,'--query',helpers.QUERY)
- if helpers.projection(view,discovery)['mode']!='Default':raise ValueError('preserve actual Default mode')
- return discovery
+ view=lab.az('network','vpn-connection','show','--ids',CONNECTION,'--subscription',lab.SUBSCRIPTION,'--query',CONNECTION_QUERY)
+ return {**discovery,**connection_binding(view,discovery)}
 
 
 def cloud_ranges(candidate):
@@ -134,8 +142,8 @@ def run(phase,state_path,review=None,candidate='10.235.77.0/24',evidence_check=N
   state=json.loads(helpers.private_read(state_path))
   if state.get('version')!=1 or state.get('vnet_id')!=VNET or state.get('candidate')!=candidate or state.get('stage') not in ('prepared','add_sent','added','restore_sent','restored') or digest(protected(state['baseline']))!=state['protected_sha256']:raise ValueError('private experiment binding')
   discovery=cloud_binding()
-  for key in ('gateway_id','local_gateway_id','active_active','sku','vpn_type','enable_bgp','public_endpoints','local_prefixes'):
-   if discovery.get(key)!=state['discovery'].get(key):raise ValueError('gateway discovery changed')
+  for key in ('gateway_id','local_gateway_id','active_active','sku','vpn_type','enable_bgp','public_endpoints','local_prefixes','connection_mode','connection_protected_sha256'):
+   if discovery.get(key)!=state['discovery'][key]:raise ValueError('gateway discovery changed')
   if digest(state['external'])!=state['external_sha256'] or digest(external_properties())!=state['external_sha256']:raise ValueError('protected DNS or LB properties changed')
   current=read_vnet();original=vnet(state['baseline']);added=original+[candidate]
   if digest(protected(current))!=state['protected_sha256']:raise ValueError('protected VNet property changed')
@@ -155,6 +163,8 @@ def run(phase,state_path,review=None,candidate='10.235.77.0/24',evidence_check=N
   if digest(external_properties())!=state['external_sha256']:raise ValueError('protected DNS or LB properties changed')
   if protected(fresh)!=protected(current) or vnet(fresh)!=vnet(current):raise ValueError('concurrent VNet change')
   if phase=='add':check(review,candidate,datetime.now(timezone.utc))
+  immediately_before=cloud_binding()
+  if any(immediately_before.get(key)!=state['discovery'][key] for key in ('connection_mode','connection_protected_sha256')):raise ValueError('preupdate connection changed')
   if vnet(current)!=target:
    if reservation is not None:reservation(phase,state)
    state['stage']=phase+'_sent';private_write(state_path,state)
@@ -163,7 +173,8 @@ def run(phase,state_path,review=None,candidate='10.235.77.0/24',evidence_check=N
    if not isinstance(returned,str) or returned.lower()!=VNET.lower():raise ValueError('ambiguous VNet update')
   after=read_vnet()
   if vnet(after)!=target or digest(protected(after))!=state['protected_sha256']:raise ValueError('VNet readback mismatch')
-  cloud_binding()
+  after_binding=cloud_binding()
+  if any(after_binding.get(key)!=state['discovery'][key] for key in ('connection_mode','connection_protected_sha256')):raise ValueError('postupdate connection changed')
   if digest(external_properties())!=state['external_sha256']:raise ValueError('protected DNS or LB readback changed')
   state['stage']='added' if phase=='add' else 'restored';private_write(state_path,state)
  return {'version':1,'phase':phase,'saved_stage':state['stage'],'candidate':candidate,'observed_at':datetime.now(timezone.utc).isoformat(),'protected_sha256':state['protected_sha256'],'scope':'Owned resource list mutation/readback only; actual Azure advertisement and BGP rejection remain separately observed'}
