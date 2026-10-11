@@ -210,7 +210,7 @@ def run(phase,state_path,expected,cleanup=None,native=None,native_bytes=None,nat
    if connection!=state['connection']:raise ValueError('postupdate connection changed')
    unused,actual=raw_read_gateway();result=classify(actual,baseline)
   if phase=='restore':
-   if state['stage'] not in ('apply_sent','converted') or result not in ('original_aa','preserved_as'):raise ValueError('restoration boundary; reconcile only')
+   if state['stage'] not in ('apply_sent','converted') or result!='preserved_as':raise ValueError('restoration boundary; reconcile only')
    current_binding=restoration_binding(expected,state['expected'])
    revision=evidence(cleanup,native,native_bytes,native_hash,current_binding,now())
    if result=='preserved_as':

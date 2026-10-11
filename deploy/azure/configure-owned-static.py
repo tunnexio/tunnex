@@ -110,6 +110,13 @@ def run(phase,state_path,binding=None,cleanup=None,native=None,native_bytes=None
    if kind=='provisioning_pending':raise ValueError('pending; reconcile only')
    if not restore and (state['stage']!='prepared' or kind!='original'):raise ValueError('single prepared apply only')
    if restore and state['stage'] not in ('apply_sent','static','restore_sent'):raise ValueError('restoration boundary')
+   if restore and state['stage'] in ('apply_sent','static'):
+    # Old Succeeded/original readback does not settle an outstanding write.
+    # Require the actual effect of the last reserved apply operation, not just
+    # a different setting that may have changed before that operation.
+    last=state.get('last_reserved_step')
+    if kind not in ('static','owned_partial') or last not in ('connection','lng'):raise ValueError('prior apply outcome unknown; reconcile only')
+    if (last=='connection' and value['connection']['enableBgp'] is not False) or (last=='lng' and prefixes(value['lng'])!=STATIC_PREFIXES):raise ValueError('prior apply effect not observed; reconcile only')
    current=shared.restoration_binding(binding,state['expected']) if restore else state['expected']
    shared.evidence(cleanup,native,native_bytes,native_hash,current,shared.now())
    if lab.az('version').get('azure-cli')!='2.91.0':raise ValueError('reviewed CLI version required')

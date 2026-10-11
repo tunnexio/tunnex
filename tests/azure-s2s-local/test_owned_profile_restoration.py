@@ -53,9 +53,21 @@ class Restoration(unittest.TestCase):
     self.assertEqual(json.loads(state.read_text())['stage'],'apply_sent')
     self.assertTrue(state.with_name(state.name+'.apply-lng-reserved').exists())
     with self.assertRaises(ValueError):s.run('apply',state,None,*fixture.receipts())
+    # The unchanged old Succeeded snapshot cannot settle a pending request.
+    with patch.object(s.lab,'az') as mutation:
+     before=state.read_bytes()
+     with self.assertRaisesRegex(ValueError,'prior apply outcome unknown'):s.run('restore',state,binding(),*fixture.receipts())
+     self.assertEqual(state.read_bytes(),before);mutation.assert_not_called()
+     self.assertEqual(s.run('reconcile',state)['stage'],'apply_sent')
     # Actual later cloud read proves first write happened; restore original []
     # with a different one-time restoration reservation, never repeat apply.
     current['lng']['localNetworkAddressSpace']['addressPrefixes']=s.STATIC_PREFIXES[:]
+    # A changed LNG alone cannot settle a later reserved connection write.
+    saved=json.loads(state.read_text());pending=dict(saved,last_reserved_step='connection');s.common.private_write(state,pending)
+    with patch.object(s.lab,'az') as mutation:
+     with self.assertRaisesRegex(ValueError,'prior apply effect not observed'):s.run('restore',state,binding(),*fixture.receipts())
+     mutation.assert_not_called()
+    s.common.private_write(state,saved)
     self.assertEqual(s.run('restore',state,binding(),*fixture.receipts())['stage'],'restored')
     self.assertEqual(current['lng']['localNetworkAddressSpace']['addressPrefixes'],[])
     self.assertTrue(current['connection']['enableBgp'])
@@ -72,6 +84,23 @@ class Restoration(unittest.TestCase):
   with patch.object(s.socket,'gethostname',return_value='other'),patch.object(s.lab,'az') as az:
    with self.assertRaises(ValueError):s.run('prepare',Path('/missing'),fixture.expected())
    az.assert_not_called()
+ def test_standby_unknown_apply_original_readback_never_restores(self):
+  original=fixture.baseline();wire=json.dumps(original).encode()
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder).resolve();root.chmod(0o700);state=root/'state.json'
+   with patch.object(m.socket,'gethostname',return_value='bastion-host'),patch.object(m,'bindings',return_value={'owned':'binding'}),patch.object(m,'raw_read_gateway',return_value=(wire,original)),patch.object(m.lab,'az',return_value={'azure-cli':'2.91.0'}):m.run('prepare',state,fixture.expected())
+   data=json.loads(state.read_text());data['stage']='apply_sent';m.common.private_write(state,data)
+   marker=state.with_name(state.name+'.mutation-reserved');m.reserve_bytes(marker,b'{}')
+   with patch.object(m.socket,'gethostname',return_value='bastion-host'),patch.object(m,'bindings',return_value={'owned':'binding'}),patch.object(m,'raw_read_gateway',return_value=(wire,original)),patch.object(m.lab,'az') as mutation:
+    before=state.read_bytes()
+    with self.assertRaisesRegex(ValueError,'restoration boundary'):m.run('restore',state,binding(),*fixture.receipts())
+    self.assertEqual(state.read_bytes(),before);self.assertTrue(marker.exists())
+    self.assertEqual(m.run('reconcile',state,None)['stage'],'apply_sent');mutation.assert_not_called()
+   # A genuinely observed late AS completion changes only observation stage;
+   # it does not invent restoration or dispatch a second conversion.
+   actual=m.target(original)
+   with patch.object(m.socket,'gethostname',return_value='bastion-host'),patch.object(m,'bindings',return_value={'owned':'binding'}),patch.object(m,'raw_read_gateway',return_value=(json.dumps(actual).encode(),actual)),patch.object(m.lab,'az') as mutation:
+    self.assertEqual(m.run('reconcile',state,None)['stage'],'converted');mutation.assert_not_called()
  def test_standby_restore_timeout_reservation_and_reconcile(self):
   original=fixture.baseline();wire=json.dumps(original).encode();actual=m.target(original)
   with tempfile.TemporaryDirectory() as folder:

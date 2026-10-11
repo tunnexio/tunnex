@@ -28,4 +28,8 @@ Microsoft documents `GatewayRouteListResult.value` and the seven allowed route f
 
 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/azure-s2s-local -p 'test_owned_*py' -v`
 
-66 tests pass. New fixtures prove original-empty-prefix restoration, write timeout reservation/no replay, standby restore timeout and exact AA reconciliation, lineage/namespace/foreign protected property refusal, server-field-only restore payload, old-Python fractional timestamp normalization, both route envelope shapes and malformed/partial route refusal. Constructed fixture evidence is parser/helper qualification only; no live absence or cloud outcome was manufactured.
+67 tests pass. New fixtures prove original-empty-prefix restoration, write timeout reservation/no replay, standby restore timeout and exact AA reconciliation, lineage/namespace/foreign protected property refusal, server-field-only restore payload, old-Python fractional timestamp normalization, both route envelope shapes and malformed/partial route refusal. Constructed fixture evidence is parser/helper qualification only; no live absence or cloud outcome was manufactured.
+
+## Review correction: pending prior mutation
+
+An old Succeeded original snapshot is not terminal evidence for a timed-out/no-wait write. Restoration refuses unchanged original settings/topology. Static restoration must first observe the actual target effect of the last reserved apply step; a changed LNG alone does not settle a later reserved BGP write. Standby restoration requires genuinely observed preserved AS. Read-only reconciliation of old original state leaves apply_sent and all markers intact; genuine late completion may advance observation state without replay. No terminal operation attestation is manufactured.
