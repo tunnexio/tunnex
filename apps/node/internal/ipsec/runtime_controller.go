@@ -80,6 +80,7 @@ type RuntimeController struct {
 	recoverySwitch          func(context.Context, KernelAllocation, [2]Ownership, uint8) error
 	mu                      sync.Mutex
 	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
+	dnsGuardCommit          atomic.Pointer[runtimeDNSGuardCommit]
 	config                  RuntimeControllerConfig
 	journal                 *RuntimeJournal
 	guard                   *RuntimeGuard
@@ -999,6 +1000,11 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 		return ErrRuntimeController
 	}
 	stage = "combined_guard_replace"
+	guardCommit := c.beginDNSGuardCommit()
+	if guardCommit == nil {
+		return ErrRuntimeController
+	}
+	defer c.finishDNSGuardCommit(guardCommit)
 	manifest, replaceErr := c.replace(commitCtx, intent)
 	if replaceErr != nil {
 		return ErrRuntimeController
@@ -1040,6 +1046,7 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 	}
 	c.active = active
 	c.publishDNSOwnerView(manifest)
+	guardCommit.published = c.dnsView.Load()
 	return nil
 }
 

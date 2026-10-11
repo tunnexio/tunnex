@@ -15,6 +15,28 @@ import (
 // still independently checks native SA/route/guard/source and the original
 // accepted lease before and after every exchange. Publication does not renew it.
 type runtimeDNSEpoch struct{ revoked atomic.Bool }
+
+// Only the serial owner creates this immutable transition immediately before
+// native replacement. Completion follows all final checks and publication (or
+// refusal); observing it grants no authority and changes no lease deadline.
+type runtimeDNSGuardCommit struct {
+	previous  *runtimeDNSOwnerView
+	done      chan struct{}
+	published *runtimeDNSOwnerView // immutable result, visible only after done closes
+}
+
+func (c *RuntimeController) beginDNSGuardCommit() *runtimeDNSGuardCommit {
+	commit := &runtimeDNSGuardCommit{previous: c.dnsView.Load(), done: make(chan struct{})}
+	if !c.dnsGuardCommit.CompareAndSwap(nil, commit) {
+		return nil
+	}
+	return commit
+}
+func (c *RuntimeController) finishDNSGuardCommit(commit *runtimeDNSGuardCommit) {
+	close(commit.done)
+	c.dnsGuardCommit.CompareAndSwap(commit, nil)
+}
+
 type runtimeDNSOwnerEntry struct {
 	active runtimeActive
 	epoch  *runtimeDNSEpoch
