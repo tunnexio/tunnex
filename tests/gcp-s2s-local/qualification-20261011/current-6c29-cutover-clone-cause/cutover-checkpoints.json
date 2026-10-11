@@ -1,0 +1,46 @@
+{
+  "bounded_native_guard_payload_checkpoint": {
+    "api_generation_qualified": false,
+    "completed": true,
+    "container": "3ed2505bb1dc28112014ba0dcb4014ab0901b8422396f128a63c2f77d6517be4",
+    "elapsed_seconds": 12.570193375000002,
+    "receipt_sha256": "dadbd9fe102177cd4a94f30b0ad2bf674aab9a794ba4f4b4e84468998915a38f",
+    "scope": "separate bounded current native/app and DNS full guard/fresh HA and Classic TCPUDP checkpoints; no continuous availability claim",
+    "source": "6c29f541e8c59f743a6fdf83d578d28164863ead"
+  },
+  "container": "3ed2505bb1dc28112014ba0dcb4014ab0901b8422396f128a63c2f77d6517be4",
+  "controlled_replacement_approved": true,
+  "first_create_start": {
+    "completed": false,
+    "receipt_sha256": "da4babff5dd3a9320d71280866ea57e436a6dcff693c711034b639b9c7843324",
+    "returncode": 1,
+    "scope": "preserved refusal before create; frozen whole WG handle pin corrected after exact source shape comparison"
+  },
+  "fqdn_application_acceptance": false,
+  "image": "sha256:bdde7b87f8abcc9d982629826c5d121aa9008a1d58ddf896dc120daf959532d9",
+  "normal_create_start": {
+    "completed": true,
+    "created_receipt_sha256": "80252ece98f84a3024376f0db4aa024451f8eecde78d479c3e5a9e470904c490",
+    "receipt_sha256": "f84055f15576c86d208c1c12a5ecc948b9bdb73259e0addb170f7312f99ee2e2",
+    "returncode": 0
+  },
+  "normal_stop": {
+    "completed": true,
+    "exit_code": 0,
+    "readback_errors": [],
+    "receipt_sha256": "b78c064ccda7b78ccaedfcf827d591615a8e22d70fe5f6049b1106489285aec0",
+    "sad_count": 0
+  },
+  "ordinary_policy_ack_accepted": false,
+  "source": "6c29f541e8c59f743a6fdf83d578d28164863ead",
+  "wg_baseline": {
+    "completed": true,
+    "expected_peer_present": null,
+    "network_mutations": 0,
+    "peer_count": 0,
+    "runtime_allowed_sources_read": false,
+    "unrelated_peers_preserved": false,
+    "wg_index": 32
+  },
+  "wg_baseline_receipt_sha256": "9ae871a371c02c049205a2954d5043a6fde7a3c859d3a8abc9e527605827b566"
+}
