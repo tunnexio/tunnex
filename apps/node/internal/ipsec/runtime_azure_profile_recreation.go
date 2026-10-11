@@ -64,20 +64,32 @@ func retainedAzureTransportRefusals(entries, projected []RuntimeJournalEntry, re
 	if !cross {
 		return nil
 	}
-	live := map[netip.Addr]bool{}
-	for _, e := range projected {
-		for i := 0; i < e.Allocation.activeTunnelCount(); i++ {
-			live[e.Engines[i].RemoteAddress] = true
-			live[e.Allocation.Tunnels[i].InsideAddress.Addr()] = true
-			if e.Allocation.Tunnels[i].BGP != nil {
-				live[e.Allocation.Tunnels[i].BGP.Peer] = true
-			}
-		}
-	}
+	// Only the fully authenticated successor lineage may replace this predecessor's
+	// address denial. An unrelated projected owner is never an exclusion witness.
+	validated := validRetainedGuardJournal(entries)
 	seen := map[netip.Prefix]bool{}
 	for _, e := range entries {
 		if !hidden[e.Allocation.ConnectionID] || !IsAzureRuntimeProfile(e.Allocation.ProfileID) {
 			continue
+		}
+		live := map[netip.Addr]bool{}
+		if validated {
+			for _, successor := range projected {
+				referenced := false
+				for _, ref := range successor.RetainedGuardPredecessors {
+					referenced = referenced || (ref.ConnectionID == e.Allocation.ConnectionID && ref.DeliveryID == e.DeliveryID && ref.CleanupDeliveryID == e.CleanupID && ref.OwnershipDigest == e.OwnershipDigest)
+				}
+				if !referenced {
+					continue
+				}
+				for i := 0; i < successor.Allocation.activeTunnelCount(); i++ {
+					live[successor.Engines[i].RemoteAddress] = true
+					live[successor.Allocation.Tunnels[i].InsideAddress.Addr()] = true
+					if successor.Allocation.Tunnels[i].BGP != nil {
+						live[successor.Allocation.Tunnels[i].BGP.Peer] = true
+					}
+				}
+			}
 		}
 		for i := 0; i < e.Allocation.activeTunnelCount(); i++ {
 			addresses := []netip.Addr{e.Engines[i].RemoteAddress, e.Allocation.Tunnels[i].InsideAddress.Addr()}
