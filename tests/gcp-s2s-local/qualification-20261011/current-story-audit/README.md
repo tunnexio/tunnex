@@ -308,3 +308,7 @@ Local ownership/tool-result binders (exact SSH command omitted; no fresh remote 
   }
 ]
 ```
+
+## Current fbf checkpoint
+
+The explicitly approved normal replacement now runs fbf source/image523/CID3ee. [The source-bound checkpoint](../fbf-approved-cutover-checkpoint/README.md) records fresh strict native/app+DNS guards and HA/Classic payload, plus individual Classic and HA app/alias/NX wire cases and Classic EDNS1232 TC→TCP. The earlier372/rejection records remain historical. Fresh normal API automatic generation did not accept alias; it is not upgraded by successful manual wire cases. The eleven implemented components are not eleven fully accepted stories. Remaining routing-negative, directional and complete current-generation criteria, CI and publication remain distinct.

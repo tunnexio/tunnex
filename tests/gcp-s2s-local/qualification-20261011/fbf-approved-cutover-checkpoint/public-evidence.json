@@ -79,5 +79,37 @@
     "receipt_sha256": "405e0ef7b1ad0cc8903991d14d84fe1477d32c009db6386cf16a7ae0cdae664e",
     "aggregate_sha256": "b1df34fd0bb677593133d4dd3acc6b08b25b608f08ca6a0f4dfcf75070d2a69b",
     "top_level_query_accepted_reporting_field_not_authoritative": true
-  }
+  },
+  "ha_dns_cases": [
+    {
+      "case": "app",
+      "query_completed": true,
+      "query_accepted": true,
+      "native_before": true,
+      "native_after": true,
+      "aggregate_completed": true,
+      "receipt_sha256": "6689c9f5a48d9ec408faa0226e4fdd8fe68250b8925de763be3dcfc63ca7df32",
+      "aggregate_sha256": "6c1337210721aa85bc5121870163d54a3564025aea2cc18921222ccefc785dd5"
+    },
+    {
+      "case": "alias",
+      "query_completed": true,
+      "query_accepted": true,
+      "native_before": true,
+      "native_after": true,
+      "aggregate_completed": true,
+      "receipt_sha256": "faa24c5d1f09c95296f0cccafeb702494d874ea825b50564ff906b2e4114f4b8",
+      "aggregate_sha256": "5d388fdc7f641b7da4b3f99ac6918e601974f6f0f100e0c2dcb95a45bc92688f"
+    },
+    {
+      "case": "nx",
+      "query_completed": true,
+      "query_accepted": true,
+      "native_before": true,
+      "native_after": true,
+      "aggregate_completed": true,
+      "receipt_sha256": "f2958b18afc59e5c9978104e095d7c67d69a62722376173a00e213c5b56f2119",
+      "aggregate_sha256": "403442b087d85a7e5eb57ef2c1f0c1a904d741fbd316e8ffc582ca44ae47bef8"
+    }
+  ]
 }

@@ -3,3 +3,5 @@ The earlier automatic approval rejection occurred before stop execution and rema
 The new fbf source separately passed bounded native, eight app/DNS guard proofs before and after, and fresh HA/Classic TCP and UDP payload checks. This checkpoint excludes normal API generation acceptance: the fresh API alias result failed. It does not mark all stories accepted or establish continuous availability.
 
 Separately, three ordinary Classic queries (app, alias, NX) passed with fresh native observations and full TCP/UDP HostOrigin DNS guard proofs before and after. The EDNS1232 100-answer TC query also passed its aggregate; acceptance is the actual nested query.accepted field. A missing top-level query acceptance field was reported false and is not the query verdict. These are bounded case checkpoints; they do not prove all DNS workflows or normal API generation acceptance.
+
+The current fbf HA app, alias and NX query checkpoints also passed with fresh strict native observations and full TCP/UDP HostOrigin DNS proofs before and independently after. These individual wire checkpoints do not replace normal API automatic-generation acceptance.
