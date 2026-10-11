@@ -128,6 +128,23 @@
     "selected_index": 6,
     "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7"
   },
+  "positive_fault_drop_observation": [
+    {
+      "action_stats": {
+        "backlog": 0,
+        "bytes": 2800,
+        "drops": 20,
+        "overlimits": 0,
+        "packets": 20,
+        "qlen": 0,
+        "requeues": 0
+      },
+      "destination_port": 4500,
+      "ip_protocol": "udp",
+      "peer": "34.153.32.207",
+      "pref": 49102
+    }
+  ],
   "restored_packet_receipts": {
     "classic": {
       "accepted": true,
@@ -251,6 +268,10 @@
     {
       "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/packets-restored-classic.json",
       "sha256": "da6d8ba939db7ac5f07bd70cfa7a6eb20635e7549d5db204c0e12efb8e0a84ca"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-peer-actual-0249-20261011-v1/044-fault_event.json",
+      "sha256": "5054b4a758cce0088ff324aaf34fc432f518b7bba31d2d80ca8a55fa6266a008"
     }
   ],
   "successful_full_guard_results": {
