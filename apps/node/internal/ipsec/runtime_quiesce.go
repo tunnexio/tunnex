@@ -62,10 +62,22 @@ func (c *RuntimeController) proveQuiescedAbsent(ctx context.Context, e RuntimeJo
 // Quiesce withdraws authority before removing only exactly owned native objects.
 // No positive checkpoint is written until every selected entry proves absent.
 // Failure leaves the original potential-installation phase and denial intact.
+type quiesceProofInputs struct {
+	boot     func() (string, error)
+	absent   func(context.Context, RuntimeJournalEntry) error
+	complete func(context.Context, []RuntimeJournalEntry, DaemonInventory, func() error) error
+}
+
 func (c *RuntimeController) Quiesce(ctx context.Context, closeDaemon func() error) error {
+	return c.quiesce(ctx, closeDaemon, quiesceProofInputs{resetBootID, c.proveQuiescedAbsent, c.completeQuiesce})
+}
+
+// This private transaction core supplies no qualification override. Production
+// always binds the actual readers above; tests explicitly model native readers.
+func (c *RuntimeController) quiesce(ctx context.Context, closeDaemon func() error, proof quiesceProofInputs) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed || !c.started || closeDaemon == nil || ctx.Err() != nil {
+	if c.closed || !c.started || closeDaemon == nil || proof.boot == nil || proof.absent == nil || proof.complete == nil || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
 	entries, err := c.journal.Entries()
@@ -86,16 +98,32 @@ func (c *RuntimeController) Quiesce(ctx context.Context, closeDaemon func() erro
 		if e.ContractVersion != 3 {
 			continue
 		}
-		boot, err := resetBootID()
+		boot, err := proof.boot()
 		ns, nsErr := c.namespace()
 		if err != nil || nsErr != nil || e.Restoration == nil || e.Restoration.BootID != boot || e.Allocation.Namespace != ns {
 			return ErrRuntimeController
 		}
-		if c.cleanupBGPDuties(ctx, e) != nil {
+		if c.finishKnownBGPSession(e) != nil || WithdrawBGPRoutes(ctx, c.journal, c.kernel, e.DeliveryID.String()) != nil {
 			return ErrRuntimeController
 		}
-		for _, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
-			if c.config.Daemon.removeTunnel(ctx, t) != nil {
+		// Consume the real cleaned checkpoint, retaining the original allocation.
+		refreshed, err := c.journal.Entries()
+		if err != nil {
+			return ErrRuntimeController
+		}
+		for _, current := range refreshed {
+			if current.DeliveryID == e.DeliveryID {
+				e = current
+			}
+		}
+		for slot, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
+			var err error
+			if IsAzureBGPProfile(e.Allocation.ProfileID) {
+				err = c.config.Daemon.removeAzureQuiesceTunnel(ctx, e, slot, ns, boot)
+			} else {
+				err = c.config.Daemon.removeTunnel(ctx, t)
+			}
+			if err != nil {
 				return ErrRuntimeController
 			}
 		}
@@ -122,7 +150,7 @@ func (c *RuntimeController) Quiesce(ctx context.Context, closeDaemon func() erro
 		if !found {
 			continue
 		}
-		if e.Phase != RuntimeApplied || c.proveQuiescedAbsent(ctx, e) != nil {
+		if e.Phase != RuntimeApplied || proof.absent(ctx, e) != nil {
 			return ErrRuntimeController
 		}
 		entries[i].Phase = RuntimeQuiesced
@@ -133,7 +161,7 @@ func (c *RuntimeController) Quiesce(ctx context.Context, closeDaemon func() erro
 	if err != nil {
 		return ErrRuntimeController
 	}
-	return c.completeQuiesce(ctx, entries, d, closeDaemon)
+	return proof.complete(ctx, entries, d, closeDaemon)
 }
 
 // Called only after full pre-join absence. A failed or canceled join cannot
@@ -185,14 +213,18 @@ func (c *RuntimeController) completeQuiesce(ctx context.Context, entries []Runti
 // A durable negative phase cannot supply a lease. The original request's fresh
 // monotonic authority must survive all independent absence reads and the save.
 func (c *RuntimeController) reserveQuiescedApply(ctx context.Context, entries []RuntimeJournalEntry, pos int, authority *PermitLeaseAuthority, identity PermitLeaseIdentity) error {
-	if pos < 0 || pos >= len(entries) || entries[pos].Phase != RuntimeQuiesced || authority == nil || ctx.Err() != nil {
+	return c.reserveQuiescedApplyProof(ctx, entries, pos, authority, identity, c.proveQuiescedAbsent)
+}
+
+func (c *RuntimeController) reserveQuiescedApplyProof(ctx context.Context, entries []RuntimeJournalEntry, pos int, authority *PermitLeaseAuthority, identity PermitLeaseIdentity, absent func(context.Context, RuntimeJournalEntry) error) error {
+	if absent == nil || pos < 0 || pos >= len(entries) || entries[pos].Phase != RuntimeQuiesced || authority == nil || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
 	if _, err := authority.RemainingForApply(identity, 5*time.Second); err != nil {
 		return ErrRuntimeController
 	}
 	e := entries[pos]
-	if identity.DeliveryID != e.DeliveryID || identity.Binding != e.Engines[0].Binding || c.proveQuiescedAbsent(ctx, e) != nil {
+	if identity.DeliveryID != e.DeliveryID || identity.Binding != e.Engines[0].Binding || absent(ctx, e) != nil {
 		return ErrRuntimeController
 	}
 	if _, err := authority.RemainingForApply(identity, 5*time.Second); err != nil || ctx.Err() != nil {

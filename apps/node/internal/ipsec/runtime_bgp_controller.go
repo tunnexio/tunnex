@@ -443,7 +443,13 @@ func (c *RuntimeController) prepareBGPApplyActive(ctx context.Context, e Runtime
 	return active, continuous, nil
 }
 
-func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (ackResult RuntimeAcknowledgement, resultErr error) {
+func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (RuntimeAcknowledgement, error) {
+	return c.applyBGPProof(ctx, m, entries, pos, env, grants, c.bgpQualificationCurrent, c.proveQuiescedAbsent)
+}
+
+// Production supplies only real current qualification and independent absence.
+// The private core also supports explicitly synthetic controller-model tests.
+func (c *RuntimeController) applyBGPProof(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant, qualified func() bool, absent func(context.Context, RuntimeJournalEntry) error) (ackResult RuntimeAcknowledgement, resultErr error) {
 	stage := "qualification"
 	started := time.Now()
 	defer func() {
@@ -456,7 +462,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		_, _ = c.refuse(ctx, entries)
 		return RuntimeAcknowledgement{}, ErrRuntimeController
 	}
-	if !c.bgpQualificationCurrent() || !validJournalBGP(e) || e.AbsenceOnly || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
+	if qualified == nil || absent == nil || !qualified() || !validJournalBGP(e) || e.AbsenceOnly || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
 		return fail()
 	}
 	if c.active == nil {
@@ -469,7 +475,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	}
 	if e.Phase == RuntimeQuiesced {
 		stage = "quiesced_transport"
-		if c.reserveQuiescedApply(ctx, entries, pos, authority, identity) != nil {
+		if c.reserveQuiescedApplyProof(ctx, entries, pos, authority, identity, absent) != nil {
 			return fail()
 		}
 		e = entries[pos]
@@ -627,7 +633,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	if c.reconcileActiveBGP(ctx, entries) != nil {
 		return fail()
 	}
-	entries, err = c.finishBGPApplyContinuity(ctx, entries, active, continuous, authority, identity, c.bgpQualificationCurrent)
+	entries, err = c.finishBGPApplyContinuity(ctx, entries, active, continuous, authority, identity, qualified)
 	if err != nil {
 		return RuntimeAcknowledgement{}, err
 	}
@@ -635,7 +641,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	if err != nil || c.installActive(ctx, entries) != nil {
 		return fail()
 	}
-	if c.rememberAppliedBGPDelivery(ctx, m.RuntimeDelivery, m.Policy.Hash, c.bgpQualificationCurrent) != nil {
+	if c.rememberAppliedBGPDelivery(ctx, m.RuntimeDelivery, m.Policy.Hash, qualified) != nil {
 		return fail()
 	}
 	currentEntries, retryErr := c.journal.Entries()

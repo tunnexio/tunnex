@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"net/netip"
 )
 
@@ -12,9 +13,22 @@ func (c *DaemonClient) removeAzureCleanupTunnel(ctx context.Context, entry Runti
 	if entry.Phase != RuntimeCleanupPending || entry.AbsenceOnly || entry.ContractVersion != 3 || !IsAzureBGPProfile(entry.Allocation.ProfileID) || namespace != entry.Allocation.Namespace || !validKernelAllocation(entry.Allocation) || !validJournalBGP(entry) || slot < 0 || slot >= entry.Allocation.activeTunnelCount() || !validJournalPayload(runtimeJournalPayload{Version: 10, OwnerID: entry.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{entry}}) {
 		return ErrDaemonProtocol
 	}
+	return c.removeAzureNegativeTunnel(ctx, entry, slot)
+}
+
+// Only the controller's verified-denial Applied warm-stop path calls this.
+// No cleanup ID, revision or receipt is manufactured.
+func (c *DaemonClient) removeAzureQuiesceTunnel(ctx context.Context, entry RuntimeJournalEntry, slot int, namespace, boot string) error {
+	if entry.Phase != RuntimeApplied || !IsAzureBGPProfile(entry.Allocation.ProfileID) || !validQuiescedEntry(entry) || !validKernelAllocation(entry.Allocation) || namespace != entry.Allocation.Namespace || boot != entry.Restoration.BootID || !validBootID(boot) || slot < 0 || slot >= entry.Allocation.activeTunnelCount() || entry.CleanupID != uuid.Nil || entry.CleanupDesiredRevision != 0 || entry.CoveredDeliveryRevision != 0 {
+		return ErrDaemonProtocol
+	}
+	return c.removeAzureNegativeTunnel(ctx, entry, slot)
+}
+
+func (c *DaemonClient) removeAzureNegativeTunnel(ctx context.Context, entry RuntimeJournalEntry, slot int) error {
 	t := entry.Engines[slot]
 	allocation := entry.Allocation.Tunnels[slot]
-	if t.ProfileID != entry.Allocation.ProfileID || !t.BGP || t.ReqID == 0 || t.TunnelID != allocation.TunnelID || t.XFRMID != allocation.XFRMID || allocation.BGP == nil {
+	if t.ProfileID != entry.Allocation.ProfileID || !validEngineTunnel(t) || t.Binding != entry.Engines[0].Binding || t.Binding.ConnectionID != entry.Allocation.ConnectionID || !sameEnginePrefixes(t.RemotePrefixes, allocation.RemotePrefixes) || !t.BGP || t.ReqID == 0 || t.TunnelID != allocation.TunnelID || t.XFRMID != allocation.XFRMID || allocation.BGP == nil {
 		return ErrDaemonProtocol
 	}
 	local := append([]netip.Prefix(nil), t.LocalPrefixes...)
