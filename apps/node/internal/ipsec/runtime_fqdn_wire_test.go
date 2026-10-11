@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
 func TestRuntimeFQDNConsumesActualCompilerWire(t *testing.T) {
@@ -26,7 +27,9 @@ func TestRuntimeFQDNConsumesActualCompilerWire(t *testing.T) {
 			t.Fatal("missing or unbounded compiler fixture")
 		}
 		var wire struct {
-			Policy                              RuntimePolicy `json:"policy"`
+			Policy                              RuntimePolicy       `json:"policy"`
+			Compiled                            nodepolicy.Compiled `json:"compiled"`
+			CanonicalHash                       string              `json:"canonical_hash"`
 			OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 			Local, Remote                       []string
 		}
@@ -59,9 +62,29 @@ func TestRuntimeFQDNConsumesActualCompilerWire(t *testing.T) {
 		if len(m.Policy.Grants) != 1 || m.Policy.Grants[0].Destination != "10.85.1.20/32" {
 			t.Fatal("ordinary grant changed")
 		}
-		m.Policy.FQDNGrants[0].Destination = "10.85.1.10"
-		if _, err := runtimeFQDNGrants(m, parse(wire.Local), parse(wire.Remote)); err == nil {
-			t.Fatal("bare-address wire alias accepted")
+		if nodepolicy.CanonicalHash(&wire.Compiled) != wire.CanonicalHash {
+			t.Fatal("canonical API/node hash changed")
+		}
+		s := &RuntimeFQDNPolicySource{}
+		if s.view.Load().matches(g[0]) {
+			t.Fatal("uncommitted compiler wire granted")
+		}
+		s.CommittedPolicy(&wire.Compiled)
+		if !s.view.Load().matches(g[0]) {
+			t.Fatal("actual compiled canonical host prefix refused")
+		}
+		for _, answer := range []string{"10.85.1.10", "10.85.1.0/24", "2001:db8::1/128", "10.85.1.11/32"} {
+			wire.Compiled.FQDNGenerations[0].Answers[0] = answer
+			s.CommittedPolicy(&wire.Compiled)
+			if s.view.Load().matches(g[0]) {
+				t.Fatalf("noncanonical or different answer %q granted", answer)
+			}
+		}
+		for _, destination := range []string{"10.85.1.10", "10.85.1.0/24", "2001:db8::1/128", "10.86.1.10/32"} {
+			m.Policy.FQDNGrants[0].Destination = destination
+			if _, err := runtimeFQDNGrants(m, parse(wire.Local), parse(wire.Remote)); err == nil {
+				t.Fatalf("invalid or unapproved destination %q accepted", destination)
+			}
 		}
 	}
 }

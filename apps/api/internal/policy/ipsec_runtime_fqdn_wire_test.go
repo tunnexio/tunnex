@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
+	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
 // The explicit private path connects the two independent Go modules without
@@ -29,11 +30,27 @@ func TestIPsecFQDNCompilerProducesNodeWire(t *testing.T) {
 		if err != nil || len(p.FQDNGrants) != 1 {
 			t.Fatal("compiler did not produce one scoped grant", err)
 		}
+		compiled := Compile(snapshot)[input.NodeID]
+		if len(compiled.FQDNGenerations) != 1 || len(compiled.FQDNGenerations[0].Answers) != 1 || compiled.FQDNGenerations[0].Answers[0] != p.FQDNGrants[0].Destination {
+			t.Fatal("ordinary compiler and runtime lowering disagree on canonical host")
+		}
+		// Resolver profiles are a separate configured projection. Use the existing
+		// projection without synthesizing or rewriting the compiler's Answers.
+		active := snapshot.FQDNResources[0].Active
+		declared := dnsProfileFixture()
+		declared.Profile.ContextConfigID = active.ResolverConfigID.String()
+		declared.Profile.ContextConfigVersion = active.ResolverConfigVersion
+		declared.Profile.ProfileID = active.ResolverProfileID.String()
+		declared.Profile.ZoneSuffixes = []string{active.ResolverMatchSuffix}
+		declared.Profile.IPsecPath = policyspec.DNSResolverIPsecPath{ConnectionID: input.ConnectionID.String(), ConfigurationRevision: input.ConfigurationRevision, SourceAddress: active.IPsecSourceAddress}
+		compiled.DNSResolverProfiles = []policyspec.DNSResolverProfile{DNSProfileForAllowedTraffic(declared, compiled.Allow)}
 		wire := struct {
 			Policy                              ipsec.RuntimePolicy `json:"policy"`
+			Compiled                            policyspec.Compiled `json:"compiled"`
+			CanonicalHash                       string              `json:"canonical_hash"`
 			OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 			Local, Remote                       []string
-		}{p, input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, input.Config.LocalPrefixes, input.Config.RemotePrefixes}
+		}{p, compiled, policyspec.CanonicalHash(compiled), input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, input.Config.LocalPrefixes, input.Config.RemotePrefixes}
 		b, err := json.Marshal(wire)
 		if err != nil {
 			t.Fatal(err)
