@@ -324,8 +324,10 @@ func guardAllow(g GuardGrant, ingress, egress int, reply bool, leaseName, leaseK
 			fmt.Fprintf(&b, "ct mark & 0x%08x == 0x%08x ", fqdnConntrackMarkMask, fqdnConntrackMark)
 			expr = append(expr, guardMatch("==", map[string]any{"&": []any{guardCT("mark"), fqdnConntrackMarkMask}}, fqdnConntrackMark))
 		} else {
-			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", ^fqdnConntrackMarkMask, fqdnConntrackMark)
-			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), ^fqdnConntrackMarkMask}}, fqdnConntrackMark}}}})
+			// Keep the native nft canonical form: OR-forced bits may remain in the AND mask.
+			// This is algebraically identical and preserves all bits outside our mark mask.
+			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", (^fqdnConntrackMarkMask)|fqdnConntrackMark, fqdnConntrackMark)
+			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), (^fqdnConntrackMarkMask) | fqdnConntrackMark}}, fqdnConntrackMark}}}})
 		}
 	}
 	b.WriteString("counter accept\n")
