@@ -293,4 +293,66 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
 		t.Fatalf("context-mismatched active generation must not project: rows=%#v err=%v", projection, err)
 	}
+	t.Run("deadline-query-and-expiry-priority", func(t *testing.T) {
+		freshStore := NewPostgresStore(pool)
+		var dbNow time.Time
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&dbNow); err != nil {
+			t.Fatal(err)
+		}
+		first, urgent, draft := uuid.New(), uuid.New(), uuid.New()
+		for _, r := range []struct {
+			id   uuid.UUID
+			name string
+		}{{first, "first.internal"}, {urgent, "urgent.internal"}} {
+			exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,$3,$3,$4,$5)`, r.id, org, r.name, site, gateway)
+		}
+		exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn) VALUES($1,$2,'draft.internal','draft.internal')`, draft, org)
+		for _, r := range []struct {
+			id   uuid.UUID
+			name string
+			ttl  time.Duration
+		}{{first, "first.internal", time.Minute}, {urgent, "urgent.internal", 30 * time.Second}} {
+			next := w
+			next.ResourceID = r.id
+			next.Hostname = r.name
+			next.ExpectedGeneration = 0
+			if err := freshStore.Publish(ctx, next, Generation{TTL: r.ttl, ResolvedAt: dbNow, Addresses: []netip.Addr{addr("10.2.3.4")}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		deadline, err := freshStore.NextRefreshAt(ctx)
+		if err != nil || !deadline.Equal(dbNow.Add(24*time.Second)) {
+			t.Fatalf("next deadline=%v want%v err%v", deadline, dbNow.Add(24*time.Second), err)
+		}
+		due, err := freshStore.Due(ctx, dbNow.Add(time.Minute), 32)
+		if err != nil || len(due) != 2 || due[0].ResourceID != urgent || due[1].ResourceID != first {
+			t.Fatalf("expiry-priority due=%+v err%v", due, err)
+		}
+
+		for _, q := range []string{`UPDATE organizations SET fqdn_resources_enabled=false WHERE id=$1`, `UPDATE organizations SET deleted_at=clock_timestamp() WHERE id=$1`} {
+			exec(q, org)
+			at, err := freshStore.NextRefreshAt(ctx)
+			if err != nil || !at.IsZero() {
+				t.Fatalf("ineligible org deadline=%v err%v", at, err)
+			}
+			if rows, err := freshStore.Due(ctx, dbNow.Add(time.Minute), 32); err != nil || len(rows) != 0 {
+				t.Fatalf("ineligible org due=%+v err%v", rows, err)
+			}
+			exec(`UPDATE organizations SET fqdn_resources_enabled=true,deleted_at=NULL WHERE id=$1`, org)
+		}
+		pending := uuid.New()
+		exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'new.internal','new.internal',$3,$4)`, pending, org, site, gateway)
+		var before, after time.Time
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&before); err != nil {
+			t.Fatal(err)
+		}
+		deadline, err = freshStore.NextRefreshAt(ctx)
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&after); err != nil {
+			t.Fatal(err)
+		}
+		if err != nil || deadline.Before(before) || deadline.After(after) {
+			t.Fatalf("new selected work deadline must use database clock: %v range[%v,%v] err%v", deadline, before, after, err)
+		}
+	})
+
 }

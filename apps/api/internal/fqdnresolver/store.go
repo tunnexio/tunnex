@@ -101,6 +101,31 @@ func (s *PostgresStore) WithAfterCommit(after AfterCommit) *PostgresStore {
 	return s
 }
 
+// NextRefreshAt reads only deadlines for server-selected resources. Database
+// time supplies the deadline of new work; refresh/retry times stay unchanged.
+// A past deadline is bounded by the scheduler's wake floor, never a forced refresh.
+func (s *PostgresStore) NextRefreshAt(ctx context.Context) (time.Time, error) {
+	var at *time.Time
+	err := s.pool.QueryRow(ctx, `SELECT min(deadline) FROM (
+ SELECT CASE
+  WHEN g.state='active' THEN g.activated_at + g.effective_ttl * 0.8
+  WHEN g.state='withdrawn' THEN g.ended_at + $1::interval
+  WHEN g.id IS NULL THEN clock_timestamp()
+ END AS deadline
+ FROM fqdn_resources r
+ JOIN organizations o ON o.id=r.org_id AND o.deleted_at IS NULL AND o.fqdn_resources_enabled
+ LEFT JOIN LATERAL (
+  SELECT id,state,activated_at,effective_ttl,ended_at FROM fqdn_resource_answer_generations
+  WHERE org_id=r.org_id AND resource_id=r.id ORDER BY generation DESC LIMIT 1
+ ) g ON true
+ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
+ ) deadlines`, s.retryAfter.String()).Scan(&at)
+	if err != nil || at == nil {
+		return time.Time{}, err
+	}
+	return *at, nil
+}
+
 // Due returns only resources with a server-selected active Site/Gateway pair.
 // A missing pair is a draft, not an invitation to use a public resolver.
 func (s *PostgresStore) Due(ctx context.Context, now time.Time, limit int) ([]Work, error) {
@@ -160,7 +185,10 @@ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
         AND g.generation=(SELECT max(x.generation) FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id)
     )
   )
-ORDER BY r.updated_at,r.id
+ORDER BY COALESCE(
+ (SELECT min(g.activated_at + g.effective_ttl) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'),
+ (SELECT max(g.ended_at) + $2::interval FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='withdrawn'),
+ '-infinity'::timestamptz), r.updated_at,r.id
 LIMIT $3`, now, s.retryAfter.String(), limit)
 	if err != nil {
 		return nil, err
