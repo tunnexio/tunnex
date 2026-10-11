@@ -232,7 +232,7 @@ func (c *RuntimeController) reserveQuiescedApplyProof(ctx context.Context, entri
 	}
 	e.Phase = RuntimeApplying
 	e.Observed = [2]Ownership{}
-	next := cloneRuntimeEntries(entries)
+	next := cloneJournal(runtimeJournalPayload{Entries: entries}).Entries
 	next[pos] = e
 	if c.journal.Save(next) != nil {
 		return ErrRuntimeController
