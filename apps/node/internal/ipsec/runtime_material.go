@@ -144,7 +144,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	if !validKernelAllocation(out.Allocation) || count == 2 && out.Engines[0].RemoteAddress == out.Engines[1].RemoteAddress {
 		return fail()
 	}
-	grants := []GuardGrant{}
+	grants, fqdnErr := runtimeFQDNGrants(m, local, remote)
+	if fqdnErr != nil {
+		return fail()
+	}
 	dns, dnsErr := runtimeDNSGrants(m, local, remote)
 	if dnsErr != nil {
 		return fail()

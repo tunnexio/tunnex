@@ -220,7 +220,8 @@ func main() {
 		}
 	}
 	dnsTransport := &ipsec.DNSRuntimeTransport{}
-	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport)
+	fqdnPolicySource := &ipsec.RuntimeFQDNPolicySource{}
+	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource)
 	if err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
@@ -263,6 +264,7 @@ func main() {
 	// review #6), then reconcile on an interval (heals a flushed table). Torn down on
 	// shutdown (full-sweep). No-op / not-capable off Linux.
 	egressMgr := egress.New(wgIface)
+	egressMgr.SetFQDNPolicyCallbacks(fqdnPolicySource.BeforePolicy, fqdnPolicySource.CommittedPolicy)
 	egressMgr.SetKubernetesMode(kubernetesMode)
 	if kubernetesMode {
 		guard, err := newKubernetesCNIAuthorityGuard(

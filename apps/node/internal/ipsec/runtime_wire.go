@@ -15,6 +15,8 @@ type RuntimeGrant struct {
 	RuleID      string `json:"rule_id"`
 }
 type RuntimePolicy struct {
+	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
+	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
 	Hash                string                          `json:"hash"`
 	Grants              []RuntimeGrant                  `json:"grants"`
 	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`

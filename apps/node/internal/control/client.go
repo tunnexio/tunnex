@@ -256,6 +256,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"ai_vpn_http_ready":         ps.AIVPNHTTPReady,
 		"ai_vpn_http_address":       ps.AIVPNHTTPAddress,
 	}
+	if version := c.ipsecFQDNPolicyCapability(); version == 1 {
+		payload["ipsec_fqdn_policy_version"] = version
+	}
 	if version := c.ipsecBGPCapability(); version == 1 {
 		payload["ipsec_bgp_version"] = version
 	}

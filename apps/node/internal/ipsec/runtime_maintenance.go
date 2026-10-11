@@ -102,6 +102,12 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	// blocking environment/native/lease IO can leave an old query permission open.
 	for i, m := range materials {
 		c.withdrawChangedDNSMaterial(m, grants[i])
+		if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
+			return fail()
+		}
+		if !c.fqdnGrantsCurrent(grants[i]) {
+			return fail()
+		}
 	}
 	if len(materials) == 0 {
 		return nil, nil

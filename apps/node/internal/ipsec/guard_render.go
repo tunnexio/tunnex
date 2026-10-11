@@ -23,8 +23,9 @@ const (
 )
 
 // GuardGrant is explicit shared-policy authority. Configuration and SA selectors
-// never create a grant. FQDN-managed provenance is not supported by this renderer.
+// never create a grant. FQDN-managed grants require authenticated current provenance.
 type GuardGrant struct {
+	FQDN                FQDNGrantBinding `json:",omitzero"`
 	Source, Destination netip.Prefix
 	Protocol            GuardProtocol
 	PortLow, PortHigh   uint16
@@ -314,8 +315,20 @@ func guardAllow(g GuardGrant, ingress, egress int, reply bool, leaseName, leaseK
 		b.WriteString("ct direction original ")
 		expr = append(expr, guardMatch("==", guardCT("direction"), "original"))
 	}
-	fmt.Fprintf(&b, "meta %s @%s counter accept\n", leaseKey, leaseName)
+	fmt.Fprintf(&b, "meta %s @%s ", leaseKey, leaseName)
 	expr = append(expr, guardMatch("==", guardMeta(leaseKey), "@"+leaseName))
+	if g.FQDNManaged {
+		// Mark the exact original permitted tuple; reply admission remains gated
+		// by the original finite authority and requires its existing ownership.
+		if reply {
+			fmt.Fprintf(&b, "ct mark & 0x%08x == 0x%08x ", fqdnConntrackMarkMask, fqdnConntrackMark)
+			expr = append(expr, guardMatch("==", map[string]any{"&": []any{guardCT("mark"), fqdnConntrackMarkMask}}, fqdnConntrackMark))
+		} else {
+			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", ^fqdnConntrackMarkMask, fqdnConntrackMark)
+			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), ^fqdnConntrackMarkMask}}, fqdnConntrackMark}}}})
+		}
+	}
+	b.WriteString("counter accept\n")
 	return guardRule{text: b.String(), expr: append(expr, guardCounter(), guardVerdict("accept")), tcp: g.Protocol == GuardTCP || g.Protocol == GuardAny, ingress: ingress, egress: egress}
 }
 func indexSet(indices []int) string {
@@ -489,7 +502,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 			if g.DNSResolver != (DNSResolverBinding{}) && (!g.DNSResolver.valid() || g.DNSResolver.ConnectionID != c.ID || !g.HostOrigin || !outbound || g.Source.Bits() != 32 || g.Destination.Bits() != 32 || g.PortLow != 53 || g.PortHigh != 53 || g.Protocol != GuardUDP && g.Protocol != GuardTCP) {
 				return GuardIntent{}, false
 			}
-			if g.FQDNManaged || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
+			if (g.FQDNManaged && (!g.FQDN.valid() || g.FQDN.SelectedGatewayID != in.OwnerID || g.FQDN.ConnectionID != c.ID || !outbound || g.HostOrigin || g.Destination.Bits() != 32 || g.DNSResolver != (DNSResolverBinding{}))) || (!g.FQDNManaged && g.FQDN != (FQDNGrantBinding{})) || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
 				return GuardIntent{}, false
 			}
 			switch g.Protocol {
@@ -507,6 +520,9 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 			seen[g] = true
 		}
 		sort.Slice(c.Grants, func(a, b int) bool {
+			if c.Grants[a].FQDNManaged != c.Grants[b].FQDNManaged {
+				return !c.Grants[a].FQDNManaged
+			}
 			aa, _ := json.Marshal(c.Grants[a])
 			bb, _ := json.Marshal(c.Grants[b])
 			return string(aa) < string(bb)

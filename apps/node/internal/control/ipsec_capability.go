@@ -64,3 +64,14 @@ func (c *Client) ipsecGCPClassicCapability() int {
 	}
 	return controller.GCPClassicCapability()
 }
+
+func (c *Client) ipsecFQDNPolicyCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.FQDNPolicyCapability()
+}

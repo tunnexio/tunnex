@@ -63,3 +63,7 @@ func (m *Manager) AppliedStatus() (int, string, time.Time, error) { return 0, ""
 // a native `go build ./...`; this stub is the ledgered fix — apps/node builds on all platforms, the real
 // gateway data plane stays Linux).
 func (m *Manager) RefusedVersion() int { return 0 }
+
+// Unsupported kernels cannot publish an applied FQDN view.
+func (m *Manager) SetFQDNPolicyCallbacks(_ func(context.Context, *nodepolicy.Compiled) error, _ func(*nodepolicy.Compiled)) {
+}
