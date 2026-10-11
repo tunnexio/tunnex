@@ -87,6 +87,10 @@ func azureProfileProofEntryHistory(p runtimeJournalPayload, b azureProfileProofB
 func azureProfileProofBaseline(e RuntimeJournalEntry, d DaemonInventory, k KernelInventory, x XFRMInventory, status bgpengine.Status, routes []bgpengine.LearnedRoute) error {
 	bad := func() error { return fmt.Errorf("profile_baseline_refused") }
 	n := e.Allocation.activeTunnelCount()
+	selected := selectedRuntimeSlot(e)
+	if e.BGP == nil && (selected < 1 || int(selected) > n) {
+		return bad()
+	}
 	if !IsAzureRuntimeProfile(e.Allocation.ProfileID) || !validClassicJournal(e) || !validJournalBGP(e) || k.Namespace != e.Allocation.Namespace || x.Namespace != e.Allocation.Namespace || len(d.SAs) != n || len(d.Connections) != n || len(d.SharedKeys) != n || len(x.States) != 2*n || len(x.Policies) != 3*n {
 		return bad()
 	}
@@ -124,7 +128,7 @@ func azureProfileProofBaseline(e RuntimeJournalEntry, d DaemonInventory, k Kerne
 				return bad()
 			}
 			expected[RouteTuple{Destination: netip.PrefixFrom(tunnel.BGP.Peer, 32), Table: 254, Protocol: 242, Metric: 50001 + uint32(i), OutputInterface: e.Observed[i].InterfaceIndex}] = true
-		} else if tunnel.Selected {
+		} else if uint8(i+1) == selected {
 			for _, p := range tunnel.RemotePrefixes {
 				expected[RouteTuple{Destination: p, Table: 254, Protocol: 242, Metric: 50001 + uint32(i), OutputInterface: e.Observed[i].InterfaceIndex}] = true
 			}
@@ -209,5 +213,37 @@ func TestAzureProfileProofFourCardinalitiesAndForeignSurvivors(t *testing.T) {
 				t.Fatal("removed-prefix route survivor accepted")
 			}
 		})
+	}
+}
+
+func TestAzureProfileProofCompletedStaticRecoverySelectsActualSlot(t *testing.T) {
+	e, d, k, x := azureSchedulerBGPProofFixture(t, AzureActiveActiveStaticProfile)
+	e.Phase = RuntimeApplied
+	e.ContractVersion = 2
+	e.Recovery = &RuntimeRecoveryState{Sequence: 1, SelectedSlot: 2, Stage: "completed"}
+	e.BGPRoutes = nil
+	for i := range d.SAs {
+		d.SAs[i].Children[0].State = "INSTALLED"
+	}
+	for i := range k.Routes {
+		k.Routes[i].OutputInterface = e.Observed[1].InterfaceIndex
+		k.Routes[i].Metric = 50002
+	}
+	if azureProfileProofBaseline(e, d, k, x, bgpengine.Status{}, nil) != nil {
+		t.Fatal("completed actual slot2 recovery refused")
+	}
+	wrong := k
+	wrong.Routes = append([]KernelRoute(nil), k.Routes...)
+	for i := range wrong.Routes {
+		wrong.Routes[i].OutputInterface = e.Observed[0].InterfaceIndex
+		wrong.Routes[i].Metric = 50001
+	}
+	if azureProfileProofBaseline(e, d, wrong, x, bgpengine.Status{}, nil) == nil {
+		t.Fatal("immutable initial route substituted for completed recovery")
+	}
+	pending := e
+	pending.Recovery = &RuntimeRecoveryState{Sequence: 2, SelectedSlot: 2, Stage: "pending", PendingFrom: 2, PendingTo: 1}
+	if azureProfileProofBaseline(pending, d, k, x, bgpengine.Status{}, nil) == nil {
+		t.Fatal("pending route duty treated as completed")
 	}
 }
