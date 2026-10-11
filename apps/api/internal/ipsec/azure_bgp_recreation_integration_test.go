@@ -145,6 +145,45 @@ func TestAzureBGPRecreationExpansionContraction(t *testing.T) {
 		if e != nil {
 			t.Fatalf("material%d %v", stage, e)
 		}
+		if stage == 0 {
+			t.Run("SQLContractNullFields", func(t *testing.T) {
+				raw, _ := json.Marshal(m.Manifest)
+				var good map[string]any
+				if e := json.Unmarshal(raw, &good); e != nil {
+					t.Fatal(e)
+				}
+				var valid bool
+				if e := p.QueryRow(ctx, `SELECT ipsec_azure_bgp_recreation_contract($1::jsonb,$2)`, raw, c.ID).Scan(&valid); e != nil || !valid {
+					t.Fatalf("exact valid contract: valid=%t error=%v", valid, e)
+				}
+				for _, field := range []string{"slot", "profile_id", "bgp_version", "bgp", "tunnels", "customer_outside_address"} {
+					for _, null := range []bool{false, true} {
+						var broken map[string]any
+						json.Unmarshal(raw, &broken)
+						if field == "slot" {
+							tunnel := broken["tunnels"].([]any)[0].(map[string]any)
+							if null {
+								tunnel[field] = nil
+							} else {
+								delete(tunnel, field)
+							}
+						} else {
+							if null {
+								broken[field] = nil
+							} else {
+								delete(broken, field)
+							}
+						}
+						malformed, _ := json.Marshal(broken)
+						valid = false
+						e := p.QueryRow(ctx, `SELECT ipsec_azure_bgp_recreation_contract($1::jsonb,$2)`, malformed, c.ID).Scan(&valid)
+						if e != nil || valid {
+							t.Fatalf("field=%s null=%t valid=%t error=%v", field, null, valid, e)
+						}
+					}
+				}
+			})
+		}
 		if stage == 0 && m.Manifest.AzureBGPRecreationVersion != nil || stage > 0 && (m.Manifest.AzureBGPRecreationVersion == nil || *m.Manifest.AzureBGPRecreationVersion != 1 || len(m.Manifest.RetainedGuardPredecessors) != stage) {
 			t.Fatal("refs/version")
 		}

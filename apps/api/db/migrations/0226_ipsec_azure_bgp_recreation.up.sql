@@ -5,17 +5,17 @@ CREATE FUNCTION ipsec_azure_bgp_recreation_domains(a text[],b text[]) RETURNS bo
  AND NOT EXISTS(SELECT 1 FROM unnest(a) x CROSS JOIN unnest(b) y WHERE x::cidr && y::cidr AND x<>y),false);
 $$ LANGUAGE sql IMMUTABLE;
 CREATE FUNCTION ipsec_azure_bgp_recreation_contract(m jsonb,c uuid) RETURNS boolean AS $$
- SELECT coalesce(m->>'profile_id'='azure-active-active-bgp-ipv4-v1' AND m->'bgp_version'='3'::jsonb
+ SELECT CASE WHEN jsonb_typeof(m)='object' AND jsonb_typeof(m->'tunnels')='array' AND jsonb_typeof(m->'bgp')='object' THEN coalesce(m->>'profile_id'='azure-active-active-bgp-ipv4-v1' AND m->'bgp_version'='3'::jsonb
  AND jsonb_array_length(m->'tunnels')=2
  AND m->>'customer_outside_address'=host(sc.customer_outside_ipv4)
  AND ((m->'bgp') - 'maximum_prefixes')=jsonb_build_object('local_asn',bg.local_asn,'remote_asn',bg.remote_asn,'router_id',host(bg.router_id))
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(m->'tunnels') WITH ORDINALITY t(v,i)
  LEFT JOIN ipsec_aws_tunnel_configs tc ON tc.connection_id=c AND tc.slot=t.i
- WHERE tc.connection_id IS NULL OR t.v->'slot'<>to_jsonb(tc.slot)
+ WHERE tc.connection_id IS NULL OR t.v->'slot' IS DISTINCT FROM to_jsonb(tc.slot)
  OR t.v->>'outside_address' IS DISTINCT FROM host(tc.aws_outside_ipv4)
  OR t.v->>'inside_cidr' IS DISTINCT FROM tc.inside_cidr::text
  OR t.v->>'customer_inside_address' IS DISTINCT FROM host(tc.customer_inside_ipv4)
- OR t.v->>'cloud_inside_address' IS DISTINCT FROM host(tc.aws_inside_ipv4)),false)
+ OR t.v->>'cloud_inside_address' IS DISTINCT FROM host(tc.aws_inside_ipv4)),false) ELSE false END
  FROM ipsec_aws_static_configs sc JOIN ipsec_aws_bgp_configs bg ON bg.connection_id=sc.connection_id WHERE sc.connection_id=c;
 $$ LANGUAGE sql STABLE;
 CREATE OR REPLACE FUNCTION ipsec_static_recreation_binding() RETURNS trigger AS $$
