@@ -594,6 +594,13 @@ type Responder struct {
 	now      func() time.Time
 	mu       sync.Mutex
 	seen     map[string]cached
+	inflight map[string]*pendingResponse
+}
+
+type pendingResponse struct {
+	fingerprint string
+	done        chan struct{}
+	response    Response
 }
 
 type cached struct {
@@ -603,7 +610,7 @@ type cached struct {
 }
 
 func NewResponder(resolver any) *Responder {
-	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached)}
+	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached), inflight: make(map[string]*pendingResponse)}
 }
 
 // Handle resolves only an authenticated desired-state request addressed to the
@@ -615,6 +622,8 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 		path := *req.ResolverIPsecPath
 		req.ResolverIPsecPath = &path
 	}
+	req.RecordTypes = append([]RecordType(nil), req.RecordTypes...)
+	req.ResolverEndpoints = append([]ResolverEndpoint(nil), req.ResolverEndpoints...)
 	now := r.now().UTC()
 	if code := validateRequest(req, gatewayID, now); code != "" {
 		return responseFor(req, StatusServFail, code, now)
@@ -635,19 +644,35 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 		if old.fingerprint != fp {
 			return responseFor(req, StatusServFail, "resolver_unavailable", now)
 		}
-		if req.ResolverIPsecPath != nil {
-			validator, ok := r.resolver.(interface {
-				ValidateBound(context.Context, ResolverConfig) error
-			})
-			lookupCtx, cancel := context.WithDeadline(ctx, req.Deadline)
-			valid := ok && validator.ValidateBound(lookupCtx, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath}) == nil
-			cancel()
-			if !valid {
-				return responseFor(req, StatusServFail, "resolver_unavailable", now)
-			}
-		}
-		return old.response
+		return r.replay(ctx, req, old.response, now)
 	}
+	if pending, ok := r.inflight[req.RequestID]; ok {
+		r.mu.Unlock()
+		if pending.fingerprint != fp {
+			return responseFor(req, StatusServFail, "resolver_unavailable", now)
+		}
+		waitCtx, cancel := context.WithDeadline(ctx, req.Deadline)
+		defer cancel()
+		select {
+		case <-waitCtx.Done():
+			code := "disconnected"
+			if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+				code = "deadline_exceeded"
+			}
+			return responseFor(req, StatusServFail, code, r.now().UTC())
+		case <-pending.done:
+			if err := waitCtx.Err(); err != nil {
+				code := "disconnected"
+				if errors.Is(err, context.DeadlineExceeded) {
+					code = "deadline_exceeded"
+				}
+				return responseFor(req, StatusServFail, code, r.now().UTC())
+			}
+			return r.replay(waitCtx, req, pending.response, r.now().UTC())
+		}
+	}
+	pending := &pendingResponse{fingerprint: fp, done: make(chan struct{})}
+	r.inflight[req.RequestID] = pending
 	r.mu.Unlock()
 
 	deadline := req.Deadline
@@ -688,8 +713,38 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	}
 
 	r.mu.Lock()
-	r.seen[req.RequestID] = cached{fingerprint: fp, response: resp, expiresAt: now.Add(cacheLifetime)}
+	r.seen[req.RequestID] = cached{fingerprint: fp, response: cloneResponse(resp), expiresAt: now.Add(cacheLifetime)}
+	pending.response = cloneResponse(resp)
+	delete(r.inflight, req.RequestID)
+	close(pending.done)
 	r.mu.Unlock()
+	return resp
+}
+
+// A coalesced observation never supplies authority: every IPsec replay proves
+// the current binding independently, including followers after their wait.
+func (r *Responder) replay(ctx context.Context, req Request, resp Response, now time.Time) Response {
+	if req.ResolverIPsecPath != nil {
+		validator, ok := r.resolver.(interface {
+			ValidateBound(context.Context, ResolverConfig) error
+		})
+		lookupCtx, cancel := context.WithDeadline(ctx, req.Deadline)
+		valid := ok && validator.ValidateBound(lookupCtx, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath}) == nil
+		cancel()
+		if !valid {
+			return responseFor(req, StatusServFail, "resolver_unavailable", now)
+		}
+	}
+	return cloneResponse(resp)
+}
+
+func cloneResponse(resp Response) Response {
+	resp.RecordTypes = append([]RecordType(nil), resp.RecordTypes...)
+	resp.Records = append([]Record(nil), resp.Records...)
+	if resp.ResolverIPsecPath != nil {
+		path := *resp.ResolverIPsecPath
+		resp.ResolverIPsecPath = &path
+	}
 	return resp
 }
 
