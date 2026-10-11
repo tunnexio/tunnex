@@ -30,6 +30,7 @@ type RuntimePlatformQualification struct {
 	readNamespace func() (string, error)
 	readClock     func() (runtimeClock, error)
 	alive         func() bool
+	fqdnExpiry    bool
 	invalid       bool
 }
 
@@ -58,6 +59,7 @@ type runtimePlatformProbe struct {
 	clock                                                       func() (runtimeClock, error)
 	alive                                                       func() bool
 	packaged, daemon, kernel, xfrm, environment, nft, privilege func(context.Context) error
+	fqdn                                                        func(context.Context) error
 }
 
 func (p runtimePlatformProbe) probe(ctx context.Context) (*RuntimePlatformQualification, error) {
@@ -77,6 +79,12 @@ func (p runtimePlatformProbe) probe(ctx context.Context) (*RuntimePlatformQualif
 		}
 	}
 	receipt := &RuntimePlatformQualification{namespace: ns, baseline: clock, readNamespace: p.namespace, readClock: p.clock, alive: p.alive}
+	if p.fqdn != nil && p.fqdn(ctx) == nil && ctx.Err() == nil {
+		receipt.fqdnExpiry = true
+	}
+	if ctx.Err() != nil {
+		return nil, ErrRuntimeProbe
+	}
 	if !receipt.current() {
 		return nil, ErrRuntimeProbe
 	}
@@ -132,27 +140,51 @@ func newRuntimePlatformProbe(ipPath, nftPath string, daemon *DaemonClient, alive
 		if e != nil {
 			return ErrRuntimeProbe
 		}
-		manifest, e := runtimeProbeManifest(ns)
+		m, e := runtimeProbeManifest(ns)
 		if e != nil {
 			return ErrRuntimeProbe
 		}
-		// A unique, check-only table avoids colliding with a retained real guard.
-		script := strings.ReplaceAll(manifest.NFTJSON, "tunnex_ipsec", "tx_probe_"+strings.ReplaceAll(uuid.NewString(), "-", ""))
-		cmd := exec.CommandContext(c, nftPath, "--check", "-j", "-f", "-")
-		cmd.Stdin = bytes.NewBufferString(script)
-		cmd.Stderr = io.Discard
-		var out kernelOutput
-		cmd.Stdout = &out
-		cmd.WaitDelay = 250 * time.Millisecond
-		if cmd.Run() != nil || c.Err() != nil {
+		return runtimeProbeCheckNFT(c, nftPath, m)
+	}
+	p.fqdn = func(c context.Context) error {
+		ns, e := namespace()
+		if e != nil {
 			return ErrRuntimeProbe
 		}
-		return nil
+		m, e := runtimeProbeFQDNManifest(ns)
+		if e != nil {
+			return ErrRuntimeProbe
+		}
+		return runtimeProbeCheckNFT(c, nftPath, m)
 	}
+
 	return p, nil
 }
+func runtimeProbeCheckNFT(c context.Context, nftPath string, manifest GuardManifest) error {
+	script := strings.ReplaceAll(manifest.NFTJSON, "tunnex_ipsec", "tx_probe_"+strings.ReplaceAll(uuid.NewString(), "-", ""))
+	cmd := exec.CommandContext(c, nftPath, "--check", "-j", "-f", "-")
+	cmd.Stdin = bytes.NewBufferString(script)
+	cmd.Stderr = io.Discard
+	var out kernelOutput
+	cmd.Stdout = &out
+	cmd.WaitDelay = 250 * time.Millisecond
+	if cmd.Run() != nil || c.Err() != nil {
+		return ErrRuntimeProbe
+	}
+	return nil
+}
+func runtimeProbeIntent(ns string) GuardIntent {
+	return GuardIntent{Namespace: ns, OwnerID: uuid.New(), Revision: 1, Connections: []GuardConnection{{ID: uuid.New(), Local: []netip.Prefix{netip.MustParsePrefix("10.250.1.0/24")}, Remote: []netip.Prefix{netip.MustParsePrefix("10.250.2.0/24")}, TunnelMTUs: []GuardTunnelMTU{{InterfaceIndex: 10001, MTU: 1422}, {InterfaceIndex: 10002, MTU: 1422}}, Tunnels: [2]Ownership{{Namespace: ns, InterfaceName: "tx_probe_a", InterfaceIndex: 10001, XFRMID: 10001}, {Namespace: ns, InterfaceName: "tx_probe_b", InterfaceIndex: 10002, XFRMID: 10002}}, LocalIngressIndices: []int{10003}, PermittedInterfaceIndices: []int{10001}, ReplyIngressIndices: []int{10001}, PermitFor: time.Second, EncryptedEgress: []GuardEncryptedEgress{{TunnelInterfaceIndex: 10001, ReqID: 10001, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 10004}}, Grants: []GuardGrant{{Source: netip.MustParsePrefix("10.250.1.1/32"), Destination: netip.MustParsePrefix("10.250.2.0/24"), Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}}}}
+}
 func runtimeProbeManifest(ns string) (GuardManifest, error) {
-	return RenderGuard(GuardIntent{Namespace: ns, OwnerID: uuid.New(), Revision: 1, Connections: []GuardConnection{{ID: uuid.New(), Local: []netip.Prefix{netip.MustParsePrefix("10.250.1.0/24")}, Remote: []netip.Prefix{netip.MustParsePrefix("10.250.2.0/24")}, TunnelMTUs: []GuardTunnelMTU{{InterfaceIndex: 10001, MTU: 1422}, {InterfaceIndex: 10002, MTU: 1422}}, Tunnels: [2]Ownership{{Namespace: ns, InterfaceName: "tx_probe_a", InterfaceIndex: 10001, XFRMID: 10001}, {Namespace: ns, InterfaceName: "tx_probe_b", InterfaceIndex: 10002, XFRMID: 10002}}, LocalIngressIndices: []int{10003}, PermittedInterfaceIndices: []int{10001}, ReplyIngressIndices: []int{10001}, PermitFor: time.Second, EncryptedEgress: []GuardEncryptedEgress{{TunnelInterfaceIndex: 10001, ReqID: 10001, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 10004}}, Grants: []GuardGrant{{Source: netip.MustParsePrefix("10.250.1.1/32"), Destination: netip.MustParsePrefix("10.250.2.0/24"), Protocol: GuardTCP, PortLow: 443, PortHigh: 443}}}}})
+	return RenderGuard(runtimeProbeIntent(ns))
+}
+func runtimeProbeFQDNManifest(ns string) (GuardManifest, error) {
+	in := runtimeProbeIntent(ns)
+	c := &in.Connections[0]
+	b := FQDNGrantBinding{Version: 2, ExpiresAt: time.Now().UTC().Add(time.Minute), ResolverSourceAddress: "10.250.1.2", ResourceID: uuid.New(), ResolverConfigID: uuid.New(), SelectedSiteID: uuid.New(), SelectedGatewayID: in.OwnerID, ResolverProfileID: uuid.New(), ConnectionID: c.ID, RuleID: uuid.New(), Name: "probe.private.test", Generation: strings.Repeat("a", 64), ResolverMatchSuffix: "private.test", ResolverConfigVersion: 1, ConfigurationRevision: 1}
+	c.Grants = append(c.Grants, GuardGrant{Source: netip.MustParsePrefix("10.250.1.1/32"), Destination: netip.MustParsePrefix("10.250.2.1/32"), Protocol: GuardTCP, PortLow: 8080, PortHigh: 8080, FQDNManaged: true, FQDN: b, FQDNPermitFor: time.Second})
+	return RenderGuard(in)
 }
 
 func runtimeProbePlugins(plugins []string) bool {

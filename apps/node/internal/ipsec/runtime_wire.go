@@ -15,6 +15,8 @@ type RuntimeGrant struct {
 	RuleID      string `json:"rule_id"`
 }
 type RuntimePolicy struct {
+	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
+	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
 	Hash                string                          `json:"hash"`
 	Grants              []RuntimeGrant                  `json:"grants"`
 	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
@@ -124,14 +126,23 @@ type RuntimeAcknowledgement struct {
 	GuardRetained bool `json:"guard_retained"`
 }
 type RuntimeLeaseRequest struct {
-	DeliveryID      uuid.UUID `json:"delivery_id"`
-	DesiredRevision int64     `json:"desired_revision"`
-	PolicyHash      string    `json:"policy_hash"`
-	Nonce           string    `json:"nonce"`
+	FQDNGrants      []RuntimeFQDNGrant `json:"fqdn_grants,omitempty"`
+	DeliveryID      uuid.UUID          `json:"delivery_id"`
+	DesiredRevision int64              `json:"desired_revision"`
+	PolicyHash      string             `json:"policy_hash"`
+	Nonce           string             `json:"nonce"`
+}
+
+// RuntimeFQDNPermit is response-only authority for one exact v2 descriptor.
+// Zero is an explicit selective withdrawal; omission is never authority.
+type RuntimeFQDNPermit struct {
+	GrantDigest string `json:"grant_digest"`
+	TTLMS       int64  `json:"ttl_ms"`
 }
 type RuntimeLease struct {
 	RuntimeLeaseRequest
-	TTLMS int64 `json:"ttl_ms"`
+	TTLMS       int64               `json:"ttl_ms"`
+	FQDNPermits []RuntimeFQDNPermit `json:"fqdn_permits,omitempty"`
 }
 
 type RuntimeTunnelStatus struct {

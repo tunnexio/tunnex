@@ -671,7 +671,7 @@ func main() {
 	sandboxDeps := module.deps()
 
 	ipsecStore := ipsec.NewConnectionStore(pool)
-	ipsecStore.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
+	ipsecStore.ConfigureRuntimePolicy(policy.IPsecRuntimePolicyCompiler(func() bool { return licenceMgr.Has(licence.FeatFQDNResources, time.Now()) }))
 	connectivityStore := connectivity.NewStore(pool, sealer).WithIssuanceLimits(relayLimits)
 	// Invalid console URLs must not erase the app-domain isolation constraint.
 	consoleHost := ""

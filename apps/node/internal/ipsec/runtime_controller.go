@@ -38,6 +38,7 @@ type RuntimeLeaseClient interface {
 	RenewIPsecLease(context.Context, uuid.UUID, RuntimeLeaseRequest) (RuntimeLease, error)
 }
 type RuntimeControllerConfig struct {
+	FQDNPolicy                  *RuntimeFQDNPolicySource
 	Diagnostic                  func(RuntimeDiagnostic)
 	DNSReadTiming               bool
 	OrgID, GatewayID            uuid.UUID
@@ -275,6 +276,12 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		return fail()
 	}
 	c.withdrawChangedDNSMaterial(m, grants)
+	if err := c.withdrawChangedFQDNMaterial(ctx, m, grants); err != nil {
+		return fail()
+	}
+	if !c.fqdnGrantsCurrent(grants) {
+		return fail()
+	}
 	if entry.ContractVersion == 3 && !c.bgpQualificationCurrent() {
 		return fail()
 	} // BGP transport alone never grants runtime capability.
@@ -449,12 +456,12 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	}
 	authority := NewPermitLeaseAuthority()
 	identity := PermitLeaseIdentity{PolicyHash: m.Policy.Hash, Binding: entry.Engines[0].Binding, DeliveryID: entry.DeliveryID}
-	request, e := authority.Begin(identity)
+	request, e := authority.BeginFQDN(identity, runtimeFQDNLeaseKeys(m.Policy))
 	if e != nil {
 		return fail()
 	}
-	lease, e := c.client.RenewIPsecLease(ctx, entry.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce})
-	if e != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+	lease, e := c.client.RenewIPsecLease(ctx, entry.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(m.Policy)})
+	if e != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS, FQDNPermits: lease.FQDNPermits}) != nil {
 		return fail()
 	}
 	if !unchanged {
@@ -746,7 +753,7 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 		proofErr := c.proveCurrent(proofCtx, a.Entry, a.Environment)
 		c.emitRuntimeDiagnostic(proofCtx, "install_active", stage, id, proofStarted, a.Entry.Allocation.Namespace != ns || proofErr != nil)
 		proofCancel()
-		if a.Entry.Allocation.Namespace != ns || proofErr != nil {
+		if a.Entry.Allocation.Namespace != ns || proofErr != nil || !c.fqdnGrantsCurrent(a.Grants) {
 			c.withdrawDNSOwnerView(id)
 			delete(active, id)
 			continue
@@ -884,6 +891,12 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController
 		}
+		if !c.fqdnGrantsCurrent(a.Grants) {
+			c.withdrawDNSOwnerView(g.ID)
+			delete(active, g.ID)
+			_, _ = c.refuse(ctx, entries)
+			return ErrRuntimeController
+		}
 		stage = "entry_dns_source"
 		for _, grant := range g.Grants {
 			if grant.DNSResolver != (DNSResolverBinding{}) {
@@ -951,6 +964,13 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 	if candidateQualification != nil && !candidateQualification() {
 		return ErrRuntimeController
 	}
+	intent = limitFQDNGuardIntent(intent, time.Now(), 5*time.Second, func(id uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
+		a, ok := active[id]
+		if !ok || a.Authority == nil {
+			return 0, ErrPermitLease
+		}
+		return a.Authority.RemainingFQDNForApply(a.Identity, guardFQDNGrantDigest(g), budget)
+	})
 	stage = "combined_guard_replace"
 	publication := &runtimeDNSPublication{previous: c.dnsView.Load(), done: make(chan struct{})}
 	c.dnsPublication.Store(publication)
@@ -975,6 +995,23 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 	for id, a := range active {
 		connection = id
 		stage = "combined_guard_final_lease"
+		for _, connection := range intent.Connections {
+			if connection.ID != id {
+				continue
+			}
+			for _, grant := range connection.Grants {
+				if grant.FQDN.Version == 2 {
+					if _, err := a.Authority.RemainingFQDNForApply(a.Identity, guardFQDNGrantDigest(grant), time.Millisecond); err != nil {
+						_, _ = c.refuse(ctx, entries)
+						return ErrRuntimeController
+					}
+				}
+			}
+		}
+		if !c.fqdnGrantsCurrent(a.Grants) {
+			_, _ = c.refuse(ctx, entries)
+			return ErrRuntimeController
+		}
 		if _, e = a.Authority.RemainingForApply(a.Identity, time.Millisecond); e != nil {
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController

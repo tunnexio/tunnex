@@ -206,7 +206,9 @@ func normalizeGuardSet(fields map[string]any) bool {
 }
 
 func normalizeGuardSetObserved(fields map[string]any, withdrawal bool) bool {
-	if (!reflect.DeepEqual(fields["type"], "iface_index") && !reflect.DeepEqual(fields["type"], map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": json.Number("0")}}})) || !reflect.DeepEqual(fields["flags"], []any{"timeout"}) {
+	fqdnName, _ := fields["name"].(string)
+	fqdn := validFQDNSetName(fqdnName) && fields["type"] == "ipv4_addr"
+	if (!fqdn && !reflect.DeepEqual(fields["type"], "iface_index") && !reflect.DeepEqual(fields["type"], map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": json.Number("0")}}})) || !reflect.DeepEqual(fields["flags"], []any{"timeout"}) {
 		return false
 	}
 	duration, ok := guardPositiveSeconds(fields["timeout"])
@@ -231,11 +233,25 @@ func normalizeGuardSetObserved(fields map[string]any, withdrawal bool) bool {
 		if !ok {
 			return false
 		}
-		value, ok := element["val"].(json.Number)
-		if !ok || !guardCounterNumber(value) || value.String() == "0" || seen[value.String()] {
+		key := ""
+		if fqdn {
+			raw, ok := element["val"].(string)
+			address, err := netip.ParseAddr(raw)
+			if !ok || err != nil || !address.Is4() || raw != address.String() || len(elements) != 1 {
+				return false
+			}
+			key = raw
+		} else {
+			value, ok := element["val"].(json.Number)
+			if !ok || !guardCounterNumber(value) || value.String() == "0" {
+				return false
+			}
+			key = value.String()
+		}
+		if seen[key] {
 			return false
 		}
-		seen[value.String()] = true
+		seen[key] = true
 		timeout, ok := guardPositiveSeconds(element["timeout"])
 		if _, explicit := element["timeout"]; !explicit {
 			// Native nft omits an element timeout equal to the known set
@@ -251,6 +267,9 @@ func normalizeGuardSetObserved(fields map[string]any, withdrawal bool) bool {
 				}
 			}
 			known := named && len(suffix) == 32
+			if fqdn {
+				known = true
+			}
 			for _, c := range suffix {
 				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
 					known = false

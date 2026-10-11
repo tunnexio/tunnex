@@ -154,7 +154,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	if IsAzureRuntimeProfile(m.Manifest.ProfileID) && count == 2 && secrets && m.Secrets[0].PSK != m.Secrets[1].PSK {
 		return fail()
 	}
-	grants := []GuardGrant{}
+	grants, fqdnErr := runtimeFQDNGrants(m, local, remote)
+	if fqdnErr != nil {
+		return fail()
+	}
 	dns, dnsErr := runtimeDNSGrants(m, local, remote)
 	if dnsErr != nil {
 		return fail()

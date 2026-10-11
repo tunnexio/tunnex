@@ -2,8 +2,6 @@ package policy
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/netip"
 	"sort"
@@ -18,8 +16,23 @@ import (
 // organization serialization lock. Migration policy-writer mirrors preserve a
 // coherent snapshot across these queries. Caller input never supplies authority.
 func CompileIPsecRuntimePolicy(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+	return compileIPsecRuntimePolicyWithEntitlement(ctx, q, input, false)
+}
+
+// IPsecRuntimePolicyCompiler uses the same named entitlement as ordinary policy.
+// A missing entitlement callback remains fail closed for retained FQDN rules.
+func IPsecRuntimePolicyCompiler(entitled func() bool) ipsec.RuntimePolicyCompiler {
+	return func(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+		return compileIPsecRuntimePolicyWithEntitlement(ctx, q, input, entitled != nil && entitled())
+	}
+}
+
+func compileIPsecRuntimePolicyWithEntitlement(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput, entitled bool) (ipsec.RuntimePolicy, error) {
 	snapshot, err := BuildSnapshotWithQueries(ctx, q, input.OrgID)
 	if err != nil {
+		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+	}
+	if err := appendRuntimeFQDNGenerations(ctx, &snapshot, input, entitled); err != nil {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
 	}
 	rows, err := q.ListIPsecDNSResolverProfiles(ctx, input.OrgID)
@@ -73,6 +86,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	snapshot.SiteNodes = siteNodes
+	fqdnSnapshot := snapshot
 	result := ipsec.RuntimePolicy{Grants: []ipsec.RuntimeGrant{}}
 	// Isolate the supported shared-rule classes before compilation. Membership,
 	// FQDN generations, device owners and service discovery cannot widen this port.
@@ -103,7 +117,17 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 			result.Grants = append(result.Grants, ipsec.RuntimeGrant{Source: source.String(), Destination: destination.String(), Protocol: string(grant.Protocol), PortLow: uint16(grant.PortLow), PortHigh: uint16(grant.PortHigh), RuleID: grant.RuleID})
 		}
 	}
-	if len(result.Grants) > 128 {
+	result.FQDNGrants = compileIPsecFQDNGrants(fqdnSnapshot, input)
+	if len(result.FQDNGrants) != 0 {
+		result.FQDNPolicyVersion = input.FQDNPolicyVersion
+		if input.FQDNPolicyVersion == 1 {
+			result.FQDNLeaseDeadline = runtimeFQDNLeaseDeadline(fqdnSnapshot, result.FQDNGrants)
+			if !result.FQDNLeaseDeadline.After(input.CompiledAt) {
+				return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
+			}
+		}
+	}
+	if len(result.Grants)+len(result.FQDNGrants) > 128 {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	sort.Slice(result.Grants, func(a, b int) bool {
@@ -114,20 +138,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 	return hashRuntimePolicy(result, input)
 }
 func hashRuntimePolicy(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
-	// Bind the hash to this exact connection even when its effective policy is
-	// empty. Hash only canonical nonsecret forwarding authority, never PSKs.
-	raw, err := json.Marshal(struct {
-		Org, Node, Site, Connection uuid.UUID
-		Grants                      []ipsec.RuntimeGrant
-		DNSResolverGrants           []ipsec.RuntimeDNSResolverGrant `json:"dns_resolver_grants,omitempty"`
-		DNSResolverProfiles         []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
-	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles})
-	if err != nil {
-		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
-	}
-	hash := sha256.Sum256(raw)
-	result.Hash = hex.EncodeToString(hash[:])
-	return result, nil
+	return ipsec.HashRuntimePolicy(result, input)
 }
 func runtimePolicyPrefix(raw string) (netip.Prefix, bool) {
 	p, err := netip.ParsePrefix(raw)
