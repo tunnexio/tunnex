@@ -1,0 +1,62 @@
+{
+  "monotonic": 2066336.267049916,
+  "observation": {
+    "bgp_routes": {
+      "Owned": [
+        {
+          "InterfaceIndex": 6,
+          "Metric": 50001,
+          "Prefix": "10.80.0.0/24",
+          "Protocol": 242,
+          "Slot": 1,
+          "Table": 254
+        }
+      ],
+      "Sequence": 21,
+      "Stage": "completed",
+      "Target": [
+        {
+          "InterfaceIndex": 6,
+          "Metric": 50001,
+          "Prefix": "10.80.0.0/24",
+          "Protocol": 242,
+          "Slot": 1,
+          "Table": 254
+        }
+      ]
+    },
+    "boot_id": "9617762e-19db-4a21-bdee-909dfb31e501",
+    "connection_id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+    "container_id": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+    "contract_version": 3,
+    "delivery_id": "b73f2806-9218-4845-894d-0655f7ae7fd2",
+    "guard_templates": [
+      {
+        "digest": "e6709b696bd4e4df1b03d5fd547029503717617fbf96ff26cf7ff4a9f452d300",
+        "namespace": "net:[4026531840]",
+        "revision": 63423
+      }
+    ],
+    "image_id": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+    "observed": [
+      {
+        "InterfaceIndex": 6,
+        "InterfaceName": "tx21ee6734e2de",
+        "Namespace": "net:[4026531840]",
+        "XFRMID": 2716755764
+      },
+      {
+        "InterfaceIndex": 7,
+        "InterfaceName": "tx8dbedcc23523",
+        "Namespace": "net:[4026531840]",
+        "XFRMID": 2378095810
+      }
+    ],
+    "ownership_digest": "a242e4fbc28f5de88476551d760c15a96093c23868626c6282c2218498315ee9",
+    "phase": "applied",
+    "sa_count": "SAD count 6",
+    "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7"
+  },
+  "scope": "allowlisted native metadata; complete source receipt retained privately by SHA",
+  "utc": "2026-10-11T00:44:52Z"
+}

@@ -1,0 +1,122 @@
+{
+  "monotonic": 2066376.929007583,
+  "observation": {
+    "drop_actions": [
+      {
+        "direction": "ingress",
+        "keys": {
+          "dst_port": 500,
+          "eth_type": "ipv4",
+          "ip_proto": "udp",
+          "src_ip": "34.153.32.207"
+        },
+        "pref": 49101,
+        "stats": {
+          "backlog": 0,
+          "bytes": 1968,
+          "drops": 4,
+          "overlimits": 0,
+          "packets": 4,
+          "qlen": 0,
+          "requeues": 0
+        }
+      },
+      {
+        "direction": "ingress",
+        "keys": {
+          "dst_port": 4500,
+          "eth_type": "ipv4",
+          "ip_proto": "udp",
+          "src_ip": "34.153.32.207"
+        },
+        "pref": 49102,
+        "stats": {
+          "backlog": 0,
+          "bytes": 5984,
+          "drops": 44,
+          "overlimits": 0,
+          "packets": 44,
+          "qlen": 0,
+          "requeues": 0
+        }
+      },
+      {
+        "direction": "ingress",
+        "keys": {
+          "eth_type": "ipv4",
+          "ip_proto": "50",
+          "src_ip": "34.153.32.207"
+        },
+        "pref": 49103,
+        "stats": {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "requeues": 0
+        }
+      },
+      {
+        "direction": "ingress",
+        "keys": {
+          "dst_port": 500,
+          "eth_type": "ipv4",
+          "ip_proto": "udp",
+          "src_ip": "34.153.224.218"
+        },
+        "pref": 49104,
+        "stats": {
+          "backlog": 0,
+          "bytes": 1968,
+          "drops": 4,
+          "overlimits": 0,
+          "packets": 4,
+          "qlen": 0,
+          "requeues": 0
+        }
+      },
+      {
+        "direction": "ingress",
+        "keys": {
+          "dst_port": 4500,
+          "eth_type": "ipv4",
+          "ip_proto": "udp",
+          "src_ip": "34.153.224.218"
+        },
+        "pref": 49105,
+        "stats": {
+          "backlog": 0,
+          "bytes": 3476,
+          "drops": 25,
+          "overlimits": 0,
+          "packets": 25,
+          "qlen": 0,
+          "requeues": 0
+        }
+      },
+      {
+        "direction": "ingress",
+        "keys": {
+          "eth_type": "ipv4",
+          "ip_proto": "50",
+          "src_ip": "34.153.224.218"
+        },
+        "pref": 49106,
+        "stats": {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "requeues": 0
+        }
+      }
+    ],
+    "phase": "before_cleanup"
+  },
+  "scope": "selected traffic-control drop counters; no raw qdisc inventory",
+  "utc": "2026-10-11T00:45:33Z"
+}

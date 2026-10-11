@@ -1,0 +1,1 @@
+{"utc": "2026-10-11T00:44:49Z", "monotonic": 2066333.145876708, "observation": {"ready": true, "peers": ["34.153.224.218", "34.153.32.207"], "scope": "ingress UDP500/4500 ESP only", "hold_max_seconds": 240, "successful_installation_ledger": [49101, 49102, 49103, 49104, 49105, 49106]}}

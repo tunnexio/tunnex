@@ -1,0 +1,1 @@
+{"utc": "2026-10-11T00:57:26Z", "monotonic": 2067089.751139458, "observation": {"completed": true, "one_peer_fault": true, "positive_udp4500_drop": true, "cleanup_verified": true, "scope": "controlled one cloud tunnel packet-loss/failover; no host HA or SLA claim"}}
