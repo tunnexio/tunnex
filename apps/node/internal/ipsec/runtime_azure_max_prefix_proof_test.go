@@ -106,7 +106,12 @@ func azureMaxProofEntryHistory(p runtimeJournalPayload, b azureMaxProofBinding, 
 	if (b.Mode == "baseline" || b.Mode == "post-limit") && active != 1 || b.Mode == "absence" && (active != 0 || latest == 0) {
 		return bad()
 	}
-	if selected.Allocation.ConnectionID != b.ConnectionID || selected.SiteID != b.SiteID || selected.ContractVersion != 3 || selected.Allocation.ProfileID != AzureActiveActiveBGPProfile || selected.Allocation.activeTunnelCount() != 2 || selected.AbsenceOnly {
+	if selected.Allocation.ConnectionID != b.ConnectionID || selected.SiteID != b.SiteID || selected.ContractVersion != 3 || selected.Allocation.ProfileID != AzureActiveActiveBGPProfile || selected.Allocation.activeTunnelCount() != 2 {
+		return bad()
+	}
+	// A genuine Cleanup may durably record authenticated lineage never admitted
+	// locally. It can prove only fresh absence, never baseline or restage rights.
+	if selected.AbsenceOnly && (b.Mode != "absence" || selected.Phase != RuntimeRetainedRefusal || selected.Allocation.Namespace != ns || selected.Observed != ([2]Ownership{}) || selected.BGPRoutes != nil || selected.BGPProcess != nil || len(selected.BGPProcessRetired) != 0 || selected.BGPProcessHistory != nil || selected.Restoration != nil || selected.ResetCleanup != nil || selected.Recovery != nil) {
 		return bad()
 	}
 	if b.Mode == "post-limit" && b.MaximumPrefixes != 1 {
@@ -207,6 +212,9 @@ func azureMaxProofProjection(p runtimeJournalPayload, e RuntimeJournalEntry, b a
 	if b.Mode == "absence" {
 		desired = e.CleanupDesiredRevision
 		result["kind"] = "owned_native_cleanup_absence"
+		if e.AbsenceOnly {
+			result["never_admitted"] = true
+		}
 		result["azure_connection_id"] = "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection"
 		result["guard_retained"] = true
 		result["namespace_device"] = b.NamespaceDevice
@@ -667,5 +675,96 @@ func TestAzureMaxProofTrafficAdvancePreservesOnlyIdentityBracket(t *testing.T) {
 				t.Fatal("strict validator accepted identity change")
 			}
 		})
+	}
+}
+
+func TestAzureMaxProofNeverAdmittedCleanupAbsenceOnly(t *testing.T) {
+	p, prior, b, _, k, _, _, _ := azureMaxProofFixture(t)
+	prior.Phase = RuntimeRetainedRefusal
+	prior.CleanupID = uuid.New()
+	prior.CleanupDesiredRevision = 41
+	prior.CoveredDeliveryRevision = 40
+	prior.BGPRoutes = &RuntimeBGPRoutes{Sequence: 2, Stage: "completed", Withdrawal: true, Owned: []RuntimeBGPRouteTuple{}, Target: []RuntimeBGPRouteTuple{}}
+	p.Entries[len(p.Entries)-1] = prior
+	m := azureMaterialFixture(AzureActiveActiveBGPProfile)
+	m.DesiredRevision = 2
+	m.Manifest.DesiredRevision = 2
+	m.Manifest.ConfigurationRevision = 1
+	m.Manifest.OrgID = prior.Engines[0].Binding.OrgID
+	m.Manifest.NodeID = p.OwnerID
+	m.Manifest.SiteID = prior.SiteID
+	m.Manifest.LocalPrefixes = []string{"10.233.10.0/24"}
+	m.Manifest.RemotePrefixes = []string{"10.231.0.0/16", "10.235.77.0/24"}
+	m.Manifest.BGP.MaximumPrefixes = 1
+	runtimeReseal(&m)
+	// The same secret-free construction used by normal authenticated Cleanup;
+	// this is a synthetic unit fixture, not an API or native receipt.
+	e, _, err := runtimeBuildEntry(RuntimeMaterial{RuntimeDelivery: m.RuntimeDelivery}, m.Manifest.OrgID, m.Manifest.NodeID, k.Namespace, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.AbsenceOnly = true
+	e.Phase = RuntimeRetainedRefusal
+	e.CleanupID = uuid.New()
+	e.CleanupDesiredRevision = 3
+	e.CoveredDeliveryRevision = 2
+	p.Entries = append(p.Entries, e)
+	b.Mode = "absence"
+	b.ConnectionID = e.Allocation.ConnectionID
+	b.ConfigurationRevision = 1
+	b.DesiredRevision = 3
+	if !validJournalPayload(p) {
+		t.Fatal("authenticated-cleanup shape invalid")
+	}
+	selected, err := azureMaxProofEntry(p, b, k.Namespace)
+	if err != nil || selected.DeliveryID != e.DeliveryID {
+		t.Fatal("never admitted absence refused", err)
+	}
+	emptyK := KernelInventory{Namespace: k.Namespace}
+	emptyX := XFRMInventory{Namespace: k.Namespace}
+	if azureMaxProofAbsence(p, DaemonInventory{}, emptyK, emptyX) != nil {
+		t.Fatal("global native absence refused")
+	}
+	projected := azureMaxProofProjection(p, selected, b, time.Now(), strings.Repeat("b", 64), DaemonInventory{}, emptyK, emptyX, bgpengine.Status{}, nil)
+	if projected["never_admitted"] != true || projected["desired_revision"] != int64(3) || projected["owned_ike"] != 0 || projected["owned_sad"] != 0 {
+		t.Fatal("truthful unadmitted projection missing")
+	}
+	for _, scenario := range []string{"baseline", "post-limit", "observed", "routes", "process", "retired", "history", "restoration", "reset", "revision", "foreign_config"} {
+		t.Run(scenario, func(t *testing.T) {
+			q := cloneJournal(p)
+			binding := b
+			entry := &q.Entries[len(q.Entries)-1]
+			switch scenario {
+			case "baseline":
+				binding.Mode = "baseline"
+			case "post-limit":
+				binding.Mode = "post-limit"
+			case "observed":
+				entry.Observed = prior.Observed
+			case "routes":
+				entry.BGPRoutes = prior.BGPRoutes
+			case "process":
+				entry.BGPProcess = processStateFixture(t).BGPProcess
+			case "retired":
+				entry.BGPProcessRetired = []bgpengine.ProcessIdentity{*processStateFixture(t).BGPProcess}
+			case "history":
+				entry.BGPProcessHistory = &RuntimeHistoryContinuation{}
+			case "restoration":
+				entry.Restoration = &RuntimeRestoration{BootID: uuid.NewString(), Retired: []RuntimeRetiredEpoch{}}
+			case "reset":
+				entry.ResetCleanup = &RuntimeResetCleanup{BootID: uuid.NewString(), Namespace: k.Namespace, ReceiptDigest: strings.Repeat("c", 64)}
+			case "revision":
+				binding.DesiredRevision++
+			case "foreign_config":
+				binding.ConfigurationRevision++
+			}
+			if _, err := azureMaxProofEntry(q, binding, k.Namespace); err == nil {
+				t.Fatal("inadmissible unobserved provenance accepted")
+			}
+		})
+	}
+	emptyK.Links = []KernelLink{{Name: e.Allocation.Tunnels[0].Name}}
+	if azureMaxProofAbsence(p, DaemonInventory{}, emptyK, emptyX) == nil {
+		t.Fatal("never-admitted allocation survivor ignored")
 	}
 }
