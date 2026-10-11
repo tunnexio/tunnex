@@ -166,6 +166,9 @@ def run(phase,state_path,review=None,candidate='10.235.77.0/24',evidence_check=N
   immediately_before=cloud_binding()
   if any(immediately_before.get(key)!=state['discovery'][key] for key in ('connection_mode','connection_protected_sha256')):raise ValueError('preupdate connection changed')
   if vnet(current)!=target:
+   # ARM ownership reads may consume the original proof window. Recheck all
+   # genuine add evidence at the mutation boundary; never extend timestamps.
+   if phase=='add':check(review,candidate,datetime.now(timezone.utc))
    if reservation is not None:reservation(phase,state)
    state['stage']=phase+'_sent';private_write(state_path,state)
    # One mutation only. Ambiguous failures retain the sent reservation for read-only reconciliation.

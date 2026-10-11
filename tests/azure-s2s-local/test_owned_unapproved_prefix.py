@@ -38,6 +38,14 @@ class PrefixExperiment(unittest.TestCase):
   self.run_phase('prepare');state=json.loads(self.state.read_text());state['discovery'].pop('connection_mode');self.state.write_text(json.dumps(state))
   with self.assertRaises((KeyError,ValueError)):self.run_phase('add')
   self.assertEqual(self.updates,[])
+ def test_expensive_final_binding_cannot_outlive_add_proof(self):
+  self.run_phase('prepare');calls=[]
+  def binding():calls.append('binding');return copy.deepcopy(self.discovery)
+  def stale_after_final_read(*args):
+   if len(calls)>=2:raise ValueError('genuine proof expired during final ARM read')
+  with patch.object(h,'cloud_binding',side_effect=binding):
+   with self.assertRaises(ValueError):h.run('add',self.state,self.review,evidence_check=stale_after_final_read)
+  self.assertEqual(self.updates,[]);self.assertEqual(json.loads(self.state.read_text())['stage'],'prepared')
  def tearDown(self):
   for p in self.patches:p.stop()
   self.temp.cleanup()
