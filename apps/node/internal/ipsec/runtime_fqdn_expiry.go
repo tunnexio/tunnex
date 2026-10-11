@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"reflect"
 	"strings"
 	"time"
@@ -26,7 +27,7 @@ func liveFQDNGrants(in []GuardGrant, now time.Time) []GuardGrant {
 
 // Call after all independent proofs, immediately before the original bounded
 // atomic commit. Subtract its entire remaining upper budget conservatively.
-func limitFQDNGuardIntent(in GuardIntent, now time.Time, commitBudget time.Duration) GuardIntent {
+func limitFQDNGuardIntent(in GuardIntent, now time.Time, commitBudget time.Duration, remaining func(uuid.UUID, GuardGrant, time.Duration) (time.Duration, error)) GuardIntent {
 	out := in
 	out.Connections = append([]GuardConnection(nil), in.Connections...)
 	for i, c := range out.Connections {
@@ -34,7 +35,13 @@ func limitFQDNGuardIntent(in GuardIntent, now time.Time, commitBudget time.Durat
 		kept := c.Grants[:0]
 		for _, g := range c.Grants {
 			if g.FQDN.Version == 2 {
-				d := g.FQDN.ExpiresAt.Sub(now) - commitBudget
+				if remaining == nil {
+					continue
+				}
+				d, err := remaining(c.ID, g, commitBudget)
+				if err != nil {
+					continue
+				}
 				if d > c.PermitFor {
 					d = c.PermitFor
 				}
@@ -42,7 +49,10 @@ func limitFQDNGuardIntent(in GuardIntent, now time.Time, commitBudget time.Durat
 					d = 60 * time.Second
 				}
 				d = d / time.Second * time.Second
-				if commitBudget < 0 || d < time.Second {
+				// Early cutoff is intentional: even the rounded emitted membership must
+				// outlive the full original commit/readback budget. This can omit
+				// grants with ten seconds or less remaining; it never extends them.
+				if commitBudget <= 0 || d <= commitBudget {
 					continue
 				}
 				g.FQDNPermitFor = d
@@ -122,4 +132,32 @@ func replaceOwnedFQDNSets(transaction, prior string) (string, error) {
 	commands = append(commands, envelope.Commands[2:]...)
 	b, err := json.Marshal(map[string]any{"nftables": commands})
 	return string(b), err
+}
+
+func runtimeFQDNGrantDigest(g RuntimeFQDNGrant) string {
+	raw, _ := json.Marshal(g)
+	h := sha256.Sum256(raw)
+	return hex.EncodeToString(h[:])
+}
+func runtimeFQDNLeaseKeys(p RuntimePolicy) []string {
+	if p.FQDNPolicyVersion != 2 {
+		return nil
+	}
+	keys := make([]string, 0, len(p.FQDNGrants))
+	for _, g := range p.FQDNGrants {
+		keys = append(keys, runtimeFQDNGrantDigest(g))
+	}
+	return keys
+}
+func guardFQDNGrantDigest(g GuardGrant) string {
+	b := g.FQDN
+	f := RuntimeFQDNGrant{ExpiresAt: b.ExpiresAt, ResolverSourceAddress: b.ResolverSourceAddress, RuntimeGrant: RuntimeGrant{Source: g.Source.String(), Destination: g.Destination.String(), Protocol: string(g.Protocol), PortLow: g.PortLow, PortHigh: g.PortHigh, RuleID: b.RuleID.String()}, FQDNManaged: g.FQDNManaged, ResourceID: b.ResourceID.String(), Name: b.Name, Generation: b.Generation, ResolverConfigID: b.ResolverConfigID.String(), ResolverConfigVersion: b.ResolverConfigVersion, SelectedSiteID: b.SelectedSiteID.String(), SelectedGatewayID: b.SelectedGatewayID.String(), ResolverProfileID: b.ResolverProfileID.String(), ResolverMatchSuffix: b.ResolverMatchSuffix, ConnectionID: b.ConnectionID.String(), ConfigurationRevision: b.ConfigurationRevision}
+	return runtimeFQDNGrantDigest(f)
+}
+
+func runtimeFQDNLeaseDescriptors(p RuntimePolicy) []RuntimeFQDNGrant {
+	if p.FQDNPolicyVersion != 2 {
+		return nil
+	}
+	return append([]RuntimeFQDNGrant(nil), p.FQDNGrants...)
 }

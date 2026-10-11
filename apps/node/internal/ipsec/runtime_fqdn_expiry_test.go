@@ -3,6 +3,7 @@ package ipsec
 import (
 	"context"
 	"encoding/json"
+	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"net/netip"
 	"reflect"
@@ -38,15 +39,15 @@ func TestRuntimeFQDNV2TimedMembershipDoesNotRenewAndPreservesOrdinary(t *testing
 	dns.PortHigh = 53
 	dns.DNSResolver = DNSResolverBinding{ContextConfigID: g.FQDN.ResolverConfigID, ContextConfigVersion: g.FQDN.ResolverConfigVersion, ProfileID: g.FQDN.ResolverProfileID, ConnectionID: g.FQDN.ConnectionID, ConfigurationRevision: g.FQDN.ConfigurationRevision}
 	in := GuardIntent{Connections: []GuardConnection{{PermitFor: 60 * time.Second, Grants: []GuardGrant{ordinary, g, dns}}}}
-	a := limitFQDNGuardIntent(in, now, 5*time.Second)
+	a := limitFQDNGuardIntent(in, now, 5*time.Second, testFQDNRemaining(now))
 	if len(a.Connections[0].Grants) != 3 || a.Connections[0].Grants[1].FQDNPermitFor != 25*time.Second || in.Connections[0].Grants[1].FQDNPermitFor != 0 {
 		t.Fatal("finite budget or immutable input lost")
 	}
-	b := limitFQDNGuardIntent(in, now.Add(10*time.Second), 5*time.Second)
+	b := limitFQDNGuardIntent(in, now.Add(10*time.Second), 5*time.Second, testFQDNRemaining(now.Add(10*time.Second)))
 	if b.Connections[0].Grants[1].FQDNPermitFor != 15*time.Second {
 		t.Fatal("absolute cutoff renewed")
 	}
-	c := limitFQDNGuardIntent(in, g.FQDN.ExpiresAt.Add(-5*time.Second), 5*time.Second)
+	c := limitFQDNGuardIntent(in, g.FQDN.ExpiresAt.Add(-5*time.Second), 5*time.Second, testFQDNRemaining(g.FQDN.ExpiresAt.Add(-5*time.Second)))
 	if len(c.Connections[0].Grants) != 2 || c.Connections[0].Grants[0] != ordinary || c.Connections[0].Grants[1] != dns {
 		t.Fatal("expiry withdrew ordinary or retained FQDN")
 	}
@@ -111,7 +112,7 @@ func TestRuntimeFQDNV2WholeGuardReadbackAndAtomicSetTurnover(t *testing.T) {
 	g.FQDN.ConnectionID = in.Connections[0].ID
 	in.Connections[0].ReplyIngressIndices = []int{10}
 	in.Connections[0].Grants = append(in.Connections[0].Grants, g)
-	in = limitFQDNGuardIntent(in, time.Now(), 5*time.Second)
+	in = limitFQDNGuardIntent(in, time.Now(), 5*time.Second, testFQDNRemaining(time.Now()))
 	m, err := RenderGuard(in)
 	if err != nil {
 		t.Fatal(err)
@@ -211,5 +212,12 @@ func TestRuntimeFQDNV2WithdrawalPreservesSameConnectionOrdinary(t *testing.T) {
 	}
 	if strings.Contains(string(r.expected), "fqdn_") {
 		t.Fatal("old application permit remains")
+	}
+}
+
+// Synthetic CP duration evidence for renderer-only fixtures, not production authority.
+func testFQDNRemaining(at time.Time) func(uuid.UUID, GuardGrant, time.Duration) (time.Duration, error) {
+	return func(_ uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
+		return g.FQDN.ExpiresAt.Sub(at) - budget, nil
 	}
 }

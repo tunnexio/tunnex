@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -66,6 +67,9 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	}
 	if delivery.OwnershipDigest != digest {
 		return invalid(ErrConnectionConflict)
+	}
+	if !runtimeMaterialLeaseRequestFits(delivery, policy) {
+		return invalid(ErrConnectionIneligible)
 	}
 	result := RuntimeMaterial{RuntimeDelivery: delivery, Policy: policy}
 	for i, t := range tunnels[:activeTunnelCount(manifest.ProfileID)] {
@@ -244,7 +248,7 @@ func (s *ConnectionStore) Pending(ctx context.Context, p RuntimePrincipal, after
 	return out, nil
 }
 func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, id uuid.UUID, r RuntimeLeaseRequest) (RuntimeLease, error) {
-	if r.DeliveryID == uuid.Nil || r.DesiredRevision <= 0 || !runtimeDigest(r.PolicyHash) || !runtimeDigest(r.Nonce) {
+	if !runtimeLeaseRequestFits(r) || r.DeliveryID == uuid.Nil || r.DesiredRevision <= 0 || !runtimeDigest(r.PolicyHash) || !runtimeDigest(r.Nonce) {
 		return RuntimeLease{}, ErrConnectionInvalid
 	}
 	tx, locked, e := s.runtimeLock(ctx, p.OrgID, id, &p)
@@ -279,11 +283,33 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if e != nil {
 		return RuntimeLease{}, e
 	}
-	if policy.Hash != r.PolicyHash {
-		return RuntimeLease{}, ErrConnectionConflict
+	// Fence before the independent authoritative clock query. Every subsequent
+	// query/validation/commit duration is charged, never replaced by API wall time.
+	observedMono := time.Now()
+	var observedAt time.Time
+	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observedAt); e != nil {
+		return RuntimeLease{}, createError(e)
+	}
+	policy, expired, e := runtimeFQDNLeaseContinuity(policy, r, RuntimePolicyInput{OrgID: c.OrgID, NodeID: p.NodeID, SiteID: c.HistoricalSiteID, ConnectionID: id, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: policy.SelectedFQDNVersion}, observedAt)
+	if e != nil {
+		return RuntimeLease{}, e
 	}
 	if e = tx.Commit(ctx); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	return RuntimeLease{RuntimeLeaseRequest: r, TTLMS: 60000}, nil
+	elapsed := time.Since(observedMono)
+	ttl, e := runtimeFQDNWholeLeaseTTL(policy, observedAt, elapsed)
+	if e != nil {
+		return RuntimeLease{}, e
+	}
+	permits, e := runtimeFQDNLeasePermits(policy, observedAt, elapsed)
+	if e != nil {
+		return RuntimeLease{}, e
+	}
+	for i := range permits {
+		if expired[permits[i].GrantDigest] {
+			permits[i].TTLMS = 0
+		}
+	}
+	return RuntimeLease{RuntimeLeaseRequest: RuntimeLeaseRequest{DeliveryID: r.DeliveryID, DesiredRevision: r.DesiredRevision, PolicyHash: r.PolicyHash, Nonce: r.Nonce}, TTLMS: ttl, FQDNPermits: permits}, nil
 }

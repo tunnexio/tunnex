@@ -89,3 +89,32 @@ func TestIPsecFQDNV1OmitsAbsoluteAuthorityFields(t *testing.T) {
 		t.Fatal("v1 wire/hash changed", err)
 	}
 }
+
+func TestIPsecFQDNV1PrivateAnswerRuleDeadline(t *testing.T) {
+	snapshot, input := runtimeFQDNFixture(t)
+	input.FQDNPolicyVersion = 1
+	grants := compileIPsecFQDNGrants(snapshot, input)
+	if len(grants) != 1 {
+		t.Fatal("fixture grant", grants)
+	}
+	cutoff := input.CompiledAt.Add(10 * time.Second)
+	for i := range snapshot.Rules {
+		if snapshot.Rules[i].ID.String() == grants[0].RuleID {
+			snapshot.Rules[i].ExpiresAt = &cutoff
+		}
+	}
+	deadline := runtimeFQDNLeaseDeadline(snapshot, grants)
+	if !deadline.Equal(cutoff) {
+		t.Fatal("earliest rule bound missing", deadline, cutoff)
+	}
+	for _, g := range grants {
+		if !g.ExpiresAt.IsZero() || g.ResolverSourceAddress != "" {
+			t.Fatal("v1 wire changed")
+		}
+	}
+	missing := snapshot
+	missing.FQDNResources = nil
+	if !runtimeFQDNLeaseDeadline(missing, grants).IsZero() {
+		t.Fatal("missing answer provenance accepted")
+	}
+}

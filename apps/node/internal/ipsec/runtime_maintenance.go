@@ -172,12 +172,12 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 		if fresh == nil {
 			return fail()
 		}
-		request, beginErr := fresh.Begin(old.Identity)
+		request, beginErr := fresh.BeginFQDN(old.Identity, runtimeFQDNLeaseKeys(m.Policy))
 		if beginErr != nil {
 			return fail()
 		}
-		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce})
-		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(m.Policy)})
+		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS, FQDNPermits: lease.FQDNPermits}) != nil {
 			return fail()
 		}
 		// The old authority must still bridge this collection; a response arriving

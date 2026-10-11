@@ -75,7 +75,7 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 	for _, rule := range snapshot.Rules {
 		ruleExpiry[rule.ID] = rule.ExpiresAt
 	}
-	now := time.Now()
+	now := input.CompiledAt
 	var out []ipsec.RuntimeFQDNGrant
 	for _, grant := range Compile(snapshot)[input.NodeID].Allow {
 		if !grant.FQDNManaged {
@@ -120,4 +120,39 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 		return string(x) < string(y)
 	})
 	return out
+}
+
+// Private v1 whole-owner limit over only the exact descriptors already emitted.
+// No wire/hash fields change; v2 instead carries independent per-grant authority.
+func runtimeFQDNLeaseDeadline(snapshot Snapshot, grants []ipsec.RuntimeFQDNGrant) time.Time {
+	var deadline time.Time
+	for _, grant := range grants {
+		var bound time.Time
+		for _, resource := range snapshot.FQDNResources {
+			if resource.ID.String() == grant.ResourceID && resource.Active != nil {
+				bound = resource.Active.FreshUntil
+				break
+			}
+		}
+		if bound.IsZero() {
+			return time.Time{}
+		}
+		found := false
+		for _, rule := range snapshot.Rules {
+			if rule.ID.String() == grant.RuleID {
+				found = true
+				if rule.ExpiresAt != nil && rule.ExpiresAt.Before(bound) {
+					bound = *rule.ExpiresAt
+				}
+				break
+			}
+		}
+		if !found {
+			return time.Time{}
+		}
+		if deadline.IsZero() || bound.Before(deadline) {
+			deadline = bound
+		}
+	}
+	return deadline
 }
