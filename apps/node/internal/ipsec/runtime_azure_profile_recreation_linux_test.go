@@ -50,7 +50,17 @@ func TestNativeAzureProfileRecreationAbsenceAndReadback(t *testing.T) {
 	_, successor := profileRecreationMaterial(t, nextProfile, []RuntimeJournalEntry{old})
 	old.Allocation.Namespace = ns
 	successor.Allocation.Namespace = ns
-	dir := journalDir(t)
+	// BGP preflight requires every ancestor to be root-owned and non-writable.
+	// testing.TempDir lives below /tmp and cannot satisfy that native contract.
+	dir, err := os.MkdirTemp("/run", "azure-profile-handoff-")
+	if err != nil {
+		t.Fatal("private native journal directory", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Error("private native journal cleanup", err)
+		}
+	})
 	j, err := OpenRuntimeJournal(dir, old.Engines[0].Binding.GatewayID)
 	if err != nil {
 		t.Fatal(err)
