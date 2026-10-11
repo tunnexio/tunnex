@@ -1,0 +1,65 @@
+{
+  "scope": "bounded approved replacement, ordinary ACK and native/guard/payload checkpoints; no final GCP9 signoff",
+  "source": "f9a7733cf3bf624c3a896a7d29a560ae51afda91",
+  "image": "sha256:666e0029bff237f5d1c7d497f6f40efc6604e31ca951ea690a4ed55abfeced16",
+  "container_id": "c368142306eaa9be0cb39b31a7d9b9975ccf402e5c1c7e94bffee466f3d543fe",
+  "stop": {
+    "receipt_sha256": "de8641a107562821575d166b62f6f21f29f907d3d39d5853e5f8ce399061852f",
+    "stopped_receipt_sha256": "0c4da581c858e5954ac7e6e0c17c72a1cbf3fde7de25e659938a8b63e2a0c518",
+    "exit_code": 0,
+    "sad_count": 0,
+    "managed_process_count": 0,
+    "readback_error_count": 0
+  },
+  "first_create_start": {
+    "completed": false,
+    "receipt_sha256": "46fd614cf87e318663da9a16ded5dc0c096fd453d2c6f5f1a33585ae2fe04e73",
+    "strict_gate_retained": true
+  },
+  "normal_create_start": {
+    "completed": true,
+    "receipt_sha256": "70f9a152c648074b498ce2ea7ab1784a5f9294d1616293bdf0d32bdc93319fe5",
+    "created_receipt_sha256": "3d45f0457840b9d6ec7f9f3135a4a885df0c65d5ea4c6481b21a9535a8463379"
+  },
+  "ordinary_ack": {
+    "completed": true,
+    "accepted": true,
+    "mutations": 0,
+    "receipt_sha256": "3b38083906cdcec4956b2d3af490c9a1b6e7cda72ea9aebf9d5d50ce7e78b8c3",
+    "expected_hash": "5df9f19bf4f5",
+    "applied_hash": "5df9f19bf4f5",
+    "runtime_ipsec_hash_equality_asserted": false
+  },
+  "full_checkpoints": [
+    {
+      "attempt": 1,
+      "receipt_sha256": "78a3479459b925e8ffcda31dcac3577a3fe72b594a3bf3e3358654afa09af5c1",
+      "completed": false,
+      "api_generation_qualified": false,
+      "elapsed_seconds": null
+    },
+    {
+      "attempt": 2,
+      "receipt_sha256": "5f1eebd47eedd4599763e7fc218f69ff0fe72368cb78ac73599b707304c713e4",
+      "completed": false,
+      "api_generation_qualified": false,
+      "elapsed_seconds": null
+    },
+    {
+      "attempt": 3,
+      "receipt_sha256": "0d243a31102116d1be8c1b3a8d60250d7fc25de58e0c1331a7b55b7f3f157a12",
+      "completed": true,
+      "api_generation_qualified": false,
+      "elapsed_seconds": 15.413417834
+    }
+  ],
+  "normal_client_diagnostic": {
+    "accepted": false,
+    "receipt_sha256": "55f164fa6f5550e2d15ed6215e93236343c5351a9c5c2a00baf911a258fa1ade",
+    "owned_cleanup_completed": true,
+    "causal_mtu_fix_claimed": false
+  },
+  "final_gcp9_accepted": false,
+  "continuous_availability_claimed": false,
+  "production_readiness_claimed": false
+}
