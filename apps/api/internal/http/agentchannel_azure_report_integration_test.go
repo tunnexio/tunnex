@@ -46,6 +46,8 @@ func TestAgentAzureReportCapabilityPropagation(t *testing.T) {
 		{"supported", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_gcp_classic_version":1,"ipsec_gcp_ha_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":1,"ipsec_azure_profile_recreation_version":1`, true, true, true},
 		{"future recreation", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":2,"ipsec_azure_profile_recreation_version":2`, true, true, false},
 		{"missing retained", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_azure_bgp_recreation_version":1,"ipsec_azure_profile_recreation_version":1`, true, true, false},
+		{"profile missing BGP", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_profile_recreation_version":1`, true, false, false},
+		{"profile future BGP", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":2,"ipsec_retained_guard_version":1,"ipsec_azure_profile_recreation_version":1`, true, false, false},
 		{"static only", `,"ipsec_config_version":1,"ipsec_azure_version":1`, true, false, false},
 		{"omitted", `,"ipsec_config_version":1,"ipsec_bgp_version":1`, false, false, false},
 		{"future", `,"ipsec_config_version":1,"ipsec_azure_version":2,"ipsec_bgp_version":1`, false, false, false},

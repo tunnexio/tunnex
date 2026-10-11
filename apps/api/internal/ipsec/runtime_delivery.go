@@ -211,7 +211,7 @@ func (s *ConnectionStore) Pending(ctx context.Context, p RuntimePrincipal, after
 	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_azure_bgp_recreation_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&azureCap); e != nil {
 		return RuntimePendingPage{}, createError(e)
 	}
-	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_azure_profile_recreation_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&profileCap); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_azure_profile_recreation_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&profileCap); e != nil {
 		return RuntimePendingPage{}, createError(e)
 	}
 	blocked, e := blockedStaticRecreations(ctx, tx, p.OrgID, retainedCap, azureCap, profileCap)

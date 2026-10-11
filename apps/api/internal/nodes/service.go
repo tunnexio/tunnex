@@ -2267,7 +2267,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
-	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureProfileRecreationVersion != 1 {
+	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecBGPVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureProfileRecreationVersion != 1 {
 		applied.IPsecAzureProfileRecreationVersion = 0
 	}
 	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecBGPVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureBGPRecreationVersion != 1 {

@@ -38,5 +38,5 @@ func azureProfileConfigManifest(c StaticConfig) RuntimeManifest {
 }
 func azureProfileRecreationCapability(raw []byte) bool {
 	var f map[string]json.RawMessage
-	return retainedGuardCapability(raw) && json.Unmarshal(raw, &f) == nil && string(f["ipsec_azure_version"]) == "1" && string(f["ipsec_azure_profile_recreation_version"]) == "1"
+	return retainedGuardCapability(raw) && json.Unmarshal(raw, &f) == nil && string(f["ipsec_azure_version"]) == "1" && string(f["ipsec_bgp_version"]) == "1" && string(f["ipsec_azure_profile_recreation_version"]) == "1"
 }

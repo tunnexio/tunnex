@@ -97,6 +97,15 @@ func TestAzureProfileRecreationFinalizedBGPToStatic(t *testing.T) {
 			t.Fatalf("stage%d stale: %v", stage, e)
 		}
 		p.Exec(ctx, `UPDATE nodes SET policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
+		for _, bgpBit := range []string{"0", "2"} {
+			if _, e = p.Exec(ctx, `UPDATE nodes SET capabilities=jsonb_set(capabilities,'{ipsec_bgp_version}',$2::jsonb) WHERE id=$1`, req.GatewayID, bgpBit); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.CreateProviderDisabled(ctx, org, actor, sealer, candidate); !errors.Is(e, ipsec.ErrConnectionIneligible) {
+				t.Fatalf("stage%d unsupported BGP capability: %v", stage, e)
+			}
+		}
+		p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities || '{"ipsec_bgp_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
 		changed := candidate
 		changed.Config.Tunnels = append([]ipsec.StaticTunnel(nil), candidate.Config.Tunnels...)
 		changed.Config.Tunnels[0].OutsideAddress = "8.8.4.4"

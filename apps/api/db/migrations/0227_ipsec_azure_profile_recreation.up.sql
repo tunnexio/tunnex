@@ -81,7 +81,7 @@ CREATE FUNCTION ipsec_azure_profile_recreation_used(c uuid) RETURNS boolean AS $
  SELECT EXISTS(SELECT 1 FROM ipsec_static_recreations r JOIN ipsec_connections p ON p.id=r.predecessor_connection_id JOIN ipsec_connections n ON n.id=r.connection_id WHERE r.connection_id=c AND p.provider_profile IS DISTINCT FROM n.provider_profile);
 $$ LANGUAGE sql STABLE;
 CREATE FUNCTION ipsec_azure_profile_recreation_capable(node uuid) RETURNS boolean AS $$
- SELECT coalesce(status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_retained_guard_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_azure_profile_recreation_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=node;
+ SELECT coalesce(status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_retained_guard_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_azure_profile_recreation_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=node;
 $$ LANGUAGE sql STABLE;
 CREATE OR REPLACE FUNCTION ipsec_static_recreation_binding() RETURNS trigger AS $$
 DECLARE c ipsec_connections; p ipsec_connections; g ipsec_retained_guards; d ipsec_runtime_deliveries; s ipsec_runtime_state;
