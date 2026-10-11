@@ -60,9 +60,9 @@ def identity():
  proc=Path('/proc/'+str(pid)+'/stat').read_text();ticks=proc[proc.rfind(')')+1:].split()[19]
  return {'pid':pid,'started':state['StartedAt'],'ticks':ticks,'namespace_device':ns.st_dev,'namespace_inode':ns.st_ino,'node':node}
 
-def read_normal(state,purpose,finalized=False):
+def read_normal(state,purpose,finalized=False,reserved=False):
  output=PRIVATE/('maxproof-normal-'+str(uuid.uuid4())+'.json')
- command(['sudo','-u','ubuntu','python3',str(SOURCE/'tests/azure-s2s-local/qualify-max-prefix-api.py'),'finalized-read' if finalized else 'restore-read','--private-root',str(PRIVATE),'--state',str(state),'--purpose',purpose,'--output',str(output)],timeout=25)
+ command(['sudo','-u','ubuntu','python3',str(SOURCE/'tests/azure-s2s-local/qualify-max-prefix-api.py'),'reserved-prior-read' if reserved else ('finalized-read' if finalized else 'restore-read'),'--private-root',str(PRIVATE),'--state',str(state),'--purpose',purpose,'--output',str(output)],timeout=25)
  receipt=json.loads(read_owned(output,1000))
  # Normal API's typed receipt omits full network fields. Re-read the real immutable configuration as its owner,
  # compare the complete public configuration with saved original+purpose, and emit only a digest.
@@ -97,7 +97,7 @@ print(hashlib.sha256(json.dumps(current,sort_keys=True,separators=(',',':')).enc
 
 def authority_equal(a,b):
  if a.get('kind')=='owned_finalized_prior_authority' or b.get('kind')=='owned_finalized_prior_authority':
-  keys=('kind','finalized_authority','saved_cleanup_revision','saved_prior_contract','saved_prior_configuration_sha256')
+  keys=('kind','phase','finalized_authority','saved_cleanup_revision','saved_prior_contract','saved_prior_configuration_sha256','reserved_target_absence')
   return all(a.get(k)==b.get(k) for k in keys) and a.get('policy_count')==b.get('policy_count')==0 and (a.get('immutable_configuration_sha256') is None or a.get('immutable_configuration_sha256')==b.get('immutable_configuration_sha256'))
  keys=('id','profile_id','desired_revision','configuration_revision','maximum_prefixes','remote_prefixes','desired_intent')
  return all(a['normal_connection'].get(k)==b['normal_connection'].get(k) for k in keys) and a.get('policy_count')==b.get('policy_count')==0 and (a.get('immutable_configuration_sha256') is None or a.get('immutable_configuration_sha256')==b.get('immutable_configuration_sha256'))
@@ -126,8 +126,9 @@ def run(args):
  if hashlib.sha256(read_owned(args.binary,0,maximum=OBSERVER_BYTES,exact_size=OBSERVER_BYTES)).hexdigest()!=p.OBSERVER:raise ValueError('binary')
  STAGE='identity_before';before=identity()
  STAGE='normal_before';finalized=normal.get('kind')=='owned_finalized_prior_authority'
+ reserved=normal.get('phase')=='reserved-prior-read'
  if finalized and args.mode!='absence':raise ValueError('finalized absence only')
- fresh=read_normal(args.state,immutable['purpose'],finalized)
+ fresh=read_normal(args.state,immutable['purpose'],finalized,reserved)
  if not authority_equal(normal,fresh):raise ValueError('normal changed')
  STAGE='journal_binding'
  # Full actual host journal is read, never reduced or rewritten. Python only derives selection; Go validates checksum/all history.
@@ -158,7 +159,7 @@ def run(args):
  command(['docker','exec','-u0',p.CONTAINER,'chmod','700',helper])
  if command(['docker','exec','-u0',p.CONTAINER,'sha256sum',helper]).decode().split()[0]!=p.OBSERVER:raise ValueError('installed binary')
  STAGE='pre_observer_bracket'
- latest=read_normal(args.state,immutable['purpose'],finalized)
+ latest=read_normal(args.state,immutable['purpose'],finalized,reserved)
  if identity()!=before or not authority_equal(fresh,latest):raise ValueError('bracket')
  if p.build(latest,attestation,immutable,args.mode,datetime.now(timezone.utc))!=binding:raise ValueError('current observer binding')
  if not 0<=(datetime.now(timezone.utc)-p.timestamp(normal['observed_at'])).total_seconds()<=60:raise ValueError('expired input')
@@ -166,7 +167,7 @@ def run(args):
  result=subprocess.run(['docker','exec','-u0','-e','TUNNEX_AZURE_MAX_PREFIX_NATIVE_PROOF=1',p.CONTAINER,helper,'-test.run=^TestAzureOwnedMaxPrefixNativeProof$','-test.count=1','-test.v','-test.timeout=30s'],capture_output=True,timeout=35)
  raw=result.stdout+result.stderr;save(q/'observer-private.log',raw)
  STAGE='post_observer_bracket'
- latest=read_normal(args.state,immutable['purpose'],finalized)
+ latest=read_normal(args.state,immutable['purpose'],finalized,reserved)
  if identity()!=before or not authority_equal(fresh,latest):raise ValueError('bracket')
  if p.build(latest,attestation,immutable,args.mode,datetime.now(timezone.utc))!=binding:raise ValueError('current observer binding')
  STAGE='receipt_extract';receipt=extract(raw,result.returncode,binding);save(q/'native-receipt.json',receipt)

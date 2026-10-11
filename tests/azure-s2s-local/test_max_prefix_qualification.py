@@ -87,6 +87,51 @@ class Lifecycle(unittest.TestCase):
    if change=='policy':self.grants=[{'id':I(99)}]
    with self.assertRaises(ValueError):self.run_phase('finalized-read')
    self.rows[a.ORIGINAL]=value;self.grants=[];self.configs[a.ORIGINAL]={k:old[k] for k in ('profile_id','configuration_revision')}
+ def reserve_failed_target(self):
+  self.prep();self.remove();self.ambiguous=True
+  with self.assertRaises(ValueError):self.run_phase('create',psk='private.offline.key',discovery=self.discovery)
+  self.ambiguous=False;old=self.configs[a.ORIGINAL]
+  self.configs[a.ORIGINAL]={k:old[k] for k in ('profile_id','configuration_revision')}
+  saved=json.loads(a.secure.read(self.state));target=saved['target']['id'];original_call=self.call
+  def call(method,path,body=None,revision=None):
+   if method=='GET' and path.endswith('/connections/'+target) and target not in self.rows:raise a.api.APIError(404,'ipsec_connection_not_found')
+   return original_call(method,path,body,revision)
+  self.call=call;return saved
+ def test_reserved_prior_read_preserves_reservation_and_has_no_mutation_or_replay_authority(self):
+  saved=self.reserve_failed_target();before=a.secure.read(self.state);self.calls=[]
+  receipt=self.run_phase('reserved-prior-read')
+  self.assertEqual(receipt['finalized_authority']['id'],a.ORIGINAL)
+  self.assertEqual(receipt['reserved_target_absence']['id'],saved['target']['id'])
+  self.assertEqual(receipt['reserved_target_absence']['classification'],'normal_GET404_only')
+  self.assertNotIn('normal_connection',receipt);self.assertEqual(before,a.secure.read(self.state))
+  self.assertTrue(all(method=='GET' for method,path,body,revision in self.calls))
+  self.assertFalse(any(path.endswith('/status') for _,path,_,_ in self.calls))
+  prepare=load('reserved_prepare_test',Path(__file__).with_name('prepare-max-prefix-observer.py'))
+  b={**self.setup,'connection_id':a.ORIGINAL,'desired_revision':41,'configuration_revision':5,'maximum_prefixes':8,'namespace_device':4,'namespace_inode':9}
+  att={'observed_at':NOW(),'container_id':prepare.CONTAINER,'image_sha256':prepare.IMAGE,'node_executable_sha256':prepare.NODE,'binding':b,'journal_cleanup_desired_revision':41}
+  self.assertEqual(prepare.build(receipt,att,saved,'absence',datetime.now(timezone.utc))['connection_id'],a.ORIGINAL)
+  for change in ('target','phase','stage','classification','mode'):
+   n=copy.deepcopy(receipt);s=copy.deepcopy(saved)
+   if change=='target':n['reserved_target_absence']['id']=I(99)
+   if change=='phase':n['phase']='finalized-read'
+   if change=='stage':s['stage']='prepared'
+   if change=='classification':n['reserved_target_absence']['classification']='POST_unsent'
+   with self.subTest(change=change),self.assertRaises(ValueError):prepare.build(n,att,s,'baseline' if change=='mode' else 'absence',datetime.now(timezone.utc))
+ def test_reserved_prior_read_refuses_observed_target_bad_404_pending_prior_and_extra_grant(self):
+  saved=self.reserve_failed_target();target=saved['target']['id'];good_call=self.call;self.calls=[]
+  for change in ('observed','wrong404','pending','grant','marker'):
+   if change=='observed':self.rows[target]=self.row(target)
+   if change=='wrong404':
+    def bad404(method,path,body=None,revision=None):
+     if path.endswith('/connections/'+target):raise a.api.APIError(404,None)
+     return good_call(method,path,body,revision)
+    self.call=bad404
+   if change=='pending':self.rows[a.ORIGINAL]['cleanup_state']='pending'
+   if change=='grant':self.grants=[{'id':I(99)}]
+   if change=='marker':self.state.with_name('max.json.create-reserved').unlink()
+   with self.subTest(change=change),self.assertRaises((ValueError,OSError)):self.run_phase('reserved-prior-read')
+   self.rows.pop(target,None);self.call=good_call;self.rows[a.ORIGINAL]['cleanup_state']='retained_guard';self.grants=[]
+  self.assertTrue(all(method=='GET' for method,path,body,revision in self.calls))
  def test_original_restore_read_real_empty_policy_proof(self):
   self.grants=[{'id':I(99)}];self.prep()
   # Original prepare/read may retain eight real grants; restore-read for observation must prove empty.

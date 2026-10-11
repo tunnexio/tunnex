@@ -66,7 +66,11 @@ def build(normal,attestation,immutable,mode,clock):
  return result
 
 def finalized_build(normal,attestation,immutable,mode,clock):
- if mode!='absence' or 'target' in immutable or normal.get('phase')!='finalized-read' or normal.get('policy_count')!=0 or normal.get('runtime_observation')!='not_requested':raise ValueError('finalized absence context')
+ if mode!='absence' or normal.get('phase') not in ('finalized-read','reserved-prior-read') or normal.get('policy_count')!=0 or normal.get('runtime_observation')!='not_requested':raise ValueError('finalized absence context')
+ if normal['phase']=='reserved-prior-read':
+  target=immutable.get('target');absence=normal.get('reserved_target_absence')
+  if immutable.get('stage')!='create_reserved' or target is None or absence!={'id':target['id'],'tunnel_ids':target['tunnel_ids'],'saved_stage':'create_reserved','classification':'normal_GET404_only'}:raise ValueError('exact reserved target read required')
+ elif 'target' in immutable or 'reserved_target_absence' in normal:raise ValueError('unreserved finalized prior required')
  for source in (normal,attestation):
   if not 0<=(clock-timestamp(source['observed_at'])).total_seconds()<=60:raise ValueError('fresh finalized context')
  a=normal['finalized_authority'];b=attestation['binding'];saved=immutable.get('prior_configuration')
