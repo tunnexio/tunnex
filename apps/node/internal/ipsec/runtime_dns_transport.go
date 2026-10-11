@@ -65,16 +65,35 @@ type runtimeDNSProof struct {
 func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	proof, err := c.proveResolverDNS(ctx, config, endpoint)
+	connection := uuid.Nil
+	if config.IPsecPath != nil {
+		connection, _ = uuid.Parse(config.IPsecPath.ConnectionID)
+	}
+	return exchangeResolverDNSObserved(ctx, config, endpoint, payload, c.proveResolverDNS, fqdnrpc.ExchangeBoundSocket, func(stage string, started time.Time, refused bool) {
+		c.emitRuntimeDiagnostic(ctx, "dns_exchange", stage, connection, started, refused)
+	})
+}
+
+// The composition is private and preserves the existing two native proofs and
+// socket sequence. Diagnostics carry fixed phases and timing only.
+func exchangeResolverDNSObserved(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte, prove func(context.Context, fqdnrpc.ResolverConfig, fqdnrpc.ResolverEndpoint) (runtimeDNSProof, error), exchange func(context.Context, fqdnrpc.ResolverEndpoint, netip.Addr, []byte) ([]byte, error), emit func(string, time.Time, bool)) ([]byte, error) {
+	started := time.Now()
+	proof, err := prove(ctx, config, endpoint)
+	emit("dns_proof_before", started, err != nil)
 	if err != nil {
 		return nil, ErrRuntimeController
 	}
-	response, err := fqdnrpc.ExchangeBoundSocket(ctx, endpoint, proof.Source, payload)
+	started = time.Now()
+	response, err := exchange(ctx, endpoint, proof.Source, payload)
+	emit("dns_socket", started, err != nil)
 	if err != nil {
 		return nil, ErrRuntimeController
 	}
-	after, err := c.proveResolverDNS(ctx, config, endpoint)
-	if err != nil || !sameResolverDNSProof(after, proof) || ctx.Err() != nil {
+	started = time.Now()
+	after, err := prove(ctx, config, endpoint)
+	refused := err != nil || !sameResolverDNSProof(after, proof) || ctx.Err() != nil
+	emit("dns_proof_after", started, refused)
+	if refused {
 		return nil, ErrRuntimeController
 	}
 	return response, nil

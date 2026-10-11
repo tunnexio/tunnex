@@ -26,14 +26,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		return nil, errors.New("IPsec saved refusal unavailable")
 	}
 	var controller *ipsec.RuntimeController
-	diagnostic := func(event ipsec.RuntimeDiagnostic) {
-		attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
-		if event.Refused {
-			logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
-		} else {
-			logger.Debug("ipsec_runtime_diagnostic_completed", attrs...)
-		}
-	}
+	diagnostic := ipsecDiagnosticSink(logger, os.Getenv("TUNNEX_IPSEC_DNS_DIAGNOSTICS") == "1")
 	construct := func() error {
 		environment, e := ipsec.NewRuntimeEnvironmentInspectorWithDiagnostics("/sbin/ip", "/usr/sbin/nft", diagnostic)
 		if e != nil {
