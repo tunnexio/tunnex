@@ -232,6 +232,22 @@ func (j *RuntimeJournal) Entries() ([]RuntimeJournalEntry, error) {
 	}
 	return cloneJournal(j.payload).Entries, nil
 }
+
+// cleanupSnapshot retains the real journal version and complete predecessor
+// graph. A detached entry cannot validate recreation or historical obligations.
+func (j *RuntimeJournal) cleanupSnapshot() (runtimeJournalPayload, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.pathsIntact() {
+		return runtimeJournalPayload{}, ErrRuntimeJournal
+	}
+	observed, err := j.read()
+	if err != nil || !reflect.DeepEqual(observed, cloneJournal(j.payload)) {
+		return runtimeJournalPayload{}, ErrRuntimeJournal
+	}
+	return cloneJournal(observed), nil
+}
+
 func validDigest(v string) bool {
 	b, e := hex.DecodeString(v)
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v

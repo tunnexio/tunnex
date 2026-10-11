@@ -4,13 +4,31 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"net/netip"
+	"reflect"
 )
 
 // This negative-only seam is called by normal Cleanup after verified denial.
 // Persisted allocation supplies exact inside addresses; no observed selector
 // can authorize native Up, material adoption, or a new permit.
 func (c *DaemonClient) removeAzureCleanupTunnel(ctx context.Context, entry RuntimeJournalEntry, slot int, namespace string) error {
-	if entry.Phase != RuntimeCleanupPending || entry.AbsenceOnly || entry.ContractVersion != 3 || !IsAzureBGPProfile(entry.Allocation.ProfileID) || namespace != entry.Allocation.Namespace || !validKernelAllocation(entry.Allocation) || !validJournalBGP(entry) || slot < 0 || slot >= entry.Allocation.activeTunnelCount() || !validJournalPayload(runtimeJournalPayload{Version: 10, OwnerID: entry.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{entry}}) {
+	// The legacy detached wrapper intentionally cannot validate predecessor refs.
+	return c.removeAzureCleanupTunnelJournal(ctx, entry, slot, namespace, runtimeJournalPayload{Version: 10, OwnerID: entry.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{entry}})
+}
+
+func (c *DaemonClient) removeAzureCleanupTunnelJournal(ctx context.Context, entry RuntimeJournalEntry, slot int, namespace string, journal runtimeJournalPayload) error {
+	if ctx.Err() != nil || entry.Phase != RuntimeCleanupPending || entry.AbsenceOnly || entry.ContractVersion != 3 || !IsAzureBGPProfile(entry.Allocation.ProfileID) || namespace != entry.Allocation.Namespace || !validKernelAllocation(entry.Allocation) || !validJournalBGP(entry) || slot < 0 || slot >= entry.Allocation.activeTunnelCount() || journal.OwnerID != entry.Engines[0].Binding.GatewayID || !validJournalPayload(journal) {
+		return ErrDaemonProtocol
+	}
+	found := false
+	for _, current := range journal.Entries {
+		if current.DeliveryID == entry.DeliveryID {
+			if !reflect.DeepEqual(current, entry) {
+				return ErrDaemonProtocol
+			}
+			found = true
+		}
+	}
+	if !found {
 		return ErrDaemonProtocol
 	}
 	return c.removeAzureNegativeTunnel(ctx, entry, slot)

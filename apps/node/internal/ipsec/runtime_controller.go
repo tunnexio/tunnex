@@ -663,6 +663,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			}
 			for _, updated := range refreshed {
 				if updated.DeliveryID == entry.DeliveryID {
+					entry = updated
 					for i := range entries {
 						if entries[i].DeliveryID == entry.DeliveryID {
 							entries[i] = updated
@@ -675,7 +676,11 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			stage = "cleanup_remove_tunnel"
 			var removeErr error
 			if IsAzureBGPProfile(entry.Allocation.ProfileID) {
-				removeErr = c.config.Daemon.removeAzureCleanupTunnel(ctx, entry, slot, currentNamespace)
+				snapshot, snapshotErr := c.journal.cleanupSnapshot()
+				if snapshotErr != nil {
+					return fail()
+				}
+				removeErr = c.config.Daemon.removeAzureCleanupTunnelJournal(ctx, entry, slot, currentNamespace, snapshot)
 			} else {
 				removeErr = c.config.Daemon.removeTunnel(ctx, t)
 			}
