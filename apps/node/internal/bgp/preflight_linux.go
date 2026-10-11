@@ -60,87 +60,87 @@ func preflightPackageIdentity() ([]preflightPackageFile, error) {
 // No result survives a route change, failed readback or incomplete owned cleanup.
 func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQualification, resultErr error) {
 	if ctx == nil || ctx.Err() != nil || os.Geteuid() != 0 || !filepath.IsAbs(parentDir) || filepath.Clean(parentDir) != parentDir || !privateAncestors(parentDir) {
-		return nil, fmt.Errorf("%w: input", ErrPackage)
+		return nil, preflightRefused("input", fmt.Errorf("%w: input", ErrPackage))
 	}
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if ProbePackage(bounded) != nil {
-		return nil, fmt.Errorf("%w: package", ErrPackage)
+		return nil, preflightRefused("package", fmt.Errorf("%w: package", ErrPackage))
 	}
 	packageFiles, err := preflightPackageIdentity()
 	if err != nil {
-		return nil, fmt.Errorf("%w: package-identity", ErrPackage)
+		return nil, preflightRefused("package-identity", fmt.Errorf("%w: package-identity", ErrPackage))
 	}
 	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
-		return nil, fmt.Errorf("%w: identity", ErrPackage)
+		return nil, preflightRefused("identity", fmt.Errorf("%w: identity", ErrPackage))
 	}
 	ns, err := os.Readlink("/proc/self/ns/net")
 	if err != nil {
-		return nil, fmt.Errorf("%w: identity", ErrPackage)
+		return nil, preflightRefused("identity", fmt.Errorf("%w: identity", ErrPackage))
 	}
 	before, err := preflightRoutes(bounded)
 	if err != nil {
-		return nil, fmt.Errorf("%w: routes-before", ErrPackage)
+		return nil, preflightRefused("routes-before", fmt.Errorf("%w: routes-before", ErrPackage))
 	}
 	dir, err := os.MkdirTemp(parentDir, "bgp-preflight-")
 	if err != nil {
-		return nil, fmt.Errorf("%w: private-directory", ErrPackage)
+		return nil, preflightRefused("private-directory", fmt.Errorf("%w: private-directory", ErrPackage))
 	}
 	process, err := StartObserver(bounded, dir)
 	if err != nil {
-		return nil, fmt.Errorf("%w: observer-start: %v", ErrPackage, err)
+		return nil, preflightRefused("observer-start", fmt.Errorf("%w: observer-start: %v", ErrPackage, err))
 	} // Failed owned startup retains any refusal residue.
 	defer func() {
 		if process.Close() != nil {
 			result = nil
-			resultErr = fmt.Errorf("%w: observer-close", ErrPackage)
+			resultErr = preflightRefused("observer-close", fmt.Errorf("%w: observer-close", ErrPackage))
 			return
 		}
 		after, err := preflightRoutes(bounded)
 		if err != nil || !bytes.Equal(before, after) {
 			result = nil
-			resultErr = fmt.Errorf("%w: routes-after-close", ErrPackage)
+			resultErr = preflightRefused("routes-after-close", fmt.Errorf("%w: routes-after-close", ErrPackage))
 			return
 		}
 		if os.Remove(dir) != nil {
 			result = nil
-			resultErr = fmt.Errorf("%w: private-directory-remove", ErrPackage)
+			resultErr = preflightRefused("private-directory-remove", fmt.Errorf("%w: private-directory-remove", ErrPackage))
 			return
 		}
 		parent, err := os.Open(parentDir)
 		if err != nil {
 			result = nil
-			resultErr = fmt.Errorf("%w: private-parent-open", ErrPackage)
+			resultErr = preflightRefused("private-parent-open", fmt.Errorf("%w: private-parent-open", ErrPackage))
 			return
 		}
 		syncErr := parent.Sync()
 		closeErr := parent.Close()
 		if syncErr != nil || closeErr != nil {
 			result = nil
-			resultErr = fmt.Errorf("%w: private-parent-sync", ErrPackage)
+			resultErr = preflightRefused("private-parent-sync", fmt.Errorf("%w: private-parent-sync", ErrPackage))
 			return
 		}
 		if result == nil {
 			if resultErr == nil {
-				resultErr = fmt.Errorf("%w: missing-receipt", ErrPackage)
+				resultErr = preflightRefused("missing-receipt", fmt.Errorf("%w: missing-receipt", ErrPackage))
 			}
 			return
 		}
 		if !result.Current() {
 			result = nil
-			resultErr = fmt.Errorf("%w: receipt-current", ErrPackage)
+			resultErr = preflightRefused("receipt-current", fmt.Errorf("%w: receipt-current", ErrPackage))
 		}
 	}()
 	if !process.Alive() {
-		return nil, fmt.Errorf("%w: observer-alive", ErrPackage)
+		return nil, preflightRefused("observer-alive", fmt.Errorf("%w: observer-alive", ErrPackage))
 	}
 	identity, err := process.Identity()
 	if err != nil || len(identity.Children) != 2 || identity.Namespace != ns || identity.BootID != strings.TrimSpace(string(boot)) {
-		return nil, fmt.Errorf("%w: children-identity", ErrPackage)
+		return nil, preflightRefused("children-identity", fmt.Errorf("%w: children-identity", ErrPackage))
 	}
 	if preflightNoListeners(identity.Children) != nil {
-		return nil, fmt.Errorf("%w: children-listeners", ErrPackage)
+		return nil, preflightRefused("children-listeners", fmt.Errorf("%w: children-listeners", ErrPackage))
 	}
 	rib, err := process.PreflightRIB(bounded)
 	if err != nil || !preflightEmptyRIB(rib) {
@@ -148,14 +148,14 @@ func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQ
 		if len(text) > 256 {
 			text = text[:256]
 		}
-		return nil, fmt.Errorf("%w: observer-rib read=%v output=%q", ErrPackage, err, text)
+		return nil, preflightRefused("observer-rib", fmt.Errorf("%w: observer-rib read=%v output=%q", ErrPackage, err, text))
 	}
 	if !process.Alive() || preflightNoListeners(identity.Children) != nil {
-		return nil, fmt.Errorf("%w: observer-listeners-recheck", ErrPackage)
+		return nil, preflightRefused("observer-listeners-recheck", fmt.Errorf("%w: observer-listeners-recheck", ErrPackage))
 	}
 	after, err := preflightRoutes(bounded)
 	if err != nil || !bytes.Equal(before, after) {
-		return nil, fmt.Errorf("%w: routes-observed", ErrPackage)
+		return nil, preflightRefused("routes-observed", fmt.Errorf("%w: routes-observed", ErrPackage))
 	}
 	return &PreflightQualification{namespace: ns, bootID: strings.TrimSpace(string(boot)), packageFiles: packageFiles, qualified: true}, nil
 }

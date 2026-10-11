@@ -56,6 +56,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 	shutdown := launchIPsecRuntime(ctx, func(ctx context.Context) (result error) {
 		var process *ipsec.DaemonProcess
 		qualified := false
+		bgpQualified := false
 		defer func() {
 			if process != nil {
 				result = errors.Join(result, process.Close())
@@ -112,20 +113,17 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 							}
 							if probeErr == nil {
 								qualified = true
-								// BGP support is independently observed without peers/listeners;
-								// failure preserves the already qualified static runtime.
-								bgpStarted := time.Now()
-								bgpStage := "bgp_preflight"
-								bgpReceipt, bgpErr := bgp.QualifyPreflight(ctx, dir)
-								if bgpErr == nil {
-									bgpStage = "bgp_attach"
-									bgpErr = controller.AttachBGPQualification(bgpReceipt)
-								}
-								if bgpErr != nil {
-									logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
-								}
 							} else {
 								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
+							}
+						}
+						if qualified && page.IPsecEnabled && !bgpQualified {
+							bgpStarted := time.Now()
+							bgpStage, bgpErr := qualifyIPsecRuntimeBGP(ctx, &bgpQualified, func(ctx context.Context) (*bgp.PreflightQualification, error) {
+								return bgp.QualifyPreflight(ctx, dir)
+							}, controller.AttachBGPQualification)
+							if bgpErr != nil {
+								logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "reason", bgp.PreflightRefusalReason(bgpErr), "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}
 						}
 						// Cleanup remains available without activation qualification; Apply requires
