@@ -51,6 +51,12 @@ func sameHandoffDomain(a, b RuntimeJournalEntry) bool {
 			return false
 		}
 	}
+	if a.AzureProfileRecreationVersion == 1 {
+		return sameAzureProfileRecreationDomain(a, b)
+	}
+	if (IsAzureRuntimeProfile(a.Allocation.ProfileID) || IsAzureRuntimeProfile(b.Allocation.ProfileID)) && a.Allocation.ProfileID != b.Allocation.ProfileID {
+		return false
+	}
 	if a.AzureBGPRecreationVersion == 1 {
 		return sameAzureBGPRecreationDomain(a, b)
 	}
@@ -65,18 +71,23 @@ func validRetainedGuardJournal(entries []RuntimeJournalEntry) bool {
 		if !validAzureRecreationEntry(e) {
 			return false
 		}
-		if !validRetainedGuardReferences(e.RetainedGuardPredecessors, e.Allocation.ConnectionID, e.DeliveryID, (e.ContractVersion == 3 || e.BGP != nil) && e.AzureBGPRecreationVersion != 1) {
+		if !validRetainedGuardReferences(e.RetainedGuardPredecessors, e.Allocation.ConnectionID, e.DeliveryID, (e.ContractVersion == 3 || e.BGP != nil) && e.AzureBGPRecreationVersion != 1 && e.AzureProfileRecreationVersion != 1) {
 			return false
 		}
 		refs := map[uuid.UUID]bool{}
 		targets := map[uuid.UUID]bool{}
+		crossProfile := false
 		for _, r := range e.RetainedGuardPredecessors {
 			old, ok := byID[r.DeliveryID]
 			if !ok || old.Phase != RuntimeRetainedRefusal || old.Allocation.ConnectionID != r.ConnectionID || old.CleanupID != r.CleanupDeliveryID || old.OwnershipDigest != r.OwnershipDigest || !sameHandoffDomain(e, old) {
 				return false
 			}
+			crossProfile = crossProfile || old.Allocation.ProfileID != e.Allocation.ProfileID
 			refs[r.DeliveryID] = true
 			targets[r.ConnectionID] = true
+		}
+		if e.AzureProfileRecreationVersion == 1 && !crossProfile {
+			return false
 		}
 		// All potentially installed lineage of a predecessor must be cleaned and
 		// referenced. A partial list cannot conceal an uncleaned native obligation.
@@ -170,7 +181,7 @@ func (c *RuntimeController) admitRetainedGuardHandoff(ctx context.Context, entri
 	}
 	for _, ref := range successor.RetainedGuardPredecessors {
 		old := byID[ref.DeliveryID]
-		if successor.AzureBGPRecreationVersion == 1 && c.proveAzureBGPPredecessorAbsent(ctx, old) != nil {
+		if (successor.AzureBGPRecreationVersion == 1 || successor.AzureProfileRecreationVersion == 1) && c.proveAzureBGPPredecessorAbsent(ctx, old) != nil {
 			return ErrRuntimeController
 		}
 		// Cleaned historical namespace proof never authorizes object adoption.

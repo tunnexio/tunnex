@@ -51,13 +51,14 @@ type RuntimeResetCleanup struct {
 }
 
 type RuntimeJournalEntry struct {
-	AzureBGPRecreationVersion int                               `json:",omitempty"`
-	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:",omitempty"`
-	BGPProcessHistory         *RuntimeHistoryContinuation       `json:",omitempty"`
-	BGPProcessRetired         []bgpengine.ProcessIdentity       `json:",omitempty"`
-	BGPProcess                *bgpengine.ProcessIdentity        `json:",omitempty"`
-	BGPRoutes                 *RuntimeBGPRoutes                 `json:",omitempty"`
-	BGP                       *BGPConfig                        `json:",omitempty"`
+	AzureBGPRecreationVersion     int                               `json:",omitempty"`
+	AzureProfileRecreationVersion int                               `json:",omitempty"`
+	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:",omitempty"`
+	BGPProcessHistory             *RuntimeHistoryContinuation       `json:",omitempty"`
+	BGPProcessRetired             []bgpengine.ProcessIdentity       `json:",omitempty"`
+	BGPProcess                    *bgpengine.ProcessIdentity        `json:",omitempty"`
+	BGPRoutes                     *RuntimeBGPRoutes                 `json:",omitempty"`
+	BGP                           *BGPConfig                        `json:",omitempty"`
 	// Omitted fields preserve the original v1 canonical checksum byte for byte.
 	// Authorization is immutable; recovery state records duty, never authority.
 	ContractVersion int                   `json:",omitempty"`
@@ -253,7 +254,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11 && p.Version != 12) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11 && p.Version != 12 && p.Version != 13) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -273,6 +274,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 			return false
 		}
 		if (r.ContractVersion == 4 && p.Version < 10) || !validClassicJournal(r) {
+			return false
+		}
+		if r.AzureProfileRecreationVersion != 0 && p.Version < 13 {
 			return false
 		}
 		if r.AzureBGPRecreationVersion != 0 && p.Version < 11 {
@@ -332,8 +336,17 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 12 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11 && next.Version != 12) {
+	if next.Version < old.Version || next.Version > 13 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11 && next.Version != 12 && next.Version != 13) {
 		return false
+	}
+	if next.Version == 13 && old.Version < 13 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.AzureProfileRecreationVersion == 1
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 12 && old.Version < 12 {
 		upgrade := false
@@ -531,6 +544,9 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
+		if entry.AzureProfileRecreationVersion == 1 && next.Version < 13 {
+			next.Version = 13
+		}
 		if entry.Phase == RuntimeQuiesced && next.Version < 12 {
 			next.Version = 12
 		}

@@ -282,7 +282,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	if !c.fqdnGrantsCurrent(grants) {
 		return fail()
 	}
-	if entry.ContractVersion == 3 && !c.bgpQualificationCurrent() {
+	if (entry.ContractVersion == 3 || entry.AzureProfileRecreationVersion == 1) && !c.bgpQualificationCurrent() {
 		return fail()
 	} // BGP transport alone never grants runtime capability.
 	entries, e := c.journal.Entries()

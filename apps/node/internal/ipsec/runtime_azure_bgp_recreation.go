@@ -9,12 +9,18 @@ import (
 )
 
 func validAzureRecreationManifest(m RuntimeManifest) bool {
+	if m.AzureProfileRecreationVersion != nil {
+		return *m.AzureProfileRecreationVersion == 1 && m.AzureBGPRecreationVersion == nil && IsAzureRuntimeProfile(m.ProfileID) && len(m.RetainedGuardPredecessors) > 0
+	}
 	if m.AzureBGPRecreationVersion == nil {
 		return true
 	}
 	return *m.AzureBGPRecreationVersion == 1 && m.ProfileID == AzureActiveActiveBGPProfile && len(m.RetainedGuardPredecessors) > 0
 }
 func validAzureRecreationEntry(e RuntimeJournalEntry) bool {
+	if e.AzureProfileRecreationVersion != 0 {
+		return e.AzureProfileRecreationVersion == 1 && e.AzureBGPRecreationVersion == 0 && IsAzureRuntimeProfile(e.Allocation.ProfileID) && len(e.RetainedGuardPredecessors) > 0 && validClassicJournal(e) && validJournalBGP(e)
+	}
 	return e.AzureBGPRecreationVersion == 0 || e.AzureBGPRecreationVersion == 1 && e.Allocation.ProfileID == AzureActiveActiveBGPProfile && e.ContractVersion == 3 && e.BGP != nil && len(e.RetainedGuardPredecessors) > 0
 }
 func sharedDisjointRemote(a, b []netip.Prefix) bool {
@@ -68,7 +74,7 @@ func retainedRefusalPrefixes(entries, projected []RuntimeJournalEntry, retired [
 	}
 	seen := map[netip.Prefix]bool{}
 	for _, old := range entries {
-		if !hidden[old.Allocation.ConnectionID] || old.Allocation.ProfileID != AzureActiveActiveBGPProfile {
+		if !hidden[old.Allocation.ConnectionID] || !IsAzureRuntimeProfile(old.Allocation.ProfileID) {
 			continue
 		}
 		for _, p := range old.Engines[0].RemotePrefixes {
@@ -82,6 +88,9 @@ func retainedRefusalPrefixes(entries, projected []RuntimeJournalEntry, retired [
 				seen[p] = true
 			}
 		}
+	}
+	for _, p := range retainedAzureTransportRefusals(entries, projected, retired) {
+		seen[p] = true
 	}
 	out := make([]netip.Prefix, 0, len(seen))
 	for p := range seen {

@@ -85,6 +85,7 @@ func validRestoration(r RuntimeJournalEntry) bool {
 		structural := h.Entry
 		structural.RetainedGuardPredecessors = nil
 		structural.AzureBGPRecreationVersion = 0
+		structural.AzureProfileRecreationVersion = 0
 		if !validJournalPayload(runtimeJournalPayload{Version: retiredJournalVersion(structural), OwnerID: r.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{structural}}) {
 			return false
 		}
