@@ -1,0 +1,209 @@
+{
+  "api_deploy": {
+    "local_artifact_sha256": "cd9d6731f2a53cc52e28e3b9f59ac1b418e8b445744976a016a4d332610d1aef",
+    "receipt": {
+      "automatic_rollback": false,
+      "category": "deployment_verified",
+      "execute": true,
+      "private_run_id": "api-bracket-a90c2067-520f-450a-9717-87dee1be4647",
+      "replay_allowed": false,
+      "stage": "complete",
+      "version": 1
+    }
+  },
+  "api_independent_read": {
+    "local_artifact_sha256": "7fdbe036313deb08956d92561cffe21bb7d2074fb55786f02f82783648b60b76",
+    "receipt": {
+      "bound_files_verified": 2,
+      "category": "api_actual_process_files_config_health_and_migration226_verified",
+      "container_id": "693e00780062508d0620e5f7fdbba3cc5958007f428172ba633514df6898968f",
+      "executable_sha256": "cb0eefb473a19c5ff4051adc70543c50264a274a84ae652533fa2705d7196ddf",
+      "gateway_unchanged": true,
+      "image": "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+      "immutable_configuration_sha256": "b35622b41ecd4d8c25e54e98988df8d099365355355d6291a3a21b017eb7b7ca",
+      "observed_at": "2026-10-11T01:31:21.861652+00:00",
+      "private_run_id": "api-independent-read-d585f308-6de2-4651-9e90-2271bd73c1a6",
+      "schema_dirty": false,
+      "schema_version": 226,
+      "started_at": "2026-10-11T01:19:11.155742733Z",
+      "version": 1
+    }
+  },
+  "api_tree": "5feb0e3cc916a7ed7c439b9f9f18598c3277ff8e",
+  "current_checkpoint": {
+    "M_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+    "M_stage": "create_reserved",
+    "anchor_unchanged": true,
+    "api_new_process_files_health_migration226_verified": true,
+    "candidate_cloud_prefix_added": false,
+    "candidate_image_container_count": 0,
+    "gateway_original_stopped_preserved": true,
+    "no_replay_required": true,
+    "original_name_http_status": 404,
+    "replacement_container_created": false,
+    "reserved_target_created": false,
+    "same_id_recovery_executed": false,
+    "timers_changed": false
+  },
+  "gateway_independent_reconciliation": {
+    "local_artifact_sha256": "843666b20ba0c00fbf67db260abca33baee0192422280c4386c68d873b692c2a",
+    "receipt": {
+      "anchor_unchanged": true,
+      "api_unchanged": true,
+      "candidate_container_count": 0,
+      "category": "gateway_create_outcome_readonly_reconciled",
+      "created_identity_file_exists": false,
+      "daemon_error_classes": {
+        "conflicting_dns_network": false,
+        "conflicting_exposed_ports_network": false,
+        "conflicting_hostname_network": false,
+        "conflicting_macaddress_network": false,
+        "conflicting_port_publish_network": false,
+        "create_handler_error": false,
+        "invalid_mount": false,
+        "name_conflict": false,
+        "read_only_filesystem": false
+      },
+      "daemon_version": "29.1.3",
+      "journal_bytes": 227,
+      "journal_sha256": "75ac73bb3f1fa8854c1a8efaf4fd907b15e5c7bcefa604a07e6b640c01ee3d44",
+      "journal_status": 0,
+      "journal_stderr_parse_error": false,
+      "name_http_status": 404,
+      "observed_at": "2026-10-11T01:40:55.111029+00:00",
+      "old_pid": 0,
+      "old_preserved_name_matches": true,
+      "old_running": false,
+      "original_domainname_empty": true,
+      "original_exposed_port_count": 1,
+      "original_exposed_ports_equal_candidate_image": true,
+      "outcome_category": "unknown_or_refused_no_replay",
+      "outcome_phase": "create",
+      "private_run_id": "gateway-create-independent-read-628a059a-935b-4257-ad72-16242448022a",
+      "state_unchanged": true,
+      "version": 1
+    }
+  },
+  "gateway_once_only_attempt": {
+    "local_artifact_sha256": "58dc3bba5c263c2996e377c71df88755ffba8337a6acef9fbef0300425bdb0e4",
+    "receipt": {
+      "category": "gateway_result_requires_independent_read",
+      "helper_phase": "create",
+      "mutations_started": true,
+      "phase": "gateway_bracket",
+      "private_run_id": "azure-gateway-replacement-2d14b588-e5e0-4121-a6df-73c32dc3fa1c",
+      "version": 1
+    }
+  },
+  "gateway_v2_readonly_preflight": {
+    "local_artifact_sha256": "239728d736be66b471cfbf1d66a19b430bb4c17592c9186a2111da1999d7648f",
+    "receipt": {
+      "category": "gateway_result_requires_independent_read",
+      "helper_phase": "preflight",
+      "mutations_started": false,
+      "phase": "gateway_bracket",
+      "private_run_id": "azure-gateway-replacement-0c0428b8-a4b3-4fd3-9b9d-bf831590be6b",
+      "version": 1
+    }
+  },
+  "kind": "azure_reviewed_service_deployment_and_gateway_create_refusal",
+  "limitations": [
+    "No completed gateway update, same-ID recreation, maximum-prefix shutdown, restored baseline/grants or remaining-profile acceptance.",
+    "Existing strict observer requires a running exact node and managed charon; it cannot be relabeled as a stopped-state proof.",
+    "Full native admission must be freshly proved on the actual new gateway before connection mutation.",
+    "Shared IPsec FQDN application provenance/enforcement contract is absent; its scope decision is pending. DNS generation stability remains failed.",
+    "Accelerated timer execution was rejected by automatic approval review for missing explicit trusted human authorization and possible traffic disruption; no workaround executed."
+  ],
+  "node_tree": "982a24bf29b667ffdce3dc65a74d49430a40b645",
+  "offline_candidate_image_build": {
+    "local_artifact_sha256": "ee051d505bf4685eb4f5ed26d90e897e232d1e8b3f4854c248414dc7314ef813",
+    "receipt": {
+      "base_image_id": "sha256:585a392b5d5e1881a7e03577b018d44c1d8335be43664c7d2d78a9fadb50b08d",
+      "builder_version": 2,
+      "config_image_metadata_changed": false,
+      "config_sha256": "429dadef25780f0e642196e43a1ab669e55333ba20b8aaabb6174bb5434d0a69",
+      "dockerfile_sha256": "be2e20c03c6327735001faa82a3b3fc1b2fc5e862ce240bd864e677b9f47a548",
+      "gateway_mutations": 0,
+      "image_id": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+      "private_run_id": "image-build-4312e4fe-0b50-475b-a3e5-a73a3812fa0d",
+      "source_commit": "49168c7d8706a8e956bce4ad04d5884d1c65cdc7",
+      "source_sha256": "029a6b041de018112a83f7d99bdfd155a708521746373466d072fe6bc60085e6",
+      "success": true
+    }
+  },
+  "source_commit": "49168c7d8706a8e956bce4ad04d5884d1c65cdc7",
+  "source_diagnosis": {
+    "classification": "source_inference_payload_contains_explicit_inherited_exposed_ports_conflicting_with_container_network_mode",
+    "exposed_ports_count": 1,
+    "installed_docker_version": "29.1.3",
+    "limitation": "Daemon log records original task stop only; no original create HTTP error body/status is available. Source inference does not fabricate that missing status.",
+    "official_create_order_source": "https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/create.go",
+    "official_validation_source": "https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/internal/runconfig/hostconfig.go",
+    "original_error_status": "unknown_not_retained",
+    "original_exposed_ports_match_candidate_image": true
+  },
+  "stopped_diagnostic_not_authority": {
+    "local_artifact_sha256": "0fe764c477a642d275f8ee50b60dff09bdf59d2dd489d4fe6b3f03eeab353c73",
+    "receipt": {
+      "actual_kernel_total_counts": {
+        "addresses": {
+          "empty_output": false,
+          "json_rows": 3,
+          "raw_bytes": 1564
+        },
+        "links": {
+          "empty_output": false,
+          "json_rows": 3,
+          "raw_bytes": 1356
+        },
+        "policies": {
+          "empty_output": true,
+          "json_rows": null,
+          "raw_bytes": 0
+        },
+        "routes": {
+          "empty_output": false,
+          "json_rows": 14,
+          "raw_bytes": 1745
+        },
+        "states": {
+          "empty_output": true,
+          "json_rows": null,
+          "raw_bytes": 0
+        }
+      },
+      "actual_namespace_process_count": 1,
+      "actual_namespace_process_counts": {
+        "anchor_sleep": 1,
+        "charon": 0,
+        "frr": 0,
+        "node": 0
+      },
+      "category": "stopped_gateway_diagnostic_only_no_authority",
+      "journal_bytes": 141094,
+      "journal_mode": 384,
+      "journal_sha256": "8d2ee28b25c8f361afbdb038c62c425520f86508e3b1894df8fc8be2f7eb898e",
+      "journal_uid": 0,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-11T01:48:57.450969+00:00",
+      "private_run_id": "stopped-gateway-diagnostic-fe3602eb-9133-48e5-8308-e1f25859dd83",
+      "read_statuses": {
+        "addresses": 0,
+        "guard": 0,
+        "links": 0,
+        "policies": 0,
+        "routes": 0,
+        "states": 0
+      },
+      "scope": "Diagnostic only. No live daemon inventory, observed stopped-node executable, native qualification or operation authority is claimed.",
+      "states_and_configuration_bracketed": true,
+      "tools_available": {
+        "ip": true,
+        "nft": true,
+        "nsenter": true
+      },
+      "version": 1
+    }
+  },
+  "version": 1
+}
