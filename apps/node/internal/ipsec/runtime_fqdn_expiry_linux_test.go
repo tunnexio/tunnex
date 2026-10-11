@@ -5,9 +5,12 @@ package ipsec
 import (
 	"bytes"
 	"context"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 )
@@ -65,13 +68,53 @@ func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
 	}
 	run(m.NFTJSON, "-j", "-f", "-")
 	t.Cleanup(func() { exec.Command("/usr/sbin/nft", "delete", "table", "inet", "tunnex_ipsec").Run() })
-	links := []GuardInterface{{Name: inv.Links[0].Name, Index: inv.Links[0].Index}, {Name: inv.Links[1].Name, Index: inv.Links[1].Index}}
-	actual := run("", "-j", "list", "table", "inet", "tunnex_ipsec")
+	inventory := func() []GuardInterface {
+		t.Helper()
+		actual, err := net.Interfaces()
+		if err != nil {
+			t.Fatal("actual interface census refused")
+		}
+		var result []GuardInterface
+		loopback := false
+		for _, link := range actual {
+			if link.Name == "lo" && link.Index == 1 && link.Flags&net.FlagLoopback != 0 && link.Flags&net.FlagUp != 0 {
+				loopback = true
+			}
+			result = append(result, GuardInterface{Name: link.Name, Index: link.Index})
+		}
+		if !loopback {
+			t.Fatal("expected actual UP loopback index one")
+		}
+		for _, xfrm := range inv.Links {
+			found := false
+			for _, link := range result {
+				found = found || link.Name == xfrm.Name && link.Index == xfrm.Index
+			}
+			if !found {
+				t.Fatal("actual XFRM interface identity absent")
+			}
+		}
+		sort.Slice(result, func(i, j int) bool { return result[i].Index < result[j].Index })
+		return result
+	}
+	links := inventory()
+	read := func() []byte {
+		t.Helper()
+		if !reflect.DeepEqual(links, inventory()) {
+			t.Fatal("interface census changed before read")
+		}
+		actual := run("", "-j", "list", "table", "inet", "tunnex_ipsec")
+		if !reflect.DeepEqual(links, inventory()) {
+			t.Fatal("interface census changed after read")
+		}
+		return actual
+	}
+	actual := read()
 	if VerifyGuardReadbackWithInterfaces([]byte(m.ExpectedJSON), actual, links) != nil {
 		t.Fatal("native timed IPv4 member/readback mismatch")
 	}
 	time.Sleep(3200 * time.Millisecond)
-	actual = run("", "-j", "list", "table", "inet", "tunnex_ipsec")
+	actual = read()
 	if VerifyGuardReadbackWithInterfaces([]byte(m.ExpectedJSON), actual, links) == nil {
 		t.Fatal("expired application member accepted as positive")
 	}
@@ -92,7 +135,7 @@ func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
 		t.Fatal(err)
 	}
 	run(tx, "-j", "-f", "-")
-	actual = run("", "-j", "list", "table", "inet", "tunnex_ipsec")
+	actual = read()
 	if VerifyGuardReadbackWithInterfaces([]byte(next.ExpectedJSON), actual, links) != nil {
 		t.Fatal("expired-set turnover changed ordinary table")
 	}

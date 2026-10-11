@@ -352,8 +352,11 @@ func guardAllow(g GuardGrant, ingress, egress int, reply bool, leaseName, leaseK
 			fmt.Fprintf(&b, "ct mark & 0x%08x == 0x%08x ", fqdnConntrackMarkMask, fqdnConntrackMark)
 			expr = append(expr, guardMatch("==", map[string]any{"&": []any{guardCT("mark"), fqdnConntrackMarkMask}}, fqdnConntrackMark))
 		} else {
-			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", ^fqdnConntrackMarkMask, fqdnConntrackMark)
-			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), ^fqdnConntrackMarkMask}}, fqdnConntrackMark}}}})
+			// Including forced OR bits in the AND mask is equivalent and matches
+			// the native nft canonical expression without readback aliases.
+			clearMask := ^fqdnConntrackMarkMask | fqdnConntrackMark
+			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", clearMask, fqdnConntrackMark)
+			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), clearMask}}, fqdnConntrackMark}}}})
 		}
 	}
 	b.WriteString("counter accept\n")
