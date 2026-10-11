@@ -1,0 +1,6 @@
+{
+  "before_objects_sha256": "919507def06c4cc48b857e270d028cce5f00c0b10fa88cd417d87f787d675f46",
+  "objects_removed": 24,
+  "scope": "source-owned egress Close observation only; not runtime authority",
+  "original_sha256": "50d4505452901c0d1f17e34bd1fde5ab2d34e73fc61dd64c4d7c12722acc8bfb"
+}

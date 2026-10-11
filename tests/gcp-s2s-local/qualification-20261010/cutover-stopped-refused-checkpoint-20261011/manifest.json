@@ -1,0 +1,52 @@
+{
+  "files": [
+    {
+      "file": "actual-preflight-before-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-preflight-before.json",
+      "original_sha256": "7b5075bbbe4ce9b8c90115b48c9b2097b06f98fb6668a163b4f25584219fd55b",
+      "archive_sha256": "1b3346100571e548b1eea90f281d886d56057017668a767afd699fea3b5665fb"
+    },
+    {
+      "file": "actual-stop-stopped-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-stop-stopped.json",
+      "original_sha256": "778aab93000b7909d9504bbc59ad8b0399f556a0aaac8e7e96eac865336a381e",
+      "archive_sha256": "ebe47ac5bb9daed496b4672c626873e4127d3b9eb02e8b7d8735580346e8fa9f"
+    },
+    {
+      "file": "create-start-1791677033374221000.receipt-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/create-start-1791677033374221000.receipt.json",
+      "original_sha256": "e5887ee9a7213df5df0871d70c23e912edac35f9862956841ab3f9468fdf3779",
+      "archive_sha256": "f27fdd8937061f84f45fae907d2e128f3b8bc9fb075252ba3f92ba3191274b69"
+    },
+    {
+      "file": "reconcile-1791677051489488000.receipt-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/reconcile-1791677051489488000.receipt.json",
+      "original_sha256": "86a9a67c6b996348aa4e60e371021f1fe745f8eb459a2e5913ff42c8383f3a97",
+      "archive_sha256": "435fe335122e475da62d04c2c84ddc7e319581354c1f9b77f0601a4722c82e9c"
+    },
+    {
+      "file": "actual-refused-fresh-guard-capture-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-refused-fresh-guard-capture.json",
+      "original_sha256": "c6aeca4e8b42b0823636e8f4c3d4259384cc283cddbb67602a26d881e023aabc",
+      "archive_sha256": "e94a44fc4f8f11769a14f1f7fd18abba8b3377953a8d07bbacf8d77f67fde349"
+    },
+    {
+      "file": "actual-refused-observed-wg-table-close-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-refused-observed-wg-table-close.json",
+      "original_sha256": "50d4505452901c0d1f17e34bd1fde5ab2d34e73fc61dd64c4d7c12722acc8bfb",
+      "archive_sha256": "544bf374cbf0bfdd4635a21f175ea533884ed2df17187c0c8e776085e591f044"
+    },
+    {
+      "public_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/replace-phased.bound-v3.remote.py",
+      "sha256": "3a694b2c4de369300e0acb05d16e029edb4f40ea514d7a4d02e5ab6bb0be25cb",
+      "scope": "unique observer filename derivative; full gate unchanged"
+    },
+    {
+      "public_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/run-phased.bound-v3.py",
+      "sha256": "12e0f2bc1e993c4e53a93f874b20497e5d588ac7897ec0f73587149c96d6557d",
+      "scope": "unique observer filename derivative; full gate unchanged"
+    }
+  ],
+  "gateway_started": false,
+  "cutover_accepted": false
+}

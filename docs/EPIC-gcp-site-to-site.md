@@ -265,3 +265,8 @@ Actual first Save200 and stale second Save409 cleared the draft. Normal Delete f
 ### Strict current WG24 source qualification
 
 Actual063 completed source-bound observation after ordinary policy inputs and the exact whole24-object renderer schema were qualified offline; earlier059/060 failures and061 unqualified observation remain unchanged. Public hash-only summaries preserve source/runtime/foreign identity without whole NFT or logs. Phased cutover, rekey and fault qualification remain open; schema qualification alone grants no teardown or native authority.
+
+
+### Cutover stopped; initial strict create gate refused
+
+Normal9c3 stop observed exit0/SAD0/no daemons and preserved retained state. First create-start refused before creation because actual six permit sets had not yet expired; the strict qualifier correctly required true emptiness. GET-only reconciliation observed old stopped/new null. Public hash/count archive preserves this checkpoint; gateway start/cutover remain unaccepted until a later complete gate.
