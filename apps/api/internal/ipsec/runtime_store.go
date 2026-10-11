@@ -224,11 +224,23 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 	if s.runtimePolicy == nil {
 		return RuntimePolicy{}, ErrConnectionIneligible
 	}
-	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg})
+	var fqdnSupported bool
+	if e := tx.QueryRow(ctx, `SELECT coalesce(status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_fqdn_policy_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&fqdnSupported); e != nil {
+		return RuntimePolicy{}, ErrConnectionUnavailable
+	}
+	fqdnVersion := 0
+	if fqdnSupported {
+		fqdnVersion = 1
+	}
+	input := RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx}
+	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), input)
 	if e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
-	if !runtimeDigest(policy.Hash) || len(policy.Grants)+2*len(policy.DNSResolverGrants) > 128 {
+	if !runtimeDigest(policy.Hash) || len(policy.Grants)+len(policy.FQDNGrants)+2*len(policy.DNSResolverGrants) > 128 {
+		return RuntimePolicy{}, ErrConnectionUnavailable
+	}
+	if !validRuntimeFQDNPolicy(policy, input) {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
 	for _, g := range policy.Grants {

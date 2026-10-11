@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -148,7 +149,13 @@ type FQDNGeneration struct {
 	ResolverProfileID     uuid.UUID
 	ResolverMatchSuffix   string
 	ResolverConfigVersion int64
-	Answers               []string
+	// Current resolver transport provenance is used only by the dedicated
+	// IPsec FQDN adapter. The shared generation/content identity stays unchanged.
+	IPsecConnectionID          uuid.UUID
+	IPsecConfigurationRevision int64
+	IPsecSourceAddress         string
+	ValidUntil                 time.Time
+	Answers                    []string
 	// ResolverAddresses contains zero or one canonical host prefix: the first
 	// selected-profile UDP/53 endpoint reachable through an approved routed
 	// prefix, preserving profile endpoint order. The compiler derives both DNS

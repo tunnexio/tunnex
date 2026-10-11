@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ActiveGeneration is an immutable, database-backed answer snapshot suitable
@@ -46,7 +47,21 @@ type ActiveGenerationReader interface {
 // to the current resource row so an old generation cannot compile after a
 // resolver-context edit, even before a scheduler tick records its withdrawal.
 func (s *PostgresStore) ActiveGenerations(ctx context.Context, orgID uuid.UUID) ([]ActiveGeneration, error) {
-	rows, err := s.pool.Query(ctx, `
+	return ActiveGenerationsWithQuery(ctx, s.pool, orgID)
+}
+
+// ActiveGenerationQuery is satisfied by the runtime's already-locked transaction.
+// Pool and transaction readers deliberately share the exact selected-generation
+// SQL and decoder; pending, withdrawn and superseded contexts stay excluded.
+type ActiveGenerationQuery interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func ActiveGenerationsWithQuery(ctx context.Context, query ActiveGenerationQuery, orgID uuid.UUID) ([]ActiveGeneration, error) {
+	if query == nil || orgID == uuid.Nil {
+		return nil, fmt.Errorf("active FQDN generation reader unavailable")
+	}
+	rows, err := query.Query(ctx, `
 SELECT g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
        g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at,
        cfg.id,cfg.version,profile.id,profile.name,profile.provider_hint,COALESCE(g.resolver_match_suffix,''),
@@ -72,7 +87,11 @@ JOIN fqdn_resolver_context_configs cfg
 JOIN fqdn_resolver_context_profiles profile
   ON profile.config_id=cfg.id AND profile.org_id=cfg.org_id
  AND profile.id=COALESCE(g.resolver_profile_id,cfg.id)
-WHERE g.org_id=$1 AND g.state='active' AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
+WHERE g.org_id=$1 AND g.state='active'
+  AND g.effective_ttl >= interval '30 seconds' AND g.effective_ttl <= interval '1 hour'
+  AND g.resolved_at <= clock_timestamp()
+  AND g.resolved_at + g.effective_ttl > clock_timestamp()
+  AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
   AND (
     (profile.legacy_default AND COALESCE(g.resolver_match_suffix,'')=''
       AND NOT EXISTS (

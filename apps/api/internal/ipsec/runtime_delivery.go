@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -279,8 +280,42 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if policy.Hash != r.PolicyHash {
 		return RuntimeLease{}, ErrConnectionConflict
 	}
+	// Re-observe database time after compilation; transaction-start now() could
+	// be stale after lock waits. Node measures TTL from request start, so response
+	// transit cannot extend this server bound.
+	var observedAt time.Time
+	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observedAt); e != nil {
+		return RuntimeLease{}, createError(e)
+	}
+	observedMono := time.Now()
+	ttlMS, e := runtimePolicyLeaseTTL(policy, observedAt, 0)
+	if e != nil {
+		return RuntimeLease{}, e
+	}
 	if e = tx.Commit(ctx); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	return RuntimeLease{RuntimeLeaseRequest: r, TTLMS: 60000}, nil
+	ttlMS, e = runtimePolicyLeaseTTL(policy, observedAt, time.Since(observedMono))
+	if e != nil {
+		return RuntimeLease{}, e
+	}
+	return RuntimeLease{RuntimeLeaseRequest: r, TTLMS: ttlMS}, nil
+}
+
+func runtimePolicyLeaseTTL(policy RuntimePolicy, observedAt time.Time, elapsed time.Duration) (int64, error) {
+	ttl := 60 * time.Second
+	if len(policy.FQDNGrants) != 0 {
+		if policy.FQDNValidUntil.IsZero() || observedAt.IsZero() || elapsed < 0 {
+			return 0, ErrConnectionIneligible
+		}
+		remaining := policy.FQDNValidUntil.Sub(observedAt) - elapsed
+		if remaining < ttl {
+			ttl = remaining
+		}
+	}
+	ms := ttl.Milliseconds()
+	if ms <= 0 {
+		return 0, ErrConnectionIneligible
+	}
+	return ms, nil
 }

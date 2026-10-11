@@ -2168,6 +2168,7 @@ type AppliedPolicy struct {
 	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
+	IPsecFQDNPolicyVersion    int    `json:"ipsec_fqdn_policy_version"`
 	Version                   int    `json:"policy_version"`
 	Hash                      string `json:"policy_hash"`
 	Error                     string `json:"policy_error"`
@@ -2274,6 +2275,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecRetainedGuardVersion != 1 {
 		applied.IPsecRetainedGuardVersion = 0
 	}
+	applied.IPsecFQDNPolicyVersion = ipsecFQDNPolicyCapability(applied.IPsecConfigVersion, applied.IPsecFQDNPolicyVersion)
 	// Bound DNS needs both the RPC2 path contract and policy v11 private-zone
 	// declarations. Missing/unknown/inconsistent reports clear prior evidence.
 	if applied.DNSIPsecResolveVersion != 1 || applied.DNSResolveRPCVersion != 2 || applied.IPsecConfigVersion != 1 || applied.MaxSupportedVersion < 11 {
@@ -2298,6 +2300,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ipsec_gcp_classic_version":    applied.IPsecGCPClassicVersion,
 		"ipsec_gcp_ha_version":         applied.IPsecGCPHAVersion,
 		"ipsec_retained_guard_version": applied.IPsecRetainedGuardVersion,
+		"ipsec_fqdn_policy_version":    applied.IPsecFQDNPolicyVersion,
 		"egress_nat":                   egressNAT,
 		"egress_ipv6":                  egressIPv6,
 		"policy_version":               applied.Version,
@@ -2389,6 +2392,7 @@ type NodeCapabilities struct {
 	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
+	IPsecFQDNPolicyVersion    int    `json:"ipsec_fqdn_policy_version"`
 	EgressNAT                 bool   `json:"egress_nat"`
 	EgressIPv6                bool   `json:"egress_ipv6"`
 	PolicyVersion             int    `json:"policy_version"`
@@ -3278,4 +3282,11 @@ func (s *Service) allocateAgentDevice(ctx context.Context, q *sqlc.Queries, orgI
 func (s *Service) WithLicence(m *licence.Manager) *Service {
 	s.licence = m
 	return s
+}
+
+func ipsecFQDNPolicyCapability(configVersion, fqdnVersion int) int {
+	if configVersion == 1 && fqdnVersion == 1 {
+		return 1
+	}
+	return 0
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
+	"time"
 )
 
 // RuntimePrincipal must be derived from the authenticated agent certificate.
@@ -16,6 +17,10 @@ type RuntimePrincipal struct {
 type RuntimePolicyInput struct {
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 	Config                              StaticConfig
+	// Supplied only by the locked runtime transaction, never agent input.
+	ConfigurationRevision int64     `json:"-"`
+	FQDNPolicyVersion     int       `json:"-"`
+	Transaction           sqlc.DBTX `json:"-"`
 }
 type RuntimeGrant struct {
 	Source      string `json:"source"`
@@ -25,6 +30,25 @@ type RuntimeGrant struct {
 	PortHigh    uint16 `json:"port_high"`
 	RuleID      string `json:"rule_id"`
 }
+
+// RuntimeFQDNGrant preserves answer provenance independently of ordinary grants.
+// A capability-1 receiver must retain this ownership when rendering and withdrawing.
+type RuntimeFQDNGrant struct {
+	RuntimeGrant
+	FQDNManaged           bool   `json:"fqdn_managed"`
+	ResourceID            string `json:"resource_id"`
+	Name                  string `json:"name"`
+	Generation            string `json:"generation"`
+	ResolverConfigID      string `json:"resolver_config_id"`
+	ResolverConfigVersion int64  `json:"resolver_config_version"`
+	SelectedSiteID        string `json:"selected_site_id"`
+	SelectedGatewayID     string `json:"selected_gateway_id"`
+	ResolverProfileID     string `json:"resolver_profile_id"`
+	ResolverMatchSuffix   string `json:"resolver_match_suffix"`
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+}
+
 type RuntimeDNSResolverGrant struct {
 	ContextConfigID       string `json:"context_config_id"`
 	ContextConfigVersion  int64  `json:"context_config_version"`
@@ -35,6 +59,10 @@ type RuntimeDNSResolverGrant struct {
 	ResolverAddress       string `json:"resolver_address"`
 }
 type RuntimePolicy struct {
+	// Selected answer expiry is server-only authority, excluded from wire/hash.
+	FQDNValidUntil      time.Time                       `json:"-"`
+	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
+	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
 	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
 	DNSResolverProfiles []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 	Hash                string                          `json:"hash"`

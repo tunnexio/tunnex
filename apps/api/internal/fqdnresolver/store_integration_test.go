@@ -102,7 +102,10 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	hook := &committedHook{t: t, pool: pool, resource: resource}
 	store := NewPostgresStore(pool).WithAfterCommit(hook)
 	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ResolverConfig: ResolverConfig{ID: config.String(), Version: 1, ProfileID: profile.String(), ProfileName: "Private internal", ProfileProvider: "aws", MatchedSuffix: "internal", Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.53"), Port: 53, Transport: "udp"}}}}
-	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	var now time.Time
+	if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +141,66 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if got.ResolverConfig.ProfileID != profile.String() || got.ResolverConfig.MatchedSuffix != "internal" || len(got.ResolverConfig.Endpoints) != 1 || got.ResolverConfig.Endpoints[0].Address != addr("10.53.0.53") {
 		t.Fatalf("active projection mixed resolver profiles or compatibility endpoints: %#v", got.ResolverConfig)
 	}
+	// The IPsec compiler must read its already-locked transaction rather than
+	// borrowing the pool's committed generation after an in-transaction edit.
+	t.Run("transaction-selected-current-generation", func(t *testing.T) {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		if _, err := tx.Exec(ctx, `UPDATE fqdn_resolver_context_profiles SET name='tx-only-profile' WHERE id=$1`, profile); err != nil {
+			t.Fatal(err)
+		}
+		inside, err := ActiveGenerationsWithQuery(ctx, tx, org)
+		if err != nil || len(inside) != 1 || inside[0].ResolverConfig.ProfileName != "tx-only-profile" {
+			t.Fatalf("transaction snapshot not used: %+v %v", inside, err)
+		}
+		outside, err := store.ActiveGenerations(ctx, org)
+		if err != nil || len(outside) != 1 || outside[0].ResolverConfig.ProfileName == "tx-only-profile" {
+			t.Fatalf("uncommitted change leaked: %+v %v", outside, err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config); err != nil {
+			t.Fatal(err)
+		}
+		inside, err = ActiveGenerationsWithQuery(ctx, tx, org)
+		if err != nil || len(inside) != 0 {
+			t.Fatalf("retired transaction context compiled: %+v %v", inside, err)
+		}
+	})
+	t.Run("hard-answer-expiry-and-future-refusal", func(t *testing.T) {
+		for _, offset := range []time.Duration{-61 * time.Second, 60 * time.Second} {
+			id := uuid.New()
+			t.Cleanup(func() {
+				if _, err := pool.Exec(ctx, `UPDATE fqdn_resources SET resolver_site_id=NULL,resolver_node_id=NULL WHERE id=$1 AND org_id=$2`, id, org); err != nil {
+					t.Error(err)
+				}
+			})
+			if _, err := pool.Exec(ctx, `INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,$3,$4,$5,$6)`, id, org, "expiry-"+id.String(), "expiry-"+id.String()+".internal", site, gateway); err != nil {
+				t.Fatal(err)
+			}
+			work := w
+			work.ResourceID = id
+			work.Hostname = "expiry-" + id.String() + ".internal"
+			var observed time.Time
+			if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observed); err != nil {
+				t.Fatal(err)
+			}
+			if err := NewPostgresStore(pool).Publish(ctx, work, Generation{TTL: time.Minute, ResolvedAt: observed.Add(offset), Addresses: []netip.Addr{addr("10.2.3.4")}}); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := store.ActiveGenerations(ctx, org)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range rows {
+				if row.ResourceID == id {
+					t.Fatal("expired or future generation selected")
+				}
+			}
+		}
+	})
+
 	if other, err := store.ActiveGenerations(ctx, uuid.New()); err != nil || len(other) != 0 {
 		t.Fatalf("cross-org active projection leaked: rows=%#v err=%v", other, err)
 	}
