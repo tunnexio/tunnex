@@ -306,3 +306,10 @@
   .site-to-site-workspace .pair-endpoints,.sts-chooser .pair-endpoints { gap:18px; }
   .site-to-site-workspace .site-pair-configuration .pair-endpoint + .pair-endpoint,.sts-chooser .site-pair-configuration .pair-endpoint + .pair-endpoint { padding-left:18px !important; }
 }
+
+@media (max-width:640px) {
+  .site-to-site-workspace .connection-purpose { flex-direction:column; align-items:stretch; }
+  .site-to-site-workspace .connection-purpose-option { flex:none; min-width:0; }
+  .site-to-site-workspace .connection-purpose-option > span { flex:1; min-width:0; width:auto; flex-direction:column; align-items:flex-start; gap:4px; }
+  .site-to-site-workspace .connection-purpose-option small { white-space:normal; overflow-wrap:anywhere; }
+}
