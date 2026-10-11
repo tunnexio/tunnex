@@ -93,13 +93,13 @@ func diagWithdrawalPath(want, got []any) string {
 		if elems, ok := ws["elem"].([]any); ok {
 			for _, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
-				allowed[e["val"].(json.Number).String()] = v
+				allowed[guardSetMemberKey(e["val"])] = v
 			}
 		}
 		if elems, ok := gs["elem"].([]any); ok {
 			for n, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
-				if !reflect.DeepEqual(allowed[e["val"].(json.Number).String()], v) {
+				if !reflect.DeepEqual(allowed[guardSetMemberKey(e["val"])], v) {
 					return fmt.Sprintf("%s/set/elem/%d", path, n)
 				}
 			}

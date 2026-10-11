@@ -18,8 +18,23 @@ import (
 // organization serialization lock. Migration policy-writer mirrors preserve a
 // coherent snapshot across these queries. Caller input never supplies authority.
 func CompileIPsecRuntimePolicy(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+	return compileIPsecRuntimePolicyWithEntitlement(ctx, q, input, false)
+}
+
+// IPsecRuntimePolicyCompiler uses the same named entitlement as ordinary policy.
+// A missing entitlement callback remains fail closed for retained FQDN rules.
+func IPsecRuntimePolicyCompiler(entitled func() bool) ipsec.RuntimePolicyCompiler {
+	return func(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+		return compileIPsecRuntimePolicyWithEntitlement(ctx, q, input, entitled != nil && entitled())
+	}
+}
+
+func compileIPsecRuntimePolicyWithEntitlement(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput, entitled bool) (ipsec.RuntimePolicy, error) {
 	snapshot, err := BuildSnapshotWithQueries(ctx, q, input.OrgID)
 	if err != nil {
+		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+	}
+	if err := appendRuntimeFQDNGenerations(ctx, &snapshot, input, entitled); err != nil {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
 	}
 	rows, err := q.ListIPsecDNSResolverProfiles(ctx, input.OrgID)
@@ -73,6 +88,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	snapshot.SiteNodes = siteNodes
+	fqdnSnapshot := snapshot
 	result := ipsec.RuntimePolicy{Grants: []ipsec.RuntimeGrant{}}
 	// Isolate the supported shared-rule classes before compilation. Membership,
 	// FQDN generations, device owners and service discovery cannot widen this port.
@@ -103,7 +119,11 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 			result.Grants = append(result.Grants, ipsec.RuntimeGrant{Source: source.String(), Destination: destination.String(), Protocol: string(grant.Protocol), PortLow: uint16(grant.PortLow), PortHigh: uint16(grant.PortHigh), RuleID: grant.RuleID})
 		}
 	}
-	if len(result.Grants) > 128 {
+	result.FQDNGrants = compileIPsecFQDNGrants(fqdnSnapshot, input)
+	if len(result.FQDNGrants) != 0 {
+		result.FQDNPolicyVersion = input.FQDNPolicyVersion
+	}
+	if len(result.Grants)+len(result.FQDNGrants) > 128 {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	sort.Slice(result.Grants, func(a, b int) bool {
@@ -121,7 +141,9 @@ func hashRuntimePolicy(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInpu
 		Grants                      []ipsec.RuntimeGrant
 		DNSResolverGrants           []ipsec.RuntimeDNSResolverGrant `json:"dns_resolver_grants,omitempty"`
 		DNSResolverProfiles         []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
-	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles})
+		FQDNPolicyVersion           int                             `json:"fqdn_policy_version,omitempty"`
+		FQDNGrants                  []ipsec.RuntimeFQDNGrant        `json:"fqdn_grants,omitempty"`
+	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles, result.FQDNPolicyVersion, result.FQDNGrants})
 	if err != nil {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
 	}

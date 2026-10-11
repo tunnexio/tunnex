@@ -2167,6 +2167,7 @@ type AppliedPolicy struct {
 	IPsecGCPClassicVersion         int    `json:"ipsec_gcp_classic_version"`
 	IPsecGCPHAVersion              int    `json:"ipsec_gcp_ha_version"`
 	IPsecAzureBGPRecreationVersion int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecFQDNPolicyVersion         int    `json:"ipsec_fqdn_policy_version"`
 	IPsecAzureVersion              int    `json:"ipsec_azure_version"`
 	IPsecBGPVersion                int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion      int    `json:"ipsec_retained_guard_version"`
@@ -2261,6 +2262,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 {
 		applied.IPsecConfigVersion = 0
 	}
+	applied.IPsecFQDNPolicyVersion = ipsecFQDNPolicyCapability(applied.IPsecConfigVersion, applied.IPsecFQDNPolicyVersion)
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
@@ -2307,6 +2309,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ipsec_gcp_ha_version":               applied.IPsecGCPHAVersion,
 		"ipsec_azure_version":                applied.IPsecAzureVersion,
 		"ipsec_azure_bgp_recreation_version": applied.IPsecAzureBGPRecreationVersion,
+		"ipsec_fqdn_policy_version":          applied.IPsecFQDNPolicyVersion,
 		"ipsec_retained_guard_version":       applied.IPsecRetainedGuardVersion,
 		"egress_nat":                         egressNAT,
 		"egress_ipv6":                        egressIPv6,
@@ -2398,6 +2401,7 @@ type NodeCapabilities struct {
 	IPsecGCPClassicVersion         int    `json:"ipsec_gcp_classic_version"`
 	IPsecGCPHAVersion              int    `json:"ipsec_gcp_ha_version"`
 	IPsecAzureBGPRecreationVersion int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecFQDNPolicyVersion         int    `json:"ipsec_fqdn_policy_version"`
 	IPsecAzureVersion              int    `json:"ipsec_azure_version"`
 	IPsecBGPVersion                int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion      int    `json:"ipsec_retained_guard_version"`
@@ -3290,4 +3294,11 @@ func (s *Service) allocateAgentDevice(ctx context.Context, q *sqlc.Queries, orgI
 func (s *Service) WithLicence(m *licence.Manager) *Service {
 	s.licence = m
 	return s
+}
+
+func ipsecFQDNPolicyCapability(configVersion, fqdnVersion int) int {
+	if configVersion == 1 && (fqdnVersion == 1 || fqdnVersion == 2) {
+		return fqdnVersion
+	}
+	return 0
 }

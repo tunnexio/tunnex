@@ -32,8 +32,15 @@ func guardRemoteFragmentNeeded(c GuardConnection, g GuardGrant, ingress, egress 
 		port = map[string]any{"range": []uint16{g.PortLow, g.PortHigh}}
 		ports = fmt.Sprintf("%d-%d", g.PortLow, g.PortHigh)
 	}
-	fmt.Fprintf(&b, "ct original proto-dst %s meta iif @%s counter accept\n", ports, guardReplyLeaseName(c.ID))
-	expr = append(expr, guardMatch("==", guardOriginalCT("proto-dst", ""), port), guardMatch("==", guardMeta("iif"), "@"+guardReplyLeaseName(c.ID)), guardCounter(), guardVerdict("accept"))
+	fmt.Fprintf(&b, "ct original proto-dst %s meta iif @%s ", ports, guardReplyLeaseName(c.ID))
+	expr = append(expr, guardMatch("==", guardOriginalCT("proto-dst", ""), port), guardMatch("==", guardMeta("iif"), "@"+guardReplyLeaseName(c.ID)))
+	if g.FQDN.Version == 2 {
+		name := guardFQDNSetName(g)
+		fmt.Fprintf(&b, "ct original ip daddr @%s ", name)
+		expr = append(expr, guardMatch("==", guardOriginalCT("daddr", ""), "@"+name))
+	}
+	b.WriteString("counter accept\n")
+	expr = append(expr, guardCounter(), guardVerdict("accept"))
 	return guardRule{text: b.String(), expr: expr}
 }
 func guardOriginalCT(key, family string) any {

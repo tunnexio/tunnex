@@ -18,7 +18,7 @@ import (
 // Existing obligations restore refusal synchronously before any WireGuard
 // forwarding. New hosts discover opt-in in the background and bind no IKE ports
 // until authoritative opt-in is true. There is no local capability override.
-func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport) (func() error, error) {
+func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport, fqdn *ipsec.RuntimeFQDNPolicySource) (func() error, error) {
 	dir := filepath.Join(stateDir, "ipsec")
 	org, node, err := ipsec.ReadRuntimeJournalIdentity(dir)
 	existing := err == nil
@@ -34,7 +34,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{DNSReadTiming: os.Getenv("TUNNEX_IPSEC_DNS_READ_TIMING") == "true", OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{FQDNPolicy: fqdn, DNSReadTiming: os.Getenv("TUNNEX_IPSEC_DNS_READ_TIMING") == "true", OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
 			attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
 			if event.DNSReadTiming != nil {
 				attrs = []any{"operation", event.Operation, "stage", event.Stage, "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
@@ -58,6 +58,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		}
 		client.AttachIPsecController(controller)
 		dns.Attach(controller)
+		fqdn.Attach(controller)
 		return nil
 	}
 	if existing {

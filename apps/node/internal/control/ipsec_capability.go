@@ -98,3 +98,14 @@ func azureBGPRecreationVersion(controller any) int {
 	}
 	return 1
 }
+
+func (c *Client) ipsecFQDNPolicyCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.FQDNPolicyCapability()
+}

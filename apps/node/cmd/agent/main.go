@@ -220,7 +220,8 @@ func main() {
 		}
 	}
 	dnsTransport := &ipsec.DNSRuntimeTransport{}
-	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport)
+	fqdnPolicySource := &ipsec.RuntimeFQDNPolicySource{}
+	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource)
 	if err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
@@ -290,6 +291,7 @@ func main() {
 	// The FQDN baseline survives agent restarts. A missing/corrupt file does
 	// not silently become an empty generation: egress performs its documented
 	// deny-all + conntrack recovery before accepting the first policy.
+	egressMgr.SetFQDNPolicyCallbacks(fqdnPolicySource.BeforePolicy, fqdnPolicySource.CommittedPolicy)
 	egressMgr.SetFQDNBaselinePath(filepath.Join(certDir, "fqdn-policy-baseline.json"))
 	defer egressMgr.Teardown(context.Background())
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER

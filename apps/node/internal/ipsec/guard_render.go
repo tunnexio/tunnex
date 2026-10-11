@@ -30,6 +30,8 @@ type GuardGrant struct {
 	PortLow, PortHigh   uint16
 	HostOrigin          bool
 	FQDNManaged         bool
+	FQDNPermitFor       time.Duration      `json:",omitempty"`
+	FQDN                FQDNGrantBinding   `json:",omitzero"`
 	DNSResolver         DNSResolverBinding `json:",omitzero"`
 }
 
@@ -139,6 +141,11 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 		setText.WriteString(guardReplyLeaseSetText(c))
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { type iface_index; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardReplyLeaseName(c.ID), guardReplyLeaseName(c.ID))
 		setText.WriteString(guardSALeaseText(c))
+		for _, g := range c.Grants {
+			if g.FQDN.Version == 2 {
+				setText.WriteString(guardFQDNSetText(g))
+			}
+		}
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { typeof ipsec out reqid; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardSALeaseName(c.ID), guardSALeaseName(c.ID))
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { type iface_index; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardLeaseName(c.ID), guardLeaseName(c.ID))
 	}
@@ -327,8 +334,29 @@ func guardAllow(g GuardGrant, ingress, egress int, reply bool, leaseName, leaseK
 		b.WriteString("ct direction original ")
 		expr = append(expr, guardMatch("==", guardCT("direction"), "original"))
 	}
-	fmt.Fprintf(&b, "meta %s @%s counter accept\n", leaseKey, leaseName)
+	fmt.Fprintf(&b, "meta %s @%s ", leaseKey, leaseName)
 	expr = append(expr, guardMatch("==", guardMeta(leaseKey), "@"+leaseName))
+	if g.FQDNManaged {
+		if g.FQDN.Version == 2 {
+			field := "daddr"
+			if reply {
+				field = "saddr"
+			}
+			name := guardFQDNSetName(g)
+			fmt.Fprintf(&b, "ip %s @%s ", field, name)
+			expr = append(expr, guardMatch("==", guardPayload("ip", field), "@"+name))
+		}
+		// Mark the exact original permitted tuple; reply admission remains gated
+		// by the original finite authority and requires its existing ownership.
+		if reply {
+			fmt.Fprintf(&b, "ct mark & 0x%08x == 0x%08x ", fqdnConntrackMarkMask, fqdnConntrackMark)
+			expr = append(expr, guardMatch("==", map[string]any{"&": []any{guardCT("mark"), fqdnConntrackMarkMask}}, fqdnConntrackMark))
+		} else {
+			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", ^fqdnConntrackMarkMask, fqdnConntrackMark)
+			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), ^fqdnConntrackMarkMask}}, fqdnConntrackMark}}}})
+		}
+	}
+	b.WriteString("counter accept\n")
 	return guardRule{text: b.String(), expr: append(expr, guardCounter(), guardVerdict("accept")), tcp: g.Protocol == GuardTCP || g.Protocol == GuardAny, ingress: ingress, egress: egress}
 }
 func indexSet(indices []int) string {
@@ -508,12 +536,15 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		c.Grants = append([]GuardGrant(nil), c.Grants...)
 		seen := map[GuardGrant]bool{}
 		for _, g := range c.Grants {
+			if (g.FQDN.Version == 2 && (g.FQDNPermitFor < time.Second || g.FQDNPermitFor > 60*time.Second || g.FQDNPermitFor > g.FQDN.ExpiresAt.Sub(time.Now()))) || (g.FQDN.Version != 2 && g.FQDNPermitFor != 0) {
+				return GuardIntent{}, false
+			}
 			outbound := withinPrefixes(g.Source, c.Local) && withinPrefixes(g.Destination, c.Remote)
 			inbound := withinPrefixes(g.Source, c.Remote) && withinPrefixes(g.Destination, c.Local)
 			if g.DNSResolver != (DNSResolverBinding{}) && (!g.DNSResolver.valid() || g.DNSResolver.ConnectionID != c.ID || !g.HostOrigin || !outbound || g.Source.Bits() != 32 || g.Destination.Bits() != 32 || g.PortLow != 53 || g.PortHigh != 53 || g.Protocol != GuardUDP && g.Protocol != GuardTCP) {
 				return GuardIntent{}, false
 			}
-			if g.FQDNManaged || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
+			if (g.FQDNManaged && (!g.FQDN.valid() || g.FQDN.SelectedGatewayID != in.OwnerID || g.FQDN.ConnectionID != c.ID || !outbound || g.HostOrigin || g.Destination.Bits() != 32 || g.DNSResolver != (DNSResolverBinding{}))) || (!g.FQDNManaged && g.FQDN != (FQDNGrantBinding{})) || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
 				return GuardIntent{}, false
 			}
 			switch g.Protocol {
@@ -531,6 +562,9 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 			seen[g] = true
 		}
 		sort.Slice(c.Grants, func(a, b int) bool {
+			if c.Grants[a].FQDNManaged != c.Grants[b].FQDNManaged {
+				return !c.Grants[a].FQDNManaged
+			}
 			aa, _ := json.Marshal(c.Grants[a])
 			bb, _ := json.Marshal(c.Grants[b])
 			return string(aa) < string(bb)
@@ -675,6 +709,20 @@ func guardDocuments(intent GuardIntent, digest string, chains []guardChain) (str
 		transaction = append(transaction, map[string]any{"add": map[string]any{kind: value}})
 	}
 	for _, connection := range guardLeaseConnections(intent) {
+		for _, g := range connection.Grants {
+			if g.FQDN.Version == 2 {
+				desc := map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardFQDNSetName(g), "type": "ipv4_addr", "flags": []string{"timeout"}, "timeout": 60}
+				elements := []any{map[string]any{"elem": map[string]any{"val": g.Destination.Addr().String(), "timeout": int64(g.FQDNPermitFor / time.Second)}}}
+				readback := map[string]any{}
+				for k, v := range desc {
+					readback[k] = v
+				}
+				readback["elem"] = elements
+				expected = append(expected, map[string]any{"set": readback})
+				transaction = append(transaction, map[string]any{"add": map[string]any{"set": desc}}, map[string]any{"add": map[string]any{"element": map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardFQDNSetName(g), "elem": elements}}})
+			}
+		}
+
 		saDescriptor := map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardSALeaseName(connection.ID), "type": map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": 0}}}, "flags": []string{"timeout"}, "timeout": 60}
 		saReadback := map[string]any{}
 		for key, value := range saDescriptor {

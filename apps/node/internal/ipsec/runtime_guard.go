@@ -85,13 +85,13 @@ func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, link
 		if elems, ok := ws["elem"].([]any); ok {
 			for _, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
-				allowed[e["val"].(json.Number).String()] = v
+				allowed[guardSetMemberKey(e["val"])] = v
 			}
 		}
 		if elems, ok := gs["elem"].([]any); ok {
 			for _, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
-				if !reflect.DeepEqual(allowed[e["val"].(json.Number).String()], v) {
+				if !reflect.DeepEqual(allowed[guardSetMemberKey(e["val"])], v) {
 					mark("set_member_mismatch")
 					return nil, ErrGuardReadback
 				}
@@ -329,6 +329,12 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 	stage = "guard_resolve_journal"
 	if e = a.journal.resolveGuardOwnership(matched); e != nil {
 		return fail()
+	}
+	if matched != nil {
+		m.NFTJSON, e = replaceOwnedFQDNSets(m.NFTJSON, matched.ExpectedJSON)
+		if e != nil {
+			return fail()
+		}
 	}
 	stage = "guard_prepare_journal"
 	if e = a.journal.prepareGuard(m); e != nil {
