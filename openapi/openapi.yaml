@@ -12289,6 +12289,8 @@ components:
           $ref: '#/components/schemas/IPsecBGPEligibility'
         gcp_ha:
           $ref: '#/components/schemas/IPsecBGPEligibility'
+        azure_bgp_recreation:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
         azure_bgp:
           $ref: '#/components/schemas/IPsecBGPEligibility'
         azure_static:

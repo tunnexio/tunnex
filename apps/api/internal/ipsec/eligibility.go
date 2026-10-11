@@ -11,13 +11,14 @@ import (
 )
 
 type Eligibility struct {
-	Eligible    bool         `json:"eligible"`
-	Reason      string       `json:"reason"`
-	GCPClassic  *Eligibility `json:"gcp_classic,omitempty"`
-	AzureBGP    *Eligibility `json:"azure_bgp,omitempty"`
-	AzureStatic *Eligibility `json:"azure_static,omitempty"`
-	GCPHA       *Eligibility `json:"gcp_ha,omitempty"`
-	BGP         *Eligibility `json:"bgp,omitempty"`
+	Eligible           bool         `json:"eligible"`
+	Reason             string       `json:"reason"`
+	GCPClassic         *Eligibility `json:"gcp_classic,omitempty"`
+	AzureBGPRecreation *Eligibility `json:"azure_bgp_recreation,omitempty"`
+	AzureBGP           *Eligibility `json:"azure_bgp,omitempty"`
+	AzureStatic        *Eligibility `json:"azure_static,omitempty"`
+	GCPHA              *Eligibility `json:"gcp_ha,omitempty"`
+	BGP                *Eligibility `json:"bgp,omitempty"`
 }
 
 // gatewayEligibilityReason is shared by advisory reads and locked creation.
@@ -117,5 +118,10 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 		azureBGPReason = result.BGP.Reason
 	}
 	result.AzureBGP = &Eligibility{Eligible: azureBGPReason == "eligible", Reason: azureBGPReason}
+	recreationReason := azureBGPReason
+	if recreationReason == "eligible" && !azureBGPRecreationCapability(caps) {
+		recreationReason = "unsupported"
+	}
+	result.AzureBGPRecreation = &Eligibility{Eligible: recreationReason == "eligible", Reason: recreationReason}
 	return result, nil
 }

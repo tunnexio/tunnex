@@ -39,7 +39,7 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if e = attachStaticRecreation(ctx, tx, &manifest); e != nil {
 		return invalid(e)
 	}
-	if len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+	if !locked.recreationEligible(manifest) {
 		return invalid(ErrConnectionIneligible)
 	}
 	delivery, _, e := scanDelivery(tx.QueryRow(ctx, `SELECT `+runtimeDeliveryColumns+` FROM ipsec_runtime_deliveries WHERE connection_id=$1 AND org_id=$2 AND desired_revision=$3 AND kind='apply'`, id, p.OrgID, revision))
@@ -111,7 +111,7 @@ func (s *ConnectionStore) Cleanup(ctx context.Context, p RuntimePrincipal, id uu
 	if e != nil {
 		return RuntimeCleanup{}, createError(e)
 	}
-	if len(d.Manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+	if !locked.recreationEligible(d.Manifest) {
 		return RuntimeCleanup{}, ErrConnectionIneligible
 	}
 	if e = tx.Commit(ctx); e != nil {
@@ -153,7 +153,7 @@ func (s *ConnectionStore) Acknowledge(ctx context.Context, p RuntimePrincipal, i
 	if e != nil {
 		return createError(e)
 	}
-	if len(d.Manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+	if !locked.recreationEligible(d.Manifest) {
 		return ErrConnectionIneligible
 	}
 	if d.Kind != ack.Kind || d.DesiredRevision != ack.DesiredRevision || d.OwnershipDigest != ack.OwnershipDigest {
@@ -200,11 +200,14 @@ func (s *ConnectionStore) Pending(ctx context.Context, p RuntimePrincipal, after
 	if e != nil {
 		return RuntimePendingPage{}, ErrRuntimeUnauthorized
 	}
-	var retainedCap bool
+	var retainedCap, azureCap bool
 	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_retained_guard_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&retainedCap); e != nil {
 		return RuntimePendingPage{}, createError(e)
 	}
-	blocked, e := blockedStaticRecreations(ctx, tx, p.OrgID, retainedCap)
+	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_azure_bgp_recreation_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&azureCap); e != nil {
+		return RuntimePendingPage{}, createError(e)
+	}
+	blocked, e := blockedStaticRecreations(ctx, tx, p.OrgID, retainedCap, azureCap)
 	if e != nil {
 		return RuntimePendingPage{}, e
 	}
@@ -265,7 +268,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) || (!locked.recreationEligible(manifest)) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)

@@ -28,16 +28,17 @@ type runtimeState struct {
 	cleanup                     *uuid.UUID
 }
 type runtimeLocked struct {
-	connection            Connection
-	state                 runtimeState
-	enabled               bool
-	eligible              bool
-	recoveryEligible      bool
-	bgpEligible           bool
-	gcpHAEligible         bool
-	azureEligible         bool
-	gcpClassicEligible    bool
-	retainedGuardEligible bool
+	connection                 Connection
+	state                      runtimeState
+	enabled                    bool
+	eligible                   bool
+	recoveryEligible           bool
+	bgpEligible                bool
+	gcpHAEligible              bool
+	azureEligible              bool
+	gcpClassicEligible         bool
+	retainedGuardEligible      bool
+	azureBGPRecreationEligible bool
 }
 
 func runtimeRevision(p *int64) int64 {
@@ -118,6 +119,7 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	out.gcpHAEligible = out.bgpEligible && string(capability["ipsec_gcp_ha_version"]) == "1"
 	out.azureEligible = out.eligible && string(capability["ipsec_azure_version"]) == "1"
 	out.retainedGuardEligible = out.eligible && retainedGuardCapability(caps)
+	out.azureBGPRecreationEligible = out.eligible && azureBGPRecreationCapability(caps)
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
 		return fail(createError(e))
@@ -360,7 +362,7 @@ func (s *ConnectionStore) changeIntent(ctx context.Context, org, actor, id uuid.
 		if e = attachStaticRecreation(ctx, tx, &manifest); e != nil {
 			return Connection{}, e
 		}
-		if len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+		if !locked.recreationEligible(manifest) {
 			return Connection{}, ErrConnectionIneligible
 		}
 		if e = runtimeCapacity(ctx, tx, next, manifest); e != nil {

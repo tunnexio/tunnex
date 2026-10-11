@@ -5938,6 +5938,9 @@ type IPsecEligibility struct {
 	// AzureBgp Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
 	AzureBgp *IPsecBGPEligibility `json:"azure_bgp,omitempty"`
 
+	// AzureBgpRecreation Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	AzureBgpRecreation *IPsecBGPEligibility `json:"azure_bgp_recreation,omitempty"`
+
 	// AzureStatic Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
 	AzureStatic *IPsecBGPEligibility `json:"azure_static,omitempty"`
 

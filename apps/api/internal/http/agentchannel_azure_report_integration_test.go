@@ -19,7 +19,7 @@ import (
 // Exercise certificate-derived report identity, persistence, typed readback and
 // eligibility. Listener certificate state is a fixture, not a TLS handshake.
 func TestAgentAzureReportCapabilityPropagation(t *testing.T) {
-	ctx, p := testpostgres.NewAtVersion(t, 225)
+	ctx, p := testpostgres.NewAtVersion(t, 226)
 	org, actor, site, gateway := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	serial := new(big.Int).SetBytes(gateway[:])
 	for _, step := range []struct {
@@ -43,7 +43,9 @@ func TestAgentAzureReportCapabilityPropagation(t *testing.T) {
 		name, fields    string
 		azure, bgp, gcp bool
 	}{
-		{"supported", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_gcp_classic_version":1,"ipsec_gcp_ha_version":1`, true, true, true},
+		{"supported", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_gcp_classic_version":1,"ipsec_gcp_ha_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":1`, true, true, true},
+		{"future recreation", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_retained_guard_version":1,"ipsec_azure_bgp_recreation_version":2`, true, true, false},
+		{"missing retained", `,"ipsec_config_version":1,"ipsec_azure_version":1,"ipsec_bgp_version":1,"ipsec_azure_bgp_recreation_version":1`, true, true, false},
 		{"static only", `,"ipsec_config_version":1,"ipsec_azure_version":1`, true, false, false},
 		{"omitted", `,"ipsec_config_version":1,"ipsec_bgp_version":1`, false, false, false},
 		{"future", `,"ipsec_config_version":1,"ipsec_azure_version":2,"ipsec_bgp_version":1`, false, false, false},
@@ -63,12 +65,18 @@ func TestAgentAzureReportCapabilityPropagation(t *testing.T) {
 				t.Fatal(err)
 			}
 			caps := nodes.Capabilities(raw)
+			if (caps.IPsecAzureBGPRecreationVersion == 1) != (tc.name == "supported") {
+				t.Fatal("recreation heartbeat propagation")
+			}
 			if (caps.IPsecAzureVersion == 1) != tc.azure || (caps.IPsecGCPClassicVersion == 1) != tc.gcp || (caps.IPsecGCPHAVersion == 1) != tc.gcp {
 				t.Fatalf("capability propagation: %+v", caps)
 			}
 			eligible, err := ipsec.NewConnectionStore(p).ReadEligibility(ctx, org, site, gateway)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if eligible.AzureBGPRecreation == nil || eligible.AzureBGPRecreation.Eligible != (tc.name == "supported") {
+				t.Fatal("recreation eligibility")
 			}
 			if eligible.AzureStatic == nil || eligible.AzureBGP == nil || eligible.AzureStatic.Eligible != tc.azure || eligible.AzureBGP.Eligible != tc.bgp {
 				t.Fatalf("eligibility %+v", eligible)
