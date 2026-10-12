@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -252,6 +253,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	defer tx.Rollback(ctx)
 	c := locked.connection
 	if c.DesiredIntent != "enabled" || c.DesiredRevision != r.DesiredRevision || locked.state.cleanup != nil {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "intent_revision_cleanup", "connection_id", id.String())
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	if !locked.enabled || !locked.eligible {
@@ -260,6 +262,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	var manifestRaw []byte
 	e = tx.QueryRow(ctx, `SELECT manifest FROM ipsec_runtime_deliveries WHERE id=$1 AND org_id=$2 AND connection_id=$3 AND node_id=$4 AND desired_revision=$5 AND kind='apply'`, r.DeliveryID, p.OrgID, id, p.NodeID, r.DesiredRevision).Scan(&manifestRaw)
 	if errors.Is(e, pgx.ErrNoRows) {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "delivery_missing", "connection_id", id.String())
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	if e != nil {
@@ -278,6 +281,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, e
 	}
 	if policy.Hash != r.PolicyHash {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "policy_hash", "connection_id", id.String())
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	// Re-observe database time after compilation; transaction-start now() could
