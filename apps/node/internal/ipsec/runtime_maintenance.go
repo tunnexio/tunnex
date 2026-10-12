@@ -130,6 +130,12 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	candidates := map[uuid.UUID]runtimeActive{}
 	maintained := make([]RuntimeDelivery, 0, len(materials))
 	changed := false
+	type eligibleOwner struct {
+		index  int
+		active runtimeActive
+	}
+	eligibleOwners := make([]eligibleOwner, 0, len(materials))
+	// Complete all eligibility proof IO before beginning any fresh finite lease.
 	for i, m := range materials {
 		id := m.Manifest.ConnectionID
 		connection, stage = id, "maintenance_eligibility"
@@ -218,9 +224,32 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 			}
 			continue
 		}
+		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
+	}
+	for _, owner := range eligibleOwners {
+		m, old := materials[owner.index], owner.active
+		id := m.Manifest.ConnectionID
+		connection = id
 		stage = "maintenance_authority"
+		current, ok := c.active[id]
+		if !ok || !reflect.DeepEqual(current, old) {
+			return fail()
+		}
 		fresh := authority()
 		if fresh == nil {
+			return fail()
+		}
+		current, ok = c.active[id]
+		if !ok || !reflect.DeepEqual(current, old) {
+			return fail()
+		}
+		if _, err = old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+			delete(staged, id)
+			c.withdrawDNSOwnerView(id)
+			changed = true
+			continue
+		}
+		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (old.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
 		request, beginErr := fresh.Begin(old.Identity)
@@ -232,11 +261,17 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
 			return fail()
 		}
+		current, ok = c.active[id]
+		if !ok || !reflect.DeepEqual(current, old) {
+			return fail()
+		}
 		// The old authority must still bridge this collection; a response arriving
 		// after it expires cannot recreate a missing permit from cached transport.
 		stage = "maintenance_bridge_proof"
 		bridgeStarted := time.Now()
-		if c.maintenanceCurrent(ctx, old, bgpCurrent) != nil {
+		// The combined installer supplies the fresh post-CP native/BGP proof.
+		// This check still requires the original authority and complete guard.
+		if c.maintenanceCurrentWithNativeProof(ctx, old, bgpCurrent, false) != nil {
 			c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, bridgeStarted, true)
 			delete(staged, id)
 			c.withdrawDNSOwnerView(id)
@@ -356,7 +391,11 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 // maintenanceCurrent is read-only: both original permit and scoped actual
 // native guard remain required. Fresh learned duties must equal the completed
 // BGP-owned tuples, otherwise ordinary Apply/reconciliation is required.
-func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeActive, bgpCurrent func() bool) (resultErr error) {
+func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeActive, bgpCurrent func() bool) error {
+	return c.maintenanceCurrentWithNativeProof(ctx, old, bgpCurrent, true)
+}
+
+func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Context, old runtimeActive, bgpCurrent func() bool, proveNative bool) (resultErr error) {
 	started := time.Now()
 	stage := "maintenance_current_authority_before"
 	defer func() {
@@ -367,16 +406,18 @@ func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeA
 	}
 	proofCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	stage = "maintenance_current_native"
-	if c.proveCurrent(proofCtx, old.Entry, old.Environment) != nil {
-		return ErrRuntimeController
+	if proveNative {
+		stage = "maintenance_current_native"
+		if c.proveCurrent(proofCtx, old.Entry, old.Environment) != nil {
+			return ErrRuntimeController
+		}
 	}
 	stage = "maintenance_current_guard"
 	if c.maintenanceGuard(proofCtx, old.Entry) != nil {
 		return ErrRuntimeController
 	}
 	stage = "maintenance_current_bgp_qualification"
-	if old.Entry.ContractVersion == 3 {
+	if proveNative && old.Entry.ContractVersion == 3 {
 		if bgpCurrent == nil || !bgpCurrent() {
 			return ErrRuntimeController
 		}

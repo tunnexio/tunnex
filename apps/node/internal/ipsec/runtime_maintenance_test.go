@@ -162,6 +162,7 @@ func TestMaintainedRenewalStrictFallback(t *testing.T) {
 			qualified := true
 			expectError := false
 			noResults := false
+			candidateNativeFailureInjected := false
 			switch scenario {
 			case "inactive":
 				delete(c.active, target)
@@ -252,10 +253,18 @@ func TestMaintainedRenewalStrictFallback(t *testing.T) {
 				expectError = true
 			case "candidate_evicted_during_commit":
 				old := c.prove
-				count := map[uuid.UUID]int{}
+				armed := false
+				client := c.client
+				c.client = maintenanceLeaseFunc(func(ctx context.Context, id uuid.UUID, q RuntimeLeaseRequest) (RuntimeLease, error) {
+					out, err := client.RenewIPsecLease(ctx, id, q)
+					if err == nil && id == target {
+						armed = true
+					}
+					return out, err
+				})
 				c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
-					count[e.Allocation.ConnectionID]++
-					if e.Allocation.ConnectionID == target && count[target] >= 3 {
+					if e.Allocation.ConnectionID == target && armed {
+						candidateNativeFailureInjected = true
 						return ErrRuntimeController
 					}
 					return old(ctx, e, env)
@@ -267,6 +276,9 @@ func TestMaintainedRenewalStrictFallback(t *testing.T) {
 			r.phase = "maintenance"
 			out, err := c.maintainIPsecRuntime(ctx, mats, maintenanceAuthority(r), func() bool { return qualified })
 			r.phase = ""
+			if scenario == "candidate_evicted_during_commit" && !candidateNativeFailureInjected {
+				t.Fatal("post-CP target native failure was not injected")
+			}
 			if expectError && (err == nil || len(out) != 0) {
 				t.Fatalf("expected closed error, result=%d err=%v", len(out), err)
 			}

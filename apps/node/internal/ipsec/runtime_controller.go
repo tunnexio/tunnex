@@ -847,7 +847,11 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 				if a.Entry.ContractVersion == 3 {
 					observeCtx, observeCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
 					stage = "entry_bgp_observation"
-					g, err = c.bgpGuard(observeCtx, a, remaining)
+					if _, candidate := required[id]; candidate {
+						g, err = c.maintenanceBGPGuard(observeCtx, a, prior[id], remaining, candidateQualification)
+					} else {
+						g, err = c.bgpGuard(observeCtx, a, remaining)
+					}
 					observeCancel()
 					if err != nil {
 						c.withdrawDNSOwnerView(id)

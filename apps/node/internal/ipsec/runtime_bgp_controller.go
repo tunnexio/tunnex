@@ -202,9 +202,12 @@ func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJourna
 	return nil
 }
 func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remaining time.Duration) (GuardConnection, error) {
+	return c.bgpGuardWithStatuses(ctx, a, remaining, c.observeRecovery(ctx, a.Entry))
+}
+
+func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeActive, remaining time.Duration, statuses [2]string) (GuardConnection, error) {
 	e := a.Entry
 	g := GuardConnection{ID: e.Allocation.ConnectionID, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, Tunnels: e.Observed, LocalIngressIndices: a.Environment.LocalIngressIndices, Grants: a.Grants, PermitFor: remaining}
-	statuses := c.observeRecovery(ctx, e)
 	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		peer := GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
 		if statuses[i] == "up" {
@@ -228,6 +231,54 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 		}
 	}
 	return g, nil
+}
+
+// maintenanceBGPGuard is only for required renewal candidates. The original
+// post-CP route proof and guard assembly share one fresh same-owner health sample
+// within the caller's bounded assembly context; no observation is retained.
+func (c *RuntimeController) maintenanceBGPGuard(ctx context.Context, a, old runtimeActive, remaining time.Duration, current func() bool) (GuardConnection, error) {
+	fail := func() (GuardConnection, error) { return GuardConnection{}, ErrRuntimeController }
+	if old.Authority == nil || current == nil || !current() {
+		return fail()
+	}
+	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+		return fail()
+	}
+	e := a.Entry
+	p := c.bgpProcesses[e.DeliveryID]
+	if p == nil || !p.Alive() {
+		return fail()
+	}
+	status, err := p.Observe(ctx)
+	if err != nil {
+		return fail()
+	}
+	routes, err := p.ObserveRoutes(ctx, status)
+	if err != nil {
+		return fail()
+	}
+	health := c.observeRecovery(ctx, e)
+	for _, state := range health {
+		if state != "up" && state != "down" {
+			return fail()
+		}
+	}
+	target := []RuntimeBGPRouteTuple{}
+	for _, route := range routes {
+		if route.Slot >= 1 && route.Slot <= 2 && health[route.Slot-1] == "up" {
+			target = append(target, RuntimeBGPRouteTuple{Prefix: route.Prefix, Slot: uint8(route.Slot), InterfaceIndex: e.Observed[route.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(route.Slot)})
+		}
+	}
+	if !p.Alive() || !current() || !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
+		return fail()
+	}
+	if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+		return fail()
+	}
+	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+		return fail()
+	}
+	return c.bgpGuardWithStatuses(ctx, a, remaining, health)
 }
 
 // reconcileActiveBGP never renews a CP lease. It withdraws grants before an
