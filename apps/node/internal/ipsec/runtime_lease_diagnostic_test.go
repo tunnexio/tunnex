@@ -12,7 +12,7 @@ type testLeaseFailure string
 func (e testLeaseFailure) Error() string                  { return "fixed test failure" }
 func (e testLeaseFailure) IPsecLeaseFailureStage() string { return string(e) }
 func TestMaintenanceLeaseLeafFirstPredicateSafety(t *testing.T) {
-	for _, kind := range []string{"http_409", "delivery", "revision", "policy", "nonce", "ttl", "active"} {
+	for _, kind := range []string{"http_409", "http_409_ineligible", "http_409_conflict", "delivery", "revision", "policy", "nonce", "ttl", "active"} {
 		t.Run(kind, func(t *testing.T) {
 			r := newRenewalCycleRigInput(t, true)
 			base := r.c.client
@@ -26,7 +26,7 @@ func TestMaintenanceLeaseLeafFirstPredicateSafety(t *testing.T) {
 					return v, e
 				}
 				switch kind {
-				case "http_409":
+				case "http_409", "http_409_ineligible", "http_409_conflict":
 					return v, testLeaseFailure(kind)
 				case "delivery":
 					v.DeliveryID = uuid.New()

@@ -79,6 +79,12 @@ func (c *Client) ipsecRequestObserved(ctx context.Context, method, path string, 
 				category = "http_5xx"
 			}
 		}
+		if observe != nil && resp.StatusCode == http.StatusConflict {
+			// Diagnostic reads can only cancel the existing request earlier.
+			stopDiagnostic := time.AfterFunc(100*time.Millisecond, cancel)
+			category = leaseConflictCodeCategory(ctx, resp.Body)
+			stopDiagnostic.Stop()
+		}
 		return ErrIPsecControl
 	}
 	category = "parse"
