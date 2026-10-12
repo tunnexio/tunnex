@@ -76,7 +76,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			// Read-only observations remain independent of fresh permit maintenance.
 			if controller != nil {
 				bound := &boundIPsecClient{Client: client, org: org, node: node}
-				if control.RefreshIPsecRuntimeStatus(ctx, bound, controller) != nil {
+				if control.RefreshIPsecRuntimePriority(ctx, bound, controller) != nil {
 					logger.Warn("ipsec_runtime_observation_refused")
 				}
 			}

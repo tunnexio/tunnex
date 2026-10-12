@@ -49,11 +49,59 @@ func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials 
 	return c.maintainIPsecRuntimeObserved(ctx, materials, authority, bgpCurrent, nil)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) (resultOut []RuntimeMaintenanceResult, resultErr error) {
+type maintenanceItem struct {
+	RuntimeDelivery
+	Entry      RuntimeJournalEntry
+	Grants     []GuardGrant
+	PolicyHash string
+}
+
+func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
+	prepare := func(ns string, _ []RuntimeJournalEntry, stage *string, connection *uuid.UUID) ([]maintenanceItem, error) {
+		var err error
+		// Validate every secret-bearing normal material and its unique page identity
+		// before requesting any lease. No PSK is retained in a candidate or result.
+		input := make([]RuntimeJournalEntry, len(materials))
+		grants := make([][]GuardGrant, len(materials))
+		connections, deliveries := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+		*stage = "maintenance_material"
+		for i, m := range materials {
+			*connection = m.Manifest.ConnectionID
+			input[i], grants[i], err = runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
+			id := m.Manifest.ConnectionID
+			if err != nil || connections[id] || deliveries[m.ID] {
+				return nil, ErrRuntimeController
+			}
+			connections[id], deliveries[m.ID] = true, true
+		}
+		// Match ordinary Apply: revoke changed published DNS inputs before any
+		// blocking environment/native/lease IO can leave an old query permission open.
+		for i, m := range materials {
+			*connection = m.Manifest.ConnectionID
+			*stage = "maintenance_material_withdraw"
+			c.withdrawChangedDNSMaterial(m, grants[i])
+			if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
+				return nil, ErrRuntimeController
+			}
+			*stage = "maintenance_material_current"
+			if !c.fqdnGrantsCurrent(grants[i]) {
+				return nil, ErrRuntimeController
+			}
+		}
+		items := make([]maintenanceItem, len(materials))
+		for i, m := range materials {
+			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], PolicyHash: m.Policy.Hash}
+		}
+		return items, nil
+	}
+	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish)
+}
+
+func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) (resultOut []RuntimeMaintenanceResult, resultErr error) {
 	started := time.Now()
 	stage, connection := "maintenance_input", uuid.Nil
 	defer func() { c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, resultErr != nil) }()
-	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || len(materials) > 256 {
+	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || count < 0 || count > 256 || prepare == nil {
 		c.deniedClassicTransports = nil
 		return nil, ErrRuntimeController
 	}
@@ -91,34 +139,9 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 	if err != nil {
 		return fail()
 	}
-	// Validate every secret-bearing normal material and its unique page identity
-	// before requesting any lease. No PSK is retained in a candidate or result.
-	input := make([]RuntimeJournalEntry, len(materials))
-	grants := make([][]GuardGrant, len(materials))
-	connections, deliveries := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
-	stage = "maintenance_material"
-	for i, m := range materials {
-		connection = m.Manifest.ConnectionID
-		input[i], grants[i], err = runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
-		id := m.Manifest.ConnectionID
-		if err != nil || connections[id] || deliveries[m.ID] {
-			return fail()
-		}
-		connections[id], deliveries[m.ID] = true, true
-	}
-	// Match ordinary Apply: revoke changed published DNS inputs before any
-	// blocking environment/native/lease IO can leave an old query permission open.
-	for i, m := range materials {
-		connection = m.Manifest.ConnectionID
-		stage = "maintenance_material_withdraw"
-		c.withdrawChangedDNSMaterial(m, grants[i])
-		if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
-			return fail()
-		}
-		stage = "maintenance_material_current"
-		if !c.fqdnGrantsCurrent(grants[i]) {
-			return fail()
-		}
+	materials, prepareErr := prepare(ns, entries, &stage, &connection)
+	if prepareErr != nil || len(materials) != count {
+		return fail()
 	}
 	if len(materials) == 0 {
 		return nil, nil
@@ -167,8 +190,8 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 				eligibilityStage = "eligibility_lineage"
 			}
 			if current != nil && lineage {
-				env, observeErr := c.config.Environment.Observe(ctx, input[i].Allocation, input[i].Engines)
-				same := input[i]
+				env, observeErr := c.config.Environment.Observe(ctx, m.Entry.Allocation, m.Entry.Engines)
+				same := m.Entry
 				for n := range same.Engines[:same.Allocation.activeTunnelCount()] {
 					same.Engines[n].LocalAddress = env.Underlays[n].LocalAddress
 				}
@@ -183,7 +206,7 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 				if same.ContractVersion == 2 {
 					same.Recovery = current.Recovery
 				}
-				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.Policy.Hash}
+				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.PolicyHash}
 				eligible = maintenanceEligibilityTerm(&eligibilityStage, "eligibility_observe", func() bool { return observeErr == nil }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_namespace", func() bool { return env.Namespace == ns }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_phase", func() bool { return same.Phase == RuntimeApplied }) &&
@@ -194,7 +217,7 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_active_entry", func() bool { return reflect.DeepEqual(old.Entry, same) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_delivery", func() bool { return reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_environment", func() bool { return reflect.DeepEqual(old.Environment, env) }) &&
-					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, grants[i]) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, m.Grants) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool { return old.Identity == identity }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_authority", func() bool { return old.Authority != nil })
 				if eligible {
@@ -257,8 +280,8 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 			return fail()
 		}
 		stage = "maintenance_lease"
-		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce})
-		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce})
+		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.PolicyHash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
 			return fail()
 		}
 		current, ok = c.active[id]
