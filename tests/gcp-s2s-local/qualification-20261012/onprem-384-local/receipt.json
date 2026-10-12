@@ -1,0 +1,87 @@
+{
+  "image_content": {
+    "boundary": "Image content and executable dependency closure only; no native IPsec packet proof or tunnel enrollment.",
+    "build_log_sha256": "c3a087f45392119947e56bb7e758b9b8a7c4130eccadcbf4fdb736db393712b7",
+    "checked_at": "2026-10-12T16:30:42.760914+00:00",
+    "content_check_container_remaining": false,
+    "content_check_exit_code": 0,
+    "content_check_log_sha256": "1df89c555aecdd20de96c370390c1327ebaf0c94c10d09979f21c198a13e8675",
+    "image_id": "sha256:fcc76ce9eb336e160ba4ffab925bd99281e39de96d7c74f30383bbb6a026f5a4",
+    "input_manifest_sha256": "ea9ee0739bca88ed36bc8fb66647eb446046770746c4a613b3f2df749b3d8e81",
+    "labels": {
+      "org.opencontainers.image.revision": "384e93a1342bc51cfc0d819282d8eda93312e71c",
+      "tunnex.lab": "gcp-s2s-onprem-20261012"
+    },
+    "platform": "linux/arm64",
+    "source_commit": "384e93a1342bc51cfc0d819282d8eda93312e71c"
+  },
+  "native_no_peer_platform": {
+    "boundary": "Isolated native platform/no-peer qualification only; no on-prem or cloud packets.",
+    "capabilities_added": [
+      "NET_ADMIN",
+      "NET_RAW"
+    ],
+    "checked_at": "2026-10-12T16:36:38.067740+00:00",
+    "configured_cloud_peers": 0,
+    "container_capabilities_added": [
+      "CAP_NET_ADMIN",
+      "CAP_NET_RAW"
+    ],
+    "container_cleanup_exit_code": 0,
+    "container_image_identity": "sha256:fcc76ce9eb336e160ba4ffab925bd99281e39de96d7c74f30383bbb6a026f5a4",
+    "container_remaining": false,
+    "image_index": "sha256:fcc76ce9eb336e160ba4ffab925bd99281e39de96d7c74f30383bbb6a026f5a4",
+    "native_image_manifest": "sha256:11430b48adec1bd2012d015e5a64d2ea097cd0d9b03e807d3da247c32a882d9e",
+    "native_test_binary_sha256": "747c0aedc75191b0faf5402cac4f21b770f0a29295742a7abbe74487375ef211",
+    "network_mode": "none",
+    "pass_marker": true,
+    "runtime_proof": {
+      "actual_namespace": "net:[4026532383]",
+      "actual_preflight_current": true,
+      "base_capability": 1,
+      "bgp_capability_after_close": 0,
+      "bgp_capability_before_close": 1,
+      "configured_peers": 0,
+      "lease_authority": "none; lease client always refuses",
+      "one_shot_binding": true
+    },
+    "source_commit": "384e93a1342bc51cfc0d819282d8eda93312e71c",
+    "test_exit_code": 0
+  },
+  "onprem": {
+    "address_assignment": "DHCP; reservation not yet verified",
+    "default_router": "192.168.1.1",
+    "enrolled": false,
+    "lan_address_observed": "192.168.1.37/24",
+    "lan_interface": "col0",
+    "mac": "52:55:55:3b:8b:ca",
+    "new_cloud_tunnel": false,
+    "private_application_ip_and_dns_accepted": false,
+    "router_writes": false
+  },
+  "prior_scoped_lab_acceptance_source": "5121dc3374656449dd53dab9abd248216d5d5581",
+  "restart_and_router_login_pending": true,
+  "source_inputs": {
+    "all_manifest_inputs_match_commit_blobs": true,
+    "all_staged_inputs_match_manifest": true,
+    "boundary": "Verifies curated build input bytes, not omitted input selection or cloud runtime.",
+    "source_commit": "384e93a1342bc51cfc0d819282d8eda93312e71c",
+    "verified_file_count": 267
+  },
+  "sustained_cloud_continuity_accepted": false,
+  "tested_source_commit": "384e93a1342bc51cfc0d819282d8eda93312e71c",
+  "timing_diagnostic": {
+    "boundary": "Diagnostic observations; no whole-agent or AWS failure attribution.",
+    "completed_4_second_publication_cycles": 8,
+    "completed_nominal_cycles": 8,
+    "log_sha256": "ed9e6d46513d803c0e9ab20a32a1856b3e96d5df5cc9edacffca4defdf611ea9",
+    "method": "temporary Go overlay; virtual clock; unchanged production source/floor/TTL/reserves",
+    "observed_4_second_publication_lapse": false,
+    "observed_nominal_lapse": false,
+    "overlay_source_sha256": "76a644853a49c951fddee71210150a2537e543059a651fcaa92ccb617bd1595c",
+    "synthetic_3_second_native_proof_lapse": true,
+    "synthetic_final_refusal_and_owner_withdrawal": true,
+    "synthetic_lapse_elapsed_seconds": 72.8,
+    "synthetic_native_cost_was_live_measured": false
+  }
+}
