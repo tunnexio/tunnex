@@ -281,9 +281,31 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		stage = "maintenance_lease"
 		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce})
-		if leaseErr != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.PolicyHash || lease.Nonce != request.Nonce || fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+		if leaseErr != nil {
+			stage = maintenanceLeaseFailureStage(leaseErr)
 			return fail()
 		}
+		stage = "maintenance_lease_delivery"
+		if lease.DeliveryID != m.ID {
+			return fail()
+		}
+		stage = "maintenance_lease_revision"
+		if lease.DesiredRevision != m.DesiredRevision {
+			return fail()
+		}
+		stage = "maintenance_lease_policy"
+		if lease.PolicyHash != m.PolicyHash {
+			return fail()
+		}
+		stage = "maintenance_lease_nonce"
+		if lease.Nonce != request.Nonce {
+			return fail()
+		}
+		stage = "maintenance_lease_ttl"
+		if fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+			return fail()
+		}
+		stage = "maintenance_lease_active"
 		current, ok = c.active[id]
 		if !ok || !reflect.DeepEqual(current, old) {
 			return fail()

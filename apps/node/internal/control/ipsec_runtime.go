@@ -20,6 +20,15 @@ var ErrIPsecControl = errors.New("IPsec control request unavailable")
 // The private channel uses the existing mTLS transport, but never copies a
 // remote body or transport error into diagnostics. Redirects cannot move PSKs.
 func (c *Client) ipsecRequest(ctx context.Context, method, path string, input, output any) error {
+	return c.ipsecRequestObserved(ctx, method, path, input, output, nil)
+}
+func (c *Client) ipsecRequestObserved(ctx context.Context, method, path string, input, output any, observe func(string)) (resultErr error) {
+	category := "request"
+	defer func() {
+		if resultErr != nil && observe != nil {
+			observe(category)
+		}
+	}()
 	if c == nil || c.http == nil {
 		return ErrIPsecControl
 	}
@@ -47,6 +56,12 @@ func (c *Client) ipsecRequest(ctx context.Context, method, path string, input, o
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
+		category = "transport_other"
+		if errors.Is(err, context.DeadlineExceeded) {
+			category = "transport_deadline"
+		} else if errors.Is(err, context.Canceled) {
+			category = "transport_cancel"
+		}
 		return ErrIPsecControl
 	}
 	defer resp.Body.Close()
@@ -55,8 +70,18 @@ func (c *Client) ipsecRequest(ctx context.Context, method, path string, input, o
 		expectedStatus = http.StatusNoContent
 	}
 	if resp.StatusCode != expectedStatus {
+		category = "http_other"
+		switch resp.StatusCode {
+		case 400, 401, 403, 404, 409, 429:
+			category = "http_" + strconv.Itoa(resp.StatusCode)
+		default:
+			if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
+				category = "http_5xx"
+			}
+		}
 		return ErrIPsecControl
 	}
+	category = "parse"
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	defer clear(raw)
 	if err != nil || len(raw) > 1<<20 {
@@ -129,8 +154,12 @@ func (c *Client) RenewIPsecLease(ctx context.Context, id uuid.UUID, request ipse
 	if id == uuid.Nil {
 		return out, ErrIPsecControl
 	}
-	err := c.ipsecRequest(ctx, "POST", ipsecRuntimePath(id, "/permit-lease"), request, &out)
-	return out, err
+	category := "request"
+	err := c.ipsecRequestObserved(ctx, "POST", ipsecRuntimePath(id, "/permit-lease"), request, &out, func(v string) { category = v })
+	if err != nil {
+		return out, leaseControlFailure{category: category}
+	}
+	return out, nil
 }
 
 func validIPsecStatusReport(report ipsec.RuntimeStatusReport) bool {
