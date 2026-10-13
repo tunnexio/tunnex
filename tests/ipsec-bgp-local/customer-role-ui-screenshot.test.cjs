@@ -70,11 +70,16 @@ for (const kind of ['file', 'symlink']) {
     const { directory, file } = fixture(t);
     const target = kind === 'file' ? file : path.join(directory, 'original.png');
     fs.writeFileSync(target, 'untouched', { mode: 0o640 });
-    const originalMode = fs.statSync(target).mode & 0o777;
+    const targetFD = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    t.after(() => fs.closeSync(targetFD));
+    const original = fs.fstatSync(targetFD);
     if (kind === 'symlink') fs.symlinkSync(target, file);
     await assert.rejects(capturePrivateScreenshot(page(), file), { code: 'EEXIST' });
-    assert.equal(fs.readFileSync(target, 'utf8'), 'untouched');
-    assert.equal(fs.statSync(target).mode & 0o777, originalMode);
+    assert.equal(fs.readFileSync(targetFD, 'utf8'), 'untouched');
+    assert.equal(fs.fstatSync(targetFD).mode & 0o777, original.mode & 0o777);
+    const current = fs.lstatSync(target);
+    assert.equal(current.dev, original.dev);
+    assert.equal(current.ino, original.ino);
     if (kind === 'symlink') assert.equal(fs.readlinkSync(file), target);
   });
 
@@ -85,12 +90,17 @@ for (const kind of ['file', 'symlink']) {
     const pending = capturePrivateScreenshot(page(() => captured), file);
     const target = kind === 'file' ? file : path.join(directory, 'racing.png');
     fs.writeFileSync(target, 'racing owner', { mode: 0o640 });
-    const originalMode = fs.statSync(target).mode & 0o777;
+    const targetFD = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    t.after(() => fs.closeSync(targetFD));
+    const original = fs.fstatSync(targetFD);
     if (kind === 'symlink') fs.symlinkSync(target, file);
     release(image);
     await assert.rejects(pending, { code: 'EEXIST' });
-    assert.equal(fs.readFileSync(target, 'utf8'), 'racing owner');
-    assert.equal(fs.statSync(target).mode & 0o777, originalMode);
+    assert.equal(fs.readFileSync(targetFD, 'utf8'), 'racing owner');
+    assert.equal(fs.fstatSync(targetFD).mode & 0o777, original.mode & 0o777);
+    const current = fs.lstatSync(target);
+    assert.equal(current.dev, original.dev);
+    assert.equal(current.ino, original.ino);
     if (kind === 'symlink') assert.equal(fs.readlinkSync(file), target);
   });
 }
