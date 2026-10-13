@@ -1,0 +1,112 @@
+{
+  "schema": "key-free-current-readiness-20261013",
+  "node_source": "b4a096995a90e8ce374d6e5c0677c286d38433e7",
+  "api_source": "f99cc84849f875f8003efe2ca6a7686c7612bf50",
+  "current_aggregate_signed_off": false,
+  "customer_ready_asserted": false,
+  "evidence": {
+    "classic_cycle": "e95a219ac6856bc410134d048cfd0c94a2a349653217b63f49e200ffa608132e",
+    "classic_inverse": "e7a17b13d133888cfe6728b6cf7e50f7a76c4d39a5f7afdb1cb8a5602a24fb98",
+    "tcp_cycle": "4e11b1e344394f3a1c21347e74f6f8f8a6ee83f8f03f424aa1e5efc8c7c18d9f",
+    "udp_cycle": "aa66d11d8d87d190a8d2c24c668c45f69db5126790e5c6e2c2b8107ed411922d",
+    "dns14": "43fc35ea7cfe6fc444eef69e7299d7d9d0e9cff945436569ce75e3694ce91c5f",
+    "dns_inverse": "5d91173bb0844f6e9280259709bd29a9aeb0eab82d24ed861f93196d10a4631f",
+    "dns_gateway_inverse": "42e613f362b3a32171bc3ba6c7f0a8e733c26c1788cd559983824a2e91070501",
+    "failed_dns_expiry1": "1f7ec5d53168a594a7e33fb5600f4e5d09814b88f134eea70a61b38c598f421d",
+    "failed_dns_expiry2": "89d244b30e32837b303a7da8723eb42c5c3b81ebb7006f2e6edc764761aa1520",
+    "tc_cleanup45": "bca3f9ea663cf1de76010144d051cdf468e9fb8d3667cecc84c3a6eedc5d58c4",
+    "tc_cleanup46": "7945e8c41769ceb4f2ea406931a9b892ef7fbfdef8e159e13c1de5acdcb54d16",
+    "post_fault_baseline": "47d4217ccb1b91e33e3d9e80711d24e86710f6213e768db36dba859e9ba9d680",
+    "failed_ha120": "c2115a6c4bb89438db22a254d82b43b920c1d26d2044e40b98b0e5fadea6b9d7",
+    "static_firewall_large_dns_inverse": "39b84f441248c1997c0b7e7fe7e06d823df864fab6d260b72e13465406187a77",
+    "ha_inverse": "d9698ab39f0fbea24d6f6d177546f71bd660ab0b0ebf8aaf5b91f0650de179e7"
+  },
+  "pending": [
+    "HA fault qualification",
+    "actual Mac private IP/DNS",
+    "DNS healthy expiry qualification",
+    "final post-cleanup native and packet observation",
+    "HA120 receiver correlation qualification"
+  ],
+  "failed_points_preserved": [
+    "DNS healthy expiry1",
+    "DNS healthy expiry2",
+    "ONE fault",
+    "HA120 receiver correlation"
+  ],
+  "ordinary_foreign_projection_equal": true,
+  "udp4500_observed_drops": 22,
+  "post_fault_baseline_elapsed_seconds": 10.527746666,
+  "continuous_acceptance_asserted": false,
+  "historical_source5121_scoped_11_accepted": true,
+  "ha120": {
+    "aggregate_accepted": false,
+    "positive_elapsed_seconds": 120.000606832,
+    "client_replies": 1889,
+    "client_errors": 0,
+    "receiver_correlated": false,
+    "surplus_tcp": 1,
+    "surplus_udp": 0,
+    "cause_attributed": false,
+    "expected_includes_self_controls": true,
+    "positive_and_expiry_observations_passed": true,
+    "holder_stopped": true
+  },
+  "static_cloud_inverse_completed": true,
+  "ha_receiver_expected_including_self_controls": {
+    "tcp": 943,
+    "udp": 952
+  },
+  "ha_receiver_actual": {
+    "tcp": 944,
+    "udp": 952
+  },
+  "ha_receiver_unexplained_surplus": {
+    "tcp": 1,
+    "udp": 0
+  },
+  "static_inverse": {
+    "completed": true,
+    "unknown_outcome": false,
+    "foreign_firewalls_preserved": 15,
+    "instances_preserved": 5,
+    "original_ha_records_restored": 5
+  },
+  "final_post_static_inverse_native_packet_observation": "not run before authorized window ended",
+  "authorized_cloud_window": {
+    "ended_at": "2026-10-12T23:59:00Z",
+    "extension_approved": false,
+    "retained_additional_paid_lab_approved": false
+  },
+  "offline_preparations": {
+    "live_execution": false,
+    "aggregate_failed_points_preserved": true,
+    "total_tests_passed": 44,
+    "dns_expiry_scheduler": {
+      "candidate_sha256": "4bf0869945d1eb3c0e3bd03fea4e4d4afe9e9970621f523ac8df367d2ce112f8",
+      "tests_passed": 8,
+      "original_acceptance_cap_seconds": 60,
+      "source_review_sha256": "cc4b5a5ca75eecc3c2993483b7108047dbb9c0a6f5f1b9dd26357543ccbb890c"
+    },
+    "ha_request_audit": {
+      "client_sha256": "21f01528482e81d05d3e06f526c0581badb37b0ef7e0ead39be145a88acc1117",
+      "receiver_sha256": "554d2cf81d7c0dffbcb46d5326075c54980cb45f17b0a071cc58c3b1872a4417",
+      "gate_sha256": "28a5db3cac4e4b6e0707f39643360b7be823f96e706ddcd60d8e95528a5608d0",
+      "manifest_sha256": "f42474f3db8d51b1fc5bc75e48a7bf0ff5b44d3be606991df726067a50b58573",
+      "qualification_sha256": "fc822aa429fef83fbeb80b9f5e33ba4eb1e4d98a68dac2a50c88faa63aaf2c58",
+      "tests_passed": 27,
+      "zero_pending_handler_census_required": true,
+      "existing_receiver_counts_unchanged": true,
+      "identity_and_courier_binding_pending": true
+    },
+    "dns_error_provenance": {
+      "candidate_sha256": "bb5842d3aa384c78c49c4748e8d6c44fde1c3279ffdb1fe81f74b77250cf42fc",
+      "qualification_sha256": "37087a7a3cee3d78167fc6be31fdcc18fa1ab85e035e65ca10aec6bb793c7679",
+      "source_review_sha256": "b63ca11e2eccb36410215920fce5ed37a6c2d11c16e819a0ca7d0c3cf4982985",
+      "tests_passed": 9,
+      "original_query_timeout_seconds": 2.5,
+      "courier_binding_pending": true
+    },
+    "root_review_sha256": "5c6d92555cca10a3819cc00fcecb11887cfd23add9b7196da4f2921e07a5ac4a"
+  }
+}
