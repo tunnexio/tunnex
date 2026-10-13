@@ -36,7 +36,7 @@ func validBGPRoutes(e RuntimeJournalEntry) bool {
 		}
 		prior := ""
 		for _, r := range routes {
-			if r.Slot < 1 || r.Slot > 2 || r.InterfaceIndex <= 0 || r.InterfaceIndex != e.Observed[r.Slot-1].InterfaceIndex || r.Table != 254 || r.Protocol != 242 || r.Metric != 50000+uint32(r.Slot) || !r.Prefix.IsValid() || !r.Prefix.Addr().Is4() || r.Prefix != r.Prefix.Masked() || r.Prefix.Bits() == 0 || r.Prefix.String() <= prior {
+			if r.Slot < 1 || int(r.Slot) > e.Allocation.activeTunnelCount() || r.InterfaceIndex <= 0 || r.InterfaceIndex != e.Observed[r.Slot-1].InterfaceIndex || r.Table != 254 || r.Protocol != 242 || r.Metric != 50000+uint32(r.Slot) || !r.Prefix.IsValid() || !r.Prefix.Addr().Is4() || r.Prefix != r.Prefix.Masked() || r.Prefix.Bits() == 0 || r.Prefix.String() <= prior {
 				return false
 			}
 			allowed := false

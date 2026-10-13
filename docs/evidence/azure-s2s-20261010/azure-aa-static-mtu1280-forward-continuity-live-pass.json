@@ -1,0 +1,75 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "actual_root_result": {
+    "path": "/private/tmp/azure-mtu-actual18-root-2c875704-983b-4ed4-83a7-87bbd0d48e4c/result.json",
+    "sha256": "c408d19282b4c23e652bd68bce4ed4a55b99558c9c589ae4109eba37b298dbf5"
+  },
+  "after_entire_window_native": {
+    "acceptance": false,
+    "category": "actual_profile_native_observation_written",
+    "private_run_id": "azure-profile-observe-bbcb8aa1-1dde-46cc-92c2-07b8504993bd",
+    "receipt_sha256": "ae617ebc9d7c243e57e3fd3a16f8e8e1ed636e56a1b804001be9d216ce6c8f99",
+    "version": 1
+  },
+  "before_native_receipt_sha256": "0f0461b97266504810a8823f29be6ce27d8b0a91a125311f9a9c23426ea48a70",
+  "bounded_slice_accepted": true,
+  "category": "actual_aa_static_forward_mtu1280_continuity_pass",
+  "counts_during_reduced_interval": {
+    "existing_tcp": 120,
+    "existing_udp": 120,
+    "fresh_tcp": 120,
+    "fresh_udp": 120
+  },
+  "exact_tcp_bytes": 65536,
+  "exact_udp_bytes": 4096,
+  "existing_tcp_and_udp_sockets_preserved": true,
+  "human_story": 11,
+  "independent_acceptance_scope_review": {
+    "path": "/private/tmp/azure-mtu1280-aa-static-scope-ui-review.json",
+    "sha256": "0e67c6628b845f9fba053fb82d461ec5a4d495e9fb8097e7f1c21d5d6af1c6c4"
+  },
+  "inventory_sha256": "d16ac3d6a40126b2c92f9706bab7609558f94fb62e4c83e807601def228be528",
+  "limitations": [
+    "DF/PMTU boundary and actual ICMP feedback remain pending",
+    "Selected-interface SYN MSS clamp proof remains pending",
+    "Reverse reduced-MTU traffic remains pending",
+    "Other profiles and full MTU matrix remain pending",
+    "Whole story11 remains open"
+  ],
+  "mtu_restoration_record": {
+    "category": "owned_mtu_restored",
+    "final_native_result_sha256": "7e517775c94dde19d505bdd64eadc44519da8f89fc089358419f1c1f15ccbc1d",
+    "guest_readiness": false,
+    "observed_at": "2026-10-12T14:55:34.160134Z",
+    "outer_received_at": "2026-10-12T14:55:42.908440Z",
+    "outer_received_monotonic": 183413.709838574,
+    "packet_acceptance": false,
+    "private_run_id": "azure-static-mtu-d8ab7af5-1368-43b5-96bf-ae4877b9ea73"
+  },
+  "new_slices_closed": 1,
+  "observer_sha256": "6af4d3fe02f0da101fda3c915187022726b09ec2545b4b50f94c7e7dcabdc752",
+  "packet_window_seconds": 180,
+  "qa_coordinator_run": "azure-mtu-overlap-611d1bf7-d569-4bd5-b32b-ba173bddeeac",
+  "recorded_at": "2026-10-12T15:15:19.234748+00:00",
+  "reduced_mtu": 1280,
+  "reduced_observed_at": "2026-10-12T14:53:34.082198Z",
+  "reduced_requested_seconds": 120,
+  "restored_observed_at": "2026-10-12T14:55:34.160134Z",
+  "root_saved_qa_observations": {
+    "path": "/private/tmp/azure-approved-mtu-fault-saved-observations-20261012.json",
+    "sha256": "7e879c41080bbe885c509abcca828471c9fa65f6c4f94b485deb4861b8595776"
+  },
+  "scope": "Active-active static forward fresh and existing TCP/UDP continuity across owned XFRM MTU1280 interval with restoration and full native proof after entire original packet window",
+  "tcp_source_preserved": true,
+  "version": 1,
+  "whole_story_accepted": false,
+  "wrapper_sha256": "965e681524bee02401144ff4a5179b8331fb124bf2cb0d5fe7753906b6dc0a2f"
+}

@@ -66,6 +66,9 @@ func (s apiServer) GetIPsecProviderConfiguration(ctx context.Context, req api.Ge
 	out := api.IPsecProviderConfiguration{ProfileId: r.ProfileID, ConfigurationRevision: r.ConfigurationRevision}
 	if c := r.Config; c != nil {
 		out.Configuration = &api.IPsecProviderNetworkConfiguration{Mode: c.Mode, CustomerOutsideAddress: c.CustomerOutsideAddress, LocalPrefixes: c.LocalPrefixes, RemotePrefixes: c.RemotePrefixes, Tunnels: make([]api.IPsecProviderNetworkTunnel, len(c.Tunnels))}
+		if a := c.Azure; a != nil {
+			out.Configuration.Azure = &api.IPsecAzureContract{GatewaySku: api.IPsecAzureContractGatewaySku(a.GatewaySKU), VpnType: api.IPsecAzureContractVpnType(a.VPNType), IkeVersion: api.IPsecAzureContractIkeVersion(a.IKEVersion), CustomPolicy: api.IPsecAzureContractCustomPolicy(a.CustomPolicy), UsePolicyBasedTrafficSelectors: api.IPsecAzureContractUsePolicyBasedTrafficSelectors(a.UsePolicyBasedTrafficSelectors), NatEnabled: api.IPsecAzureContractNatEnabled(a.NATEnabled)}
+		}
 		if b := c.BGP; b != nil {
 			out.Configuration.Bgp = &api.IPsecBGPConfiguration{LocalAsn: b.LocalASN, RemoteAsn: b.RemoteASN, RouterId: b.RouterID, MaximumPrefixes: b.MaximumPrefixes}
 		}

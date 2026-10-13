@@ -56,9 +56,10 @@ func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials 
 
 type maintenanceItem struct {
 	RuntimeDelivery
-	Entry      RuntimeJournalEntry
-	Grants     []GuardGrant
-	PolicyHash string
+	Entry                RuntimeJournalEntry
+	Grants               []GuardGrant
+	FQDNLeaseDescriptors []RuntimeFQDNGrant
+	PolicyHash           string
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
@@ -99,7 +100,7 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		}
 		items := make([]maintenanceItem, len(materials))
 		for i, m := range materials {
-			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], PolicyHash: m.Policy.Hash}
+			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash}
 		}
 		return items, nil
 	}
@@ -316,12 +317,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (old.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
-		request, beginErr := fresh.Begin(old.Identity)
+		fqdnPolicy := retainedFQDNLeasePolicy(m.FQDNLeaseDescriptors)
+		request, beginErr := fresh.BeginFQDN(old.Identity, runtimeFQDNLeaseKeys(fqdnPolicy))
 		if beginErr != nil {
 			return fail()
 		}
 		stage = "maintenance_lease"
-		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce})
+		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(fqdnPolicy)})
 		if leaseErr != nil {
 			stage = maintenanceLeaseFailureStage(leaseErr)
 			return fail()
@@ -343,7 +345,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return fail()
 		}
 		stage = "maintenance_lease_ttl"
-		if fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+		if fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS, FQDNPermits: lease.FQDNPermits}) != nil {
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
@@ -382,6 +384,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		candidate := old
 		candidate.Authority = fresh
+		candidate.FQDNLeaseDescriptors = runtimeFQDNLeaseDescriptors(fqdnPolicy)
 		staged[id], candidates[id] = candidate, candidate
 		maintained = append(maintained, m.RuntimeDelivery)
 	}
@@ -561,7 +564,7 @@ func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Contex
 		}
 		stage = "maintenance_current_bgp_health"
 		health := c.observeRecovery(proofCtx, e)
-		for _, state := range health {
+		for _, state := range health[:e.Allocation.activeTunnelCount()] {
 			if state != "up" && state != "down" {
 				return ErrRuntimeController
 			}

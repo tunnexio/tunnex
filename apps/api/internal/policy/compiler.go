@@ -78,6 +78,7 @@ const (
 // artifact stays IP-only, no wire-version bump. Expired temporary rules are
 // filtered OUT of the Snapshot before Compile (the pure compiler is clockless).
 type Rule struct {
+	ExpiresAt             *time.Time
 	sandboxScopedTerminal bool
 	sandboxLocalTerminal  bool      // immutable local-only terminal proof; bypass remote placement
 	sandboxProjected      bool      // only bounded compiler-generated sandbox rules may match
@@ -142,19 +143,18 @@ type FQDNResource struct {
 }
 
 type FQDNGeneration struct {
-	ResourceID            uuid.UUID
-	SelectedSiteID        uuid.UUID
-	SelectedGatewayID     uuid.UUID
-	ResolverConfigID      uuid.UUID
-	ResolverProfileID     uuid.UUID
-	ResolverMatchSuffix   string
-	ResolverConfigVersion int64
-	// Current resolver transport provenance is used only by the dedicated
-	// IPsec FQDN adapter. The shared generation/content identity stays unchanged.
+	FreshUntil                 time.Time
+	ResolvedAt                 time.Time
 	IPsecConnectionID          uuid.UUID
 	IPsecConfigurationRevision int64
 	IPsecSourceAddress         string
-	ValidUntil                 time.Time
+	ResourceID                 uuid.UUID
+	SelectedSiteID             uuid.UUID
+	SelectedGatewayID          uuid.UUID
+	ResolverConfigID           uuid.UUID
+	ResolverProfileID          uuid.UUID
+	ResolverMatchSuffix        string
+	ResolverConfigVersion      int64
 	Answers                    []string
 	// ResolverAddresses contains zero or one canonical host prefix: the first
 	// selected-profile UDP/53 endpoint reachable through an approved routed

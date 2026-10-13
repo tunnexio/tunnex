@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,22 +20,48 @@ import (
 // their exact known structure and no widened set members. Expired members may
 // disappear. It is NEVER a permit receipt, lease renewal or cleanup receipt.
 func VerifyGuardWithdrawal(expected, observed []byte, links []GuardInterface) error {
+	_, err := verifyGuardWithdrawalSnapshot(expected, observed, links)
+	return err
+}
+
+// The returned intent belongs only to this readback; retain positive members.
+func verifyGuardWithdrawalSnapshot(expected, observed []byte, links []GuardInterface) ([]any, error) {
+	want, ok := normalizedGuardObjects(expected)
+	if !ok {
+		return nil, ErrGuardReadback
+	}
+	return verifyGuardWithdrawalObjectsSnapshot(want, observed, links)
+}
+
+// want is locally normalized from the exact expected bytes for this read only.
+func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []GuardInterface) ([]any, error) {
+	return verifyGuardWithdrawalObjectsSnapshotClass(want, observed, links, nil)
+}
+
+func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, links []GuardInterface, classify func(string)) ([]any, error) {
+	mark := func(value string) {
+		if classify != nil {
+			classify(value)
+		}
+	}
+	mark("interface_mapping")
 	mapping := map[string]int{}
 	indices := map[int]bool{}
 	for _, l := range links {
 		if l.Name == "" || l.Index <= 0 || mapping[l.Name] != 0 || indices[l.Index] {
-			return ErrGuardReadback
+			return nil, ErrGuardReadback
 		}
 		mapping[l.Name] = l.Index
 		indices[l.Index] = true
 	}
-	want, ok := normalizedGuardObjects(expected)
-	if !ok {
-		return ErrGuardReadback
-	}
 	got, ok := normalizedGuardWithdrawalObjectsWithInterfaces(observed, mapping)
-	if !ok || len(want) != len(got) {
-		return ErrGuardReadback
+	if !ok {
+		mark("observed_invalid")
+		return nil, ErrGuardReadback
+	}
+	if len(want) != len(got) {
+		mark("object_count")
+		return nil, ErrGuardReadback
 	}
 	for i, w := range want {
 		wf := w.(map[string]any)
@@ -41,36 +69,105 @@ func VerifyGuardWithdrawal(expected, observed []byte, links []GuardInterface) er
 		ws, isSet := wf["set"].(map[string]any)
 		if !isSet {
 			if !reflect.DeepEqual(wf, gf) {
-				return ErrGuardReadback
+				if classify != nil {
+					mark(guardNonsetMismatchClass(wf, gf))
+				}
+				return nil, ErrGuardReadback
 			}
 			continue
 		}
 		gs, ok := gf["set"].(map[string]any)
 		if !ok {
-			return ErrGuardReadback
+			mark("set_metadata_mismatch")
+			return nil, ErrGuardReadback
 		}
 		allowed := map[string]any{}
 		if elems, ok := ws["elem"].([]any); ok {
 			for _, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
-				allowed[e["val"].(json.Number).String()] = v
+				allowed[guardSetMemberKey(e["val"])] = v
 			}
 		}
 		if elems, ok := gs["elem"].([]any); ok {
 			for _, v := range elems {
 				e := v.(map[string]any)["elem"].(map[string]any)
-				if !reflect.DeepEqual(allowed[e["val"].(json.Number).String()], v) {
-					return ErrGuardReadback
+				if !reflect.DeepEqual(allowed[guardSetMemberKey(e["val"])], v) {
+					mark("set_member_mismatch")
+					return nil, ErrGuardReadback
 				}
 			}
 		}
-		delete(ws, "elem")
-		delete(gs, "elem")
-		if !reflect.DeepEqual(ws, gs) {
-			return ErrGuardReadback
+		// Compare metadata without erasing the original expected positive members.
+		wantMetadata, gotMetadata := map[string]any{}, map[string]any{}
+		for k, v := range ws {
+			if k != "elem" {
+				wantMetadata[k] = v
+			}
+		}
+		for k, v := range gs {
+			if k != "elem" {
+				gotMetadata[k] = v
+			}
+		}
+		if !reflect.DeepEqual(wantMetadata, gotMetadata) {
+			mark("set_metadata_mismatch")
+			return nil, ErrGuardReadback
 		}
 	}
-	return nil
+	return want, nil
+}
+
+// Classifies already-compared normalized objects only; never supplies authority.
+func guardNonsetMismatchClass(want, got map[string]any) string {
+	for _, kind := range []string{"table", "chain", "rule"} {
+		w, ok := want[kind].(map[string]any)
+		if !ok {
+			continue
+		}
+		g, ok := got[kind].(map[string]any)
+		if !ok {
+			return "nonset_kind_mismatch"
+		}
+		if kind != "chain" || w["name"] != "owner" || g["name"] != "owner" {
+			return kind + "_mismatch"
+		}
+		wm, gm := map[string]any{}, map[string]any{}
+		for k, v := range w {
+			if k != "comment" {
+				wm[k] = v
+			}
+		}
+		for k, v := range g {
+			if k != "comment" {
+				gm[k] = v
+			}
+		}
+		if !reflect.DeepEqual(wm, gm) {
+			return "owner_structure_mismatch"
+		}
+		wc, wok := w["comment"].(string)
+		gc, gok := g["comment"].(string)
+		wp, gp := strings.Split(wc, ":"), strings.Split(gc, ":")
+		if !wok || !gok || len(wp) != 4 || len(gp) != 4 || wp[0] != "tunnex-ipsec" || gp[0] != wp[0] || wp[1] != gp[1] {
+			return "owner_comment_mismatch"
+		}
+		wr, we := strconv.ParseInt(wp[2], 10, 64)
+		gr, ge := strconv.ParseInt(gp[2], 10, 64)
+		if we != nil || ge != nil || wr <= 0 || gr <= 0 || !validDigest(wp[3]) || !validDigest(gp[3]) {
+			return "owner_comment_mismatch"
+		}
+		if wp[2] != gp[2] && wp[3] != gp[3] {
+			return "owner_revision_digest_mismatch"
+		}
+		if wp[2] != gp[2] {
+			return "owner_revision_mismatch"
+		}
+		if wp[3] != gp[3] {
+			return "owner_digest_mismatch"
+		}
+		return "owner_comment_mismatch"
+	}
+	return "nonset_mismatch"
 }
 
 // RuntimeGuard owns only the journal-bound inet table. The journal stores prior
@@ -232,6 +329,12 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 	stage = "guard_resolve_journal"
 	if e = a.journal.resolveGuardOwnership(matched); e != nil {
 		return fail()
+	}
+	if matched != nil {
+		m.NFTJSON, e = replaceOwnedFQDNSets(m.NFTJSON, matched.ExpectedJSON)
+		if e != nil {
+			return fail()
+		}
 	}
 	stage = "guard_prepare_journal"
 	if e = a.journal.prepareGuard(m); e != nil {

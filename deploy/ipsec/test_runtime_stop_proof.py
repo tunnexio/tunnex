@@ -116,6 +116,80 @@ class StopProofTests(unittest.TestCase):
                  patch.object(proof.os, 'stat', return_value=type('Stat', (), {'st_dev':1, 'st_ino':2})()), \
                  patch.object(Path, 'read_text', side_effect=reads), self.assertRaises(ValueError):
                 proof.snapshot('a' * 64, str(self.journal))
+    def snapshot_for_cgroup(self, cgroup):
+        running = copy.deepcopy(self.stopped)
+        running['state'].update(Running=True, Pid=123)
+        running['sandbox'] = '/var/run/docker/netns/test'
+        ns = type('NamespaceStat', (), {'st_dev': 1, 'st_ino': 2})()
+        with patch.object(proof, 'inspect', return_value=running), \
+             patch.object(proof, 'boot', return_value='prior-boot'), \
+             patch.object(proof, 'private_bytes', return_value=json.dumps(self.document).encode()), \
+             patch.object(proof.os, 'stat', return_value=ns), \
+             patch.object(Path, 'read_text', autospec=True, side_effect=lambda p: '123' if str(p).endswith('cgroup.procs') else cgroup):
+            return proof.snapshot(running['id'], str(self.journal))
+
+    def test_snapshot_accepts_only_exact_docker_cgroup_layouts(self):
+        for path in proof.docker_cgroup_paths(self.before['container']):
+            with self.subTest(path=path):
+                value = self.snapshot_for_cgroup('0::' + path + '\n')
+                self.assertEqual(value['cgroup'], '/sys/fs/cgroup' + path)
+                self.assertEqual(value['container'], self.before['container'])
+                self.assertEqual(value['journal_entries_sha256'], self.before['journal_entries_sha256'])
+
+    def invalid_cgroup_paths(self):
+        own, other = 'a' * 64, 'b' * 64
+        return [
+            '/docker/' + other,
+            '/system.slice/docker-' + other + '.scope',
+            '/system.slice/tunnex.service',
+            '/system.slice/docker-' + own + '.service',
+            '/system.slice/docker-' + own[:12] + '.scope',
+            '/system.slice/docker-' + own + '.scope/child',
+            '/docker/' + own + '/../' + other,
+            '/docker/../system.slice/docker-' + own + '.scope',
+            '//docker/' + own,
+            '/docker/' + own + '/',
+            '/docker/' + own + '\n0::/system.slice/docker-' + other + '.scope',
+        ]
+
+    def test_snapshot_rejects_foreign_escaped_and_mixed_cgroups(self):
+        for path in self.invalid_cgroup_paths():
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'unsupported (or foreign )?cgroup'):
+                self.snapshot_for_cgroup('0::' + path)
+        with self.assertRaisesRegex(ValueError, 'unsupported (or foreign )?cgroup'):
+            self.snapshot_for_cgroup('1:cpu:/docker/' + self.before['container'])
+
+    def test_proof_accepts_both_layouts_and_requires_two_empty_passes(self):
+        for path in proof.docker_cgroup_paths(self.before['container']):
+            with self.subTest(path=path):
+                self.before['cgroup'] = '/sys/fs/cgroup' + path
+                with patch.object(Path, 'exists', return_value=True), \
+                     patch.object(Path, 'read_text', autospec=True, return_value='populated 0\n') as reads:
+                    self.run_proof()
+                    self.assertEqual(reads.call_count, 2)
+                    self.assertTrue(all(str(call.args[0]) == self.before['cgroup'] + '/cgroup.events'
+                                        for call in reads.call_args_list))
+                with patch.object(Path, 'exists', return_value=True), \
+                     patch.object(Path, 'read_text', side_effect=['populated 0\n', 'populated 1\n']):
+                    with self.assertRaisesRegex(ValueError, 'still populated'):
+                        self.run_proof()
+
+    def test_systemd_proof_rejects_namespace_holder_on_second_pass(self):
+        self.before['cgroup'] = '/sys/fs/cgroup' + proof.docker_cgroup_paths(self.before['container'])[1]
+        with patch.object(proof, 'inspect', return_value=self.stopped), \
+             patch.object(proof, 'boot', return_value='prior-boot'), \
+             patch.object(proof, 'private_bytes', return_value=json.dumps(self.document).encode()), \
+             patch.object(Path, 'exists', return_value=False), \
+             patch.object(proof, 'namespace_holders', side_effect=[[], ['/proc/other/ns/net']]):
+            with self.assertRaisesRegex(ValueError, 'still referenced'):
+                proof.prove(self.before)
+
+    def test_proof_rejects_foreign_escaped_and_mixed_cgroup_paths(self):
+        for path in self.invalid_cgroup_paths():
+            with self.subTest(path=path):
+                self.before['cgroup'] = '/sys/fs/cgroup' + path
+                with self.assertRaisesRegex(ValueError, 'foreign cgroup'):
+                    self.run_proof()
 
     def test_exact_stop_requires_all_proofs(self):
         result = self.run_proof()

@@ -1,0 +1,108 @@
+{
+  "kind": "sanitized_owned_cleanup_investigation",
+  "date": "2026-10-10",
+  "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+  "desired_revision": 15,
+  "deployed_source": "9c56dc3c",
+  "deployed_binary_sha256": "d7817ebc836de89f3e39f73112b75ff61ef88ed7727ce6166e18b8a37791be95",
+  "deployed_image": "sha256:df83b1f9d04d49f3d02b10e3c140b95122d49e9d44c2bc29913ef59dfcb297c9",
+  "normal_read": {
+    "observed_at": "2026-10-10T15:01:21.555539+00:00",
+    "desired_intent": "disabled",
+    "cleanup_state": "pending",
+    "journal_phase": "cleanup_pending",
+    "native_sad": 6,
+    "native_spd_each_direction": 3,
+    "remote_payload_route_present": false
+  },
+  "native_classification": {
+    "observed_at": "2026-10-10T15:17:37.644035179Z",
+    "slot1_ike": 2,
+    "slot1_installed_children": 2,
+    "slot1_status": "unknown",
+    "slot1_narrowed_child": "Local exact recorded inside address; remote exact approved material; remaining child uses expected wide selectors. All recorded outer address, name, interface and reqid bindings match.",
+    "slot2_ike": 1,
+    "slot2_installed_children": 1,
+    "slot2_status": "up",
+    "positive_observed_guard_parser_accepts": true,
+    "withdrawal_template_matches": true,
+    "recorded_bgp_process": false,
+    "recorded_bgp_routes": false,
+    "retired_bgp_duties": 0,
+    "scope": "Single snapshot classification; no controller authority or forwarding readiness."
+  },
+  "refused_remediation_attempts": [
+    {
+      "observed_at": "2026-10-10T15:15:18.227954+00:00",
+      "source": "b9f153b3",
+      "helper_sha256": "6ad7eb8f832218e1ac12107e04872086e3bee4c755bae3745bad36e9457c78fb",
+      "stage": "initial_daemon_socket_dial",
+      "before_session_mutation": true,
+      "agent_resumed": true
+    },
+    {
+      "observed_at": "2026-10-10T15:19:31.484662+00:00",
+      "source": "e1485c79",
+      "helper_sha256": "b06da7578b2fa8951a5e6a40279df3623af138b809469e8ad9da8c2e6883e47b",
+      "installed_helper_hash_verified": true,
+      "stage": "daemon_socket_connect_refused",
+      "parent_census_passed": true,
+      "daemon_not_stopped_or_zombie": true,
+      "before_session_mutation": true,
+      "agent_resumed": true
+    }
+  ],
+  "read_only_comparisons": [
+    {
+      "source": "8fd2d259",
+      "helper_sha256": "00fec57f5c851ba5b9e0ad931370f8db15df47961b808ba37e8331c543569fed",
+      "conditions": [
+        "agent_running",
+        "agent_paused"
+      ],
+      "raw_connect_category_both": "none",
+      "context_category_both": "none",
+      "elapsed_ms_both": 0,
+      "all_socket_census_and_daemon_peer_bindings_both": true
+    },
+    {
+      "source": "d22f3dbc",
+      "helper_sha256": "b9e3680f8e92f9227314f5b94d7171bc173cd81833470859bf2efd4b44796a9e",
+      "conditions": [
+        "agent_running",
+        "agent_paused"
+      ],
+      "raw_and_strict_connect_category_both": "none",
+      "raw_and_strict_context_category_both": "none",
+      "raw_and_strict_elapsed_ms_both": 0,
+      "all_socket_census_and_daemon_peer_bindings_both": true
+    },
+    {
+      "source": "13b0197d",
+      "helper_sha256": "2387fd700995ac29cc0bcb23beda3610ae8c56c73a0267d419135a810e119b9e",
+      "conditions": [
+        "agent_running",
+        "agent_paused"
+      ],
+      "original_first_strict_dial_category_both": "none",
+      "context_category_both": "none",
+      "elapsed_ms_both": 0,
+      "read_only_completion_both": true
+    },
+    {
+      "source": "30534f61",
+      "helper_sha256": "d076c43227c222d07c8be13a19755d197c9868f248c5766a520bc75e61c36268",
+      "conditions": [
+        "agent_running",
+        "agent_paused"
+      ],
+      "original_receipt_read_inode_hash_shape_checks": true,
+      "original_first_strict_dial_category_both": "none",
+      "context_category_both": "none",
+      "elapsed_ms_both": 0,
+      "read_only_completion_both": true
+    }
+  ],
+  "comparison_scope": "Original daemon and socket bound to preserved baseline. One-second deadlines unchanged. No VICI commands, journal writes, session removal or forwarding permission. Each paused comparison used a PID-fd-bound original agent and resumed that exact agent.",
+  "conclusion": "Both earlier pre-mutation refusals remain unclassified. Current strict and original first-call attestation pass with the agent running and paused; pause is not an established connection cause. No production socket or timeout change is justified. No normal cleanup acknowledgement or native-absence receipt is established by this investigation."
+}

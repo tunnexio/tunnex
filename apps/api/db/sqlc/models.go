@@ -1491,6 +1491,17 @@ type IpsecAwsTunnelConfig struct {
 	AwsInsideIpv4      *netip.Addr   `json:"aws_inside_ipv4"`
 }
 
+type IpsecAzureConfig struct {
+	ConnectionID                   uuid.UUID `json:"connection_id"`
+	OrgID                          uuid.UUID `json:"org_id"`
+	GatewaySku                     string    `json:"gateway_sku"`
+	VpnType                        string    `json:"vpn_type"`
+	IkeVersion                     int32     `json:"ike_version"`
+	CustomPolicy                   string    `json:"custom_policy"`
+	UsePolicyBasedTrafficSelectors bool      `json:"use_policy_based_traffic_selectors"`
+	NatEnabled                     bool      `json:"nat_enabled"`
+}
+
 type IpsecBgpStatus struct {
 	ConnectionID          uuid.UUID `json:"connection_id"`
 	OrgID                 uuid.UUID `json:"org_id"`

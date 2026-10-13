@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -100,6 +101,9 @@ func (v *runtimeFQDNPolicyView) matches(g GuardGrant) bool {
 		return false
 	}
 	b := g.FQDN
+	if b.Version == 2 && !b.ExpiresAt.After(time.Now()) {
+		return false
+	}
 	generation, tuple, profile := false, false, false
 	for _, f := range v.policy.FQDNGenerations {
 		if f.ResourceID == b.ResourceID.String() && f.Name == b.Name && f.Generation == b.Generation && f.ResolverConfigID == b.ResolverConfigID.String() && f.ResolverConfigVersion == b.ResolverConfigVersion {
@@ -116,7 +120,7 @@ func (v *runtimeFQDNPolicyView) matches(g GuardGrant) bool {
 		}
 	}
 	for _, p := range v.policy.DNSResolverProfiles {
-		if p.ContextConfigID == b.ResolverConfigID.String() && p.ContextConfigVersion == b.ResolverConfigVersion && p.ProfileID == b.ResolverProfileID.String() && p.IPsecPath.ConnectionID == b.ConnectionID.String() && p.IPsecPath.ConfigurationRevision == b.ConfigurationRevision {
+		if p.ContextConfigID == b.ResolverConfigID.String() && p.ContextConfigVersion == b.ResolverConfigVersion && p.ProfileID == b.ResolverProfileID.String() && p.IPsecPath.ConnectionID == b.ConnectionID.String() && p.IPsecPath.ConfigurationRevision == b.ConfigurationRevision && (b.Version == 0 || p.IPsecPath.SourceAddress == b.ResolverSourceAddress) {
 			for _, z := range p.ZoneSuffixes {
 				if z == b.ResolverMatchSuffix {
 					profile = true
@@ -128,6 +132,12 @@ func (v *runtimeFQDNPolicyView) matches(g GuardGrant) bool {
 }
 func (c *RuntimeController) fqdnGrantsCurrent(grants []GuardGrant) bool {
 	for _, g := range grants {
+		if g.FQDN.Version == 2 && !g.FQDN.ExpiresAt.After(time.Now()) {
+			continue
+		}
+		if g.FQDN.Version == 2 && (c.qualification == nil || !c.qualification.fqdnExpiry) {
+			return false
+		}
 		if g.FQDNManaged && (c.config.FQDNPolicy == nil || !c.config.FQDNPolicy.view.Load().matches(g)) {
 			return false
 		}
@@ -150,6 +160,23 @@ func (c *RuntimeController) withdrawChangedFQDNMaterial(ctx context.Context, m R
 	if !marked || (old.Identity.DeliveryID == m.ID && old.Identity.PolicyHash == m.Policy.Hash && old.Identity.Binding == (Binding{OrgID: m.Manifest.OrgID, GatewayID: m.Manifest.NodeID, ConnectionID: m.Manifest.ConnectionID, ConfigurationRevision: m.Manifest.ConfigurationRevision, DesiredRevision: m.DesiredRevision}) && reflect.DeepEqual(old.Grants, grants)) {
 		return nil
 	}
+	// Only an unchanged v2 descriptor can remain in the old authenticated view.
+	sameBinding := old.Identity.DeliveryID == m.ID && old.Identity.Binding == (Binding{OrgID: m.Manifest.OrgID, GatewayID: m.Manifest.NodeID, ConnectionID: m.Manifest.ConnectionID, ConfigurationRevision: m.Manifest.ConfigurationRevision, DesiredRevision: m.DesiredRevision})
+	kept := make([]GuardGrant, 0, len(old.Grants))
+	for _, g := range old.Grants {
+		if !g.FQDNManaged || g.FQDN.Version != 2 {
+			kept = append(kept, g)
+			continue
+		}
+		for _, next := range grants {
+			if sameBinding && g == next {
+				kept = append(kept, g)
+				break
+			}
+		}
+	}
+	old.Grants = kept
+	c.active[m.Manifest.ConnectionID] = old
 	return c.withdrawFQDNActiveLocked(ctx, []uuid.UUID{m.Manifest.ConnectionID})
 }
 func (c *RuntimeController) withdrawUncommittedFQDN(ctx context.Context) error {
@@ -174,11 +201,30 @@ func (c *RuntimeController) withdrawFQDNActiveLocked(ctx context.Context, ids []
 		return ErrRuntimeController
 	}
 	for _, id := range ids {
-		if a, ok := c.active[id]; ok && a.Authority != nil {
-			a.Authority.Invalidate()
+		if current, ok := c.active[id]; ok {
+			legacy := false
+			for _, g := range current.Grants {
+				if g.FQDNManaged && g.FQDN.Version != 2 {
+					legacy = true
+				}
+			}
+			if legacy {
+				if current.Authority != nil {
+					current.Authority.Invalidate()
+				}
+				c.withdrawDNSOwnerView(id)
+				delete(c.active, id)
+				continue
+			}
+			kept := make([]GuardGrant, 0, len(current.Grants))
+			for _, g := range current.Grants {
+				if !g.FQDNManaged || c.config.FQDNPolicy != nil && c.config.FQDNPolicy.view.Load().matches(g) {
+					kept = append(kept, g)
+				}
+			}
+			current.Grants = kept
+			c.active[id] = current
 		}
-		c.withdrawDNSOwnerView(id)
-		delete(c.active, id)
 	}
 	entries, e := c.journal.Entries()
 	if e != nil {
@@ -207,6 +253,9 @@ func (c *RuntimeController) fqdnPolicyCapabilityFor(goos, goarch string) int {
 	view := c.config.FQDNPolicy.view.Load()
 	if view == nil || view.policy.NodeID != c.config.GatewayID.String() || c.capabilityFor(goos, goarch) != 1 {
 		return 0
+	}
+	if c.qualification.fqdnExpiry {
+		return 2
 	}
 	return 1
 }

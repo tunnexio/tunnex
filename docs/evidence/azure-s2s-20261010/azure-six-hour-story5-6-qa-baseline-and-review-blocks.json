@@ -1,0 +1,86 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "api_v4_source_distinct_from_pending_v3_approval": true,
+  "automatic_review_rejections": [
+    {
+      "action": "API V3 stage 97dd8cc1 binary and helper source via bastion to QA20.219.28.146",
+      "api_restart_occurred": false,
+      "process_created": false,
+      "reason": "Broad approval does not explicitly identify sensitive project-code payload and destination.",
+      "upload_occurred": false
+    },
+    {
+      "action": "Current25fe V8 TTL bundle stage and eight normal grant revoke/create operations on QA20.219.28.146",
+      "grant_mutations_occurred": false,
+      "process_created": false,
+      "reason": "Broad approval does not explicitly authorize 20 source helpers, destination and eight concrete grant mutations.",
+      "upload_occurred": false
+    }
+  ],
+  "category": "story5_story6_priority_fresh_native_source_ready_exact_review_blocked",
+  "deadline_utc": "2026-10-12T23:59:00Z",
+  "exact_human_approval": "pending_bundled_question_in_AWS_parent_and_local_questions",
+  "exact_source_reviews": {
+    "api_ttl_descendant_v4": {
+      "path": "/private/tmp/azure-api-descendant-v4-runtime-independent-review.json",
+      "sha256": "fcac5d126972dbb2a8a5d056569d7d1f6f5d76424f9f5eb4ea6c31e569a59737"
+    },
+    "current25fe_ttl_v6": {
+      "path": "/private/tmp/azure-ttl-current25fe-v6-ui-independent-review.json",
+      "sha256": "2c90b3bdbeaf64e28e9d671c8e041c1fac96b1e3a196d78cb5699994c54aefde"
+    },
+    "standby_packets_runtime_data_v2": {
+      "path": "/private/tmp/azure-as-packets-v2-runtime-independent-review.json",
+      "sha256": "dceeca8353997b52c644f68dd95297e06b681c8bef9a11a00898cec85cc199f3"
+    },
+    "standby_profile_v5": {
+      "path": "/private/tmp/azure-standby-profile-v5-runtime-independent-review.json",
+      "sha256": "f9bea15a20cce109d0544ae47c3d5a8eb999da0657943846eb6b3501dc152990"
+    },
+    "ttl_result_reading_map": {
+      "path": "/private/tmp/azure-story6-v8-saved-result-reading-map-20261012.json",
+      "sha256": "9f0808b21bbf93f343ac38b46aa15effc7a45cf2dabb9f31b573e13c34772019"
+    }
+  },
+  "fresh_existing_observer_baseline": {
+    "acceptance": false,
+    "category": "actual_profile_native_observation_written",
+    "does_not_replace_next_test_fresh_proof": true,
+    "exit_code": 0,
+    "private_run_id": "azure-profile-observe-a9607aa6-c808-42fc-a331-671866dd3a80",
+    "receipt_sha256": "fb3cf909c3c42b6dc2569d2c310fac4064fb6a2232ddbb94fc35a28b89fa9ac2"
+  },
+  "new_live_slices_closed": 0,
+  "ordinary_expiry_requires_api_scheduler_update": false,
+  "ordinary_expiry_requires_dns_ready": false,
+  "priority_order": [
+    "current active-active static ordinary expiry/recovery",
+    "active-standby BGP routing and static traffic",
+    "DNS/FQDN",
+    "remaining lifecycle and E2E"
+  ],
+  "recorded_at": "2026-10-12T18:20:49Z",
+  "restored_ssh_forwards": {
+    "api_health_acceptance_inferred": false,
+    "api_transport_http_status": 404,
+    "local_ports": [
+      45174,
+      48083,
+      48446
+    ],
+    "qa_service_changes": false,
+    "source_or_credentials_uploaded": false,
+    "ui_http_status": 200
+  },
+  "ttl_cycle1_marker_read": "ENOENT_before_dispatch",
+  "version": 1,
+  "whole_azure_e2e_accepted": false
+}

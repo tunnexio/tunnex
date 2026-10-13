@@ -35,7 +35,7 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{FQDNPolicy: fqdn, OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: diagnostic}, client)
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{FQDNPolicy: fqdn, DNSReadTiming: os.Getenv("TUNNEX_IPSEC_DNS_READ_TIMING") == "true", OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: diagnostic}, client)
 		if e != nil {
 			return e
 		}
@@ -57,8 +57,14 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 	shutdown := launchIPsecRuntime(ctx, func(ctx context.Context) (result error) {
 		var process *ipsec.DaemonProcess
 		qualified := false
+		var bgpRetry bgpQualificationRetry
 		bgpQualified := false
 		defer func() {
+			if controller != nil && process != nil && ctx.Err() != nil {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+				result = errors.Join(result, controller.Quiesce(stopCtx, process.Close))
+				cancel()
+			}
 			if process != nil {
 				result = errors.Join(result, process.Close())
 			}
@@ -114,27 +120,22 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 							}
 							if probeErr == nil {
 								qualified = true
-								// BGP support is independently observed without peers/listeners;
-								// failure preserves the already qualified static runtime.
-								bgpStarted := time.Now()
-								bgpStage := "bgp_preflight"
-								bgpReceipt, bgpErr := bgp.QualifyPreflight(ctx, dir)
-								if bgpErr == nil {
-									bgpStage = "bgp_attach"
-									bgpErr = controller.AttachBGPQualification(bgpReceipt)
-								}
-								if bgpErr != nil {
-									logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
-								}
 							} else {
 								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}
 						}
-						if qualified && page.IPsecEnabled && !bgpQualified {
+						// Retry independent native BGP observation after transient startup refusal.
+						// The static receipt remains available; cleanup and polling still run.
+						if qualified && page.IPsecEnabled && bgpRetry.due(time.Now()) {
 							bgpStarted := time.Now()
-							bgpStage, bgpErr := qualifyIPsecRuntimeBGP(ctx, &bgpQualified, func(ctx context.Context) (*bgp.PreflightQualification, error) {
-								return bgp.QualifyPreflight(ctx, dir)
-							}, controller.AttachBGPQualification)
+							bgpStage := "bgp_preflight_residue"
+							bgpErr := bgpPreflightResidueClear(dir)
+							if bgpErr == nil {
+								bgpStage, bgpErr = qualifyIPsecRuntimeBGP(ctx, &bgpQualified, func(ctx context.Context) (*bgp.PreflightQualification, error) {
+									return bgp.QualifyPreflight(ctx, dir)
+								}, controller.AttachBGPQualification)
+							}
+							bgpRetry.completed(time.Now(), bgpErr == nil)
 							if bgpErr != nil {
 								logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "reason", bgp.PreflightRefusalReason(bgpErr), "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}

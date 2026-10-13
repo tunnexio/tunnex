@@ -6,7 +6,7 @@ import (
 )
 
 func TestIPsecFQDNPolicyCapabilityRequiresExactTypedVersion(t *testing.T) {
-	for _, c := range []struct{ config, fqdn, want int }{{1, 1, 1}, {0, 1, 0}, {1, 0, 0}, {1, 2, 0}, {2, 1, 0}, {1, -1, 0}} {
+	for _, c := range []struct{ config, fqdn, want int }{{1, 1, 1}, {0, 1, 0}, {1, 0, 0}, {1, 2, 2}, {1, 3, 0}, {1, -1, 0}, {2, 1, 0}} {
 		if got := ipsecFQDNPolicyCapability(c.config, c.fqdn); got != c.want {
 			t.Fatalf("capability %+v got%d", c, got)
 		}

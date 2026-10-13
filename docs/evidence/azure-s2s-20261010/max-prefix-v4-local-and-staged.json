@@ -1,0 +1,26 @@
+{
+  "archive_sha256": "6f367c0e9105da1a1f498b2e8b890c467a8b372284b8f0c5a8764b562f827247",
+  "manifest_sha256": "3ac1256497f4ab4be542e0b306811a6089e8a0c9b1fbedee2255d16a30608cee",
+  "stager_sha256": "99c9c2203d2e48fb4f637177877497df97028d5fd1aaddc5aac6b1d5e1333b1b",
+  "source_files": 22,
+  "archive_members": 23,
+  "python_ast_validated": 19,
+  "layout": "/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v4-finalized54",
+  "executed": false,
+  "version": 1,
+  "kind": "owned_maximum_prefix_finalized_absence_recovery_preparation",
+  "integrated_source_commit": "64f61087",
+  "root_offline_tests": {
+    "model_dispatcher_copy": 25,
+    "observer_prepare_wrapper": 11,
+    "passed": true
+  },
+  "bastion_staging": "reviewed_v4_source_staged_no_execution",
+  "peer_staging": "reviewed_v4_source_staged_no_execution",
+  "normal_original_state": "M and D preserved",
+  "changes": "Genuine finalized normal tombstone/config metadata and actual retained journal cleanup revision are bound separately; unchanged independent complete journal/native observer",
+  "live_lifecycle": false,
+  "cloud_mutations": 0,
+  "policy_mutations": 0,
+  "timer_mutations": 0
+}

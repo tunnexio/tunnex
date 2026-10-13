@@ -50,3 +50,29 @@ func TestSummaryHonestBoundedStates(t *testing.T) {
 		}
 	}
 }
+
+func TestSinglePeerContractPreservesExactPolicyAndObservation(t *testing.T) {
+	c := fixture()
+	c.PeerCount = 1
+	c.Peers[1] = Peer{}
+	text, err := RenderConfig(c)
+	if err != nil || strings.Count(text, " remote-as ") != 1 || !strings.Contains(text, "deny 0.0.0.0/0 le 32") {
+		t.Fatal("single peer policy", err)
+	}
+	summary := []byte(`{"ipv4Unicast":{"peers":{"169.254.20.2":{"state":"Established","pfxRcd":0}}}}`)
+	status, err := ParseSummary(summary, c)
+	if err != nil || status.Peers[1] != (PeerStatus{}) {
+		t.Fatal("single peer summary", err)
+	}
+	if _, err = ParseSummary([]byte(`{"peers":{"169.254.20.2":{"state":"Established","pfxRcd":0},"169.254.20.6":{"state":"Established","pfxRcd":0}}}`), c); err == nil {
+		t.Fatal("extra peer admitted")
+	}
+	c.Peers[1] = fixture().Peers[1]
+	if _, err := RenderConfig(c); err == nil {
+		t.Fatal("inactive peer admitted")
+	}
+	c.PeerCount = 2
+	if _, err := RenderConfig(c); err == nil {
+		t.Fatal("unknown cardinality contract admitted")
+	}
+}

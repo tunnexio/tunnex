@@ -25,8 +25,18 @@ func runtimeBGPProcessConfig(e RuntimeJournalEntry) (bgpengine.Config, error) {
 		return bgpengine.Config{}, ErrRuntimeController
 	}
 	c := bgpengine.Config{LocalASN: e.BGP.LocalASN, RemoteASN: e.BGP.RemoteASN, RouterID: router, MaximumPrefixes: e.BGP.MaximumPrefixes, LocalPrefixes: e.Engines[0].LocalPrefixes, RemotePrefixes: e.Engines[0].RemotePrefixes}
+	if IsAzureBGPProfile(e.Allocation.ProfileID) {
+		c.TransportProfile = bgpengine.AzureAPIPATransport
+	}
+	if e.Allocation.activeTunnelCount() == 1 {
+		c.PeerCount = 1
+	}
 	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
-		c.Peers[i] = bgpengine.Peer{Slot: int(t.Slot), Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer, LinkName: t.Name, XFRMID: t.XFRMID}
+		bits := uint8(0)
+		if IsAzureBGPProfile(e.Allocation.ProfileID) {
+			bits = 32
+		}
+		c.Peers[i] = bgpengine.Peer{AddressBits: bits, Slot: int(t.Slot), Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer, LinkName: t.Name, XFRMID: t.XFRMID}
 	}
 	return c, nil
 }
@@ -163,35 +173,88 @@ func (c *RuntimeController) BGPCapability() int {
 	return 0
 }
 
-func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) (resultErr error) {
-	stage := "proof_bgp_journal"
-	started := time.Now()
+func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	return c.proveBGPCurrentObserved(ctx, e, env, nil)
+}
+func (c *RuntimeController) proveBGPCurrentObserved(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string)) error {
+	return c.proveBGPCurrentTimed(ctx, e, env, observe, nil)
+}
+func (c *RuntimeController) proveBGPCurrentTimed(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string), timing func(runtimeNativePhaseTiming)) (resultErr error) {
+	var phases runtimeNativePhaseTiming
+	var started time.Time
+	if timing != nil {
+		started = time.Now()
+		if deadline, ok := ctx.Deadline(); ok && deadline.After(started) {
+			phases.RemainingAtEntryMillis = deadline.Sub(started).Milliseconds()
+		}
+		defer func() { phases.ElapsedMillis = time.Since(started).Milliseconds(); timing(phases) }()
+	}
+	phaseStart := func() time.Time {
+		if timing == nil {
+			return time.Time{}
+		}
+		return time.Now()
+	}
+	phaseEnd := func(start time.Time, elapsed *int64) {
+		if timing != nil {
+			*elapsed = time.Since(start).Milliseconds()
+		}
+	}
+	reported := false
+	report := func(reason string) {
+		if !reported {
+			reportNativeFailure(ctx, observe, reason)
+			reported = true
+		}
+	}
+	stage, diagnosticStarted := "proof_bgp_journal", time.Now()
 	defer func() {
-		c.emitRuntimeDiagnostic(ctx, "bgp_proof", stage, e.Allocation.ConnectionID, started, resultErr != nil)
+		c.emitRuntimeDiagnostic(ctx, "bgp_proof", stage, e.Allocation.ConnectionID, diagnosticStarted, resultErr != nil)
 	}()
 	if !validJournalBGP(e) || !validBGPRoutes(e) || e.ContractVersion != 3 || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
+		report("binding_invalid")
 		return ErrRuntimeController
 	}
-	stage = "proof_bgp_routes"
-	if c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true) != nil {
+	routeStarted := phaseStart()
+	routeErr := c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true)
+	phaseEnd(routeStarted, &phases.RouteMillis)
+	if routeErr != nil {
+		report("route_read_or_binding")
 		return ErrRuntimeController
 	}
-	stage = "proof_bgp_status"
-	statuses := c.observeRecovery(ctx, e)
+	recoveryStarted := phaseStart()
+	statuses := c.observeRecoveryObserved(ctx, e, report)
+	phaseEnd(recoveryStarted, &phases.RecoveryMillis)
 	up := false
-	for _, state := range statuses {
+	for _, state := range statuses[:e.Allocation.activeTunnelCount()] {
 		if state != "up" && state != "down" {
+			report("owned_status_unknown")
 			return ErrRuntimeController
 		}
 		up = up || state == "up"
 	}
 	stage = "proof_bgp_any_up"
 	if !up {
+		report("all_tunnels_down")
 		return ErrRuntimeController
 	}
-	stage = "proof_environment_observe"
-	current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
-	if err != nil {
+	environmentStarted := phaseStart()
+	var current RuntimeEnvironment
+	var err error
+	if inspector, ok := c.config.Environment.(interface {
+		observeTimed(context.Context, KernelAllocation, [2]EngineTunnel, func(runtimeEnvironmentTiming)) (RuntimeEnvironment, error)
+	}); timing != nil && ok {
+		current, err = inspector.observeTimed(ctx, e.Allocation, e.Engines, func(v runtimeEnvironmentTiming) { phases.Environment = v })
+	} else {
+		current, err = c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+	}
+	phaseEnd(environmentStarted, &phases.EnvironmentMillis)
+	if err != nil || !reflect.DeepEqual(current, env) {
+		reason := "environment_changed"
+		if err != nil {
+			reason = "environment_read_or_validation"
+		}
+		report(reason)
 		return ErrRuntimeController
 	}
 	stage = "proof_environment_binding"
@@ -208,8 +271,15 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeActive, remaining time.Duration, statuses [2]string) (GuardConnection, error) {
 	e := a.Entry
 	g := GuardConnection{ID: e.Allocation.ConnectionID, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, Tunnels: e.Observed, LocalIngressIndices: a.Environment.LocalIngressIndices, Grants: a.Grants, PermitFor: remaining}
+	if e.Allocation.activeTunnelCount() == 1 {
+		g.TunnelCount = 1
+	}
 	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
-		peer := GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
+		profile := ""
+		if IsAzureBGPProfile(e.Allocation.ProfileID) {
+			profile = "azure-apipa-v1"
+		}
+		peer := GuardBGPPeer{TransportProfile: profile, Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
 		if statuses[i] == "up" {
 			peer.InterfaceIndex = e.Observed[i].InterfaceIndex
 			g.PermittedInterfaceIndices = append(g.PermittedInterfaceIndices, peer.InterfaceIndex)
@@ -445,7 +515,13 @@ func (c *RuntimeController) prepareBGPApplyActive(ctx context.Context, e Runtime
 	return active, continuous, nil
 }
 
-func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (ackResult RuntimeAcknowledgement, resultErr error) {
+func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (RuntimeAcknowledgement, error) {
+	return c.applyBGPProof(ctx, m, entries, pos, env, grants, c.bgpQualificationCurrent, c.proveQuiescedAbsent)
+}
+
+// Production supplies only real current qualification and independent absence.
+// The private core also supports explicitly synthetic controller-model tests.
+func (c *RuntimeController) applyBGPProof(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant, qualified func() bool, absent func(context.Context, RuntimeJournalEntry) error) (ackResult RuntimeAcknowledgement, resultErr error) {
 	stage := "qualification"
 	started := time.Now()
 	defer func() {
@@ -458,16 +534,23 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		_, _ = c.refuse(ctx, entries)
 		return RuntimeAcknowledgement{}, ErrRuntimeController
 	}
-	if !c.bgpQualificationCurrent() || !validJournalBGP(e) || e.AbsenceOnly || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
+	if qualified == nil || absent == nil || !qualified() || !validJournalBGP(e) || e.AbsenceOnly || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
 		return fail()
 	}
 	if c.active == nil {
 		c.active = map[uuid.UUID]runtimeActive{}
 	}
 	stage = "permit_lease"
-	authority, identity, err := c.recoveryLease(ctx, e, m.Policy.Hash)
+	authority, identity, err := c.recoveryLease(ctx, e, m.Policy.Hash, m.Policy)
 	if err != nil {
 		return fail()
+	}
+	if e.Phase == RuntimeQuiesced {
+		stage = "quiesced_transport"
+		if c.reserveQuiescedApplyProof(ctx, entries, pos, authority, identity, absent) != nil {
+			return fail()
+		}
+		e = entries[pos]
 	}
 	if c.bgpStaged == nil {
 		c.bgpStaged = map[uuid.UUID]bool{}
@@ -617,12 +700,13 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		}
 	}
 	active.Grants = grants
+	active.FQDNLeaseDescriptors = runtimeFQDNLeaseDescriptors(m.Policy)
 	c.active[id] = active
 	stage = "bgp_reconcile"
 	if c.reconcileActiveBGP(ctx, entries) != nil {
 		return fail()
 	}
-	entries, err = c.finishBGPApplyContinuity(ctx, entries, active, continuous, authority, identity, c.bgpQualificationCurrent)
+	entries, err = c.finishBGPApplyContinuity(ctx, entries, active, continuous, authority, identity, qualified)
 	if err != nil {
 		return RuntimeAcknowledgement{}, err
 	}
@@ -630,7 +714,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 	if err != nil || c.installActive(ctx, entries) != nil {
 		return fail()
 	}
-	if c.rememberAppliedBGPDelivery(ctx, m.RuntimeDelivery, m.Policy.Hash, c.bgpQualificationCurrent) != nil {
+	if c.rememberAppliedBGPDelivery(ctx, m.RuntimeDelivery, m.Policy.Hash, qualified) != nil {
 		return fail()
 	}
 	currentEntries, retryErr := c.journal.Entries()
@@ -739,17 +823,19 @@ func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e Ru
 	if e.Phase != RuntimeApplied || c.bgpStaged[e.DeliveryID] {
 		return false, false, nil
 	}
+	if e.Restoration != nil && !validRestoration(e) {
+		return false, false, ErrRuntimeController
+	}
 	if e.Allocation.ProfileID == GCPHABGPProfile && (e.Restoration == nil || e.Restoration.Epoch == 0) {
 		return c.bgpOrdinaryDaemonAbsent(ctx, e, entries, authority, identity, environment)
 	}
-	if e.Restoration == nil {
+	// Epoch zero only records the initial boot identity. It grants no reset
+	// authority and must follow the ordinary Applied ownership path.
+	if e.Restoration == nil || e.Restoration.Epoch == 0 {
 		if e.Observed == ([2]Ownership{}) {
 			return false, false, ErrRuntimeController
 		}
 		return false, false, nil
-	}
-	if e.Restoration.Epoch == 0 || !validRestoration(e) {
-		return false, false, ErrRuntimeController
 	}
 	delete(c.active, e.Allocation.ConnectionID)
 	if c.installActive(ctx, entries) != nil {

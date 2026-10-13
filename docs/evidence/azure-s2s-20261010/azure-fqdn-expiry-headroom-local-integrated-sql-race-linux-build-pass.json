@@ -1,0 +1,59 @@
+{
+  "accepted_story_count": 6,
+  "category": "fqdn_expiry_headroom_locally_integrated_sql_race_linux_build_pass",
+  "fixture_retirement_root_reviewed": true,
+  "integrated_locally": true,
+  "limits": [
+    "Local SQL/race/build proof only; actual API QA update and sustainedDNS still required",
+    "ShortTTL refresh frequency increases",
+    "Batch over32, slow commits and backlog can exceed scheduling lead"
+  ],
+  "linux_amd64_api_build": {
+    "bytes": 61546806,
+    "exported": false,
+    "passed": true,
+    "sha256": "97dd8cc13191a48fad9ddd11e2d6b1405ae1086aae371a0071bd9dfae0720907"
+  },
+  "new_slices_closed": 0,
+  "owned_test_runtime_cleanup": {
+    "exact_container_removed": true,
+    "fixture_database_dropped_by_test": true,
+    "generated_private_env_removed": true,
+    "profile_delete_stdout_sha256": "ef91deab0b588249ead404d7b669a3d95e9305f6576051be9c10a106464d1305",
+    "task_profile_deleted": true,
+    "task_profile_stopped": true
+  },
+  "preservation": [
+    "Actual originalTTL and ResolvedAt",
+    "Original5s deadline, serial processing, leader gating and CAS",
+    "Original organization/context/withdrawn retry scope",
+    "Strict current native and stability predicates"
+  ],
+  "production_source_independent_review_sha256": "d7e5cd1a5b9319aabe497cf4abd68bbe392e42e57db5d563b0c40ca6181bfca4",
+  "qa_deployed": false,
+  "qualification_sha256": "1275e1a347cc4c25456ab68f00e8c5b67ab8e0b21e1ed1182aebf5a338c22ede",
+  "race": {
+    "candidate_passed": true,
+    "post_adoption_passed": true,
+    "post_adoption_seconds": 2.182,
+    "skips": 0,
+    "top_level_tests": 11
+  },
+  "recorded_at": "2026-10-12T14:37:36.279527+00:00",
+  "source_files": {
+    "scheduler.go": "8610fa119eaa43199039c97f9574527059fe4d09acba27db84fd4d6d20923db6",
+    "scheduler_freshness_test.go": "3a35cc1186cc9fe3eec19b1724b51d9502149a5fef16ef62fe2e930646a60a89",
+    "store.go": "30a1fa1fcd1765d24b3d070c29018424b5ea56f60cf676ff78e1ebb7b2a4fa14",
+    "store_integration_test.go": "47b339f6861f6d88fa55b47d5701b19fe128a4d323171fc1ec8d9e5687c986e9"
+  },
+  "sql": {
+    "exit_code": 0,
+    "migration": 219,
+    "name": "TestPostgresStorePublishesAndWithdrawsAtomically",
+    "postgres": "17 disposable local Colima",
+    "skip_count": 0,
+    "stdout_path": "/private/tmp/fpg-587b18ac/sql-test-v4.stdout",
+    "stdout_sha256": "31f14c154688b7ee89d01accc6fea160b8da210b213bd83bd2a1b4ac4c432b5e"
+  },
+  "version": 1
+}

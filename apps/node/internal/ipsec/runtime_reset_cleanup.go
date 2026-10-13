@@ -100,6 +100,20 @@ func (c *RuntimeController) resetCleanupReceipt(cleanup RuntimeCleanup, covered 
 	if err != nil {
 		return nil, ErrRuntimeController
 	}
+	return c.resetCleanupReceiptInNamespace(cleanup, covered, boot, ns)
+}
+
+// Historical boot discharge validates the original immutable receipt namespace.
+// Ordinary cleanup still passes the actual current namespace above. This helper
+// cannot discharge current native objects or adopt the original namespace.
+func (c *RuntimeController) resetCleanupReceiptInNamespace(cleanup RuntimeCleanup, covered []RuntimeJournalEntry, boot, ns string) (*RuntimeResetCleanup, error) {
+	if os.Geteuid() != 0 || !c.journal.pathsIntact() || !validKernelNamespace(ns) {
+		return nil, ErrRuntimeController
+	}
+	currentBoot, err := resetBootID()
+	if err != nil || currentBoot != boot {
+		return nil, ErrRuntimeController
+	}
 	path := filepath.Join(c.config.JournalDir, "reset-cleanup-"+cleanup.ID.String()+".json")
 	f, err := journalOpenNoFollow(path, false)
 	if err != nil {

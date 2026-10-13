@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"sort"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrRuntimeEnvironment = errors.New("IPsec local environment unavailable")
@@ -103,14 +104,39 @@ func runtimeDefaultRules(raw []byte) bool {
 // statements are admitted outside our separately verified guard. NAT must be
 // source scoped to a range disjoint from all protected payload addresses.
 func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
+	rows, ok := runtimeCensusRows(raw)
+	return ok && runtimeHookCensusRows(rows, protected)
+}
+
+// Rows remain local to one freshly bounded, strictly validated snapshot.
+func runtimeCensusRows(raw []byte) ([]map[string]json.RawMessage, bool) {
 	root, ok := runtimeJSONObject(raw)
 	if !ok || len(root) != 1 {
-		return false
+		return nil, false
 	}
-	rows, ok := kernelObjects(root["nftables"])
-	if !ok {
-		return false
+	data := root["nftables"]
+	if len(data) > kernelDumpLimit || !utf8.Valid(data) {
+		return nil, false
 	}
+	// runtimeJSONObject already walked this entire subtree, rejecting duplicate
+	// keys, excessive depth and malformed JSON. Keep kernelObjects' remaining
+	// array, count and row-shape checks without walking those tokens again.
+	var values []json.RawMessage
+	if json.Unmarshal(data, &values) != nil || values == nil || len(values) > kernelEntryLimit {
+		return nil, false
+	}
+	objects := make([]map[string]json.RawMessage, 0, len(values))
+	for _, value := range values {
+		object, ok := kernelObject(value)
+		if !ok {
+			return nil, false
+		}
+		objects = append(objects, object)
+	}
+	return objects, true
+}
+
+func runtimeHookCensusRows(rows []map[string]json.RawMessage, protected []netip.Prefix) bool {
 	for _, item := range rows {
 		if len(item) != 1 {
 			return false
@@ -252,18 +278,36 @@ func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
 func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
 	return r.observe(ctx, a, engines, false)
 }
-
-// ObserveLocalExports applies export-only protocol restrictions to the same
-// bounded, namespace-stable inventory used by ordinary environment proof.
+func (r *runtimeEnvironmentInspector) observeTimed(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel, observe func(runtimeEnvironmentTiming)) (RuntimeEnvironment, error) {
+	return r.observeWithCommands(ctx, a, engines, observe, runKernelCommand)
+}
+func (r *runtimeEnvironmentInspector) observeWithCommands(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel, observe func(runtimeEnvironmentTiming), hookRun func(context.Context, string, ...string) ([]byte, error)) (RuntimeEnvironment, error) {
+	return r.observeQualified(ctx, a, engines, observe, hookRun, false)
+}
 func (r *runtimeEnvironmentInspector) ObserveLocalExports(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
 	if a.ProfileID != GCPHABGPProfile || !a.BGP {
 		return RuntimeEnvironment{}, ErrRuntimeEnvironment
 	}
 	return r.observe(ctx, a, engines, true)
 }
-
 func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel, localExports bool) (RuntimeEnvironment, error) {
-	stage, started := "env_input", time.Now()
+	return r.observeQualified(ctx, a, engines, nil, runKernelCommand, localExports)
+}
+func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel, observe func(runtimeEnvironmentTiming), hookRun func(context.Context, string, ...string) ([]byte, error), localExports bool) (RuntimeEnvironment, error) {
+	// Residual verification includes namespace checks and millisecond rounding; it is not pure parser CPU.
+	var timing runtimeEnvironmentCommandTiming
+	started := time.Now()
+	if observe != nil {
+		defer func() {
+			measured := timing.result()
+			measured.VerificationMillis = time.Since(started).Milliseconds() - measured.CommandMillis
+			if measured.VerificationMillis < 0 {
+				measured.VerificationMillis = 0
+			}
+			observe(measured)
+		}()
+	}
+	stage := "env_input"
 	fail := func() (RuntimeEnvironment, error) {
 		if r != nil {
 			emitRuntimeDiagnostic(r.diagnostic, ctx, "environment_observe", stage, a.ConnectionID, started, true)
@@ -272,6 +316,24 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 	}
 	if r == nil || r.ip == nil || r.nft == nil || r.namespace == nil || !validKernelAllocation(a) {
 		return fail()
+	}
+	wrap := func(run func(context.Context, ...string) ([]byte, error)) func(context.Context, ...string) ([]byte, error) {
+		return func(ctx context.Context, args ...string) ([]byte, error) {
+			if ctx.Err() != nil {
+				return nil, ErrRuntimeEnvironment
+			}
+			start := time.Now()
+			raw, err := run(ctx, args...)
+			if observe != nil {
+				timing.record(start, time.Now())
+			}
+			return raw, err
+		}
+	}
+	ip, nftRun := wrap(r.ip), wrap(r.nft)
+	original := hookRun
+	hookRun = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		return wrap(func(c context.Context, a ...string) ([]byte, error) { return original(c, path, a...) })(ctx, args...)
 	}
 	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
 	defer cancel()
@@ -285,19 +347,33 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 	if engineTunnelCount(engines) != a.activeTunnelCount() || (a.activeTunnelCount() == 1 && !emptyEngineTunnel(engines[1])) || len(engines[0].LocalPrefixes) == 0 || (a.activeTunnelCount() == 2 && !sameEnginePrefixes(engines[0].LocalPrefixes, engines[1].LocalPrefixes)) {
 		return fail()
 	}
-	stage = "env_hooks_before"
-	nft, e := r.nft(ctx, "-j", "list", "ruleset")
-	if e != nil || !runtimeQualifiedHookCensus(ctx, r.nftPath, nft, protected) {
+	for i, engine := range engines[:engineTunnelCount(engines)] {
+		if engine.ProfileID != a.ProfileID || engine.TunnelID != a.Tunnels[i].TunnelID || engine.XFRMID != a.Tunnels[i].XFRMID || engine.Binding.ConnectionID != a.ConnectionID || !engine.RemoteAddress.Is4() {
+			return fail()
+		}
+	}
+	var addressReadStarted time.Time
+	snapshotIP := func(ctx context.Context, args ...string) ([]byte, error) {
+		if len(args) == 4 && args[0] == "-j" && args[1] == "-4" && args[2] == "address" && args[3] == "show" && addressReadStarted.IsZero() {
+			addressReadStarted = time.Now()
+		}
+		return ip(ctx, args...)
+	}
+	readSnapshot := func() (runtimeEnvironmentSnapshot, bool) {
+		return runtimeReadEnvironmentSnapshot(ctx, snapshotIP, func(c context.Context) ([]byte, error) {
+			raw, err := nftRun(c, "-j", "list", "ruleset")
+			if err != nil || !runtimeQualifiedHookCensusWithCommands(c, r.nftPath, raw, protected, hookRun) {
+				return nil, ErrRuntimeEnvironment
+			}
+			return raw, nil
+		}, engines)
+	}
+	first, valid := readSnapshot()
+	if !valid {
 		return fail()
 	}
-	stage = "env_rules_before"
-	rules, e := r.ip(ctx, "-j", "-4", "rule", "show")
-	if e != nil || !runtimeDefaultRules(rules) {
-		return fail()
-	}
-	stage = "env_links_before"
-	links, e := r.ip(ctx, "-j", "-d", "link", "show")
-	if e != nil {
+	rules, links := first.rules, first.links
+	if !runtimeDefaultRules(rules) {
 		return fail()
 	}
 	objects, ok := kernelObjects(links)
@@ -344,21 +420,12 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 			physicalMTU[name] = uint32(mtu)
 		}
 	}
-	stage = "env_routes_before"
-	routes, e := r.ip(ctx, "-j", "-4", "route", "show", "table", "main")
-	if e != nil {
-		return fail()
-	}
+	routes := first.routes
 	routeRows, ok := kernelObjects(routes)
 	if !ok {
 		return fail()
 	}
-	stage = "env_addresses_before"
-	addressReadStarted := time.Now()
-	addresses, e := r.ip(ctx, "-j", "-4", "address", "show")
-	if e != nil {
-		return fail()
-	}
+	addresses := first.addresses
 	addressRows, ok := kernelObjects(addresses)
 	if !ok {
 		return fail()
@@ -447,17 +514,12 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 		out.LocalIngressIndices = append(out.LocalIngressIndices, index)
 	}
 	sort.Ints(out.LocalIngressIndices)
-	stage = "env_peer_routes_before"
-	peerReads := [2][]byte{}
+	peerReads := first.peers
 	for i, engine := range engines[:engineTunnelCount(engines)] {
 		if engine.ProfileID != a.ProfileID || engine.TunnelID != a.Tunnels[i].TunnelID || engine.XFRMID != a.Tunnels[i].XFRMID || engine.Binding.ConnectionID != a.ConnectionID || !engine.RemoteAddress.Is4() {
 			return fail()
 		}
-		raw, e := r.ip(ctx, "-j", "-4", "route", "get", engine.RemoteAddress.String())
-		if e != nil {
-			return fail()
-		}
-		peerReads[i] = raw
+		raw := peerReads[i]
 		rows, ok := kernelObjects(raw)
 		if !ok || len(rows) != 1 {
 			return fail()
@@ -485,36 +547,13 @@ func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAlloc
 		}
 		out.Underlays[i] = RuntimeUnderlay{InterfaceIndex: physical[dev], LocalAddress: address, OuterMTU: outerMTU}
 	}
-	// Re-read independent interface and policy inventories before returning facts.
-	stage = "env_links_after"
-	again, e := r.ip(ctx, "-j", "-d", "link", "show")
-	if e != nil || !bytes.Equal(again, links) {
+	// The first complete snapshot is fully validated before any second-snapshot read.
+	second, valid := readSnapshot()
+	if !valid || !bytes.Equal(second.links, links) || !bytes.Equal(second.rules, rules) || !bytes.Equal(second.routes, routes) || !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
 		return fail()
 	}
-	stage = "env_rules_after"
-	again, e = r.ip(ctx, "-j", "-4", "rule", "show")
-	if e != nil || !bytes.Equal(again, rules) {
-		return fail()
-	}
-	stage = "env_hooks_after"
-	again, e = r.nft(ctx, "-j", "list", "ruleset")
-	if e != nil || !runtimeQualifiedHookCensus(ctx, r.nftPath, again, protected) {
-		return fail()
-	}
-	stage = "env_routes_after"
-	again, e = r.ip(ctx, "-j", "-4", "route", "show", "table", "main")
-	if e != nil || !bytes.Equal(again, routes) {
-		return fail()
-	}
-	stage = "env_addresses_after"
-	again, e = r.ip(ctx, "-j", "-4", "address", "show")
-	if e != nil || !runtimeAddressBracket(addresses, again, time.Since(addressReadStarted)) {
-		return fail()
-	}
-	stage = "env_peer_routes_after"
-	for i, engine := range engines[:engineTunnelCount(engines)] {
-		again, e = r.ip(ctx, "-j", "-4", "route", "get", engine.RemoteAddress.String())
-		if e != nil || !bytes.Equal(again, peerReads[i]) {
+	for i := range engines[:engineTunnelCount(engines)] {
+		if !bytes.Equal(second.peers[i], peerReads[i]) {
 			return fail()
 		}
 	}

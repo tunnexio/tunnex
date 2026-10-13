@@ -1,0 +1,43 @@
+{
+  "source": "14ee26dc",
+  "binary_sha256": "7f9424e77b606d253b5592af10bc37da358cbad2a5d0bb99721bf9f25e2d6d03",
+  "image_sha256": "aa312e9e5b7c623f2d59f31c9d759f322f3fa58b2b11c7de18f47f65445db443",
+  "desired_revision": 12,
+  "scope": "normal clean disable/new process/re-enable baseline; not warm restart or FQDN proof",
+  "packets": {
+    "started_at": "2026-10-10T14:09:02.451903+00:00",
+    "packet_finished_at": "2026-10-10T14:09:22.452868+00:00",
+    "source_address": "10.233.10.2",
+    "direction": "forward",
+    "counters": {
+      "fresh_tcp": {
+        "success": 20,
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.00199,
+        "seconds_since_last_success_at_run_end": 0.986521
+      },
+      "existing_tcp": {
+        "success": 20,
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.007566,
+        "seconds_since_last_success_at_run_end": 0.86985
+      },
+      "fresh_udp": {
+        "success": 20,
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.025469,
+        "seconds_since_last_success_at_run_end": 0.732934
+      },
+      "existing_udp": {
+        "success": 20,
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.021135,
+        "seconds_since_last_success_at_run_end": 0.711992
+      }
+    },
+    "tcp_source_preservation_counts": {
+      "preserved": 40
+    },
+    "packet_run_elapsed_seconds": 20.000998
+  }
+}

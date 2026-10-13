@@ -1,0 +1,39 @@
+{
+  "accepted_story_count": 6,
+  "approval_pending": true,
+  "automatic_review_rejection_reason": "The user approved exact older MTU/fault source bundles; the newly repinned successor source payload was not specifically approved.",
+  "category": "before_bracket_parallel_mtu_fault_source_qualified_approval_pending",
+  "independent_review_sha256": "26ec77a6c4a35e8611de940a5ce4bc48c1b20e6e34a90cde6fec7c4d562c4bef",
+  "kits": {
+    "fault": {
+      "declared_tests_passed": 23,
+      "inventory": "77136fbef15c0b1169d7e4bee18cbc25e4d3ef73ca820310a3edf1314a013e3c",
+      "source": "6af4d3fe02f0da101fda3c915187022726b09ec2545b4b50f94c7e7dcabdc752",
+      "wrapper": "72c33040cfd006ef563001ea8f877d77b50afc2f1050d471fba2826795bbdd87"
+    },
+    "mtu": {
+      "declared_tests_passed": 45,
+      "inventory": "d16ac3d6a40126b2c92f9706bab7609558f94fb62e4c83e807601def228be528",
+      "source": "6af4d3fe02f0da101fda3c915187022726b09ec2545b4b50f94c7e7dcabdc752",
+      "wrapper": "965e681524bee02401144ff4a5179b8331fb124bf2cb0d5fe7753906b6dc0a2f"
+    }
+  },
+  "new_slices_closed": 0,
+  "preservation": "Original fullnative/finalbracket/historicalvalidators and all equality gates remain; journal reread strictly last after all precheck workers drain.",
+  "qa_network_action_performed": false,
+  "qa_source_transferred": false,
+  "recorded_at": "2026-10-12T14:37:36.279527+00:00",
+  "same_actions": "two owned MTUs1280/120s inside180s fourflows; one ownedslot1 fault15s inside120s fourflows; finallyrestore and fullnativeafterentirewindow",
+  "source_qualified": true,
+  "source_sha256": "6af4d3fe02f0da101fda3c915187022726b09ec2545b4b50f94c7e7dcabdc752",
+  "tests": {
+    "ast38": true,
+    "fault_original_and_observer": 17,
+    "fault_wrapper": 6,
+    "mtu_original_and_observer": 39,
+    "mtu_wrapper": 6,
+    "skips": 0,
+    "total": 68
+  },
+  "version": 1
+}

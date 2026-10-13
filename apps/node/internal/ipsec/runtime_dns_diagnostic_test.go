@@ -228,8 +228,13 @@ func TestDNSGuardRevalidationRefusesChangedAuthorityAndDigestChurn(t *testing.T)
 			case "deadline":
 				cancel()
 			}
-			if f.c.revalidateDNSGuardSnapshot(ctx, id, owner, previous, entry, entry.Observed[0].InterfaceIndex, entry.Engines[0].ReqID) {
+			reason := ""
+			if f.c.revalidateDNSGuardSnapshotDigestReason(ctx, id, owner, previous, entry, entry.Observed[0].InterfaceIndex, entry.Engines[0].ReqID, nil, func(v string) { reason = v }) != "" {
 				t.Fatal("changed or expired authority accepted")
+			}
+			expected := map[string]string{"owner_epoch": "owner_entry_refused", "grants": "owner_entry_refused", "original_lease": "owner_entry_refused", "current_lease": "owner_entry_refused", "native_table": "latest_guard_refused", "digest_churn": "digest_changed_again", "deadline": "context_inactive", "original_lease_during": "final_owner_entry_refused", "current_lease_during": "final_owner_entry_refused"}[name]
+			if reason != expected {
+				t.Fatalf("reason %s expected %s", reason, expected)
 			}
 			if f.guardReads.Load() > 1 {
 				t.Fatal("retry loop exceeded one current-template check", f.guardReads.Load())
@@ -420,6 +425,48 @@ func TestDNSFinalGuardRevalidationRefusesAuthorityChanges(t *testing.T) {
 				t.Fatal("unbounded final revalidation")
 			}
 		})
+	}
+}
+
+func TestDNSRevalidationReasonDoesNotReadOrChangeAcceptance(t *testing.T) {
+	for _, kind := range []string{"latest_unchanged", "latest_absent", "accepted"} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(kind, func(t *testing.T) {
+				f := newDNSOwnerViewFixture(t, nil)
+				id := f.material.Manifest.ConnectionID
+				previous := f.c.dnsView.Load()
+				owner := previous.entries[id]
+				entry := owner.active.Entry
+				switch kind {
+				case "latest_absent":
+					f.c.dnsView.Store(nil)
+				case "accepted":
+					renewDNSDiagnosticGuard(t, f)
+				}
+				reason := ""
+				var callback func(string)
+				if enabled {
+					callback = func(v string) { reason = v }
+				}
+				got := f.c.revalidateDNSGuardSnapshotDigestReason(context.Background(), id, owner, previous, entry, entry.Observed[0].InterfaceIndex, entry.Engines[0].ReqID, nil, callback)
+				if (got != "") != (kind == "accepted") {
+					t.Fatal("result changed")
+				}
+				if enabled && reason != kind {
+					t.Fatal(reason)
+				}
+				if !enabled && reason != "" {
+					t.Fatal("off callback")
+				}
+				expected := int32(0)
+				if kind == "accepted" {
+					expected = 1
+				}
+				if f.guardReads.Load() != expected {
+					t.Fatal("extra read", f.guardReads.Load())
+				}
+			})
+		}
 	}
 }
 

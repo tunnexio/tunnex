@@ -40,7 +40,12 @@ func TestDirectResolverSequentialProofCostConsumesOriginalDeadline(t *testing.T)
 	var records []Record
 	var err error
 	for _, endpoint := range config.Endpoints {
-		records, err = resolver.resolveEndpoint(ctx, config, endpoint, "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME})
+		for _, typ := range []RecordType{RecordA, RecordAAAA} {
+			records, err = resolver.exchange(ctx, endpoint, "api.example.test", typ)
+			if err != nil {
+				break
+			}
+		}
 		if err != nil {
 			err = errResolverConfig
 			records = nil

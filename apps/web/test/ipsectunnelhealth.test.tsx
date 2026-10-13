@@ -295,3 +295,16 @@ it("refuses two-slot public status for Classic rather than rendering a fake seco
 it("refuses a single-slot report for AWS rather than treating it as Classic",async()=>{
  mock.get.mockResolvedValue({data:{observed_at:new Date().toISOString(),tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});render(view());await screen.findByText("Status unavailable");expect(screen.queryByRole("status",{name:/ Up$/})).toBeNull();
 });
+
+it("shows a verified single Azure active-standby BGP peer and rejects nonexistent route slots", async () => {
+ const data=bgpReport(); data.tunnels=data.tunnels.slice(0,1); data.bgp.peers=data.bgp.peers.slice(0,1); data.bgp.routes=data.bgp.routes.slice(0,1);
+ data.bgp.peers[0].accepted_prefixes=1;
+ mock.get.mockResolvedValue({data});
+ render(<IPsecTunnelHealth orgId="org-a" connectionId="connection-a" tunnels={tunnels.slice(0,1)} mode="ipv4-bgp" approvedRemotePrefixes={approvedRemotePrefixes} profileId="azure-active-standby-bgp-ipv4-v1" />);
+ await screen.findByRole("status", {name:"Tunnel 1 BGP Established"});
+ expect(screen.queryByRole("status", {name:/Tunnel 2/})).toBeNull();
+ data.bgp.routes[0].slot=2;
+ fireEvent.click(screen.getByRole("button", {name:"Refresh tunnel status"}));
+ await screen.findByText("Status unavailable");
+ expect(screen.getByRole("status", {name:"Tunnel 1 Unknown"})).toBeTruthy();
+});

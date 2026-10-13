@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 
 type checkedTransport struct {
 	valid bool
-	calls int
+	calls atomic.Int32
 }
 
 func (c *checkedTransport) ValidateDNSPath(context.Context, ResolverConfig, ResolverEndpoint) error {
@@ -25,7 +26,7 @@ func (c *checkedTransport) ValidateDNSPath(context.Context, ResolverConfig, Reso
 	return nil
 }
 func (c *checkedTransport) ExchangeDNS(_ context.Context, _ ResolverConfig, e ResolverEndpoint, payload []byte) ([]byte, error) {
-	c.calls++
+	c.calls.Add(1)
 	if !c.valid {
 		return nil, errors.New("withdrawn")
 	}
@@ -44,15 +45,15 @@ func TestIPsecResolverCachedRetryRequiresFreshAuthority(t *testing.T) {
 	request.ResolverIPsecPath = &IPsecPath{ConnectionID: "88888888-8888-4888-8888-888888888888", ConfigurationRevision: 3, SourceAddress: "10.10.0.1"}
 	transport := &checkedTransport{valid: true}
 	responder := NewResponder(DirectResolver{Transport: transport})
-	if got := responder.Handle(t.Context(), testGateway, request); got.Status != StatusNoError || transport.calls != 2 {
-		t.Fatalf("first %+v calls%d", got, transport.calls)
+	if got := responder.Handle(t.Context(), testGateway, request); got.Status != StatusNoError || transport.calls.Load() != 2 {
+		t.Fatalf("first %+v calls%d", got, transport.calls.Load())
 	}
 	transport.valid = false
 	if got := responder.Handle(t.Context(), testGateway, request); got.Status != StatusServFail || len(got.Records) != 0 {
 		t.Fatalf("cache survived expiry %+v", got)
 	}
 	transport.valid = true
-	if got := responder.Handle(t.Context(), testGateway, request); got.Status != StatusNoError || transport.calls != 2 {
+	if got := responder.Handle(t.Context(), testGateway, request); got.Status != StatusNoError || transport.calls.Load() != 2 {
 		t.Fatalf("current native retry must not requery %+v", got)
 	}
 	changed := *request.ResolverIPsecPath
@@ -149,9 +150,11 @@ func (f packetTransport) ExchangeDNS(ctx context.Context, c ResolverConfig, e Re
 func TestDNSBoundTCFallbackStaysSameEndpointAndValidatesQuestion(t *testing.T) {
 	query := dnsmessage.Message{Header: dnsmessage.Header{ID: 51}, Questions: []dnsmessage.Question{{Name: dnsmessage.MustNewName("service.private.test."), Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET}}}
 	payload, _ := query.Pack()
+	ctx, timing := WithLookupTiming(t.Context())
 	calls := 0
-	transport := packetTransport(func(_ context.Context, _ ResolverConfig, e ResolverEndpoint, _ []byte) ([]byte, error) {
+	transport := packetTransport(func(c context.Context, _ ResolverConfig, e ResolverEndpoint, _ []byte) ([]byte, error) {
 		calls++
+		defer RecordLookupExchange(c, true)
 		if e.Address != "10.20.0.53" || e.Port != 53 {
 			t.Fatal("fallback changed resolver")
 		}
@@ -167,8 +170,12 @@ func TestDNSBoundTCFallbackStaysSameEndpointAndValidatesQuestion(t *testing.T) {
 		}
 		return reply.Pack()
 	})
-	if _, err := exchangeDNSPacket(t.Context(), transport, ResolverConfig{}, ResolverEndpoint{Address: "10.20.0.53", Port: 53, Transport: "udp"}, payload); err != nil || calls != 2 {
+	if _, err := exchangeDNSPacket(ctx, transport, ResolverConfig{}, ResolverEndpoint{Address: "10.20.0.53", Port: 53, Transport: "udp"}, payload); err != nil || calls != 2 {
 		t.Fatal(err, calls)
+	}
+	v := timing.Snapshot()
+	if v.ReturnedExchanges != 2 || v.CompletedExchanges != 2 || v.StatsSaturated {
+		t.Fatal("UDP/TCP fallback accounting lost", v)
 	}
 	bad := packetTransport(func(context.Context, ResolverConfig, ResolverEndpoint, []byte) ([]byte, error) {
 		reply := query

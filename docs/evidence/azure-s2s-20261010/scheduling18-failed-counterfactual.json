@@ -1,0 +1,21 @@
+{
+  "experiment": "IPsec endpoint worker scheduling under unchanged proofs and deadlines",
+  "candidate_source": "757b8bdd",
+  "reverted_by": "2b84ec34",
+  "isolated_requests": 5,
+  "completed_requests": 0,
+  "expired_requests": 5,
+  "result": "failed qualification; no availability or CPU causality claim",
+  "cleanup_revision": 19,
+  "retained_entries": 9,
+  "native_absence_verified": true,
+  "whole_journal_unchanged": true,
+  "full_guard_verified": true,
+  "withdrawal_guard_verified": true,
+  "restored_image": "sha256:faac330572a274177c3c48e08fa75f59cc91216f60863bed92abf2ce0d56e186",
+  "namespace_and_state_preserved": true,
+  "limitations": [
+    "Component timing remains unmeasured",
+    "Connection still disabled until normal gateway eligibility"
+  ]
+}

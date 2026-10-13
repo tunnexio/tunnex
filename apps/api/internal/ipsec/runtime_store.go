@@ -28,15 +28,18 @@ type runtimeState struct {
 	cleanup                     *uuid.UUID
 }
 type runtimeLocked struct {
-	connection            Connection
-	state                 runtimeState
-	enabled               bool
-	eligible              bool
-	recoveryEligible      bool
-	bgpEligible           bool
-	gcpHAEligible         bool
-	gcpClassicEligible    bool
-	retainedGuardEligible bool
+	connection                     Connection
+	state                          runtimeState
+	enabled                        bool
+	eligible                       bool
+	recoveryEligible               bool
+	bgpEligible                    bool
+	gcpHAEligible                  bool
+	azureEligible                  bool
+	gcpClassicEligible             bool
+	retainedGuardEligible          bool
+	azureBGPRecreationEligible     bool
+	azureProfileRecreationEligible bool
 }
 
 func runtimeRevision(p *int64) int64 {
@@ -115,7 +118,10 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	out.bgpEligible = out.eligible && string(capability["ipsec_bgp_version"]) == "1"
 	out.gcpClassicEligible = out.eligible && string(capability["ipsec_gcp_classic_version"]) == "1"
 	out.gcpHAEligible = out.bgpEligible && string(capability["ipsec_gcp_ha_version"]) == "1"
+	out.azureEligible = out.eligible && string(capability["ipsec_azure_version"]) == "1"
 	out.retainedGuardEligible = out.eligible && retainedGuardCapability(caps)
+	out.azureBGPRecreationEligible = out.eligible && azureBGPRecreationCapability(caps)
+	out.azureProfileRecreationEligible = out.eligible && azureProfileRecreationCapability(caps)
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
 		return fail(createError(e))
@@ -145,6 +151,15 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 		b := cfg.BGP
 		if err := tx.QueryRow(ctx, `SELECT local_asn,remote_asn,host(router_id),maximum_prefixes FROM ipsec_aws_bgp_configs WHERE connection_id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&b.LocalASN, &b.RemoteASN, &b.RouterID, &b.MaximumPrefixes); err != nil {
 			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+		}
+	}
+	if isAzureProfile(profile) {
+		var eligible bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&eligible); err != nil {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+		}
+		if !eligible {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionIneligible
 		}
 	}
 	if profile == GCPClassicProfile {
@@ -224,15 +239,12 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 	if s.runtimePolicy == nil {
 		return RuntimePolicy{}, ErrConnectionIneligible
 	}
-	var fqdnSupported bool
-	if e := tx.QueryRow(ctx, `SELECT coalesce(status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_fqdn_policy_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&fqdnSupported); e != nil {
+	var fqdnVersion int
+	var compiledAt time.Time
+	if e := tx.QueryRow(ctx, `SELECT CASE WHEN status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp() THEN CASE capabilities->'ipsec_fqdn_policy_version' WHEN '2'::jsonb THEN 2 WHEN '1'::jsonb THEN 1 ELSE 0 END ELSE 0 END, clock_timestamp() FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&fqdnVersion, &compiledAt); e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
-	fqdnVersion := 0
-	if fqdnSupported {
-		fqdnVersion = 1
-	}
-	input := RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx}
+	input := RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx, CompiledAt: compiledAt}
 	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), input)
 	if e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
@@ -278,6 +290,7 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 	if policy.Grants == nil {
 		policy.Grants = []RuntimeGrant{}
 	}
+	policy.SelectedFQDNVersion = fqdnVersion
 	return policy, nil
 }
 func runtimeDigest(s string) bool {
@@ -289,7 +302,7 @@ func runtimeDigest(s string) bool {
 }
 func runtimeManifest(c Connection, cfg StaticConfig, tunnels [2]RuntimeTunnel) RuntimeManifest {
 	m := RuntimeManifest{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, DesiredRevision: c.DesiredRevision, ConfigurationRevision: 1, ProfileID: providerProfile(cfg), CustomerOutsideAddress: cfg.CustomerOutsideAddress, LocalPrefixes: cfg.LocalPrefixes, RemotePrefixes: cfg.RemotePrefixes, Tunnels: tunnels}
-	if cfg.ProfileID == GCPClassicProfile {
+	if activeTunnelCount(cfg.ProfileID) == 1 {
 		v, n := 1, 1
 		m.TransportVersion = &v
 		m.TunnelCount = &n
@@ -298,6 +311,9 @@ func runtimeManifest(c Connection, cfg StaticConfig, tunnels [2]RuntimeTunnel) R
 		v := 1
 		if cfg.ProfileID == GCPHAProfile {
 			v = 2
+		}
+		if azureBGP(cfg.ProfileID) {
+			v = 3
 		}
 		b := *cfg.BGP
 		m.BGP = &b
@@ -358,7 +374,7 @@ func (s *ConnectionStore) changeIntent(ctx context.Context, org, actor, id uuid.
 		if e = attachStaticRecreation(ctx, tx, &manifest); e != nil {
 			return Connection{}, e
 		}
-		if len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+		if !locked.recreationEligible(manifest) {
 			return Connection{}, ErrConnectionIneligible
 		}
 		if e = runtimeCapacity(ctx, tx, next, manifest); e != nil {

@@ -1,0 +1,10 @@
+table inet az_s2s_owned_fault {
+	comment "azure-s2s-01a12505"
+	chain forward {
+		type filter hook forward priority raw; policy accept;
+		ip saddr 172.18.0.5 ip daddr 52.140.60.21 udp dport { 500, 4500 } counter packets 93 bytes 20308 drop
+		ip saddr 52.140.60.21 ip daddr 172.18.0.5 udp sport { 500, 4500 } counter packets 66 bytes 21608 drop
+		ip saddr 172.18.0.5 ip daddr 52.140.60.21 ip protocol esp counter packets 0 bytes 0 drop
+		ip saddr 52.140.60.21 ip daddr 172.18.0.5 ip protocol esp counter packets 0 bytes 0 drop
+	}
+}

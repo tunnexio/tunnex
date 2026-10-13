@@ -133,7 +133,7 @@ func TestRuntimeFQDNShortLeaseChargesTransitAndExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 	*now = time.Second
-	if err = a.Accept(PermitLeaseResponse{request, 5000}); err != nil {
+	if err = a.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: 5000}); err != nil {
 		t.Fatal(err)
 	}
 	remaining, err := a.RemainingForApply(identity, time.Second)
@@ -149,7 +149,7 @@ func TestRuntimeFQDNShortLeaseChargesTransitAndExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 	*now += 500 * time.Millisecond
-	if err = a.Accept(PermitLeaseResponse{request, 500}); err == nil {
+	if err = a.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: 500}); err == nil {
 		t.Fatal("late short-lease response extended authority")
 	}
 }

@@ -11,7 +11,10 @@ import (
 
 const maxRetainedGuardPredecessors = 256
 
-type staticPredecessor struct{ connectionID, cleanupID uuid.UUID }
+type staticPredecessor struct {
+	connectionID, cleanupID uuid.UUID
+	crossProfile            bool
+}
 
 // Historical schemas retain their strict no-reuse SQL rule. Absence of this
 // migration never grants recreation authority or removes a retained guard.
@@ -46,6 +49,12 @@ func staticRecreationCandidates(ctx context.Context, tx pgx.Tx, org, site, node 
 	if err != nil || !supported {
 		return nil, err
 	}
+	var mixedAzure bool
+	if isAzureProfile(cfg.ProfileID) {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ipsec_retained_guards g JOIN ipsec_connections c ON c.id=g.connection_id WHERE g.org_id=$1 AND c.provider_profile IS DISTINCT FROM $3 AND EXISTS(SELECT 1 FROM ipsec_retained_remote_prefixes r WHERE r.connection_id=g.connection_id AND r.cidr && ANY($2::cidr[])))`, org, cfg.RemotePrefixes, cfg.ProfileID).Scan(&mixedAzure); err != nil {
+			return nil, createError(err)
+		}
+	}
 	rows, err := tx.Query(ctx, `SELECT DISTINCT ON (g.connection_id) g.connection_id,g.cleanup_delivery_id,
  c.provider_profile,c.desired_intent,c.finalized_at IS NOT NULL,
  c.historical_site_id,c.historical_gateway_node_id,
@@ -55,7 +64,7 @@ func staticRecreationCandidates(ctx context.Context, tx pgx.Tx, org, site, node 
  AND s.last_cleaned_delivery_revision=s.last_potentially_delivered_revision,
  ARRAY(SELECT cidr::text FROM ipsec_retained_local_prefixes WHERE cleanup_delivery_id=g.cleanup_delivery_id ORDER BY cidr::text),
  ARRAY(SELECT cidr::text FROM ipsec_retained_remote_prefixes WHERE cleanup_delivery_id=g.cleanup_delivery_id ORDER BY cidr::text),
- jsonb_array_length(d.lineage)
+ jsonb_array_length(d.lineage),d.lineage
  FROM ipsec_retained_guards g JOIN ipsec_connections c ON c.id=g.connection_id AND c.org_id=g.org_id
  JOIN organizations g_org ON g_org.id=g.org_id
  JOIN ipsec_runtime_deliveries d ON d.id=g.cleanup_delivery_id
@@ -75,11 +84,28 @@ func staticRecreationCandidates(ctx context.Context, tx pgx.Tx, org, site, node 
 		var oldSite, oldNode uuid.UUID
 		var locals, remotes []string
 		var count int
-		if err = rows.Scan(&p.connectionID, &p.cleanupID, &profile, &intent, &finalized, &oldSite, &oldNode, &valid, &locals, &remotes, &count); err != nil {
+		var lineageRaw []byte
+		if err = rows.Scan(&p.connectionID, &p.cleanupID, &profile, &intent, &finalized, &oldSite, &oldNode, &valid, &locals, &remotes, &count, &lineageRaw); err != nil {
 			return nil, createError(err)
 		}
 		total += count
-		if cfg.BGP != nil || cfg.Mode != "ipv4-static" || profile != providerProfile(cfg) || intent != "deleted" || !finalized || !valid || oldSite != site || oldNode != node || !equalPrefixDomains(locals, cfg.LocalPrefixes) || !equalPrefixDomains(remotes, cfg.RemotePrefixes) || count < 1 || total > maxRetainedGuardPredecessors {
+		cross := mixedAzure && isAzureProfile(cfg.ProfileID) && isAzureProfile(profile)
+		p.crossProfile = cross
+		azure := cfg.ProfileID == AzureActiveActiveBGPProfile && cfg.BGP != nil && cfg.Mode == "ipv4-bgp"
+		domains := equalPrefixDomains(remotes, cfg.RemotePrefixes)
+		if azure || cross {
+			domains = azureRecreationDomains(remotes, cfg.RemotePrefixes)
+			var lineage []RuntimeDelivery
+			if json.Unmarshal(lineageRaw, &lineage) != nil || len(lineage) == 0 {
+				return nil, ErrConnectionConflict
+			}
+			for _, d := range lineage {
+				if cross && !azureProfileRecreationContract(d.Manifest, azureProfileConfigManifest(cfg)) || !cross && !azureRecreationManifestContract(d.Manifest, azureRecreationConfigManifest(cfg)) {
+					return nil, ErrConnectionConflict
+				}
+			}
+		}
+		if (!azure && !cross && (cfg.BGP != nil || cfg.Mode != "ipv4-static")) || (!cross && profile != providerProfile(cfg)) || intent != "deleted" || !finalized || !valid || oldSite != site || oldNode != node || !equalPrefixDomains(locals, cfg.LocalPrefixes) || !domains || count < 1 || total > maxRetainedGuardPredecessors {
 			return nil, ErrConnectionConflict
 		}
 		result = append(result, p)
@@ -126,12 +152,19 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 		}
 		byDelivery[ref.DeliveryID] = ref
 	}
+	var mixedAzure bool
+	if isAzureProfile(m.ProfileID) {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ipsec_static_recreations r JOIN ipsec_connections p ON p.id=r.predecessor_connection_id WHERE r.connection_id=$1 AND p.provider_profile IS DISTINCT FROM $2)`, m.ConnectionID, m.ProfileID).Scan(&mixedAzure); err != nil {
+			return createError(err)
+		}
+	}
 	rows, err := tx.Query(ctx, `SELECT b.predecessor_connection_id,d.lineage FROM ipsec_static_recreations b JOIN ipsec_runtime_deliveries d ON d.id=b.cleanup_delivery_id WHERE b.connection_id=$1 AND b.org_id=$2 ORDER BY b.predecessor_connection_id`, m.ConnectionID, m.OrgID)
 	if err != nil {
 		return createError(err)
 	}
 	defer rows.Close()
 	var refs []RuntimeRetainedGuardPredecessor
+	crossProfile := false
 	seen := map[uuid.UUID]bool{}
 	for rows.Next() {
 		var connection uuid.UUID
@@ -139,7 +172,8 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 		if err = rows.Scan(&connection, &raw); err != nil {
 			return createError(err)
 		}
-		if m.BGP != nil || m.BGPVersion != nil || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != GCPClassicProfile) {
+		azure := m.ProfileID == AzureActiveActiveBGPProfile && m.BGP != nil
+		if !azure && !isAzureProfile(m.ProfileID) && (m.BGP != nil || m.BGPVersion != nil || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != GCPClassicProfile && !(isAzureProfile(m.ProfileID) && !azureBGP(m.ProfileID)))) {
 			return ErrConnectionConflict
 		}
 		var lineage []RuntimeDelivery
@@ -148,7 +182,9 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 		}
 		for _, d := range lineage {
 			prior := d.Manifest
-			if d.ID == uuid.Nil || seen[d.ID] || d.Kind != "apply" || !runtimeDigest(d.OwnershipDigest) || prior.ConnectionID != connection || prior.OrgID != m.OrgID || prior.SiteID != m.SiteID || prior.NodeID != m.NodeID || prior.BGP != nil || prior.BGPVersion != nil || prior.ProfileID != m.ProfileID || !equalPrefixDomains(prior.LocalPrefixes, m.LocalPrefixes) || !equalPrefixDomains(prior.RemotePrefixes, m.RemotePrefixes) {
+			cross := mixedAzure && isAzureProfile(prior.ProfileID) && isAzureProfile(m.ProfileID)
+			crossProfile = crossProfile || cross
+			if d.ID == uuid.Nil || seen[d.ID] || d.Kind != "apply" || !runtimeDigest(d.OwnershipDigest) || prior.ConnectionID != connection || prior.OrgID != m.OrgID || prior.SiteID != m.SiteID || prior.NodeID != m.NodeID || (!azure && !cross && (prior.BGP != nil || prior.BGPVersion != nil || prior.ProfileID != m.ProfileID || !equalPrefixDomains(prior.LocalPrefixes, m.LocalPrefixes) || !equalPrefixDomains(prior.RemotePrefixes, m.RemotePrefixes))) || (azure && !cross && !azureRecreationManifestContract(prior, *m)) || (cross && !azureProfileRecreationContract(prior, *m)) {
 				return ErrConnectionConflict
 			}
 			ref, present := byDelivery[d.ID]
@@ -170,6 +206,13 @@ func attachStaticRecreation(ctx context.Context, tx pgx.Tx, m *RuntimeManifest) 
 	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].DeliveryID.String() < refs[j].DeliveryID.String() })
 	m.RetainedGuardPredecessors = refs
+	if crossProfile {
+		v := 1
+		m.AzureProfileRecreationVersion = &v
+	} else if len(refs) > 0 && m.ProfileID == AzureActiveActiveBGPProfile {
+		v := 1
+		m.AzureBGPRecreationVersion = &v
+	}
 	return nil
 }
 
@@ -177,16 +220,16 @@ func retainedGuardCapability(raw []byte) bool {
 	var fields map[string]json.RawMessage
 	return json.Unmarshal(raw, &fields) == nil && string(fields["ipsec_config_version"]) == "1" && string(fields["ipsec_retained_guard_version"]) == "1"
 }
-func blockedStaticRecreations(ctx context.Context, tx pgx.Tx, org uuid.UUID, capable bool) ([]uuid.UUID, error) {
+func blockedStaticRecreations(ctx context.Context, tx pgx.Tx, org uuid.UUID, capable, azureCapable, profileCapable bool) ([]uuid.UUID, error) {
 	blocked := []uuid.UUID{}
-	if capable {
+	if capable && azureCapable && profileCapable {
 		return blocked, nil
 	}
 	available, err := staticRecreationSchema(ctx, tx)
 	if err != nil || !available {
 		return blocked, err
 	}
-	rows, err := tx.Query(ctx, `SELECT DISTINCT connection_id FROM ipsec_static_recreations WHERE org_id=$1 ORDER BY connection_id`, org)
+	rows, err := tx.Query(ctx, `SELECT DISTINCT connection_id FROM ipsec_static_recreations WHERE org_id=$1 AND (NOT $2 OR (NOT $3 AND EXISTS(SELECT 1 FROM ipsec_connections c WHERE c.id=connection_id AND c.provider_profile='azure-active-active-bgp-ipv4-v1')) OR (NOT $4 AND EXISTS(SELECT 1 FROM ipsec_static_recreations r JOIN ipsec_connections n ON n.id=r.connection_id JOIN ipsec_connections p ON p.id=r.predecessor_connection_id WHERE r.connection_id=ipsec_static_recreations.connection_id AND n.provider_profile IS DISTINCT FROM p.provider_profile))) ORDER BY connection_id`, org, capable, azureCapable, profileCapable)
 	if err != nil {
 		return nil, createError(err)
 	}

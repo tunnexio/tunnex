@@ -179,3 +179,56 @@ func TestIPsecMaintainedObservationCannotDetachParentCancellation(t *testing.T) 
 	}
 	assertMaintenanceSecretsCleared(t, f.maintenancePollFake)
 }
+
+func TestIPsecMaintainedObservationPreservesAzureGCPWire(t *testing.T) {
+	for _, profile := range []string{ipsec.AzureActiveActiveBGPProfile, ipsec.AzureActiveStandbyBGPProfile, ipsec.GCPHABGPProfile} {
+		for _, mismatch := range []bool{false, true} {
+			t.Run(profile+map[bool]string{false: "/valid", true: "/changed-final"}[mismatch], func(t *testing.T) {
+				f := newObservedMaintenancePollFake(t)
+				id := f.items[0].ConnectionID
+				m := f.materials[id]
+				m.Manifest.ProfileID = profile
+				version := 3
+				if profile == ipsec.GCPHABGPProfile {
+					version = 2
+				}
+				m.Manifest.BGPVersion = &version
+				m.Manifest.BGP = &ipsec.BGPConfig{MaximumPrefixes: 64}
+				for i := range m.Manifest.Tunnels {
+					m.Manifest.Tunnels[i].Selected = false
+				}
+				if ipsec.IsSingleTunnelProfile(profile) {
+					v, n := 1, 1
+					m.Manifest.TransportVersion = &v
+					m.Manifest.TunnelCount = &n
+					m.Manifest.Tunnels[1] = ipsec.RuntimeTunnel{}
+					m.Secrets[1] = ipsec.RuntimeSecret{}
+				}
+				f.materials[id] = m
+				f.change = func(out []ipsec.RuntimeMaintenanceResult) ([]ipsec.RuntimeMaintenanceResult, error) {
+					out[0].Report.TransportVersion = m.Manifest.TransportVersion
+					out[0].Report.TunnelCount = m.Manifest.TunnelCount
+					if ipsec.IsSingleTunnelProfile(profile) {
+						out[0].Report.Tunnels[1] = ipsec.RuntimeTunnelStatus{}
+					}
+					return out, nil
+				}
+				if mismatch {
+					f.finalChange = func(out []ipsec.RuntimeMaintenanceResult) []ipsec.RuntimeMaintenanceResult {
+						out[0].Report.Tunnels[0].Status = "down"
+						return out
+					}
+				}
+				valid, err := PollIPsecRuntimeValidated(context.Background(), f, f)
+				if mismatch {
+					if err == nil || valid || f.acks != 0 {
+						t.Fatal("changed streamed final body acknowledged")
+					}
+				} else if err != nil || !valid || f.acks != 5 || len(f.reports) != 5 || f.applyCount != 0 {
+					t.Fatal("provider wire lost", err, f.acks, len(f.reports))
+				}
+				assertMaintenanceSecretsCleared(t, f.maintenancePollFake)
+			})
+		}
+	}
+}

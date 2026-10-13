@@ -58,7 +58,11 @@ func preflightPackageIdentity() ([]preflightPackageFile, error) {
 
 // QualifyPreflight starts only observer daemons with all TCP listeners disabled.
 // No result survives a route change, failed readback or incomplete owned cleanup.
-func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQualification, resultErr error) {
+func QualifyPreflight(ctx context.Context, parentDir string) (*PreflightQualification, error) {
+	return qualifyPreflight(ctx, parentDir, preflightRoutes)
+}
+
+func qualifyPreflight(ctx context.Context, parentDir string, readRoutes func(context.Context) ([]byte, error)) (result *PreflightQualification, resultErr error) {
 	if ctx == nil || ctx.Err() != nil || os.Geteuid() != 0 || !filepath.IsAbs(parentDir) || filepath.Clean(parentDir) != parentDir || !privateAncestors(parentDir) {
 		return nil, preflightRefused("input", fmt.Errorf("%w: input", ErrPackage))
 	}
@@ -79,7 +83,7 @@ func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQ
 	if err != nil {
 		return nil, preflightRefused("identity", fmt.Errorf("%w: identity", ErrPackage))
 	}
-	before, err := preflightRoutes(bounded)
+	before, err := readRoutes(bounded)
 	if err != nil {
 		return nil, preflightRefused("routes-before", fmt.Errorf("%w: routes-before", ErrPackage))
 	}
@@ -97,12 +101,11 @@ func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQ
 			resultErr = preflightRefused("observer-close", fmt.Errorf("%w: observer-close", ErrPackage))
 			return
 		}
-		after, err := preflightRoutes(bounded)
-		if err != nil || !bytes.Equal(before, after) {
-			result = nil
-			resultErr = preflightRefused("routes-after-close", fmt.Errorf("%w: routes-after-close", ErrPackage))
-			return
-		}
+		after, routeErr := readRoutes(bounded)
+		// The owned process has closed successfully. Remove only its now-empty
+		// directory and durably finish cleanup even when route observation
+		// refuses a receipt; uncertain process cleanup still returns above.
+		routesStable := routeErr == nil && bytes.Equal(before, after)
 		if os.Remove(dir) != nil {
 			result = nil
 			resultErr = preflightRefused("private-directory-remove", fmt.Errorf("%w: private-directory-remove", ErrPackage))
@@ -119,6 +122,11 @@ func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQ
 		if syncErr != nil || closeErr != nil {
 			result = nil
 			resultErr = preflightRefused("private-parent-sync", fmt.Errorf("%w: private-parent-sync", ErrPackage))
+			return
+		}
+		if !routesStable {
+			result = nil
+			resultErr = preflightRefused("routes-after-close", fmt.Errorf("%w: routes-after-close", ErrPackage))
 			return
 		}
 		if result == nil {
@@ -153,7 +161,7 @@ func QualifyPreflight(ctx context.Context, parentDir string) (result *PreflightQ
 	if !process.Alive() || preflightNoListeners(identity.Children) != nil {
 		return nil, preflightRefused("observer-listeners-recheck", fmt.Errorf("%w: observer-listeners-recheck", ErrPackage))
 	}
-	after, err := preflightRoutes(bounded)
+	after, err := readRoutes(bounded)
 	if err != nil || !bytes.Equal(before, after) {
 		return nil, preflightRefused("routes-observed", fmt.Errorf("%w: routes-observed", ErrPackage))
 	}

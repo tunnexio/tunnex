@@ -121,7 +121,15 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.running = false; s.mu.Unlock() }()
 	now := s.now()
-	work, err := s.store.Due(ctx, now, s.batch)
+	var work []Work
+	var err error
+	if early, ok := s.store.(interface {
+		DueForRefresh(context.Context, time.Time, int, time.Duration) ([]Work, error)
+	}); ok {
+		work, err = early.DueForRefresh(ctx, now, s.batch, refreshHeadroom(s.interval, s.timeout, s.batch))
+	} else {
+		work, err = s.store.Due(ctx, now, s.batch)
+	}
 	if err != nil {
 		return
 	}
@@ -207,4 +215,27 @@ func d4Cause(c WithdrawalCause) WithdrawalCause {
 		return c
 	}
 	return WithdrawalSERVFAIL
+}
+
+// Headroom is scheduling only: original observed TTL, per-lookup timeout and
+// publication timestamps never change. More than32 serial jobs or slow commits
+// can still exceed capacity; they do not acquire extended freshness authority.
+func refreshHeadroom(interval, timeout time.Duration, batch int) time.Duration {
+	if batch < 1 {
+		batch = 1
+	}
+	if batch > 32 {
+		batch = 32
+	}
+	if interval >= MaxTTL {
+		return MaxTTL
+	}
+	result := interval
+	for i := 0; i < batch; i++ {
+		if timeout >= MaxTTL-result {
+			return MaxTTL
+		}
+		result += timeout
+	}
+	return result
 }

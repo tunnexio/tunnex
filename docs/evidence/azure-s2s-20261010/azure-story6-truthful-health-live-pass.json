@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "story": "AZ-S2S-6",
+  "acceptance": "accepted_scoped_telemetry",
+  "source_receipt_sha256": "a3e58496b94b7f133d25b6fdc271081d70afa8ef9b29815da2a4e1b0e37be4ea",
+  "normal_status_sha256": "1f0b32b14100dcb3578db687a9392796253fb2a9bf4080975e028d0049eff3e2",
+  "runtime": {
+    "observed_at": "2026-10-11T18:44:47.300980+00:00",
+    "tunnels": [
+      {
+        "id": "29711c4a-f809-44bb-91e0-1a7916ca7733",
+        "slot": 1,
+        "status": "up",
+        "selected": false
+      },
+      {
+        "id": "1ab07244-dece-4127-869d-5f7d3ad4fe43",
+        "slot": 2,
+        "status": "up",
+        "selected": false
+      }
+    ],
+    "bgp": {
+      "version": 1,
+      "sequence": 90598,
+      "peers": [
+        {
+          "slot": 1,
+          "state": "established",
+          "accepted_prefixes": 1,
+          "installed_prefixes": 1
+        },
+        {
+          "slot": 2,
+          "state": "established",
+          "accepted_prefixes": 1,
+          "installed_prefixes": 0
+        }
+      ],
+      "routes": [
+        {
+          "prefix": "10.231.0.0/16",
+          "slot": 1
+        }
+      ]
+    }
+  },
+  "independent_native_observed_at": "2026-10-11T18:44:48.893470559Z",
+  "normal_policy_count": 8,
+  "criteria": {
+    "no_up_from_apply": "Native SA/kernel ownership observations required; read failures and ambiguous inventories remain Unknown",
+    "separate_bgp_routes": "Both peers accepted1; independently installed route only slot1; selected false on both preserved",
+    "freshness": "Fresh normal public status bracketed by complete independent native observation",
+    "application_separation": "No application or DNS readiness inferred"
+  },
+  "supporting_evidence": [
+    "azure-ui-import-save-mobile-and-story7-live-pass.json",
+    "azure-node-profile-upgrade-native-and-story3-acceptance.json"
+  ],
+  "limitations": [
+    "Natural DNS window failed61/61; stories8 and10 remain open",
+    "Other three managed cloud profile traffic acceptance remains separate",
+    "Focused status/freshness/role/component tests are local proof, not additional cloud runs"
+  ]
+}

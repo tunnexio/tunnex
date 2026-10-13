@@ -179,13 +179,14 @@ type DirectResolver struct {
 	Transport BoundTransport
 }
 
-func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) ([]Record, error) {
+func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) (result []Record, resultErr error) {
+	defer func() { finishLookupTiming(ctx, resultErr) }()
 	if !validResolverConfig(config) {
 		return nil, errResolverConfig
 	}
 	// Each endpoint remains independently authoritative. Bound concurrency to
-	// four complete endpoint workflows; record types and CNAME steps within a
-	// workflow remain sequential and every exchange retains its native proofs.
+	// four complete endpoint workflows, each with at most two independent record
+	// exchanges. CNAME steps remain sequential; every exchange keeps its proofs.
 	config.Endpoints = append([]ResolverEndpoint(nil), config.Endpoints...)
 	types = append([]RecordType(nil), types...)
 	if config.IPsecPath != nil {
@@ -219,6 +220,7 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 	// Drain before returning, including on cancellation. Reduce in configured
 	// order, so faster replies never decide consensus or DNS error precedence.
 	workers.Wait()
+	markLookupWorkersDrained(ctx)
 	var canonical []Record
 	for _, result := range results {
 		records, err := result.records, result.err
@@ -303,25 +305,54 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConf
 			return nil, fmt.Errorf("cname loop")
 		}
 		seen[current] = true
-		var step []Record
-		for _, typ := range types {
+		// A and AAAA at the same name are independent exchanges. Reduce in
+		// requested type order after draining both, preserving error precedence.
+		type typeResult struct {
+			records []Record
+			err     error
+		}
+		results := make([]typeResult, len(types))
+		jobs := make(chan int, len(types))
+		for i, typ := range types {
 			if typ == RecordCNAME {
 				continue
 			}
 			if prior := answered[typ][current]; len(prior) != 0 {
-				step = append(step, prior...)
+				results[i].records = prior
 				continue
 			}
-			got, err := exchange(ctx, endpoint, current, typ)
-			if err != nil {
-				return nil, err
-			}
-			step = append(step, got...)
-			if terminal, records, ok := terminalWireAnswer(current, typ, got); ok {
-				if answered[typ] == nil {
-					answered[typ] = map[string][]Record{}
+			jobs <- i
+		}
+		close(jobs)
+		var workers sync.WaitGroup
+		for range min(2, len(types)) {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				for i := range jobs {
+					if err := ctx.Err(); err != nil {
+						results[i].err = err
+						continue
+					}
+					results[i].records, results[i].err = exchange(ctx, endpoint, current, types[i])
 				}
-				answered[typ][terminal] = records
+			}()
+		}
+		workers.Wait()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var step []Record
+		for i, result := range results {
+			if result.err != nil {
+				return nil, result.err
+			}
+			step = append(step, result.records...)
+			if terminal, records, ok := terminalWireAnswer(current, types[i], result.records); ok {
+				if answered[types[i]] == nil {
+					answered[types[i]] = map[string][]Record{}
+				}
+				answered[types[i]][terminal] = records
 			}
 		}
 		step = canonicalRecords(step)
@@ -600,6 +631,7 @@ type Responder struct {
 	mu       sync.Mutex
 	seen     map[string]cached
 	inflight map[string]*pendingResponse
+	running  map[string]string
 }
 
 type pendingResponse struct {
@@ -615,7 +647,53 @@ type cached struct {
 }
 
 func NewResponder(resolver any) *Responder {
-	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached), inflight: make(map[string]*pendingResponse)}
+	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached), inflight: make(map[string]*pendingResponse), running: make(map[string]string)}
+}
+
+// RunDisposition is admission only, never a DNS answer or native authority.
+type RunDisposition uint8
+
+const (
+	RunCompleted RunDisposition = iota
+	RunDuplicatePending
+	RunConflictingPending
+	RunAtCapacity
+)
+const maxInflightRequests = 64
+
+// Run admits one complete Handle/report workflow for an immutable pending ID.
+// Completed replay remains in Handle; this registry never caches answers, waits
+// for another request, or displaces a live job. The callback retains its original
+// context/deadline and proofs. Release includes report failure and panic paths.
+func (r *Responder) Run(ctx context.Context, gatewayID string, req Request, run func()) RunDisposition {
+	fp := gatewayID + "|" + requestFingerprint(req)
+	r.mu.Lock()
+	if active, ok := r.running[req.RequestID]; ok {
+		r.mu.Unlock()
+		if active != fp {
+			return RunConflictingPending
+		}
+		return RunDuplicatePending
+	}
+	// Preserve the original typed refusal path for malformed/expired/cancelled
+	// inputs; they do not allocate persistent admission entries.
+	if ctx.Err() != nil || validateRequest(req, gatewayID, r.now().UTC()) != "" {
+		r.mu.Unlock()
+		run()
+		return RunCompleted
+	}
+	if len(r.running) >= maxInflightRequests {
+		r.mu.Unlock()
+		return RunAtCapacity
+	}
+	if r.running == nil {
+		r.running = make(map[string]string)
+	}
+	r.running[req.RequestID] = fp
+	r.mu.Unlock()
+	defer func() { r.mu.Lock(); delete(r.running, req.RequestID); r.mu.Unlock() }()
+	run()
+	return RunCompleted
 }
 
 // Handle resolves only an authenticated desired-state request addressed to the

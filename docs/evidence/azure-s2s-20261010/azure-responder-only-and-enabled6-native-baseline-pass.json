@@ -1,0 +1,194 @@
+{
+  "accepted_count": 3,
+  "actual_native_baseline": {
+    "bgp": {
+      "peers": [
+        {
+          "accepted_prefixes": 1,
+          "slot": 1,
+          "state": "established"
+        },
+        {
+          "accepted_prefixes": 1,
+          "slot": 2,
+          "state": "established"
+        }
+      ],
+      "routes": [
+        "10.231.0.0/16"
+      ]
+    },
+    "configuration_revision": 1,
+    "connection_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "desired_revision": 6,
+    "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "historical_boot_entry_count": 1,
+    "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+    "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+    "host_machine_identity_source": "external_root_attestation",
+    "journal_entries": 29,
+    "journal_sha256": "ebf38202334e30af0452facb120de90849e78b597017341674d40d13f66ccde0",
+    "kind": "owned_max_prefix_baseline",
+    "namespace": {
+      "device": 4,
+      "inode": 4026532430
+    },
+    "native": {
+      "sad": 4,
+      "spd_fwd": 2,
+      "spd_in": 2,
+      "spd_out": 2
+    },
+    "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+    "observed_at": "2026-10-11T15:09:55.427603087Z",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "traffic_counters_monotonic_advanced": false,
+    "tunnels": [
+      {
+        "owned_ike": 1,
+        "owned_installed_children": 1,
+        "slot": 1,
+        "state": "up"
+      },
+      {
+        "owned_ike": 1,
+        "owned_installed_children": 1,
+        "slot": 2,
+        "state": "up"
+      }
+    ],
+    "version": 1
+  },
+  "baseline_private_run_id": "azure-90b96648-enabled6-baseline-6986ea3e-bece-4056-861d-2788a3539659",
+  "baseline_wrapper_actual_stdout_sha256": "7503017f4956d00b5dc9a32eab44c6a540c4db1a6bd5c596a23379399b9ec1df",
+  "mode_change": {
+    "after_private_sha256": "da9a045831b761644b7b08950cb84c83cecd1f7a4e18615a5802b7ddc845e231",
+    "before_private_sha256": "8abfda6b324107eb753b5a0c381362b0208b3fe30bedb66ff6db61b30a29c631",
+    "category": "owned_responder_only_actual_readback",
+    "full_arm_changed_property_names": [],
+    "full_arm_other_properties_equal": true,
+    "native_receipt_sha256": "43d9be22eaaa41c0e2544e11033c476ef676568d0f496feb7281b1f74f5a0e7c",
+    "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+    "node_started_at": "2026-10-11T14:57:21.319232448Z",
+    "normal_connection": {
+      "application_state": "not_applied",
+      "cleanup_state": "retained_guard",
+      "configuration_revision": 1,
+      "desired_intent": "disabled",
+      "desired_revision": 5,
+      "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "maximum_prefixes": 1,
+      "profile_id": "azure-active-active-bgp-ipv4-v1",
+      "remote_prefixes": [
+        "10.231.0.0/16",
+        "10.235.77.0/24"
+      ]
+    },
+    "private_run_id": "azure-responder-90b96648-07d8f5e9-58e4-45ee-a781-d54de7306fab",
+    "result": {
+      "after": {
+        "mode": "ResponderOnly",
+        "state": "Succeeded"
+      },
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "before": {
+        "mode": "Default",
+        "state": "Succeeded"
+      },
+      "gateway_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn",
+      "local_gateway_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/localNetworkGateways/tunnex-local",
+      "mutation_sent": true,
+      "native_receipt_sha256": "43d9be22eaaa41c0e2544e11033c476ef676568d0f496feb7281b1f74f5a0e7c",
+      "observed_at": "2026-10-11T15:07:02.043651+00:00",
+      "owner": "azure-s2s-01a12505",
+      "protected_properties_unchanged": true,
+      "resource_group": "tunnex-azure-s2s-20261010",
+      "scope": "Owned initial-initiation qualification setting only; no connectivity or Default-mode readiness claim",
+      "subscription": "34e2f259-b462-40bf-8f4a-06a3930d99e6",
+      "version": 1
+    },
+    "runtime_enable_sent": false,
+    "story_acceptance": false
+  },
+  "mode_wrapper_actual_stdout_sha256": "a3b8d845155f610f9f402c250858f634f30885755f470b262f9e6eae729218dd",
+  "native_receipt_sha256": "fb05139f811f3b2c4c09edf4bab6c83e4a804093fbc76f0fd07df22d17464609",
+  "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+  "node_started_at": "2026-10-11T14:57:21.319232448Z",
+  "normal_runtime": {
+    "connection": {
+      "application_state": "applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled",
+      "desired_revision": 6,
+      "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f"
+    },
+    "normal_connection": {
+      "application_state": "applied",
+      "cleanup_state": "retained_guard",
+      "configuration_revision": 1,
+      "desired_intent": "enabled",
+      "desired_revision": 6,
+      "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "maximum_prefixes": 1,
+      "profile_id": "azure-active-active-bgp-ipv4-v1",
+      "remote_prefixes": [
+        "10.231.0.0/16",
+        "10.235.77.0/24"
+      ]
+    },
+    "observed_at": "2026-10-11T15:09:53.921213+00:00",
+    "phase": "read",
+    "policy_count": 0,
+    "purpose": "limit",
+    "runtime": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ],
+        "sequence": 81889,
+        "version": 1
+      },
+      "observed_at": "2026-10-11T15:09:52.707189+00:00",
+      "tunnels": [
+        {
+          "id": "60e449ae-23e7-43a5-b331-67ca6bb7d052",
+          "selected": false,
+          "slot": 1,
+          "status": "up"
+        },
+        {
+          "id": "12a2c793-f27a-4f93-8dfd-e4bbd0c3aa4b",
+          "selected": false,
+          "slot": 2,
+          "status": "up"
+        }
+      ]
+    },
+    "saved_stage": "create_reserved",
+    "scope": "Normal API readback only; no BGP/native/packet proof",
+    "version": 1
+  },
+  "open_count": 8,
+  "scope": "Actual supported ResponderOnly initial establishment and AA BGP baseline only; maximum-prefix, remaining profiles, DNS/FQDN and lifecycle acceptance remain open",
+  "source_commit": "90b9664840f4babdb86557e83382ad7c8b90b900",
+  "version": 1
+}

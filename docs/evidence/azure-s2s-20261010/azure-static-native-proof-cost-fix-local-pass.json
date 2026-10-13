@@ -1,0 +1,79 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "candidate_patch_sha256": "4feaf88161111f351bc38d2cf89dc2cdcba3f763c36ecaa5feb67fd4a99cfdfe",
+  "category": "static_native_proof_cost_fix_local_pass",
+  "deadline_or_authority_relaxed": false,
+  "full_ipsec_race": {
+    "candidate_file_bytes_match": true,
+    "candidate_files": {
+      "runtime_controller.go": "408b3150123a203f6f14fb08c831979ebe87f8440e8800a7cb8b947864ff5141",
+      "runtime_proof.go": "6bc19191644e556f49bdb8d744ac22f7cfe32fb2d34ea66684a47cff20786ccc",
+      "runtime_static_proof_snapshot.go": "e1f0eae589dd7b26379582202b1e1f16a90c6b0a87d940d3d5b8a06bbfae2d68",
+      "runtime_static_proof_snapshot_test.go": "a3da21c2433dbfa7b42eb6fcf1e5d10909a8b12745b1bb9fa00c756247dda667"
+    },
+    "command": "GOMAXPROCS=2 GOCACHE=/private/tmp/azure-fqdn-go-cache GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly /Users/pawangupta/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -race -p 2 ./internal/ipsec -count=1",
+    "corrective_isolated_socket": {
+      "elapsed_seconds": 2.168,
+      "escalated": true,
+      "exit_code": 0,
+      "test": "TestDaemonSocketRefusesUnsafeParentAndSymlinks"
+    },
+    "exit_code": 0,
+    "go_elapsed_seconds": 477.652,
+    "go_version": "1.26.9",
+    "kind": "local_full_ipsec_race_qualification",
+    "limits": [
+      "Local source/race qualification only, no remote or native/live acceptance",
+      "Nonverbose Go output has zero skip markers, but cannot prove individual skip count",
+      "No source changes made during qualification"
+    ],
+    "log_sha256": "cce1af255e19d9ea6872f0e496f95d8c60512512f783ff0256edfac8a2bd9bdb",
+    "no_skips": "not_established_nonverbose_output",
+    "prior_sandbox_run": {
+      "elapsed_seconds": 476.844,
+      "exit_code": 1,
+      "only_reported_failure": "TestDaemonSocketRefusesUnsafeParentAndSymlinks unix bind operation not permitted",
+      "source": "root supplied prior result"
+    },
+    "sandbox": "local escalated Unix-socket bind authorized",
+    "skip_markers": 0,
+    "source_after_sha256": "3eec95148c695cc3ab3937b252e26d14f2cf92d66049aa51d74191e0e2aae9fc",
+    "source_before_after_equal": true,
+    "source_before_sha256": "3eec95148c695cc3ab3937b252e26d14f2cf92d66049aa51d74191e0e2aae9fc",
+    "source_input_count": 584
+  },
+  "full_ipsec_race_receipt": "/private/tmp/azure-static-proof-full-race-escalated-20261012/receipt.json",
+  "full_ipsec_race_receipt_sha256": "d9b41fdb4e107770102c267c5d60557f984ce3d3a5fa77b0d4e321e15947da4e",
+  "linux_node_build": {
+    "binary": {
+      "bytes": 14692514,
+      "path": "/private/tmp/azure-static-proof-two-branch-candidate-20261012/tunnex-node-linux-amd64",
+      "sha256": "983f9bc5e2fb621e676e0cce74f97fd8ba4a46391af8cf927a6ce7b978326515"
+    },
+    "exact_three_production_differences_from_coherent0dda": true,
+    "flags": "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOFLAGS=-mod=readonly GOMAXPROCS=2; go build -p2 -trimpath -buildvcs=false -ldflags=-s -w ./cmd/agent",
+    "go": "1.26.9",
+    "metadata_sha256": "3a96b1784504073bf670e0d89bd34c7209fb32fa5c790d5d47abd716fe088de2",
+    "original_admission_3b323_preserved": true,
+    "scope": "offline local build only; full race/live qualification separate",
+    "source_closure_sha256": "5b6a80461c3b73c4795fedd01a9b6bc89eafd716d56939d7030846c43a09f8ee",
+    "two_wave_excluded": true
+  },
+  "live_dns_improvement_proved": false,
+  "production_deployed": false,
+  "recorded_at": "2026-10-12T01:01:59.842920Z",
+  "root_matches_exact_build_source": true,
+  "root_production_source_files": 233,
+  "scope": "Two complete static native frames retain all inventory, ownership, environment, consistency and original-deadline checks. Daemon read overlaps independent XFRM-then-kernel branch; both complete before validation. Static timing callback now records existing native/environment work.",
+  "source_closure_sha256": "5b6a80461c3b73c4795fedd01a9b6bc89eafd716d56939d7030846c43a09f8ee",
+  "two_wave_candidate_included": false,
+  "whole_story_accepted": false
+}

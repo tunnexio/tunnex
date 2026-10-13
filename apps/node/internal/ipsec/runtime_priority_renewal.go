@@ -61,7 +61,7 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 				return nil, ErrRuntimeController
 			}
 			deliveries[d.ID] = true
-			items = append(items, maintenanceItem{RuntimeDelivery: d, Entry: e, Grants: a.Grants, PolicyHash: a.Identity.PolicyHash})
+			items = append(items, maintenanceItem{RuntimeDelivery: d, Entry: e, Grants: a.Grants, FQDNLeaseDescriptors: append([]RuntimeFQDNGrant(nil), a.FQDNLeaseDescriptors...), PolicyHash: a.Identity.PolicyHash})
 		}
 		return items, nil
 	}

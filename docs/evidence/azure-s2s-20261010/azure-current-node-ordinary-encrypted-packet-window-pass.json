@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "scope": "Ordinary forward application packet observation with unchanged full service and normal eight-policy brackets; separate from native proof and FQDN acceptance",
+  "source_commit": "ffb026e5f345e9cee7e692ada0e02ddc1abd5866",
+  "node_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+  "node_started_at": "2026-10-11T18:07:29.709083288Z",
+  "api_sha256": "25fe37f14743bc69920cb60b621b53cb7c8b7f2029c47668c2260a155b18551c",
+  "source_program_sha256": "fec11de75f47aa6041b24d8239da833b27ada11b66ae785943dbea7a4c125e28",
+  "probe_program_sha256": "a9c296ccf688ddfdbdaf07855571650ced16fb56d12f345013f7bbdf72ed7a97",
+  "connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+  "desired_revision": 2,
+  "configuration_revision": 1,
+  "profile_id": "azure-active-active-bgp-ipv4-v1",
+  "policy_count": 8,
+  "source_address": "10.233.10.2",
+  "tcp_payload_bytes": 65536,
+  "udp_payload_bytes": 4096,
+  "dns_queries": 0,
+  "services_mutated": false,
+  "normal_state_unchanged": true,
+  "packet_window": {
+    "category": "actual_packet_observation_complete",
+    "private_run_id": "azure-warm-packet-observation-c135cb5b-4743-4c48-8ee6-38063f38d93f",
+    "receipt_sha256": "e993f8386dd3cdf543854c07df66dc8c0e9cb9e59e60609104e51c4ca63cdd52",
+    "elapsed_seconds": 60.082643,
+    "counters": {
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "native_proof_run": false,
+    "service_mutated": false,
+    "acceptance": false
+  },
+  "acceptance": false,
+  "limitations": [
+    "Separate strict native proof remains authoritative",
+    "No DNS or FQDN readiness inferred",
+    "No other-profile or lifecycle acceptance claimed"
+  ]
+}

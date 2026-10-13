@@ -58,7 +58,7 @@ func TestRuntimeFQDNGatedLockedInputPreservesMixedProviderAdmission(t *testing.T
 			for _, tc := range []struct {
 				name, value string
 				want        int
-			}{{"missing", "{}", 0}, {"string", "{\"ipsec_fqdn_policy_version\":\"1\"}", 0}, {"future", "{\"ipsec_fqdn_policy_version\":2}", 0}, {"current", "{\"ipsec_fqdn_policy_version\":1}", 1}} {
+			}{{"missing", "{}", 0}, {"string", "{\"ipsec_fqdn_policy_version\":\"1\"}", 0}, {"future", "{\"ipsec_fqdn_policy_version\":3}", 0}, {"current v2", "{\"ipsec_fqdn_policy_version\":2}", 2}, {"current", "{\"ipsec_fqdn_policy_version\":1}", 1}} {
 				t.Run(tc.name, func(t *testing.T) {
 					if _, err := p.Exec(ctx, `UPDATE nodes SET capabilities=(capabilities-'ipsec_fqdn_policy_version')||$2::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, identity.GatewayID, tc.value); err != nil {
 						t.Fatal(err)
@@ -87,7 +87,7 @@ func TestRuntimeFQDNGatedLockedInputPreservesMixedProviderAdmission(t *testing.T
 			}
 			validUntil := time.Now().Add(5 * time.Second)
 			store.ConfigureRuntimePolicy(func(_ context.Context, _ *sqlc.Queries, in ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
-				return ipsec.RuntimePolicy{FQDNValidUntil: validUntil, Hash: strings.Repeat("a", 64), FQDNPolicyVersion: 1, FQDNGrants: []ipsec.RuntimeFQDNGrant{grant}}, nil
+				return ipsec.RuntimePolicy{FQDNLeaseDeadline: validUntil, Hash: strings.Repeat("a", 64), FQDNPolicyVersion: 1, FQDNGrants: []ipsec.RuntimeFQDNGrant{grant}}, nil
 			})
 			enabled, err := store.SetIntent(ctx, org, actor, c.ID, 1, "enabled")
 			if err != nil || enabled.DesiredRevision != 2 {
@@ -104,7 +104,7 @@ func TestRuntimeFQDNGatedLockedInputPreservesMixedProviderAdmission(t *testing.T
 				t.Fatalf("answer expiry not bounding lease: %d %v", lease.TTLMS, err)
 			}
 			validUntil = time.Now().Add(-time.Second)
-			if _, err := store.PermitLease(ctx, principal, c.ID, leaseRequest); !errors.Is(err, ipsec.ErrConnectionIneligible) {
+			if _, err := store.PermitLease(ctx, principal, c.ID, leaseRequest); !errors.Is(err, ipsec.ErrConnectionConflict) {
 				t.Fatalf("expired answer renewed: %v", err)
 			}
 			want := 2

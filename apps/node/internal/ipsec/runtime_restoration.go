@@ -84,6 +84,8 @@ func validRestoration(r RuntimeJournalEntry) bool {
 		// complete outer payload resolves the exact immutable predecessor graph.
 		structural := h.Entry
 		structural.RetainedGuardPredecessors = nil
+		structural.AzureBGPRecreationVersion = 0
+		structural.AzureProfileRecreationVersion = 0
 		if !validJournalPayload(runtimeJournalPayload{Version: retiredJournalVersion(structural), OwnerID: r.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{structural}}) {
 			return false
 		}
@@ -330,7 +332,7 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 	if _, err = c.refuse(ctx, entries); err != nil {
 		return fmt.Errorf("%w: restoration denial", err)
 	}
-	authority, identity, err := c.recoveryLease(ctx, old, m.Policy.Hash)
+	authority, identity, err := c.recoveryLease(ctx, old, m.Policy.Hash, m.Policy)
 	if err != nil {
 		return fmt.Errorf("%w: restoration lease", err)
 	}

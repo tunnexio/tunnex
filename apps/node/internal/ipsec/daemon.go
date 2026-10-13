@@ -476,7 +476,7 @@ func validEngineTunnel(t EngineTunnel) bool {
 	return true
 }
 func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
-	if t.BGP || t.ProfileID == GCPClassicStaticProfile {
+	if t.BGP || t.ProfileID == GCPClassicStaticProfile || IsAzureRuntimeProfile(t.ProfileID) {
 		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
 	}
 	if local {
@@ -503,10 +503,10 @@ func validEnginePSK(psk []byte) bool {
 	return true
 }
 
-// Provider constraints follow the accepted delivery contract. GCP secrets are
+// Provider constraints follow the accepted delivery contract. GCP and Azure secrets are
 // preserved as UTF-8 bytes; the legacy AWS alphabet remains unchanged.
 func validProfileEnginePSK(profile string, psk []byte) bool {
-	if profile != GCPHABGPProfile && profile != GCPClassicStaticProfile {
+	if profile != GCPHABGPProfile && profile != GCPClassicStaticProfile && !IsAzureRuntimeProfile(profile) {
 		return validRuntimeProviderProfile(profile) && validEnginePSK(psk)
 	}
 	if len(psk) < 8 || len(psk) > 64 || !utf8.Valid(psk) || strings.TrimSpace(string(psk)) == "" {
@@ -568,7 +568,13 @@ func (c *DaemonClient) initiateTunnel(ctx context.Context, t EngineTunnel) error
 // removeTunnel requires already-verified refusal and an exact owned intent from
 // the durable controller. Never terminate by wildcard or clear all credentials.
 func (c *DaemonClient) removeTunnel(ctx context.Context, t EngineTunnel) error {
-	if !validEngineTunnel(t) {
+	return c.removeTunnelSelectors(ctx, t, func(child DaemonChild) bool {
+		return sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(t, true)) && sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(t, false))
+	})
+}
+
+func (c *DaemonClient) removeTunnelSelectors(ctx context.Context, t EngineTunnel, selectors func(DaemonChild) bool) error {
+	if c == nil || c.request == nil || selectors == nil || !validEngineTunnel(t) {
 		return ErrDaemonProtocol
 	}
 	name := engineName(t)
@@ -587,7 +593,7 @@ func (c *DaemonClient) removeTunnel(ctx context.Context, t EngineTunnel) error {
 			return ErrDaemonProtocol
 		}
 		for _, child := range sa.Children {
-			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(t, true)) || !sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(t, false)) {
+			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !selectors(child) {
 				return ErrDaemonProtocol
 			}
 		}

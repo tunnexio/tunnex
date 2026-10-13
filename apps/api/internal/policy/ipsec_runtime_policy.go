@@ -2,8 +2,6 @@ package policy
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/netip"
 	"sort"
@@ -121,8 +119,13 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 	}
 	result.FQDNGrants = compileIPsecFQDNGrants(fqdnSnapshot, input)
 	if len(result.FQDNGrants) != 0 {
-		result.FQDNPolicyVersion = 1
-		result.FQDNValidUntil = runtimeFQDNValidUntil(fqdnSnapshot, result.FQDNGrants)
+		result.FQDNPolicyVersion = input.FQDNPolicyVersion
+		if input.FQDNPolicyVersion == 1 {
+			result.FQDNLeaseDeadline = runtimeFQDNLeaseDeadline(fqdnSnapshot, result.FQDNGrants)
+			if !result.FQDNLeaseDeadline.After(input.CompiledAt) {
+				return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
+			}
+		}
 	}
 	if len(result.Grants)+len(result.FQDNGrants) > 128 {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
@@ -135,15 +138,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 	return hashRuntimePolicy(result, input)
 }
 func hashRuntimePolicy(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
-	// Bind the hash to this exact connection even when its effective policy is
-	// empty. Hash only canonical nonsecret forwarding authority, never PSKs.
-	raw, err := runtimePolicyHashBytes(result, input)
-	if err != nil {
-		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
-	}
-	hash := sha256.Sum256(raw)
-	result.Hash = hex.EncodeToString(hash[:])
-	return result, nil
+	return ipsec.HashRuntimePolicy(result, input)
 }
 func runtimePolicyPrefix(raw string) (netip.Prefix, bool) {
 	p, err := netip.ParsePrefix(raw)

@@ -51,35 +51,47 @@ func TestStaticHealthyPeerSurvivesUnrelatedNamespaceRekey(t *testing.T) {
 	if before != [2]string{"up", "up"} {
 		t.Fatal("disjoint baseline is not independently healthy", before)
 	}
-	calls := 0
-	var currentD DaemonInventory
-	readers := runtimeStatusReaders{daemon: func(context.Context) (DaemonInventory, error) {
-		calls++
-		currentD = d
-		currentD.SAs = append([]DaemonIKE(nil), d.SAs...)
-		if calls == 2 {
-			sa := currentD.SAs[2]
-			sa.Children = append([]DaemonChild(nil), sa.Children...)
-			sa.Children[0].SPIOut++
-			currentD.SAs[2] = sa
-		}
-		return currentD, nil
-	}, kernel: func(context.Context) (KernelInventory, error) { return k, nil }, xfrm: func(context.Context) (XFRMInventory, error) {
-		v := x
-		v.States = append([]XFRMState(nil), x.States...)
-		if calls == 2 {
-			v.States[4].SPI++
-		}
-		if runtimeInventoryMatches(e, currentD, k, v) != nil || runtimeInventoryMatches(b, currentD, k, v) != nil {
+	// Build complete, immutable per-pass inputs before either reader branch runs.
+	// The daemon and XFRM readers advance independently; neither observes the
+	// other reader's counters or partially written inventory.
+	daemonPasses := [2]DaemonInventory{d, d}
+	xfrmPasses := [2]XFRMInventory{x, x}
+	daemonPasses[1].SAs = append([]DaemonIKE(nil), d.SAs...)
+	sa := daemonPasses[1].SAs[2]
+	sa.Children = append([]DaemonChild(nil), sa.Children...)
+	sa.Children[0].SPIOut++
+	daemonPasses[1].SAs[2] = sa
+	xfrmPasses[1].States = append([]XFRMState(nil), x.States...)
+	xfrmPasses[1].States[4].SPI++
+	for pass := range daemonPasses {
+		if runtimeInventoryMatches(e, daemonPasses[pass], k, xfrmPasses[pass]) != nil || runtimeInventoryMatches(b, daemonPasses[pass], k, xfrmPasses[pass]) != nil {
 			t.Fatal("owned complete per-pass proof failed")
 		}
-		if got := runtimeTunnelStatuses(e, currentD, k, v); got != before {
+		if got := runtimeTunnelStatuses(e, daemonPasses[pass], k, xfrmPasses[pass]); got != before {
 			t.Fatal("A ownership changed", got)
 		}
+	}
+	if reflect.DeepEqual(connectionXFRMSnapshot(b, xfrmPasses[0]), connectionXFRMSnapshot(b, xfrmPasses[1])) {
+		t.Fatal("fixture did not model B rekey")
+	}
+	if !reflect.DeepEqual(connectionXFRMSnapshot(e, xfrmPasses[0]), connectionXFRMSnapshot(e, xfrmPasses[1])) {
+		t.Fatal("fixture changed A's independent snapshot")
+	}
+	daemonCalls, xfrmCalls := 0, 0
+	readers := runtimeStatusReaders{daemon: func(context.Context) (DaemonInventory, error) {
+		v := daemonPasses[daemonCalls]
+		daemonCalls++
+		return v, nil
+	}, kernel: func(context.Context) (KernelInventory, error) { return k, nil }, xfrm: func(context.Context) (XFRMInventory, error) {
+		v := xfrmPasses[xfrmCalls]
+		xfrmCalls++
 		return v, nil
 	}, alive: func() bool { return true }}
 	if got := runtimeObservedStatuses(context.Background(), e, readers); got != before {
 		t.Fatalf("healthy A withdrawn by unrelated B rekey: got %v, want %v", got, before)
+	}
+	if daemonCalls != 2 || xfrmCalls != 2 {
+		t.Fatal("independent per-pass reads omitted")
 	}
 }
 

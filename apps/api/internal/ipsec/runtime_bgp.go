@@ -3,6 +3,9 @@ package ipsec
 // runtimeBGPCompatible protects apply/material/lease authorization. Cleanup
 // intentionally uses exact immutable lineage without requiring current capability.
 func runtimeBGPCompatible(m RuntimeManifest, eligible bool) bool {
+	if isAzureProfile(m.ProfileID) {
+		return azureManifestCompatible(m, eligible || !azureBGP(m.ProfileID))
+	}
 	if m.ProfileID == GCPClassicProfile {
 		return classicManifestCompatible(m, true)
 	}

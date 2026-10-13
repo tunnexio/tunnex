@@ -6,23 +6,58 @@ import (
 	"strings"
 )
 
+const AzureAPIPATransport = "azure-apipa-v1"
+
+// Azure supports public/private and 32-bit ASNs. The Azure default gateway
+// ASN65515 is allowed only remotely; Azure/IANA reserved values fail closed.
+func ValidAzureASN(a uint32, local bool) bool {
+	if a == 0 || a == 23456 || a == 4294967295 || a >= 64496 && a <= 64511 || a >= 65535 && a <= 65551 {
+		return false
+	}
+	switch a {
+	case 8074, 8075, 12076, 65515, 65517, 65518, 65519, 65520:
+		return !local && a == 65515
+	}
+	return true
+}
+
 type Peer struct {
+	AddressBits   uint8 // zero preserves legacy /30; Azure explicitly owns /32 hosts
 	LinkName      string
 	XFRMID        uint32
 	Slot          int
 	Local, Remote netip.Addr
 }
 type Config struct {
+	TransportProfile              string
 	LocalASN, RemoteASN           uint32
 	RouterID                      netip.Addr
 	MaximumPrefixes               int
 	LocalPrefixes, RemotePrefixes []netip.Prefix
+	PeerCount                     int // zero preserves the legacy two-peer contract
 	Peers                         [2]Peer
 }
 
+func (c Config) activePeerCount() int {
+	if c.PeerCount == 1 {
+		return 1
+	}
+	return 2
+}
 func (c Config) valid() bool {
+	if c.PeerCount != 0 && c.PeerCount != 1 || c.PeerCount == 1 && c.Peers[1] != (Peer{}) {
+		return false
+	}
+	azure := c.TransportProfile == AzureAPIPATransport
+	if c.TransportProfile != "" && !azure {
+		return false
+	}
 	private := func(a uint32) bool { return a >= 64512 && a <= 65534 || a >= 4200000000 && a <= 4294967294 }
-	if !private(c.LocalASN) || !(private(c.RemoteASN) || c.RemoteASN == 7224) || c.LocalASN == c.RemoteASN || !c.RouterID.Is4() || c.RouterID.As4()[0] == 0 || c.RouterID.IsLoopback() || c.RouterID.IsLinkLocalUnicast() || c.RouterID.As4()[0] >= 224 || c.MaximumPrefixes < 1 || c.MaximumPrefixes > 64 {
+	asnOK := private(c.LocalASN) && (private(c.RemoteASN) || c.RemoteASN == 7224)
+	if azure {
+		asnOK = ValidAzureASN(c.LocalASN, true) && ValidAzureASN(c.RemoteASN, false)
+	}
+	if !asnOK || c.LocalASN == c.RemoteASN || !c.RouterID.Is4() || c.RouterID.As4()[0] == 0 || c.RouterID.IsLoopback() || c.RouterID.IsLinkLocalUnicast() || c.RouterID.As4()[0] >= 224 || c.MaximumPrefixes < 1 || c.MaximumPrefixes > 64 {
 		return false
 	}
 	seen := []netip.Prefix{}
@@ -42,16 +77,23 @@ func (c Config) valid() bool {
 			seen = append(seen, p)
 		}
 	}
-	for i, p := range c.Peers {
-		if p.Slot != i+1 || !p.Local.Is4() || !p.Remote.Is4() || p.Local == p.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(p.Local) || !netip.PrefixFrom(p.Local, 30).Contains(p.Remote) {
+	for i, p := range c.Peers[:c.activePeerCount()] {
+		if p.Slot != i+1 || !p.Local.Is4() || !p.Remote.Is4() || p.Local == p.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(p.Local) || (!azure && !netip.PrefixFrom(p.Local, 30).Contains(p.Remote)) {
 			return false
 		}
 		l, r := p.Local.As4(), p.Remote.As4()
-		if l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3 {
+		if azure {
+			if p.AddressBits != 32 || !(netip.MustParsePrefix("169.254.21.0/24").Contains(p.Remote) || netip.MustParsePrefix("169.254.22.0/24").Contains(p.Remote)) {
+				return false
+			}
+		} else if p.AddressBits != 0 || l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3 {
 			return false
 		}
 	}
-	return netip.PrefixFrom(c.Peers[0].Local, 30).Masked() != netip.PrefixFrom(c.Peers[1].Local, 30).Masked()
+	if azure {
+		return c.activePeerCount() == 1 || c.Peers[0].Local == c.Peers[1].Local && c.Peers[0].Remote != c.Peers[1].Remote
+	}
+	return c.activePeerCount() == 1 || netip.PrefixFrom(c.Peers[0].Local, 30).Masked() != netip.PrefixFrom(c.Peers[1].Local, 30).Masked()
 }
 
 // RenderConfig emits bounded deterministic commands from typed intent only.
@@ -73,14 +115,14 @@ func RenderConfig(c Config) (string, error) {
 	}
 	b.WriteString("route-map TNX-IN permit 10\n match ip address prefix-list TNX-IN\nroute-map TNX-OUT permit 10\n match ip address prefix-list TNX-OUT\n")
 	fmt.Fprintf(&b, "router bgp %d\n bgp router-id %s\n no bgp default ipv4-unicast\n", c.LocalASN, c.RouterID)
-	for _, p := range c.Peers {
+	for _, p := range c.Peers[:c.activePeerCount()] {
 		fmt.Fprintf(&b, " neighbor %s remote-as %d\n neighbor %s update-source %s\n neighbor %s timers 10 30\n neighbor %s disable-connected-check\n", p.Remote, c.RemoteASN, p.Remote, p.Local, p.Remote, p.Remote)
 	}
 	b.WriteString(" address-family ipv4 unicast\n")
 	for _, p := range c.LocalPrefixes {
 		fmt.Fprintf(&b, "  network %s\n", p)
 	}
-	for _, p := range c.Peers {
+	for _, p := range c.Peers[:c.activePeerCount()] {
 		fmt.Fprintf(&b, "  neighbor %s activate\n  neighbor %s route-map TNX-IN in\n  neighbor %s route-map TNX-OUT out\n  neighbor %s maximum-prefix %d restart 1\n", p.Remote, p.Remote, p.Remote, p.Remote, c.MaximumPrefixes)
 	}
 	b.WriteString(" exit-address-family\n!\n")

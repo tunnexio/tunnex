@@ -25,13 +25,12 @@ type dnsOwnerViewFixture struct {
 
 func newDNSOwnerViewFixture(t *testing.T, proof func(context.Context) error) *dnsOwnerViewFixture {
 	t.Helper()
-	return newDNSOwnerProfileFixture(t, dnsMaterialFixture(), proof)
+	return newDNSOwnerViewMaterialFixture(t, dnsMaterialFixture(), proof)
 }
 
-func newDNSOwnerProfileFixture(t *testing.T, material RuntimeMaterial, proof func(context.Context) error) *dnsOwnerViewFixture {
+func newDNSOwnerViewMaterialFixture(t *testing.T, m RuntimeMaterial, proof func(context.Context) error) *dnsOwnerViewFixture {
 	t.Helper()
-	f := &dnsOwnerViewFixture{material: material}
-	m := f.material
+	f := &dnsOwnerViewFixture{material: m}
 	entry, grants, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +38,13 @@ func newDNSOwnerProfileFixture(t *testing.T, material RuntimeMaterial, proof fun
 	entry.Phase = RuntimeApplied
 	for i, tunnel := range entry.Allocation.Tunnels[:entry.Allocation.activeTunnelCount()] {
 		entry.Observed[i] = Ownership{Namespace: entry.Allocation.Namespace, InterfaceName: tunnel.Name, InterfaceIndex: 10 + i, XFRMID: tunnel.XFRMID}
+	}
+	if entry.ContractVersion == 3 {
+		route := RuntimeBGPRouteTuple{Prefix: netip.MustParsePrefix("10.20.0.0/24"), Slot: 1, InterfaceIndex: 10, Table: 254, Protocol: 242, Metric: 50001}
+		entry.BGPRoutes = &RuntimeBGPRoutes{Sequence: 1, Stage: "completed", Owned: []RuntimeBGPRouteTuple{route}, Target: []RuntimeBGPRouteTuple{route}}
+		if !validBGPRoutes(entry) {
+			t.Fatal("invalid BGP DNS fixture route")
+		}
 	}
 	identity := PermitLeaseIdentity{PolicyHash: m.Policy.Hash, Binding: entry.Engines[0].Binding, DeliveryID: entry.DeliveryID}
 	authority := dnsTestAuthority(t, identity)
@@ -697,4 +703,8 @@ func TestDNSOwnerViewGCPProfileEpochs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newDNSOwnerProfileFixture(t *testing.T, material RuntimeMaterial, proof func(context.Context) error) *dnsOwnerViewFixture {
+	return newDNSOwnerViewMaterialFixture(t, material, proof)
 }

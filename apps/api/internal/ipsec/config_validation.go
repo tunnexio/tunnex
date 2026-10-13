@@ -12,6 +12,7 @@ type BGPConfig struct {
 }
 
 type StaticConfig struct {
+	Azure                  *AzureContract `json:"azure,omitempty"`
 	ProfileID              string         `json:"profile_id,omitempty"`
 	BGP                    *BGPConfig     `json:"bgp,omitempty"`
 	Mode                   string         `json:"mode"`

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "observed_at": "2026-10-11T17:28:31.300555+00:00",
+  "scope": "owned Azure QA API deployment and independent schema read; gateway/traffic acceptance separate",
+  "source_tree": "42355027833eed826f9366487bb334c9bf890ca2",
+  "deploy_source_commit": "844aaf804ae64a43164076ea944342ac0648d19e",
+  "api_deploy": {
+    "returncode": 0,
+    "evidence": "/run/tunnex-qualification/api-mailbox-55724509-5df5-4014-9c85-d96195d4dfc2",
+    "result": {
+      "microstage": "pins_evidence_write",
+      "exception_class": "none",
+      "source_line": 0,
+      "action": "deploy",
+      "stage": "complete",
+      "success": true,
+      "healthy": true,
+      "current_binary_sha": "25fe37f14743bc69920cb60b621b53cb7c8b7f2029c47668c2260a155b18551c",
+      "automatic_rollback": false,
+      "unknown_outcome_requires_read_reconciliation": false
+    },
+    "transport_seconds": 18.044
+  },
+  "independent_service": {
+    "api_sha256": "25fe37f14743bc69920cb60b621b53cb7c8b7f2029c47668c2260a155b18551c",
+    "api_started_at": "2026-10-11T17:22:14.95471959Z",
+    "api_immutable_sha256": "b35622b41ecd4d8c25e54e98988df8d099365355355d6291a3a21b017eb7b7ca",
+    "gateway_unchanged": true
+  },
+  "independent_schema": {
+    "returncode": 0,
+    "result": {
+      "read_only": true,
+      "version": 227,
+      "dirty": false,
+      "has_version": true,
+      "api_binary_sha256": "25fe37f14743bc69920cb60b621b53cb7c8b7f2029c47668c2260a155b18551c",
+      "service_bracket_unchanged": true,
+      "private_run_id": "azure-schema227-read-44444c74-c519-4e45-b946-0adf1be8b631",
+      "observer_container_id": "f1b943f0702515a5b3d2b7190292baf097d6c5efeffcd30c84929155bb773845",
+      "observer_container_preserved": true
+    },
+    "transport_run_id": "azure-schema-network-transport-6e37ddb6-d560-4c3e-8467-b5befe98606d"
+  },
+  "normal_connection_after_upgrade": {
+    "connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+    "disabled": true,
+    "desired_revision": 1,
+    "configuration_revision": 1,
+    "full_configuration_equal": true,
+    "policy_count": 0
+  },
+  "private_receipt_sha256": {
+    "deploy": "2cd11edf69bb62b605fc3db59158ec68dafa27d637de24a5e71759e9760aade3",
+    "service": "6adce59ca6c7df4b08f54198d529b87488b82fea617a0592898073ceb3e6bdbd",
+    "schema": "dd3bda03a3cb575fe4a2b0b409d08a8e4b6d7fb4df82f20bd986ee13b74f971c"
+  },
+  "original_host_schema_reader_refusal_preserved": true,
+  "version_command_only": true,
+  "api_operation_count": 1,
+  "gateway_changes": 0,
+  "cloud_changes": 0,
+  "git_push": false
+}

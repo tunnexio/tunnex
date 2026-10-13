@@ -72,10 +72,12 @@ type RuntimeManifest struct {
 	TransportVersion *int `json:"transport_version,omitempty"`
 	TunnelCount      *int `json:"tunnel_count,omitempty"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	RecoveryVersion           *int                              `json:"recovery_version,omitempty"`
-	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
-	BGPVersion                *int                              `json:"bgp_version,omitempty"`
-	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
+	RecoveryVersion               *int                              `json:"recovery_version,omitempty"`
+	BGP                           *BGPConfig                        `json:"bgp,omitempty"`
+	BGPVersion                    *int                              `json:"bgp_version,omitempty"`
+	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
+	AzureBGPRecreationVersion     *int                              `json:"azure_bgp_recreation_version,omitempty"`
+	AzureProfileRecreationVersion *int                              `json:"azure_profile_recreation_version,omitempty"`
 }
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`
@@ -125,14 +127,23 @@ type RuntimeAcknowledgement struct {
 	GuardRetained bool `json:"guard_retained"`
 }
 type RuntimeLeaseRequest struct {
-	DeliveryID      uuid.UUID `json:"delivery_id"`
-	DesiredRevision int64     `json:"desired_revision"`
-	PolicyHash      string    `json:"policy_hash"`
-	Nonce           string    `json:"nonce"`
+	FQDNGrants      []RuntimeFQDNGrant `json:"fqdn_grants,omitempty"`
+	DeliveryID      uuid.UUID          `json:"delivery_id"`
+	DesiredRevision int64              `json:"desired_revision"`
+	PolicyHash      string             `json:"policy_hash"`
+	Nonce           string             `json:"nonce"`
+}
+
+// RuntimeFQDNPermit is response-only authority for one exact v2 descriptor.
+// Zero is an explicit selective withdrawal; omission is never authority.
+type RuntimeFQDNPermit struct {
+	GrantDigest string `json:"grant_digest"`
+	TTLMS       int64  `json:"ttl_ms"`
 }
 type RuntimeLease struct {
 	RuntimeLeaseRequest
-	TTLMS int64 `json:"ttl_ms"`
+	TTLMS       int64               `json:"ttl_ms"`
+	FQDNPermits []RuntimeFQDNPermit `json:"fqdn_permits,omitempty"`
 }
 
 type RuntimeTunnelStatus struct {

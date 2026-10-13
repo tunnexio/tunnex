@@ -15,16 +15,15 @@ import (
 // Docker's opaque xt targets need independent nft-backed iptables semantics.
 // Only its complete loopback DNS topology is admitted; table names are not proof.
 func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte, protected []netip.Prefix) bool {
-	if runtimeHookCensus(raw, protected) {
+	return runtimeQualifiedHookCensusWithCommands(ctx, nftPath, raw, protected, runKernelCommand)
+}
+func runtimeQualifiedHookCensusWithCommands(ctx context.Context, nftPath string, raw []byte, protected []netip.Prefix, run func(context.Context, string, ...string) ([]byte, error)) bool {
+	rows, ok := runtimeCensusRows(raw)
+	if !ok {
+		return false
+	}
+	if runtimeHookCensusRows(rows, protected) {
 		return true
-	}
-	root, ok := runtimeJSONObject(raw)
-	if !ok {
-		return false
-	}
-	rows, ok := kernelObjects(root["nftables"])
-	if !ok {
-		return false
 	}
 	present := false
 	for _, row := range rows {
@@ -47,12 +46,16 @@ func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte,
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	path := filepath.Join(filepath.Dir(nftPath), "iptables-nft-save")
-	version, err := runKernelCommand(ctx, path, "-V")
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(version)), "iptables-nft-save v") || !strings.HasSuffix(strings.TrimSpace(string(version)), " (nf_tables)") {
+	// Version and complete NAT listing are independent read-only commands.
+	// Keep both original validators and the bounded cancellation/drain barrier.
+	var version, listing []byte
+	if !runtimeEnvironmentReadPool(ctx, []func(context.Context) error{
+		func(c context.Context) error { var err error; version, err = run(c, path, "-V"); return err },
+		func(c context.Context) error { var err error; listing, err = run(c, path, "-t", "nat"); return err },
+	}) || !strings.HasPrefix(strings.TrimSpace(string(version)), "iptables-nft-save v") || !strings.HasSuffix(strings.TrimSpace(string(version)), " (nf_tables)") {
 		return false
 	}
-	listing, err := runKernelCommand(ctx, path, "-t", "nat")
-	return err == nil && runtimeDockerDNSCensus(raw, listing, protected)
+	return runtimeDockerDNSCensusRows(rows, listing, protected)
 }
 
 func runtimeDockerDNSPorts(listing []byte) (map[string]int, bool) {
@@ -132,6 +135,10 @@ func runtimeDockerDNSPorts(listing []byte) (map[string]int, bool) {
 }
 
 func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool {
+	rows, ok := runtimeCensusRows(raw)
+	return ok && runtimeDockerDNSCensusRows(rows, listing, protected)
+}
+func runtimeDockerDNSCensusRows(rows []map[string]json.RawMessage, listing []byte, protected []netip.Prefix) bool {
 	ports, ok := runtimeDockerDNSPorts(listing)
 	if !ok {
 		return false
@@ -141,14 +148,6 @@ func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool 
 		if !p.IsValid() || p.Overlaps(loopback) {
 			return false
 		}
-	}
-	root, ok := runtimeJSONObject(raw)
-	if !ok || len(root) != 1 {
-		return false
-	}
-	rows, ok := kernelObjects(root["nftables"])
-	if !ok {
-		return false
 	}
 	remaining := []map[string]json.RawMessage{}
 	tables := 0
@@ -303,6 +302,7 @@ func runtimeDockerDNSCensus(raw, listing []byte, protected []netip.Prefix) bool 
 	if tables != 1 || len(chains) != 4 || len(rules) != 6 {
 		return false
 	}
+	// Preserve the old serialized snapshot limit, including HTML escaping.
 	filtered, err := json.Marshal(map[string]any{"nftables": remaining})
-	return err == nil && runtimeHookCensus(filtered, protected)
+	return err == nil && len(filtered) <= kernelOutputLimit && runtimeHookCensusRows(remaining, protected)
 }

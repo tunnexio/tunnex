@@ -13,7 +13,7 @@ func runtimeDeliveryValid(d RuntimeDelivery, org, node uuid.UUID, kind string) b
 	if _, err := runtimeTransportContract(m); err != nil {
 		return false
 	}
-	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile && m.ProfileID != GCPClassicStaticProfile) || !validDigest(d.OwnershipDigest) {
+	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile && m.ProfileID != GCPClassicStaticProfile && !IsAzureRuntimeProfile(m.ProfileID)) || !validDigest(d.OwnershipDigest) {
 		return false
 	}
 	if kind == "cleanup" {
@@ -65,7 +65,10 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	if recoveryErr != nil {
 		return fail()
 	}
-	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
+	if !validAzureRecreationManifest(m.Manifest) {
+		return fail()
+	}
+	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp && m.Manifest.AzureBGPRecreationVersion == nil && m.Manifest.AzureProfileRecreationVersion == nil) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
 		return fail()
 	}
 	local, ok := runtimePrefixes(m.Manifest.LocalPrefixes)
@@ -81,7 +84,13 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		return fail()
 	}
 	out := RuntimeJournalEntry{RetainedGuardPredecessors: append([]RuntimeRetainedGuardPredecessor(nil), m.Manifest.RetainedGuardPredecessors...), DeliveryID: m.ID, SiteID: m.Manifest.SiteID, OwnershipDigest: m.OwnershipDigest, Phase: RuntimeReserved, Allocation: KernelAllocation{Namespace: ns, Generation: m.ID, ConnectionID: m.Manifest.ConnectionID}}
-	if isGCPRuntimeProfile(m.Manifest.ProfileID) {
+	if m.Manifest.AzureProfileRecreationVersion != nil {
+		out.AzureProfileRecreationVersion = *m.Manifest.AzureProfileRecreationVersion
+	}
+	if m.Manifest.AzureBGPRecreationVersion != nil {
+		out.AzureBGPRecreationVersion = *m.Manifest.AzureBGPRecreationVersion
+	}
+	if isGCPRuntimeProfile(m.Manifest.ProfileID) || IsAzureRuntimeProfile(m.Manifest.ProfileID) {
 		out.Allocation.ProfileID = m.Manifest.ProfileID
 		if count == 1 {
 			out.ContractVersion = 4
@@ -103,14 +112,15 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		}
 		var inside netip.Prefix
 		var cloud netip.Addr
-		if count == 1 {
+		if m.Manifest.ProfileID == GCPClassicStaticProfile {
 			if t.InsideCIDR != "" || t.CustomerInsideAddress != "" || t.CloudInsideAddress != "" {
 				return fail()
 			}
 			inside = classicLocalAddress(t.ID)
 		} else {
 			p, e := netip.ParsePrefix(t.InsideCIDR)
-			if e != nil || !p.Addr().Is4() || p != p.Masked() || p.Bits() != 30 {
+			azureBGP := IsAzureBGPProfile(m.Manifest.ProfileID)
+			if e != nil || !p.Addr().Is4() || p != p.Masked() || p.Bits() != map[bool]int{true: 32, false: 30}[azureBGP] {
 				return fail()
 			}
 			customer, e := netip.ParseAddr(t.CustomerInsideAddress)
@@ -118,14 +128,14 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 				return fail()
 			}
 			cloud, e = netip.ParseAddr(t.CloudInsideAddress)
-			if e != nil || !p.Contains(cloud) || cloud == customer {
+			if e != nil || !cloud.Is4() || (!azureBGP && !p.Contains(cloud)) || (azureBGP && !validAzurePeer(cloud)) || cloud == customer {
 				return fail()
 			}
 			cb := cloud.As4()
-			if cb[3]&3 == 0 || cb[3]&3 == 3 {
+			if !azureBGP && (cb[3]&3 == 0 || cb[3]&3 == 3) {
 				return fail()
 			}
-			inside = netip.PrefixFrom(customer, 30)
+			inside = netip.PrefixFrom(customer, p.Bits())
 		}
 		peer, e := netip.ParseAddr(t.OutsideAddress)
 		if e != nil || !peer.Is4() {
@@ -142,6 +152,9 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		}
 	}
 	if !validKernelAllocation(out.Allocation) || count == 2 && out.Engines[0].RemoteAddress == out.Engines[1].RemoteAddress {
+		return fail()
+	}
+	if IsAzureRuntimeProfile(m.Manifest.ProfileID) && count == 2 && secrets && m.Secrets[0].PSK != m.Secrets[1].PSK {
 		return fail()
 	}
 	grants, fqdnErr := runtimeFQDNGrants(m, local, remote)

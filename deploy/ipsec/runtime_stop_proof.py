@@ -262,3 +262,11 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+def docker_cgroup_paths(container_id):
+    """Compatibility view over the common exact Docker identity validator."""
+    candidates = ('/docker/' + str(container_id), '/system.slice/docker-' + str(container_id) + '.scope')
+    for path in candidates:
+        exact_cgroup(container_id, '0::' + path)
+    return candidates

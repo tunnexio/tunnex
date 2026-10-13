@@ -18,16 +18,18 @@ class FreshRestartTests(unittest.TestCase):
             cg='0::/docker/'+cid;ns='net:[41]';raw=b'owned'
             if mutation=='same_pid':c['state']['Pid']=1
             if mutation=='wrong_cgroup':cg='0::/foreign'
+            if mutation=='systemd':cg='0::/system.slice/docker-'+cid+'.scope'
             if mutation=='wrong_ns':ns='net:[99]'
             if mutation=='wrong_gate':raw=b'foreign'
             again=copy.deepcopy(c)
             if mutation=='process_swap':again['state']['Pid']=3
-            with patch.object(runner.proof,'boot',return_value='boot'),patch.object(runner.proof,'inspect',return_value=again),patch.object(runner.proof,'private_bytes',return_value=raw),patch.object(Path,'lstat',return_value=info),patch.object(Path,'read_text',autospec=True,side_effect=lambda p:cg if str(p).endswith('cgroup') else '2 (x) '+' '.join(['S']+['0']*18+['100'])),patch.object(runner.os,'readlink',return_value=ns):
+            with patch.object(runner.proof,'boot',return_value='boot'),patch.object(runner.proof,'inspect',return_value=again),patch.object(runner.proof,'private_bytes',return_value=raw),patch.object(Path,'lstat',autospec=True,side_effect=lambda p: SimpleNamespace(st_uid=0,st_mode=0o40755,st_dev=3,st_ino=4) if str(p).startswith('/sys/fs/cgroup') else info),patch.object(Path,'read_text',autospec=True,side_effect=lambda p:('999' if mutation=='missing_member' else '2') if str(p).endswith('cgroup.procs') else cg if str(p).endswith('cgroup') else '2 (x) '+' '.join(['S']+['0']*18+['100'])),patch.object(runner.os,'readlink',return_value=ns):
                 return runner.observe_fresh_runtime(before,b'stop',b'oldjournal',b'currentjournal',c,'net:[41]',Path('/gate'),b'owned',info)
         good=observe()
+        self.assertEqual(observe('systemd')['pid_start_ticks'],100)
         self.assertEqual(good['pid_start_ticks'],100)
         self.assertEqual(good['current_journal_sha256'],hashlib.sha256(b'currentjournal').hexdigest())
-        for mutation in ('same_pid','wrong_cgroup','wrong_ns','wrong_gate','process_swap'):
+        for mutation in ('same_pid','wrong_cgroup','wrong_ns','wrong_gate','process_swap','missing_member'):
             with self.subTest(mutation=mutation),self.assertRaises(ValueError):observe(mutation)
 
     def test_guard_metadata_advance_only_preserves_lineage(self):

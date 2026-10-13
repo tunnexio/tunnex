@@ -873,7 +873,7 @@ const (
 
 // Defines values for AppAccessGrantImpactSessionImpactAvailable.
 const (
-	False AppAccessGrantImpactSessionImpactAvailable = false
+	AppAccessGrantImpactSessionImpactAvailableFalse AppAccessGrantImpactSessionImpactAvailable = false
 )
 
 // Defines values for AppAccessMyAppMfaFreshnessSeconds.
@@ -1257,6 +1257,45 @@ const (
 	Standby HubMemberRole = "standby"
 )
 
+// Defines values for IPsecAzureContractCustomPolicy.
+const (
+	Aes256Sha256Dh14Pfs2048 IPsecAzureContractCustomPolicy = "aes256-sha256-dh14-pfs2048"
+)
+
+// Defines values for IPsecAzureContractGatewaySku.
+const (
+	VpnGw1   IPsecAzureContractGatewaySku = "VpnGw1"
+	VpnGw1AZ IPsecAzureContractGatewaySku = "VpnGw1AZ"
+	VpnGw2   IPsecAzureContractGatewaySku = "VpnGw2"
+	VpnGw2AZ IPsecAzureContractGatewaySku = "VpnGw2AZ"
+	VpnGw3   IPsecAzureContractGatewaySku = "VpnGw3"
+	VpnGw3AZ IPsecAzureContractGatewaySku = "VpnGw3AZ"
+	VpnGw4   IPsecAzureContractGatewaySku = "VpnGw4"
+	VpnGw4AZ IPsecAzureContractGatewaySku = "VpnGw4AZ"
+	VpnGw5   IPsecAzureContractGatewaySku = "VpnGw5"
+	VpnGw5AZ IPsecAzureContractGatewaySku = "VpnGw5AZ"
+)
+
+// Defines values for IPsecAzureContractIkeVersion.
+const (
+	N2 IPsecAzureContractIkeVersion = 2
+)
+
+// Defines values for IPsecAzureContractNatEnabled.
+const (
+	IPsecAzureContractNatEnabledFalse IPsecAzureContractNatEnabled = false
+)
+
+// Defines values for IPsecAzureContractUsePolicyBasedTrafficSelectors.
+const (
+	False IPsecAzureContractUsePolicyBasedTrafficSelectors = false
+)
+
+// Defines values for IPsecAzureContractVpnType.
+const (
+	RouteBased IPsecAzureContractVpnType = "RouteBased"
+)
+
 // Defines values for IPsecBGPEligibilityReason.
 const (
 	IPsecBGPEligible           IPsecBGPEligibilityReason = "eligible"
@@ -1286,6 +1325,18 @@ const (
 const (
 	Ipv4Bgp    IPsecConfigurationCheckInputMode = "ipv4-bgp"
 	Ipv4Static IPsecConfigurationCheckInputMode = "ipv4-static"
+)
+
+// Defines values for IPsecConfigurationCheckInputProfileId.
+const (
+	AwsBgpIpv4V1                   IPsecConfigurationCheckInputProfileId = "aws-bgp-ipv4-v1"
+	AwsStaticIpv4V1                IPsecConfigurationCheckInputProfileId = "aws-static-ipv4-v1"
+	AzureActiveActiveBgpIpv4V1     IPsecConfigurationCheckInputProfileId = "azure-active-active-bgp-ipv4-v1"
+	AzureActiveActiveStaticIpv4V1  IPsecConfigurationCheckInputProfileId = "azure-active-active-static-ipv4-v1"
+	AzureActiveStandbyBgpIpv4V1    IPsecConfigurationCheckInputProfileId = "azure-active-standby-bgp-ipv4-v1"
+	AzureActiveStandbyStaticIpv4V1 IPsecConfigurationCheckInputProfileId = "azure-active-standby-static-ipv4-v1"
+	GcpClassicStaticIpv4V1         IPsecConfigurationCheckInputProfileId = "gcp-classic-static-ipv4-v1"
+	GcpHaBgpIpv4V1                 IPsecConfigurationCheckInputProfileId = "gcp-ha-bgp-ipv4-v1"
 )
 
 // Defines values for IPsecConnectionApplicationState.
@@ -5713,6 +5764,34 @@ type HubSet struct {
 	Members []HubMember `json:"members"`
 }
 
+// IPsecAzureContract defines model for IPsecAzureContract.
+type IPsecAzureContract struct {
+	CustomPolicy                   IPsecAzureContractCustomPolicy                   `json:"custom_policy"`
+	GatewaySku                     IPsecAzureContractGatewaySku                     `json:"gateway_sku"`
+	IkeVersion                     IPsecAzureContractIkeVersion                     `json:"ike_version"`
+	NatEnabled                     IPsecAzureContractNatEnabled                     `json:"nat_enabled"`
+	UsePolicyBasedTrafficSelectors IPsecAzureContractUsePolicyBasedTrafficSelectors `json:"use_policy_based_traffic_selectors"`
+	VpnType                        IPsecAzureContractVpnType                        `json:"vpn_type"`
+}
+
+// IPsecAzureContractCustomPolicy defines model for IPsecAzureContract.CustomPolicy.
+type IPsecAzureContractCustomPolicy string
+
+// IPsecAzureContractGatewaySku defines model for IPsecAzureContract.GatewaySku.
+type IPsecAzureContractGatewaySku string
+
+// IPsecAzureContractIkeVersion defines model for IPsecAzureContract.IkeVersion.
+type IPsecAzureContractIkeVersion int
+
+// IPsecAzureContractNatEnabled defines model for IPsecAzureContract.NatEnabled.
+type IPsecAzureContractNatEnabled bool
+
+// IPsecAzureContractUsePolicyBasedTrafficSelectors defines model for IPsecAzureContract.UsePolicyBasedTrafficSelectors.
+type IPsecAzureContractUsePolicyBasedTrafficSelectors bool
+
+// IPsecAzureContractVpnType defines model for IPsecAzureContract.VpnType.
+type IPsecAzureContractVpnType string
+
 // IPsecBGPConfiguration Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
 type IPsecBGPConfiguration struct {
 	LocalAsn uint32 `json:"local_asn"`
@@ -5766,17 +5845,25 @@ type IPsecBGPStatusVersion int
 
 // IPsecConfigurationCheckInput defines model for IPsecConfigurationCheckInput.
 type IPsecConfigurationCheckInput struct {
+	Azure *IPsecAzureContract `json:"azure,omitempty"`
+
 	// Bgp Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
 	Bgp                    *IPsecBGPConfiguration           `json:"bgp,omitempty"`
 	CustomerOutsideAddress string                           `json:"customer_outside_address"`
 	LocalPrefixes          []string                         `json:"local_prefixes"`
 	Mode                   IPsecConfigurationCheckInputMode `json:"mode"`
-	RemotePrefixes         []string                         `json:"remote_prefixes"`
-	Tunnels                []IPsecConfigurationCheckTunnel  `json:"tunnels"`
+
+	// ProfileId Omit for legacy AWS mode selection. GCP and Azure profiles require explicit selection. GCP HA uses IPv4 BGP and two tunnels to one public peer; GCP Classic uses IPv4 static routing and one tunnel with empty inside address fields. Azure uses one active-standby or two active-active tunnels with the declared routing mode.
+	ProfileId      *IPsecConfigurationCheckInputProfileId `json:"profile_id,omitempty"`
+	RemotePrefixes []string                               `json:"remote_prefixes"`
+	Tunnels        []IPsecConfigurationCheckTunnel        `json:"tunnels"`
 }
 
 // IPsecConfigurationCheckInputMode defines model for IPsecConfigurationCheckInput.Mode.
 type IPsecConfigurationCheckInputMode string
+
+// IPsecConfigurationCheckInputProfileId Omit for legacy AWS mode selection. GCP and Azure profiles require explicit selection. GCP HA uses IPv4 BGP and two tunnels to one public peer; GCP Classic uses IPv4 static routing and one tunnel with empty inside address fields. Azure uses one active-standby or two active-active tunnels with the declared routing mode.
+type IPsecConfigurationCheckInputProfileId string
 
 // IPsecConfigurationCheckResult defines model for IPsecConfigurationCheckResult.
 type IPsecConfigurationCheckResult struct {
@@ -5848,10 +5935,25 @@ type IPsecConnectionStatusRecoveryVersion int
 
 // IPsecEligibility defines model for IPsecEligibility.
 type IPsecEligibility struct {
+	// AzureBgp Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	AzureBgp *IPsecBGPEligibility `json:"azure_bgp,omitempty"`
+
+	// AzureBgpRecreation Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	AzureBgpRecreation *IPsecBGPEligibility `json:"azure_bgp_recreation,omitempty"`
+
+	// AzureStatic Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	AzureStatic *IPsecBGPEligibility `json:"azure_static,omitempty"`
+
 	// Bgp Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
-	Bgp      *IPsecBGPEligibility   `json:"bgp,omitempty"`
-	Eligible bool                   `json:"eligible"`
-	Reason   IPsecEligibilityReason `json:"reason"`
+	Bgp      *IPsecBGPEligibility `json:"bgp,omitempty"`
+	Eligible bool                 `json:"eligible"`
+
+	// GcpClassic Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	GcpClassic *IPsecBGPEligibility `json:"gcp_classic,omitempty"`
+
+	// GcpHa Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	GcpHa  *IPsecBGPEligibility   `json:"gcp_ha,omitempty"`
+	Reason IPsecEligibilityReason `json:"reason"`
 }
 
 // IPsecEligibilityReason defines model for IPsecEligibility.Reason.
@@ -5885,6 +5987,8 @@ type IPsecProviderCreateInput struct {
 
 // IPsecProviderNetworkConfiguration defines model for IPsecProviderNetworkConfiguration.
 type IPsecProviderNetworkConfiguration struct {
+	Azure *IPsecAzureContract `json:"azure,omitempty"`
+
 	// Bgp Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
 	Bgp                    *IPsecBGPConfiguration       `json:"bgp,omitempty"`
 	CustomerOutsideAddress string                       `json:"customer_outside_address"`

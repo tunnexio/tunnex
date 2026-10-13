@@ -1,0 +1,80 @@
+{
+  "accepted_story_count": 6,
+  "actual_readonly_directory_metadata": {
+    "category": "readonly_census_directory_metadata_diagnostic",
+    "counts": {
+      "bad_directory_metadata": 0,
+      "changed_directory": 0,
+      "delivery_prefixes": 39,
+      "invalid_suffix": 0,
+      "matching_generations": 32,
+      "nonempty_directory": 0,
+      "observed_journal_entries": 39,
+      "parent_items": 37
+    },
+    "journal_unchanged": true,
+    "native_authority_acceptance": false,
+    "parent_private": true,
+    "raw_records_exported": false,
+    "scope": "Host rooted readonly directory metadata only; original Go census and native receipt remain mandatory.",
+    "transport_seconds": 2.309
+  },
+  "actual_readonly_directory_receipt_sha256": "e5d10f26fa35ecc589a976626ee75a4b2e5c15b12d4053a2cd1cf25b3d7b4621",
+  "automatic_review_rejection_reason": "New diagnostic binary/source payload code egress was not specifically included in the earlier V7 file approval. No transfer or peer execution occurred.",
+  "category": "enabled18_census_readonly_metadata_and_diagnostic_build_checkpoint",
+  "diagnostic_build": {
+    "acceptance": false,
+    "all630_source_before_after_equal": true,
+    "base_production_closure_sha256": "1a8c66a46a6bad316f0ae705ce163197a4207ac00e89c3955075e307447f68d3",
+    "binary": {
+      "bytes": 19599171,
+      "path": "/private/tmp/azure-909-history-branch-root-build-v2-b7e5c4f6-a9a2-46f1-b7aa-57945078abc4/history-branch-diagnostic.test",
+      "sha256": "bfd88afa757f0c5ac20f090999ba71ebb9fe0a2925edc00817c43206aa2ad2cb"
+    },
+    "build_returncode": 0,
+    "category": "root_909_history_branch_diagnostic_linux_build",
+    "diagnostic_only": true,
+    "member_pins": {
+      "absence_linux.go": "5fb5a7ff5efce7fc50ad1feadfa70c218b425576729511231f942ecc12fc2e7e",
+      "overlay.json": "6a71de5481759c0f0dafc869564531a736d43a5bc4f952db3c2c2bad410ccb8a",
+      "runtime_azure_history_branch_diagnostic_linux_test.go": "b87e76f3e4ddbc6f7bd33438c8f4f35755627916785db4b301b5a83c3eae5f2e"
+    },
+    "original_four_overlays_unchanged": true,
+    "source_review_sha256": "af018717da6de43001b75f4f13cfcc5e959e9655d2adbf5d1cefb256a8e796ec"
+  },
+  "diagnostic_build_receipt_sha256": "908ee681201270efb44a28e47840a645b0bed0326ccf3f3ae7f0d7cb97356e47",
+  "diagnostic_dispatch_sha256": "72ef5ec7f2a523252930a84dbd13ddbd3b1c06b1f014c07cc01ee848551d7754",
+  "diagnostic_remote_attempt_executed": false,
+  "diagnostic_transfer_approval": "pending_explicit_user_approval_after_automatic_review_rejection",
+  "new_acceptance_slices_closed": 0,
+  "normal_desired_revision": 18,
+  "original_native_accepted": false,
+  "original_native_accepted_entry_count": null,
+  "original_native_refusal_reason": "bgp_history_census_refused",
+  "parallel_source_reviews": {
+    "diagnostic_dispatch": {
+      "focused_tests_passed": 3,
+      "independent_review_sha256": "10abee06f5bbf4ba3ee572a1727b76077f3cb06be351ef1aa1a406007dc29188",
+      "live_executed": false
+    },
+    "peer_fault": {
+      "focused_tests_passed": 13,
+      "independent_review_sha256": "648e25fc42c871ab1abd4b637a16e4eb410619857009dacaa592261df5dcbd7b",
+      "live_executed": false
+    },
+    "warm_restart": {
+      "focused_tests_passed": 21,
+      "independent_review_sha256": "b45657b1b7638bfb5717f8f1cac3dd9fd0a00d6047128a90dd4feb13e62281d0",
+      "live_executed": false
+    }
+  },
+  "qa_node_deployed": true,
+  "recorded_at": "2026-10-12T12:26:41.867947+00:00",
+  "scope": "Directory counts are diagnostic observations only. Exact native BGP census branch and full acceptance remain unresolved. The original generic observer and all acceptance gates are unchanged.",
+  "total_story_count": 11,
+  "version": 1,
+  "withdrawn_diagnostic_v1": {
+    "binary_sha256": "bac44ed8ab75382b0ea2b36412fcefe5acd7c84dfc5215547a2d8fc9910aa9de",
+    "reason": "Host PID was mistakenly used for the container PID field; V2 requires container PID 1 and independently binds host PID in the root dispatcher. V1 was never sent or run."
+  }
+}

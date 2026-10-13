@@ -41,7 +41,7 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if e = attachStaticRecreation(ctx, tx, &manifest); e != nil {
 		return invalid(e)
 	}
-	if len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+	if !locked.recreationEligible(manifest) {
 		return invalid(ErrConnectionIneligible)
 	}
 	delivery, _, e := scanDelivery(tx.QueryRow(ctx, `SELECT `+runtimeDeliveryColumns+` FROM ipsec_runtime_deliveries WHERE connection_id=$1 AND org_id=$2 AND desired_revision=$3 AND kind='apply'`, id, p.OrgID, revision))
@@ -49,14 +49,14 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if !fresh && e != nil {
 		return invalid(createError(e))
 	}
-	if fresh && manifest.BGP == nil && manifest.ProfileID != GCPClassicProfile && locked.recoveryEligible {
+	if fresh && manifest.BGP == nil && activeTunnelCount(manifest.ProfileID) == 2 && locked.recoveryEligible {
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
 	}
-	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) {
+	if isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) {
 		return invalid(ErrConnectionIneligible)
 	}
 	raw, digest := runtimeHash(manifest)
@@ -68,6 +68,9 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	}
 	if delivery.OwnershipDigest != digest {
 		return invalid(ErrConnectionConflict)
+	}
+	if !runtimeMaterialLeaseRequestFits(delivery, policy) {
+		return invalid(ErrConnectionIneligible)
 	}
 	result := RuntimeMaterial{RuntimeDelivery: delivery, Policy: policy}
 	for i, t := range tunnels[:activeTunnelCount(manifest.ProfileID)] {
@@ -113,7 +116,7 @@ func (s *ConnectionStore) Cleanup(ctx context.Context, p RuntimePrincipal, id uu
 	if e != nil {
 		return RuntimeCleanup{}, createError(e)
 	}
-	if len(d.Manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+	if !locked.recreationEligible(d.Manifest) {
 		return RuntimeCleanup{}, ErrConnectionIneligible
 	}
 	if e = tx.Commit(ctx); e != nil {
@@ -155,7 +158,7 @@ func (s *ConnectionStore) Acknowledge(ctx context.Context, p RuntimePrincipal, i
 	if e != nil {
 		return createError(e)
 	}
-	if len(d.Manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+	if !locked.recreationEligible(d.Manifest) {
 		return ErrConnectionIneligible
 	}
 	if d.Kind != ack.Kind || d.DesiredRevision != ack.DesiredRevision || d.OwnershipDigest != ack.OwnershipDigest {
@@ -202,11 +205,17 @@ func (s *ConnectionStore) Pending(ctx context.Context, p RuntimePrincipal, after
 	if e != nil {
 		return RuntimePendingPage{}, ErrRuntimeUnauthorized
 	}
-	var retainedCap bool
+	var retainedCap, azureCap, profileCap bool
 	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_retained_guard_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&retainedCap); e != nil {
 		return RuntimePendingPage{}, createError(e)
 	}
-	blocked, e := blockedStaticRecreations(ctx, tx, p.OrgID, retainedCap)
+	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_azure_bgp_recreation_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&azureCap); e != nil {
+		return RuntimePendingPage{}, createError(e)
+	}
+	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_azure_profile_recreation_version'='1'::jsonb AND capabilities->'ipsec_azure_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&profileCap); e != nil {
+		return RuntimePendingPage{}, createError(e)
+	}
+	blocked, e := blockedStaticRecreations(ctx, tx, p.OrgID, retainedCap, azureCap, profileCap)
 	if e != nil {
 		return RuntimePendingPage{}, e
 	}
@@ -243,7 +252,7 @@ func (s *ConnectionStore) Pending(ctx context.Context, p RuntimePrincipal, after
 	return out, nil
 }
 func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, id uuid.UUID, r RuntimeLeaseRequest) (RuntimeLease, error) {
-	if r.DeliveryID == uuid.Nil || r.DesiredRevision <= 0 || !runtimeDigest(r.PolicyHash) || !runtimeDigest(r.Nonce) {
+	if !runtimeLeaseRequestFits(r) || r.DeliveryID == uuid.Nil || r.DesiredRevision <= 0 || !runtimeDigest(r.PolicyHash) || !runtimeDigest(r.Nonce) {
 		return RuntimeLease{}, ErrConnectionInvalid
 	}
 	tx, locked, e := s.runtimeLock(ctx, p.OrgID, id, &p)
@@ -269,7 +278,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) || (!locked.recreationEligible(manifest)) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)
@@ -280,46 +289,39 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if e != nil {
 		return RuntimeLease{}, e
 	}
-	if policy.Hash != r.PolicyHash {
-		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "policy_hash", "connection_id", id.String())
-		return RuntimeLease{}, ErrConnectionConflict
-	}
-	// Re-observe database time after compilation; transaction-start now() could
-	// be stale after lock waits. Node measures TTL from request start, so response
-	// transit cannot extend this server bound.
+	// Fence before the independent authoritative clock query. Every subsequent
+	// query/validation/commit duration is charged, never replaced by API wall time.
+	observedMono := time.Now()
 	var observedAt time.Time
 	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observedAt); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	observedMono := time.Now()
-	ttlMS, e := runtimePolicyLeaseTTL(policy, observedAt, 0)
+	policy, expired, e := runtimeFQDNLeaseContinuity(policy, r, RuntimePolicyInput{OrgID: c.OrgID, NodeID: p.NodeID, SiteID: c.HistoricalSiteID, ConnectionID: id, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: policy.SelectedFQDNVersion}, observedAt)
 	if e != nil {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "policy_hash", "connection_id", id.String())
+		return RuntimeLease{}, e
+	}
+	// Reject an already expired v1 owner before committing, and charge the same
+	// monotonic fence again after commit below.
+	if _, e = runtimeFQDNWholeLeaseTTL(policy, observedAt, time.Since(observedMono)); e != nil {
 		return RuntimeLease{}, e
 	}
 	if e = tx.Commit(ctx); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	ttlMS, e = runtimePolicyLeaseTTL(policy, observedAt, time.Since(observedMono))
+	elapsed := time.Since(observedMono)
+	ttl, e := runtimeFQDNWholeLeaseTTL(policy, observedAt, elapsed)
 	if e != nil {
 		return RuntimeLease{}, e
 	}
-	return RuntimeLease{RuntimeLeaseRequest: r, TTLMS: ttlMS}, nil
-}
-
-func runtimePolicyLeaseTTL(policy RuntimePolicy, observedAt time.Time, elapsed time.Duration) (int64, error) {
-	ttl := 60 * time.Second
-	if len(policy.FQDNGrants) != 0 {
-		if policy.FQDNValidUntil.IsZero() || observedAt.IsZero() || elapsed < 0 {
-			return 0, ErrConnectionIneligible
-		}
-		remaining := policy.FQDNValidUntil.Sub(observedAt) - elapsed
-		if remaining < ttl {
-			ttl = remaining
+	permits, e := runtimeFQDNLeasePermits(policy, observedAt, elapsed)
+	if e != nil {
+		return RuntimeLease{}, e
+	}
+	for i := range permits {
+		if expired[permits[i].GrantDigest] {
+			permits[i].TTLMS = 0
 		}
 	}
-	ms := ttl.Milliseconds()
-	if ms <= 0 {
-		return 0, ErrConnectionIneligible
-	}
-	return ms, nil
+	return RuntimeLease{RuntimeLeaseRequest: RuntimeLeaseRequest{DeliveryID: r.DeliveryID, DesiredRevision: r.DesiredRevision, PolicyHash: r.PolicyHash, Nonce: r.Nonce}, TTLMS: ttl, FQDNPermits: permits}, nil
 }

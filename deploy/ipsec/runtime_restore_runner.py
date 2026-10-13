@@ -519,6 +519,54 @@ def resume(args):
 
 
 
+def observe_fresh_runtime(before, stopped, journal_raw, current_journal, current, ns, gate, gate_raw, gate_identity):
+    cid = before['container']
+    state = current['state']
+    pid = state['Pid']
+    if (current['id'] != cid or not state['Running'] or state.get('Restarting')
+            or pid <= 0 or pid == before['pid'] or state['StartedAt'] == before['started']
+            or proof.boot() != before['boot']):
+        raise ValueError('fresh container instance not independently observed')
+    cgroup = Path('/proc/%d/cgroup' % pid).read_text().strip()
+    if cgroup not in tuple('0::' + path for path in proof.docker_cgroup_paths(cid)):
+        raise ValueError('fresh runtime is outside the exact dedicated container cgroup')
+    group = Path('/sys/fs/cgroup' + cgroup[3:])
+    group_info = group.lstat()
+    if not stat.S_ISDIR(group_info.st_mode) or group_info.st_uid != 0:
+        raise ValueError('fresh exact cgroup directory missing')
+    members = (group / 'cgroup.procs').read_text().split()
+    if str(pid) not in members or any(not member.isdecimal() for member in members):
+        raise ValueError('fresh process absent from exact cgroup')
+    process = Path('/proc/%d/stat' % pid).read_text()
+    ticks = int(process.rsplit(') ', 1)[1].split()[19])
+    if ticks <= 0 or os.readlink('/proc/%d/ns/net' % pid) != ns:
+        raise ValueError('fresh runtime process identity invalid')
+    info = Path(gate).lstat()
+    if (info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600
+            or not stat.S_ISREG(info.st_mode) or not os.path.samestat(info, gate_identity)
+            or proof.private_bytes(gate) != gate_raw):
+        raise ValueError('retained startup gate changed')
+    if (proof.inspect(cid) != current or proof.boot() != before['boot']
+            or not os.path.samestat(group_info, group.lstat())):
+        raise ValueError('fresh runtime changed during observation')
+    return {'version': 1, 'kind': 'supervisor-confirmed-fresh-runtime',
+            'container': cid, 'boot': before['boot'], 'namespace': ns, 'pid': pid,
+            'pid_start_ticks': ticks, 'started_at': state['StartedAt'],
+            'stop_evidence_sha256': hashlib.sha256(stopped).hexdigest(),
+            'stopped_journal_sha256': hashlib.sha256(journal_raw).hexdigest(),
+            'current_journal_sha256': hashlib.sha256(current_journal).hexdigest(),
+            'startup_gate_sha256': hashlib.sha256(gate_raw).hexdigest(),
+            'startup_gate_device': info.st_dev, 'startup_gate_inode': info.st_ino}
+
+
+def journal_entries_unchanged(stopped, current):
+    before = json.loads(stopped)['Payload']
+    after = json.loads(current)['Payload']
+    if (before['Entries'] != after['Entries'] or before['OwnerID'] != after['OwnerID']
+            or before['Version'] != after['Version'] or after['Sequence'] < before['Sequence']):
+        raise ValueError('immutable journal lineage changed')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for option in ('container', 'journal', 'receipt-helper', 'evidence-dir', 'swanctl', 'vici', 'strongswan-conf'):

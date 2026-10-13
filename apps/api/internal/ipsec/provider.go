@@ -29,7 +29,7 @@ type ProviderConfiguration struct {
 }
 
 func (s *ConnectionStore) CreateProviderDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateProviderRequest) (Connection, error) {
-	if r.Config.ProfileID == GCPClassicProfile && r.TunnelIDs[1] != uuid.Nil {
+	if activeTunnelCount(r.Config.ProfileID) == 1 && r.TunnelIDs[1] != uuid.Nil {
 		return Connection{}, ErrConnectionInvalid
 	}
 	if ValidateProviderConfig(r.Config) != nil {
@@ -84,7 +84,17 @@ func checkProviderRanges(ctx context.Context, tx pgx.Tx, org uuid.UUID, config S
 	for _, tunnel := range config.Tunnels {
 		outside = append(outside, tunnel.OutsideAddress)
 		if tunnel.InsideCIDR != "" {
-			if _, ok := subnetguard.CheckInside(netip.MustParsePrefix(tunnel.InsideCIDR), ranges); !ok {
+			if azureBGP(config.ProfileID) {
+				peer := netip.PrefixFrom(netip.MustParseAddr(tunnel.CloudInsideAddress), 32)
+				if _, ok := subnetguard.CheckInsideHost(peer, ranges); !ok {
+					return ErrConnectionConflict
+				}
+			}
+			checkInside := subnetguard.CheckInside
+			if azureBGP(config.ProfileID) {
+				checkInside = subnetguard.CheckInsideHost
+			}
+			if _, ok := checkInside(netip.MustParsePrefix(tunnel.InsideCIDR), ranges); !ok {
 				return ErrConnectionConflict
 			}
 		}
@@ -103,6 +113,12 @@ func insertProvider(ctx context.Context, tx pgx.Tx, c Connection, r CreateDisabl
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO ipsec_aws_static_configs(connection_id,org_id,site_id,gateway_node_id,customer_outside_ipv4) VALUES($1,$2,$3,$4,$5::inet)`, c.ID, c.OrgID, r.SiteID, r.GatewayID, config.CustomerOutsideAddress); err != nil {
 		return createError(err)
+	}
+	if isAzureProfile(config.ProfileID) {
+		a := config.Azure
+		if _, err := tx.Exec(ctx, `INSERT INTO ipsec_azure_configs(connection_id,org_id,gateway_sku,vpn_type,ike_version,custom_policy,use_policy_based_traffic_selectors,nat_enabled) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, c.ID, c.OrgID, a.GatewaySKU, a.VPNType, a.IKEVersion, a.CustomPolicy, a.UsePolicyBasedTrafficSelectors, a.NATEnabled); err != nil {
+			return createError(err)
+		}
 	}
 	if config.BGP != nil {
 		b := config.BGP
@@ -137,6 +153,9 @@ func removeProvider(ctx context.Context, tx pgx.Tx, org, id uuid.UUID) error {
 	tables := []string{"ipsec_aws_local_prefixes", "ipsec_aws_remote_prefixes", "ipsec_aws_tunnel_configs", "ipsec_aws_static_configs"}
 	if isBGPProfile(profile) {
 		tables = append([]string{"ipsec_aws_bgp_configs"}, tables...)
+	}
+	if isAzureProfile(profile) {
+		tables = append(tables, "ipsec_azure_configs")
 	}
 	for _, table := range tables {
 		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE org_id=$1 AND connection_id=$2`, org, id); err != nil {
@@ -174,6 +193,13 @@ func (s *ConnectionStore) ReadProvider(ctx context.Context, org, id uuid.UUID) (
 		return result, nil
 	}
 	config := &StaticConfig{ProfileID: result.ProfileID, Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
+	if isAzureProfile(result.ProfileID) {
+		config.Azure = &AzureContract{}
+		a := config.Azure
+		if err = tx.QueryRow(ctx, `SELECT gateway_sku,vpn_type,ike_version,custom_policy,use_policy_based_traffic_selectors,nat_enabled FROM ipsec_azure_configs WHERE org_id=$1 AND connection_id=$2`, org, id).Scan(&a.GatewaySKU, &a.VPNType, &a.IKEVersion, &a.CustomPolicy, &a.UsePolicyBasedTrafficSelectors, &a.NATEnabled); err != nil {
+			return ProviderConfiguration{}, ErrConnectionUnavailable
+		}
+	}
 	if isBGPProfile(result.ProfileID) {
 		config.Mode = "ipv4-bgp"
 		config.BGP = &BGPConfig{}

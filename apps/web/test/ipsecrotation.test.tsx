@@ -109,3 +109,16 @@ it.each([
  expect(mock.POST).toHaveBeenCalledTimes(1); expect(mock.PUT).not.toHaveBeenCalled();
  expect(mock.POST.mock.calls[0][1].body.expected_desired_revision).toBe(4);
 });
+it.each(["azure-active-active-bgp-ipv4-v1", "azure-active-active-static-ipv4-v1", "azure-active-standby-bgp-ipv4-v1", "azure-active-standby-static-ipv4-v1"])("rotates %s through one shared connection key without exposing stored secrets", async profile => {
+ const original=mock.GET.getMockImplementation()!; const count=profile.includes("-standby-")?1:2;
+ mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:profile,configuration_revision:1,configuration:{mode:profile.includes("-bgp-")?"ipv4-bgp":"ipv4-static",tunnels:Array.from({length:count},()=>({}))}}}:path.endsWith("/status")?{data:{tunnels:Array.from({length:count},(_,i)=>({id:`tunnel-${i===0?"a":"b"}`,slot:i+1,status:"unknown",selected:false}))}}:original(path));
+ render(view()); fireEvent.click((await connectionMenu()).getByRole("menuitem",{name:"Rotate keys for Office cloud"}));
+ const input=await screen.findByLabelText("Azure connection new PSK");
+ expect(screen.queryByLabelText("Tunnel 2 new PSK")).toBeNull(); expect(input.getAttribute("type")).toBe("password");
+ fireEvent.change(input,{target:{value:"Synthetic.SharedAzureRotation"}});
+ fireEvent.click(screen.getByRole("button",{name:"Save new keys"}));
+ await waitFor(()=>expect(mock.POST).toHaveBeenCalled());
+ const body=mock.POST.mock.calls[0][1].body;
+ expect(body.expected_desired_revision).toBe(4); expect(body.tunnels).toHaveLength(count); expect(body.tunnels.every((t:any)=>t.psk==="Synthetic.SharedAzureRotation")).toBe(true);
+ await screen.findByText(/Keys saved/); expect(screen.queryByDisplayValue("Synthetic.SharedAzureRotation")).toBeNull();
+});

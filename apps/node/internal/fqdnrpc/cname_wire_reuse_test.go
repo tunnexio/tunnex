@@ -35,10 +35,9 @@ func TestCNAMEWireAnswerAvoidsOnlyAlreadyAnsweredA(t *testing.T) {
 		if len(calls[transport]) != 3 {
 			t.Fatal(calls)
 		}
-		for i, name := range expected {
-			if calls[transport][i] != name {
-				t.Fatal(calls)
-			}
+		got := calls[transport]
+		if !(got[0] == expected[0] && got[1] == expected[1] || got[0] == expected[1] && got[1] == expected[0]) || got[2] != expected[2] {
+			t.Fatal(calls)
 		}
 	}
 }

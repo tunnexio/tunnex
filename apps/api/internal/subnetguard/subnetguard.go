@@ -196,3 +196,12 @@ func parsePrefixes(cidrs []string) []netip.Prefix {
 	}
 	return out
 }
+
+// CheckInsideHost validates Azure loopback and remote peer /32 reservations
+// without changing the legacy /30 admission contract.
+func CheckInsideHost(candidate netip.Prefix, r OrgRanges) (Overlap, bool) {
+	if !candidate.IsValid() || !candidate.Addr().Is4() || candidate.Bits() != 32 {
+		return Overlap{}, false
+	}
+	return check(candidate, r, ClassIPsecInside)
+}

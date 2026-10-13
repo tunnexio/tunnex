@@ -467,3 +467,12 @@ func renewalCanonicalMaterials(t *testing.T, c *RuntimeController, entries []Run
 	}
 	return entries, materials
 }
+
+func newRenewalCycleRigTransformed(t *testing.T, canonical bool, transform func(*RuntimeController, []RuntimeJournalEntry, []RuntimeMaterial)) *renewalCycleRig {
+	return newRenewalCycleRigInput(t, canonical, func(_ *testing.T, c *RuntimeController, entries []RuntimeJournalEntry, materials []RuntimeMaterial) ([]RuntimeJournalEntry, []RuntimeMaterial) {
+		if transform != nil {
+			transform(c, entries, materials)
+		}
+		return entries, materials
+	})
+}

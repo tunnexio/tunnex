@@ -1,0 +1,42 @@
+{
+  "actual_result": {
+    "result": {
+      "acceptance": false,
+      "category": "actual_packet_observation_complete",
+      "counters": {
+        "existing_tcp": {
+          "failure": 0,
+          "success": 60
+        },
+        "existing_udp": {
+          "failure": 0,
+          "success": 60
+        },
+        "fresh_tcp": {
+          "failure": 0,
+          "success": 60
+        },
+        "fresh_udp": {
+          "failure": 0,
+          "success": 60
+        }
+      },
+      "elapsed_seconds": 60.058718,
+      "native_proof_run": false,
+      "private_run_id": "azure-warm-packet-observation-eea9f353-e981-4eb2-a774-1a8972f72827",
+      "receipt_sha256": "cc9b468604d906f88a7f749b77be88c17c25d4d635bb6dfc99aba16c81469f7f",
+      "service_mutated": false
+    },
+    "returncode": 0,
+    "source_run_id": "azure-warm-packet-source-cf91f6dd-8356-44f3-8049-3f269363cda6",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "418127218750237d133a67c1e354e1bad9690ab0846b10ec4d1332262a8353b4",
+    "transport_seconds": 62.945
+  },
+  "current_packet_window_pass": true,
+  "failed_original_restart_receipt": "azure-current-warm-restart-packet-recovery-failed.json",
+  "node_started_at": "2026-10-11T19:06:16.205224164Z",
+  "scope": "Later current60-second forward encrypted packet observation; original across-restart sockets were not reused",
+  "version": 1,
+  "warm_restart_acceptance": false
+}

@@ -1,0 +1,310 @@
+{
+  "automatic_recovery": {
+    "binding_sha256": "c32394f6761bc781c5bdde5161b8f128c5421971d1a1b105efb4f74790c12e56",
+    "private_run_id": "maxproof-window-05e35652-485c-40cc-8be6-9858da5cb2b3",
+    "receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "desired_revision": 6,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 29,
+      "journal_sha256": "2aa785f687665497a34c5d3c45bda0612954170a1251820e11e1634e6a7c6ca1",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+      "observed_at": "2026-10-11T15:48:32.128353894Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    },
+    "receipt_sha256": "1606979cc74545c26e76177a7509ab81d694189e403350fe1e45e97b7d7c7e39"
+  },
+  "baseline": {
+    "binding_sha256": "c32394f6761bc781c5bdde5161b8f128c5421971d1a1b105efb4f74790c12e56",
+    "private_run_id": "maxproof-window-e5e961da-b73a-4b01-bf4f-70a83b7c4d0f",
+    "receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "desired_revision": 6,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 29,
+      "journal_sha256": "2594ab109a00e632ca5745c0178c18f219be2ee4dc0b47c6659fca117a0197e9",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+      "observed_at": "2026-10-11T15:41:25.699112778Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    },
+    "receipt_sha256": "46416010524cbdd787c9f6d99d9aea907ef2503491e50e3ffe962445fee87b85"
+  },
+  "cloud_add": {
+    "candidate": "10.235.77.0/24",
+    "observed_at": "2026-10-11T15:42:46.690785+00:00",
+    "phase": "add",
+    "protected_sha256": "6c37bfb0b1fc5f730441f22719abfd80bffbe05adff90aafe96ea6d01b307a9a",
+    "saved_stage": "added",
+    "scope": "Owned maximum-prefix cloud list readback only; PfxCt/NLRI/withdrawal and native authority must be independently observed",
+    "version": 1
+  },
+  "cloud_restore": {
+    "candidate": "10.235.77.0/24",
+    "observed_at": "2026-10-11T15:44:33.328409+00:00",
+    "phase": "restore",
+    "protected_sha256": "6c37bfb0b1fc5f730441f22719abfd80bffbe05adff90aafe96ea6d01b307a9a",
+    "saved_stage": "restored",
+    "scope": "Owned maximum-prefix cloud list readback only; PfxCt/NLRI/withdrawal and native authority must be independently observed",
+    "version": 1
+  },
+  "deployed_node_production_commit": "90b9664840f4babdb86557e83382ad7c8b90b900",
+  "kind": "azure_owned_maximum_prefix_live_acceptance",
+  "limit_shutdown": {
+    "binding_sha256": "041380d3a723da8cc7e4fe5e1b87c3fb86a4f724b09fbf77cef667b73da42c11",
+    "private_run_id": "maxproof-window-af2041b9-9384-4501-ba72-43442e40b1ef",
+    "receipt": {
+      "approved_and_candidate_routes_absent": true,
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 0,
+            "slot": 1,
+            "state": "idle"
+          },
+          {
+            "accepted_prefixes": 0,
+            "slot": 2,
+            "state": "idle"
+          }
+        ],
+        "routes": []
+      },
+      "configuration_revision": 1,
+      "connection_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "desired_revision": 6,
+      "forward_grant_rules_absent": true,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 29,
+      "journal_sha256": "ae5eef8defaa400d94abecd70e301f9cbe2a35a8d1e3a4b43f25381ba73b0830",
+      "kind": "owned_max_prefix_shutdown_observation",
+      "limit_peers": [
+        {
+          "accepted_prefixes": 0,
+          "observed_state": "Idle (PfxCt)",
+          "reason": "PfxCt",
+          "slot": 1
+        },
+        {
+          "accepted_prefixes": 0,
+          "observed_state": "Idle (PfxCt)",
+          "reason": "PfxCt",
+          "slot": 2
+        }
+      ],
+      "maximum_prefixes": 1,
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+      "observed_at": "2026-10-11T15:43:34.83841822Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Exact owned PfxCt frames and independent route/forward-grant absence; no Azure NLRI, API ACK or packet inference",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    },
+    "receipt_sha256": "2bfe28256fc997c7433cdcd32265670e736cd906a331729f7e0efde40acfb523"
+  },
+  "manual_daemon_clear_or_connection_recreate": false,
+  "normal_target": {
+    "application_state": "applied",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "desired_intent": "enabled",
+    "desired_revision": 6,
+    "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "maximum_prefixes": 1,
+    "profile_id": "azure-active-active-bgp-ipv4-v1",
+    "remote_prefixes": [
+      "10.231.0.0/16",
+      "10.235.77.0/24"
+    ]
+  },
+  "protected_cloud_digest_unchanged": true,
+  "restored_azure_advertised_routes": {
+    "connection_mode": "ResponderOnly",
+    "gateway_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn",
+    "kind": "owned_azure_advertised_routes",
+    "observed_at": "2026-10-11T15:48:47.732520+00:00",
+    "owner": "azure-s2s-01a12505",
+    "prefixes": [
+      "10.231.0.0/16"
+    ],
+    "query_peer": "169.254.10.1",
+    "resource_group": "tunnex-azure-s2s-20261010",
+    "response_schema": "sdk_value_list",
+    "route_count": 2,
+    "scope": "Azure control-plane advertised-route read only; no received NLRI, native BGP acceptance, installed route, maximum-prefix or packet authority",
+    "subscription": "34e2f259-b462-40bf-8f4a-06a3930d99e6",
+    "version": 1
+  },
+  "same_target_revision_recovered": true,
+  "scope": "Actual maximum-prefix add, both wire advertisements, independent native PfxCt rejection and route absence, cloud candidate withdrawal, then same-target automatic native recovery. No claim of all routing/security negatives, other profiles or full story acceptance.",
+  "source_commit": "6e06c76d566af4305a165b2737573b7d817ee288",
+  "source_manifest_sha256": "af0488f100a6471f80e4b7d5b949256691f9164138f636ecb0d0890d26531d11",
+  "state_artifact_sha256": "18f5f1dfe57dd41521b6caae38003f5d990e7088f15b6c4b982e90d89187c20d",
+  "stories_open": 8,
+  "story_accepted_count": 3,
+  "version": 1,
+  "wire_candidate": {
+    "binding_sha256": null,
+    "private_run_id": null,
+    "receipt": {
+      "bgp_message_count": 21,
+      "candidate": "10.235.77.0/24",
+      "capture_first_packet_at": "2026-10-11T15:41:46.837064000Z",
+      "capture_last_packet_at": "2026-10-11T15:42:58.401579000Z",
+      "capture_sha256": "688b4ced7cf5313dbec5fd3830ca6ed98c69f5604cb3f3cb4531441eac68f47b",
+      "duplicate_byte_count": 0,
+      "events": [
+        {
+          "action": "advertisement",
+          "candidate": "10.235.77.0/24",
+          "observed_at": "2026-10-11T15:42:53.610162000Z",
+          "peer": "169.254.21.2"
+        },
+        {
+          "action": "advertisement",
+          "candidate": "10.235.77.0/24",
+          "observed_at": "2026-10-11T15:42:56.804478000Z",
+          "peer": "169.254.22.2"
+        }
+      ],
+      "kind": "owned_bgp_candidate_capture",
+      "link_type": 276,
+      "packet_count": 41,
+      "payload_stream_count": 2,
+      "scope": "observed wire NLRI only; not peer authentication, policy rejection or native authority",
+      "version": 1
+    },
+    "receipt_sha256": "9afbeba708644e70749b57b974e3545d90ae419def12522e8a5a982657d60324"
+  },
+  "wire_withdrawal_frame_observed": false
+}

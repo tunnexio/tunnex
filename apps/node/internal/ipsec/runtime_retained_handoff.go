@@ -51,6 +51,15 @@ func sameHandoffDomain(a, b RuntimeJournalEntry) bool {
 			return false
 		}
 	}
+	if a.AzureProfileRecreationVersion == 1 {
+		return sameAzureProfileRecreationDomain(a, b)
+	}
+	if (IsAzureRuntimeProfile(a.Allocation.ProfileID) || IsAzureRuntimeProfile(b.Allocation.ProfileID)) && a.Allocation.ProfileID != b.Allocation.ProfileID {
+		return false
+	}
+	if a.AzureBGPRecreationVersion == 1 {
+		return sameAzureBGPRecreationDomain(a, b)
+	}
 	return a.ContractVersion != 3 && b.ContractVersion != 3 && a.BGP == nil && b.BGP == nil && a.SiteID == b.SiteID && x.OrgID == y.OrgID && x.GatewayID == y.GatewayID && exactHandoffPrefixes(a.Engines[0].LocalPrefixes, b.Engines[0].LocalPrefixes) && exactHandoffPrefixes(a.Engines[0].RemotePrefixes, b.Engines[0].RemotePrefixes)
 }
 func validRetainedGuardJournal(entries []RuntimeJournalEntry) bool {
@@ -59,18 +68,26 @@ func validRetainedGuardJournal(entries []RuntimeJournalEntry) bool {
 		byID[e.DeliveryID] = e
 	}
 	for _, e := range entries {
-		if !validRetainedGuardReferences(e.RetainedGuardPredecessors, e.Allocation.ConnectionID, e.DeliveryID, e.ContractVersion == 3 || e.BGP != nil) {
+		if !validAzureRecreationEntry(e) {
+			return false
+		}
+		if !validRetainedGuardReferences(e.RetainedGuardPredecessors, e.Allocation.ConnectionID, e.DeliveryID, (e.ContractVersion == 3 || e.BGP != nil) && e.AzureBGPRecreationVersion != 1 && e.AzureProfileRecreationVersion != 1) {
 			return false
 		}
 		refs := map[uuid.UUID]bool{}
 		targets := map[uuid.UUID]bool{}
+		crossProfile := false
 		for _, r := range e.RetainedGuardPredecessors {
 			old, ok := byID[r.DeliveryID]
 			if !ok || old.Phase != RuntimeRetainedRefusal || old.Allocation.ConnectionID != r.ConnectionID || old.CleanupID != r.CleanupDeliveryID || old.OwnershipDigest != r.OwnershipDigest || !sameHandoffDomain(e, old) {
 				return false
 			}
+			crossProfile = crossProfile || old.Allocation.ProfileID != e.Allocation.ProfileID
 			refs[r.DeliveryID] = true
 			targets[r.ConnectionID] = true
+		}
+		if e.AzureProfileRecreationVersion == 1 && !crossProfile {
+			return false
 		}
 		// All potentially installed lineage of a predecessor must be cleaned and
 		// referenced. A partial list cannot conceal an uncleaned native obligation.
@@ -164,6 +181,9 @@ func (c *RuntimeController) admitRetainedGuardHandoff(ctx context.Context, entri
 	}
 	for _, ref := range successor.RetainedGuardPredecessors {
 		old := byID[ref.DeliveryID]
+		if (successor.AzureBGPRecreationVersion == 1 || successor.AzureProfileRecreationVersion == 1) && c.proveAzureBGPPredecessorAbsent(ctx, old) != nil {
+			return ErrRuntimeController
+		}
 		// Cleaned historical namespace proof never authorizes object adoption.
 		// Inspect current exact IDs, names, aliases, inside addresses and all SA/routes.
 		old.Allocation.Namespace = ns

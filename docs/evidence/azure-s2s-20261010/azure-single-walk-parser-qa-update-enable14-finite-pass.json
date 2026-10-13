@@ -1,0 +1,72 @@
+{
+  "accepted_story_count": 6,
+  "actual_result_path": "/var/lib/tunnex-qualification-archive/azure-parser-repair-execute-9777b6fc-c191-4704-875a-bfcda33b672a/result.json",
+  "actual_result_sha256": "50ea5ca2bdcb32320986c3c39a8e2d06aa737ebb715b8b1a557a8cc9c0fd723a",
+  "category": "actual_2c33_qa_update_enable14_finite_checkpoint",
+  "enable_receipt_path": "/var/lib/tunnex-qualification-archive/azure-static-proof-normal-enable-86298f81-c4d9-48a3-8a7d-5f87fa65f075/receipt.json",
+  "enable_receipt_sha256": "981e016a66ee2591017902be8b766f68f5cf2b8f8a8ba97e85b9b49e10340c0f",
+  "enabled_native_entry_count": null,
+  "enabled_native_read_required": true,
+  "enabled_normal_observation": {
+    "application_state": "applied",
+    "category": "actual_enabled14_finite_current_projection",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "desired_intent": "enabled",
+    "desired_revision": 14,
+    "fresh_native_acceptance": false,
+    "journal_entry_count": 37,
+    "journal_sha256": "0bd6da244c869baf13937885da2a2266c18b14633530ebb9a721a4335e318d7a",
+    "node_executable_sha256": "2c33e96f7dbefbc5e0588428d974a2da1c91fbe87d4dd8f87077dc7212d0b4a2",
+    "node_pid": 1514467,
+    "policy_count": 8,
+    "profile_id": "azure-active-active-static-ipv4-v1",
+    "transport_seconds": 2.245
+  },
+  "fqdn_live_acceptance_passed": false,
+  "fresh_dns_window_completed": false,
+  "new_slices_closed": 0,
+  "normal_desired_revision": 14,
+  "normal_intent": "enabled",
+  "observed_journal_entry_count": 37,
+  "original_raw_control_record_local_transfer": "blocked_by_automatic_review_pending_explicit_user_approval",
+  "postabsence_enable_wrapper": {
+    "path": "/private/tmp/azure-environment-postabsence-enable-root-60383a88-2e43-4b64-98ed-a8544be5f15f/result.json",
+    "sha256": "3bd3d1fe9173f9498486978cb26b89d9b3631dc116f4f037c80cac39a14fdd15"
+  },
+  "postupdate_full_native_absence_entry_count": 36,
+  "postupdate_full_native_absence_sha256": "6a21af744370f91c0447171880811525e9cae72e1e0a63a16496ca1df9de69fe",
+  "preserved_refusals": [
+    {
+      "category": "prepare_refused_normal_field_after_successful_disable13",
+      "private_run_id": "azure-parser-repair-prepare-update-807a8ebc-9db3-4558-ad3c-88c11448a40e",
+      "update_dispatched": false
+    },
+    {
+      "category": "postabsence_refused_final_bracket",
+      "enable_dispatched": false,
+      "private_run_id": "azure-parser-repair-postabsence-enable-d75e64de-1439-430c-bd03-5a5f0d5f5572"
+    }
+  ],
+  "recorded_at": "2026-10-12T07:52:28.894389+00:00",
+  "running_node": {
+    "category": "started_requires_independent_normal_native_read",
+    "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "executable_sha256": "2c33e96f7dbefbc5e0588428d974a2da1c91fbe87d4dd8f87077dc7212d0b4a2",
+    "image_unchanged": true,
+    "immutable_sha256": "c1d958821728a1b1c833350e6897a45c1f0ce750c8e37fdc092376e0677fc0de",
+    "namespace": "net:[4026532430]",
+    "pid": 1514467,
+    "started_at": "2026-10-12T07:41:08.708138572Z"
+  },
+  "scope": "Finite authenticated actual helper results and current health projection. No enabled14 full native baseline or sustained DNS acceptance inferred.",
+  "sustained_dns_passed": false,
+  "total_story_count": 11,
+  "update_wrapper": {
+    "path": "/private/tmp/azure-environment-prepare-update-root-7dc1243f-438d-4c3b-8344-473940f01f5c/result.json",
+    "sha256": "50c6b91ff31ca2aa5e550858b34869da26101328d3a8c8bf2e0936abd249fd45"
+  },
+  "updater_independent_review_sha256": "11715e82099933d9e77840b0e3396e1f66f5f545842307e7bcbfb839fa5d8971",
+  "updater_source_manifest_sha256": "05c687bc635cc661018af359bd7deafa52134034a9c27014db8f06fa4fcc885d",
+  "version": 1
+}

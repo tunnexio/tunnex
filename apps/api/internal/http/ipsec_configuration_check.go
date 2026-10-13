@@ -162,6 +162,9 @@ func privateIPsecConfiguration(body api.IPsecConfigurationCheckInput) (ipsec.Sta
 	if body.ProfileId != nil {
 		input.ProfileID = string(*body.ProfileId)
 	}
+	if a := body.Azure; a != nil {
+		input.Azure = &ipsec.AzureContract{GatewaySKU: string(a.GatewaySku), VPNType: string(a.VpnType), IKEVersion: int(a.IkeVersion), CustomPolicy: string(a.CustomPolicy), UsePolicyBasedTrafficSelectors: bool(a.UsePolicyBasedTrafficSelectors), NATEnabled: bool(a.NatEnabled)}
+	}
 	if b := body.Bgp; b != nil {
 		input.BGP = &ipsec.BGPConfig{LocalASN: b.LocalAsn, RemoteASN: b.RemoteAsn, RouterID: b.RouterId, MaximumPrefixes: b.MaximumPrefixes}
 	}

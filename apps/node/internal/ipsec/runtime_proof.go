@@ -9,7 +9,22 @@ import (
 
 // proveRuntime correlates independent VICI and keyless kernel observations. It
 // does not confer authority: the caller still requires a fresh exact CP lease.
-func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) (resultErr error) {
+func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	return c.proveRuntimeTimed(ctx, e, env, nil)
+}
+
+type runtimeProofTimingKey struct{}
+
+func (c *RuntimeController) proveRuntimeTimed(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, timing func(runtimeNativePhaseTiming)) (resultErr error) {
+	var measured runtimeNativePhaseTiming
+	timingStarted := time.Now()
+	if timing != nil {
+		if deadline, ok := ctx.Deadline(); ok && deadline.After(timingStarted) {
+			measured.RemainingAtEntryMillis = deadline.Sub(timingStarted).Milliseconds()
+		}
+		ctx = context.WithValue(ctx, runtimeProofTimingKey{}, &measured)
+		defer func() { measured.ElapsedMillis = time.Since(timingStarted).Milliseconds(); timing(measured) }()
+	}
 	stage := "proof_readers"
 	started := time.Now()
 	defer func() {
@@ -69,6 +84,18 @@ func (c *RuntimeController) proveRuntimeAttempt(ctx context.Context, e RuntimeJo
 // An optional status output shares only this fresh observation's inventories.
 // The ordinary proof keeps its exact retry and selected-owner proof contract.
 func (c *RuntimeController) runtimeNativeObservationAttempt(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders, observed *[2]string) (resultErr error) {
+	measured, _ := ctx.Value(runtimeProofTimingKey{}).(*runtimeNativePhaseTiming)
+	var nativeStarted time.Time
+	if measured != nil {
+		nativeStarted = time.Now()
+	}
+	finishNativeTiming := func() {
+		if measured != nil && !nativeStarted.IsZero() {
+			measured.RecoveryMillis += time.Since(nativeStarted).Milliseconds()
+			nativeStarted = time.Time{}
+		}
+	}
+	defer finishNativeTiming()
 	stage := "native_xfrm_before_read"
 	started := time.Now()
 	defer func() {
@@ -117,10 +144,23 @@ func (c *RuntimeController) runtimeNativeObservationAttempt(ctx context.Context,
 	if proveSelected && runtimeInventoryMatches(e, daemon, kernel, before) != nil {
 		return ErrRuntimeController
 	}
+	finishNativeTiming()
 	// Environment includes independent hook and physical route qualification.
 	stage = "native_environment_observe"
 	if proveSelected {
-		again, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+		var again RuntimeEnvironment
+		var err error
+		environmentStarted := time.Now()
+		if inspector, ok := c.config.Environment.(interface {
+			observeTimed(context.Context, KernelAllocation, [2]EngineTunnel, func(runtimeEnvironmentTiming)) (RuntimeEnvironment, error)
+		}); measured != nil && ok {
+			again, err = inspector.observeTimed(ctx, e.Allocation, e.Engines, func(v runtimeEnvironmentTiming) { measured.Environment = v })
+		} else {
+			again, err = c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+		}
+		if measured != nil {
+			measured.EnvironmentMillis += time.Since(environmentStarted).Milliseconds()
+		}
 		if err != nil {
 			return ErrRuntimeController
 		}
@@ -128,6 +168,9 @@ func (c *RuntimeController) runtimeNativeObservationAttempt(ctx context.Context,
 		if !reflect.DeepEqual(again, env) {
 			return ErrRuntimeController
 		}
+	}
+	if measured != nil {
+		nativeStarted = time.Now()
 	}
 	stage = "native_xfrm_after_read"
 	after, err := r.xfrm(ctx)
@@ -257,7 +300,7 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 			}
 			continue
 		}
-		if e.Allocation.ProfileID == GCPClassicStaticProfile && route.Kind != 2 {
+		if t.InsideAddress.Bits() == 32 && route.Kind != 2 {
 			return ErrRuntimeController
 		}
 		expected := t.InsideAddress.Addr()

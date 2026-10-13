@@ -1,0 +1,863 @@
+{
+  "source_commit": "47a8827dcee038509a1a971c075b4109adda2163",
+  "source_node_tree": "f2330e6585645c469f1ab219236345c4136e02ce",
+  "production_change_commit": "64d8ffcef8cff4cc4e0997c35bc0562a60aff19b",
+  "local_qualification": {
+    "focused_race_passed": true,
+    "focused_race_elapsed_seconds": 4.632,
+    "python_scheduler_test_count": 28,
+    "python_scheduler_passed": true,
+    "linux_amd64_node_build_passed": true
+  },
+  "live_identity": {
+    "observed_at": "2026-10-10T22:00:14.339289+00:00",
+    "deployed": true,
+    "container": "c5bf93faf70a856fc115893429e6dc5fc901d231c55015796c53f66279d5b955",
+    "image": "sha256:9a49bc2ff93a900d68057edf6d6cc370cb9da9e7ca58825ad57d980122c724ae",
+    "binary_sha256": "7dfb70a6f04fcacd20df7dfc0eace7277ccbe0a34793109ca68ef4ee9380d53b",
+    "container_started_at": "2026-10-10T22:00:13.450038635Z",
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "anchor_preserved": true,
+    "old_node_retained_stopped": true
+  },
+  "image_staging": {
+    "observed_at": "2026-10-10T21:57:09.083212+00:00",
+    "staged": true,
+    "deployed": false,
+    "source_commit": "47a8827dcee038509a1a971c075b4109adda2163",
+    "node_tree": "f2330e6585645c469f1ab219236345c4136e02ce",
+    "binary_sha256": "7dfb70a6f04fcacd20df7dfc0eace7277ccbe0a34793109ca68ef4ee9380d53b",
+    "image": "sha256:9a49bc2ff93a900d68057edf6d6cc370cb9da9e7ca58825ad57d980122c724ae",
+    "tag": "tunnex-azure-s2s-native:20261010-parallel-47a8827d",
+    "image_build_log_sha256": "9024930355b5afdd59936a18b6188806e44739671126f396f3b2f15ffaba1d29"
+  },
+  "normal_disable": {
+    "before_revision": 50,
+    "cas_request_sent": true,
+    "cleanup_readback_settled": true,
+    "connection": {
+      "application_state": "not_applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "disabled",
+      "desired_revision": 51,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "observed_at": "2026-10-10T21:58:42.795672+00:00",
+    "phase": "disable",
+    "runtime": {
+      "observed_at": "2026-10-10T21:58:36.146492+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "unknown"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "unknown"
+        }
+      ]
+    },
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "old_node_absence": {
+    "observed_at": "2026-10-10T21:59:19.851516+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only complete native cleanup absence; normal disable51 parallel replacement",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "private_log_sha256": "4a4ede5be34f43e210a9b1018cccbd2dc087ac260231fb2ad15d62bd73ba5930",
+    "desired_revision": 51,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 51,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "guard_retained": true,
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 24,
+      "journal_sha256": "b8d9eb1f64e4e330507a676098566d0d887044a1160666f1e4ad1512f0db00f8",
+      "kind": "owned_native_cleanup_absence",
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-10T21:59:19.45023655Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "version": 1
+    }
+  },
+  "immediate_pre_replacement_absence": {
+    "fresh_pre_replacement_native_absence": {
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 51,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "guard_retained": true,
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 24,
+      "journal_sha256": "44945ad372e75774a4820b29b0214e82c65c73d0c0c8a3b7df55a9db0c3f3d85",
+      "kind": "owned_native_cleanup_absence",
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-10T22:00:12.985783629Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "version": 1
+    },
+    "private_log_sha256": "38c60967b62fda1344bd2abb8017d7e34da258ade3cf8e6f29bc081b10931a18"
+  },
+  "new_process_absence": {
+    "observed_at": "2026-10-10T22:01:56.423487+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only complete native cleanup absence; normal disable51 parallel replacement",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "private_log_sha256": "2d6622c30cc045b7e781f38169839cd61b99287024a215919672b5963609ef52",
+    "desired_revision": 51,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 51,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "guard_retained": true,
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 24,
+      "journal_sha256": "261e100c5c356ce0b1e0ac27f24c7f49a7254fcc18ec9d3b256f70a4acb3912d",
+      "kind": "owned_native_cleanup_absence",
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-10T22:01:55.988328197Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "version": 1
+    }
+  },
+  "fresh_pre_enable_absence": {
+    "observed_at": "2026-10-10T22:04:55.953202+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only complete native cleanup absence; normal disable51 parallel replacement",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "private_log_sha256": "fb8b9054cb30de22672227d7a788e2bb30e8072fa93d9d4011a8eb1ea5a68e2a",
+    "desired_revision": 51,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 51,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "guard_retained": true,
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 24,
+      "journal_sha256": "454dcfad0a11380926c2fe1523818f54c153a6ecbc6ece81ced572dd356fd539",
+      "kind": "owned_native_cleanup_absence",
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-10T22:04:55.528120651Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "version": 1
+    }
+  },
+  "genuine_azure_eligibility": {
+    "eligible": true,
+    "reason": "eligible"
+  },
+  "normal_enable": {
+    "before_revision": 51,
+    "cas_request_sent": true,
+    "cleanup_readback_settled": false,
+    "connection": {
+      "application_state": "pending",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled",
+      "desired_revision": 52,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "observed_at": "2026-10-10T22:04:57.684205+00:00",
+    "phase": "enable",
+    "runtime": {
+      "observed_at": "2026-10-10T21:58:36.146492+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "unknown"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "unknown"
+        }
+      ]
+    },
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "normal_applied_read": {
+    "before_revision": 52,
+    "cas_request_sent": false,
+    "cleanup_readback_settled": false,
+    "connection": {
+      "application_state": "applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled",
+      "desired_revision": 52,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "observed_at": "2026-10-10T22:05:26.604332+00:00",
+    "phase": "read",
+    "runtime": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ],
+        "sequence": 48158,
+        "version": 1
+      },
+      "observed_at": "2026-10-10T22:05:24.952104+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "up"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "up"
+        }
+      ]
+    },
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "production_parameters": {
+    "observed_at": "2026-10-10T22:05:51.388973+00:00",
+    "passed": true,
+    "scope": "Fresh independent read-only scheduler preflight only; no timer changes",
+    "helper_sha256": "a60f312d7f6d217b9da985a4d97a2de7e58dc57989484c9e46207436e6f05536",
+    "desired_revision": 52,
+    "configuration_revision": 1,
+    "profile": "azure-active-active-bgp-ipv4-v1",
+    "retained_entries": 24,
+    "strict_native": true,
+    "full_guard": true,
+    "active_tunnel_count": 2,
+    "loaded_production_connection_parameters_verified": true,
+    "actual_timer_countdowns": [
+      {
+        "slot": 1,
+        "ike_remaining_seconds": 28540,
+        "child_remaining_seconds": 2724
+      },
+      {
+        "slot": 2,
+        "ike_remaining_seconds": 27674,
+        "child_remaining_seconds": 2780
+      }
+    ]
+  },
+  "independent_native_baseline": {
+    "observed_at": "2026-10-10T22:06:07.387071+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+    "private_log_sha256": "4dab28dbdcec02e2c3880bf4454affa7bef21737521062f1184b979a157acb6a",
+    "desired_revision": 52,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 52,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 25,
+      "journal_sha256": "9ace6f1d351549f0861b325668d7a994888c679897d8c75c19b842e0f2bf5d9d",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "observed_at": "2026-10-10T22:06:06.484716573Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    }
+  },
+  "actual_packets_60_seconds": {
+    "started_at": "2026-10-10T22:06:38.497267+00:00",
+    "counters": {
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "checks": {
+      "all_four_zero_failure": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true
+    },
+    "receipt_sha256": "3d3f8f238dd11a4b9cb710886941ed63e96e4938cb991f2ee3931e83f6d31986",
+    "acceptance_passed": true
+  },
+  "actual_dns_120_second_census": {
+    "observed_at": "2026-10-10T22:09:14.485692+00:00",
+    "window": {
+      "started_at": "2026-10-10T22:06:37.230978+00:00",
+      "finished_at": "2026-10-10T22:08:37.443943+00:00",
+      "container": "c5bf93faf70a856fc115893429e6dc5fc901d231c55015796c53f66279d5b955",
+      "read_count": 118,
+      "boundary_stale_read_count": 0,
+      "fresh_after_start_count": 0,
+      "distinct_new_generations": [],
+      "last_observation": {
+        "read_at": "2026-10-10T22:08:36.247557+00:00",
+        "observation": {
+          "resource_id": "01a125fe-521b-75ae-b4d1-fbda9a4e279c",
+          "resolver_config_id": "01a12555-cc55-7759-b33e-15670c452e88",
+          "resolver_config_version": 1,
+          "resolver_profile_id": "08dbae5d-db11-4e5e-9efe-959b0d707742",
+          "configuration_revision": 1,
+          "dns_source_address": "10.233.10.1",
+          "ready": false,
+          "state": "failed",
+          "status_source": "latest_generation",
+          "failure_code": "timeout"
+        }
+      },
+      "passed": false,
+      "limits": [
+        "DNS generation readiness only; no FQDN application enforcement or deadline acceptance.",
+        "Original five-second per-lookup deadline and ordinary DNS grants unchanged."
+      ]
+    },
+    "observation_state_counts": {
+      "failed": 118
+    },
+    "ready_read_count": 0,
+    "private_observations_sha256": "9031d4fa5e7a0123a427b3b218bedca491549f7224014ade6c2681910a68e58c",
+    "private_result_sha256": "3862936ee51b7e64cf3e518475a357340c0bc27d7adeb72bb7d534140a6b34c8",
+    "sampled_dns_stability_passed": false,
+    "scope": "Completed actual normal DNS window census; sampled stability requires every normal read ready and at least three distinct fresh generations. No application grant or longer soak proof."
+  },
+  "fixed_diagnostic": {
+    "observed_at": "2026-10-10T22:09:14.607111+00:00",
+    "container": "c5bf93faf70a856fc115893429e6dc5fc901d231c55015796c53f66279d5b955",
+    "image": "sha256:9a49bc2ff93a900d68057edf6d6cc370cb9da9e7ca58825ad57d980122c724ae",
+    "private_raw_log_sha256": "5fc9dc1b21bc2d4d69564617ef4439917961d50fd2fa8d21d49698d4da3c089b",
+    "dns_refusals": [
+      {
+        "time": "2026-10-10T22:05:21.069438788Z",
+        "operation": "dns_exchange",
+        "stage": "dns_socket_udp",
+        "elapsed_ms": 3538,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 3000,
+        "socket_stage": "body",
+        "guard_revalidation": "",
+        "native_failure_class": "",
+        "native_route_ms": 0,
+        "native_recovery_ms": 0,
+        "native_environment_ms": 0,
+        "native_elapsed_ms": 0,
+        "native_remaining_at_entry_ms": 0,
+        "native_environment_command_ms": 0,
+        "native_environment_verification_ms": 0,
+        "native_environment_command_count": 0
+      },
+      {
+        "time": "2026-10-10T22:05:24.914823764Z",
+        "operation": "dns_exchange",
+        "stage": "dns_socket_udp",
+        "elapsed_ms": 3586,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 3000,
+        "socket_stage": "body",
+        "guard_revalidation": "",
+        "native_failure_class": "",
+        "native_route_ms": 0,
+        "native_recovery_ms": 0,
+        "native_environment_ms": 0,
+        "native_elapsed_ms": 0,
+        "native_remaining_at_entry_ms": 0,
+        "native_environment_command_ms": 0,
+        "native_environment_verification_ms": 0,
+        "native_environment_command_count": 0
+      },
+      {
+        "time": "2026-10-10T22:06:07.229833429Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 14,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline",
+        "native_route_ms": 14,
+        "native_recovery_ms": 0,
+        "native_environment_ms": 0,
+        "native_elapsed_ms": 14,
+        "native_remaining_at_entry_ms": 7,
+        "native_environment_command_ms": 0,
+        "native_environment_verification_ms": 0,
+        "native_environment_command_count": 0
+      },
+      {
+        "time": "2026-10-10T22:06:12.240781817Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 587,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline",
+        "native_route_ms": 38,
+        "native_recovery_ms": 376,
+        "native_environment_ms": 171,
+        "native_elapsed_ms": 587,
+        "native_remaining_at_entry_ms": 584,
+        "native_environment_command_ms": 169,
+        "native_environment_verification_ms": 2,
+        "native_environment_command_count": 9
+      },
+      {
+        "time": "2026-10-10T22:06:52.229990989Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 432,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline",
+        "native_route_ms": 33,
+        "native_recovery_ms": 121,
+        "native_environment_ms": 277,
+        "native_elapsed_ms": 432,
+        "native_remaining_at_entry_ms": 427,
+        "native_environment_command_ms": 136,
+        "native_environment_verification_ms": 141,
+        "native_environment_command_count": 13
+      },
+      {
+        "time": "2026-10-10T22:07:37.453321153Z",
+        "operation": "dns_before_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 42,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "daemon_read",
+        "native_route_ms": 25,
+        "native_recovery_ms": 17,
+        "native_environment_ms": 0,
+        "native_elapsed_ms": 42,
+        "native_remaining_at_entry_ms": 4856,
+        "native_environment_command_ms": 0,
+        "native_environment_verification_ms": 0,
+        "native_environment_command_count": 0
+      },
+      {
+        "time": "2026-10-10T22:08:22.236895452Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 352,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline",
+        "native_route_ms": 37,
+        "native_recovery_ms": 169,
+        "native_environment_ms": 144,
+        "native_elapsed_ms": 352,
+        "native_remaining_at_entry_ms": 345,
+        "native_environment_command_ms": 108,
+        "native_environment_verification_ms": 36,
+        "native_environment_command_count": 11
+      },
+      {
+        "time": "2026-10-10T22:09:07.239116129Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 415,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline",
+        "native_route_ms": 20,
+        "native_recovery_ms": 238,
+        "native_environment_ms": 156,
+        "native_elapsed_ms": 415,
+        "native_remaining_at_entry_ms": 397,
+        "native_environment_command_ms": 62,
+        "native_environment_verification_ms": 94,
+        "native_environment_command_count": 16
+      }
+    ],
+    "rpc_timings": [
+      {
+        "dispatch_utc": "2026-10-10T22:05:17.523257191Z",
+        "deadline_remaining_ms": 4700,
+        "start_delay_ms": 0,
+        "handle_ms": 3578,
+        "report_ms": 22,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:05:21.326320126Z",
+        "deadline_remaining_ms": 4877,
+        "start_delay_ms": 0,
+        "handle_ms": 3741,
+        "report_ms": 22,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:05:21.685847374Z",
+        "deadline_remaining_ms": 4517,
+        "start_delay_ms": 11,
+        "handle_ms": 3742,
+        "report_ms": 19,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:06:02.331863152Z",
+        "deadline_remaining_ms": 4890,
+        "start_delay_ms": 0,
+        "handle_ms": 4954,
+        "report_ms": 63,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:06:07.770199864Z",
+        "deadline_remaining_ms": 4468,
+        "start_delay_ms": 0,
+        "handle_ms": 4472,
+        "report_ms": 48,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:06:07.442949649Z",
+        "deadline_remaining_ms": 4795,
+        "start_delay_ms": 0,
+        "handle_ms": 4821,
+        "report_ms": 28,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:06:47.349827138Z",
+        "deadline_remaining_ms": 4875,
+        "start_delay_ms": 0,
+        "handle_ms": 4882,
+        "report_ms": 7,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:07:32.319679747Z",
+        "deadline_remaining_ms": 4901,
+        "start_delay_ms": 0,
+        "handle_ms": 4896,
+        "report_ms": 38,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:07:37.409702864Z",
+        "deadline_remaining_ms": 4858,
+        "start_delay_ms": 0,
+        "handle_ms": 4055,
+        "report_ms": 60,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:07:37.694767788Z",
+        "deadline_remaining_ms": 4572,
+        "start_delay_ms": 1,
+        "handle_ms": 4054,
+        "report_ms": 30,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:08:17.443297759Z",
+        "deadline_remaining_ms": 4786,
+        "start_delay_ms": 0,
+        "handle_ms": 4794,
+        "report_ms": 36,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T22:09:02.322184068Z",
+        "deadline_remaining_ms": 4899,
+        "start_delay_ms": 0,
+        "handle_ms": 4916,
+        "report_ms": 24,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      }
+    ],
+    "scope": "Fixed scalar diagnostic observations only; last actual guard bracket timings, independent native commands and original five-second DNS deadlines remain unchanged"
+  },
+  "source_paired_scheduler_package_staging": {
+    "staged": true,
+    "uuid": "881660e0-c2c8-4665-9a02-408881e339af",
+    "default_helper_preserved": true,
+    "timers_changed": false
+  },
+  "read_only_scheduler_preflight": {
+    "passed": false,
+    "timer_changes_occurred": false,
+    "diagnostic": {
+      "observed_at": "2026-10-10T22:11:00.275370+00:00",
+      "scope": "Independent read-only preflight diagnostic; no timer or permission mutation",
+      "timers_changed": false,
+      "passed": false,
+      "failure_category": "preflight_refused",
+      "private_failure_sha256": "34162e9d8f14e6c005d2e3c2b21bcbc95cfa6e1a299c79ada04af33bb726851b",
+      "frames": [
+        {
+          "file": "<stdin>",
+          "line": 10,
+          "function": "<module>"
+        },
+        {
+          "file": "reviewed-wrapper.py",
+          "line": 31,
+          "function": "baseline"
+        },
+        {
+          "file": "qualify-scheduled-rekey.py",
+          "line": 175,
+          "function": "verify_conns"
+        },
+        {
+          "file": "qualify-scheduled-rekey.py",
+          "line": 139,
+          "function": "owned_control"
+        },
+        {
+          "file": "qualify-scheduled-rekey.py",
+          "line": 134,
+          "function": "native_control_ceiling"
+        }
+      ]
+    },
+    "diagnosed_stage": "verify_conns called before original watchdog deadline is armed",
+    "acceptance_passed": false
+  },
+  "limits": [
+    "The two-worker environment snapshot pool retains both complete validated snapshots and every exact native byte/NFT census check, drains canceled workers and changes no deadline or authority.",
+    "All captured environment timing samples are partial reads. They cannot establish improvement against the earlier complete eighteen-command samples.",
+    "All118 completed normal DNS reads failed/timeout with no fresh generation; sampled DNS stability failed. A completed NOERROR result alone does not prove timely publication.",
+    "The successful sixty-second packet window used the declared two-second request timeout, exact64KiBHTTP/4KiBUDP, original source and reused sockets. It is not an automatic-renewal or production-duration soak.",
+    "The newly staged scheduler helper has not changed timers; initial read-only preflight refused because its verify action requested an attempt ceiling before the watchdog existed. Original failed attempts remain preserved.",
+    "No FQDN application grant or overlapping LB IP grant was installed. Shared feature integration remains awaiting scope confirmation.",
+    "Maximum-prefix execution, automatic IKE renewal, remaining profiles, sustained DNS/FQDN application acceptance and final cleanup remain open."
+  ]
+}

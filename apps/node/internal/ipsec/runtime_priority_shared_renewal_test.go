@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func priorityRenewalWindow(t *testing.T) (*renewalCycleRig, []RuntimeMaterial) {
+func priorityRenewalWindowSharedProfile(t *testing.T) (*renewalCycleRig, []RuntimeMaterial) {
 	t.Helper()
 	r := newRenewalCycleRigInput(t, true)
 	materials := maintenanceMaterials(r)
@@ -31,7 +31,7 @@ func priorityRenewalWindow(t *testing.T) (*renewalCycleRig, []RuntimeMaterial) {
 	return r, materials
 }
 
-func allPriorityMembersLive(r *renewalCycleRig) bool {
+func allPriorityMembersLiveSharedProfile(r *renewalCycleRig) bool {
 	if len(r.c.active) != 5 {
 		return false
 	}
@@ -48,10 +48,10 @@ func allPriorityMembersLive(r *renewalCycleRig) bool {
 // The baseline and priority arms enter with the same real 20s rendered window.
 // Optional IO costs 12s in both arms. Only its position changes. Neither arm
 // alters a lease TTL, a reserve, a timeout or an existing rendered deadline.
-func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
+func TestPriorityActiveRenewalCallerContinuitySharedProfile(t *testing.T) {
 	for _, priority := range []bool{false, true} {
 		t.Run(fmt.Sprintf("priority_%t", priority), func(t *testing.T) {
-			r, materials := priorityRenewalWindow(t)
+			r, materials := priorityRenewalWindowSharedProfile(t)
 			start := *r.now
 			commits := 0
 			lapse := false
@@ -59,7 +59,7 @@ func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
 			statusCallbacks := 0
 			beforeFirstCommitCallbacks := 0
 			check := func() {
-				if !allPriorityMembersLive(r) {
+				if !allPriorityMembersLiveSharedProfile(r) {
 					lapse = true
 				}
 			}
@@ -117,7 +117,7 @@ func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
 				r.phase = "maintenance"
 				var err error
 				if priority {
-					err = r.c.renewActiveIPsecRuntimeObserved(context.Background(), maintenanceAuthority(r), func() bool { return true }, publish)
+					err = r.c.renewActiveIPsecRuntimeObserved(context.Background(), maintenanceAuthority(r), func() bool { return true }, publish, nil)
 				} else {
 					_, err = r.c.maintainIPsecRuntimeObserved(context.Background(), materials, maintenanceAuthority(r), func() bool { return true }, publish)
 				}
@@ -128,11 +128,11 @@ func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
 					}
 				}
 				if priority {
-					if err != nil || !allPriorityMembersLive(r) {
+					if err != nil || !allPriorityMembersLiveSharedProfile(r) {
 						t.Fatalf("priority cycle%d refused/lapsed: %v", cycle, err)
 					}
 					optional()
-					if !allPriorityMembersLive(r) {
+					if !allPriorityMembersLiveSharedProfile(r) {
 						t.Fatal("postrenewal optional IO lapsed finite member")
 					}
 					// The original authoritative page maintenance still runs
@@ -142,15 +142,15 @@ func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
 					normalResults, normalErr := r.c.maintainIPsecRuntimeObserved(context.Background(), materials, maintenanceAuthority(r), func() bool { return true }, publish)
 					r.phase = ""
 					check()
-					if normalErr != nil || len(normalResults) != 5 || !allPriorityMembersLive(r) {
+					if normalErr != nil || len(normalResults) != 5 || !allPriorityMembersLiveSharedProfile(r) {
 						t.Fatal("ordinary pass after priority renewal refused/lapsed", normalErr, len(normalResults))
 					}
 
-				} else if err == nil && allPriorityMembersLive(r) && !lapse {
+				} else if err == nil && allPriorityMembersLiveSharedProfile(r) && !lapse {
 					t.Fatal("baseline must expose late arrival native loss")
 				}
 			}
-			t.Logf("priority=%t elapsed=%s firstCommit=%s commits=%d statusCallbacksBeforeCommit=%d totalCallbacks=%d all15Live=%t lapse=%t freshNonces=%d costs=%v", priority, *r.now-start, firstCommit, commits, beforeFirstCommitCallbacks, statusCallbacks, allPriorityMembersLive(r), lapse, len(r.nonces), r.charged)
+			t.Logf("priority=%t elapsed=%s firstCommit=%s commits=%d statusCallbacksBeforeCommit=%d totalCallbacks=%d all15Live=%t lapse=%t freshNonces=%d costs=%v", priority, *r.now-start, firstCommit, commits, beforeFirstCommitCallbacks, statusCallbacks, allPriorityMembersLiveSharedProfile(r), lapse, len(r.nonces), r.charged)
 			if priority && (lapse || commits != 4) {
 				t.Fatal("priority lost finite continuity")
 			}
@@ -161,13 +161,13 @@ func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
 	}
 }
 
-type priorityRejectedLease struct {
+type priorityRejectedLeaseSharedProfile struct {
 	base   RuntimeLeaseClient
 	mutate string
 	calls  *int
 }
 
-func (l priorityRejectedLease) RenewIPsecLease(ctx context.Context, id uuid.UUID, q RuntimeLeaseRequest) (RuntimeLease, error) {
+func (l priorityRejectedLeaseSharedProfile) RenewIPsecLease(ctx context.Context, id uuid.UUID, q RuntimeLeaseRequest) (RuntimeLease, error) {
 	*l.calls++
 	if l.mutate == "cleanup" || l.mutate == "revision" || l.mutate == "policy" || l.mutate == "disabled" || l.mutate == "rpc" {
 		return RuntimeLease{}, ErrRuntimeController
@@ -179,13 +179,13 @@ func (l priorityRejectedLease) RenewIPsecLease(ctx context.Context, id uuid.UUID
 	return out, err
 }
 
-func TestPriorityActiveRenewalRefusesUntrustedCurrentAuthority(t *testing.T) {
+func TestPriorityActiveRenewalRefusesUntrustedCurrentAuthoritySharedProfile(t *testing.T) {
 	for _, kind := range []string{"cleanup", "revision", "policy", "disabled", "rpc", "nonce", "delivery", "journal", "cancel", "native"} {
 		t.Run(kind, func(t *testing.T) {
-			r, _ := priorityRenewalWindow(t)
+			r, _ := priorityRenewalWindowSharedProfile(t)
 			calls, positive := 0, 0
 			base := r.c.client
-			r.c.client = priorityRejectedLease{base: base, mutate: kind, calls: &calls}
+			r.c.client = priorityRejectedLeaseSharedProfile{base: base, mutate: kind, calls: &calls}
 			switch kind {
 			case "delivery":
 				for id, a := range r.c.active {
@@ -217,7 +217,7 @@ func TestPriorityActiveRenewalRefusesUntrustedCurrentAuthority(t *testing.T) {
 				return replace(ctx, in)
 			}
 			r.phase = "maintenance"
-			err := r.c.renewActiveIPsecRuntimeObserved(ctx, maintenanceAuthority(r), func() bool { return true }, nil)
+			err := r.c.renewActiveIPsecRuntimeObserved(ctx, maintenanceAuthority(r), func() bool { return true }, nil, nil)
 			r.phase = ""
 			if positive != 0 {
 				t.Fatal("refused/stale authority renewed finite native permits", kind)
@@ -245,7 +245,7 @@ func TestGCPPriorityRestoredClassicContract(t *testing.T) {
 			t.Fatal("Classic priority report lost single-slot contract")
 		}
 		return nil
-	})
+	}, nil)
 	if err != nil || publications != 2 || len(r.c.active) != 2 {
 		t.Fatal("GCP priority refused", publications, err)
 	}
@@ -276,7 +276,7 @@ func TestGCPPriorityHAExportAndNativeRefusal(t *testing.T) {
 					publications++
 				}
 				return nil
-			})
+			}, nil)
 			if publications != 0 {
 				t.Fatal("HA refusal published positive status")
 			}
@@ -304,7 +304,7 @@ func TestPriorityObservedCallbackCannotRetainInvalidOwner(t *testing.T) {
 					r.charge("slow_status", 61*time.Second)
 				}
 				return nil
-			})
+			}, nil)
 			if calls != 1 || err == nil || len(r.c.active) != 0 {
 				t.Fatal("callback escaped owner refusal", calls, len(r.c.active), err)
 			}

@@ -8,6 +8,12 @@ const GCPClassicProfile = "gcp-classic-static-ipv4-v1"
 // ValidateProviderConfig retains implicit AWS profiles for existing callers.
 // Validation never attests cloud provisioning or grants packet authority.
 func ValidateProviderConfig(c StaticConfig) error {
+	if isAzureProfile(c.ProfileID) {
+		return ValidateAzureConfig(c)
+	}
+	if c.Azure != nil {
+		return configError("azure_not_applicable", "azure", 0)
+	}
 	if c.ProfileID == GCPHAProfile || c.ProfileID == GCPClassicProfile {
 		return ValidateGCPConfig(c)
 	}
@@ -119,11 +125,11 @@ func gcpOutside(raw, field string, slot int, routes []netip.Prefix) (netip.Addr,
 }
 
 func isBGPProfile(profile string) bool {
-	return profile == "aws-bgp-ipv4-v1" || profile == GCPHAProfile
+	return profile == "aws-bgp-ipv4-v1" || profile == GCPHAProfile || azureBGP(profile)
 }
 
 func activeTunnelCount(profile string) int {
-	if profile == GCPClassicProfile {
+	if profile == GCPClassicProfile || azureStandby(profile) {
 		return 1
 	}
 	return 2

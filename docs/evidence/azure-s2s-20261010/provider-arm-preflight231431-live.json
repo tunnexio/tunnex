@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "kind": "owned_readonly_azure_arm_preflight",
+  "started_at": "2026-10-10T23:14:19.721525+00:00",
+  "observed_at": "2026-10-10T23:14:31.409685+00:00",
+  "host": "bastion-host",
+  "source": "root reviewed discover-owned-profile.py and convert-owned-standby.py pure validators",
+  "source_revision": "611fe78e8d52e89900f81faa7a750ca51664c59e",
+  "auth": {
+    "state": "Enabled",
+    "subscription": "34e2f259-b462-40bf-8f4a-06a3930d99e6",
+    "tenant": "f2985c5f-dc39-4088-bfc7-6678aefae567",
+    "userType": "user"
+  },
+  "auth_scope": "authenticated actual ARM reads with existing Azure CLI session; no new login/token retrieval",
+  "cli_version": "2.91.0",
+  "public_ip_metadata": [
+    {
+      "address": "52.140.60.21",
+      "allocation": "Static",
+      "id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/publicIPAddresses/gateway-ip1",
+      "ipConfiguration": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn/ipConfigurations/vnetGatewayConfig0",
+      "owner": "azure-s2s-01a12505",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "state": "Succeeded",
+      "zones": null
+    },
+    {
+      "address": "20.219.125.34",
+      "allocation": "Static",
+      "id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/publicIPAddresses/gateway-ip2",
+      "ipConfiguration": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn/ipConfigurations/vnetGatewayConfig1",
+      "owner": "azure-s2s-01a12505",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "state": "Succeeded",
+      "zones": null
+    }
+  ],
+  "owned": {
+    "subscription": "34e2f259-b462-40bf-8f4a-06a3930d99e6",
+    "resource_group": "tunnex-azure-s2s-20261010",
+    "owner": "azure-s2s-01a12505"
+  },
+  "current": {
+    "version": 1,
+    "observed_at": "2026-10-10T23:14:26.850429+00:00",
+    "subscription": "34e2f259-b462-40bf-8f4a-06a3930d99e6",
+    "resource_group": "tunnex-azure-s2s-20261010",
+    "owner": "azure-s2s-01a12505",
+    "connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+    "gateway_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn",
+    "local_gateway_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/localNetworkGateways/tunnex-local",
+    "active_active": true,
+    "sku": "VpnGw1AZ",
+    "vpn_type": "RouteBased",
+    "enable_bgp": true,
+    "customer_outside_address": "20.219.28.146",
+    "local_asn": 65000,
+    "customer_bgp_address": "169.254.10.1",
+    "remote_asn": 65515,
+    "public_endpoints": [
+      {
+        "outside_address": "52.140.60.21",
+        "cloud_inside_address": "169.254.21.2"
+      },
+      {
+        "outside_address": "20.219.125.34",
+        "cloud_inside_address": "169.254.22.2"
+      }
+    ],
+    "local_prefixes": []
+  },
+  "connection": {
+    "bgp": true,
+    "id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+    "mode": "Default",
+    "owner": "azure-s2s-01a12505",
+    "selectors": false,
+    "state": "Succeeded",
+    "trafficSelectors": []
+  },
+  "gateway": {
+    "active_active": true,
+    "sku": {
+      "capacity": 2,
+      "name": "VpnGw1AZ",
+      "tier": "VpnGw1AZ"
+    },
+    "generation": "Generation1",
+    "provisioning_state": "Succeeded",
+    "configurations": [
+      {
+        "name": "vnetGatewayConfig0",
+        "index": 0,
+        "public_ip_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/publicIPAddresses/gateway-ip1",
+        "subnet_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworks/azure-vnet/subnets/GatewaySubnet",
+        "allocation": "Dynamic"
+      },
+      {
+        "name": "vnetGatewayConfig1",
+        "index": 1,
+        "public_ip_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/publicIPAddresses/gateway-ip2",
+        "subnet_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworks/azure-vnet/subnets/GatewaySubnet",
+        "allocation": "Dynamic"
+      }
+    ],
+    "bgp_peers": [
+      {
+        "customBgpIpAddresses": [
+          "169.254.21.2"
+        ],
+        "defaultBgpIpAddresses": [
+          "10.231.255.4"
+        ],
+        "ipconfigurationId": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn/ipConfigurations/vnetGatewayConfig0",
+        "tunnelIpAddresses": [
+          "52.140.60.21"
+        ]
+      },
+      {
+        "customBgpIpAddresses": [
+          "169.254.22.2"
+        ],
+        "defaultBgpIpAddresses": [
+          "10.231.255.5"
+        ],
+        "ipconfigurationId": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn/ipConfigurations/vnetGatewayConfig1",
+        "tunnelIpAddresses": [
+          "20.219.125.34"
+        ]
+      }
+    ]
+  },
+  "proposed_as": {
+    "retained_config": "vnetGatewayConfig0",
+    "removed_config": "vnetGatewayConfig1",
+    "remove_actual_index": 1,
+    "retain_unused_pip": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/publicIPAddresses/gateway-ip2",
+    "active_active": false,
+    "custom_mapping": [
+      {
+        "ipconfigurationId": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn/ipConfigurations/vnetGatewayConfig0",
+        "customBgpIpAddresses": [
+          "169.254.21.2"
+        ]
+      }
+    ],
+    "non_target_properties_equal": true,
+    "expected_changed_paths": [
+      "activeActive",
+      "ipConfigurations[secondary]",
+      "bgpSettings.bgpPeeringAddresses[secondary]"
+    ],
+    "excluded_platform_paths": [
+      "etag",
+      "provisioningState",
+      "ipConfigurations[*].etag",
+      "ipConfigurations[*].provisioningState",
+      "bgpSettings.bgpPeeringAddresses[*].defaultBgpIpAddresses",
+      "bgpSettings.bgpPeeringAddresses[*].tunnelIpAddresses"
+    ],
+    "resize": false,
+    "new_vm_or_public_ip": false,
+    "server_acceptance": "not_attempted",
+    "protected_before_sha256": "b409684cc2ad6e6e3ccf9c4c04be9ed8b68149e4c69b63e0b9c62736d18e9e3c",
+    "protected_target_sha256": "76e6d4fae4b6280b6f171330a800f3fd438f3858e83230538158f9d71a861040"
+  },
+  "mutations": 0,
+  "native_or_traffic_readiness": "not_measured"
+}

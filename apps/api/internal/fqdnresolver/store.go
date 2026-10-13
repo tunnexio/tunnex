@@ -129,6 +129,19 @@ func (s *PostgresStore) NextRefreshAt(ctx context.Context) (time.Time, error) {
 // Due returns only resources with a server-selected active Site/Gateway pair.
 // A missing pair is a draft, not an invitation to use a public resolver.
 func (s *PostgresStore) Due(ctx context.Context, now time.Time, limit int) ([]Work, error) {
+	return s.due(ctx, now, limit, 0)
+}
+
+// DueForRefresh admits an early refresh from the existing generation cutoff.
+// Actual now still governs withdrawals/retries; lookahead is not a future clock.
+func (s *PostgresStore) DueForRefresh(ctx context.Context, now time.Time, limit int, headroom time.Duration) ([]Work, error) {
+	if headroom < 0 || headroom > MaxTTL {
+		return nil, fmt.Errorf("invalid refresh headroom")
+	}
+	return s.due(ctx, now, limit, headroom)
+}
+
+func (s *PostgresStore) due(ctx context.Context, now time.Time, limit int, headroom time.Duration) ([]Work, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -159,7 +172,8 @@ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
     OR EXISTS (
       SELECT 1 FROM fqdn_resource_answer_generations g
       WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'
-        AND g.activated_at + (g.effective_ttl * 0.8) <= $1
+        AND (g.activated_at + (g.effective_ttl * 0.8) <= $1
+             OR g.resolved_at + g.effective_ttl <= $1 + $4::interval)
     )
     OR (
       EXISTS (
@@ -186,10 +200,10 @@ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
     )
   )
 ORDER BY COALESCE(
- (SELECT min(g.activated_at + g.effective_ttl) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'),
+ (SELECT min(g.resolved_at + g.effective_ttl) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'),
  (SELECT max(g.ended_at) + $2::interval FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='withdrawn'),
  '-infinity'::timestamptz), r.updated_at,r.id
-LIMIT $3`, now, s.retryAfter.String(), limit)
+LIMIT $3`, now, s.retryAfter.String(), limit, headroom.String())
 	if err != nil {
 		return nil, err
 	}

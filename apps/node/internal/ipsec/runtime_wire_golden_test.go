@@ -44,14 +44,14 @@ func testRuntimeManifestAPIGolden(t *testing.T, path string, count int) {
 			if !runtimeDeliveryValid(d, m.OrgID, m.NodeID, "apply") {
 				t.Fatal("API-produced delivery digest refused")
 			}
-			if m.ProfileID == GCPClassicStaticProfile {
+			if IsSingleTunnelProfile(m.ProfileID) {
 				if count, err := runtimeTransportContract(m); err != nil || count != 1 || m.Tunnels[1] != (RuntimeTunnel{}) {
-					t.Fatal("API Classic inactive slot/cardinality drift")
+					t.Fatal("API single-tunnel inactive slot/cardinality drift")
 				}
 				changed := m
 				changed.Tunnels[1].Slot = 2
 				if _, err := runtimeTransportContract(changed); err == nil {
-					t.Fatal("API Classic nonzero inactive slot admitted")
+					t.Fatal("API single-tunnel nonzero inactive slot admitted")
 				}
 			}
 			d.Manifest.DesiredRevision++
@@ -60,4 +60,8 @@ func testRuntimeManifestAPIGolden(t *testing.T, path string, count int) {
 			}
 		})
 	}
+}
+
+func TestRuntimeManifestAPIAzureGoldenWire(t *testing.T) {
+	testRuntimeManifestAPIGolden(t, "testdata/api_azure_runtime_manifest_golden.json", 4)
 }

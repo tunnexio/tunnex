@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-10-11T09:46:48.433601+00:00",
+  "root_head": "09d497d42e803d43e6939f8b78583a93e362c957",
+  "candidate_head": "49c440120cba1fb77e9d6b28952138750853cc36",
+  "native_component": {
+    "test": "TestGuardFQDNV2ExpiryNativeReadback",
+    "pass": true,
+    "skips": 0,
+    "seconds": 3.29,
+    "attempt": 5,
+    "container_id": "296517b3393253dee0fc935ce4696f9b538c87f0d1741c4956a4339c60c288c9",
+    "image_sha256": "00e84e696a0a007f99741b5cb953696ab11084238a5eb3c916bf11d62a40e688",
+    "nft_version": "1.1.6",
+    "binary_sha256": "d19daf582e935a935154253236e58d666725eeaff8cc2d25b96de776c2ccb44c",
+    "source_unchanged": true,
+    "component_receipt_sha256": "b9e8be03e5991718ddf7a573efd0f316b07c59aab3a64e404e3b2bd5e3ce0e5e",
+    "component_stdout_sha256": "64433ef76a9992e0c50ad333897e6e9761df20a0b7d6c3f96e0e87692f4868ee",
+    "qualification_result_sha256": "0bdd25ff58cff38ed50545791041595eb9ed1349eeb3245bb3ad9cf5787b4f2c",
+    "build_receipt_sha256": "d849648f58fa7e4ef3151f3033dc025b571e50c6921494f0fac66565ed3fa309",
+    "proofs": [
+      "actual positive finite IPv4 FQDN membership and strict full-table readback",
+      "after actual3.2seconds expiredFQDN refusespositive readback",
+      "expiredmember retains exact whole-table withdrawal ownership",
+      "independent connection SA/ordinary/reply finite sets remain positive",
+      "actual expiredset removal and strict newordinarytable readback"
+    ],
+    "independent_full_interface_inventory": "real net.Interfaces with lo1 and exact2XFRM identities; stable sorted census before/after eachread",
+    "native_cleanup": {
+      "container_id": "296517b3393253dee0fc935ce4696f9b538c87f0d1741c4956a4339c60c288c9",
+      "namespace_process_pid": 2930131,
+      "native_tables": 0,
+      "observed_at": "2026-10-11T09:46:47.968656+00:00",
+      "scope": "owned disconnected native test cleanup and no-SA/SPD only; disposable XFRM links retained; no cloud",
+      "started_at": "2026-10-11T09:45:44.29824491Z",
+      "table_stdout_base64": "eyJuZnRhYmxlcyI6IFt7Im1ldGFpbmZvIjogeyJ2ZXJzaW9uIjogIjEuMS42IiwgInJlbGVhc2VfbmFtZSI6ICJDb21tb2RvcmUgQnVsbG1vb3NlICM3IiwgImpzb25fc2NoZW1hX3ZlcnNpb24iOiAxfX1dfQo=",
+      "table_stdout_sha256": "7be6ae8168b91af389f92984b66540c243addb40df33350407b6de9818d11ffd",
+      "xfrm_policy_stdout_bytes": 0,
+      "xfrm_state_stdout_bytes": 0
+    }
+  },
+  "source_corrections": {
+    "typed_fqdn_original_destination_lookup": "459fefe87d24b1bc638fc84b08e29a644b1419ff",
+    "native_canonical_emitter_and_fixture": "49c440120cba1fb77e9d6b28952138750853cc36",
+    "strict_reader_changed": false,
+    "ordinary_scalar_conntrack_grammar_changed": false,
+    "mark_semantics": "canonical ANDmask(^ownedmask)|forcedmark followedby sameOR forcedmark is equivalent for alluint32, preserving alloutsideownedbits",
+    "unit_seconds": 5.266,
+    "race_seconds": 30.603,
+    "unit_log_sha256": "db5c4579007cb9f9c167bec1b39456f31a4116ce7bdc518da66135c41b5d7b86",
+    "race_log_sha256": "1e8c3a8fa11f625f7a825a833b21499dd81567a740a6a73cb308a552ccd4f828",
+    "independent_four_file_review_sha256": "754b545ea92d1410cf7437dbfc813afbdf7ed3aa45a2ac792d988e136c4dd867",
+    "initial_frozen_assertion_failure_preserved": true
+  },
+  "earlier_attempts_preserved": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "scope": "local disconnected native timed-set/readback component only; no installed SAs or encrypted packets, control-plane delivery, restart/rekey/failover or production acceptance",
+  "deployed": false,
+  "pushed": false,
+  "cloud_gateway_start_repeated": false,
+  "formally_closed_stories": 0,
+  "total_stories": 11,
+  "remaining_cloud_action": "additional reviewed same-ID recovery kit approval pending; no staging or recovery POST"
+}

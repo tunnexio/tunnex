@@ -87,11 +87,11 @@ JOIN fqdn_resolver_context_configs cfg
 JOIN fqdn_resolver_context_profiles profile
   ON profile.config_id=cfg.id AND profile.org_id=cfg.org_id
  AND profile.id=COALESCE(g.resolver_profile_id,cfg.id)
-WHERE g.org_id=$1 AND g.state='active'
-  AND g.effective_ttl >= interval '30 seconds' AND g.effective_ttl <= interval '1 hour'
+WHERE g.org_id=$1 AND g.state='active' AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
+  AND isfinite(g.resolved_at)
+  AND g.effective_ttl BETWEEN interval '30 seconds' AND interval '1 hour'
   AND g.resolved_at <= clock_timestamp()
   AND g.resolved_at + g.effective_ttl > clock_timestamp()
-  AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
   AND (
     (profile.legacy_default AND COALESCE(g.resolver_match_suffix,'')=''
       AND NOT EXISTS (

@@ -239,7 +239,7 @@ func TestRuntimeProofRetryCannotRestoreExpiredLease(t *testing.T) {
 	// Same canonical-hash lease identity fixture as TestPermitLeaseCanonicalPolicyHashIdentity.
 	id.PolicyHash = strings.Repeat("a", 64)
 	request, err := authority.Begin(id)
-	if err != nil || authority.Accept(PermitLeaseResponse{request, 60000}) != nil {
+	if err != nil || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: 60000}) != nil {
 		t.Fatal("lease fixture", err)
 	}
 	r.afterX = func(n int) {

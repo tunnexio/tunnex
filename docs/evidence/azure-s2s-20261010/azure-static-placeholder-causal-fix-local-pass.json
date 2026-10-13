@@ -1,0 +1,64 @@
+{
+  "kind": "owned_azure_static_placeholder_causal_fix_source_qualified",
+  "recorded_at": "2026-10-11T22:34:56.332463+00:00",
+  "accepted_story_count": 6,
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "open_human_story_numbers": [
+    5,
+    6,
+    9,
+    10,
+    11
+  ],
+  "production_source_sha256": "3b323a584e30cc3e26083333db2e57b79122d386c8e573fdaa9dbb272832446b",
+  "regression_source_sha256": "1403730694304ba9161fa7c22b7bd869a1a1c847d4c2fee8798e2ca9940f626a",
+  "independent_review": "passed",
+  "qualification_sha256": "523cd6423d796cbb5642992fe16f63a60fbe0b8eed018214e9fbd8ee10c60c53",
+  "focused_candidate_race": {
+    "command": "go test -race -p 2 ./internal/ipsec -run '^(TestAzureProfileRecreation|TestAzureProfileAbsenceOnly|TestRetainedGuard|TestAzureNarrowCleanupThroughNormalControllerDenial)' -count=1 -v",
+    "top_pass": 17,
+    "skips": 0,
+    "failures": 0,
+    "seconds": 2.669
+  },
+  "focused_root_race": {
+    "passed": true,
+    "seconds": 2.724,
+    "command": "go test -race -p 2 -count=1 ./internal/ipsec -run 'TestAzureProfile(AbsenceOnly|Recreation)|TestRetainedGuardHandoff|TestCleanupDiagnostic'",
+    "toolchain": "go1.26.9"
+  },
+  "genuine_saved_graph_comparison": {
+    "input_sha256": "fb24e9ecbf10bb82aa1074ca5010c262440937a5ed9459fe78ff9deb3d705bd1",
+    "journal_sha256": "e0c3226e1e27215e3edf75df350228feabe10e40aeb79d739a84dee700b420af",
+    "candidate_result_sha256": "0b768bacf01cc7d90bb6884da011c92133075a10af2e605dd435e82ca7c97caf",
+    "candidate_stdout_sha256": "4193055f3c5e28ef2386d5f7cfc1af340916832b86f0f5fb86dc5aeb59bc57ec",
+    "entries": 30,
+    "original_domain_refusals": 1,
+    "candidate_domain_refusals": 0,
+    "candidate_full_reference_graph_valid": true,
+    "candidate_guard_projection_valid": true,
+    "underlay_bound": true,
+    "native_proved": false
+  },
+  "candidate_node": {
+    "sha256": "0dda48e7f09d7c03467b9f66df0fb4bb1eac8f458f99f0606d594307d4bc42a5",
+    "bytes": 14684322
+  },
+  "candidate_native_observer": {
+    "sha256": "12b1b1a798cc4bed05b7ad0e53bffb4663a625ff4c6029df4b8df8c7e5e3ae15",
+    "bytes": 19460426
+  },
+  "changes": "Canonical never-observed AbsenceOnly public placeholders may persist in negative-only Reserved, CleanupPending and RetainedRefusal states. Observed socket equality, public/remote identities, lineage/digests and fully finalized predecessor phase/native absence requirements remain mandatory. AbsenceOnly Applying/Applied is still refused.",
+  "production_patch_deployed": false,
+  "current_static_native_accepted": false,
+  "current_static_traffic_accepted": false,
+  "cleanup_test_limit": "Actual Cleanup persists unknown lineage Reserved then Pending and refuses ACK when DaemonAlive=false; exact retained journal transition tested separately. No synthetic native absence ACK claimed.",
+  "scope": "Qualified source fix integrated locally; actual original-source versus candidate predicates differ on the same saved genuine graph. Live candidate deployment, cleanup and static packets remain required. No Git commit or push."
+}

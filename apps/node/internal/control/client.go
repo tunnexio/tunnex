@@ -258,11 +258,20 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"ai_vpn_http_ready":         ps.AIVPNHTTPReady,
 		"ai_vpn_http_address":       ps.AIVPNHTTPAddress,
 	}
-	if version := c.ipsecFQDNPolicyCapability(); version == 1 {
-		payload["ipsec_fqdn_policy_version"] = version
-	}
 	if version := c.ipsecBGPCapability(); version == 1 {
 		payload["ipsec_bgp_version"] = version
+	}
+	if version := c.ipsecAzureBGPRecreationCapability(); version == 1 {
+		payload["ipsec_azure_bgp_recreation_version"] = version
+	}
+	if version := c.ipsecAzureProfileRecreationCapability(); version == 1 {
+		payload["ipsec_azure_profile_recreation_version"] = version
+	}
+	if version := c.ipsecFQDNPolicyCapability(); version == 1 || version == 2 {
+		payload["ipsec_fqdn_policy_version"] = version
+	}
+	if c.ipsecAzureCapability() == 1 {
+		payload["ipsec_azure_version"] = 1
 	}
 	if c.ipsecGCPHACapability() == 1 {
 		payload["ipsec_gcp_ha_version"] = 1
@@ -314,7 +323,7 @@ func (c *Client) ReportDNSResolution(ctx context.Context, response fqdnrpc.Respo
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("dns-resolution status %d", resp.StatusCode)
+		return dnsReportHTTPError{status: resp.StatusCode}
 	}
 	return nil
 }

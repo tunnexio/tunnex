@@ -1,0 +1,51 @@
+{
+  "accepted_story_count": 6,
+  "actual_isolated_linux_regression": {
+    "customer_service_normal_journal_brackets_unchanged": true,
+    "fixture": {
+      "CandidateConnected": true,
+      "CommandsWritten": 0,
+      "ConnectAttempts": 4,
+      "Kind": "isolated_unix_backlog_red_green",
+      "LegacyRefused": true,
+      "ProductionWait": true,
+      "RealEAGAIN": true
+    },
+    "result_sha256": "f98960b5d1b91651d838f26265a60286c08fd9385d03170d5d43717ad1ae3980",
+    "scope": "Isolated real AF_UNIX backlog regression; no customer readiness authority."
+  },
+  "after_sha256": "dd97dd954a935a9d06739df31d5471fd0542000c3f5afde2efe7463a8bd04da1",
+  "before_sha256": "3ece499932b3b0402ca91068eff946e310784f90ac180dea2a92ef828d46952c",
+  "category": "vici_connect_eagain_causal_fix_source_and_actual_linux_qualification",
+  "deployed": false,
+  "independent_review_sha256": "08de5d68043efb9368be8c53c0576f2a12a66ef76b1a82b44a8ba8b151687337",
+  "integrated_locally": true,
+  "new_slices_closed": 0,
+  "production_path": "apps/node/internal/ipsec/daemon.go",
+  "recorded_at": "2026-10-12T05:37:05.300273+00:00",
+  "root_focused_race": {
+    "receipt_sha256": "fa77a7c81568750f7cc5dec351cba1f01ec1f1c07140bc0894f35f1e888a49d3",
+    "skips": 0,
+    "tests_passed": 25
+  },
+  "semantics": "Only pre-command EAGAIN connect waits with the existing deadline, cancelable 10ms timer, fresh descriptors and exact owned parent/socket inode and metadata rechecks. No command retry.",
+  "source_paired_build": {
+    "apptransport_files": 23,
+    "binaries": {
+      "observer.test": {
+        "bytes": 19530616,
+        "sha256": "ec17760e4226364c5e9c672d2192916c7914d8356e5ff25cc7e0a83489fe24f4"
+      },
+      "tunnex-node": {
+        "bytes": 14704802,
+        "sha256": "197b6f795ee9b1613bb809bd00ffbc471f5c638ef23594dafb93c74a1a7201d3"
+      }
+    },
+    "production_closure_sha256": "f65ec6eb74e629cafa3f87a6293af9be4094ab13d58736b2404ea5ab2aa9de40",
+    "production_files": 233,
+    "production_modules_apptransport_original_overlays_before_after_equal": true
+  },
+  "sustained_dns_passed": false,
+  "total_story_count": 11,
+  "whole_story_accepted": false
+}

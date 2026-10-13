@@ -174,7 +174,7 @@ func validIPsecStatusReport(report ipsec.RuntimeStatusReport) bool {
 	}
 	count := 2
 	if report.TransportVersion != nil || report.TunnelCount != nil {
-		if report.TransportVersion == nil || *report.TransportVersion != 1 || report.TunnelCount == nil || *report.TunnelCount != 1 || report.Tunnels[1] != (ipsec.RuntimeTunnelStatus{}) || report.BGP != nil || report.RecoveryVersion != nil {
+		if report.TransportVersion == nil || *report.TransportVersion != 1 || report.TunnelCount == nil || *report.TunnelCount != 1 || report.Tunnels[1] != (ipsec.RuntimeTunnelStatus{}) || report.RecoveryVersion != nil {
 			return false
 		}
 		count = 1
@@ -203,13 +203,16 @@ func validIPsecStatusReport(report ipsec.RuntimeStatusReport) bool {
 		seen := map[string]bool{}
 		for _, r := range b.Routes {
 			prefix, err := netip.ParsePrefix(r.Prefix)
-			if err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || prefix.String() != r.Prefix || r.Slot < 1 || r.Slot > 2 || seen[r.Prefix] {
+			if err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || prefix.String() != r.Prefix || r.Slot < 1 || r.Slot > count || seen[r.Prefix] {
 				return false
 			}
 			seen[r.Prefix] = true
 			installed[r.Slot-1]++
 		}
-		for i, p := range b.Peers {
+		if count == 1 && b.Peers[1] != (ipsec.RuntimeBGPPeerStatus{}) {
+			return false
+		}
+		for i, p := range b.Peers[:count] {
 			switch p.State {
 			case "unknown", "idle", "connect", "active", "opensent", "openconfirm", "established":
 			default:

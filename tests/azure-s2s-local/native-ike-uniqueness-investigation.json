@@ -1,0 +1,58 @@
+{
+  "kind": "sanitized_local_investigation_summary",
+  "date": "2026-10-10",
+  "source_commit": "d99c85223e59cc111d9ce72c60df54db6d2c477a",
+  "image": "sha256:00e84e696a0a007f99741b5cb953696ab11084238a5eb3c916bf11d62a40e688",
+  "image_tag": "tunnex-azure-s2s-native:20261010-ec57c0ee",
+  "observed_swanctl_version": "6.1.0",
+  "scope": "Disposable local network-none container, owned namespace/veth pair, synthetic credentials, NET_ADMIN and SYS_ADMIN with container AppArmor/seccomp disabled; no host mounts, downloads, cloud execution, production edits, controller authority or traffic grants.",
+  "version_limit": "Local fixture reports 6.1.0. Source pins the managed /opt/tunnex-ipsec/libexec/ipsec/charon to 6.1.0 and DaemonClient.Inspect requires VICI version 6.1.0. The package/CLI report 6.0.7-r1 does not identify that managed daemon. Root reports successful live Inspect; exact live binary attestation remains separate. This local matrix does not establish live Azure causality.",
+  "candidate_prevention": "FAIL",
+  "completed_cases": [
+    {
+      "name": "default_unique_simultaneous_initial_initiation",
+      "observation": "Both peers had 2 ESTABLISHED IKEs and 2 INSTALLED children immediately after simultaneous initiation."
+    },
+    {
+      "name": "replace_with_connection_ifids_simultaneous_initial_initiation",
+      "configuration": "unique=replace; connection and child if_id_in/out=701; child reqid=701; transport selectors 0.0.0.0/0",
+      "observation": "Run 1: both peers retained 2 ESTABLISHED IKEs and 2 INSTALLED children at immediate and 12-second samples. Run 2: peer a retained 2/2 and peer b 1/1 at both samples.",
+      "conclusion": "Candidate did not prevent duplicates and did not reliably settle them after the documented replacement overlap. Trigger timing remains unclassified; this does not prove the live Azure initiation sequence."
+    },
+    {
+      "name": "same_auth_identities_distinct_connection_ifids",
+      "observation": "Sequential establishment of two owned configurations with interface IDs 701 and 702: after 12 seconds, both peers had 2 ESTABLISHED IKEs, one INSTALLED owned1 child and one INSTALLED owned2 child.",
+      "limit": "Observed isolation for this configuration; not a general identity-admission or INITIAL_CONTACT isolation guarantee."
+    },
+    {
+      "name": "single_initial_ike_child_and_ike_rekey",
+      "observation": "Successful native CHILD rekey command followed by a 2-second sample, then successful IKE rekey command followed by a 12-second sample: both peers retained 1 ESTABLISHED IKE and 1 INSTALLED child at initial and both settled samples.",
+      "limit": "Cardinality observations and command success only; no production authority, packet continuity or transient overlap acceptance claim."
+    },
+    {
+      "name": "exact_id_cleanup_owned_policy_barrier_and_fresh_configuration",
+      "observation": "After exact listed IKE-ID termination and connection configuration unload, both peers had 0 ESTABLISHED IKEs, 0 INSTALLED children, 0 SAD entries and 0 policies matching owned interface ID 701. Total SPD entries were 8 per peer; they are not counted as owned-policy absence. A fresh configuration name with interface ID 703 subsequently established 1 IKE and 1 child per peer.",
+      "limit": "Fixture cleanup/recreate only; not normal API cleanup, journal generation finalization or global kernel-policy absence."
+    }
+  ],
+  "harness_false_starts": [
+    "Namespace setup required container AppArmor/seccomp relaxation in addition to NET_ADMIN/SYS_ADMIN; the default-profile setup failed.",
+    "Rekey/cleanup harness initially used unsupported swanctl --unload-conns and then unsupported --load-conns --clear. Installed CLI help was checked; completed run used --load-conns with an empty configuration. Those earlier exits are harness failures, not daemon rekey failures.",
+    "An exploratory duplicated-IKE rekey/cleanup run terminated peer a before observing peer b; its later peer-b observations are excluded from the completed rekey case."
+  ],
+  "script_hash_scope": "Hashes identify final local review snapshots, not immutable per-invocation snapshots. Scripts evolved during investigation; they are not claimed as exact replay hashes for every earlier observation. Original outputs were tool results; no raw daemon logs, credentials or SA material are included here.",
+  "final_review_script_sha256": {
+    "azure-uniqueness-native.sh": "2fd24f0e681023ce18284c282a9f417054f008604911e5d92976d5b2820cccc2",
+    "azure-uniqueness-candidate.sh": "7054d41cb78e32d6c6b0c4278e70a251b7d59a3fc65a43ff9bb6e426a7c2c89f",
+    "azure-uniqueness-isolation.sh": "52605fe662cd03838a10bcd301fb9b7574f2eaeb3098666c690f4330a7f940a7",
+    "azure-uniqueness-rekey.sh": "a09fffba0745641fbc7e859e19087cce2199f88c3d5f03aa4152339fd6aa8f84",
+    "azure-uniqueness-barrier.sh": "93d8282a26fa39aa54761d1e8bef7fbca6ef24d56e9d6eb6aea2637ac298cb2d"
+  },
+  "decision": "Do not ship this candidate as a duplicate-IKE prevention fix. Preserve strict duplicate/selector refusal. Live managed-binary attestation and normal owned lifecycle qualification remain separate.",
+  "version_source_evidence": {
+    "daemon_executable": "apps/node/internal/ipsec/daemon_process_linux.go:22",
+    "inspect_version_requirement": "apps/node/internal/ipsec/daemon.go:93-103",
+    "pinned_source": "deploy/ipsec/PROVENANCE.json:3-4",
+    "correction": "Earlier attribution of package-reported 6.0.7-r1 to the owned managed daemon was unsupported."
+  }
+}

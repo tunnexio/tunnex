@@ -293,3 +293,55 @@ func TestGatewayDNSRPCIPsecPathIsEchoedAndCannotBeSubstituted(t *testing.T) {
 		})
 	}
 }
+
+func TestGatewayDNSRPCTransportValidatesAtReceiptWithoutExtendingDeadline(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		observed, receipt time.Duration
+		canceled          bool
+		want              error
+	}{
+		{"genuine post-resolution", 2500 * time.Millisecond, 2600 * time.Millisecond, false, nil},
+		{"aged at receipt", -GatewayDNSResponseMaxAge + time.Second, 2600 * time.Millisecond, false, ErrGatewayDNSRPCStale},
+		{"future beyond skew", 3700 * time.Millisecond, 2600 * time.Millisecond, false, ErrGatewayDNSRPCStale},
+		{"future within skew", 3500 * time.Millisecond, 2600 * time.Millisecond, false, nil},
+		{"observed after original deadline", 5100 * time.Millisecond, 4500 * time.Millisecond, false, ErrGatewayDNSRPCStale},
+		{"received at original deadline", 2500 * time.Millisecond, 5 * time.Second, false, context.DeadlineExceeded},
+		{"clock rollback", -time.Second, -time.Second, false, ErrGatewayDNSRPCStale},
+		{"canceled despite mailbox success", 2500 * time.Millisecond, 2600 * time.Millisecond, true, context.Canceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			start := time.Now()
+			clock := start
+			deadline := start.Add(5 * time.Second)
+			ctx, cancel := context.WithDeadline(context.Background(), deadline)
+			defer cancel()
+			mailbox := &scriptedMailbox{call: func(c context.Context, r GatewayDNSRequest) (GatewayDNSResponse, error) {
+				if !r.Deadline.Equal(deadline) {
+					t.Fatal("request deadline changed")
+				}
+				d, ok := c.Deadline()
+				if !ok || !d.Equal(deadline) {
+					t.Fatal("mailbox deadline changed")
+				}
+				clock = start.Add(tc.receipt)
+				if tc.canceled {
+					cancel()
+				}
+				return responseFor(r, start.Add(tc.observed), Record{Name: rpcWork().Hostname, Type: TypeA, Address: netip.MustParseAddr("10.20.30.40"), TTL: time.Minute}), nil
+			}}
+			transport := NewGatewayDNSRPCTransport(mailbox)
+			transport.now = func() time.Time { return clock }
+			responses, err := transport.LookupWork(ctx, rpcWork())
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("got %v want %v", err, tc.want)
+			}
+			if tc.want == nil && (len(responses) != 1 || len(responses[0].Records) != 1) {
+				t.Fatal("accepted observation lost")
+			}
+			if tc.want != nil && len(responses) != 0 {
+				t.Fatal("refusal published response")
+			}
+		})
+	}
+}

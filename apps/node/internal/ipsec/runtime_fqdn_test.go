@@ -443,6 +443,10 @@ func TestRuntimeFQDNCapabilityRequiresCommittedOwnerAndNativePlatform(t *testing
 	if c.fqdnPolicyCapabilityFor("linux", "amd64") != 1 {
 		t.Fatal("actual qualified committed feature not advertised")
 	}
+	c.qualification.fqdnExpiry = true
+	if c.fqdnPolicyCapabilityFor("linux", "amd64") != 2 {
+		t.Fatal("genuine v2 native check not advertised")
+	}
 	for _, platform := range []string{"darwin", "windows"} {
 		if c.fqdnPolicyCapabilityFor(platform, "amd64") != 0 {
 			t.Fatal("unsupported platform advertised FQDN capability")

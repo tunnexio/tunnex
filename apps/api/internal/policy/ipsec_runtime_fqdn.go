@@ -20,7 +20,7 @@ func (r runtimeFQDNGenerationReader) ActiveGenerations(ctx context.Context, org 
 	return fqdnresolver.ActiveGenerationsWithQuery(ctx, r.query, org)
 }
 func appendRuntimeFQDNGenerations(ctx context.Context, snapshot *Snapshot, input ipsec.RuntimePolicyInput, entitled bool) error {
-	if snapshot == nil || !entitled || input.FQDNPolicyVersion != 1 || input.Transaction == nil {
+	if snapshot == nil || !entitled || (input.FQDNPolicyVersion != 1 && input.FQDNPolicyVersion != 2) || input.Transaction == nil {
 		return nil
 	}
 	snapshot.FQDNResourcesLicensed = true
@@ -30,7 +30,7 @@ func appendRuntimeFQDNGenerations(ctx context.Context, snapshot *Snapshot, input
 // This is an answer-only adapter over the shared compiler. Resolver carriage
 // from an FQDN rule is deliberately not copied into ordinary IPsec Grants.
 func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) []ipsec.RuntimeFQDNGrant {
-	if input.FQDNPolicyVersion != 1 || input.ConfigurationRevision != 1 || snapshot.Mode != ModeEnforcing || !snapshot.FQDNResourcesLicensed || !snapshot.FQDNResourcesEnabled {
+	if (input.FQDNPolicyVersion != 1 && input.FQDNPolicyVersion != 2) || input.ConfigurationRevision != 1 || snapshot.Mode != ModeEnforcing || !snapshot.FQDNResourcesLicensed || !snapshot.FQDNResourcesEnabled {
 		return nil
 	}
 	rules := make([]Rule, 0, len(snapshot.Rules))
@@ -45,7 +45,7 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 	resources := make(map[uuid.UUID]FQDNResource)
 	for _, r := range snapshot.FQDNResources {
 		g := r.Active
-		if g == nil || g.SelectedSiteID != input.SiteID || g.SelectedGatewayID != input.NodeID || g.IPsecConnectionID != input.ConnectionID || g.IPsecConfigurationRevision != input.ConfigurationRevision || g.ResolverMatchSuffix == "" {
+		if g == nil || input.CompiledAt.IsZero() || g.ResolvedAt.IsZero() || g.ResolvedAt.After(input.CompiledAt) || !g.FreshUntil.After(g.ResolvedAt) || !g.FreshUntil.After(input.CompiledAt) || g.SelectedSiteID != input.SiteID || g.SelectedGatewayID != input.NodeID || g.IPsecConnectionID != input.ConnectionID || g.IPsecConfigurationRevision != input.ConfigurationRevision || g.ResolverMatchSuffix == "" {
 			continue
 		}
 		source, err := netip.ParseAddr(g.IPsecSourceAddress)
@@ -71,6 +71,11 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 		}
 		references[ref.PolicyRuleID] = ref.FQDNResourceID
 	}
+	ruleExpiry := map[uuid.UUID]*time.Time{}
+	for _, rule := range snapshot.Rules {
+		ruleExpiry[rule.ID] = rule.ExpiresAt
+	}
+	now := input.CompiledAt
 	var out []ipsec.RuntimeFQDNGrant
 	for _, grant := range Compile(snapshot)[input.NodeID].Allow {
 		if !grant.FQDNManaged {
@@ -91,7 +96,23 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 			continue
 		}
 		g := resource.Active
-		out = append(out, ipsec.RuntimeFQDNGrant{RuntimeGrant: ipsec.RuntimeGrant{Source: source.String(), Destination: destination.String(), Protocol: string(grant.Protocol), PortLow: uint16(grant.PortLow), PortHigh: uint16(grant.PortHigh), RuleID: grant.RuleID}, FQDNManaged: true, ResourceID: resource.ID.String(), Name: generation.Name, Generation: generation.Generation, ResolverConfigID: g.ResolverConfigID.String(), ResolverConfigVersion: g.ResolverConfigVersion, SelectedSiteID: g.SelectedSiteID.String(), SelectedGatewayID: g.SelectedGatewayID.String(), ResolverProfileID: g.ResolverProfileID.String(), ResolverMatchSuffix: g.ResolverMatchSuffix, ConnectionID: g.IPsecConnectionID.String(), ConfigurationRevision: g.IPsecConfigurationRevision})
+		var expires time.Time
+		resolverSource := ""
+		if input.FQDNPolicyVersion == 2 {
+			expires = g.FreshUntil
+			if !expires.After(now) || expires.After(now.Add(time.Hour)) {
+				continue
+			}
+			if x := ruleExpiry[rule]; x != nil && x.Before(expires) {
+				expires = *x
+			}
+			if !expires.After(now) || expires.After(now.Add(time.Hour)) {
+				continue
+			}
+			expires = expires.UTC()
+			resolverSource = g.IPsecSourceAddress
+		}
+		out = append(out, ipsec.RuntimeFQDNGrant{ExpiresAt: expires, ResolverSourceAddress: resolverSource, RuntimeGrant: ipsec.RuntimeGrant{Source: source.String(), Destination: destination.String(), Protocol: string(grant.Protocol), PortLow: uint16(grant.PortLow), PortHigh: uint16(grant.PortHigh), RuleID: grant.RuleID}, FQDNManaged: true, ResourceID: resource.ID.String(), Name: generation.Name, Generation: generation.Generation, ResolverConfigID: g.ResolverConfigID.String(), ResolverConfigVersion: g.ResolverConfigVersion, SelectedSiteID: g.SelectedSiteID.String(), SelectedGatewayID: g.SelectedGatewayID.String(), ResolverProfileID: g.ResolverProfileID.String(), ResolverMatchSuffix: g.ResolverMatchSuffix, ConnectionID: g.IPsecConnectionID.String(), ConfigurationRevision: g.IPsecConfigurationRevision})
 	}
 	sort.Slice(out, func(a, b int) bool {
 		x, _ := json.Marshal(out[a])
@@ -101,23 +122,37 @@ func compileIPsecFQDNGrants(snapshot Snapshot, input ipsec.RuntimePolicyInput) [
 	return out
 }
 
-// Bind expiry only to the answer generations actually lowered into grants.
-func runtimeFQDNValidUntil(snapshot Snapshot, grants []ipsec.RuntimeFQDNGrant) time.Time {
-	var earliest time.Time
+// Private v1 whole-owner limit over only the exact descriptors already emitted.
+// No wire/hash fields change; v2 instead carries independent per-grant authority.
+func runtimeFQDNLeaseDeadline(snapshot Snapshot, grants []ipsec.RuntimeFQDNGrant) time.Time {
+	var deadline time.Time
 	for _, grant := range grants {
-		var selected time.Time
+		var bound time.Time
 		for _, resource := range snapshot.FQDNResources {
 			if resource.ID.String() == grant.ResourceID && resource.Active != nil {
-				selected = resource.Active.ValidUntil
+				bound = resource.Active.FreshUntil
 				break
 			}
 		}
-		if selected.IsZero() {
+		if bound.IsZero() {
 			return time.Time{}
 		}
-		if earliest.IsZero() || selected.Before(earliest) {
-			earliest = selected
+		found := false
+		for _, rule := range snapshot.Rules {
+			if rule.ID.String() == grant.RuleID {
+				found = true
+				if rule.ExpiresAt != nil && rule.ExpiresAt.Before(bound) {
+					bound = *rule.ExpiresAt
+				}
+				break
+			}
+		}
+		if !found {
+			return time.Time{}
+		}
+		if deadline.IsZero() || bound.Before(deadline) {
+			deadline = bound
 		}
 	}
-	return earliest
+	return deadline
 }

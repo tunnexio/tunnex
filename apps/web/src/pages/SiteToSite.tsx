@@ -81,7 +81,7 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
       </label>
       <label className={`connection-purpose-option ${method === "ipsec" ? "is-selected" : ""}`}>
         <input type="radio" name="connection-purpose" value="ipsec" checked={method === "ipsec"} onChange={() => setMethod("ipsec")} />
-        <span><strong>To a cloud VPN</strong><small>IPsec · AWS / Google Cloud</small></span>
+        <span><strong>To a cloud VPN</strong><small>IPsec · AWS / Google Cloud / Azure</small></span>
       </label>
     </fieldset>
     {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0), createProfile) : ipsecWorkspace) ?? <section className="s2s-connection-state"><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></section> : <>
@@ -99,6 +99,6 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
       <p className="mt-2">A gateway and approved ranges at each location, one reachable public WireGuard hub, access policies and return routes. Links are configured automatically.</p>
     </details>
     </>}
-    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
+    {state.canManage && choosing && <ConnectionChooser orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onAzure={() => { setCreateProfile("azure-active-active-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
   </div>;
 }

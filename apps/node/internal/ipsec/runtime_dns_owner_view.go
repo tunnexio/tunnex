@@ -41,9 +41,32 @@ type runtimeDNSOwnerEntry struct {
 	active runtimeActive
 	epoch  *runtimeDNSEpoch
 }
+
+// Only the serialized owner can complete this publication. Closing done
+// synchronizes committed; readers never treat the descriptor as authority.
+type runtimeDNSPublication struct {
+	previous  *runtimeDNSOwnerView
+	done      chan struct{}
+	committed bool
+}
+
+func (c *RuntimeController) awaitDNSPublication(ctx context.Context, previous *runtimeDNSOwnerView) bool {
+	publication := c.dnsPublication.Load()
+	if publication == nil || publication.previous != previous {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-publication.done:
+		return publication.committed && ctx.Err() == nil
+	}
+}
+
 type runtimeDNSOwnerView struct {
 	entries  map[uuid.UUID]runtimeDNSOwnerEntry
 	guard    GuardManifest
+	expected guardExpectedSnapshot
 	observer runtimeDNSObserver
 }
 type runtimeDNSObserver struct {
@@ -122,6 +145,7 @@ func cloneDNSOwnerActive(a runtimeActive) runtimeActive {
 	a.Entry = copyDNSEntry(a.Entry)
 	a.Environment.LocalIngressIndices = copyDNSSlice(a.Environment.LocalIngressIndices)
 	a.Grants = copyDNSSlice(a.Grants)
+	a.FQDNLeaseDescriptors = copyDNSSlice(a.FQDNLeaseDescriptors)
 	// Delivery is not read by the DNS observer; omit its mutable manifest slices.
 	a.Delivery = RuntimeDelivery{}
 	return a
@@ -189,12 +213,13 @@ func (c *RuntimeController) publishDNSOwnerView(g GuardManifest) {
 		c.withdrawDNSOwnerView(uuid.Nil)
 		return
 	}
-	if _, ok := normalizedGuardObjects([]byte(g.ExpectedJSON)); !ok {
+	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
+	if !ok {
 		c.withdrawDNSOwnerView(uuid.Nil)
 		return
 	}
 	previous := c.dnsView.Load()
-	next := &runtimeDNSOwnerView{entries: map[uuid.UUID]runtimeDNSOwnerEntry{}, guard: g}
+	next := &runtimeDNSOwnerView{entries: map[uuid.UUID]runtimeDNSOwnerEntry{}, guard: g, expected: guardExpectedSnapshot{raw: g.ExpectedJSON, objects: objects}}
 	next.observer = runtimeDNSObserver{
 		controller:    &RuntimeController{config: c.config, kernel: c.kernel, prove: c.prove, recoveryObserve: c.recoveryObserve},
 		qualification: c.qualification, guardReader: c.guard.reader, source: observeDNSSource, route: runKernelCommand,

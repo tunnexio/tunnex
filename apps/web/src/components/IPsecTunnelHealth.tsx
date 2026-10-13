@@ -15,17 +15,17 @@ const troubleshooting = {
 type Mode = "ipv4-static" | "ipv4-bgp";
 const peerLabels = { unknown: "Unknown", idle: "Idle", connect: "Connect", active: "Active", opensent: "OpenSent", openconfirm: "OpenConfirm", established: "Established" } as const;
 const count = (value: unknown, maximum: number): value is number => Number.isSafeInteger(value) && typeof value === "number" && value >= 0 && value <= maximum;
-function validBGP(report: Report, approved: string[]): boolean {
+function validBGP(report: Report, approved: string[], expectedCount: number): boolean {
   if (report.recovery_version !== undefined || report.selection_sequence !== undefined || report.active_slot != null || report.tunnels.some(t => t.selected)) return false;
   if (report.bgp === undefined) return true;
   if (report.bgp === null || typeof report.bgp !== "object") return false;
   const bgp = report.bgp;
   const prefixes = new Set(approved);
-  if (approved.length > 64 || prefixes.size !== approved.length || bgp.version !== 1 || !Number.isSafeInteger(bgp.sequence) || bgp.sequence <= 0 || !Array.isArray(bgp.peers) || bgp.peers.length !== 2 || !Array.isArray(bgp.routes) || bgp.routes.length > prefixes.size) return false;
-  const installed = [0, 0];
+  if (approved.length > 64 || prefixes.size !== approved.length || bgp.version !== 1 || !Number.isSafeInteger(bgp.sequence) || bgp.sequence <= 0 || !Array.isArray(bgp.peers) || bgp.peers.length !== expectedCount || !Array.isArray(bgp.routes) || bgp.routes.length > prefixes.size) return false;
+  const installed = Array(expectedCount).fill(0) as number[];
   const seen = new Set<string>();
   for (const route of bgp.routes) {
-    if (!route || typeof route !== "object" || typeof route.prefix !== "string" || !prefixes.has(route.prefix) || seen.has(route.prefix) || (route.slot !== 1 && route.slot !== 2)) return false;
+    if (!route || typeof route !== "object" || typeof route.prefix !== "string" || !prefixes.has(route.prefix) || seen.has(route.prefix) || (!Number.isInteger(route.slot) || route.slot < 1 || route.slot > expectedCount)) return false;
     seen.add(route.prefix);
     installed[route.slot - 1]++;
   }
@@ -39,7 +39,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now());
   const classic = profileId === "gcp-classic-static-ipv4-v1";
-  const expectedCount = classic ? 1 : 2;
+  const expectedCount = classic || profileId?.startsWith("azure-active-standby-") ? 1 : 2;
   const dynamic = mode === "ipv4-bgp";
   const key = `${orgId}:${connectionId}:${mode}:${profileId ?? "legacy"}:${expectedCount}:${JSON.stringify(approvedRemotePrefixes)}`;
   useEffect(() => {
@@ -55,7 +55,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
       setNow(Date.now());
       const report = result.ok ? result.data : null;
       const valid = report && Array.isArray(report.tunnels) && tunnels.length === expectedCount && !(classic && dynamic) && report.tunnels.length === expectedCount && report.tunnels.every((t, i) => t !== null && typeof t === "object" && typeof t.id === "string" && t.id.length > 0 && typeof t.selected === "boolean" && t.slot === i + 1 && (t.status === "up" || t.status === "down" || t.status === "unknown")) && new Set(report.tunnels.map(t => t.id)).size === expectedCount;
-      const selectionValid = valid && report && (dynamic ? validBGP(report, approvedRemotePrefixes) : report.bgp == null && (report.recovery_version == null
+      const selectionValid = valid && report && (dynamic ? validBGP(report, approvedRemotePrefixes, expectedCount) : report.bgp == null && (report.recovery_version == null
         ? report.selection_sequence == null && report.active_slot == null
         : report.recovery_version === 1 && Number.isSafeInteger(report.selection_sequence) && report.selection_sequence! > 0 &&
           (report.active_slot == null || ((Number.isSafeInteger(report.active_slot) && report.active_slot! >= 1 && report.active_slot! <= expectedCount) && report.tunnels?.find(t => t?.slot === report.active_slot)?.status === "up"))));
@@ -78,7 +78,7 @@ export function IPsecTunnelHealth({ orgId, connectionId, tunnels, mode = "ipv4-s
     </div>
     <div className="overflow-x-auto rounded border border-line">
       <table className="w-full text-left text-sm" aria-label="IPsec tunnel state">
-        <thead className="border-b border-line bg-surface-inset text-xs text-ink-secondary"><tr>{["Tunnel", "Outside IP address", ...(!classic ? ["Inside IPv4 CIDR"] : []), dynamic ? "IPsec status" : "Status", ...(dynamic ? ["BGP peer", "Accepted prefixes", "Installed prefixes", "Rejected prefixes"] : ["Path"]), "Last observed"].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
+        <thead className="border-b border-line bg-surface-inset text-xs text-ink-secondary"><tr>{["Tunnel", "Outside IP address", ...(!classic ? [profileId?.startsWith("azure-") && !dynamic ? "Tunnex runtime IPv4 CIDR" : "Inside IPv4 CIDR"] : []), dynamic ? "IPsec status" : "Status", ...(dynamic ? ["BGP peer", "Accepted prefixes", "Installed prefixes", "Rejected prefixes"] : ["Path"]), "Last observed"].map(label => <th key={label} scope="col" className="px-4 py-3 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
         <tbody>{tunnels.map((tunnel, i) => {
           const health = report?.tunnels.find(t => t.slot === i + 1);
           const status = fresh && health ? health.status : "unknown";

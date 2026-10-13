@@ -38,7 +38,10 @@ func (c *RuntimeController) recoveryNow() time.Duration {
 	}
 	return c.recoveryClock()
 }
-func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJournalEntry) (statuses [2]string) {
+func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJournalEntry) [2]string {
+	return c.observeRecoveryObserved(ctx, e, nil)
+}
+func (c *RuntimeController) observeRecoveryObserved(ctx context.Context, e RuntimeJournalEntry, observe func(string)) (statuses [2]string) {
 	startedDiagnostic := time.Now()
 	defer func() {
 		if statuses[0] == "unknown" || statuses[1] == "unknown" {
@@ -51,13 +54,15 @@ func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJourna
 	unknown := [2]string{"unknown", "unknown"}
 	kr, err := NewKernelReader(c.config.IPPath)
 	if err != nil {
+		reportNativeFailure(ctx, observe, "kernel_read")
 		return unknown
 	}
 	xr, err := NewXFRMReader(c.config.IPPath)
 	if err != nil {
+		reportNativeFailure(ctx, observe, "xfrm_read")
 		return unknown
 	}
-	return runtimeObservedStatuses(ctx, e, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
+	return runtimeObservedStatusesObserved(ctx, e, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive}, observe)
 }
 
 // The proof result belongs only to the current bounded heartbeat observation.
@@ -95,15 +100,29 @@ func (c *RuntimeController) reconcileRecoveryRoutes(ctx context.Context, e Runti
 	}
 	return c.kernel.ReconcileSelection(ctx, e.Allocation, e.Observed, target)
 }
-func (c *RuntimeController) recoveryLease(ctx context.Context, e RuntimeJournalEntry, hash string) (*PermitLeaseAuthority, PermitLeaseIdentity, error) {
+func (c *RuntimeController) recoveryLease(ctx context.Context, e RuntimeJournalEntry, hash string, policies ...RuntimePolicy) (*PermitLeaseAuthority, PermitLeaseIdentity, error) {
 	authority := NewPermitLeaseAuthority()
 	identity := PermitLeaseIdentity{PolicyHash: hash, Binding: e.Engines[0].Binding, DeliveryID: e.DeliveryID}
-	request, err := authority.Begin(identity)
+	// Material-bearing callers provide the exact original descriptors. Telemetry
+	// may reuse only descriptors bound to this exact current active identity.
+	var policy RuntimePolicy
+	if len(policies) > 1 {
+		return nil, identity, ErrRuntimeController
+	}
+	if len(policies) == 1 {
+		policy = policies[0]
+		if policy.Hash != hash {
+			return nil, identity, ErrRuntimeController
+		}
+	} else if active, ok := c.active[e.Allocation.ConnectionID]; ok && active.Identity == identity {
+		policy = retainedFQDNLeasePolicy(active.FQDNLeaseDescriptors)
+	}
+	request, err := authority.BeginFQDN(identity, runtimeFQDNLeaseKeys(policy))
 	if err != nil {
 		return nil, identity, ErrRuntimeController
 	}
-	lease, err := c.client.RenewIPsecLease(ctx, e.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: e.DeliveryID, DesiredRevision: e.Engines[0].Binding.DesiredRevision, PolicyHash: hash, Nonce: request.Nonce})
-	if err != nil || lease.DeliveryID != e.DeliveryID || lease.DesiredRevision != e.Engines[0].Binding.DesiredRevision || lease.PolicyHash != hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+	lease, err := c.client.RenewIPsecLease(ctx, e.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: e.DeliveryID, DesiredRevision: e.Engines[0].Binding.DesiredRevision, PolicyHash: hash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(policy)})
+	if err != nil || lease.DeliveryID != e.DeliveryID || lease.DesiredRevision != e.Engines[0].Binding.DesiredRevision || lease.PolicyHash != hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS, FQDNPermits: lease.FQDNPermits}) != nil {
 		return nil, identity, ErrRuntimeController
 	}
 	return authority, identity, nil
@@ -181,7 +200,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 				// Persisted Applied is not evidence that kernel links survived a
 				// restart. Recreate only independently proved complete absence,
 				// under fresh CP authority and the already installed deny guard.
-				authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash)
+				authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash, m.Policy)
 				if err != nil {
 					return fail()
 				}
@@ -263,7 +282,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		}
 	}
 	stage = "permit_lease"
-	authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash)
+	authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash, m.Policy)
 	if err != nil {
 		delete(c.recoveryHistory, id)
 		return fail()
@@ -302,7 +321,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		// Retry time cannot extend the old lease or authorize reopening. Revalidate
 		// current CP policy with a new nonce before considering the fresh result.
 		stage = "permit_lease"
-		authority, identity, err = c.recoveryLease(ctx, entry, m.Policy.Hash)
+		authority, identity, err = c.recoveryLease(ctx, entry, m.Policy.Hash, m.Policy)
 		if err != nil {
 			return fail()
 		}
@@ -426,7 +445,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		return fail()
 	}
 	stage = "active_install"
-	c.active[id] = runtimeActive{Delivery: m.RuntimeDelivery, Entry: entry, Environment: env, Grants: grants, Identity: identity, Authority: authority}
+	c.active[id] = runtimeActive{Delivery: m.RuntimeDelivery, Entry: entry, Environment: env, Grants: grants, FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), Identity: identity, Authority: authority}
 	if c.installActive(ctx, entries) != nil {
 		return fail()
 	}

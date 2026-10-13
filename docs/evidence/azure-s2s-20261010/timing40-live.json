@@ -1,0 +1,278 @@
+{
+  "observed_at": "2026-10-10T19:45:36.330232+00:00",
+  "source_commit": "8f445461",
+  "source_node_tree": "7149f2816468c10deb0a7f9a70573d520064361b",
+  "binary_sha256": "3169c6f0b568e7e1154b0b8775286238a934e06774009f9408f41daee655dbc0",
+  "image": "sha256:d9e09a32ea4efe58a7851b2553d1c7aabd63e275074f97fdd62c199c8d5c8663",
+  "container": "1a7c1bc44fbb0a06ecb53ea07f99e8346401f07096432526f0006f9bae7cc286",
+  "normal_readback": {
+    "phase": "read",
+    "observed_at": "2026-10-10T19:40:22.738404+00:00",
+    "cas_request_sent": false,
+    "before_revision": 40,
+    "connection": {
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 40,
+      "desired_intent": "enabled",
+      "application_state": "applied",
+      "cleanup_state": "retained_guard"
+    },
+    "runtime": {
+      "observed_at": "2026-10-10T19:40:21.949219+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "slot": 1,
+          "status": "up",
+          "selected": false
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "slot": 2,
+          "status": "up",
+          "selected": false
+        }
+      ],
+      "bgp": {
+        "version": 1,
+        "sequence": 41059,
+        "peers": [
+          {
+            "slot": 1,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1
+          },
+          {
+            "slot": 2,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ]
+      }
+    },
+    "cleanup_readback_settled": false,
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "packet_window": {
+    "started_at": "2026-10-10T19:40:57.315565+00:00",
+    "counters": {
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "checks": {
+      "all_four_zero_failure": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true
+    },
+    "receipt_sha256": "2e83c33fb38ba6edacf6ad804b205a521e821670c692dc262846cb07abc53d2d",
+    "acceptance_passed": true,
+    "seconds": 60,
+    "application_request_timeout_seconds": 2
+  },
+  "guard_diagnostic": {
+    "observed_at": "2026-10-10T19:40:57.180766+00:00",
+    "container": "1a7c1bc44fbb0a06ecb53ea07f99e8346401f07096432526f0006f9bae7cc286",
+    "image": "sha256:d9e09a32ea4efe58a7851b2553d1c7aabd63e275074f97fdd62c199c8d5c8663",
+    "private_raw_log_sha256": "bed851c9bcc68fa5cf235eeea175023cf48b1e65e2afad2551496bd1af6b4e72",
+    "dns_refusals": [
+      {
+        "time": "2026-10-10T19:39:17.925517688Z",
+        "operation": "dns_before_proof",
+        "stage": "dns_route_slot",
+        "elapsed_ms": 522,
+        "context_state": "active",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": ""
+      },
+      {
+        "time": "2026-10-10T19:40:37.924313184Z",
+        "operation": "dns_before_proof",
+        "stage": "dns_guard_full_read",
+        "elapsed_ms": 798,
+        "context_state": "active",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 109,
+        "guard_verification_ms": 44,
+        "guard_failure_class": "owner_revision_digest_mismatch",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "latest_unchanged"
+      }
+    ],
+    "rpc_timings": [
+      {
+        "dispatch_utc": "2026-10-10T19:39:17.402365522Z",
+        "deadline_remaining_ms": 4822,
+        "start_delay_ms": 0,
+        "handle_ms": 531,
+        "report_ms": 23,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T19:39:47.324046511Z",
+        "deadline_remaining_ms": 4897,
+        "start_delay_ms": 0,
+        "handle_ms": 4676,
+        "report_ms": 36,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T19:40:02.322861296Z",
+        "deadline_remaining_ms": 4898,
+        "start_delay_ms": 0,
+        "handle_ms": 2063,
+        "report_ms": 23,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T19:40:32.344031665Z",
+        "deadline_remaining_ms": 4877,
+        "start_delay_ms": 0,
+        "handle_ms": 4523,
+        "report_ms": 33,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T19:40:37.12248471Z",
+        "deadline_remaining_ms": 4830,
+        "start_delay_ms": 1,
+        "handle_ms": 957,
+        "report_ms": 53,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T19:40:37.394283659Z",
+        "deadline_remaining_ms": 4558,
+        "start_delay_ms": 1,
+        "handle_ms": 2936,
+        "report_ms": 31,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "failure",
+        "context_state": "active"
+      }
+    ],
+    "scope": "Fixed scalar diagnostic observations only; last actual guard bracket timings, independent native commands and original five-second DNS deadlines remain unchanged"
+  },
+  "publication_race_evidence": {
+    "actual_matching_refusals": [
+      {
+        "time": "2026-10-10T19:40:37.924313184Z",
+        "operation": "dns_before_proof",
+        "stage": "dns_guard_full_read",
+        "elapsed_ms": 798,
+        "context_state": "active",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 109,
+        "guard_verification_ms": 44,
+        "guard_failure_class": "owner_revision_digest_mismatch",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "latest_unchanged"
+      }
+    ],
+    "source_order": "installActiveCandidates calls replace and completes final authority checks before publishDNSOwnerView; RuntimeGuard.Replace applies and verifies the successor kernel guard before returning.",
+    "interpretation": "Observed old-view owner revision/digest mismatch with latest unchanged is consistent with the kernel-before-view publication interval. Deterministic reproduction and a synchronization fix are still being qualified."
+  },
+  "limits": [
+    "No FQDN grant acceptance, sustained stability, scheduled rekey or remaining-profile acceptance is established by this evidence.",
+    "The original five-second DNS deadline, one retry, original authority checks and full fresh guard read remain unchanged.",
+    "A supported two-second 60s application window does not replace preserved prior one-second failures."
+  ],
+  "strict_native_snapshot": {
+    "observed_at": "2026-10-10T19:40:55.893237597Z",
+    "journal_phase": "applied",
+    "slots": [
+      {
+        "slot": 1,
+        "status": "up",
+        "ike_matches": 1,
+        "child_states": {
+          "INSTALLED": 1
+        },
+        "sad_matches": 2,
+        "spd_directions": {
+          "fwd": 1,
+          "in": 1,
+          "out": 1
+        },
+        "stored_connection_present": true,
+        "stored_shared_key_present": true,
+        "all_native_ownership_bindings_match": true,
+        "selectors_are_default_and_cover_inside": true
+      },
+      {
+        "slot": 2,
+        "status": "up",
+        "ike_matches": 1,
+        "child_states": {
+          "INSTALLED": 1
+        },
+        "sad_matches": 2,
+        "spd_directions": {
+          "fwd": 1,
+          "in": 1,
+          "out": 1
+        },
+        "stored_connection_present": true,
+        "stored_shared_key_present": true,
+        "all_native_ownership_bindings_match": true,
+        "selectors_are_default_and_cover_inside": true
+      }
+    ],
+    "positive_observed_parser_accepts": true,
+    "withdrawal_template_matches": true,
+    "cleanup_process_recorded": true,
+    "cleanup_routes_recorded": true,
+    "retired_duties": 0,
+    "test": "TestAzureOwnedNativeStatusDiagnostic",
+    "result": "PASS",
+    "elapsed_seconds": 0.14,
+    "scope": "Actual typed readonly diagnostic output; one strict native snapshot, independent from API status and packet window. No cached or synthetic authority."
+  }
+}

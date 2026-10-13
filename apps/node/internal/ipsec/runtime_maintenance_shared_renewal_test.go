@@ -11,7 +11,7 @@ import (
 // Focused shared-renewal regressions reuse the current GCP five-owner rig.
 // No AWS active-pulse production or history code is imported.
 
-func TestMaintenanceCombinedPriorReserveRepeatedNativeCost(t *testing.T) {
+func TestMaintenanceCombinedPriorReserveRepeatedNativeCostSharedProfile(t *testing.T) {
 	r := newRenewalCycleRigInput(t, true)
 	materials := []RuntimeMaterial{}
 	for _, index := range []int{0, 3, 1, 4, 2} {
@@ -91,7 +91,7 @@ func TestMaintenanceCombinedPriorReserveRepeatedNativeCost(t *testing.T) {
 	}
 }
 
-func TestMaintenanceAfterCPProofCostMoveStillRefusesUnsafeOwner(t *testing.T) {
+func TestMaintenanceAfterCPProofCostMoveStillRefusesUnsafeOwnerSharedProfile(t *testing.T) {
 	for _, scenario := range []string{"native_invalid", "bgp_routes_changed", "guard_missing", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
 			r := newRenewalCycleRigInput(t, true)
@@ -176,7 +176,7 @@ func TestMaintenanceAfterCPProofCostMoveStillRefusesUnsafeOwner(t *testing.T) {
 	}
 }
 
-func TestMaintenanceRequiredBGPRouteProofWithoutAppGrants(t *testing.T) {
+func TestMaintenanceRequiredBGPRouteProofWithoutAppGrantsSharedProfile(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "healthy", true: "changed_routes"}[changed], func(t *testing.T) {
 			r := newRenewalCycleRigInput(t, true)
@@ -225,7 +225,7 @@ func TestMaintenanceRequiredBGPRouteProofWithoutAppGrants(t *testing.T) {
 	}
 }
 
-func TestMaintenanceOrdinaryCurrentStillRequiresNativeProof(t *testing.T) {
+func TestMaintenanceOrdinaryCurrentStillRequiresNativeProofSharedProfile(t *testing.T) {
 	r := newRenewalCycleRigInput(t, true)
 	a := r.c.active[r.target]
 	r.c.prove = func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error { return ErrRuntimeController }
@@ -234,7 +234,7 @@ func TestMaintenanceOrdinaryCurrentStillRequiresNativeProof(t *testing.T) {
 	}
 }
 
-func TestTwoPhaseCandidateBeginsAfterAllEligibleOwnerProofs(t *testing.T) {
+func TestTwoPhaseCandidateBeginsAfterAllEligibleOwnerProofsSharedProfile(t *testing.T) {
 	r := newRenewalCycleRigInput(t, true)
 	mats := maintenanceMaterials(r)
 	proven := map[uuid.UUID]bool{}
@@ -263,7 +263,7 @@ func TestTwoPhaseCandidateBeginsAfterAllEligibleOwnerProofs(t *testing.T) {
 	}
 }
 
-func TestTwoPhaseCapturedOwnerCannotReappear(t *testing.T) {
+func TestTwoPhaseCapturedOwnerCannotReappearSharedProfile(t *testing.T) {
 	for _, scenario := range []string{"expired_phase1", "expired_before_begin", "removed_before_begin", "replaced_before_begin", "revoked_before_begin", "reserve_exhausted_before_begin", "removed_during_CP", "replaced_during_CP", "revoked_during_CP", "expired_during_CP", "changed_environment_during_CP", "canceled_before_begin", "qualification_before_begin", "daemon_before_begin", "bgp_qualification_before_begin"} {
 		t.Run(scenario, func(t *testing.T) {
 			r := newRenewalCycleRigInput(t, true)

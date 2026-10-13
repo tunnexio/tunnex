@@ -1,0 +1,45 @@
+{
+  "acceptance": false,
+  "capture": {
+    "drop_counts": [
+      0,
+      0,
+      0
+    ],
+    "packet_header_count": 172,
+    "socket_sample_count": 60
+  },
+  "kind": "actual_current_postrestart_sustained_dns_failed",
+  "native_preflight": {
+    "accepted_routes": [
+      "10.231.0.0/16"
+    ],
+    "both_bgp_established": true,
+    "both_tunnels_up": true,
+    "complete_journal_entries": 30,
+    "historical_boot_entries": 1,
+    "observed_at": "2026-10-11T20:03:40.236315807Z",
+    "passed": true
+  },
+  "node_executable_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+  "node_started_at": "2026-10-11T19:06:16.205224164Z",
+  "original_result": "/private/tmp/azure-live-windows-root-natural-9ed7a388-ecda-4e94-831c-b315ddce5cb6/result.json",
+  "private_run_id": "azure-live-window-natural-4ae28234-c3ef-4091-b69b-67c5a243c050",
+  "public_census": {
+    "distinct_new_generations": [],
+    "failed_reads": 0,
+    "read_count": 61,
+    "ready_read_count": 0,
+    "sampled_stability_passed": false,
+    "state_counts": {
+      "failed": 61,
+      "healthy": 0,
+      "pending": 0,
+      "stale": 0
+    }
+  },
+  "scope": "Owned Azure active-active BGP profile; native and DNS readiness are separate. No story acceptance inferred.",
+  "version": 1,
+  "window_begin": "2026-10-11T20:03:40.570656Z",
+  "window_end": "2026-10-11T20:04:41.630786Z"
+}

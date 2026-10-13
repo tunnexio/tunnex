@@ -23,9 +23,9 @@ import (
 func runtimeFQDNFixture(t *testing.T) (Snapshot, ipsec.RuntimePolicyInput) {
 	t.Helper()
 	org, site, node, conn, resource, config, profile, ordinary := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	input := ipsec.RuntimePolicyInput{OrgID: org, SiteID: site, NodeID: node, ConnectionID: conn, ConfigurationRevision: 1, FQDNPolicyVersion: 1, Config: ipsec.StaticConfig{LocalPrefixes: []string{"10.84.2.0/24"}, RemotePrefixes: []string{"10.85.0.0/16"}}}
+	input := ipsec.RuntimePolicyInput{CompiledAt: time.Now().UTC(), OrgID: org, SiteID: site, NodeID: node, ConnectionID: conn, ConfigurationRevision: 1, FQDNPolicyVersion: 1, Config: ipsec.StaticConfig{LocalPrefixes: []string{"10.84.2.0/24"}, RemotePrefixes: []string{"10.85.0.0/16"}}}
 	port := int32(8081)
-	generation := fqdnresolver.ActiveGeneration{OrgID: org, ResourceID: resource, Hostname: "app.corp.example", Protocol: "tcp", PortLow: &port, PortHigh: &port, Context: fqdnresolver.Context{ResolverID: site.String(), GatewayID: node.String()}, ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 3, ProfileID: profile.String(), MatchedSuffix: "corp.example", IPsecPath: &fqdnresolver.ResolverIPsecPath{ConnectionID: conn.String(), ConfigurationRevision: 1, SourceAddress: "10.84.2.254"}, Endpoints: []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.85.0.53"), Port: 53, Transport: "udp"}}}, Addresses: []netip.Addr{netip.MustParseAddr("10.85.1.10")}}
+	generation := fqdnresolver.ActiveGeneration{ResolvedAt: input.CompiledAt, TTL: time.Minute, OrgID: org, ResourceID: resource, Hostname: "app.corp.example", Protocol: "tcp", PortLow: &port, PortHigh: &port, Context: fqdnresolver.Context{ResolverID: site.String(), GatewayID: node.String()}, ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 3, ProfileID: profile.String(), MatchedSuffix: "corp.example", IPsecPath: &fqdnresolver.ResolverIPsecPath{ConnectionID: conn.String(), ConfigurationRevision: 1, SourceAddress: "10.84.2.254"}, Endpoints: []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.85.0.53"), Port: 53, Transport: "udp"}}}, Addresses: []netip.Addr{netip.MustParseAddr("10.85.1.10")}}
 	fqdnResource, err := fqdnResourceFromActiveGeneration(generation, []netip.Prefix{netip.MustParsePrefix("10.85.0.0/16")})
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestIPsecFQDNRuntimeRefusesUnsupportedAndForeignScope(t *testing.T) {
 		},
 
 		"missing capability": func(_ *Snapshot, in *ipsec.RuntimePolicyInput) { in.FQDNPolicyVersion = 0 },
-		"unknown capability": func(_ *Snapshot, in *ipsec.RuntimePolicyInput) { in.FQDNPolicyVersion = 2 },
+		"unknown capability": func(_ *Snapshot, in *ipsec.RuntimePolicyInput) { in.FQDNPolicyVersion = 3 },
 		"unlicensed":         func(s *Snapshot, _ *ipsec.RuntimePolicyInput) { s.FQDNResourcesLicensed = false },
 		"opt out":            func(s *Snapshot, _ *ipsec.RuntimePolicyInput) { s.FQDNResourcesEnabled = false },
 		"foreign Site":       func(s *Snapshot, _ *ipsec.RuntimePolicyInput) { s.FQDNResources[0].Active.SelectedSiteID = uuid.New() },
@@ -206,7 +206,7 @@ func TestIPsecFQDNRuntimeUsesTransactionReaderAndEntitlement(t *testing.T) {
 		licensed, enabled, reader bool
 		calls                     int
 		refused                   bool
-	}{{"missing reader", 1, true, true, false, 0, false}, {"low capability", 0, true, true, true, 0, false}, {"unknown capability", 2, true, true, true, 0, false}, {"unlicensed", 1, false, true, true, 0, false}, {"optout", 1, true, false, true, 0, false}, {"current Tx query failure", 1, true, true, true, 1, true}} {
+	}{{"missing reader", 1, true, true, false, 0, false}, {"low capability", 0, true, true, true, 0, false}, {"unknown capability", 3, true, true, true, 0, false}, {"unlicensed", 1, false, true, true, 0, false}, {"optout", 1, true, false, true, 0, false}, {"current Tx query failure", 1, true, true, true, 1, true}} {
 		t.Run(c.name, func(t *testing.T) {
 			query := &runtimeFQDNFailQuery{}
 			s := Snapshot{FQDNResourcesEnabled: c.enabled}
@@ -225,17 +225,18 @@ func TestIPsecFQDNRuntimeUsesTransactionReaderAndEntitlement(t *testing.T) {
 func TestIPsecFQDNRuntimeExpirySelectsOnlyLoweredResources(t *testing.T) {
 	a, b := uuid.New(), uuid.New()
 	now := time.Now()
-	snapshot := Snapshot{FQDNResources: []FQDNResource{{ID: a, Active: &FQDNGeneration{ValidUntil: now.Add(time.Minute)}}, {ID: b, Active: &FQDNGeneration{ValidUntil: now.Add(5 * time.Second)}}}}
-	one := []ipsec.RuntimeFQDNGrant{{ResourceID: a.String()}}
-	if got := runtimeFQDNValidUntil(snapshot, one); !got.Equal(now.Add(time.Minute)) {
+	rule := uuid.New()
+	snapshot := Snapshot{Rules: []Rule{{ID: rule}}, FQDNResources: []FQDNResource{{ID: a, Active: &FQDNGeneration{FreshUntil: now.Add(time.Minute)}}, {ID: b, Active: &FQDNGeneration{FreshUntil: now.Add(5 * time.Second)}}}}
+	one := []ipsec.RuntimeFQDNGrant{{RuntimeGrant: ipsec.RuntimeGrant{RuleID: rule.String()}, ResourceID: a.String()}}
+	if got := runtimeFQDNLeaseDeadline(snapshot, one); !got.Equal(now.Add(time.Minute)) {
 		t.Fatal(got)
 	}
-	one = append(one, ipsec.RuntimeFQDNGrant{ResourceID: b.String()})
-	if got := runtimeFQDNValidUntil(snapshot, one); !got.Equal(now.Add(5 * time.Second)) {
+	one = append(one, ipsec.RuntimeFQDNGrant{RuntimeGrant: ipsec.RuntimeGrant{RuleID: rule.String()}, ResourceID: b.String()})
+	if got := runtimeFQDNLeaseDeadline(snapshot, one); !got.Equal(now.Add(5 * time.Second)) {
 		t.Fatal(got)
 	}
 	one = append(one, ipsec.RuntimeFQDNGrant{ResourceID: uuid.NewString()})
-	if got := runtimeFQDNValidUntil(snapshot, one); !got.IsZero() {
+	if got := runtimeFQDNLeaseDeadline(snapshot, one); !got.IsZero() {
 		t.Fatal("unknown generation expiry accepted")
 	}
 }

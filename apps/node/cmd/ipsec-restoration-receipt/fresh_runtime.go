@@ -9,7 +9,9 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -93,8 +95,28 @@ func verifyFreshCurrent(raw []byte, gate, boot, ns string) error {
 		return errors.New("gate owner mismatch")
 	}
 	cgroup, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", f.PID))
-	if err != nil || strings.TrimSpace(string(cgroup)) != "0::/docker/"+f.Container {
+	cgroupPath, groupErr := exactDockerCgroupPath(string(cgroup), f.Container)
+	if err != nil || groupErr != nil {
 		return errors.New("fresh process cgroup mismatch")
+	}
+	groupDir := filepath.Join("/sys/fs/cgroup", cgroupPath)
+	groupInfo, err := os.Lstat(groupDir)
+	groupStat, groupOwned := groupInfoSys(groupInfo)
+	if err != nil || !groupOwned || groupStat.Uid != 0 || !groupInfo.IsDir() || groupInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.New("fresh cgroup directory missing")
+	}
+	members, err := os.ReadFile(filepath.Join(groupDir, "cgroup.procs"))
+	if err != nil {
+		return errors.New("fresh cgroup membership unavailable")
+	}
+	found := false
+	for _, member := range strings.Fields(string(members)) {
+		if member == strconv.Itoa(f.PID) {
+			found = true
+		}
+	}
+	if !found {
+		return errors.New("fresh process absent from exact cgroup")
 	}
 	current, err := os.Readlink(fmt.Sprintf("/proc/%d/ns/net", f.PID))
 	if err != nil || current != ns || f.Namespace != ns || f.Boot != boot {
@@ -123,6 +145,10 @@ func verifyFreshCurrent(raw []byte, gate, boot, ns string) error {
 	final, err := privateRead(gate, 8192)
 	if err != nil || digest(final) != f.StartupGateSHA256 {
 		return errors.New("startup gate changed")
+	}
+	groupAfter, err := os.Lstat(groupDir)
+	if err != nil || !os.SameFile(groupInfo, groupAfter) {
+		return errors.New("fresh cgroup directory changed")
 	}
 	return nil
 }
@@ -158,4 +184,25 @@ func validateExecutionContext(hostBoot, selfNamespace, targetBoot, targetNamespa
 		return errors.New("helper runtime context mismatch")
 	}
 	return nil
+}
+
+// Only the two Docker cgroup-v2 layouts bound to a full inspected container ID.
+func exactDockerCgroupPath(raw, container string) (string, error) {
+	if !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(container) {
+		return "", errors.New("invalid container ID")
+	}
+	for _, path := range []string{"/docker/" + container, "/system.slice/docker-" + container + ".scope"} {
+		if strings.TrimSpace(raw) == "0::"+path {
+			return path, nil
+		}
+	}
+	return "", errors.New("foreign cgroup")
+}
+
+func groupInfoSys(info os.FileInfo) (*syscall.Stat_t, bool) {
+	if info == nil {
+		return nil, false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	return st, ok
 }

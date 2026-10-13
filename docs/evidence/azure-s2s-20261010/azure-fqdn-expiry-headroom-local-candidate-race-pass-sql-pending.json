@@ -1,0 +1,25 @@
+{
+  "accepted_story_count": 6,
+  "candidate_regression_green": true,
+  "category": "fqdn_expiry_headroom_local_candidate_race_and_review_pass_sql_pending",
+  "database_integration_executed": false,
+  "independent_review_sha256": "d7e5cd1a5b9319aabe497cf4abd68bbe392e42e57db5d563b0c40ca6181bfca4",
+  "limits": [
+    "Scheduling lead only; higher refresh frequency",
+    "More than32 queued jobs, slow commits or initial backlog can exhaust lead",
+    "Actual SQL fixture and live stability still required"
+  ],
+  "new_slices_closed": 0,
+  "original_regression_red": true,
+  "patch_sha256": "b5b29313d58e912622567a63f14ecef24cb48a33e09dbad274adf68743e5c922",
+  "preservation": [
+    "Original actual timestamps and TTLs",
+    "Original5s RPC deadline",
+    "Original CAS, withdrawal retry and organization/context scope"
+  ],
+  "qa_deployed": false,
+  "qualification_sha256": "4abe79830de639d3ea2c9ca5fa818de3eefb60067808d9eb24d9ed9244f6ebad",
+  "race_top_level_tests_passed": 11,
+  "recorded_at": "2026-10-12T14:25:27.852822+00:00",
+  "version": 1
+}

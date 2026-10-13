@@ -292,6 +292,7 @@ func main() {
 	// The FQDN baseline survives agent restarts. A missing/corrupt file does
 	// not silently become an empty generation: egress performs its documented
 	// deny-all + conntrack recovery before accepting the first policy.
+	egressMgr.SetFQDNPolicyCallbacks(fqdnPolicySource.BeforePolicy, fqdnPolicySource.CommittedPolicy)
 	egressMgr.SetFQDNBaselinePath(filepath.Join(certDir, "fqdn-policy-baseline.json"))
 	defer egressMgr.Teardown(context.Background())
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
@@ -427,19 +428,28 @@ func main() {
 	// into an authenticated gateway DNS RPC request. It never consults host DNS,
 	// resolv.conf, public DNS, or the control plane as a fallback.
 	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{Transport: dnsTransport})
+	fqdnTimingEnabled := os.Getenv("TUNNEX_FQDN_RPC_TIMING") == "true"
 	r.OnDNSResolve(func(ds reconcile.DesiredState) {
 		if ds.DNSResolveRequest == nil {
 			return
 		}
 		request := *ds.DNSResolveRequest
 		nodeID := ds.NodeID
+		var dispatch time.Time
+		if fqdnTimingEnabled {
+			dispatch = time.Now().UTC()
+		}
 		go func() {
-			response := dnsResponder.Handle(ctx, nodeID, request)
-			if err := client.ReportDNSResolution(ctx, response); err != nil && ctx.Err() == nil {
-				// Do not log hostname or answer data. The request id is enough to
-				// correlate the retried, cached response at the control plane.
-				logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
-			}
+			dnsResponder.Run(ctx, nodeID, request, func() {
+				response, err := timedFQDNResolve(ctx, nodeID, request, dispatch, fqdnTimingEnabled, dnsResponder.Handle, client.ReportDNSResolution, time.Now, func(event fqdnRPCTiming) {
+					logger.Info("fqdn_rpc_timing", "dispatch_utc", event.DispatchUTC, "deadline_remaining_ms", event.DeadlineRemainingMillis, "start_delay_ms", event.StartDelayMillis, "handle_ms", event.HandleMillis, "status", event.Status, "result", event.Result, "report_ms", event.ReportMillis, "delivery", event.Delivery, "context_state", event.Context, "lookup", event.Lookup, "report_http_status", event.ReportHTTPStatus, "report_failure", event.ReportFailure)
+				})
+				if err != nil && ctx.Err() == nil {
+					// Do not log hostname or answer data. The request id is enough to
+					// correlate the retried, cached response at the control plane.
+					logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
+				}
+			})
 		}()
 	})
 

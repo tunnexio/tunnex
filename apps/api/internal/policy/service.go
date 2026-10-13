@@ -1084,6 +1084,10 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			DstK8sServiceID: fromPgUUID(r.DstK8sServiceID), // S10.3: dst_kind='k8s_service' resolution
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
 		}
+		if r.ExpiresAt.Valid {
+			expiry := r.ExpiresAt.Time.UTC()
+			rule.ExpiresAt = &expiry
+		}
 		if r.DstKind == "k8s_cluster_scope" {
 			// The dormant scope arm is never compiled directly. It is retained as
 			// the source template for exact approved-child expansions below.
@@ -1541,6 +1545,8 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		PortLow:  derefI32(g.PortLow),
 		PortHigh: derefI32(g.PortHigh),
 		Active: &FQDNGeneration{
+			FreshUntil:                 g.ResolvedAt.Add(g.TTL).UTC(),
+			ResolvedAt:                 g.ResolvedAt.UTC(),
 			ResourceID:                 g.ResourceID,
 			SelectedSiteID:             site,
 			SelectedGatewayID:          gateway,
@@ -1551,7 +1557,6 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 			IPsecConnectionID:          connectionID,
 			IPsecConfigurationRevision: configurationRevision,
 			IPsecSourceAddress:         sourceAddress,
-			ValidUntil:                 g.ResolvedAt.Add(g.TTL),
 			Answers:                    answers,
 			ResolverAddresses:          resolverAddresses,
 		},

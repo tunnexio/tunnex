@@ -17,11 +17,10 @@ type RuntimePrincipal struct {
 type RuntimePolicyInput struct {
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 	Config                              StaticConfig
-	// These inputs are supplied only by the locked runtime transaction. They are
-	// not agent material or API request authority.
-	ConfigurationRevision int64     `json:"-"`
-	FQDNPolicyVersion     int       `json:"-"`
-	Transaction           sqlc.DBTX `json:"-"`
+	ConfigurationRevision               int64     `json:"-"`
+	FQDNPolicyVersion                   int       `json:"-"`
+	Transaction                         sqlc.DBTX `json:"-"`
+	CompiledAt                          time.Time `json:"-"`
 }
 type RuntimeGrant struct {
 	Source      string `json:"source"`
@@ -33,8 +32,10 @@ type RuntimeGrant struct {
 }
 
 // RuntimeFQDNGrant preserves answer provenance independently of ordinary grants.
-// A capability-1 receiver must retain this ownership when rendering and withdrawing.
+// V1 preserves legacy provenance; only v2 carries an absolute generation/rule cutoff.
 type RuntimeFQDNGrant struct {
+	ExpiresAt             time.Time `json:"expires_at,omitzero"`
+	ResolverSourceAddress string    `json:"resolver_source_address,omitempty"`
 	RuntimeGrant
 	FQDNManaged           bool   `json:"fqdn_managed"`
 	ResourceID            string `json:"resource_id"`
@@ -60,8 +61,8 @@ type RuntimeDNSResolverGrant struct {
 	ResolverAddress       string `json:"resolver_address"`
 }
 type RuntimePolicy struct {
-	// Selected answer expiry is server-only authority, excluded from wire/hash.
-	FQDNValidUntil      time.Time                       `json:"-"`
+	FQDNLeaseDeadline   time.Time                       `json:"-"`
+	SelectedFQDNVersion int                             `json:"-"`
 	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
 	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
 	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
@@ -103,12 +104,14 @@ type RuntimeManifest struct {
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	TransportVersion          *int                              `json:"transport_version,omitempty"`
-	TunnelCount               *int                              `json:"tunnel_count,omitempty"`
-	RecoveryVersion           *int                              `json:"recovery_version,omitempty"`
-	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
-	BGPVersion                *int                              `json:"bgp_version,omitempty"`
-	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
+	TransportVersion              *int                              `json:"transport_version,omitempty"`
+	TunnelCount                   *int                              `json:"tunnel_count,omitempty"`
+	RecoveryVersion               *int                              `json:"recovery_version,omitempty"`
+	BGP                           *BGPConfig                        `json:"bgp,omitempty"`
+	BGPVersion                    *int                              `json:"bgp_version,omitempty"`
+	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
+	AzureBGPRecreationVersion     *int                              `json:"azure_bgp_recreation_version,omitempty"`
+	AzureProfileRecreationVersion *int                              `json:"azure_profile_recreation_version,omitempty"`
 }
 
 // RuntimeRetainedGuardPredecessor names one immutable, finalized cleanup lineage.
@@ -168,12 +171,21 @@ type RuntimeAcknowledgement struct {
 	GuardRetained bool `json:"guard_retained"`
 }
 type RuntimeLeaseRequest struct {
-	DeliveryID      uuid.UUID `json:"delivery_id"`
-	DesiredRevision int64     `json:"desired_revision"`
-	PolicyHash      string    `json:"policy_hash"`
-	Nonce           string    `json:"nonce"`
+	FQDNGrants      []RuntimeFQDNGrant `json:"fqdn_grants,omitempty"`
+	DeliveryID      uuid.UUID          `json:"delivery_id"`
+	DesiredRevision int64              `json:"desired_revision"`
+	PolicyHash      string             `json:"policy_hash"`
+	Nonce           string             `json:"nonce"`
+}
+
+// RuntimeFQDNPermit is response-only authority for one exact v2 descriptor.
+// Zero is an explicit selective withdrawal; omission is never authority.
+type RuntimeFQDNPermit struct {
+	GrantDigest string `json:"grant_digest"`
+	TTLMS       int64  `json:"ttl_ms"`
 }
 type RuntimeLease struct {
 	RuntimeLeaseRequest
-	TTLMS int64 `json:"ttl_ms"`
+	TTLMS       int64               `json:"ttl_ms"`
+	FQDNPermits []RuntimeFQDNPermit `json:"fqdn_permits,omitempty"`
 }
