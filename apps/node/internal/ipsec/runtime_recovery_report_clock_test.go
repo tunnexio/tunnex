@@ -37,7 +37,7 @@ func TestMaintenanceSkippedSequenceDoesNotResetReportDue(t *testing.T) {
 		t.Fatal("same-sequence skipped observation moved real report timing")
 	}
 	// Respect the original one-second native sample interval. The skipped
-	// report must not add the maintenance three-second publication delay.
+	// report must not add the maintenance two-second publication delay.
 	r.now = 10 * time.Second
 	publications := 0
 	r.c.mu.Lock()

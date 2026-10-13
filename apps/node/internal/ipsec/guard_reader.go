@@ -111,12 +111,8 @@ func (r *GuardReader) check(ctx context.Context, manifest GuardManifest, verify 
 }
 func (r *GuardReader) checkObserved(ctx context.Context, manifest GuardManifest, verify func([]byte, []byte, []GuardInterface) error, observe func(guardReadTiming)) (resultErr error) {
 	var timing guardReadTiming
-	var cancel context.CancelFunc
-	defer func() {
-		if cancel != nil {
-			cancel()
-		}
-	}()
+	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
+	defer cancel()
 	defer func() {
 		if observe == nil {
 			return
@@ -138,7 +134,6 @@ func (r *GuardReader) checkObserved(ctx context.Context, manifest GuardManifest,
 	if r == nil || r.run == nil || r.namespace == nil || r.interfaces == nil || ctx.Err() != nil || !validKernelNamespace(manifest.Namespace) {
 		return ErrGuardRead
 	}
-	ctx, cancel = context.WithTimeout(ctx, kernelReadTimeout)
 	before, err := r.namespace()
 	if err != nil || before != manifest.Namespace || ctx.Err() != nil {
 		return ErrGuardRead

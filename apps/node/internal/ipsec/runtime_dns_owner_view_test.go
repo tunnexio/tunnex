@@ -405,15 +405,15 @@ func TestDNSOwnerViewConcurrentCloseCannotRepublish(t *testing.T) {
 func TestDNSOwnerViewFreshNativeInputsRemainMandatory(t *testing.T) {
 	for _, name := range []string{"native", "source-removed", "source-moved", "route-wan", "guard-expired", "cancelled"} {
 		t.Run(name, func(t *testing.T) {
-			f := newDNSOwnerViewFixture(t, nil)
+			var proof func(context.Context) error
+			if name == "native" {
+				proof = func(context.Context) error { return ErrRuntimeController }
+			}
+			f := newDNSOwnerViewFixture(t, proof)
 			v := *f.c.dnsView.Load()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			switch name {
-			case "native":
-				observer := *v.observer.controller
-				observer.prove = func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error { return ErrRuntimeController }
-				v.observer.controller = &observer
 			case "source-removed":
 				v.observer.source = func(netip.Addr, []int) (int, error) { return 0, ErrRuntimeController }
 			case "source-moved":

@@ -64,10 +64,12 @@ func (c *RuntimeController) refreshMaintenanceActiveRecovery(ctx context.Context
 			if c.recoveryNow() < h.lastNow {
 				return ErrRuntimeController
 			}
-			// Active telemetry may wait at most three seconds between turns;
-			// standalone and inactive recovery keep their original due intervals.
+			// Leave room for the next serial owner and the page's report/ACK
+			// handoff. A three-second debounce can exceed the ten-second report
+			// budget when the next standalone sample has no newer sequence.
+			// Standalone and inactive recovery keep their original due intervals.
 			stage = "clock"
-			if known && c.recoveryNow()-clock.returned < 3*time.Second {
+			if known && c.recoveryNow()-clock.returned < 2*time.Second {
 				seen[id] = true
 			}
 		}

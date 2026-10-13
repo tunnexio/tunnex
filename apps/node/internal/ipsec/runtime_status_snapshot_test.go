@@ -152,8 +152,8 @@ func TestRecoverySnapshotFailurePrecedenceAndCompleteReads(t *testing.T) {
 			if got != [2]string{"unknown", "unknown"} || reason != want {
 				t.Fatal("error precedence changed", got, reason)
 			}
-			for _, count := range counts {
-				if count.Load() != 1 {
+			for i := range counts {
+				if counts[i].Load() != 1 {
 					t.Fatal("failed first snapshot skipped read or started second")
 				}
 			}

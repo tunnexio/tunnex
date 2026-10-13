@@ -15,7 +15,12 @@ func TestAzureObserverHistoryCensusIncludesCompactedAndNestedDuties(t *testing.T
 	if os.Geteuid() != 0 {
 		t.Skip("actual root-private native directory census")
 	}
-	parent := journalDir(t)
+	// Native BGP custody requires root-owned, non-writable ancestors; /tmp cannot qualify.
+	parent, err := os.MkdirTemp("/root", "tunnex-azure-history-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(parent) })
 	selected := RuntimeJournalEntry{DeliveryID: uuid.New(), BGPProcess: &bgpengine.ProcessIdentity{Generation: 3}}
 	retained := RuntimeJournalEntry{DeliveryID: uuid.New(), Phase: RuntimeRetainedRefusal}
 	nested := RuntimeJournalEntry{DeliveryID: uuid.New()}

@@ -163,4 +163,34 @@ func TestDNSExpectedTemplateAllocationRegression(t *testing.T) {
 		t.Fatalf("repeated expected parsing not removed: %g >= %g", candidate, original)
 	}
 }
-func TestDNSExpectedTemplateActualOwnerPublication(t *testing.T){f:=newDNSOwnerViewFixture(t,func(context.Context)error{return nil});f.c.publishDNSOwnerView(f.manifest);v:=f.c.dnsView.Load();if v==nil||v.expected.raw!=f.manifest.ExpectedJSON||len(v.expected.objects)==0{t.Fatal("real publication did not retain validated expected snapshot")};want,ok:=normalizedGuardObjects([]byte(f.manifest.ExpectedJSON));if !ok||!reflect.DeepEqual(want,v.expected.objects){t.Fatal("publication snapshot differs from exact validated template")};id:=f.material.Manifest.ConnectionID;old,ok:=v.entries[id];if !ok{t.Fatal("published owner target missing")};f.c.withdrawDNSOwnerView(id);next:=f.c.dnsView.Load();if !old.epoch.revoked.Load(){t.Fatal("withdrawal did not revoke original epoch")};if next==nil{t.Fatal("single-owner withdrawal unexpectedly removed entire immutable view")};if _,ok:=next.entries[id];ok{t.Fatal("withdrawal retained target")};if !reflect.DeepEqual(next.expected,v.expected){t.Fatal("withdrawal changed immutable expected snapshot")}}
+func TestDNSExpectedTemplateActualOwnerPublication(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, func(context.Context) error { return nil })
+	f.c.publishDNSOwnerView(f.manifest)
+	v := f.c.dnsView.Load()
+	if v == nil || v.expected.raw != f.manifest.ExpectedJSON || len(v.expected.objects) == 0 {
+		t.Fatal("real publication did not retain validated expected snapshot")
+	}
+	want, ok := normalizedGuardObjects([]byte(f.manifest.ExpectedJSON))
+	if !ok || !reflect.DeepEqual(want, v.expected.objects) {
+		t.Fatal("publication snapshot differs from exact validated template")
+	}
+	id := f.material.Manifest.ConnectionID
+	old, ok := v.entries[id]
+	if !ok {
+		t.Fatal("published owner target missing")
+	}
+	f.c.withdrawDNSOwnerView(id)
+	next := f.c.dnsView.Load()
+	if !old.epoch.revoked.Load() {
+		t.Fatal("withdrawal did not revoke original epoch")
+	}
+	if next == nil {
+		t.Fatal("single-owner withdrawal unexpectedly removed entire immutable view")
+	}
+	if _, ok := next.entries[id]; ok {
+		t.Fatal("withdrawal retained target")
+	}
+	if !reflect.DeepEqual(next.expected, v.expected) {
+		t.Fatal("withdrawal changed immutable expected snapshot")
+	}
+}

@@ -66,3 +66,46 @@ func TestGuardReaderIdentityAndFailureRefusal(t *testing.T) {
 		})
 	}
 }
+
+func TestGuardReaderReleasesReadContextAfterObservation(t *testing.T) {
+	for _, kind := range []string{"success", "read_error", "parent_cancel"} {
+		t.Run(kind, func(t *testing.T) {
+			r, m := guardReaderFixture()
+			parent, cancelParent := context.WithCancel(context.Background())
+			defer cancelParent()
+			var readCtx context.Context
+			r.run = func(ctx context.Context, _ ...string) ([]byte, error) {
+				readCtx = ctx
+				switch kind {
+				case "read_error":
+					return nil, errors.New("fixture read refusal")
+				case "parent_cancel":
+					cancelParent()
+				}
+				return []byte(guardExpectedFixture), nil
+			}
+			observed := 0
+			err := r.checkObserved(parent, m, VerifyGuardReadbackWithInterfaces, func(timing guardReadTiming) {
+				observed++
+				want := "none"
+				if kind == "read_error" {
+					want = "structural_or_read"
+				} else if kind == "parent_cancel" {
+					want = "context_canceled"
+				}
+				if timing.FailureClass != want {
+					t.Fatalf("classification before cleanup: %s != %s", timing.FailureClass, want)
+				}
+				if kind != "parent_cancel" && readCtx.Err() != nil {
+					t.Fatal("read context canceled before diagnostic observation")
+				}
+			})
+			if (err == nil) != (kind == "success") || observed != 1 || readCtx == nil || readCtx.Err() != context.Canceled {
+				t.Fatal("read context or observation lifecycle changed", err, observed)
+			}
+			if kind != "parent_cancel" && parent.Err() != nil {
+				t.Fatal("read cleanup canceled its caller")
+			}
+		})
+	}
+}

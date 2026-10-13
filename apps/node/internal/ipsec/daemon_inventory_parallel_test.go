@@ -210,12 +210,17 @@ func TestDaemonIndependentInspectPreservesValidationAndLegacyHooks(t *testing.T)
 }
 
 func TestDaemonIndependentInspectActualOwnedTransport(t *testing.T) {
-	dir, err := os.MkdirTemp("/private/tmp", "vici-parallel-")
+	// Use a short portable path, then resolve /tmp on platforms where it is a symlink.
+	dir, err := os.MkdirTemp("/tmp", "vici-parallel-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	socket := filepath.Join(dir, "s")
+	canonical, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(canonical, "s")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)
