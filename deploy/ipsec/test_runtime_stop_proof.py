@@ -12,6 +12,7 @@ import runtime_stop_proof as proof
 class StopProofTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.tmp.name = str(Path(self.tmp.name).resolve())
         self.addCleanup(self.tmp.cleanup)
         (Path(self.tmp.name) / 'ipsec').mkdir()
         self.journal = Path(self.tmp.name) / 'ipsec/journal.json'
@@ -39,6 +40,156 @@ class StopProofTests(unittest.TestCase):
              patch.object(proof, 'command', return_value=self.event if event is None else event), \
              patch.object(proof, 'private_bytes', return_value=json.dumps(self.document if journal is None else journal).encode()):
             return proof.prove(self.before)
+
+    def test_inspect_mount_order_only_is_canonical(self):
+        mounts = [
+            {'Destination': '/state', 'Source': '/owned/state', 'Type': 'bind',
+             'RW': True, 'Propagation': 'rprivate', 'Unknown': {'literal': [2, 1]}},
+            {'Destination': '/binaries', 'Source': '/owned/bin', 'Type': 'bind',
+             'RW': False, 'Propagation': 'rprivate'},
+        ]
+        def observed(rows):
+            def cmd(*args):
+                field = args[3]
+                if field == '{{.Id}}': return 'a' * 64
+                if field == '{{json .State}}': return json.dumps(self.stopped['state'])
+                if field == '{{.NetworkSettings.SandboxKey}}': return '/run/netns/owned'
+                if field == '{{json .Mounts}}': return json.dumps(rows)
+                raise AssertionError('unexpected inspect field')
+            with patch.object(proof, 'command', side_effect=cmd):
+                return proof.inspect('a' * 64)
+        expected = observed(mounts)
+        self.assertEqual(expected, observed(list(reversed(mounts))))
+        self.assertEqual(expected['mounts'], sorted(mounts, key=lambda m: m['Destination']))
+        for field, value in [('RW', False), ('Source', '/foreign/state'),
+                             ('Type', 'volume'), ('Propagation', 'shared'),
+                             ('Unknown', {'literal': [1, 2]}), ('NewUnknown', True)]:
+            with self.subTest(field=field):
+                changed = copy.deepcopy(mounts)
+                changed[0][field] = value
+                self.assertNotEqual(expected, observed(changed))
+
+    def test_mount_order_rejects_duplicate_and_malformed_destinations(self):
+        for mounts in [None, {}, [None], [{}], [{'Destination': 2}],
+                       [{'Destination': ''}], [{'Destination': 'state'}],
+                       [{'Destination': '//state'}], [{'Destination': '/state/'}],
+                       [{'Destination': '/a/../state'}], [{'Destination': '/a//state'}],
+                       [{'Destination': '/state\x00'}],
+                       [{'Destination': '/state'}, {'Destination': '/state'}]]:
+            with self.subTest(mounts=mounts):
+                with self.assertRaises(ValueError):
+                    proof.canonical_mounts(mounts)
+
+    def test_cgroup_driver_paths_bind_full_docker_identity(self):
+        identity = 'a' * 64
+        for path in ('/docker/' + identity, '/system.slice/docker-' + identity + '.scope'):
+            self.assertEqual(proof.exact_cgroup(identity, '0::' + path), '/sys/fs/cgroup' + path)
+        for membership in ('0::/docker/' + 'b' * 64,
+                           '0::/system.slice/docker-' + identity[:12] + '.scope',
+                           '0::/user.slice/docker-' + identity + '.scope',
+                           '0::/system.slice/docker-' + identity + '.scope/child',
+                           '1:name=systemd:/docker/' + identity,
+                           '0::/docker/' + identity + '\n0::/foreign'):
+            with self.subTest(membership=membership), self.assertRaises(ValueError):
+                proof.exact_cgroup(identity, membership)
+        self.before['cgroup'] = '/sys/fs/cgroup/system.slice/docker-' + identity + '.scope'
+        self.assertEqual(self.run_proof()['snapshot']['cgroup'], self.before['cgroup'])
+
+    def test_snapshot_checks_inspect_pid_and_rechecks_membership(self):
+        running = copy.deepcopy(self.stopped)
+        running['state'].update(Running=True, Pid=123)
+        running['sandbox'] = 'exact-sandbox'
+        for cgroup in ('/docker/' + 'a' * 64,
+                       '/system.slice/docker-' + 'a' * 64 + '.scope'):
+            def read(path, *args, **kwargs):
+                return '123\n' if path.name == 'cgroup.procs' else '0::' + cgroup
+            with patch.object(proof, 'inspect', return_value=running), \
+                 patch.object(proof, 'private_bytes', return_value=json.dumps(self.document).encode()), \
+                 patch.object(proof, 'boot', return_value='prior-boot'), \
+                 patch.object(proof.os, 'stat', return_value=type('Stat', (), {'st_dev':1, 'st_ino':2})()), \
+                 patch.object(Path, 'read_text', autospec=True, side_effect=read):
+                self.assertEqual(proof.snapshot('a' * 64, str(self.journal))['cgroup'], '/sys/fs/cgroup' + cgroup)
+        for reads in (['0::/docker/' + 'a'*64, '456\n'],
+                      ['0::/docker/' + 'a'*64, '123\n', '0::/docker/' + 'b'*64]):
+            with patch.object(proof, 'inspect', return_value=running), \
+                 patch.object(proof, 'private_bytes', return_value=json.dumps(self.document).encode()), \
+                 patch.object(proof.os, 'stat', return_value=type('Stat', (), {'st_dev':1, 'st_ino':2})()), \
+                 patch.object(Path, 'read_text', side_effect=reads), self.assertRaises(ValueError):
+                proof.snapshot('a' * 64, str(self.journal))
+    def snapshot_for_cgroup(self, cgroup):
+        running = copy.deepcopy(self.stopped)
+        running['state'].update(Running=True, Pid=123)
+        running['sandbox'] = '/var/run/docker/netns/test'
+        ns = type('NamespaceStat', (), {'st_dev': 1, 'st_ino': 2})()
+        with patch.object(proof, 'inspect', return_value=running), \
+             patch.object(proof, 'boot', return_value='prior-boot'), \
+             patch.object(proof, 'private_bytes', return_value=json.dumps(self.document).encode()), \
+             patch.object(proof.os, 'stat', return_value=ns), \
+             patch.object(Path, 'read_text', autospec=True, side_effect=lambda p: '123' if str(p).endswith('cgroup.procs') else cgroup):
+            return proof.snapshot(running['id'], str(self.journal))
+
+    def test_snapshot_accepts_only_exact_docker_cgroup_layouts(self):
+        for path in proof.docker_cgroup_paths(self.before['container']):
+            with self.subTest(path=path):
+                value = self.snapshot_for_cgroup('0::' + path + '\n')
+                self.assertEqual(value['cgroup'], '/sys/fs/cgroup' + path)
+                self.assertEqual(value['container'], self.before['container'])
+                self.assertEqual(value['journal_entries_sha256'], self.before['journal_entries_sha256'])
+
+    def invalid_cgroup_paths(self):
+        own, other = 'a' * 64, 'b' * 64
+        return [
+            '/docker/' + other,
+            '/system.slice/docker-' + other + '.scope',
+            '/system.slice/tunnex.service',
+            '/system.slice/docker-' + own + '.service',
+            '/system.slice/docker-' + own[:12] + '.scope',
+            '/system.slice/docker-' + own + '.scope/child',
+            '/docker/' + own + '/../' + other,
+            '/docker/../system.slice/docker-' + own + '.scope',
+            '//docker/' + own,
+            '/docker/' + own + '/',
+            '/docker/' + own + '\n0::/system.slice/docker-' + other + '.scope',
+        ]
+
+    def test_snapshot_rejects_foreign_escaped_and_mixed_cgroups(self):
+        for path in self.invalid_cgroup_paths():
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'unsupported (or foreign )?cgroup'):
+                self.snapshot_for_cgroup('0::' + path)
+        with self.assertRaisesRegex(ValueError, 'unsupported (or foreign )?cgroup'):
+            self.snapshot_for_cgroup('1:cpu:/docker/' + self.before['container'])
+
+    def test_proof_accepts_both_layouts_and_requires_two_empty_passes(self):
+        for path in proof.docker_cgroup_paths(self.before['container']):
+            with self.subTest(path=path):
+                self.before['cgroup'] = '/sys/fs/cgroup' + path
+                with patch.object(Path, 'exists', return_value=True), \
+                     patch.object(Path, 'read_text', autospec=True, return_value='populated 0\n') as reads:
+                    self.run_proof()
+                    self.assertEqual(reads.call_count, 2)
+                    self.assertTrue(all(str(call.args[0]) == self.before['cgroup'] + '/cgroup.events'
+                                        for call in reads.call_args_list))
+                with patch.object(Path, 'exists', return_value=True), \
+                     patch.object(Path, 'read_text', side_effect=['populated 0\n', 'populated 1\n']):
+                    with self.assertRaisesRegex(ValueError, 'still populated'):
+                        self.run_proof()
+
+    def test_systemd_proof_rejects_namespace_holder_on_second_pass(self):
+        self.before['cgroup'] = '/sys/fs/cgroup' + proof.docker_cgroup_paths(self.before['container'])[1]
+        with patch.object(proof, 'inspect', return_value=self.stopped), \
+             patch.object(proof, 'boot', return_value='prior-boot'), \
+             patch.object(proof, 'private_bytes', return_value=json.dumps(self.document).encode()), \
+             patch.object(Path, 'exists', return_value=False), \
+             patch.object(proof, 'namespace_holders', side_effect=[[], ['/proc/other/ns/net']]):
+            with self.assertRaisesRegex(ValueError, 'still referenced'):
+                proof.prove(self.before)
+
+    def test_proof_rejects_foreign_escaped_and_mixed_cgroup_paths(self):
+        for path in self.invalid_cgroup_paths():
+            with self.subTest(path=path):
+                self.before['cgroup'] = '/sys/fs/cgroup' + path
+                with self.assertRaisesRegex(ValueError, 'foreign cgroup'):
+                    self.run_proof()
 
     def test_exact_stop_requires_all_proofs(self):
         result = self.run_proof()
@@ -103,8 +254,58 @@ class StopProofTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'does not belong'):
             self.run_proof(identity=identity)
 
+    def test_explicit_state_mount_and_exact_destination_binding(self):
+        identity = copy.deepcopy(self.stopped)
+        identity['mounts'][0]['Destination'] = '/state'
+        mount = proof.state_mount(identity, str(self.journal), '/state')
+        self.assertEqual(mount['destination'], '/state')
+        self.before['state_mount'] = mount
+        self.assertEqual(self.run_proof(identity=identity)['snapshot']['state_mount'], mount)
+        with self.assertRaises(ValueError):
+            proof.state_mount(identity, str(self.journal))
+        with self.assertRaises(ValueError):
+            proof.state_mount(identity, str(self.journal), '/arbitrary')
+        identity['mounts'].append(copy.deepcopy(identity['mounts'][0]))
+        with self.assertRaises(ValueError):
+            proof.state_mount(identity, str(self.journal), '/state')
+        identity['mounts'].pop()
+        identity['mounts'][0]['Destination'] = '/var/lib/tunnex-node'
+        with self.assertRaises(ValueError):
+            self.run_proof(identity=identity)
+
+    def test_journal_and_source_symlink_escape_refused(self):
+        identity = copy.deepcopy(self.stopped)
+        with self.assertRaises(ValueError):
+            proof.state_mount(identity, str(self.journal.parent / 'other.json'))
+        external = Path(self.tmp.name) / 'external.json'
+        external.write_text('{}')
+        self.journal.unlink()
+        self.journal.symlink_to(external)
+        with self.assertRaises(ValueError):
+            proof.state_mount(identity, str(self.journal))
+        link = Path(self.tmp.name) / 'source-link'
+        link.symlink_to(self.tmp.name, target_is_directory=True)
+        identity['mounts'][0]['Source'] = str(link)
+        with self.assertRaises(ValueError):
+            proof.state_mount(identity, str(link / 'ipsec/journal.json'))
+
     def test_mount_escape_decoding(self):
         self.assertEqual(proof.unescape_mount('/a\\040b/\\134x'), '/a b/\\x')
+
+
+class CommandTimeoutTests(unittest.TestCase):
+    def test_default_and_explicit_command_bounds(self):
+        from unittest.mock import patch
+        with patch.object(proof.subprocess, 'check_output', return_value='ok\n') as call:
+            self.assertEqual(proof.command('owned'), 'ok')
+            call.assert_called_once_with(('owned',), text=True, timeout=30)
+            call.reset_mock()
+            proof.command('owned', timeout=50)
+            call.assert_called_once_with(('owned',), text=True, timeout=50)
+            for limit in (0, 51):
+                call.reset_mock()
+                with self.assertRaises(ValueError): proof.command('owned', timeout=limit)
+                call.assert_not_called()
 
 
 if __name__ == '__main__':

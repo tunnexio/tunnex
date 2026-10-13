@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"sort"
@@ -67,6 +66,7 @@ type Request struct {
 	ResolverProfileID     string             `json:"resolver_profile_id"`
 	ResolverMatchSuffix   string             `json:"resolver_match_suffix,omitempty"`
 	ResolverEndpoints     []ResolverEndpoint `json:"resolver_endpoints"`
+	ResolverIPsecPath     *IPsecPath         `json:"resolver_ipsec_path,omitempty"`
 }
 
 type ResolverConfig struct {
@@ -75,6 +75,28 @@ type ResolverConfig struct {
 	ProfileID     string             `json:"profile_id"`
 	MatchedSuffix string             `json:"matched_suffix"`
 	Endpoints     []ResolverEndpoint `json:"endpoints"`
+	IPsecPath     *IPsecPath         `json:"ipsec_path,omitempty"`
+}
+
+// IPsecPath is an immutable server-bound resolver transport selection. It
+// conveys no packet authority: a transport must independently prove the exact
+// connection, native path, owned source and current leased DNS-only guard.
+type IPsecPath struct {
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+	SourceAddress         string `json:"source_address"`
+}
+
+// BoundTransport sends a DNS message through the already selected resolver
+// profile. Implementations must fail closed rather than choosing a WAN route.
+type BoundTransport interface {
+	ExchangeDNS(context.Context, ResolverConfig, ResolverEndpoint, []byte) ([]byte, error)
+}
+
+// BoundTransportValidator reproves authority before returning a retry cache
+// entry. A DNS answer cache must never survive IPsec lease or native path loss.
+type BoundTransportValidator interface {
+	ValidateDNSPath(context.Context, ResolverConfig, ResolverEndpoint) error
 }
 
 type ResolverEndpoint struct {
@@ -116,6 +138,7 @@ type Response struct {
 	ResolverConfigVersion int64        `json:"resolver_config_version,omitempty"`
 	ResolverProfileID     string       `json:"resolver_profile_id,omitempty"`
 	ResolverMatchSuffix   string       `json:"resolver_match_suffix,omitempty"`
+	ResolverIPsecPath     *IPsecPath   `json:"resolver_ipsec_path,omitempty"`
 	Hostname              string       `json:"hostname"`
 	RecordTypes           []RecordType `json:"record_types"`
 	Status                Status       `json:"status"`
@@ -152,16 +175,55 @@ func (e resolverStatusError) Error() string { return string(e.status) }
 // malformed response, transport failure, or disagreement fails the request
 // closed. It deliberately has no net.Resolver field or system fallback.
 type DirectResolver struct {
-	exchange func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error)
+	exchange  func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error)
+	Transport BoundTransport
 }
 
-func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) ([]Record, error) {
+func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) (result []Record, resultErr error) {
+	defer func() { finishLookupTiming(ctx, resultErr) }()
 	if !validResolverConfig(config) {
 		return nil, errResolverConfig
 	}
+	// Each endpoint remains independently authoritative. Bound concurrency to
+	// four complete endpoint workflows, each with at most two independent record
+	// exchanges. CNAME steps remain sequential; every exchange keeps its proofs.
+	config.Endpoints = append([]ResolverEndpoint(nil), config.Endpoints...)
+	types = append([]RecordType(nil), types...)
+	if config.IPsecPath != nil {
+		path := *config.IPsecPath
+		config.IPsecPath = &path
+	}
+	type endpointResult struct {
+		records []Record
+		err     error
+	}
+	results := make([]endpointResult, len(config.Endpoints))
+	jobs := make(chan int, len(config.Endpoints))
+	for i := range config.Endpoints {
+		jobs <- i
+	}
+	close(jobs)
+	var workers sync.WaitGroup
+	for range min(4, len(config.Endpoints)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for i := range jobs {
+				if err := ctx.Err(); err != nil {
+					results[i].err = err
+					continue
+				}
+				results[i].records, results[i].err = d.resolveEndpoint(ctx, config, config.Endpoints[i], hostname, types)
+			}
+		}()
+	}
+	// Drain before returning, including on cancellation. Reduce in configured
+	// order, so faster replies never decide consensus or DNS error precedence.
+	workers.Wait()
+	markLookupWorkersDrained(ctx)
 	var canonical []Record
-	for _, endpoint := range config.Endpoints {
-		records, err := d.resolveEndpoint(ctx, endpoint, hostname, types)
+	for _, result := range results {
+		records, err := result.records, result.err
 		if err != nil {
 			var statusErr resolverStatusError
 			if errors.As(err, &statusErr) {
@@ -197,35 +259,101 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 			addresses++
 		}
 	}
-	if addresses == 0 {
+	if addresses == 0 || ctx.Err() != nil {
 		return nil, errResolverConfig
 	}
 	return canonical, nil
 }
 
-func (d DirectResolver) resolveEndpoint(ctx context.Context, endpoint ResolverEndpoint, hostname string, types []RecordType) ([]Record, error) {
+func (d DirectResolver) ValidateBound(ctx context.Context, config ResolverConfig) error {
+	if config.IPsecPath == nil {
+		return nil
+	}
+	validator, ok := d.Transport.(BoundTransportValidator)
+	if !ok || !validResolverConfig(config) {
+		return errResolverConfig
+	}
+	for _, endpoint := range config.Endpoints {
+		if validator.ValidateDNSPath(ctx, config, endpoint) != nil {
+			return errResolverConfig
+		}
+	}
+	return nil
+}
+
+func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConfig, endpoint ResolverEndpoint, hostname string, types []RecordType) ([]Record, error) {
 	exchange := d.exchange
-	if exchange == nil {
+	if config.IPsecPath != nil {
+		// An injected ordinary resolver never bypasses a declared IPsec path.
+		if d.Transport == nil {
+			return nil, errResolverConfig
+		}
+		exchange = func(ctx context.Context, e ResolverEndpoint, name string, typ RecordType) ([]Record, error) {
+			return directBoundExchange(ctx, d.Transport, config, e, name, typ)
+		}
+	} else if exchange == nil {
 		exchange = directExchange
 	}
 	current := hostname
 	seen := map[string]bool{}
 	var all []Record
+	// Reuse only terminal answers proved by this endpoint's current response.
+	// This is request-local wire data, never a cached native authority/proof.
+	answered := map[RecordType]map[string][]Record{}
 	for depth := 0; depth <= 8; depth++ {
 		if seen[current] {
 			return nil, fmt.Errorf("cname loop")
 		}
 		seen[current] = true
-		var step []Record
-		for _, typ := range types {
+		// A and AAAA at the same name are independent exchanges. Reduce in
+		// requested type order after draining both, preserving error precedence.
+		type typeResult struct {
+			records []Record
+			err     error
+		}
+		results := make([]typeResult, len(types))
+		jobs := make(chan int, len(types))
+		for i, typ := range types {
 			if typ == RecordCNAME {
 				continue
 			}
-			got, err := exchange(ctx, endpoint, current, typ)
-			if err != nil {
-				return nil, err
+			if prior := answered[typ][current]; len(prior) != 0 {
+				results[i].records = prior
+				continue
 			}
-			step = append(step, got...)
+			jobs <- i
+		}
+		close(jobs)
+		var workers sync.WaitGroup
+		for range min(2, len(types)) {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				for i := range jobs {
+					if err := ctx.Err(); err != nil {
+						results[i].err = err
+						continue
+					}
+					results[i].records, results[i].err = exchange(ctx, endpoint, current, types[i])
+				}
+			}()
+		}
+		workers.Wait()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var step []Record
+		for i, result := range results {
+			if result.err != nil {
+				return nil, result.err
+			}
+			step = append(step, result.records...)
+			if terminal, records, ok := terminalWireAnswer(current, types[i], result.records); ok {
+				if answered[types[i]] == nil {
+					answered[types[i]] = map[string][]Record{}
+				}
+				answered[types[i]][terminal] = records
+			}
 		}
 		step = canonicalRecords(step)
 		all = append(all, step...)
@@ -247,14 +375,72 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, endpoint ResolverEn
 	return nil, fmt.Errorf("cname depth exceeded")
 }
 
+// terminalWireAnswer accepts a complete, unambiguous chain and positive terminal
+// records from one current response of the requested type. NODATA, unrelated
+// records, loops and malformed answers cannot suppress a later query.
+func terminalWireAnswer(hostname string, typ RecordType, records []Record) (string, []Record, bool) {
+	if typ != RecordA && typ != RecordAAAA || !validDirectRecords(hostname, []RecordType{typ, RecordCNAME}, records) {
+		return "", nil, false
+	}
+	edges := map[string]string{}
+	for _, record := range records {
+		if record.TTLSeconds <= 0 || uint64(record.TTLSeconds) > uint64(^uint32(0)) {
+			return "", nil, false
+		}
+		if record.Type == RecordCNAME {
+			if target, exists := edges[record.Name]; exists && target != record.Target {
+				return "", nil, false
+			}
+			edges[record.Name] = record.Target
+		} else if record.Type != typ {
+			return "", nil, false
+		}
+	}
+	current := hostname
+	chain := map[string]bool{}
+	for depth := 0; depth <= 8; depth++ {
+		if chain[current] {
+			return "", nil, false
+		}
+		chain[current] = true
+		target, exists := edges[current]
+		if !exists {
+			var terminal []Record
+			for _, record := range records {
+				if !chain[record.Name] {
+					return "", nil, false
+				}
+				if record.Type != RecordCNAME {
+					if record.Name != current {
+						return "", nil, false
+					}
+					terminal = append(terminal, record)
+				}
+			}
+			if len(terminal) == 0 {
+				return "", nil, false
+			}
+			return current, canonicalRecords(terminal), true
+		}
+		current = target
+	}
+	return "", nil, false
+}
+
 func validResolverConfig(config ResolverConfig) bool {
 	if !isUUID(config.ID) || !isUUID(config.ProfileID) || config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
 		return false
 	}
 	seen := map[string]bool{}
+	if config.IPsecPath != nil && !validIPsecPath(*config.IPsecPath) {
+		return false
+	}
 	for _, endpoint := range config.Endpoints {
 		ip, err := netip.ParseAddr(endpoint.Address)
 		if err != nil || !ip.IsValid() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || endpoint.Port < 1 || endpoint.Port > 65535 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			return false
+		}
+		if config.IPsecPath != nil && (!ip.Is4() || endpoint.Port != 53) {
 			return false
 		}
 		key := ip.String() + ":" + strconv.Itoa(endpoint.Port) + ":" + endpoint.Transport
@@ -277,7 +463,12 @@ func canonicalRecords(in []Record) []Record {
 	}
 	unique := out[:1]
 	for _, r := range out[1:] {
-		if r != unique[len(unique)-1] {
+		last := &unique[len(unique)-1]
+		if r.Name == last.Name && r.Type == last.Type && r.Address == last.Address && r.Target == last.Target {
+			if r.TTLSeconds < last.TTLSeconds {
+				last.TTLSeconds = r.TTLSeconds
+			}
+		} else {
 			unique = append(unique, r)
 		}
 	}
@@ -313,6 +504,10 @@ func sameRecords(a, b []Record) bool {
 }
 
 func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
+	return directBoundExchange(ctx, configlessTransport{}, ResolverConfig{}, endpoint, hostname, typ)
+}
+
+func directBoundExchange(ctx context.Context, transport BoundTransport, config ResolverConfig, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
 	name, err := dnsmessage.NewName(hostname + ".")
 	if err != nil {
 		return nil, err
@@ -326,51 +521,9 @@ func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname str
 	if err != nil {
 		return nil, err
 	}
-	address := net.JoinHostPort(endpoint.Address, strconv.Itoa(endpoint.Port))
-	var response []byte
-	if endpoint.Transport == "udp" {
-		conn, err := (&net.Dialer{}).DialContext(ctx, "udp", address)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-		if deadline, ok := ctx.Deadline(); ok {
-			_ = conn.SetDeadline(deadline)
-		}
-		if _, err := conn.Write(payload); err != nil {
-			return nil, err
-		}
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		if err != nil {
-			return nil, err
-		}
-		response = buf[:n]
-	} else {
-		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-		if deadline, ok := ctx.Deadline(); ok {
-			_ = conn.SetDeadline(deadline)
-		}
-		frame := append([]byte{byte(len(payload) >> 8), byte(len(payload))}, payload...)
-		if _, err := conn.Write(frame); err != nil {
-			return nil, err
-		}
-		var size [2]byte
-		if _, err := io.ReadFull(conn, size[:]); err != nil {
-			return nil, err
-		}
-		n := int(size[0])<<8 | int(size[1])
-		if n == 0 || n > 65535 {
-			return nil, fmt.Errorf("invalid dns tcp frame")
-		}
-		response = make([]byte, n)
-		if _, err := io.ReadFull(conn, response); err != nil {
-			return nil, err
-		}
+	response, err := exchangeDNSPacket(ctx, transport, config, endpoint, payload)
+	if err != nil {
+		return nil, err
 	}
 	var decoded dnsmessage.Message
 	if err := decoded.Unpack(response); err != nil {
@@ -477,6 +630,14 @@ type Responder struct {
 	now      func() time.Time
 	mu       sync.Mutex
 	seen     map[string]cached
+	inflight map[string]*pendingResponse
+	running  map[string]string
+}
+
+type pendingResponse struct {
+	fingerprint string
+	done        chan struct{}
+	response    Response
 }
 
 type cached struct {
@@ -486,7 +647,53 @@ type cached struct {
 }
 
 func NewResponder(resolver any) *Responder {
-	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached)}
+	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached), inflight: make(map[string]*pendingResponse), running: make(map[string]string)}
+}
+
+// RunDisposition is admission only, never a DNS answer or native authority.
+type RunDisposition uint8
+
+const (
+	RunCompleted RunDisposition = iota
+	RunDuplicatePending
+	RunConflictingPending
+	RunAtCapacity
+)
+const maxInflightRequests = 64
+
+// Run admits one complete Handle/report workflow for an immutable pending ID.
+// Completed replay remains in Handle; this registry never caches answers, waits
+// for another request, or displaces a live job. The callback retains its original
+// context/deadline and proofs. Release includes report failure and panic paths.
+func (r *Responder) Run(ctx context.Context, gatewayID string, req Request, run func()) RunDisposition {
+	fp := gatewayID + "|" + requestFingerprint(req)
+	r.mu.Lock()
+	if active, ok := r.running[req.RequestID]; ok {
+		r.mu.Unlock()
+		if active != fp {
+			return RunConflictingPending
+		}
+		return RunDuplicatePending
+	}
+	// Preserve the original typed refusal path for malformed/expired/cancelled
+	// inputs; they do not allocate persistent admission entries.
+	if ctx.Err() != nil || validateRequest(req, gatewayID, r.now().UTC()) != "" {
+		r.mu.Unlock()
+		run()
+		return RunCompleted
+	}
+	if len(r.running) >= maxInflightRequests {
+		r.mu.Unlock()
+		return RunAtCapacity
+	}
+	if r.running == nil {
+		r.running = make(map[string]string)
+	}
+	r.running[req.RequestID] = fp
+	r.mu.Unlock()
+	defer func() { r.mu.Lock(); delete(r.running, req.RequestID); r.mu.Unlock() }()
+	run()
+	return RunCompleted
 }
 
 // Handle resolves only an authenticated desired-state request addressed to the
@@ -494,6 +701,12 @@ func NewResponder(resolver any) *Responder {
 // invalid/expired/unsupported request; callers should post that response over
 // mTLS so the control plane can withdraw generation rather than guessing.
 func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) Response {
+	if req.ResolverIPsecPath != nil {
+		path := *req.ResolverIPsecPath
+		req.ResolverIPsecPath = &path
+	}
+	req.RecordTypes = append([]RecordType(nil), req.RecordTypes...)
+	req.ResolverEndpoints = append([]ResolverEndpoint(nil), req.ResolverEndpoints...)
 	now := r.now().UTC()
 	if code := validateRequest(req, gatewayID, now); code != "" {
 		return responseFor(req, StatusServFail, code, now)
@@ -514,8 +727,35 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 		if old.fingerprint != fp {
 			return responseFor(req, StatusServFail, "resolver_unavailable", now)
 		}
-		return old.response
+		return r.replay(ctx, req, old.response, now)
 	}
+	if pending, ok := r.inflight[req.RequestID]; ok {
+		r.mu.Unlock()
+		if pending.fingerprint != fp {
+			return responseFor(req, StatusServFail, "resolver_unavailable", now)
+		}
+		waitCtx, cancel := context.WithDeadline(ctx, req.Deadline)
+		defer cancel()
+		select {
+		case <-waitCtx.Done():
+			code := "disconnected"
+			if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+				code = "deadline_exceeded"
+			}
+			return responseFor(req, StatusServFail, code, r.now().UTC())
+		case <-pending.done:
+			if err := waitCtx.Err(); err != nil {
+				code := "disconnected"
+				if errors.Is(err, context.DeadlineExceeded) {
+					code = "deadline_exceeded"
+				}
+				return responseFor(req, StatusServFail, code, r.now().UTC())
+			}
+			return r.replay(waitCtx, req, pending.response, r.now().UTC())
+		}
+	}
+	pending := &pendingResponse{fingerprint: fp, done: make(chan struct{})}
+	r.inflight[req.RequestID] = pending
 	r.mu.Unlock()
 
 	deadline := req.Deadline
@@ -526,8 +766,8 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	var records []Record
 	var err error
 	if bound, ok := r.resolver.(BoundResolver); ok {
-		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints})
-	} else if plain, ok := r.resolver.(Resolver); ok {
+		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath})
+	} else if plain, ok := r.resolver.(Resolver); ok && req.ResolverIPsecPath == nil {
 		records, err = plain.Resolve(lookupCtx, req.Hostname, req.RecordTypes)
 	} else {
 		err = errResolverConfig
@@ -556,8 +796,38 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	}
 
 	r.mu.Lock()
-	r.seen[req.RequestID] = cached{fingerprint: fp, response: resp, expiresAt: now.Add(cacheLifetime)}
+	r.seen[req.RequestID] = cached{fingerprint: fp, response: cloneResponse(resp), expiresAt: now.Add(cacheLifetime)}
+	pending.response = cloneResponse(resp)
+	delete(r.inflight, req.RequestID)
+	close(pending.done)
 	r.mu.Unlock()
+	return resp
+}
+
+// A coalesced observation never supplies authority: every IPsec replay proves
+// the current binding independently, including followers after their wait.
+func (r *Responder) replay(ctx context.Context, req Request, resp Response, now time.Time) Response {
+	if req.ResolverIPsecPath != nil {
+		validator, ok := r.resolver.(interface {
+			ValidateBound(context.Context, ResolverConfig) error
+		})
+		lookupCtx, cancel := context.WithDeadline(ctx, req.Deadline)
+		valid := ok && validator.ValidateBound(lookupCtx, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath}) == nil
+		cancel()
+		if !valid {
+			return responseFor(req, StatusServFail, "resolver_unavailable", now)
+		}
+	}
+	return cloneResponse(resp)
+}
+
+func cloneResponse(resp Response) Response {
+	resp.RecordTypes = append([]RecordType(nil), resp.RecordTypes...)
+	resp.Records = append([]Record(nil), resp.Records...)
+	if resp.ResolverIPsecPath != nil {
+		path := *resp.ResolverIPsecPath
+		resp.ResolverIPsecPath = &path
+	}
 	return resp
 }
 
@@ -566,7 +836,8 @@ func responseFor(req Request, status Status, code string, observed time.Time) Re
 		ResourceID: req.ResourceID, SiteID: req.SiteID, GatewayID: req.GatewayID,
 		ResolverConfigID: req.ResolverConfigID, ResolverConfigVersion: req.ResolverConfigVersion,
 		ResolverProfileID: req.ResolverProfileID, ResolverMatchSuffix: req.ResolverMatchSuffix,
-		Hostname: req.Hostname, RecordTypes: append([]RecordType(nil), req.RecordTypes...),
+		ResolverIPsecPath: req.ResolverIPsecPath,
+		Hostname:          req.Hostname, RecordTypes: append([]RecordType(nil), req.RecordTypes...),
 		Status: status, ErrorCode: code, ObservedAt: observed}
 }
 
@@ -590,6 +861,9 @@ func validateRequest(req Request, gatewayID string, now time.Time) string {
 		return "resolver_unavailable"
 	}
 	if req.ResolverMatchSuffix != "" && req.Hostname != req.ResolverMatchSuffix && !strings.HasSuffix(req.Hostname, "."+req.ResolverMatchSuffix) {
+		return "resolver_unavailable"
+	}
+	if req.ResolverIPsecPath != nil && !validIPsecPath(*req.ResolverIPsecPath) {
 		return "resolver_unavailable"
 	}
 	if req.Deadline.IsZero() || !req.Deadline.After(now) {
@@ -636,6 +910,9 @@ func requestFingerprint(req Request) string {
 		for _, endpoint := range req.ResolverEndpoints {
 			config += "|" + endpoint.Address + ":" + strconv.Itoa(endpoint.Port) + "/" + endpoint.Transport
 		}
+	}
+	if req.ResolverIPsecPath != nil {
+		config += "|ipsec:" + req.ResolverIPsecPath.ConnectionID + ":" + strconv.FormatInt(req.ResolverIPsecPath.ConfigurationRevision, 10) + ":" + req.ResolverIPsecPath.SourceAddress
 	}
 	s := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%s|%s|%s|%s", req.Version, req.OrgID, req.ResourceID,
 		req.SiteID, req.GatewayID, req.Hostname, strings.Join(recordTypeNames(req.RecordTypes), ","), req.Deadline.UTC().Format(time.RFC3339Nano), req.RequestID, config)

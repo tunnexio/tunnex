@@ -1,0 +1,5 @@
+{"action": "disable", "apply": true, "expected_revision": 2, "external_native_gates_required": true, "started": true}
+{"baseline_preserved": true, "cleanup_state": "not_required", "configuration_revision": 1, "current_intent": "enabled", "current_revision": 2}
+{"action": "disable", "expected_revision": 2, "mutation_attempted": true, "replay_forbidden": true}
+{"desired_intent": "disabled", "desired_revision": 3, "id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6", "mutation_returned": true}
+{"baseline_preserved": true, "completed": true, "desired_intent": "disabled", "desired_revision": 3, "native_readiness_claim": false}

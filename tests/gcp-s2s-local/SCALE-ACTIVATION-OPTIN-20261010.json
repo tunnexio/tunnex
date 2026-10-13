@@ -1,0 +1,17 @@
+{
+  "state": "valid",
+  "tier": "scale",
+  "fqdn_resources": true,
+  "fqdn_enabled": true,
+  "normal_owner_api": true,
+  "org_id": "01a124e7-60c7-78ca-aa85-d3a5025d9764",
+  "authorization": "Human-supplied signed Scale key; explicit normal activation and owned test-org FQDN opt-in authorization.",
+  "activation_path": "POST /api/v1/license as existing organization owner; GET /api/v1/license independently verified state valid.",
+  "opt_in_path": "GET fqdn-resources/setting/impact then PUT setting with current expected_impact_token; GET setting verified enabled.",
+  "authority": "InstallLicense requires owner of some organization; cp_admin=false remains unchanged.",
+  "secrets": "No key, password, private credential file, cookie, or impact token included.",
+  "scope": "Licence entitlement and normal organization opt-in only. Automatic FQDN packet/query proof not established by this receipt. Cloud gateway join remains pending separate approval.",
+  "production_source": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "receipt_branch_base": "8e04ff31",
+  "date": "2026-10-10"
+}

@@ -43,17 +43,48 @@ func NewScheduler(store Store, resolver Resolver, cfg SchedulerConfig) *Schedule
 // Start performs a bounded startup sweep and then bounded periodic/reconnect
 // sweeps. A busy scheduler coalesces a signal rather than starting concurrent
 // writers; database CAS remains the cross-process protection.
+// refreshDeadlineStore is optional so existing storage implementations retain
+// their heartbeat behavior. It never dispatches work before Store.Due admits it.
+type refreshDeadlineStore interface {
+	NextRefreshAt(context.Context) (time.Time, error)
+}
+
+const schedulerWakeFloor = 250 * time.Millisecond
+
+func (s *Scheduler) nextWake(ctx context.Context) time.Duration {
+	delay := s.interval
+	if ctx.Err() != nil || (s.mayTick != nil && !s.mayTick()) {
+		return delay
+	}
+	if store, ok := s.store.(refreshDeadlineStore); ok {
+		readCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		at, err := store.NextRefreshAt(readCtx)
+		cancel()
+		if err == nil && !at.IsZero() {
+			until := at.Sub(s.now())
+			if until < delay {
+				delay = until
+			}
+		}
+	}
+	if delay < schedulerWakeFloor {
+		delay = schedulerWakeFloor
+	}
+	return delay
+}
+
 func (s *Scheduler) Start(ctx context.Context, reconnect <-chan struct{}) {
 	s.Tick(ctx)
 	go func() {
-		ticker := time.NewTicker(s.interval)
-		defer ticker.Stop()
+		timer := time.NewTimer(s.nextWake(ctx))
+		defer timer.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				s.Tick(ctx)
+				timer.Reset(s.nextWake(ctx))
 			case _, ok := <-reconnect:
 				// A closed reconnect source is a completed notification stream, not
 				// a request for an unbounded busy-loop of resolver writes.
@@ -62,6 +93,13 @@ func (s *Scheduler) Start(ctx context.Context, reconnect <-chan struct{}) {
 					continue
 				}
 				s.Tick(ctx)
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(s.nextWake(ctx))
 			}
 		}
 	}()
@@ -83,12 +121,58 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.running = false; s.mu.Unlock() }()
 	now := s.now()
-	work, err := s.store.Due(ctx, now, s.batch)
+	var work []Work
+	var err error
+	if early, ok := s.store.(interface {
+		DueForRefresh(context.Context, time.Time, int, time.Duration) ([]Work, error)
+	}); ok {
+		work, err = early.DueForRefresh(ctx, now, s.batch, refreshHeadroom(s.interval, s.timeout, s.batch))
+	} else {
+		work, err = s.store.Due(ctx, now, s.batch)
+	}
 	if err != nil {
 		return
 	}
-	for _, w := range work {
-		s.refresh(ctx, now, w)
+	// A selected gateway has at most two DNS RPCs in flight, and the entire
+	// sweep has at most four. Work retains the store's deadline priority.
+	type gatewayKey struct{ org, gateway string }
+	key := func(w Work) gatewayKey { return gatewayKey{w.OrgID.String(), w.Context.GatewayID} }
+	active := map[gatewayKey]int{}
+	done := make(chan gatewayKey, 4)
+	pending := append([]Work(nil), work...)
+	running := 0
+	for len(pending) > 0 || running > 0 {
+		if ctx.Err() != nil {
+			pending = nil
+		}
+		for running < 4 && len(pending) > 0 {
+			if ctx.Err() != nil || (s.mayTick != nil && !s.mayTick()) {
+				pending = nil
+				break
+			}
+			index := -1
+			for i, w := range pending {
+				if active[key(w)] < 2 {
+					index = i
+					break
+				}
+			}
+			if index < 0 {
+				break
+			}
+			w := pending[index]
+			pending = append(pending[:index], pending[index+1:]...)
+			k := key(w)
+			active[k]++
+			running++
+			go func() { defer func() { done <- k }(); s.refresh(ctx, s.now(), w) }()
+		}
+		if running == 0 {
+			break
+		}
+		k := <-done
+		active[k]--
+		running--
 	}
 }
 
@@ -131,4 +215,27 @@ func d4Cause(c WithdrawalCause) WithdrawalCause {
 		return c
 	}
 	return WithdrawalSERVFAIL
+}
+
+// Headroom is scheduling only: original observed TTL, per-lookup timeout and
+// publication timestamps never change. More than32 serial jobs or slow commits
+// can still exceed capacity; they do not acquire extended freshness authority.
+func refreshHeadroom(interval, timeout time.Duration, batch int) time.Duration {
+	if batch < 1 {
+		batch = 1
+	}
+	if batch > 32 {
+		batch = 32
+	}
+	if interval >= MaxTTL {
+		return MaxTTL
+	}
+	result := interval
+	for i := 0; i < batch; i++ {
+		if timeout >= MaxTTL-result {
+			return MaxTTL
+		}
+		result += timeout
+	}
+	return result
 }

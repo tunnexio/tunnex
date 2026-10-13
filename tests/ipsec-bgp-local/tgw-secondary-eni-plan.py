@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Source-only reviewed alternative; no AWS or host commands executed."""
+import json
+plan={'execute':False,'host':'ubuntu@16.170.207.192','owner':'tunnex-bgp-tgw-20261008','observed':{'az':'eu-north-1a','type':'t3.small','max_enis':3,'attached_each':1},'interfaces':[
+{'role':'client','instance':'i-0cc22d71958707b0d','primary_eni':'eni-0076c867458b3af1b','primary_ip':'10.84.2.10','subnet':'subnet-0ce7264135cf24626','security_group':'sg-09e904f9f98750843','new_ip':'10.84.3.10','prefix':24,'router':'10.84.3.1','namespace':'tnx-tgw-client-20261008','device_index':1},
+{'role':'target','instance':'i-0cd8ee7ba1e099092','primary_eni':'eni-0ea65134d4f64166a','primary_ip':'10.85.1.10','subnet':'subnet-0fcddafa2bf9b0ca9','security_group':'sg-01d6ce2c2beddedc1','new_ip':'10.86.1.10','prefix':24,'router':'10.86.1.1','namespace':'tnx-tgw-target-20261008','device_index':1}],
+'aws_steps':['Preserve original immutable pending target RunInstances intent; exact clienttoken describe must remain [] and append abandoned-capacity-alternative record, never replay it. No EC2 launch/stop.',
+'CreateNetworkInterface exact subnet/privateIP/single ownedSG plus owner+role tags, immutable intent/result before dependent call; readback actualENI/MAC/AZ/IP/SG/status available.',
+'Fresh instance primaryENI unchanged, index1 absent; AttachNetworkInterface new exactENI/index1 to exactownedinstance; persist attachmentID/readback before Linux config; no primary modification. Preserve DeleteOnTermination false, normal sourcedestcheck true on endpoints.'],
+'linux_steps':['Read-only management existing client through gateway SSH; existing target through EIC. Before snapshot primaryaddresses/routes/sysctls/servicePID1353 and foreigninterfaces/netnamespaces.',
+'Locate ONLY new physical NIC by actual AWS MAC/ENIID; verify link MAC/type and no unexpected assignedaddresses/routes before move. Existing distro DHCP can configure hotplug: stop only per-link networkd handling after exact identity proof (networkctl down/unmanage scopedlink if needed); do not restart networkd or alter primary config. Report conflict rather than flush unknown routes.',
+'Create fresh owner namespace OEXCL ledger intent. ip link set exactnewNIC netns exactns; inside lo up; exactnewNIC up; ip addr add exactnewIP/24; ip route add default via exactAWSsubnetrouter dev exactnewNIC. No veth/bridge/simulation; real attachedAWS ENI.',
+'Readback exact new physicalMAC/IP/routes in namespace, actualAWS attachment unchanged; primary hoststate byte/tuple unchanged. Source client namespace reaches real TGW target namespace only viaAWSrouting+VPN.',
+'Target nonceecho new owner-specific root0700 code/process inside NEWnamespace bound10.86.1.10:8080; no changes to original python1353/service8080 in primary namespace. Persist executablehash/startticks/nsinode/PID/socket readback; management exec namespace localhost nonce proof independently.',
+'Client ip netns exec exactns curl private10.86.1.10:8080 fresh64hex nonce; verify targetecho+independenttargetlog+gatewayXFRM/NFTcounters. Hostnamespace traffic or EIC never constitutes TGWdata proof.'],
+'conditions':'No attachment/configuration until root reviews. No publictarget exposure, no vCPU changes. Existing target/client/gateway primary routes and originalVGW remain live. Additive gatewaySG/routes/forwarding separately reviewed follow-on plan.'}
+print(json.dumps(plan,indent=2))

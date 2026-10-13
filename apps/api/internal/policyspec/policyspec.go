@@ -212,7 +212,7 @@ type AffectedDevice struct {
 //
 // v10: optional cross-gateway client transport needs the gateway's updated host-route
 // reconciliation, including IPv6. Older agents must refuse its enforcement artifact.
-const ProtocolVersion = 10
+const ProtocolVersion = 11
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -242,6 +242,9 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	if len(c.DNSResolverProfiles) > 0 {
+		return 11
+	}
 	if c.CrossGatewayClients {
 		return 10
 	}
@@ -356,13 +359,38 @@ type Route struct {
 //
 // Invariant (enforced by the compiler + guarded by test): Mesh==true ONLY when
 // Mode=="off". The enforcing path can never emit a blanket allow.
+type DNSResolverIPsecPath struct {
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+	SourceAddress         string `json:"source_address"`
+}
+type DNSResolverEndpoint struct {
+	Address   string `json:"address"`
+	Port      int    `json:"port"`
+	Transport string `json:"transport"`
+}
+
+// DNSResolverProfile declares a private-zone route; it never grants IPsec
+// transport. Keeping declarations while connections are unavailable prevents
+// an unavailable private zone from falling through to another resolver.
+type DNSResolverProfile struct {
+	ContextConfigID      string                `json:"context_config_id"`
+	ContextConfigVersion int64                 `json:"context_config_version"`
+	ProfileID            string                `json:"profile_id"`
+	ZoneSuffixes         []string              `json:"zone_suffixes"`
+	Endpoints            []DNSResolverEndpoint `json:"endpoints"`
+	IPsecPath            DNSResolverIPsecPath  `json:"ipsec_path"`
+	AllowedSources       []string              `json:"allowed_sources"`
+}
+
 type Compiled struct {
-	Version  int                  `json:"version"` // == ProtocolVersion
-	NodeID   string               `json:"node_id"`
-	Mode     string               `json:"mode"` // "off" | "enforcing"
-	Mesh     bool                 `json:"mesh"`
-	Allow    []AllowEntry         `json:"allow"`
-	Subjects []SubjectAttribution `json:"subjects,omitempty"`
+	DNSResolverProfiles []DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+	Version             int                  `json:"version"` // == ProtocolVersion
+	NodeID              string               `json:"node_id"`
+	Mode                string               `json:"mode"` // "off" | "enforcing"
+	Mesh                bool                 `json:"mesh"`
+	Allow               []AllowEntry         `json:"allow"`
+	Subjects            []SubjectAttribution `json:"subjects,omitempty"`
 	// Routes (v5, S8.2) is the site-to-site kernel-route intent — PLUMBING, out of CanonicalHash, but
 	// present triggers RequiredVersion=5 (an old agent refuses rather than ignoring the routes). Carried
 	// in BOTH modes: an off-mode gateway still needs the kernel route to reach a remote site subnet.

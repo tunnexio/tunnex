@@ -1,0 +1,63 @@
+{
+  "base_source": "dbccbc35f8034b0197e2f078e3091c52bb8a36d1",
+  "scope": "source-only Contract4 final active publisher; modeled native Linux I/O, no cloud/packet cause acceptance",
+  "causal_red": {
+    "initial": {
+      "delivery_matches": false,
+      "entry_matches": false,
+      "active_phase": "applying",
+      "saved_phase": "applied"
+    },
+    "restored": {
+      "delivery_matches": false,
+      "entry_matches": true
+    },
+    "container_stopped": true,
+    "exit": 1,
+    "oom": false
+  },
+  "green": {
+    "ordinary_apply_to_maintenance": "PASS initial/restored10case Linux matrix and committed history negatives",
+    "native_final_exit": 0,
+    "native_final_oom": false,
+    "focused_race_seconds": 110.055,
+    "final_freshboot_race_seconds": 1.658,
+    "full_ipsec_seconds": 83.444,
+    "linux_agent_builds": [
+      "amd64",
+      "arm64"
+    ]
+  },
+  "preserved_first_failure": {
+    "full_sandbox_seconds": 89.932,
+    "cause": "Unix socket bind operation not permitted",
+    "permitted_rerun": "PASS83.444"
+  },
+  "independent_review": [
+    "provider_api PASS",
+    "ui_dns freshness finding corrected; final confirmation pending"
+  ],
+  "invariants": [
+    "Contract4 only",
+    "publish secret-free Delivery only after durable Applied Save and proven boot",
+    "existing Restoration exact plus freshboot equality",
+    "initial Restoration exact BootID-only zeroepoch/nohistory",
+    "all other committed Entry fields exact",
+    "no daemon reinitialization on unchanged maintenance",
+    "changedDelivery/invalidinactiveSecret/expiredAuthority/foreignnative return no maintained result",
+    "inactiveClassic tuple zero",
+    "no API/cloud/SSH or journal mutation"
+  ],
+  "source_pins": {
+    "apps/node/internal/ipsec/runtime_controller.go": "934201a39e552554d274bf6fd8aec9cf2567f73cdc3e82d0e57a33318308adeb",
+    "apps/node/internal/ipsec/runtime_classic_restored_apply_linux_test.go": "ed565b6b71f2ad96bf0c0d025b613c67210277c68d80c7a4676f956b7728b125",
+    "apps/node/internal/ipsec/runtime_classic_maintenance_apply_linux_test.go": "74f98baabc9ce4dec7d33da406ab2b698e375800ab835b09763764ee4de2b52e",
+    "apps/node/internal/ipsec/runtime_classic_committed_entry_test.go": "8cb7bbce901b79d5fb87890d0ebedb3433cf896d91df4d286c7b2feb23e1771c"
+  },
+  "artifact_pins": {
+    "/private/tmp/gcp-classic-maintenance-red-native.log": "cc4b3df729e4d475ff2ed582d8788e8ad059f45f21f3418a5255a68d94b75c89",
+    "/private/tmp/gcp-classic-maintenance-final-native.log": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431",
+    "/private/tmp/gcp-classic-maintenance-node-final-amd64": "d7d3a3b68259ba4d2f540aa1c8a190ca1382963dd2068ff47e30108caf4aa968",
+    "/private/tmp/gcp-classic-maintenance-node-final-arm64": "c2253e1944539cd803322d013bf03c42eafa63130c5fc9b44020262a0a84f1a4"
+  }
+}

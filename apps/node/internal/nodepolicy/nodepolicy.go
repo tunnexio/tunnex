@@ -38,7 +38,7 @@ const (
 // agent must refuse it rather than enforce FQDN tuples without selective
 // conntrack withdrawal capability. v10 adds cross-gateway client routing with
 // matching IPv4/IPv6 route families; older gateways must refuse this content.
-const MaxSupportedVersion = 10
+const MaxSupportedVersion = 11
 
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
@@ -111,9 +111,10 @@ type Compiled struct {
 	VIPMappings []VIPMapping `json:"vip_mappings,omitempty"`
 	// K8sDNSZones (v7, S10.3) — DNS-listen table: bind :53 on each ListenVIP and serve that cluster's zone
 	// (direct-answer from the VIP map, NXDOMAIN in-zone-but-unexposed). Mirror of policyspec.Compiled.K8sDNSZones.
-	K8sDNSZones         []K8sDNSZone     `json:"k8s_dns_zones,omitempty"`
-	FQDNGenerations     []FQDNGeneration `json:"fqdn_generations,omitempty"`
-	CrossGatewayClients bool             `json:"cross_gateway_clients,omitempty"`
+	K8sDNSZones         []K8sDNSZone         `json:"k8s_dns_zones,omitempty"`
+	FQDNGenerations     []FQDNGeneration     `json:"fqdn_generations,omitempty"`
+	DNSResolverProfiles []DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+	CrossGatewayClients bool                 `json:"cross_gateway_clients,omitempty"`
 }
 
 // FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the
@@ -167,6 +168,29 @@ type DNSForward struct {
 	ResolverIP string `json:"resolver_ip"`
 }
 
+// DNSResolverProfile is immutable authenticated zone routing, not permission
+// to reach a resolver. The IPsec runtime independently gates DNS-only transport.
+// Field order/tags mirror policyspec, including the enforcement hash.
+type DNSResolverProfile struct {
+	ContextConfigID      string                `json:"context_config_id"`
+	ContextConfigVersion int64                 `json:"context_config_version"`
+	ProfileID            string                `json:"profile_id"`
+	ZoneSuffixes         []string              `json:"zone_suffixes"`
+	Endpoints            []DNSResolverEndpoint `json:"endpoints"`
+	IPsecPath            DNSResolverIPsecPath  `json:"ipsec_path"`
+	AllowedSources       []string              `json:"allowed_sources"`
+}
+type DNSResolverEndpoint struct {
+	Address   string `json:"address"`
+	Port      int    `json:"port"`
+	Transport string `json:"transport"`
+}
+type DNSResolverIPsecPath struct {
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+	SourceAddress         string `json:"source_address"`
+}
+
 // hashAllow / hashView are the ENFORCEMENT-ONLY projection hashed by CanonicalHash —
 // the EXACT mirror of policyspec's projection (A-1 allowlist). Observability metadata
 // (rule_id) is DELIBERATELY ABSENT so staleness is metadata-blind and the v2 bump does
@@ -181,12 +205,13 @@ type hashAllow struct {
 }
 
 type hashView struct {
-	Version         int              `json:"version"`
-	NodeID          string           `json:"node_id"`
-	Mode            string           `json:"mode"`
-	Mesh            bool             `json:"mesh"`
-	Allow           []hashAllow      `json:"allow"`
-	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
+	Version             int                  `json:"version"`
+	NodeID              string               `json:"node_id"`
+	Mode                string               `json:"mode"`
+	Mesh                bool                 `json:"mesh"`
+	Allow               []hashAllow          `json:"allow"`
+	FQDNGenerations     []FQDNGeneration     `json:"fqdn_generations,omitempty"`
+	DNSResolverProfiles []DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 }
 
 func projectForHash(c *Compiled) hashView {
@@ -199,6 +224,9 @@ func projectForHash(c *Compiled) hashView {
 	}
 	if c.FQDNGenerations != nil {
 		v.FQDNGenerations = c.FQDNGenerations
+	}
+	if c.DNSResolverProfiles != nil {
+		v.DNSResolverProfiles = c.DNSResolverProfiles
 	}
 	return v
 }

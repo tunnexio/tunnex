@@ -1,0 +1,102 @@
+{
+  "started": true,
+  "profile": "ha",
+  "completed": true,
+  "utc": "2026-10-10T21:11:59Z",
+  "results": [
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "alias.ha.gcp.s2s-qa.tunnex.app.",
+      "query_has_edns": false,
+      "udp": {
+        "id": 12177,
+        "question": "alias.ha.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "tc": false,
+        "answer_count": 2,
+        "a": [],
+        "cname": [],
+        "other_answers": []
+      },
+      "tcp_fallback_used": false,
+      "tcp_direct_used": false,
+      "full": {
+        "id": 12177,
+        "question": "alias.ha.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "tc": false,
+        "answer_count": 2,
+        "a": [
+          {
+            "owner": "app.ha.gcp.s2s-qa.tunnex.app.",
+            "address": "10.80.0.10"
+          }
+        ],
+        "cname": [
+          {
+            "owner": "alias.ha.gcp.s2s-qa.tunnex.app.",
+            "target": "app.ha.gcp.s2s-qa.tunnex.app."
+          }
+        ],
+        "other_answers": []
+      },
+      "accepted": true,
+      "scope": "ordinary fixed wire DNS only; separate API lease/guard/FQDN evidence required"
+    }
+  ],
+  "progress": [
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "alias.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 12177,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_bind"
+    },
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "alias.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 12177,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_send"
+    },
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "alias.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 12177,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_recv"
+    },
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "alias.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 12177,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_response_validated",
+      "udp": {
+        "id": 12177,
+        "question": "alias.ha.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "tc": false,
+        "answer_count": 2,
+        "a": [],
+        "cname": [],
+        "other_answers": []
+      }
+    }
+  ],
+  "accepted": true
+}

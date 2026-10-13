@@ -76,6 +76,7 @@ func TestRotationEnableDeleteObservedLockOrdering(t *testing.T) {
 				})
 				c, e := s.CreateProviderDisabled(ctx, org, actor, sealer, req)
 				if e != nil {
+					logGatewayEligibility(t, p, req.GatewayID)
 					t.Fatal(e)
 				}
 				rotate := func() error {

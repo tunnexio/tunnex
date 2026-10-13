@@ -1,0 +1,22 @@
+{
+  "started": true,
+  "completed": true,
+  "apply": true,
+  "phase": "route-insert",
+  "requested_phase": "route-insert",
+  "utc": "2026-10-10T23:39:35.389705+00:00",
+  "mutations_submitted": 1,
+  "mutation_attempted": true,
+  "operation": {
+    "id": "4350328538413888085",
+    "name": "operation-1791675578123-65d84fa630401-fe96e8dd-12856974",
+    "operationType": "insert",
+    "status": "DONE",
+    "targetLink": "https://www.googleapis.com/compute/v1/projects/project-0048836f-6ba1-4a14-8da/global/routes/tn-gcps2s-20261010-classic-return"
+  },
+  "api_secret_fields_privately_discarded": true,
+  "psk_file_read_attempted": false,
+  "native_and_normal_API_gates": "external ROOT responsibility; not supplied by this executor",
+  "private_original_sha256": "e83349432c24d4b4a648a410f3304d0e9b546433f180367a3d9672e507596ea8",
+  "full_inventory_archived": false
+}

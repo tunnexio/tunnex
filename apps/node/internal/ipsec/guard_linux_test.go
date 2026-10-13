@@ -79,6 +79,7 @@ func TestGuardLinuxReadback(t *testing.T) {
 	// Exercise a live timed member using the same renderer and actual JSON grammar.
 	intent.Connections[0].PermittedInterfaceIndices = []int{inv.Links[0].Index}
 	intent.Connections[0].ReplyIngressIndices = []int{inv.Links[0].Index, inv.Links[1].Index}
+	intent.Connections[0].TunnelMTUs = []GuardTunnelMTU{{InterfaceIndex: inv.Links[0].Index, MTU: 1422}, {InterfaceIndex: inv.Links[1].Index, MTU: 1300}}
 	intent.Connections[0].PermitFor = 30 * time.Second
 	intent.Connections[0].Grants = []GuardGrant{{Source: netip.MustParsePrefix("10.10.0.10/32"), Destination: netip.MustParsePrefix("10.20.0.10/32"), Protocol: GuardTCP, PortLow: 443, PortHigh: 443, HostOrigin: true}}
 	manifest, err = RenderGuard(intent)

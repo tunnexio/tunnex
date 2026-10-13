@@ -1,0 +1,3 @@
+// No network request, credentials or persisted storage.
+const assert=require('assert');const {request}=require('/Users/pawangupta/tunnex/e2e/node_modules/@playwright/test');
+(async()=>{const cookie={name:'synthetic',value:'synthetic',domain:'localhost',path:'/',secure:false,httpOnly:true,expires:-1};await assert.rejects(request.newContext({storageState:{cookies:[cookie],origins:[]}}),e=>e.constructor.name==='ValidationError'&&e.message.includes('sameSite'));const ctx=await request.newContext({storageState:{cookies:[{...cookie,sameSite:'Lax'}],origins:[]}});await ctx.dispose();console.log('SDK cookie RED/GREEN PASS; no network')})().catch(()=>{console.error('SDK fixture refused');process.exitCode=1});

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-10-11T09:41:36.092410+00:00",
+  "root_head": "9bb29e39e5122c65383e0ec25ea267c621a59efd",
+  "actual_native_attempt": 4,
+  "native_qualification_pass": false,
+  "failure": "nftapply succeeded; initialstrictreadback failed",
+  "qualification_result_sha256": "74d0b31c27c83cbe3f502b418dca3c4c3bdbbd0481085b6c6e26f065c3b17bda",
+  "component_receipt_sha256": "a4c8f50225cebbf37461ce6c93de490d242cec52a3e69537d730a03f0b50bc75",
+  "component_stdout_sha256": "04590367b032e33fe67200d2034975182f8ff692e4e557ce13e10b83d97b7aff",
+  "binary_sha256": "20d48dd09541a9199f25ce2375f7d854f3171471f740626737886e7eba88220f",
+  "container_id": "ca90b799d7cd9f6771473899113cb0fde5a4c7d15eec4fb8adec9ce90ab011e5",
+  "separate_diagnostic": {
+    "returncode": 1,
+    "expected_json_sha256": "150690308b8fad1bff2c17e4befb78944e652ad96263102cb109141b53bddc2f",
+    "actual_json_sha256": "555d45a3e6191a3a733e7399d3ac5d4ffecc7da9047229585bcf663342273e68",
+    "original_output_sha256": "fbb952a146565dbbc296b06e62808b6c84f468004b554f627300729cbf24a34c",
+    "owned_tables_after": 0
+  },
+  "source_facts": {
+    "production_reader_inventories_all_real_interfaces": true,
+    "test_supplied_only_xfrm_interfaces": true,
+    "actual_rules_name_loopback_lo": true,
+    "normalization_with_complete_lo_and_xfrm_map": {
+      "expected_valid": true,
+      "observed_valid": true,
+      "remaining_ast_deltas": [
+        {
+          "path": "/24/rule/expr/8/mangle/value/|/0/&/1",
+          "expected": 4043309055,
+          "actual": 4060086271
+        }
+      ]
+    },
+    "native_sa_set_type": "exacttypeofipsec out reqid; no generic datatype correction required"
+  },
+  "pending_correction": {
+    "native_test": "complete independently read interfacecensus bracketedaroundeveryread",
+    "renderer": "emit mathematically equivalent ANDmask0xf1ffffff beforeforcedOR0x01000000 to matchnftcanonicalexport",
+    "reader_changes": false
+  },
+  "source_deployed": false,
+  "gateway_start_repeated": false,
+  "cloud_changes": false,
+  "scope": "disconnectednativefixture andofflinecapturedoutputdiagnosis only; no encryptedflows or fullTTLacceptance"
+}

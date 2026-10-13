@@ -1,0 +1,382 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "actual_result": {
+    "acceptance": false,
+    "capability": {
+      "capability": {
+        "dns_ipsec_resolve_version": 1,
+        "dns_resolve_rpc_version": 2,
+        "id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+        "ipsec_config_version": 1,
+        "ipsec_fqdn_policy_version": 2,
+        "kind": "authenticated_node_heartbeat_scalar_readback",
+        "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+        "policy_reported_at": "2026-10-12T13:28:05.872176Z",
+        "revoked_at": null,
+        "server_now": "2026-10-12T13:28:24.340349Z",
+        "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+        "status": "active"
+      },
+      "capability_path": "/var/lib/tunnex-qualification-archive/azure-scalar-capability-cbd3eb83-06df-4a8f-ba06-810eb46823de/capability.json",
+      "private_run_id": "azure-scalar-capability-cbd3eb83-06df-4a8f-ba06-810eb46823de",
+      "returncode": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "409b522e725ad6d154745ec44b42479d5943f267af4b9114045168aabfb47657"
+    },
+    "capture": {
+      "actual_input_sha256": {
+        "allocation": "1103c642d06d7ab8299e73a0a8eef31e080ff8550cbb5f50565e56b69f2e64ab",
+        "current_read": "eeda187180495b17ad8a8163f1aec1b564ac828188d102e9c2e8b317494f18af",
+        "dns_state": "2ff25dd82eb3a758c47d4c9fd6530a23c427460eb87a2e4ce601d22a30e0f191",
+        "node_update_result": "5507e1ca936b380d8cf3c0105257f0f363717ab0ed4dc2aabe68e09410a5775f",
+        "transition": "0caafe9105d3a92a9375e9c03900dc18625ee4e7aeb2da90896c3d9889542801"
+      },
+      "category": "actual_enabled_static_eight_manifest_captured",
+      "manifest_path": "/var/lib/tunnex-qualification-archive/azure-enabled-static-manifest-2743cf6f-acbf-434d-8be1-bdaa5264f9c9/manifest.json",
+      "manifest_sha256": "c39d81f17f4b33c58eb7b44cf64637e4abf1a86c2b6073a89e7ec7c29237195e",
+      "native_executed": false,
+      "version": 1
+    },
+    "category": "actual_enabled18_natural_window_collected",
+    "current_read": {
+      "category": "actual_current_enabled_static_read",
+      "mutation": false,
+      "path": "/var/lib/tunnex-qualification-archive/azure-current-static-read-fe76ca5f-9131-45c3-b3dc-58353085dafa/normal.json",
+      "sha256": "eeda187180495b17ad8a8163f1aec1b564ac828188d102e9c2e8b317494f18af"
+    },
+    "native_after": {
+      "acceptance": false,
+      "category": "actual_profile_native_observation_written",
+      "private_run_id": "azure-profile-observe-a4ba6e67-621e-4bf7-acf9-6579d7bd53a0",
+      "receipt_sha256": "e995573fe66ab22cc389406c7bde2f361a4b1614a594bc6d8dce9fdd46e2f263",
+      "version": 1
+    },
+    "native_before": {
+      "acceptance": false,
+      "category": "actual_profile_native_observation_written",
+      "private_run_id": "azure-profile-observe-7e44f0de-3aa1-42e8-9b06-ec37ed936285",
+      "receipt_sha256": "c9bdf6f01358ca44dadf8429e8096da6ab70a440d4857a8e62119fd0b5543ee4",
+      "version": 1
+    },
+    "private_run_id": "azure-enabled18-current-fe965703-7616-4dcd-9eea-6f135247d71f",
+    "transport_seconds": 80.327,
+    "window": {
+      "capture": {
+        "capture_health": [
+          {
+            "captured": 129,
+            "dropped": 0,
+            "received": 155
+          },
+          {
+            "captured": 16,
+            "dropped": 0,
+            "received": 33
+          },
+          {
+            "captured": 0,
+            "dropped": 0,
+            "received": 0
+          }
+        ],
+        "capture_ready_epoch": 1791811712.9837446,
+        "capture_sha256": [
+          "d4b1146535d74b78ec17e1705ad7de139892e215c7bda664287d3af1c2e25316",
+          "7f6d246c83c5c1ca42b51b241ae6deb25a4a05bdd2fd6d855b2876e3218359b4",
+          "9f648f8632961129ff3eebe5fba65c71316022b2739a76e11d0572043dbb6bd6"
+        ],
+        "capture_stopped_epoch": 1791811772.990707,
+        "correlations": [],
+        "ended_at": "2026-10-12T13:29:33.338473+00:00",
+        "packet_header_count": 145,
+        "scope": "Read-only natural RPC header correlation; no authority or readiness claim",
+        "socket_sample_count": 65,
+        "started_at": "2026-10-12T13:28:32.926946+00:00",
+        "supporting_conntrack_available": false,
+        "version": 1
+      },
+      "census_sha256": "2fc3f5eb9cd394473276af9b1391ae8a6eafb89a676869cda9be725693087a3e",
+      "failed_reads": 0,
+      "native_acceptance": "source-paired prewindow baseline only",
+      "phase": "natural",
+      "private_run_id": "azure-static-window-8e7982dd-b7ed-4fca-97d5-146997ee8dea",
+      "public_census": {
+        "distinct_new_generations": [
+          3954
+        ],
+        "failed_reads": 0,
+        "read_count": 61,
+        "read_failure_counts": {
+          "invalid_json": 0,
+          "public_schema": 0,
+          "read_validation": 0,
+          "response_bound": 0,
+          "timestamp": 0,
+          "transport": 0
+        },
+        "ready_read_count": 46,
+        "sampled_stability_passed": false,
+        "state_counts": {
+          "draft": 0,
+          "failed": 0,
+          "healthy": 61,
+          "nxdomain": 0,
+          "resolving": 0,
+          "stale": 0,
+          "unconfigured": 0
+        }
+      },
+      "read_count": 61,
+      "ready_read_count": 46,
+      "returncode": 0,
+      "typed_diagnostics": {
+        "dns_refusals": [
+          {
+            "context_state": "deadline",
+            "elapsed_ms": 628,
+            "guard_bracket_count": 0,
+            "guard_command_ms": 0,
+            "guard_failure_class": "",
+            "guard_revalidation": "",
+            "guard_verification_ms": 0,
+            "native_elapsed_ms": 628,
+            "native_environment_command_count": 18,
+            "native_environment_command_ms": 346,
+            "native_environment_ms": 486,
+            "native_environment_verification_ms": 140,
+            "native_failure_class": "",
+            "native_recovery_ms": 141,
+            "native_remaining_at_entry_ms": 616,
+            "native_route_ms": 0,
+            "operation": "dns_after_proof",
+            "socket_ms": 0,
+            "socket_stage": "",
+            "stage": "dns_native_proof",
+            "time": "2026-10-12T13:28:50.519910128Z"
+          }
+        ],
+        "rejected_line_count": 1,
+        "rpc_timings": [
+          {
+            "context_state": "active",
+            "deadline_remaining_ms": 4797,
+            "delivery": "failure",
+            "dispatch_utc": "2026-10-12T13:28:45.710867866Z",
+            "handle_ms": 4859,
+            "lookup": {
+              "after_proof": {
+                "count": 16,
+                "max_ms": 1253,
+                "refused": 8,
+                "successful": 8,
+                "summed_ms": 14277
+              },
+              "before_proof": {
+                "count": 16,
+                "max_ms": 1804,
+                "refused": 0,
+                "successful": 16,
+                "summed_ms": 23271
+              },
+              "completed_exchanges": 8,
+              "endpoint_workers_drained": true,
+              "outcome": "deadline",
+              "proof_components": {
+                "environment": {
+                  "count": 32,
+                  "max_ms": 843,
+                  "refused": 8,
+                  "successful": 24,
+                  "summed_ms": 20862
+                },
+                "environment_commands": {
+                  "count": 32,
+                  "max_ms": 535,
+                  "refused": 8,
+                  "successful": 24,
+                  "summed_ms": 12050
+                },
+                "environment_verification": {
+                  "count": 32,
+                  "max_ms": 489,
+                  "refused": 8,
+                  "successful": 24,
+                  "summed_ms": 8812
+                },
+                "guard_commands": {
+                  "count": 41,
+                  "max_ms": 301,
+                  "refused": 9,
+                  "successful": 32,
+                  "summed_ms": 5431
+                },
+                "guard_verification": {
+                  "count": 41,
+                  "max_ms": 199,
+                  "refused": 9,
+                  "successful": 32,
+                  "summed_ms": 3952
+                },
+                "recovery": {
+                  "count": 32,
+                  "max_ms": 290,
+                  "refused": 8,
+                  "successful": 24,
+                  "summed_ms": 5922
+                },
+                "route": {
+                  "count": 32,
+                  "max_ms": 0,
+                  "refused": 8,
+                  "successful": 24,
+                  "summed_ms": 0
+                }
+              },
+              "reduction_observed": true,
+              "remaining_at_reduction_ms": -62,
+              "returned_exchanges": 16,
+              "socket": {
+                "count": 16,
+                "max_ms": 93,
+                "refused": 0,
+                "successful": 16,
+                "summed_ms": 839
+              },
+              "stats_saturated": false,
+              "transport_timing_observed": true
+            },
+            "report_failure": "http_status",
+            "report_http_status": 400,
+            "report_ms": 61,
+            "result": "resolver_unavailable",
+            "start_delay_ms": 0,
+            "status": "SERVFAIL"
+          },
+          {
+            "context_state": "active",
+            "deadline_remaining_ms": 4844,
+            "delivery": "success",
+            "dispatch_utc": "2026-10-12T13:28:50.677747689Z",
+            "handle_ms": 2508,
+            "lookup": {
+              "after_proof": {
+                "count": 8,
+                "max_ms": 1175,
+                "refused": 0,
+                "successful": 8,
+                "summed_ms": 8599
+              },
+              "before_proof": {
+                "count": 8,
+                "max_ms": 1331,
+                "refused": 0,
+                "successful": 8,
+                "summed_ms": 9450
+              },
+              "completed_exchanges": 8,
+              "endpoint_workers_drained": true,
+              "outcome": "success",
+              "proof_components": {
+                "environment": {
+                  "count": 16,
+                  "max_ms": 814,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 10616
+                },
+                "environment_commands": {
+                  "count": 16,
+                  "max_ms": 497,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 5946
+                },
+                "environment_verification": {
+                  "count": 16,
+                  "max_ms": 405,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 4670
+                },
+                "guard_commands": {
+                  "count": 16,
+                  "max_ms": 198,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 1710
+                },
+                "guard_verification": {
+                  "count": 16,
+                  "max_ms": 164,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 1418
+                },
+                "recovery": {
+                  "count": 16,
+                  "max_ms": 355,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 4007
+                },
+                "route": {
+                  "count": 16,
+                  "max_ms": 0,
+                  "refused": 0,
+                  "successful": 16,
+                  "summed_ms": 0
+                }
+              },
+              "reduction_observed": true,
+              "remaining_at_reduction_ms": 2334,
+              "returned_exchanges": 8,
+              "socket": {
+                "count": 8,
+                "max_ms": 123,
+                "refused": 0,
+                "successful": 8,
+                "summed_ms": 554
+              },
+              "stats_saturated": false,
+              "transport_timing_observed": true
+            },
+            "report_failure": "none",
+            "report_http_status": 204,
+            "report_ms": 31,
+            "result": "none",
+            "start_delay_ms": 1,
+            "status": "NOERROR"
+          }
+        ]
+      },
+      "window_begin": "2026-10-12T13:28:32.983745Z",
+      "window_end": "2026-10-12T13:29:34.119514Z"
+    }
+  },
+  "category": "actual_909_enabled18_full_native_bracket_dns_improved_stability_failed",
+  "causal_source_audit_sha256": "6d25c1d9632444030805578251d5a376df059e4225a5afe94af070fced870620",
+  "exact_not_ready_reason_preserved": false,
+  "local_actual_result_path": "/private/tmp/azure-natural909-scheduled-live-root-1791811694578/result.json",
+  "local_actual_result_sha256": "8fbba327a4637dc5231292eacbd2afc54bc36a154d0be0434664526de7d0b427",
+  "native_before_and_after_passed": true,
+  "new_accepted_slices": 0,
+  "not_ready_read_count": 15,
+  "recorded_at": "2026-10-12T13:40:04.483915+00:00",
+  "request_resource_correlation_proved": false,
+  "required_distinct_new_generations": 3,
+  "required_read_count": 61,
+  "required_ready_read_count": 61,
+  "scope": "Original full native proofs passed before and after the complete original60s window.46/61 public readiness reads improved but15 were not Ready and only1 new generation appeared; original61/61 and3-generation acceptance remains failed. Typed RPC diagnostics lack request/resource correlation and the existing census omitted projector failure reasons; neither RPC timing nor historical failures establish the cause of these15 reads.",
+  "sustained_dns_passed": false,
+  "total_story_count": 11,
+  "version": 1,
+  "whole_story_accepted": false
+}

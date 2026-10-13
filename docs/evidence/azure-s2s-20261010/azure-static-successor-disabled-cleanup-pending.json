@@ -1,0 +1,41 @@
+{
+  "kind": "owned_azure_static_successor_disabled_cleanup_pending",
+  "observed_at": "2026-10-11T22:25:38.309544+00:00",
+  "accepted_story_count": 6,
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "open_human_story_numbers": [
+    5,
+    6,
+    9,
+    10,
+    11
+  ],
+  "normal_api": {
+    "cas_disable_completed": true,
+    "id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+    "desired_revision": 3,
+    "desired_intent": "disabled",
+    "application_state": "not_applied",
+    "cleanup_state": "pending",
+    "configuration_revision": null,
+    "configuration_revision_evidence": "not_exposed_in_phase_stdout"
+  },
+  "bounded_readonly_diagnostic": {
+    "refusal_stage_counts": {
+      "journal_continuity": 86,
+      "cleanup_journal_commit": 34
+    },
+    "private_log_sha256": "d7e916b4b65c9aca287a816263e9793d10be5c34ac5a8bb83cab47dbc8b13f98"
+  },
+  "native_authority_accepted": false,
+  "static_traffic_accepted": false,
+  "patch_deployed": false,
+  "scope": "Normal revision-checked disable completed; exact current receipt has cleanup Pending. Bounded real logs also show cleanup_journal_commit refusal. Narrow source fix must cover never-observed cleanup persistence as well as finalized predecessor handoff; no native cleanup or traffic acceptance inferred."
+}

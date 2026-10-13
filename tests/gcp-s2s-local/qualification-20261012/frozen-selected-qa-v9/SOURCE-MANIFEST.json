@@ -1,0 +1,10 @@
+{
+  "public-local-evidence.json": "5baa4f04d45ef44abe574307f8af706d3c4cb4013c54c245c1d50ff72f73361c",
+  "README.md": "d310ba66e39893c6d57569aa6172b7e4a2585140729c0d5077be071add6ab393",
+  "sources/test_sa_substage_v9.py": "6a3e2a3dbeb836b41b23609382f1c348f1eeb474cd6d176f98be0798ab4eda21",
+  "sources/run-selected-udp-continuation.bound-v9.py": "7dcac5966e69a3b1a0324d9ef4fdbe27c1a1bbe89c1a19427d31049795e20f4e",
+  "sources/check-selected-transition-v9.py": "8ceec04d1ef85f655682ea54f7a6d10643f45dd0bb4212a4d928cc84d078d745",
+  "sources/root-launch-selected-udp-v9.py": "1084eebf3d5d99b31da8806df658389972fe4c00ff71c2b693c71101b5d9e655",
+  "sources/native-fqdn-binding.sa-substage-v2.remote.py": "bf752620d93897916888dc3123ecd9ad4e47f193ff242623daba26d24f516b04",
+  "sources/read-native-fqdn-binding.sa-substage-v2.py": "551431c45bd753ea7960914025326fa45f822e809c6c46a85e42f761a86b4ea0"
+}

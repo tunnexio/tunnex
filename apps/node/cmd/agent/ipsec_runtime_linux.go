@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"github.com/tunnexio/tunnex/apps/node/internal/control"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"log/slog"
@@ -17,23 +18,24 @@ import (
 // Existing obligations restore refusal synchronously before any WireGuard
 // forwarding. New hosts discover opt-in in the background and bind no IKE ports
 // until authoritative opt-in is true. There is no local capability override.
-func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger) error {
+func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport, fqdn *ipsec.RuntimeFQDNPolicySource) (func() error, error) {
 	dir := filepath.Join(stateDir, "ipsec")
 	org, node, err := ipsec.ReadRuntimeJournalIdentity(dir)
 	existing := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return errors.New("IPsec saved refusal unavailable")
+		return nil, errors.New("IPsec saved refusal unavailable")
 	}
 	var controller *ipsec.RuntimeController
+	diagnostic := ipsecDiagnosticSink(logger, os.Getenv("TUNNEX_IPSEC_DNS_DIAGNOSTICS") == "1")
 	construct := func() error {
-		environment, e := ipsec.NewRuntimeEnvironmentInspector("/sbin/ip", "/usr/sbin/nft")
+		environment, e := ipsec.NewRuntimeEnvironmentInspectorWithDiagnostics("/sbin/ip", "/usr/sbin/nft", diagnostic)
 		if e != nil {
 			return e
 		}
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment}, client)
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{FQDNPolicy: fqdn, DNSReadTiming: os.Getenv("TUNNEX_IPSEC_DNS_READ_TIMING") == "true", OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: diagnostic}, client)
 		if e != nil {
 			return e
 		}
@@ -43,22 +45,31 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			return e
 		}
 		client.AttachIPsecController(controller)
+		dns.Attach(controller)
+		fqdn.Attach(controller)
 		return nil
 	}
 	if existing {
 		if err = construct(); err != nil {
-			return errors.New("IPsec saved refusal unavailable")
+			return nil, errors.New("IPsec saved refusal unavailable")
 		}
 	}
-	go func() {
+	shutdown := launchIPsecRuntime(ctx, func(ctx context.Context) (result error) {
 		var process *ipsec.DaemonProcess
 		qualified := false
+		var bgpRetry bgpQualificationRetry
+		bgpQualified := false
 		defer func() {
+			if controller != nil && process != nil && ctx.Err() != nil {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+				result = errors.Join(result, controller.Quiesce(stopCtx, process.Close))
+				cancel()
+			}
 			if process != nil {
-				process.Close()
+				result = errors.Join(result, process.Close())
 			}
 			if controller != nil {
-				controller.Close()
+				result = errors.Join(result, controller.Close())
 			}
 		}()
 		ticker := time.NewTicker(5 * time.Second)
@@ -67,11 +78,12 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			if ctx.Err() != nil {
 				return
 			}
-			// Validate process-local authority even when CP discovery fails or
-			// returns no work. This never renews a lease and never blocks cleanup.
+			validated := false
+			// Renew exact active permits before optional status/discovery/material IO.
 			if controller != nil {
-				if err := controller.Validate(ctx); err != nil {
-					logger.Warn("ipsec_runtime_authority_withdrawn")
+				bound := &boundIPsecClient{Client: client, org: org, node: node}
+				if control.RefreshIPsecRuntimePriority(ctx, bound, controller) != nil {
+					logger.Warn("ipsec_runtime_observation_refused")
 				}
 			}
 			page, cleanupPending, e := discoverIPsecRuntime(ctx, client)
@@ -99,25 +111,52 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 					}
 					if e == nil && process != nil {
 						if !qualified && page.IPsecEnabled {
+							qualificationStarted := time.Now()
+							qualificationStage := "static_probe"
 							receipt, probeErr := ipsec.ProbeRuntimePlatform(ctx, "/sbin/ip", "/usr/sbin/nft", process.Client, process.Alive)
 							if probeErr == nil {
+								qualificationStage = "static_attach"
 								probeErr = controller.AttachQualification(receipt)
 							}
 							if probeErr == nil {
 								qualified = true
 							} else {
-								logger.Warn("ipsec_runtime_platform_refused")
+								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
+							}
+						}
+						// Retry independent native BGP observation after transient startup refusal.
+						// The static receipt remains available; cleanup and polling still run.
+						if qualified && page.IPsecEnabled && bgpRetry.due(time.Now()) {
+							bgpStarted := time.Now()
+							bgpStage := "bgp_preflight_residue"
+							bgpErr := bgpPreflightResidueClear(dir)
+							if bgpErr == nil {
+								bgpStage, bgpErr = qualifyIPsecRuntimeBGP(ctx, &bgpQualified, func(ctx context.Context) (*bgp.PreflightQualification, error) {
+									return bgp.QualifyPreflight(ctx, dir)
+								}, controller.AttachBGPQualification)
+							}
+							bgpRetry.completed(time.Now(), bgpErr == nil)
+							if bgpErr != nil {
+								logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "reason", bgp.PreflightRefusalReason(bgpErr), "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}
 						}
 						// Cleanup remains available without activation qualification; Apply requires
 						// the attached current receipt and cannot grant permits without it.
 						bound := &boundIPsecClient{Client: client, org: org, node: node}
-						if e = control.PollIPsecRuntime(ctx, bound, controller); e != nil {
+						if validated, e = control.PollIPsecRuntimeValidated(ctx, bound, controller); e != nil {
 							logger.Warn("ipsec_runtime_reconcile_refused")
 						}
 					} else {
 						logger.Warn("ipsec_runtime_daemon_unavailable")
 					}
+				}
+			}
+			// Ordinary Apply or unchanged maintenance already proved and committed
+			// the complete native guard. Failed, empty and cleanup-only passes still
+			// validate independently; CP loss can never extend existing deadlines.
+			if controller != nil && !validated {
+				if err := controller.Validate(ctx); err != nil {
+					logger.Warn("ipsec_runtime_authority_withdrawn")
 				}
 			}
 			select {
@@ -126,8 +165,8 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			case <-ticker.C:
 			}
 		}
-	}()
-	return nil
+	})
+	return shutdown, nil
 }
 
 type boundIPsecClient struct {

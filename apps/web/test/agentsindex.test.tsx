@@ -150,7 +150,7 @@ describe("AI Agents inventory paging and authority", () => {
     await screen.findByRole("link", { name: "Agent 01" });
     expect(screen.queryByRole("button", { name: "Add agent" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Agent enrollment" })).toBeNull();
-    expect(screen.getByLabelText("Agent route").textContent).not.toContain("add=1");
+    await waitFor(() => expect(screen.getByLabelText("Agent route").textContent).not.toContain("add=1"));
     expect(state.POST).not.toHaveBeenCalled();
   });
 

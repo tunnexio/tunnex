@@ -23,11 +23,12 @@ type CreateTunnel struct {
 	PSK string `json:"-"`
 }
 type CreateDisabledRequest struct {
-	ID        uuid.UUID
-	SiteID    uuid.UUID
-	GatewayID uuid.UUID
-	Name      string
-	Tunnels   [2]CreateTunnel
+	ID          uuid.UUID
+	SiteID      uuid.UUID
+	GatewayID   uuid.UUID
+	Name        string
+	Tunnels     [2]CreateTunnel
+	TunnelCount int
 }
 
 func validCreateRequest(org, actor uuid.UUID, r CreateDisabledRequest) bool {
@@ -39,10 +40,17 @@ func validCreateRequest(org, actor uuid.UUID, r CreateDisabledRequest) bool {
 			return false
 		}
 	}
+	count := r.TunnelCount
+	if count == 0 {
+		count = 2
+	}
+	if count < 1 || count > 2 || count == 1 && r.Tunnels[1] != (CreateTunnel{}) {
+		return false
+	}
 	if r.Tunnels[0].ID == r.Tunnels[1].ID {
 		return false
 	}
-	for _, t := range r.Tunnels {
+	for _, t := range r.Tunnels[:count] {
 		if t.ID == uuid.Nil || !validPSK(t.PSK) {
 			return false
 		}
@@ -51,6 +59,9 @@ func validCreateRequest(org, actor uuid.UUID, r CreateDisabledRequest) bool {
 }
 func createError(err error) error {
 	var pe *pgconn.PgError
+	if errors.As(err, &pe) && pe.Code == "23514" && pe.ConstraintName == "ipsec_runtime_cleanup_pending" {
+		return ErrCleanupInProgress
+	}
 	if errors.As(err, &pe) && (pe.Code == "23505" || pe.Code == "23503" || pe.Code == "40001" || pe.Code == "40P01" || pe.ConstraintName == "ipsec_provider_conflict" || pe.ConstraintName == "ipsec_runtime_binding") {
 		return ErrConnectionConflict
 	}
@@ -67,6 +78,9 @@ func (s *ConnectionStore) CreateDisabled(ctx context.Context, org, actor uuid.UU
 }
 
 func (s *ConnectionStore) createDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateDisabledRequest, provider *StaticConfig) (Connection, error) {
+	if provider == nil && r.TunnelCount != 0 && r.TunnelCount != 2 {
+		return Connection{}, ErrConnectionInvalid
+	}
 	if !validCreateRequest(org, actor, r) {
 		return Connection{}, ErrConnectionInvalid
 	}
@@ -137,18 +151,42 @@ func (s *ConnectionStore) createDisabled(ctx context.Context, org, actor uuid.UU
 		return Connection{}, ErrConnectionIneligible
 	}
 
+	var predecessors []staticPredecessor
 	statement := `INSERT INTO ipsec_connections AS c(id,org_id,name,site_id,gateway_node_id,historical_site_id,historical_gateway_node_id) VALUES($1,$2,$3,$4,$5,$4,$5) RETURNING ` + connectionColumns
 	if provider != nil {
 		if err = checkProviderRanges(ctx, tx, org, *provider); err != nil {
 			return Connection{}, err
 		}
-		statement = `INSERT INTO ipsec_connections AS c(id,org_id,name,site_id,gateway_node_id,historical_site_id,historical_gateway_node_id,provider_profile) VALUES($1,$2,$3,$4,$5,$4,$5,'aws-static-ipv4-v1') RETURNING ` + connectionColumns
+		predecessors, err = staticRecreationCandidates(ctx, tx, org, r.SiteID, r.GatewayID, *provider)
+		if err != nil {
+			return Connection{}, err
+		}
+		if len(predecessors) > 0 && (!retainedGuardCapability(capabilities) || provider.ProfileID == AzureActiveActiveBGPProfile && !azureBGPRecreationCapability(capabilities)) {
+			return Connection{}, ErrConnectionIneligible
+		}
+		for _, predecessor := range predecessors {
+			if predecessor.crossProfile && !azureProfileRecreationCapability(capabilities) {
+				return Connection{}, ErrConnectionIneligible
+			}
+		}
+		statement = `INSERT INTO ipsec_connections AS c(id,org_id,name,site_id,gateway_node_id,historical_site_id,historical_gateway_node_id,provider_profile) VALUES($1,$2,$3,$4,$5,$4,$5,$6) RETURNING ` + connectionColumns
 	}
-	result, err := scanConnection(tx.QueryRow(ctx, statement, r.ID, org, r.Name, site, gateway))
+	args := []any{r.ID, org, r.Name, site, gateway}
+	if provider != nil {
+		args = append(args, providerProfile(*provider))
+	}
+	result, err := scanConnection(tx.QueryRow(ctx, statement, args...))
 	if err != nil {
 		return Connection{}, createError(err)
 	}
-	for i, t := range r.Tunnels {
+	if err = insertStaticRecreationBindings(ctx, tx, result, predecessors); err != nil {
+		return Connection{}, err
+	}
+	count := 2
+	if provider != nil {
+		count = activeTunnelCount(providerProfile(*provider))
+	}
+	for i, t := range r.Tunnels[:count] {
 		if _, err = tx.Exec(ctx, `INSERT INTO ipsec_tunnels(id,org_id,connection_id,slot) VALUES($1,$2,$3,$4)`, t.ID, org, result.ID, i+1); err != nil {
 			return Connection{}, createError(err)
 		}
@@ -167,7 +205,7 @@ func (s *ConnectionStore) createDisabled(ctx context.Context, org, actor uuid.UU
 	}
 	metadata := []byte(`{"revision":1,"intent":"disabled"}`)
 	if provider != nil {
-		metadata = []byte(`{"revision":1,"intent":"disabled","profile":"aws-static-ipv4-v1","configuration_revision":1}`)
+		metadata = []byte(`{"revision":1,"intent":"disabled","profile":"` + providerProfile(*provider) + `","configuration_revision":1}`)
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO audit_logs(org_id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,'ipsec.connection_created','ipsec_connection',$3,$4)`, org, actor, result.ID.String(), metadata); err != nil {
 		return Connection{}, ErrConnectionUnavailable

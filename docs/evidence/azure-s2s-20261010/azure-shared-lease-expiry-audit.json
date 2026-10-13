@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-10-11T10:00:56.763211+00:00",
+  "scope": "source-only cross-provider lease-expiry comparison and existing exact receipt/provenance audit",
+  "root_head": "09d497d42e803d43e6939f8b78583a93e362c957",
+  "remaining_expiry_authority_gap_found": false,
+  "additional_source_correction_required": false,
+  "independent_audit_sha256": "80c59fde2de25f20468c1636994ff1a0278bc60624bd0b8befbf2692e159ca30",
+  "audited_input_sha256": {
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/ipsec/runtime_delivery.go": "a3148dfa3ebf8f50708d903bd4ce4a66c6ffb3e39f5ef2444f7ffe909b4e5743",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/ipsec/runtime_fqdn_policy.go": "624dd8db69dce46f462e4f48a27db9a825cdc4498ff3759a499073539bb51795",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/ipsec/runtime_store.go": "40232d55b0f1a74055f9e7e68f55f8a5a52e548803546e4938931aad6235144b",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/ipsec/runtime_types.go": "597f1f3243897abee3fe1fd47473a4338af4ac228b2179593c17267165052905",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/policy/ipsec_runtime_fqdn.go": "9a6a5befaa36fade76b6dba0640ac0b63e2e230af457364c4d2844adf45b5a35",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/policy/ipsec_runtime_policy.go": "8a836a2f86e249d64ac8233a270abdc33574f17dcfd16810d74879b1a5077e76",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/api/internal/fqdnresolver/snapshot.go": "1618e1440af1b986bee534149fef4cbe63a61f79250e3f224fc5e001b334a0ef",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/node/internal/ipsec/permit_lease.go": "704ec0bb9929651c73bfedceda65e507a36859ebc5e6d14b9f354963cd67f632",
+    "/Users/pawangupta/.codex/worktrees/65f0/tunnex/apps/node/internal/ipsec/runtime_fqdn_expiry.go": "46616cab6d246db36ad8507ffcf994cb6b2c808cc3b364745534bb9419c0bdba",
+    "/private/tmp/gcp-common-fqdn-api-graft-20261011/apps/api/internal/ipsec/runtime_delivery.go": "541bf82d2f9e7f282e02b580fc68dce8310fd6514e2ae63ec498cedbda4ca2be",
+    "/private/tmp/gcp-common-fqdn-api-graft-20261011/apps/api/internal/policy/ipsec_runtime_fqdn.go": "2104154b730aba2f301f32c11a4be93b40946e3400ed5062e29befb247ef2fd6",
+    "/private/tmp/gcp-common-fqdn-api-graft-20261011/apps/api/internal/fqdnresolver/snapshot.go": "341e577e01dff7b765734de321b6efc1d7f5980f2a1c7e334d2d43edce59866f",
+    "/private/tmp/aws-shared-fqdn-v1-expiry-reuse-sourceonly-20261011-2/stage/apps/api/internal/ipsec/runtime_delivery.go": "28f8e74dc7c29663b3cec7d853a6436aacac0e3578f3344a5769bf493b848305",
+    "/private/tmp/aws-shared-fqdn-v1-expiry-reuse-sourceonly-20261011-2/stage/apps/api/internal/policy/ipsec_runtime_fqdn.go": "2104154b730aba2f301f32c11a4be93b40946e3400ed5062e29befb247ef2fd6",
+    "/private/tmp/aws-shared-fqdn-v1-expiry-reuse-sourceonly-20261011-2/stage/apps/api/internal/fqdnresolver/snapshot.go": "341e577e01dff7b765734de321b6efc1d7f5980f2a1c7e334d2d43edce59866f",
+    "/private/tmp/gcp-common-fqdn-api-assessment-20261011/FINAL-API-GRAFT-RECEIPT.json": "93f1ea5b5d25b172c2181472b73b7e49b284c0c59f2008166abce7740b5e616d",
+    "/private/tmp/aws-shared-fqdn-v1-expiry-reuse-sourceonly-20261011-2/manifest-rootfalse.json": "5e62faefda184410d74d9df3c714b5b2df3f118c3223dc05907ed41a5311bd38"
+  },
+  "conclusions": [
+    "No missing donor expiry correction identified. V1 legacy canonical wire/hash preserved; whole-owner TTL is intentionally conservative and can withdraw ordinary/DNS at earliest FQDN/rule expiry.",
+    "V2 remains selective: original ExpiresAt/ResolverSourceAddress authority, expired extras only zero, unchanged ordinary/DNS60s and all current provider/admission checks.",
+    "Full5s guard commit budget and postcommit expiry proof remain independent; no deadline extension/caching/alias needed."
+  ],
+  "existing_real_PostgreSQL_qualification": {
+    "distinct_top_level_pass_count": 7,
+    "tests": [
+      "TestActiveGenerationsOriginalDatabaseClockFreshness",
+      "TestAzureBGPRecreationExpansionContraction",
+      "TestAzureProviderPersistenceCapabilityAndMaterial",
+      "TestPostgresStorePublishesAndWithdrawsAtomically",
+      "TestTransactionalIPsecFQDNV2Compiler",
+      "TestTransactionalIPsecFQDNV2LeaseExpiryContinuity",
+      "TestTransactionalIPsecFQDNV2MaintainFreshNonceBridge"
+    ],
+    "attempts": [
+      {
+        "attempt": 2,
+        "result_sha256": "20b395274d3a6d0e450ac7045d658a14a707e289dd304351462a822c589a124b",
+        "log_sha256": "58b32839394cce5bdcfbdcd5df4772d4e1777317dad0fcea3cd7b8e32023b267",
+        "exit_code": 1,
+        "passed_top_level_tests": [
+          "TestAzureBGPRecreationExpansionContraction",
+          "TestAzureProviderPersistenceCapabilityAndMaterial",
+          "TestTransactionalIPsecFQDNV2LeaseExpiryContinuity",
+          "TestTransactionalIPsecFQDNV2Compiler",
+          "TestActiveGenerationsOriginalDatabaseClockFreshness",
+          "TestPostgresStorePublishesAndWithdrawsAtomically"
+        ],
+        "failed_top_level_tests": [
+          "TestTransactionalIPsecFQDNV2MaintainFreshNonceBridge"
+        ],
+        "skipped": false,
+        "recorded_API_production_Go_pins_match_current": true,
+        "API_production_pins_checked": 150
+      },
+      {
+        "attempt": 5,
+        "result_sha256": "2e1e59ddbd1c3e3f33a67e933ecb4ce00a2e5e8c70b83536d2df9c77ab2e4e2f",
+        "log_sha256": "e716d06bb6678c8b52a69eb61adb58ab420e5927ea73d5067faa5b4bf73b60c7",
+        "exit_code": 0,
+        "passed_top_level_tests": [
+          "TestTransactionalIPsecFQDNV2MaintainFreshNonceBridge"
+        ],
+        "failed_top_level_tests": [],
+        "skipped": false,
+        "recorded_API_production_Go_pins_match_current": true,
+        "API_production_pins_checked": 150
+      }
+    ],
+    "new_test_execution": false,
+    "scope": "Each test owns a unique disposable DB; bridge has genuine DB/HTTP and synthetic kernel/journal only"
+  },
+  "existing_focused_race_qualification": {
+    "result_sha256": "60695c275bfa93a14dddee9227b8fbf025235633f24e491fd153ffefa3c982c0",
+    "checks": [
+      {
+        "module": "api",
+        "top_level_pass_count": 19,
+        "skipped": false,
+        "exit_code": 0,
+        "elapsed_seconds": 5.661,
+        "private_log_sha256": "cab930db5f9d7a52cce9996e820df4b91ef21c7d249d19a8ffa8c61e8caf89e2"
+      },
+      {
+        "module": "node",
+        "top_level_pass_count": 40,
+        "skipped": false,
+        "exit_code": 0,
+        "elapsed_seconds": 88.319,
+        "private_log_sha256": "5f45dcd272864fe4493e756abf33ea7cb26d4458811db4a9f2d6ab37066506e2"
+      }
+    ],
+    "all_recorded_API_pins_match_current": true,
+    "critical_node_lease_pins_match_current": true,
+    "new_test_execution": false,
+    "limit": "59 checks precede later proxy and native guard corrections; changed paths have separate focused qualification, not a newest blanket suite"
+  },
+  "proxy_protocol_provenance": {
+    "receipt_sha256": "08077a37378e970f587493f41a5166913953da81e40b96c582b7925830b3921b",
+    "exact_seven_current_pins": true,
+    "race_results": {
+      "dnsforward": "PASS 1.519s",
+      "fqdnrpc": "PASS 8.799s",
+      "ipsec_selected_three": "PASS 9.938s; no SKIP"
+    },
+    "scope": "Configured TCP-only/UDP truncation paths and IPsec endpoint protocol authorization; no cloud cause or sustained DNS acceptance inferred"
+  },
+  "native_component_receipt_sha256": "23ae7a011c151f5119e933549618e87cb95e0caad23ff4740b7ddb1574f7f965",
+  "original_nine_evidence_bytes_preserved": true,
+  "production_source_modified": false,
+  "cloud_actions": false,
+  "remote_transfer": false,
+  "recovery_POST": false,
+  "gateway_START_repeated": false,
+  "pushed": false,
+  "deployed": false,
+  "formally_closed_stories": 0,
+  "total_stories": 11,
+  "limits": [
+    "Source-only read-only comparison; no newest blanket test suite claimed.",
+    "Previously reviewed DB-to-Maintain bridge uses cached material and synthetic native fixtures; complete normal poll uninterrupted continuity after hash turnover remains distinct.",
+    "Independent native component expiry is not encrypted transport/customer acceptance.",
+    "Recovery KIT approval pending; no transfer/POST/Docker/SSH or execution performed.",
+    "Semantic comparison does not establish identical all-provider source or deployment. Same-ID recovery KIT approval remains pending."
+  ]
+}

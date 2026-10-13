@@ -1,0 +1,28 @@
+{
+  "scope": "actual owned client existing-public-key trust recovery; no VPN/payload proof",
+  "instance_id": "4751969643435150303",
+  "private_ip": "10.70.0.10",
+  "public_ip": "34.131.121.30",
+  "attempt": "2ec2c191-000b-4854-8203-dd4bae0f21b7",
+  "reset_operation": "operation-1791641876008-65d7d21958f2b-265ebc55-a44225f0",
+  "reset_status": "DONE",
+  "wrapper_sha256": "41dfe6724530ad4caa92e838ab60b2e1e95219ad6ed74510aafc270cc6057d8f",
+  "publisher_sha256": "e6f5e242bcb031e94b9dabfbebafa5ac106b71b83f17d71d0e08e0c42e9bddb2",
+  "original_metadata_restored": true,
+  "original_complete_items_sha256": "9b9039d68991082b1a81f91fefd1a2600473e88a868cca47fd15e3c8bfc581d4",
+  "prior_failed_attempt_metadata_restored": true,
+  "authenticated_serial_keyscan_match": true,
+  "host_fingerprint": "SHA256:jrN9/q8kVJ++R+kqFmeF8nQ6abU/2UKvYHkOZPxb2Dg",
+  "exclusive_pin_path": "/home/cyberking9560/tn-gcps2s-20261010/hostkey-recovery-b7db7300/known-hosts-client-2ec2c191-000b-4854-8203-dd4bae0f21b7",
+  "existing_known_hosts_unchanged": true,
+  "strict_ssh": {
+    "boot_id": "5d6a0f20-8cc2-45fd-b604-7802d95658f7",
+    "boot_matches": true,
+    "uid": 1000,
+    "private_ip_assigned": true,
+    "curl_available": true,
+    "python3_available": true,
+    "wg_available": false
+  },
+  "secrets_output": false
+}

@@ -1,0 +1,105 @@
+{
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+  "container_id": "dc81baef1c4924007b39224fd4f9b14bef94e734c2138257b12bfdc46abd8294",
+  "private_receipt_sha256": "e52953ca325bfe3af24cb84d72411201a5f7a43c3de3a9ff803e986fb6dc08cb",
+  "completed": true,
+  "accepted": false,
+  "started_at_utc": "2026-10-10T15:07:42Z",
+  "executed_at_utc": "2026-10-10T15:07:46Z",
+  "results": [
+    {
+      "probe": {
+        "protocol": "tcp",
+        "destination": "10.81.0.10",
+        "source": "10.70.0.10",
+        "nonce": "108db010-b05d-4c0c-987f-7a27af94169e",
+        "payload_sha256": "c778b5a1966bc84cc91ea9cbfe92a6cc713084d5affd7a1acc26ef64c787f3fc",
+        "request_sha256": "148bc468a9dbef035dfed8ebf507828a5bf869c545857cbfdbf266282ebc3c20",
+        "exact_response": true,
+        "outcome": "response",
+        "response_sha256": "6f95207d2dcf982a60d42c0f8b0e9315588021c093e7db98b3eb9af1ecd58dc7",
+        "elapsed_ms": 7.341
+      },
+      "receiver_ready": {
+        "ready": true,
+        "target": "10.81.0.10",
+        "interface": "ens4",
+        "control": {
+          "protocol": "tcp",
+          "destination": "10.81.0.10",
+          "source": "10.81.0.10",
+          "nonce": "64c3db9b-a79c-4b09-a1fc-ef2b5edd8bc3",
+          "payload_sha256": "56587ada7f75060cfde142be63ebfa1975e463a68bb35d15d26d920c9a88e168",
+          "request_sha256": "d34ef4a573e3137648338a2df24b345125be35931b9b059df88a0a4dec1d753a",
+          "exact_response": true,
+          "outcome": "response",
+          "response_sha256": "6f95207d2dcf982a60d42c0f8b0e9315588021c093e7db98b3eb9af1ecd58dc7",
+          "elapsed_ms": 0.634
+        }
+      },
+      "receiver": {
+        "stopped_by_request": true,
+        "counts": {
+          "exact_payload": 1,
+          "syn": 1,
+          "other_tuple": 3,
+          "unsupported": 0
+        },
+        "capture_packets": 7,
+        "capture_drops": 0,
+        "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+        "scope": "bounded raw receiver observation; no policy authority"
+      },
+      "accepted": true,
+      "expectation": "allow",
+      "scope": "packet observation only; native guard/SA/route and API grant evidence are separate"
+    },
+    {
+      "probe": {
+        "protocol": "udp",
+        "destination": "10.81.0.10",
+        "source": "10.70.0.10",
+        "nonce": "61d27535-09cd-456f-9a26-92462bb5fec1",
+        "payload_sha256": "a343d794d6b08371fa932cbcd01e47ff4ec3c516ab1a61b7616804e610f0fca9",
+        "outcome": "timeout",
+        "error_type": "TimeoutError",
+        "exact_response": false,
+        "elapsed_ms": 3003.229
+      },
+      "receiver_ready": {
+        "ready": true,
+        "target": "10.81.0.10",
+        "interface": "ens4",
+        "control": {
+          "protocol": "udp",
+          "destination": "10.81.0.10",
+          "source": "10.81.0.10",
+          "nonce": "d91ebe7f-358a-40ae-b3d9-093be42e5732",
+          "payload_sha256": "53980cfed95ad9bc91499006cce9fbf1cafc5fdf533dd4a1ac52e67076591a06",
+          "exact_response": true,
+          "outcome": "response",
+          "response_sha256": "53980cfed95ad9bc91499006cce9fbf1cafc5fdf533dd4a1ac52e67076591a06",
+          "elapsed_ms": 0.213
+        }
+      },
+      "receiver": {
+        "stopped_by_request": true,
+        "counts": {
+          "exact_payload": 0,
+          "syn": 0,
+          "other_tuple": 0,
+          "unsupported": 0
+        },
+        "capture_packets": 2,
+        "capture_drops": 0,
+        "boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+        "scope": "bounded raw receiver observation; no policy authority"
+      },
+      "accepted": false,
+      "expectation": "allow",
+      "scope": "packet observation only; native guard/SA/route and API grant evidence are separate"
+    }
+  ],
+  "scope": "Actual owned GCP Classic normal grant application packet check. TCP allow passed; UDP allow failed with receiver zero tuples, independent local control passed and zero capture drops. Initial failure retained; later configured allow/rules and fresh SA do not establish causal drop location. No grant/firewall expansion or repeated packet result."
+}

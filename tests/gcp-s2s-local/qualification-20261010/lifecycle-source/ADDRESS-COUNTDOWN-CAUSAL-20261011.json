@@ -1,0 +1,24 @@
+{
+  "scope": "source-only causal address-bracket fix; not deployed native acceptance",
+  "base": "78601adac38797d16f108dcde02944b97cda824f",
+  "actual_deployed_source": "13007c405cece2ab3a1a790b1b539980479336a3",
+  "actual_refusal_capture_sha256": "f995ee96be0673a86475c22940a36dd31bda61a1428ceba3b65a3dbe84bf795f",
+  "actual_observer_receipt_sha256": "2e92e25a89ed25dcf7dcb2ff8b1902ed422aa4520d452b8ad09ec02267d47653",
+  "actual_unmodified_replay": "PASS; reproduces refusal at address bracket",
+  "actual_difference": "only valid_life_time and preferred_life_time 2187 to2186",
+  "complete_capture_limitation": "refusal ends at read11; final peer-route/namespace reads were not captured or fabricated",
+  "prior_observations": "13 unchanged Observe PASS and one strict typed inventory PASS; all preserved",
+  "causal_gate_tests": "old exact-byte comparator RED; bounded countdown comparison GREEN using exact captured addresses",
+  "synthetic_complete_observe": "unchanged base RED; fixed source GREEN; assigned source drift refused",
+  "focused_race": "PASS1.780s",
+  "independent_ui": "sourcePASS; focusedPASS0.634s",
+  "linux_agent_builds": {
+    "amd64": "bea6f3d31bb546de9711079c592a889cc4f015c6dcf79fefedd224744c050f14",
+    "arm64": "10ec0d9564888062fd7d59f9b1e5e2796bb059c05f804cfc4ac03029fe798789"
+  },
+  "runtime_invariants": "unchanged native reads, 5s timeout, namespace/routes/hooks/source/address fields; no authority/deadline/journal/lease changes",
+  "measured_address_bracket_ns": 43798186,
+  "full_ipsec": "PASS84.072s permitted unchanged run",
+  "first_full_ipsec_failure": "Existing daemon Unix socket bind operation not permitted in sandbox at85.179s; preserved; source unchanged before permitted rerun",
+  "independent_provider": "Final source PASS; forever raw-token distinction and diagnostic union preserved"
+}

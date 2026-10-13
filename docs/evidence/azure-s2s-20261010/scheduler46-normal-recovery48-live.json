@@ -1,0 +1,401 @@
+{
+  "failed_scheduler_attempt": {
+    "observed_at": "2026-10-10T21:27:28.025203+00:00",
+    "result": {
+      "desired_revision": 46,
+      "normal_recovery_required": true,
+      "production_duration_soak": false,
+      "production_timers_verified": false,
+      "runner_completed": false,
+      "watchdog_armed": true
+    },
+    "control_refusals": [
+      {
+        "action": "terminate",
+        "stage": "journal-bracket",
+        "utc": "2026-10-10T21:26:44.182234+00:00"
+      },
+      {
+        "action": "initiate",
+        "stage": "action-response",
+        "utc": "2026-10-10T21:26:52.038880+00:00"
+      }
+    ],
+    "phase_markers": {
+      "bootstrap-started": "2026-10-10T21:26:35.174485+00:00",
+      "automatic-ended": "2026-10-10T21:26:44.188756+00:00",
+      "restoration-started": "2026-10-10T21:26:44.201119+00:00"
+    },
+    "automatic_window_started": false,
+    "strict_native_observation_count": 0,
+    "scheduler_pass": false,
+    "private_failure_sha256": "bfc4dd990dd3adaec027d9523cdaf901eb31a7e8cd1a5fcd385d86e03d3a911c",
+    "failure_file_locations": [
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 296",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 184",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 129",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 167",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 143",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/reviewed-wrapper.py\", line 70",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 330",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 242",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 242",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 185",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 122",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 167",
+      "File \"/home/ubuntu/tunnex-azure-lab/reviewed-scheduled-rekey46-2177f46e-2fe8-4584-ad99-f49e9143a1f5/tests/azure-s2s-local/qualify-scheduled-rekey.py\", line 143"
+    ]
+  },
+  "recovery": {
+    "normal_disable": {
+      "before_revision": 46,
+      "cas_request_sent": true,
+      "cleanup_readback_settled": true,
+      "connection": {
+        "application_state": "not_applied",
+        "cleanup_state": "retained_guard",
+        "desired_intent": "disabled",
+        "desired_revision": 47,
+        "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+      },
+      "observed_at": "2026-10-10T21:27:43.945715+00:00",
+      "phase": "disable",
+      "runtime": {
+        "observed_at": "2026-10-10T21:27:29.631808+00:00",
+        "tunnels": [
+          {
+            "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+            "selected": false,
+            "slot": 1,
+            "status": "unknown"
+          },
+          {
+            "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+            "selected": false,
+            "slot": 2,
+            "status": "unknown"
+          }
+        ]
+      },
+      "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+    },
+    "independent_native_absence": {
+      "observed_at": "2026-10-10T21:28:41.493254+00:00",
+      "passed": true,
+      "return_code": 0,
+      "scope": "Independent read-only complete native cleanup absence; normal disable47 recovery",
+      "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+      "private_log_sha256": "86076b899073de2c67ef26a28f1a9896cd2b21866bbc25bfa028c41d8f289e1c",
+      "desired_revision": 47,
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "native_receipt": {
+        "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+        "configuration_revision": 1,
+        "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+        "desired_revision": 47,
+        "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+        "guard_retained": true,
+        "historical_boot_entry_count": 1,
+        "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+        "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+        "host_machine_identity_source": "external_root_attestation",
+        "journal_entries": 22,
+        "journal_sha256": "c204ea117a4febd2c9284fcc58cd43c993491e7e22447a9023e7f867798ca97f",
+        "kind": "owned_native_cleanup_absence",
+        "namespace_device": 4,
+        "namespace_inode": 4026532430,
+        "observed_at": "2026-10-10T21:28:41.088865193Z",
+        "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+        "owned_children": 0,
+        "owned_ike": 0,
+        "owned_interfaces": 0,
+        "owned_routes": 0,
+        "owned_sad": 0,
+        "owned_spd": 0,
+        "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+        "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+        "traffic_counters_monotonic_advanced": false,
+        "version": 1
+      }
+    },
+    "normal_enable": {
+      "before_revision": 47,
+      "cas_request_sent": true,
+      "cleanup_readback_settled": false,
+      "connection": {
+        "application_state": "pending",
+        "cleanup_state": "retained_guard",
+        "desired_intent": "enabled",
+        "desired_revision": 48,
+        "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+      },
+      "observed_at": "2026-10-10T21:29:40.972915+00:00",
+      "phase": "enable",
+      "runtime": {
+        "observed_at": "2026-10-10T21:27:29.631808+00:00",
+        "tunnels": [
+          {
+            "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+            "selected": false,
+            "slot": 1,
+            "status": "unknown"
+          },
+          {
+            "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+            "selected": false,
+            "slot": 2,
+            "status": "unknown"
+          }
+        ]
+      },
+      "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+    },
+    "genuine_azure_eligibility": {
+      "eligible": true,
+      "reason": "eligible"
+    },
+    "normal_applied_read": {
+      "before_revision": 48,
+      "cas_request_sent": false,
+      "cleanup_readback_settled": false,
+      "connection": {
+        "application_state": "applied",
+        "cleanup_state": "retained_guard",
+        "desired_intent": "enabled",
+        "desired_revision": 48,
+        "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+      },
+      "observed_at": "2026-10-10T21:30:15.445475+00:00",
+      "phase": "read",
+      "runtime": {
+        "bgp": {
+          "peers": [
+            {
+              "accepted_prefixes": 1,
+              "installed_prefixes": 1,
+              "slot": 1,
+              "state": "established"
+            },
+            {
+              "accepted_prefixes": 1,
+              "installed_prefixes": 0,
+              "slot": 2,
+              "state": "established"
+            }
+          ],
+          "routes": [
+            {
+              "prefix": "10.231.0.0/16",
+              "slot": 1
+            }
+          ],
+          "sequence": 46499,
+          "version": 1
+        },
+        "observed_at": "2026-10-10T21:30:14.631231+00:00",
+        "tunnels": [
+          {
+            "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+            "selected": false,
+            "slot": 1,
+            "status": "up"
+          },
+          {
+            "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+            "selected": false,
+            "slot": 2,
+            "status": "up"
+          }
+        ]
+      },
+      "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+    },
+    "loaded_production_parameters": {
+      "observed_at": "2026-10-10T21:31:35.221426+00:00",
+      "passed": true,
+      "scope": "Fresh independent read-only scheduler preflight only; no timer changes",
+      "helper_sha256": "a60f312d7f6d217b9da985a4d97a2de7e58dc57989484c9e46207436e6f05536",
+      "desired_revision": 48,
+      "configuration_revision": 1,
+      "profile": "azure-active-active-bgp-ipv4-v1",
+      "retained_entries": 22,
+      "strict_native": true,
+      "full_guard": true,
+      "active_tunnel_count": 2,
+      "loaded_production_connection_parameters_verified": true,
+      "actual_timer_countdowns": [
+        {
+          "slot": 1,
+          "ike_remaining_seconds": 28438,
+          "child_remaining_seconds": 2668
+        },
+        {
+          "slot": 2,
+          "ike_remaining_seconds": 25813,
+          "child_remaining_seconds": 2342
+        }
+      ]
+    },
+    "independent_native_baseline": {
+      "observed_at": "2026-10-10T21:32:18.121525+00:00",
+      "passed": true,
+      "return_code": 0,
+      "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+      "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+      "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+      "private_log_sha256": "37ae140108564d58eec87d874f1d823d0ec8c3466cddc35fe2dda8a599a78f62",
+      "desired_revision": 48,
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "native_receipt": {
+        "bgp": {
+          "peers": [
+            {
+              "accepted_prefixes": 1,
+              "slot": 1,
+              "state": "established"
+            },
+            {
+              "accepted_prefixes": 1,
+              "slot": 2,
+              "state": "established"
+            }
+          ],
+          "routes": [
+            "10.231.0.0/16"
+          ]
+        },
+        "configuration_revision": 1,
+        "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+        "desired_revision": 48,
+        "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+        "historical_boot_entry_count": 1,
+        "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+        "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+        "host_machine_identity_source": "external_root_attestation",
+        "journal_entries": 23,
+        "journal_sha256": "6b6b50a5994ec68c5f850376a9a07b8146de05e4c41e43d1c27318c67781f205",
+        "kind": "owned_max_prefix_baseline",
+        "namespace": {
+          "device": 4,
+          "inode": 4026532430
+        },
+        "native": {
+          "sad": 4,
+          "spd_fwd": 2,
+          "spd_in": 2,
+          "spd_out": 2
+        },
+        "observed_at": "2026-10-10T21:32:17.676011764Z",
+        "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+        "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+        "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+        "traffic_counters_monotonic_advanced": true,
+        "tunnels": [
+          {
+            "owned_ike": 1,
+            "owned_installed_children": 1,
+            "slot": 1,
+            "state": "up"
+          },
+          {
+            "owned_ike": 1,
+            "owned_installed_children": 1,
+            "slot": 2,
+            "state": "up"
+          }
+        ],
+        "version": 1
+      }
+    },
+    "packet_window": {
+      "duration_seconds": 60,
+      "application_request_timeout_seconds": 2,
+      "payload_bytes": {
+        "tcp": 65536,
+        "udp": 4096
+      },
+      "observations": [
+        {
+          "counters": {
+            "fresh_tcp": {
+              "success": 60,
+              "failure": 0,
+              "maximum_observed_success_gap_seconds": 1.002576,
+              "seconds_since_last_success_at_run_end": 0.958554
+            },
+            "existing_tcp": {
+              "success": 60,
+              "failure": 0,
+              "maximum_observed_success_gap_seconds": 1.015412,
+              "seconds_since_last_success_at_run_end": 0.841462
+            },
+            "fresh_udp": {
+              "success": 60,
+              "failure": 0,
+              "maximum_observed_success_gap_seconds": 1.047615,
+              "seconds_since_last_success_at_run_end": 0.711217
+            },
+            "existing_udp": {
+              "success": 60,
+              "failure": 0,
+              "maximum_observed_success_gap_seconds": 1.049456,
+              "seconds_since_last_success_at_run_end": 0.692681
+            }
+          },
+          "scope": "Actual60s packets; fullreceipt private"
+        },
+        {
+          "started_at": "2026-10-10T21:33:01.559881+00:00",
+          "counters": {
+            "existing_udp": {
+              "success": 60,
+              "failure": 0
+            },
+            "existing_tcp": {
+              "success": 60,
+              "failure": 0
+            },
+            "fresh_udp": {
+              "success": 60,
+              "failure": 0
+            },
+            "fresh_tcp": {
+              "success": 60,
+              "failure": 0
+            }
+          },
+          "checks": {
+            "all_four_zero_failure": true,
+            "tails_successful": true,
+            "tcp_exact_source_preserved": true,
+            "udp_exact_4096": true,
+            "existing_socket_reuse": true,
+            "no_dns_probe": true
+          },
+          "receipt_sha256": "68c63bf3c1e2b7efae930b1493fc3bc4c34413476db3ae8fe4c424d59d7116a5",
+          "acceptance_passed": true
+        }
+      ]
+    }
+  },
+  "live_identity": {
+    "container": "6c7ce0e29e7a6f9f8756b2a19eb2074fa39b3da891802197b770ff9f822c3233",
+    "image": "sha256:2e2cd11f550d944af6052d1bddbb4c8e0a4252b7e73349497a487c83ad784361",
+    "binary_sha256": "6022368cd6fb2b0483244021d7194a28dd2305f4a5ab2932b5b16fd882233dd9",
+    "source_commit": "6e07bde135afde3ca7d9d194f5073c8d9b155c49",
+    "container_started_at": "2026-10-10T20:57:38.143745115Z",
+    "replaced_for_this_recovery": false,
+    "rebooted_for_this_recovery": false
+  },
+  "limits": [
+    "The accelerated scheduler bootstrap failed before any automatic observation window; its restoration refused and original private failures remain retained.",
+    "The initial journal-bracket terminate refusal occurs before control dispatch. Its bundled stage does not identify which journal read, deadline, identity or byte comparison failed.",
+    "The restoration action-response refusal is an unknown or refused post-dispatch outcome and was not retried.",
+    "Normal recovery and independent loaded production connection parameters are separately observed recovery, not successful test rollback or automatic renewal proof.",
+    "Monotonic byte advancement is allowed separately while every native identity, process, socket, journal and full guard bracket remains required.",
+    "The sixty-second packet window has no DNS probes and establishes neither sustained DNS nor FQDN application enforcement.",
+    "Root source c52a9d89 environment timing split is locally qualified source only and is absent from this live binary."
+  ]
+}

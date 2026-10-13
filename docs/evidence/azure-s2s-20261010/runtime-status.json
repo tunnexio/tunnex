@@ -1,0 +1,63 @@
+{
+  "environment": "live-azure",
+  "node_source_sha": "9f88b62e07af046d306c5159a6dbc8618a09323e",
+  "node_binary_sha256": "e02f85c831abd12b70ef4939efbdb5ff9d10a3094efd17af81de0242f51f97f4",
+  "node_image_id": "sha256:07677163761985547eac892ecd8fa53c8f7397e06f03c19bf6f9c3566ff25dcc",
+  "api_source_sha": "3a451571400571bbd8282c382def59bd0e430df8",
+  "api_status": {
+    "application_reachability": "not_probed",
+    "connection": {
+      "application_state": "applied",
+      "cleanup_state": "not_required",
+      "desired_intent": "enabled",
+      "desired_revision": 2,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "runtime": {
+      "active_slot": null,
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1,
+            "rejected_prefixes": null,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0,
+            "rejected_prefixes": null,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ],
+        "sequence": 1358,
+        "version": 1
+      },
+      "observed_at": "2026-10-10T10:35:03.14987Z",
+      "recovery_version": null,
+      "selection_sequence": null,
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "up"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "up"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "revision": 22,
+  "production_source": "077bccf4",
+  "node_sha256": "bd28fea088fde56134ce3ef745ffa997b94fb33530534eb2ee0f3670eee4d2a2",
+  "strict_native_each_slot": {
+    "ike": 1,
+    "installed_child": 1,
+    "sad": 2,
+    "spd_each_direction": 1
+  },
+  "normal_before_and_after_applied_both_up_bgp_established": true,
+  "packet_counters": {
+    "fresh_tcp": {
+      "success": 20,
+      "failure": 0
+    },
+    "existing_tcp": {
+      "success": 20,
+      "failure": 0
+    },
+    "fresh_udp": {
+      "success": 20,
+      "failure": 0
+    },
+    "existing_udp": {
+      "success": 20,
+      "failure": 0
+    }
+  },
+  "exact64KiBTCP_source_preserved": true,
+  "exact4096UDP_existing_socket_reused": true,
+  "packet_receipt_sha256": "4077b4b6ee965e7290351a1f54ecad8866e8c3beed2b520d215ea864e8f7b908",
+  "accepted_census_timings_ms": {
+    "environment": 93,
+    "full_guard": 38,
+    "extra_iptables_version": 0,
+    "extra_iptables_nat": 1,
+    "captured_hook_parser": 16,
+    "captured_docker_parser": 21
+  },
+  "all7final_consistency_checks": true,
+  "prior_timing_attempt": "refused solely journal bytes/inode changed; native checks passed, no qualified timing claim for priorattempt",
+  "isolated_fqdn_window_start": "2026-10-10T16:55:00Z",
+  "scope": "Bounded native/packet and diagnostic proof only; FQDN grant and sustained readiness pending. Nonpaired timings do not establish causal percentage improvement."
+}

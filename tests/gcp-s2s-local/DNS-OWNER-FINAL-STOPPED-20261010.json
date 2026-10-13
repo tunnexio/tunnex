@@ -1,0 +1,38 @@
+[
+  {
+    "name": "tunnex-gcp-dns-owner-ha-1010k-gateway",
+    "running": false,
+    "oom": false,
+    "exit": 137
+  },
+  {
+    "name": "tunnex-gcp-dns-owner-ha-1010k-peer",
+    "running": false,
+    "oom": false,
+    "exit": 137
+  },
+  {
+    "name": "tunnex-gcp-dns-owner-ha-1010k-receiver",
+    "running": false,
+    "oom": false,
+    "exit": 137
+  },
+  {
+    "name": "tunnex-gcp-dns-owner-classic-1010d-gateway",
+    "running": false,
+    "oom": false,
+    "exit": 137
+  },
+  {
+    "name": "tunnex-gcp-dns-owner-classic-1010d-peer",
+    "running": false,
+    "oom": false,
+    "exit": 137
+  },
+  {
+    "name": "tunnex-gcp-dns-owner-classic-1010d-receiver",
+    "running": false,
+    "oom": false,
+    "exit": 137
+  }
+]

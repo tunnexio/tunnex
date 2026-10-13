@@ -1,0 +1,1613 @@
+{
+  "version": 1,
+  "kind": "owned_azure_revision54_lookup_summary_observation",
+  "source_commit": "8eb31c7e2915a7c2bbb45407085c0396d5486b0a",
+  "node_tree": "90ab1e8786d3f97295432b82e1fcc517898ada85",
+  "image_staging": {
+    "observed_at": "2026-10-10T22:31:39.790269+00:00",
+    "staged": true,
+    "deployed": false,
+    "source_commit": "8eb31c7e2915a7c2bbb45407085c0396d5486b0a",
+    "node_tree": "90ab1e8786d3f97295432b82e1fcc517898ada85",
+    "binary_sha256": "e2fddce35434dd43513ec73ecc10714c01e592d50e368c1278a5a8e1ebd2c49c",
+    "image": "sha256:585a392b5d5e1881a7e03577b018d44c1d8335be43664c7d2d78a9fadb50b08d",
+    "tag": "tunnex-azure-s2s-native:20261010-lookup-8eb31c7e",
+    "image_build_log_sha256": "38ea35b1b0ef9e87cef65c527b8c9575369a28ddc447b8bd2528aeb39b095e71"
+  },
+  "deployment": {
+    "observed_at": "2026-10-10T22:33:38.592087+00:00",
+    "deployed": true,
+    "container": "50f92a3ff704cd894a1d39f1521651aa802c99a90692d81ec5a4bc2ff133a809",
+    "image": "sha256:585a392b5d5e1881a7e03577b018d44c1d8335be43664c7d2d78a9fadb50b08d",
+    "binary_sha256": "e2fddce35434dd43513ec73ecc10714c01e592d50e368c1278a5a8e1ebd2c49c",
+    "container_started_at": "2026-10-10T22:33:37.620918269Z",
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "anchor_preserved": true,
+    "old_node_retained_stopped": true
+  },
+  "normal_disable": {
+    "before_revision": 52,
+    "cas_request_sent": true,
+    "cleanup_readback_settled": true,
+    "connection": {
+      "application_state": "not_applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "disabled",
+      "desired_revision": 53,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "observed_at": "2026-10-10T22:33:06.018175+00:00",
+    "phase": "disable",
+    "runtime": {
+      "observed_at": "2026-10-10T22:32:59.961057+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "unknown"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "unknown"
+        }
+      ]
+    },
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "old_process_absence": {
+    "observed_at": "2026-10-10T22:33:20.243122+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only complete native cleanup absence; normal disable53 lookup replacement",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "private_log_sha256": "7901538068c4f3e07df546fbe7df28c5d9d04680d2b38e5330722fc48606b6ee",
+    "desired_revision": 53,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 53,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "guard_retained": true,
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 25,
+      "journal_sha256": "d5da7e4ad6f91f9c60b6f376818523a0e96b161aedab4c437f96fbfa1165a7ac",
+      "kind": "owned_native_cleanup_absence",
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-10T22:33:19.82222111Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "version": 1
+    }
+  },
+  "new_process_absence_initial_refusal": {
+    "stage": "pinned_default_helper_missing_before_identity",
+    "private_error_sha256": "351cdca4466de014f2a3e7ee1563e2d8734dc6e3320938ea1941b469739a84f1",
+    "helper_then_installed_from_original_pinned_source": true
+  },
+  "new_process_absence": {
+    "observed_at": "2026-10-10T22:36:08.864055+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only complete native cleanup absence; normal disable53 lookup replacement",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "private_log_sha256": "d273e30137a1701c1d9a5ec2dfe38dc45325e80cd6e259ca53dd7fe8023957d8",
+    "desired_revision": 53,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 53,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "guard_retained": true,
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 25,
+      "journal_sha256": "caf7a2f70f74541ac3397cca9338ccfccd6e720bee59d3b27b84bcc17909757d",
+      "kind": "owned_native_cleanup_absence",
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "observed_at": "2026-10-10T22:36:08.418065066Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "version": 1
+    }
+  },
+  "normal_enable": {
+    "before_revision": 53,
+    "cas_request_sent": true,
+    "cleanup_readback_settled": false,
+    "connection": {
+      "application_state": "pending",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled",
+      "desired_revision": 54,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "observed_at": "2026-10-10T22:36:25.819966+00:00",
+    "phase": "enable",
+    "runtime": {
+      "observed_at": "2026-10-10T22:32:59.961057+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "unknown"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "unknown"
+        }
+      ]
+    },
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "normal_read": {
+    "before_revision": 54,
+    "cas_request_sent": false,
+    "cleanup_readback_settled": false,
+    "connection": {
+      "application_state": "applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled",
+      "desired_revision": 54,
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99"
+    },
+    "observed_at": "2026-10-10T22:36:56.973955+00:00",
+    "phase": "read",
+    "runtime": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ],
+        "sequence": 49682,
+        "version": 1
+      },
+      "observed_at": "2026-10-10T22:36:54.151071+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "selected": false,
+          "slot": 1,
+          "status": "up"
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "selected": false,
+          "slot": 2,
+          "status": "up"
+        }
+      ]
+    },
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "independent_production_parameters": {
+    "observed_at": "2026-10-10T22:37:41.671760+00:00",
+    "passed": true,
+    "scope": "Fresh independent read-only scheduler preflight only; no timer changes",
+    "helper_sha256": "a60f312d7f6d217b9da985a4d97a2de7e58dc57989484c9e46207436e6f05536",
+    "desired_revision": 54,
+    "configuration_revision": 1,
+    "profile": "azure-active-active-bgp-ipv4-v1",
+    "retained_entries": 25,
+    "strict_native": true,
+    "full_guard": true,
+    "active_tunnel_count": 2,
+    "loaded_production_connection_parameters_verified": true,
+    "actual_timer_countdowns": [
+      {
+        "slot": 1,
+        "ike_remaining_seconds": 26655,
+        "child_remaining_seconds": 2351
+      },
+      {
+        "slot": 2,
+        "ike_remaining_seconds": 28639,
+        "child_remaining_seconds": 2496
+      }
+    ]
+  },
+  "independent_native_baseline": {
+    "observed_at": "2026-10-10T22:38:05.944778+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+    "private_log_sha256": "d115487e5b13daab344a77d66c89c4bc7aa1f02d2e6e1dd5b514cf840a874dd8",
+    "desired_revision": 54,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 54,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 26,
+      "journal_sha256": "fc549de10a61b6c73eb0eafce3bd91df46dfa2f484aed1b9dd8857858f24861d",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "observed_at": "2026-10-10T22:38:05.511130779Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    }
+  },
+  "packets": {
+    "started_at": "2026-10-10T22:38:56.657736+00:00",
+    "counters": {
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "checks": {
+      "all_four_zero_failure": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true
+    },
+    "receipt_sha256": "e88aec624225c164cd39baccf7c6d5d6bbcb73720ddb2fcbd356feebd1344e00",
+    "acceptance_passed": true
+  },
+  "normal_dns_window": {
+    "observed_at": "2026-10-10T22:41:38.601429+00:00",
+    "window": {
+      "started_at": "2026-10-10T22:38:54.842927+00:00",
+      "finished_at": "2026-10-10T22:40:56.045867+00:00",
+      "container": "50f92a3ff704cd894a1d39f1521651aa802c99a90692d81ec5a4bc2ff133a809",
+      "read_count": 119,
+      "boundary_stale_read_count": 12,
+      "fresh_after_start_count": 38,
+      "distinct_new_generations": [
+        792,
+        794
+      ],
+      "last_observation": {
+        "read_at": "2026-10-10T22:40:54.852062+00:00",
+        "observation": {
+          "resource_id": "01a125fe-521b-75ae-b4d1-fbda9a4e279c",
+          "resolver_config_id": "01a12555-cc55-7759-b33e-15670c452e88",
+          "resolver_config_version": 1,
+          "resolver_profile_id": "08dbae5d-db11-4e5e-9efe-959b0d707742",
+          "configuration_revision": 1,
+          "dns_source_address": "10.233.10.1",
+          "ready": true,
+          "state": "healthy",
+          "status_source": "active_generation",
+          "generation": 794,
+          "active_answer_addresses": [
+            "10.231.1.10"
+          ],
+          "observed_at": "2026-10-10T22:40:32.221245+00:00",
+          "fresh_until_at": "2026-10-10T22:41:04.862261+00:00"
+        }
+      },
+      "passed": true,
+      "limits": [
+        "DNS generation readiness only; no FQDN application enforcement or deadline acceptance.",
+        "Original five-second per-lookup deadline and ordinary DNS grants unchanged."
+      ]
+    },
+    "observation_state_counts": {
+      "failed": 59,
+      "healthy": 48,
+      "stale": 12
+    },
+    "ready_read_count": 48,
+    "private_observations_sha256": "32236c51f1865b2d97753f2744ecce247c1580f08b0b22f5102f68d7ac716c17",
+    "private_result_sha256": "5b15eae99a1112e56c54f798d80637b9b63eccb8f0b56a3b72c707862120dda3",
+    "sampled_dns_stability_passed": false,
+    "scope": "Completed actual normal DNS window census; sampled stability requires every normal read ready and at least three distinct fresh generations. No application grant or longer soak proof."
+  },
+  "whole_lookup_diagnostics": {
+    "dns_refusals": [
+      {
+        "elapsed_ms": 3469,
+        "operation": "dns_exchange",
+        "stage": "dns_socket_tcp_dial",
+        "time": "2026-10-10T22:36:50.792706705Z",
+        "context_state": "active",
+        "native_elapsed_ms": 0,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 3000,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 0,
+        "native_failure_class": "",
+        "native_recovery_ms": 0,
+        "native_environment_command_ms": 0,
+        "socket_stage": "dial",
+        "native_route_ms": 0,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 36,
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "time": "2026-10-10T22:37:37.23091947Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 36,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 28,
+        "native_failure_class": "context_deadline",
+        "native_recovery_ms": 28,
+        "native_environment_command_ms": 0,
+        "socket_stage": "",
+        "native_route_ms": 7,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 225,
+        "operation": "dns_before_proof",
+        "stage": "dns_native_proof",
+        "time": "2026-10-10T22:37:39.217663001Z",
+        "context_state": "active",
+        "native_elapsed_ms": 225,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 3243,
+        "native_failure_class": "daemon_read",
+        "native_recovery_ms": 151,
+        "native_environment_command_ms": 0,
+        "socket_stage": "",
+        "native_route_ms": 73,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 1604,
+        "operation": "dns_exchange",
+        "stage": "dns_socket_udp",
+        "time": "2026-10-10T22:37:42.262551638Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 0,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 29,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 0,
+        "native_failure_class": "",
+        "native_recovery_ms": 0,
+        "native_environment_command_ms": 0,
+        "socket_stage": "body",
+        "native_route_ms": 0,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 872,
+        "operation": "dns_after_proof",
+        "stage": "dns_guard_full_read",
+        "time": "2026-10-10T22:38:22.236594976Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 492,
+        "native_environment_verification_ms": 138,
+        "guard_revalidation": "context_inactive",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "context_deadline",
+        "socket_ms": 0,
+        "native_environment_ms": 283,
+        "native_remaining_at_entry_ms": 862,
+        "native_failure_class": "",
+        "native_recovery_ms": 189,
+        "native_environment_command_ms": 145,
+        "socket_stage": "",
+        "native_route_ms": 19,
+        "native_environment_command_count": 18,
+        "guard_command_ms": 54,
+        "guard_bracket_count": 2
+      },
+      {
+        "elapsed_ms": 0,
+        "operation": "dns_after_proof",
+        "stage": "dns_owner",
+        "time": "2026-10-10T22:38:25.386881914Z",
+        "context_state": "active",
+        "native_elapsed_ms": 0,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 0,
+        "native_failure_class": "",
+        "native_recovery_ms": 0,
+        "native_environment_command_ms": 0,
+        "socket_stage": "",
+        "native_route_ms": 0,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 21,
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "time": "2026-10-10T22:39:07.224428308Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 21,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 20,
+        "native_failure_class": "context_deadline",
+        "native_recovery_ms": 5,
+        "native_environment_command_ms": 0,
+        "socket_stage": "",
+        "native_route_ms": 16,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 427,
+        "operation": "dns_before_proof",
+        "stage": "dns_native_proof",
+        "time": "2026-10-10T22:39:52.225447463Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 427,
+        "native_environment_verification_ms": 175,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 318,
+        "native_remaining_at_entry_ms": 423,
+        "native_failure_class": "context_deadline",
+        "native_recovery_ms": 88,
+        "native_environment_command_ms": 143,
+        "socket_stage": "",
+        "native_route_ms": 19,
+        "native_environment_command_count": 17,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 3,
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "time": "2026-10-10T22:40:22.242952642Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 2,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 1,
+        "native_failure_class": "context_deadline",
+        "native_recovery_ms": 0,
+        "native_environment_command_ms": 0,
+        "socket_stage": "",
+        "native_route_ms": 2,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      },
+      {
+        "elapsed_ms": 16,
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "time": "2026-10-10T22:41:07.2237276Z",
+        "context_state": "deadline",
+        "native_elapsed_ms": 16,
+        "native_environment_verification_ms": 0,
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "native_environment_ms": 0,
+        "native_remaining_at_entry_ms": 14,
+        "native_failure_class": "context_deadline",
+        "native_recovery_ms": 0,
+        "native_environment_command_ms": 0,
+        "socket_stage": "",
+        "native_route_ms": 16,
+        "native_environment_command_count": 0,
+        "guard_command_ms": 0,
+        "guard_bracket_count": 0
+      }
+    ],
+    "rpc_timings": [
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 3514,
+        "deadline_remaining_ms": 4900,
+        "delivery": "success",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 4,
+          "completed_exchanges": 0,
+          "before_proof": {
+            "count": 4,
+            "successful": 4,
+            "refused": 0,
+            "summed_ms": 1961,
+            "max_ms": 512
+          },
+          "after_proof": {
+            "count": 0,
+            "successful": 0,
+            "refused": 0,
+            "summed_ms": 0,
+            "max_ms": 0
+          },
+          "socket": {
+            "count": 4,
+            "successful": 0,
+            "refused": 4,
+            "summed_ms": 12001,
+            "max_ms": 3001
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 1385,
+          "outcome": "resolver_failure"
+        },
+        "report_http_status": 204,
+        "report_ms": 24,
+        "start_delay_ms": 0,
+        "report_failure": "none",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:36:47.323033464Z"
+      },
+      {
+        "result": "none",
+        "status": "NOERROR",
+        "handle_ms": 2407,
+        "deadline_remaining_ms": 4901,
+        "delivery": "success",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 8,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 4549,
+            "max_ms": 703
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 4198,
+            "max_ms": 698
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 416,
+            "max_ms": 85
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 2494,
+          "outcome": "success"
+        },
+        "report_http_status": 204,
+        "report_ms": 32,
+        "start_delay_ms": 0,
+        "report_failure": "none",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:37:02.321602509Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4953,
+        "deadline_remaining_ms": 4888,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 16,
+          "completed_exchanges": 13,
+          "before_proof": {
+            "count": 16,
+            "successful": 16,
+            "refused": 0,
+            "summed_ms": 10339,
+            "max_ms": 1239
+          },
+          "after_proof": {
+            "count": 16,
+            "successful": 13,
+            "refused": 3,
+            "summed_ms": 8437,
+            "max_ms": 813
+          },
+          "socket": {
+            "count": 16,
+            "successful": 16,
+            "refused": 0,
+            "summed_ms": 791,
+            "max_ms": 96
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -65,
+          "outcome": "deadline"
+        },
+        "report_http_status": 400,
+        "report_ms": 66,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:37:32.335304601Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4450,
+        "deadline_remaining_ms": 4427,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 4,
+          "before_proof": {
+            "count": 8,
+            "successful": 4,
+            "refused": 4,
+            "summed_ms": 8756,
+            "max_ms": 1756
+          },
+          "after_proof": {
+            "count": 4,
+            "successful": 4,
+            "refused": 0,
+            "summed_ms": 8562,
+            "max_ms": 2424
+          },
+          "socket": {
+            "count": 4,
+            "successful": 4,
+            "refused": 0,
+            "summed_ms": 451,
+            "max_ms": 223
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -23,
+          "outcome": "deadline"
+        },
+        "report_http_status": 400,
+        "report_ms": 39,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:37:37.808787488Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4859,
+        "deadline_remaining_ms": 4829,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 4,
+          "before_proof": {
+            "count": 8,
+            "successful": 7,
+            "refused": 1,
+            "summed_ms": 10230,
+            "max_ms": 1575
+          },
+          "after_proof": {
+            "count": 6,
+            "successful": 4,
+            "refused": 2,
+            "summed_ms": 8593,
+            "max_ms": 2248
+          },
+          "socket": {
+            "count": 7,
+            "successful": 6,
+            "refused": 1,
+            "summed_ms": 537,
+            "max_ms": 111
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -26,
+          "outcome": "deadline"
+        },
+        "report_http_status": 500,
+        "report_ms": 37,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:37:37.406383197Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 3304,
+        "deadline_remaining_ms": 3265,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 4,
+          "completed_exchanges": 0,
+          "before_proof": {
+            "count": 4,
+            "successful": 2,
+            "refused": 2,
+            "summed_ms": 4389,
+            "max_ms": 2160
+          },
+          "after_proof": {
+            "count": 2,
+            "successful": 0,
+            "refused": 2,
+            "summed_ms": 2630,
+            "max_ms": 1714
+          },
+          "socket": {
+            "count": 2,
+            "successful": 2,
+            "refused": 0,
+            "summed_ms": 244,
+            "max_ms": 193
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -43,
+          "outcome": "deadline"
+        },
+        "report_http_status": 500,
+        "report_ms": 29,
+        "start_delay_ms": 3,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:37:38.970901314Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4863,
+        "deadline_remaining_ms": 4822,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 16,
+          "completed_exchanges": 12,
+          "before_proof": {
+            "count": 16,
+            "successful": 14,
+            "refused": 2,
+            "summed_ms": 10366,
+            "max_ms": 979
+          },
+          "after_proof": {
+            "count": 14,
+            "successful": 12,
+            "refused": 2,
+            "summed_ms": 8258,
+            "max_ms": 872
+          },
+          "socket": {
+            "count": 14,
+            "successful": 14,
+            "refused": 0,
+            "summed_ms": 748,
+            "max_ms": 95
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -41,
+          "outcome": "deadline"
+        },
+        "report_http_status": 500,
+        "report_ms": 14,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:38:17.404319326Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 3514,
+        "deadline_remaining_ms": 4596,
+        "delivery": "success",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 4,
+          "before_proof": {
+            "count": 8,
+            "successful": 4,
+            "refused": 4,
+            "summed_ms": 8640,
+            "max_ms": 1263
+          },
+          "after_proof": {
+            "count": 4,
+            "successful": 4,
+            "refused": 0,
+            "summed_ms": 4796,
+            "max_ms": 1304
+          },
+          "socket": {
+            "count": 4,
+            "successful": 4,
+            "refused": 0,
+            "summed_ms": 311,
+            "max_ms": 146
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 1081,
+          "outcome": "resolver_failure"
+        },
+        "report_http_status": 204,
+        "report_ms": 36,
+        "start_delay_ms": 0,
+        "report_failure": "none",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:38:22.647842761Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 3818,
+        "deadline_remaining_ms": 4855,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 4,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 7045,
+            "max_ms": 1191
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 4,
+            "refused": 4,
+            "summed_ms": 6795,
+            "max_ms": 1096
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 432,
+            "max_ms": 88
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 1037,
+          "outcome": "resolver_failure"
+        },
+        "report_http_status": 409,
+        "report_ms": 25,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:38:22.38872941Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4907,
+        "deadline_remaining_ms": 4904,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 16,
+          "completed_exchanges": 12,
+          "before_proof": {
+            "count": 16,
+            "successful": 16,
+            "refused": 0,
+            "summed_ms": 10776,
+            "max_ms": 1085
+          },
+          "after_proof": {
+            "count": 16,
+            "successful": 12,
+            "refused": 4,
+            "summed_ms": 8138,
+            "max_ms": 802
+          },
+          "socket": {
+            "count": 16,
+            "successful": 16,
+            "refused": 0,
+            "summed_ms": 681,
+            "max_ms": 69
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -2,
+          "outcome": "deadline"
+        },
+        "report_http_status": 500,
+        "report_ms": 3,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:39:02.318543751Z"
+      },
+      {
+        "result": "none",
+        "status": "NOERROR",
+        "handle_ms": 4439,
+        "deadline_remaining_ms": 4883,
+        "delivery": "success",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 8,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 7677,
+            "max_ms": 1474
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 8722,
+            "max_ms": 1595
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 475,
+            "max_ms": 107
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 443,
+          "outcome": "success"
+        },
+        "report_http_status": 204,
+        "report_ms": 57,
+        "start_delay_ms": 0,
+        "report_failure": "none",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:39:07.35260928Z"
+      },
+      {
+        "result": "none",
+        "status": "NOERROR",
+        "handle_ms": 4547,
+        "deadline_remaining_ms": 4589,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 8,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 8939,
+            "max_ms": 1208
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 8301,
+            "max_ms": 1249
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 554,
+            "max_ms": 118
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 41,
+          "outcome": "success"
+        },
+        "report_http_status": 409,
+        "report_ms": 27,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:39:07.645765106Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4884,
+        "deadline_remaining_ms": 4868,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 16,
+          "completed_exchanges": 12,
+          "before_proof": {
+            "count": 16,
+            "successful": 14,
+            "refused": 2,
+            "summed_ms": 9525,
+            "max_ms": 970
+          },
+          "after_proof": {
+            "count": 14,
+            "successful": 12,
+            "refused": 2,
+            "summed_ms": 9263,
+            "max_ms": 1294
+          },
+          "socket": {
+            "count": 14,
+            "successful": 14,
+            "refused": 0,
+            "summed_ms": 693,
+            "max_ms": 103
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -16,
+          "outcome": "deadline"
+        },
+        "report_http_status": 400,
+        "report_ms": 22,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:39:47.353146424Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4853,
+        "deadline_remaining_ms": 4833,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 16,
+          "completed_exchanges": 12,
+          "before_proof": {
+            "count": 16,
+            "successful": 15,
+            "refused": 1,
+            "summed_ms": 11617,
+            "max_ms": 1226
+          },
+          "after_proof": {
+            "count": 14,
+            "successful": 12,
+            "refused": 2,
+            "summed_ms": 7074,
+            "max_ms": 675
+          },
+          "socket": {
+            "count": 15,
+            "successful": 14,
+            "refused": 1,
+            "summed_ms": 675,
+            "max_ms": 74
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -20,
+          "outcome": "deadline"
+        },
+        "report_http_status": 400,
+        "report_ms": 30,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:40:17.408677755Z"
+      },
+      {
+        "result": "none",
+        "status": "NOERROR",
+        "handle_ms": 2840,
+        "deadline_remaining_ms": 4902,
+        "delivery": "success",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 8,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 5696,
+            "max_ms": 957
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 5066,
+            "max_ms": 715
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 350,
+            "max_ms": 81
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 2062,
+          "outcome": "success"
+        },
+        "report_http_status": 204,
+        "report_ms": 49,
+        "start_delay_ms": 0,
+        "report_failure": "none",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:40:32.318604037Z"
+      },
+      {
+        "result": "resolver_unavailable",
+        "status": "SERVFAIL",
+        "handle_ms": 4919,
+        "deadline_remaining_ms": 4875,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 16,
+          "completed_exchanges": 12,
+          "before_proof": {
+            "count": 16,
+            "successful": 16,
+            "refused": 0,
+            "summed_ms": 10615,
+            "max_ms": 1154
+          },
+          "after_proof": {
+            "count": 16,
+            "successful": 12,
+            "refused": 4,
+            "summed_ms": 8173,
+            "max_ms": 688
+          },
+          "socket": {
+            "count": 16,
+            "successful": 16,
+            "refused": 0,
+            "summed_ms": 740,
+            "max_ms": 109
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -43,
+          "outcome": "deadline"
+        },
+        "report_http_status": 500,
+        "report_ms": 42,
+        "start_delay_ms": 0,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:41:02.346341597Z"
+      },
+      {
+        "result": "none",
+        "status": "NOERROR",
+        "handle_ms": 4447,
+        "deadline_remaining_ms": 4778,
+        "delivery": "success",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 8,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 7517,
+            "max_ms": 1273
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 9083,
+            "max_ms": 1310
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 498,
+            "max_ms": 102
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 331,
+          "outcome": "success"
+        },
+        "report_http_status": 204,
+        "report_ms": 43,
+        "start_delay_ms": 0,
+        "report_failure": "none",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:41:07.465267802Z"
+      },
+      {
+        "result": "none",
+        "status": "NOERROR",
+        "handle_ms": 4372,
+        "deadline_remaining_ms": 4408,
+        "delivery": "failure",
+        "lookup": {
+          "stats_saturated": false,
+          "endpoint_workers_drained": true,
+          "transport_timing_observed": true,
+          "returned_exchanges": 8,
+          "completed_exchanges": 8,
+          "before_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 8802,
+            "max_ms": 1324
+          },
+          "after_proof": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 7679,
+            "max_ms": 1229
+          },
+          "socket": {
+            "count": 8,
+            "successful": 8,
+            "refused": 0,
+            "summed_ms": 585,
+            "max_ms": 109
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 35,
+          "outcome": "success"
+        },
+        "report_http_status": 409,
+        "report_ms": 37,
+        "start_delay_ms": 1,
+        "report_failure": "http_status",
+        "context_state": "active",
+        "dispatch_utc": "2026-10-10T22:41:07.835075345Z"
+      }
+    ],
+    "rejected_line_count": 1,
+    "observed_at": "2026-10-10T22:41:37.967276+00:00",
+    "identity_verified": true,
+    "private_raw_log_sha256": "f793c06c99af3fd9c7549be229bc34a454c0fdc630a95c5de52d9d4ec998df73",
+    "scope": "Read-only fixed scalar diagnostics; summed phase times are not lookup wall time. Saturated stats are incomplete; original authority and deadlines unchanged."
+  },
+  "scheduler52_snapshot_measurements": {
+    "samples": [
+      {
+        "sample": 0,
+        "observed_at": "2026-10-10T22:31:11.906184+00:00",
+        "status": "pass",
+        "fixed_stage": "none",
+        "helper_inflight_unknown": false
+      },
+      {
+        "sample": 1,
+        "observed_at": "2026-10-10T22:31:15.448508+00:00",
+        "status": "pass",
+        "fixed_stage": "none",
+        "helper_inflight_unknown": false
+      },
+      {
+        "sample": 2,
+        "observed_at": "2026-10-10T22:31:18.175616+00:00",
+        "status": "pass",
+        "fixed_stage": "none",
+        "helper_inflight_unknown": false
+      },
+      {
+        "sample": 3,
+        "observed_at": "2026-10-10T22:31:21.408591+00:00",
+        "status": "pass",
+        "fixed_stage": "none",
+        "helper_inflight_unknown": false
+      },
+      {
+        "sample": 4,
+        "observed_at": "2026-10-10T22:31:24.115866+00:00",
+        "status": "pass",
+        "fixed_stage": "none",
+        "helper_inflight_unknown": false
+      },
+      {
+        "sample": 5,
+        "observed_at": "2026-10-10T22:31:27.228555+00:00",
+        "status": "pass",
+        "fixed_stage": "none",
+        "helper_inflight_unknown": false
+      }
+    ],
+    "requested_samples": 6,
+    "completed_samples": 6,
+    "elapsed_seconds": 17.103,
+    "wall_overrun": false,
+    "launch_ceiling_seconds": 60,
+    "helper_termination_claim": false,
+    "helper_inflight_unknown": false,
+    "partial_measurement": false,
+    "acceptance_claim": false,
+    "timers_changed": false,
+    "watchdog_armed": false
+  },
+  "scheduler54_stage": [
+    {
+      "staged": true,
+      "uuid": "04fbce5f-64fd-4b0c-96fc-09fb52a72522",
+      "default_helper_preserved": true,
+      "timers_changed": false
+    }
+  ],
+  "scheduler54_preflight": {
+    "read_only_preflight_passed": true,
+    "desired_revision": 54,
+    "timers_changed": false
+  },
+  "scheduler54_execution": {
+    "started": false,
+    "reason": "Automatic approval review rejected temporary live rekey timer changes due to missing explicit trusted authorization. Human approval requested; no alternate execution."
+  },
+  "maximum_prefix_preparation": {
+    "source_v2_staged": true,
+    "original_configuration_saved_privately": true,
+    "grants_changed": false,
+    "connection_intent_changed": false,
+    "cloud_prefix_changed": false,
+    "native_observer_v3_pending_separate_source_review": true
+  },
+  "limits": [
+    "Packets and baseline apply to active-active BGP only.",
+    "119 DNS reads were mixed; sampled DNS stability failed.",
+    "Summed concurrent proof times are not wall time; stats not saturated in these projected rows.",
+    "HTTP statuses alone do not identify causes; exact API error logs independently classify 13 publication failures as SQLSTATE40001, without per-RPC correlation.",
+    "One rejected log line is not classified; generic collector rejection count cannot prove all recognized-row coverage.",
+    "All six later read-only snapshots passed; earlier strict snapshot refusal cause remains unresolved.",
+    "No automatic IKE/CHILD renewal or production-duration soak acceptance.",
+    "No maximum-prefix advertisement, FQDN application grant or remaining profile readiness claim."
+  ],
+  "api_publication_errors": {
+    "observed_at": "2026-10-10T22:49:06.095988+00:00",
+    "api_identity_verified": true,
+    "since": "2026-10-10T22:36:50Z",
+    "error_counts": {
+      "pg_serialization_40001": 13
+    },
+    "rows": [
+      {
+        "time": "2026-10-10T22:37:42.302808735Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:37:42.306760233Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:38:22.282698755Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:39:07.228461422Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:41:07.306608632Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:42:37.280064517Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:42:42.294362762Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:44:52.271405305Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:45:42.274306427Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:46:22.27074769Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:47:52.226065497Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:48:42.277646304Z",
+        "category": "pg_serialization_40001"
+      },
+      {
+        "time": "2026-10-10T22:48:42.282057333Z",
+        "category": "pg_serialization_40001"
+      }
+    ],
+    "selected_error_row_count": 13,
+    "json_line_count": 637,
+    "unparsed_nonblank_line_count": 0,
+    "all_internal_error_row_count": 13,
+    "private_raw_log_sha256": "2a36bb40439aaf412c5b821c6201804ed1e6d9ad568571260508781897ff496b",
+    "limits": [
+      "Exact finite classifications from existing API error log only.",
+      "No request identifiers, names, answers or error text exported.",
+      "No report-to-row correlation or cause of lookup deadline inferred."
+    ],
+    "endpoint": "/agent/dns-resolution",
+    "api_binary_sha256": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+    "earlier_collector_limit": "First collector used /api/v1/agent/dns-resolution; its zero selected rows are not absence proof. Original receipt preserved."
+  }
+}

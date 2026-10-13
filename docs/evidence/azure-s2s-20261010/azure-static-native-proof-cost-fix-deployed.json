@@ -1,0 +1,33 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "actual_enable_receipt_sha256": "fd7bc313abe60b3bb800d58d3c0dd58ea902ff03324bef1a06354ef3c33b594d",
+  "actual_update_result_sha256": "38f489a8b5bdf0c2151fd09c64555064ae0fb5fc1f4afbb987fe667039bbb704",
+  "category": "static_native_proof_cost_fix_deployed_and_reenabled",
+  "configuration_revision": 1,
+  "desired_revision": 6,
+  "evidence_limits": "Deployment plus independent full new-process absence and genuine normal intent CAS; enabled traffic/DNS readiness remains independently measured.",
+  "fresh_enabled_native_and_dns_window": "running; no result inferred",
+  "full_native_new_process_absence_receipt_sha256": "44b3012cccaa4a3cfadca396406c67e2b2b289a712f91a5e98b90a9982a3f0f4",
+  "image_and_immutable_namespace_unchanged": true,
+  "node_pid": 269635,
+  "node_sha256": "983f9bc5e2fb621e676e0cce74f97fd8ba4a46391af8cf927a6ce7b978326515",
+  "node_started_at": "2026-10-12T01:31:26.183486447Z",
+  "policy_count_retained": 8,
+  "preserved_refusals": [
+    "V4 preparation exclusive backup filename collision before native",
+    "V5 preparation before_bracket publication change before native",
+    "initial execute input freshness expiry before operation marker"
+  ],
+  "production_go_files": 233,
+  "production_source_closure_sha256": "5b6a80461c3b73c4795fedd01a9b6bc89eafd716d56939d7030846c43a09f8ee",
+  "recorded_at": "2026-10-12T01:39:26.097314+00:00",
+  "whole_story_accepted": false
+}

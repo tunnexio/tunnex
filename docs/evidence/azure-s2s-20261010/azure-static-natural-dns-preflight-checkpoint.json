@@ -1,0 +1,45 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "last_completed_sustained_dns": {
+    "failed_reads": 61,
+    "new_generations": 0,
+    "passed": false,
+    "successful_ready_reads": 0
+  },
+  "latest_v7_attempt": {
+    "capture_returncode": 0,
+    "category": "profile_observer_refused",
+    "changed_predicate_identified": false,
+    "dns_capture_started": false,
+    "native_measurement_started": false,
+    "native_returncode": 1,
+    "native_run_id": "azure-profile-observe-e7b456dd-e714-4635-94ac-1e09ae4db30a",
+    "outer_run_id": "azure-static-fresh-eight-window-206412b0-49f1-4bc7-bc23-f5a559ef8cec",
+    "safe_actual_projection": "/private/tmp/azure-static-latest-refusal-projection-63978324-2909-465a-9dfc-702d4132761a/result.json",
+    "stage": "before_bracket"
+  },
+  "lb_selector_correction": {
+    "actual_get_projection": "/private/tmp/azure-static-public-resource-projection-556f031f-0a06-4e3b-a2ce-5323a64a3b5c/result.json",
+    "actual_resource_id": "01a125fe-521b-75ae-b4d1-fbda9a4e279c",
+    "independent_review": "/private/tmp/azure-natural-static-v7-selector-independent-review-20261012.json",
+    "independent_tests_passed": 13,
+    "owned_resource_predicates_passed": 7,
+    "production_changed": false
+  },
+  "prior_v6_natural_attempt": {
+    "actual_result": "/private/tmp/azure-fresh-eight-window-root-6cd7c47b-74d9-426b-9c69-b34223aca275/result.json",
+    "dns_capture_started": false,
+    "native_and_capability_passed": true,
+    "window_refusal": "owned_public_resource"
+  },
+  "recorded_at": "2026-10-12T00:16:02.643864Z",
+  "whole_story_accepted": false
+}

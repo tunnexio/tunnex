@@ -23,13 +23,16 @@ const (
 )
 
 // GuardGrant is explicit shared-policy authority. Configuration and SA selectors
-// never create a grant. FQDN-managed provenance is not supported by this renderer.
+// never create a grant. FQDN-managed grants require authenticated current provenance.
 type GuardGrant struct {
 	Source, Destination netip.Prefix
 	Protocol            GuardProtocol
 	PortLow, PortHigh   uint16
 	HostOrigin          bool
 	FQDNManaged         bool
+	FQDNPermitFor       time.Duration      `json:",omitempty"`
+	FQDN                FQDNGrantBinding   `json:",omitzero"`
+	DNSResolver         DNSResolverBinding `json:",omitzero"`
 }
 
 // GuardEncryptedEgress is observed installed-SA and underlay identity, not
@@ -40,7 +43,21 @@ type GuardEncryptedEgress struct {
 	Peer                   netip.Addr
 	UnderlayInterfaceIndex int
 }
+type GuardBGPPeer struct {
+	TransportProfile string `json:",omitempty"`
+	Local, Remote    netip.Addr
+	InterfaceIndex   int
+}
+
+// GuardTunnelMTU is fresh runtime readback, never configuration or grant authority.
+type GuardTunnelMTU struct {
+	InterfaceIndex int
+	MTU            uint16
+}
 type GuardConnection struct {
+	TunnelCount uint8            `json:",omitempty"`
+	TunnelMTUs  []GuardTunnelMTU `json:",omitempty"`
+	BGPPeers    []GuardBGPPeer   `json:",omitempty"`
 	// PrefixOnly installs permanent refusal before any live interface ownership
 	// is known (startup/retained cleanup). It cannot carry permits or grants.
 	PrefixOnly      bool
@@ -60,10 +77,12 @@ type GuardConnection struct {
 	Grants              []GuardGrant
 }
 type GuardIntent struct {
-	Namespace   string
-	OwnerID     uuid.UUID
-	Revision    int64
-	Connections []GuardConnection
+	Namespace        string
+	OwnerID          uuid.UUID
+	Revision         int64
+	Connections      []GuardConnection
+	RetainedLeaseIDs []uuid.UUID    `json:",omitempty"`
+	RefusalPrefixes  []netip.Prefix `json:",omitempty"`
 }
 
 // GuardManifest is rendered intent, NOT an applied/readback receipt.
@@ -99,42 +118,78 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 	// both original and current tuples before ANY connection can permit it.
 	// A second refusal-only hook observes conventional SNAT after priority 90.
 	// Qualification must still reject later modifying hooks; this is not a hook census.
+	protected := append([]netip.Prefix(nil), canonical.RefusalPrefixes...)
 	for _, c := range canonical.Connections {
-		for _, prefix := range c.Remote {
-			for _, original := range []bool{true, false} {
-				for _, field := range []string{"saddr", "daddr"} {
-					for _, status := range []string{"dnat", "snat"} {
-						rule := guardNATDrop(prefix, field, status, original)
-						forward.add(rule)
-						input.add(rule)
-						output.add(rule)
-						post.add(rule)
-						postnat.add(rule)
-					}
+		protected = append(protected, c.Remote...)
+	}
+	for _, prefix := range protected {
+		for _, original := range []bool{true, false} {
+			for _, field := range []string{"saddr", "daddr"} {
+				for _, status := range []string{"dnat", "snat"} {
+					rule := guardNATDrop(prefix, field, status, original)
+					forward.add(rule)
+					input.add(rule)
+					output.add(rule)
+					post.add(rule)
+					postnat.add(rule)
 				}
 			}
 		}
 	}
-	for _, c := range canonical.Connections {
+	for _, c := range guardLeaseConnections(canonical) {
 		setText.WriteString(guardLeaseSetText(c))
-		// nft flush-table retains sets. Keep an empty declaration during refusal
-		// so withdrawals flush previous reply authority and readback stays exact.
 		setText.WriteString(guardReplyLeaseSetText(c))
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { type iface_index; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardReplyLeaseName(c.ID), guardReplyLeaseName(c.ID))
 		setText.WriteString(guardSALeaseText(c))
+		for _, g := range c.Grants {
+			if g.FQDN.Version == 2 {
+				setText.WriteString(guardFQDNSetText(g))
+			}
+		}
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { typeof ipsec out reqid; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardSALeaseName(c.ID), guardSALeaseName(c.ID))
 		fmt.Fprintf(&setPreamble, "add set inet tunnex_ipsec %s { type iface_index; flags timeout; timeout 60s; }\nflush set inet tunnex_ipsec %s\n", guardLeaseName(c.ID), guardLeaseName(c.ID))
+	}
+	for _, c := range canonical.Connections {
 		// Reject spoofed remote identities before considering any grant.
 		for _, p := range c.Remote {
 			if c.PrefixOnly {
 				continue
 			}
-			indices := []int{c.Tunnels[0].InterfaceIndex, c.Tunnels[1].InterfaceIndex}
-			line := guardRule{text: fmt.Sprintf("    ip saddr %s meta iif != %s counter drop\n", p, indexSet(indices)), expr: []any{guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(p)), guardMatch("!=", guardMeta("iif"), map[string]any{"set": indices}), guardCounter(), guardVerdict("drop")}}
+			indices := []int{c.Tunnels[0].InterfaceIndex}
+			if c.activeTunnelCount() == 2 {
+				indices = append(indices, c.Tunnels[1].InterfaceIndex)
+			}
+			// nft canonicalizes a one-member anonymous interface set to a
+			// scalar. Render its exact native form; keep strict readback.
+			var right any = map[string]any{"set": indices}
+			text := indexSet(indices)
+			if len(indices) == 1 {
+				right = indices[0]
+				text = fmt.Sprint(indices[0])
+			}
+			line := guardRule{text: fmt.Sprintf("    ip saddr %s meta iif != %s counter drop\n", p, text), expr: []any{guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(p)), guardMatch("!=", guardMeta("iif"), right), guardCounter(), guardVerdict("drop")}}
 			forward.add(line)
 			input.add(line)
 		}
+		for _, peer := range c.BGPPeers {
+			if !c.PrefixOnly && c.PermitFor > 0 && peer.InterfaceIndex > 0 {
+				outbound := GuardGrant{Source: netip.PrefixFrom(peer.Local, 32), Destination: netip.PrefixFrom(peer.Remote, 32), Protocol: GuardTCP, PortLow: 179, PortHigh: 179, HostOrigin: true}
+				inbound := outbound
+				inbound.Source, inbound.Destination = inbound.Destination, inbound.Source
+				output.add(guardAllow(outbound, 0, peer.InterfaceIndex, false, guardLeaseName(c.ID), "oif"))
+				input.add(guardAllow(outbound, peer.InterfaceIndex, 0, true, guardLeaseName(c.ID), "iif"))
+				input.add(guardAllow(inbound, peer.InterfaceIndex, 0, false, guardLeaseName(c.ID), "iif"))
+				output.add(guardAllow(inbound, 0, peer.InterfaceIndex, true, guardLeaseName(c.ID), "oif"))
+			}
+			// Exact BGP peers never fall through to WAN or application grants.
+			input.add(guardPrefixDrop("saddr", netip.PrefixFrom(peer.Remote, 32)))
+			output.add(guardPrefixDrop("daddr", netip.PrefixFrom(peer.Remote, 32)))
+		}
+		if c.PermitFor > 0 {
+			forward.mss, output.mss, input.mss = c.TunnelMTUs, c.TunnelMTUs, c.TunnelMTUs
+		}
 		for _, g := range c.Grants {
+			addRemoteFragmentNeeded(c, g, &forward, &input)
 			outbound := withinPrefixes(g.Source, c.Local)
 			if outbound && len(c.PermittedInterfaceIndices) > 0 {
 				for _, tunnel := range c.ReplyIngressIndices {
@@ -187,6 +242,7 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 				}
 			}
 		}
+		forward.mss, output.mss, input.mss = nil, nil, nil
 		// These unconditional fallbacks cover both new and established traffic.
 		for _, p := range c.Remote {
 			dropDst := guardPrefixDrop("daddr", p)
@@ -204,7 +260,7 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 			}
 			post.add(dropDst)
 		}
-		for _, tunnel := range c.Tunnels {
+		for _, tunnel := range c.Tunnels[:c.activeTunnelCount()] {
 			if c.PrefixOnly {
 				continue
 			}
@@ -216,6 +272,15 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 		if forward.Len()+output.Len()+input.Len()+post.Len()+postnat.Len() > 1<<20 {
 			return GuardManifest{}, ErrGuardIntent
 		}
+	}
+	for _, p := range canonical.RefusalPrefixes {
+		dst, src := guardPrefixDrop("daddr", p), guardPrefixDrop("saddr", p)
+		forward.add(dst)
+		forward.add(src)
+		output.add(dst)
+		output.add(src)
+		input.add(src)
+		post.add(dst)
 	}
 	nft := fmt.Sprintf("add table inet tunnex_ipsec\nflush table inet tunnex_ipsec\nadd chain inet tunnex_ipsec owner\ndelete chain inet tunnex_ipsec owner\n%stable inet tunnex_ipsec {\n%s  chain owner {\n    comment \"tunnex-ipsec:%s:%d:%s\"\n  }\n  chain forward_guard {\n    type filter hook forward priority -10; policy accept;\n%s  }\n  chain output_guard {\n    type filter hook output priority -10; policy accept;\n%s  }\n  chain input_guard {\n    type filter hook input priority -10; policy accept;\n%s  }\n  chain postrouting_guard {\n    type filter hook postrouting priority 90; policy accept;\n%s  }\n  chain postnat_guard {\n    type filter hook postrouting priority 300; policy accept;\n%s  }\n}\n", setPreamble.String(), setText.String(), canonical.OwnerID, canonical.Revision, digest, forward.String(), output.String(), input.String(), post.String(), postnat.String())
 	if len(nft) > 1<<20 {
@@ -269,9 +334,33 @@ func guardAllow(g GuardGrant, ingress, egress int, reply bool, leaseName, leaseK
 		b.WriteString("ct direction original ")
 		expr = append(expr, guardMatch("==", guardCT("direction"), "original"))
 	}
-	fmt.Fprintf(&b, "meta %s @%s counter accept\n", leaseKey, leaseName)
+	fmt.Fprintf(&b, "meta %s @%s ", leaseKey, leaseName)
 	expr = append(expr, guardMatch("==", guardMeta(leaseKey), "@"+leaseName))
-	return guardRule{text: b.String(), expr: append(expr, guardCounter(), guardVerdict("accept"))}
+	if g.FQDNManaged {
+		if g.FQDN.Version == 2 {
+			field := "daddr"
+			if reply {
+				field = "saddr"
+			}
+			name := guardFQDNSetName(g)
+			fmt.Fprintf(&b, "ip %s @%s ", field, name)
+			expr = append(expr, guardMatch("==", guardPayload("ip", field), "@"+name))
+		}
+		// Mark the exact original permitted tuple; reply admission remains gated
+		// by the original finite authority and requires its existing ownership.
+		if reply {
+			fmt.Fprintf(&b, "ct mark & 0x%08x == 0x%08x ", fqdnConntrackMarkMask, fqdnConntrackMark)
+			expr = append(expr, guardMatch("==", map[string]any{"&": []any{guardCT("mark"), fqdnConntrackMarkMask}}, fqdnConntrackMark))
+		} else {
+			// Including forced OR bits in the AND mask is equivalent and matches
+			// the native nft canonical expression without readback aliases.
+			clearMask := ^fqdnConntrackMarkMask | fqdnConntrackMark
+			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", clearMask, fqdnConntrackMark)
+			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), clearMask}}, fqdnConntrackMark}}}})
+		}
+	}
+	b.WriteString("counter accept\n")
+	return guardRule{text: b.String(), expr: append(expr, guardCounter(), guardVerdict("accept")), tcp: g.Protocol == GuardTCP || g.Protocol == GuardAny, ingress: ingress, egress: egress}
 }
 func indexSet(indices []int) string {
 	sort.Ints(indices)
@@ -290,6 +379,25 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 	}
 	out := in
 	out.Connections = append([]GuardConnection(nil), in.Connections...)
+	if len(in.RefusalPrefixes) > 0 {
+		var ok bool
+		out.RefusalPrefixes, ok = guardPrefixes(in.RefusalPrefixes)
+		if !ok {
+			return GuardIntent{}, false
+		}
+	}
+	out.RetainedLeaseIDs = append([]uuid.UUID(nil), in.RetainedLeaseIDs...)
+	if len(out.RetainedLeaseIDs) > 256 {
+		return GuardIntent{}, false
+	}
+	retired := map[uuid.UUID]bool{}
+	for _, id := range out.RetainedLeaseIDs {
+		if id == uuid.Nil || retired[id] {
+			return GuardIntent{}, false
+		}
+		retired[id] = true
+	}
+	sort.Slice(out.RetainedLeaseIDs, func(i, j int) bool { return out.RetainedLeaseIDs[i].String() < out.RetainedLeaseIDs[j].String() })
 	connIDs := map[uuid.UUID]bool{}
 	indices := map[int]bool{}
 	names := map[string]bool{}
@@ -297,7 +405,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 	reqids := map[uint32]bool{}
 	var allRemote, allLocal []netip.Prefix
 	for i, c := range out.Connections {
-		if c.ID == uuid.Nil || connIDs[c.ID] || len(c.Grants) > 128 || c.PermitFor < 0 || c.PermitFor > 60*time.Second {
+		if (c.TunnelCount != 0 && c.TunnelCount != 1) || (c.TunnelCount == 1 && c.Tunnels[1] != (Ownership{})) || c.ID == uuid.Nil || connIDs[c.ID] || retired[c.ID] || len(c.Grants) > 128 || c.PermitFor < 0 || c.PermitFor > 60*time.Second {
 			return GuardIntent{}, false
 		}
 		connIDs[c.ID] = true
@@ -313,10 +421,26 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		allLocal = append(allLocal, c.Local...)
 		allRemote = append(allRemote, c.Remote...)
 		own := map[int]bool{}
-		if c.PrefixOnly && (c.Tunnels != [2]Ownership{} || c.PermitFor != 0 || len(c.PermittedInterfaceIndices) != 0 || len(c.ReplyIngressIndices) != 0 || len(c.EncryptedEgress) != 0 || len(c.LocalIngressIndices) != 0 || len(c.Grants) != 0) {
+		c.TunnelMTUs = append([]GuardTunnelMTU(nil), c.TunnelMTUs...)
+		if len(c.TunnelMTUs) > 2 {
 			return GuardIntent{}, false
 		}
-		for _, t := range c.Tunnels {
+		seenMTU := map[int]bool{}
+		for _, m := range c.TunnelMTUs {
+			owned := false
+			for _, t := range c.Tunnels[:c.activeTunnelCount()] {
+				owned = owned || t.InterfaceIndex == m.InterfaceIndex
+			}
+			if !owned || m.InterfaceIndex <= 0 || seenMTU[m.InterfaceIndex] || m.MTU < 68 || m.MTU > AWSIPv4TunnelMTU {
+				return GuardIntent{}, false
+			}
+			seenMTU[m.InterfaceIndex] = true
+		}
+		sort.Slice(c.TunnelMTUs, func(i, j int) bool { return c.TunnelMTUs[i].InterfaceIndex < c.TunnelMTUs[j].InterfaceIndex })
+		if c.PrefixOnly && (len(c.TunnelMTUs) != 0 || c.Tunnels != [2]Ownership{} || c.PermitFor != 0 || len(c.PermittedInterfaceIndices) != 0 || len(c.ReplyIngressIndices) != 0 || len(c.EncryptedEgress) != 0 || len(c.LocalIngressIndices) != 0 || len(c.Grants) != 0) {
+			return GuardIntent{}, false
+		}
+		for _, t := range c.Tunnels[:c.activeTunnelCount()] {
 			if c.PrefixOnly {
 				continue
 			}
@@ -328,7 +452,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 			xfrms[t.XFRMID] = true
 			own[t.InterfaceIndex] = true
 		}
-		if c.Tunnels[0].InterfaceIndex > c.Tunnels[1].InterfaceIndex {
+		if c.activeTunnelCount() == 2 && c.Tunnels[0].InterfaceIndex > c.Tunnels[1].InterfaceIndex {
 			c.Tunnels[0], c.Tunnels[1] = c.Tunnels[1], c.Tunnels[0]
 		}
 		c.PermittedInterfaceIndices, ok = guardIndices(c.PermittedInterfaceIndices, 2)
@@ -349,6 +473,40 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 				return GuardIntent{}, false
 			}
 		}
+		if len(c.BGPPeers) > 2 {
+			return GuardIntent{}, false
+		}
+		c.BGPPeers = append([]GuardBGPPeer(nil), c.BGPPeers...)
+		seenPeer := map[netip.Addr]bool{}
+		for _, peer := range c.BGPPeers {
+			azure := peer.TransportProfile == "azure-apipa-v1"
+			if peer.TransportProfile != "" && !azure {
+				return GuardIntent{}, false
+			}
+			if !peer.Local.Is4() || !peer.Remote.Is4() || peer.Local == peer.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(peer.Local) || (!azure && !netip.PrefixFrom(peer.Local, 30).Contains(peer.Remote)) || (azure && !validAzurePeer(peer.Remote)) || seenPeer[peer.Remote] {
+				return GuardIntent{}, false
+			}
+			l, r := peer.Local.As4(), peer.Remote.As4()
+			if !azure && (l[3]&3 == 0 || l[3]&3 == 3 || r[3]&3 == 0 || r[3]&3 == 3) {
+				return GuardIntent{}, false
+			}
+			seenPeer[peer.Remote] = true
+			if c.PrefixOnly {
+				if peer.InterfaceIndex != 0 {
+					return GuardIntent{}, false
+				}
+			} else {
+				permitted := false
+				for _, idx := range c.PermittedInterfaceIndices {
+					permitted = permitted || idx == peer.InterfaceIndex
+				}
+				// Index zero is an exact peer denial, never a control permit.
+				if peer.InterfaceIndex != 0 && (!own[peer.InterfaceIndex] || (c.PermitFor > 0 && !permitted)) {
+					return GuardIntent{}, false
+				}
+			}
+		}
+		sort.Slice(c.BGPPeers, func(a, b int) bool { return c.BGPPeers[a].Remote.Less(c.BGPPeers[b].Remote) })
 		if len(c.EncryptedEgress) > 2 {
 			return GuardIntent{}, false
 		}
@@ -381,9 +539,15 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		c.Grants = append([]GuardGrant(nil), c.Grants...)
 		seen := map[GuardGrant]bool{}
 		for _, g := range c.Grants {
+			if (g.FQDN.Version == 2 && (g.FQDNPermitFor < time.Second || g.FQDNPermitFor > 60*time.Second || g.FQDNPermitFor > g.FQDN.ExpiresAt.Sub(time.Now()))) || (g.FQDN.Version != 2 && g.FQDNPermitFor != 0) {
+				return GuardIntent{}, false
+			}
 			outbound := withinPrefixes(g.Source, c.Local) && withinPrefixes(g.Destination, c.Remote)
 			inbound := withinPrefixes(g.Source, c.Remote) && withinPrefixes(g.Destination, c.Local)
-			if g.FQDNManaged || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
+			if g.DNSResolver != (DNSResolverBinding{}) && (!g.DNSResolver.valid() || g.DNSResolver.ConnectionID != c.ID || !g.HostOrigin || !outbound || g.Source.Bits() != 32 || g.Destination.Bits() != 32 || g.PortLow != 53 || g.PortHigh != 53 || g.Protocol != GuardUDP && g.Protocol != GuardTCP) {
+				return GuardIntent{}, false
+			}
+			if (g.FQDNManaged && (!g.FQDN.valid() || g.FQDN.SelectedGatewayID != in.OwnerID || g.FQDN.ConnectionID != c.ID || !outbound || g.HostOrigin || g.Destination.Bits() != 32 || g.DNSResolver != (DNSResolverBinding{}))) || (!g.FQDNManaged && g.FQDN != (FQDNGrantBinding{})) || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
 				return GuardIntent{}, false
 			}
 			switch g.Protocol {
@@ -401,6 +565,11 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 			seen[g] = true
 		}
 		sort.Slice(c.Grants, func(a, b int) bool {
+			// An independently granted ordinary tuple must retain its existing
+			// authority/conntrack provenance when an FQDN tuple overlaps it.
+			if c.Grants[a].FQDNManaged != c.Grants[b].FQDNManaged {
+				return !c.Grants[a].FQDNManaged
+			}
 			aa, _ := json.Marshal(c.Grants[a])
 			bb, _ := json.Marshal(c.Grants[b])
 			return string(aa) < string(bb)
@@ -420,6 +589,13 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		}
 		for _, index := range c.LocalIngressIndices {
 			if indices[index] {
+				return GuardIntent{}, false
+			}
+		}
+	}
+	for _, p := range out.RefusalPrefixes {
+		for _, q := range append(append([]netip.Prefix(nil), allRemote...), allLocal...) {
+			if p.Overlaps(q) {
 				return GuardIntent{}, false
 			}
 		}
@@ -486,17 +662,27 @@ func guardIndices(in []int, limit int) ([]int, bool) {
 // Rules retain their typed expression AST alongside text; no command text is parsed
 // back into authority, and expected readback is not inferred from a marker.
 type guardRule struct {
-	text string
-	expr []any
+	tcp             bool
+	ingress, egress int
+	text            string
+	expr            []any
 }
 type guardChain struct {
 	strings.Builder
 	rules []guardRule
+	mss   []GuardTunnelMTU
 }
 
-func (c *guardChain) add(r guardRule) { c.WriteString(r.text); c.rules = append(c.rules, r) }
-func guardMeta(key string) any        { return map[string]any{"meta": map[string]any{"key": key}} }
-func guardCT(key string) any          { return map[string]any{"ct": map[string]any{"key": key}} }
+func (c *guardChain) add(r guardRule) {
+	if clamp, ok := guardMSSRule(r, c.mss); ok {
+		c.WriteString(clamp.text)
+		c.rules = append(c.rules, clamp)
+	}
+	c.WriteString(r.text)
+	c.rules = append(c.rules, r)
+}
+func guardMeta(key string) any { return map[string]any{"meta": map[string]any{"key": key}} }
+func guardCT(key string) any   { return map[string]any{"ct": map[string]any{"key": key}} }
 func guardPayload(protocol, field string) any {
 	return map[string]any{"payload": map[string]any{"protocol": protocol, "field": field}}
 }
@@ -527,7 +713,21 @@ func guardDocuments(intent GuardIntent, digest string, chains []guardChain) (str
 		expected = append(expected, map[string]any{kind: value})
 		transaction = append(transaction, map[string]any{"add": map[string]any{kind: value}})
 	}
-	for _, connection := range intent.Connections {
+	for _, connection := range guardLeaseConnections(intent) {
+		for _, g := range connection.Grants {
+			if g.FQDN.Version == 2 {
+				desc := map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardFQDNSetName(g), "type": "ipv4_addr", "flags": []string{"timeout"}, "timeout": 60}
+				elements := []any{map[string]any{"elem": map[string]any{"val": g.Destination.Addr().String(), "timeout": int64(g.FQDNPermitFor / time.Second)}}}
+				readback := map[string]any{}
+				for k, v := range desc {
+					readback[k] = v
+				}
+				readback["elem"] = elements
+				expected = append(expected, map[string]any{"set": readback})
+				transaction = append(transaction, map[string]any{"add": map[string]any{"set": desc}}, map[string]any{"add": map[string]any{"element": map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardFQDNSetName(g), "elem": elements}}})
+			}
+		}
+
 		saDescriptor := map[string]any{"family": "inet", "table": "tunnex_ipsec", "name": guardSALeaseName(connection.ID), "type": map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": 0}}}, "flags": []string{"timeout"}, "timeout": 60}
 		saReadback := map[string]any{}
 		for key, value := range saDescriptor {
@@ -664,4 +864,11 @@ func guardReplyLeaseName(id uuid.UUID) string { return "reply_" + guardLeaseName
 func guardReplyLeaseSetText(c GuardConnection) string {
 	c.PermittedInterfaceIndices = c.ReplyIngressIndices
 	return strings.ReplaceAll(guardLeaseSetText(c), guardLeaseName(c.ID), guardReplyLeaseName(c.ID))
+}
+
+func (c GuardConnection) activeTunnelCount() int {
+	if c.TunnelCount == 1 {
+		return 1
+	}
+	return 2
 }

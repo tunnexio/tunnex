@@ -26,21 +26,26 @@ func (s apiServer) CreateIPsecProviderConnection(ctx context.Context, req api.Cr
 	if err != nil {
 		return nil, err
 	}
-	if req.Body == nil || len(req.Body.TunnelIds) != 2 {
+	if req.Body == nil || len(req.Body.TunnelIds) < 1 || len(req.Body.TunnelIds) > 2 {
 		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
 	}
 	cfg, err := privateIPsecConfiguration(req.Body.Configuration)
 	if err != nil {
 		return nil, err
 	}
-	if err = ipsec.ValidateAWSStaticConfig(cfg); err != nil {
+	if err = ipsec.ValidateProviderConfig(cfg); err != nil {
 		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
 	}
+	if len(req.Body.TunnelIds) != len(cfg.Tunnels) {
+		return nil, ipsecProviderError(ipsec.ErrConnectionInvalid)
+	}
+	var tunnelIDs [2]uuid.UUID
+	copy(tunnelIDs[:], req.Body.TunnelIds)
 	if s.ipsecProviders == nil || s.ipsecSealer == nil {
 		return nil, ipsecProviderError(ipsec.ErrConnectionUnavailable)
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	r, err := s.ipsecProviders.CreateProviderDisabled(ctx, req.OrgId, p.UserID, s.ipsecSealer, ipsec.CreateProviderRequest{ID: req.Body.Id, Name: req.Body.Name, SiteID: req.Body.SiteId, GatewayID: req.Body.GatewayNodeId, TunnelIDs: [2]uuid.UUID{req.Body.TunnelIds[0], req.Body.TunnelIds[1]}, Config: cfg})
+	r, err := s.ipsecProviders.CreateProviderDisabled(ctx, req.OrgId, p.UserID, s.ipsecSealer, ipsec.CreateProviderRequest{ID: req.Body.Id, Name: req.Body.Name, SiteID: req.Body.SiteId, GatewayID: req.Body.GatewayNodeId, TunnelIDs: tunnelIDs, Config: cfg})
 	if err != nil {
 		return nil, ipsecProviderError(err)
 	}
@@ -61,6 +66,12 @@ func (s apiServer) GetIPsecProviderConfiguration(ctx context.Context, req api.Ge
 	out := api.IPsecProviderConfiguration{ProfileId: r.ProfileID, ConfigurationRevision: r.ConfigurationRevision}
 	if c := r.Config; c != nil {
 		out.Configuration = &api.IPsecProviderNetworkConfiguration{Mode: c.Mode, CustomerOutsideAddress: c.CustomerOutsideAddress, LocalPrefixes: c.LocalPrefixes, RemotePrefixes: c.RemotePrefixes, Tunnels: make([]api.IPsecProviderNetworkTunnel, len(c.Tunnels))}
+		if a := c.Azure; a != nil {
+			out.Configuration.Azure = &api.IPsecAzureContract{GatewaySku: api.IPsecAzureContractGatewaySku(a.GatewaySKU), VpnType: api.IPsecAzureContractVpnType(a.VPNType), IkeVersion: api.IPsecAzureContractIkeVersion(a.IKEVersion), CustomPolicy: api.IPsecAzureContractCustomPolicy(a.CustomPolicy), UsePolicyBasedTrafficSelectors: api.IPsecAzureContractUsePolicyBasedTrafficSelectors(a.UsePolicyBasedTrafficSelectors), NatEnabled: api.IPsecAzureContractNatEnabled(a.NATEnabled)}
+		}
+		if b := c.BGP; b != nil {
+			out.Configuration.Bgp = &api.IPsecBGPConfiguration{LocalAsn: b.LocalASN, RemoteAsn: b.RemoteASN, RouterId: b.RouterID, MaximumPrefixes: b.MaximumPrefixes}
+		}
 		for i, t := range c.Tunnels {
 			out.Configuration.Tunnels[i] = api.IPsecProviderNetworkTunnel{OutsideAddress: t.OutsideAddress, InsideCidr: t.InsideCIDR, CustomerInsideAddress: t.CustomerInsideAddress, CloudInsideAddress: t.CloudInsideAddress}
 		}

@@ -1,0 +1,58 @@
+{
+  "human_story_count": {
+    "accepted": 6,
+    "accepted_numbers": [
+      1,
+      2,
+      3,
+      4,
+      7,
+      8
+    ],
+    "open_numbers": [
+      5,
+      6,
+      9,
+      10,
+      11
+    ],
+    "total": 11
+  },
+  "kind": "owned_azure_dns_measurement_deployment_and_native_cleanup_checkpoint",
+  "node_update": {
+    "actual_result_sha256": "2b42a331c12e0ffd04d02096c401f4596e8668fa0c0ab15c6d66df6fd1923f19",
+    "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "current_matches_actual_result": true,
+    "deployed": true,
+    "executable_sha256": "9f8d0a90658fe6676f5e5809c62bf72831cdc3cf7bead2cd63dc4207a12d5009",
+    "image_unchanged": true,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "once_marker_present": true,
+    "pid": 3809401,
+    "source_commit": "d54651120ae235fc73bd420e90689e9b2708f32c",
+    "started_at": "2026-10-11T21:22:34.618613948Z"
+  },
+  "scope": "Actual new-node deployment and full saved native absence; measurement does not fix or accept sustained DNS. Static traffic and remaining matrix are pending. Earlier refusals preserved.",
+  "static_cloud_first_step": {
+    "dispatch_completed": true,
+    "native_or_packet_acceptance": false,
+    "terminal_outcome_independent_read_pending": true
+  },
+  "strict_native_absence": {
+    "configuration_revision": 1,
+    "desired_revision": 3,
+    "entry_count": 30,
+    "guard_retained": true,
+    "historical_boot_entry_count": 1,
+    "observed_at": "2026-10-11T21:27:53.853761482Z",
+    "owned_children": 0,
+    "owned_ike": 0,
+    "owned_interfaces": 0,
+    "owned_routes": 0,
+    "owned_sad": 0,
+    "owned_spd": 0,
+    "receipt_sha256": "ad6cdf2e937857c2a316bd7ad2da23330340be3a99995ef5e94f726e9fb230bf"
+  },
+  "version": 1
+}

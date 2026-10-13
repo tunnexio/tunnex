@@ -1,0 +1,41 @@
+{
+  "id": null,
+  "name": "gcp-cloud-ha-1010",
+  "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+  "gateway_node_id": null,
+  "tunnel_ids": [
+    null,
+    null
+  ],
+  "configuration": {
+    "profile_id": "gcp-ha-bgp-ipv4-v1",
+    "mode": "ipv4-bgp",
+    "customer_outside_address": "34.131.136.132",
+    "local_prefixes": [
+      "10.70.0.0/24"
+    ],
+    "remote_prefixes": [
+      "10.80.0.0/24"
+    ],
+    "tunnels": [
+      {
+        "outside_address": "34.153.32.207",
+        "inside_cidr": "169.254.100.0/30",
+        "customer_inside_address": "169.254.100.2",
+        "cloud_inside_address": "169.254.100.1"
+      },
+      {
+        "outside_address": "34.153.224.218",
+        "inside_cidr": "169.254.100.4/30",
+        "customer_inside_address": "169.254.100.6",
+        "cloud_inside_address": "169.254.100.5"
+      }
+    ],
+    "bgp": {
+      "local_asn": 65010,
+      "remote_asn": 64514,
+      "router_id": "10.70.0.2",
+      "maximum_prefixes": 1
+    }
+  }
+}

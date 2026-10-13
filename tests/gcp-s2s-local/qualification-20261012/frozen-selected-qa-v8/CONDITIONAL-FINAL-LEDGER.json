@@ -1,0 +1,16 @@
+{
+  "status": "PENDING_ACTUAL_RECEIPTS",
+  "scoped_stories": "9/11",
+  "all_story_signoff": false,
+  "tcp_full_cycle_sha256": "e8cb3eb519b025b548d3699179dac4e1e56177148a575fed2fcc537476e4ce4a",
+  "udp_full_cycle_sha256": null,
+  "cname_inverse_sha256": null,
+  "gateway_qa_inverse_sha256": null,
+  "normal9_device0_final_sha256": null,
+  "native_final_sha256": null,
+  "requirements": "All five pending receipt fields require actual accepted, source-bound, cleanup-complete and foreign-preserving evidence before11/11; no inferred outcomes.",
+  "bounded_retry": "Actual node2tops5subs and PG2namedPASS; serving database untouched.",
+  "source": "5121dc3374656449dd53dab9abd248216d5d5581",
+  "api_source": "a2e7c5bffa6327a66c6cec839c0fd1e5a9d3c439",
+  "simultaneous_pair_asserted": false
+}

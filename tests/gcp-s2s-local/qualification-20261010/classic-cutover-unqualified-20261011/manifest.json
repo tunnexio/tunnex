@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "file": "059-post-lifecycle-cutover-capture.jsonl",
+      "sha256": "5ead2715f10bd1171fd0f6eb67c3344416f909ea5fa2ae2ab6f03cfc927c75d5",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/059-post-lifecycle-cutover-capture.jsonl"
+    },
+    {
+      "file": "060-post-lifecycle-cutover-diagnostic.jsonl",
+      "sha256": "108034e67c654650f017c0effba6d1cf657f0ee9502a664e5d8cb4a10e245749",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/060-post-lifecycle-cutover-diagnostic.jsonl"
+    },
+    {
+      "file": "061-post-lifecycle-unqualified-schema.jsonl",
+      "sha256": "da43c3f7c01159cb94e1f70424060e77913f565b3712eaa9767a6cc121cbfb1c",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/061-post-lifecycle-unqualified-schema.jsonl"
+    }
+  ],
+  "cutover_accepted": false
+}

@@ -1,0 +1,410 @@
+{
+  "observed_at": "2026-10-10T20:47:14.210757+00:00",
+  "source_commit": "5340052a5588d55e293f05e2af4ef6372658aa2d",
+  "source_node_tree": "896ed1a4994df878e11035cf26e6d51a82948593",
+  "binary_sha256": "2cef8ff4a8e34a809ced5266c940a3c51a79479495e29f368d3b4b19e7ef1781",
+  "image": "sha256:250b4166bd678d76f218a861382d1f66f61b257ad661ea7133bbc437fec5d6f7",
+  "container": "79d652a8e23878f9a6ce504d149dd9aa44ba63188e98dbbbdc655c761cb41fb2",
+  "container_started_at": "2026-10-10T20:28:30.245322264Z",
+  "normal_readback": {
+    "phase": "read",
+    "observed_at": "2026-10-10T20:47:13.763292+00:00",
+    "cas_request_sent": false,
+    "before_revision": 44,
+    "connection": {
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 44,
+      "desired_intent": "enabled",
+      "application_state": "applied",
+      "cleanup_state": "retained_guard"
+    },
+    "runtime": {
+      "observed_at": "2026-10-10T20:47:11.774064+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "slot": 1,
+          "status": "up",
+          "selected": false
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "slot": 2,
+          "status": "up",
+          "selected": false
+        }
+      ],
+      "bgp": {
+        "version": 1,
+        "sequence": 44314,
+        "peers": [
+          {
+            "slot": 1,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1
+          },
+          {
+            "slot": 2,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0
+          }
+        ],
+        "routes": [
+          {
+            "prefix": "10.231.0.0/16",
+            "slot": 1
+          }
+        ]
+      }
+    },
+    "cleanup_readback_settled": false,
+    "scope": "Normal API intent/status readback only; no packet or connectivity proof and no synthetic runtime acknowledgement"
+  },
+  "native_classification": {
+    "observed_at": "2026-10-10T20:47:14.205910629Z",
+    "journal_phase": "applied",
+    "slots": [
+      {
+        "cleanup_ike_bindings": [
+          {
+            "local_address_matches": true,
+            "remote_address_matches": true,
+            "children": [
+              {
+                "local_selectors": {
+                  "count": 1,
+                  "equals_material": false,
+                  "fully_contained_material": false,
+                  "fully_contained_material_or_inside": false,
+                  "covers_inside": true,
+                  "has_default": true
+                },
+                "remote_selectors": {
+                  "count": 1,
+                  "equals_material": false,
+                  "fully_contained_material": false,
+                  "fully_contained_material_or_inside": false,
+                  "covers_inside": true,
+                  "has_default": true
+                },
+                "name_matches": true,
+                "if_id_in_matches": true,
+                "if_id_out_matches": true,
+                "reqid_matches": true,
+                "local_prefixes_match": true,
+                "remote_prefixes_match": true
+              }
+            ]
+          }
+        ],
+        "stored_connection_present": true,
+        "stored_shared_key_present": true,
+        "slot": 1,
+        "status": "up",
+        "category": "native_observation",
+        "ike_matches": 1,
+        "child_states": {
+          "INSTALLED": 1
+        },
+        "sad_matches": 2,
+        "spd_directions": {
+          "fwd": 1,
+          "in": 1,
+          "out": 1
+        }
+      },
+      {
+        "cleanup_ike_bindings": [
+          {
+            "local_address_matches": true,
+            "remote_address_matches": true,
+            "children": [
+              {
+                "local_selectors": {
+                  "count": 1,
+                  "equals_material": false,
+                  "fully_contained_material": false,
+                  "fully_contained_material_or_inside": false,
+                  "covers_inside": true,
+                  "has_default": true
+                },
+                "remote_selectors": {
+                  "count": 1,
+                  "equals_material": false,
+                  "fully_contained_material": false,
+                  "fully_contained_material_or_inside": false,
+                  "covers_inside": true,
+                  "has_default": true
+                },
+                "name_matches": true,
+                "if_id_in_matches": true,
+                "if_id_out_matches": true,
+                "reqid_matches": true,
+                "local_prefixes_match": true,
+                "remote_prefixes_match": true
+              }
+            ]
+          }
+        ],
+        "stored_connection_present": true,
+        "stored_shared_key_present": true,
+        "slot": 2,
+        "status": "up",
+        "category": "native_observation",
+        "ike_matches": 1,
+        "child_states": {
+          "INSTALLED": 1
+        },
+        "sad_matches": 2,
+        "spd_directions": {
+          "fwd": 1,
+          "in": 1,
+          "out": 1
+        }
+      }
+    ],
+    "positive_observed_parser_accepts": true,
+    "withdrawal_template_matches": true,
+    "cleanup_process_recorded": true,
+    "cleanup_routes_recorded": true,
+    "retired_duties": 0,
+    "scope": "Single native snapshot classification only; no authority or readiness inference"
+  },
+  "native_classifier_stdout_sha256": "427a2a1cc8584bf6e2d5de277f0ed2534db0ba74691a949e0c6e7ba2ee74542e",
+  "packet_window": {
+    "started_at": "2026-10-10T20:34:46.624857+00:00",
+    "counters": {
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "checks": {
+      "all_four_zero_failure": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true
+    },
+    "receipt_sha256": "6497157a4bae2533fab2ee10edea3c788406aec32c385afe6a52affd75f4900d",
+    "acceptance_passed": true,
+    "seconds": 60,
+    "application_request_timeout_seconds": 2
+  },
+  "diagnostic": {
+    "observed_at": "2026-10-10T20:33:05.399853+00:00",
+    "container": "79d652a8e23878f9a6ce504d149dd9aa44ba63188e98dbbbdc655c761cb41fb2",
+    "image": "sha256:250b4166bd678d76f218a861382d1f66f61b257ad661ea7133bbc437fec5d6f7",
+    "private_raw_log_sha256": "b4e3042de95068ea4116f07036783e615d6f7aed984211931dabd82d9ad2e880",
+    "dns_refusals": [
+      {
+        "time": "2026-10-10T20:31:12.083446157Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 641,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline"
+      },
+      {
+        "time": "2026-10-10T20:31:56.864450428Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 1068,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline"
+      },
+      {
+        "time": "2026-10-10T20:32:41.754760982Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_native_proof",
+        "elapsed_ms": 871,
+        "context_state": "deadline",
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "guard_revalidation": "",
+        "native_failure_class": "context_deadline"
+      }
+    ],
+    "rpc_timings": [
+      {
+        "dispatch_utc": "2026-10-10T20:31:02.342079449Z",
+        "deadline_remaining_ms": 4881,
+        "start_delay_ms": 0,
+        "handle_ms": 4584,
+        "report_ms": 37,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:31:07.208771745Z",
+        "deadline_remaining_ms": 4852,
+        "start_delay_ms": 0,
+        "handle_ms": 4881,
+        "report_ms": 46,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:31:07.470378259Z",
+        "deadline_remaining_ms": 4590,
+        "start_delay_ms": 0,
+        "handle_ms": 4649,
+        "report_ms": 23,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:31:47.324554179Z",
+        "deadline_remaining_ms": 4899,
+        "start_delay_ms": 0,
+        "handle_ms": 4414,
+        "report_ms": 34,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:31:52.004047677Z",
+        "deadline_remaining_ms": 4859,
+        "start_delay_ms": 0,
+        "handle_ms": 4864,
+        "report_ms": 3,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:31:52.321967804Z",
+        "deadline_remaining_ms": 4541,
+        "start_delay_ms": 3,
+        "handle_ms": 4544,
+        "report_ms": 41,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:32:32.322674698Z",
+        "deadline_remaining_ms": 4898,
+        "start_delay_ms": 0,
+        "handle_ms": 4367,
+        "report_ms": 35,
+        "status": "NOERROR",
+        "result": "none",
+        "delivery": "success",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:32:36.914811792Z",
+        "deadline_remaining_ms": 4837,
+        "start_delay_ms": 0,
+        "handle_ms": 4848,
+        "report_ms": 48,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      },
+      {
+        "dispatch_utc": "2026-10-10T20:32:37.203700768Z",
+        "deadline_remaining_ms": 4548,
+        "start_delay_ms": 0,
+        "handle_ms": 4597,
+        "report_ms": 60,
+        "status": "SERVFAIL",
+        "result": "resolver_unavailable",
+        "delivery": "failure",
+        "context_state": "active"
+      }
+    ],
+    "scope": "Fixed scalar diagnostic observations only; last actual guard bracket timings, independent native commands and original five-second DNS deadlines remain unchanged"
+  },
+  "dns_generation_window": {
+    "started_at": "2026-10-10T20:32:21.799556+00:00",
+    "finished_at": "2026-10-10T20:34:22.972607+00:00",
+    "container": "79d652a8e23878f9a6ce504d149dd9aa44ba63188e98dbbbdc655c761cb41fb2",
+    "read_count": 119,
+    "boundary_stale_read_count": 0,
+    "fresh_after_start_count": 0,
+    "distinct_new_generations": [],
+    "last_observation": {
+      "read_at": "2026-10-10T20:34:21.786124+00:00",
+      "observation": {
+        "resource_id": "01a125fe-521b-75ae-b4d1-fbda9a4e279c",
+        "resolver_config_id": "01a12555-cc55-7759-b33e-15670c452e88",
+        "resolver_config_version": 1,
+        "resolver_profile_id": "08dbae5d-db11-4e5e-9efe-959b0d707742",
+        "configuration_revision": 1,
+        "dns_source_address": "10.233.10.1",
+        "ready": false,
+        "state": "failed",
+        "status_source": "latest_generation",
+        "failure_code": "timeout"
+      }
+    },
+    "passed": false,
+    "limits": [
+      "DNS generation readiness only; no FQDN application enforcement or deadline acceptance.",
+      "Original five-second per-lookup deadline and ordinary DNS grants unchanged."
+    ]
+  },
+  "fqdn_application_grant_present": false,
+  "overlapping_lb_ip_grant_present": false,
+  "scheduled_rekey_preflight": {
+    "observed_at": "2026-10-10T20:45:58.469481+00:00",
+    "passed": false,
+    "failure_location": "runtime_azure_scheduled_rekey_linux_test.go:153",
+    "check": "loaded connection parameters",
+    "private_log_sha256": "b2775dcfbe3ea6a224c03b2b05e6d7dd620f6e8f490398ba231a3c4fc465c20c",
+    "helper_sha256": "ca2a06c0230499eb52a1471ce8bd0ee9b79297f7ed0f58a56857c3813bb51ac3",
+    "timer_changes": false
+  },
+  "limits": [
+    "Actual DNS generation window failed with zero fresh generations. This observation-only native failure class build does not resolve the DNS deadline refusal.",
+    "Native classification and the sixty-second TCP/UDP window do not establish sustained DNS stability, FQDN application enforcement, scheduled rekey or remaining profile acceptance.",
+    "Native preflight passed tunnel, BGP route and full combined guard checks before refusing loaded connection parameters; no timer changes occurred.",
+    "Original five-second per-lookup deadline, independent native checks and ordinary DNS grants remain unchanged."
+  ]
+}

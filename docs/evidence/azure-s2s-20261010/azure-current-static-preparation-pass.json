@@ -1,0 +1,52 @@
+{
+  "cloud_prepare": {
+    "apply_executed": false,
+    "baseline": {
+      "active_active": true,
+      "all_provisioning_succeeded": true,
+      "connection_bgp": true,
+      "lng_prefixes": []
+    },
+    "cloud_state_sha256": "919732a81bc02f6c233fbbf23cd3fb0a08110a2d16b385810e7986bd8d6e9221",
+    "independent_result_sha256": "17c8b0778bca8d8a88e066cfd56872c3c5b4b14b3e9d48e0418ccd3c3a661d08",
+    "passed": true,
+    "protected_sha256": "4710cff9fe19e5eda170605ac97542a7af82fe7caa2fb95a43c14cb3940291e2"
+  },
+  "current_normal_connection": {
+    "application_state": "not_applied",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "desired_intent": "disabled",
+    "desired_revision": 3,
+    "policy_count": 0
+  },
+  "human_story_count": {
+    "accepted": 6,
+    "accepted_numbers": [
+      1,
+      2,
+      3,
+      4,
+      7,
+      8
+    ],
+    "open_numbers": [
+      5,
+      6,
+      9,
+      10,
+      11
+    ],
+    "total": 11
+  },
+  "kind": "owned_azure_static_preparation_checkpoint",
+  "prepared_observed_at": "2026-10-11T20:29:54.834734+00:00",
+  "scope": "Preparation and current cleanup only; no static, DNS, restart or E2E acceptance added. Original refusals remain preserved.",
+  "strict_native_absence": {
+    "manifest_sha256": "b556ca5ba1b9cd6b74b5db05922a0b049bf957da4fbc7acb090b6d5927b1f4fb",
+    "native_receipt_sha256": "3860f27ea7235d626dd969f5e33ece5be5bc8a9cc8e360eca049655bb94f28e7",
+    "passed": true,
+    "scope": "Complete 30-entry generic native/history/guard observer; only the recorded time is proven"
+  },
+  "version": 1
+}

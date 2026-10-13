@@ -1,0 +1,38 @@
+{
+  "scope": "actual normal CP cloud enrollment identity/read and Site binding; no activation acceptance",
+  "node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+  "node_name": "tn-gcps2s-20261010-gateway",
+  "enrolled_at": "2026-10-10T13:21:56.43936Z",
+  "declared_kind": "gateway",
+  "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+  "normal_bind_http": 204,
+  "old_revoked_member_and_pending_cleanup": "preserved",
+  "eligibility": {
+    "eligible": false,
+    "reason": "unsupported",
+    "bgp": {
+      "eligible": false,
+      "reason": "unsupported"
+    },
+    "gcp_ha": {
+      "eligible": false,
+      "reason": "unsupported"
+    },
+    "gcp_classic": {
+      "eligible": false,
+      "reason": "unsupported"
+    }
+  },
+  "runtime_launch_gap": "launch omitted real WireGuard backend; runtime reports clean exit0/OOMfalse and wg0 absence; correction pending",
+  "provider_create": {
+    "ha_candidate": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+    "attempts": 1,
+    "result": "private runner refused; normal candidate GET404 ipsec_connection_not_found",
+    "classic_candidate": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+    "classic_attempts": 0,
+    "state": "hold until actual native common/GCP capability eligibility",
+    "enabled": false
+  },
+  "token_reissued": false,
+  "secrets_output": false
+}

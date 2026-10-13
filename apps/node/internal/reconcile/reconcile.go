@@ -625,3 +625,11 @@ func canon(p Peer) string {
 	sort.Strings(ips)
 	return p.PublicKey + "|" + strings.Join(ips, ",") // endpoint-blind; peersEqual compares endpoints per SiteLink (B4/R2)
 }
+
+// AppliedWireGuardMTU returns observed owner state, not the desired-state hint.
+func (r *Reconciler) AppliedWireGuardMTU() int {
+	if b, ok := r.backend.(interface{ AppliedMTU() int }); ok {
+		return b.AppliedMTU()
+	}
+	return 0
+}

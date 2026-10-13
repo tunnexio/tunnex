@@ -1,0 +1,64 @@
+{
+  "baseline_sha256": "6f7806da72d02cd4bfc4a63e0973e42b220a4e06a82300d3adb7fb943b5c1aa1",
+  "comparison": {
+    "resources": {
+      "original_count": 9,
+      "current_count": 11,
+      "original_exact_preserved": true,
+      "new_ids": [
+        "01a12659-7de0-79ad-8a39-03d62cbcb3d5",
+        "01a12659-f410-74f3-8d4d-3b0dbbac1729"
+      ]
+    },
+    "policies": {
+      "original_count": 8,
+      "current_count": 10,
+      "original_exact_preserved": true,
+      "new_ids": [
+        "01a12659-c017-70c0-b02d-2fe6051f51a5",
+        "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+      ]
+    },
+    "new_exact_checks": [
+      {
+        "kind": "resources",
+        "id": "01a12659-7de0-79ad-8a39-03d62cbcb3d5",
+        "exact_template": true
+      },
+      {
+        "kind": "policies",
+        "id": "01a12659-c017-70c0-b02d-2fe6051f51a5",
+        "exact_template": true
+      },
+      {
+        "kind": "resources",
+        "id": "01a12659-f410-74f3-8d4d-3b0dbbac1729",
+        "exact_template": true
+      },
+      {
+        "kind": "policies",
+        "id": "01a1265a-3527-7b51-b8fc-e7a9404981f4",
+        "exact_template": true
+      }
+    ]
+  },
+  "connections": [
+    {
+      "id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+      "desired_revision": 2,
+      "desired_intent": "enabled",
+      "application_state": "pending",
+      "configuration_revision": 1,
+      "profile_id": "gcp-ha-bgp-ipv4-v1"
+    },
+    {
+      "id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "desired_revision": 2,
+      "desired_intent": "enabled",
+      "application_state": "applied",
+      "configuration_revision": 1,
+      "profile_id": "gcp-classic-static-ipv4-v1"
+    }
+  ],
+  "scope": "Normal read-only pre-replacement baseline; all original9/8 plus exactnewClassic2/2 preserved. No additional grants."
+}

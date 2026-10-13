@@ -1,0 +1,40 @@
+{
+  "scope": "source-only causal regression; not live HA, Google, BGP or packet acceptance",
+  "base_source": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "actual_evidence": {
+    "post_start_native_receipt_sha256": "7db1d51b32c9968b38a4980348da7cb2c1f8cfadd54d43c41caeae9561f95868",
+    "daemon_boundary_receipt_sha256": "81fa4b3912a833d4a43b0c7c38d3e1369c7549101dd7fade7c79e4510caf5717",
+    "ha": "Applied contract3; retained owned links; no Restoration/BGPRoutes/BGPProcess; actual qualified daemon has Classic only; transport_retry",
+    "classic": "actual independent single tunnel remained up; parent separately verified normal authorized TCP and UDP"
+  },
+  "causal_red": "TestGCPAppliedSameNamespaceMissingDaemonTransport: missing HA daemon configuration with retained Applied links returned recreate=false, missing=false, denied=false, error=nil on base",
+  "repair": "GCP HA only ordinary same-namespace restart uses actual qualified VICI inventory before and after fresh denial, retained link ownership, current lease, identical environment and known-down proof; only absent target configuration enters normal staging. Lost links still require existing trusted restoration. No historical boot, journal, lease, capability or authority manufactured.",
+  "preservation": [
+    "generic AWS preparation unchanged",
+    "trusted restoration unchanged",
+    "loaded target untouched",
+    "unknown/partial daemon state refused",
+    "foreign SA tuple refused",
+    "missing links refused",
+    "environment and namespace drift refused",
+    "cancelled and expired lease refused",
+    "epoch0 recorded boot must match native boot",
+    "only child byte counters excluded from bracket identity",
+    "independent owned Classic counter progress allowed; SPI/rekey/unknown SA changes refused"
+  ],
+  "regression_scope": "Real GCP material/immutable allocation, actual kernel parser and retained link Apply, VICI protocol fixture and two normal shared/config loads, durable journal unchanged; no mocked success presented as actual daemon/cloud acceptance",
+  "checks": {
+    "host_full_ipsec": "PASS 43.256s final source; earlier sandbox Unix socket refusal retained and authorized identical rerun passed",
+    "host_full_bgp": "PASS 0.850s final source",
+    "host_focused_race": "PASS 2.817s final counter identity projection with Classic coexistence",
+    "linux_agent_builds": "AMD64 and ARM64 PASS final source",
+    "linux_epoch0_execution": "pending; ARM64 test artifact compiled, host epoch0 skips because native boot ID unavailable"
+  },
+  "cloud_mutation": false,
+  "integration_or_deployment": false,
+  "artifacts": {
+    "linux_arm64_test_sha256": "70360e52ef67dfcbc30ddac97ba2b0a688273a679227405174a3724aa9b954a5",
+    "node_amd64_sha256": "e9f0b6e7fe1c6838e399aff757f26bc1359c2bd9aed6827e43b02d048b75f8ff",
+    "node_arm64_sha256": "e74428d41c37c61d5b22714c702d4db14527f4b93fa7b942733e75edfba20736"
+  }
+}

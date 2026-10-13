@@ -139,6 +139,7 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
           output: codeql-results
+          wait-for-processing: true
       # ⛔ THIS STEP MUST CARRY THE SAME CONDITION AS THE ANALYSIS THAT PRODUCES ITS INPUT.
       #
       # It did not, and S14.11's follow-up PR (#59) — THE FIRST DIFF SINCE THE SPLIT WITH NO GO FILES —
@@ -152,6 +153,10 @@ jobs:
       # It stayed invisible because every PR between the split and #59 touched Go. The filter was never
       # exercised on the branch it now takes.
       - name: Fail on high/critical findings (blocking threshold)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEQL_ANALYSIS_CATEGORY: /language:${{ matrix.language }}
+          CODEQL_ANALYSIS_KEY: .github/workflows/security.yml:codeql
         if: >-
           (matrix.language == 'go' && needs.scope.outputs.go == 'true') ||
           (matrix.language == 'javascript-typescript' && needs.scope.outputs.javascript == 'true')
@@ -166,21 +171,10 @@ jobs:
             echo "::error::CodeQL ran but produced NO SARIF — the scan did not analyse anything"
             exit 1
           fi
-          # CodeQL marks high/critical security alerts as SARIF level "error" (medium/low are "warning"/
-          # "note"). Counting error-level results is the documented, stable signal — more robust than
-          # re-deriving security-severity from the rule table, which lives in different SARIF locations
-          # depending on whether a query pack contributed it.
-          total=0
-          for f in "${files[@]}"; do
-            n=$(jq '[.runs[].results[]? | select(.level == "error")] | length' "$f")
-            echo "  $(basename "$f"): $n error-level result(s)"
-            total=$((total + n))
-          done
-          echo "high/critical findings: $total"
-          if [ "$total" -ne 0 ]; then
-            echo "::error::CodeQL reported $total high/critical finding(s) — see the Security tab"
-            exit 1
-          fi
+          # Security severity is rule metadata, independent of result.level. Resolve driver/query-pack
+          # rules and retain explicit error-level blocking. Only exact current-analysis false-positive
+          # dismissals already reviewed on GitHub can pass; API/metadata failure remains blocking.
+          node scripts/check-codeql-sarif.mjs --github-dismissals "${files[@]}"
 
   # ── BLOCKING: formatting / lint parity (the same checks a dev runs locally) ─────────────────────────
   fmt-lint:

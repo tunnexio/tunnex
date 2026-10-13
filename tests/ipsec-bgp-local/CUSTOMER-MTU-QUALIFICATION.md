@@ -1,0 +1,18 @@
+# Source-only customer MTU qualification
+
+No cloud changes or probes are authorized by this document itself. Root controls each action and preserves current services, policies, provider identities and receipts. All AWS CLI commands run on designated bastion16 only.
+
+1. Bind the accepted worker source/image/executable, certificate, namespace, provider contract (BGP or static), current normal policy hash and fresh lease. Record actual interface MTUs and both CHILD selectors/reqids and counters without secrets. VGW target85 and TGW target86 are separate real proof cases. Static needs a legal independent provider/fixture; never reuse retained provider identity or bypass reservations to create the matrix.
+2. Deploy the reviewed `customer-mtu-fixture.py` additively to a new root-owned private directory on the exact target. Keep original8080 server PID/start/executable unchanged. Approve only temporary TCP8081 listener, exact source client84.2.10 or84.3.10, narrow target SG, and normal CP resource+grant for that tuple. Bind fixture source SHA, actual Python PID/start/exe, nonce and target port. Linux SIGALRM enforces a process-wall deadline180seconds even during slow body reads/writes; exact PID-owned cleanup still verifies absence.
+3. Independently verify fixture control over approved management (EIC85, approved private/public management86). An ordinary customer success must come from actual LAN client, never the management host. Run client upload then download4MiB under script SIGALRM90seconds (optionally outer `timeout --signal=TERM --kill-after=5s 95s`), fresh64hex nonce, O_EXCL result receipt; exact upload/download hash and length are required. Capture CHILD and guard counters before/after and selected route to prove encrypted traffic. A hash receipt alone is not encryption proof. This sequential two-direction HTTP proof does not establish survival of an already-open TCP stream across failover.
+4. Qualify DF separately ONLY after a normal ANY-protocol grant/resource over the exact test client/target-host scope and exact AWS ICMP SG/target control. The product currently supports any/tcp/udp, not an ICMP-only grant; record that this temporary ANY grant authorizes all IP protocols in the narrow host scope. Related TCP fragmentation-needed authorization does not authorize ICMP Echo. IPv4 ping payload ceiling at MTU1422 is1394 (1422−20IP−8ICMP); test bounded payload sizes around observed ceiling, e.g1372/1394/1395/1472, with `ping -M do -c 3 -W 1 -s SIZE TARGET`. Read actual current MTU rather than asserting1422 universally. Capture exit, ICMP fragmentation-needed/too-large messages, source/target controlled request observations and CHILD counters. An ungranted ICMP timeout cannot establish an MTU failure. TCP MSS clamp success does not prove PMTUD or UDP behavior.
+5. After proof, normal-delete ONLY owned temporary grant/resource and exact SG rule IDs, verify fresh lease/grant removal and denial. Stop/remove only exact fixture PID/private directory with source/hash identity checks; preserve service8080 and prior policies, journals, target listeners and all evidence. Record uncertain outcomes, timeout bounds and counter churn honestly.
+
+Example source-only review:
+
+```
+python3 customer-mtu-fixture.py target --target 10.85.1.10 --source 10.84.2.10 --nonce <fresh64hex>
+python3 customer-mtu-fixture.py client --target 10.85.1.10 --source 10.84.2.10 --nonce <same64hex> --receipt <fresh-owned-path>
+```
+
+`--execute` requires root's separate reviewed fixture deployment, source pins, independent target control and normal grant acceptance. No tool deploys a service, edits SGs, or grants access automatically.

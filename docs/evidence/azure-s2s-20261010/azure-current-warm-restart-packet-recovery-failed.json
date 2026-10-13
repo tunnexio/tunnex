@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "scope": "Actual once owned warm restart and independent full immutable service/process identity plus bounded packet projection",
+  "source_commit": "ffb026e5f345e9cee7e692ada0e02ddc1abd5866",
+  "node_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+  "prior_node_started_at": "2026-10-11T18:07:29.709083288Z",
+  "actual_readback": {
+    "category": "actual_warm_restart_independent_process_and_packet_readback",
+    "node_started_at": "2026-10-11T19:06:16.205224164Z",
+    "node_pid": 3466505,
+    "node_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+    "api_unchanged": true,
+    "anchor_unchanged": true,
+    "namespace_unchanged": true,
+    "configuration_immutable_unchanged": true,
+    "packet_private_run_id": "warm-restart-e5e965b5-c3d7-4478-b78e-4f75147c67d5",
+    "packet_receipt_sha256": "87687160b1f1435e69e67e4d85ed3fc20092dc5ca09777b9aad1726d7f34442c",
+    "packet_started_at": "2026-10-11T19:06:10.287609+00:00",
+    "packet_finished_at": "2026-10-11T19:07:10.359945+00:00",
+    "packet_elapsed_seconds": 60.07236,
+    "packet_classes": {
+      "fresh_tcp": {
+        "counters": {
+          "success": 5,
+          "failure": 18,
+          "maximum_observed_success_gap_seconds": 1.00069,
+          "seconds_since_last_success_at_run_end": 56.069561
+        },
+        "sample_count": 23,
+        "successful_local_port_count": 5,
+        "tail_last_five_success": false,
+        "original_socket_retained_success": false
+      },
+      "existing_tcp": {
+        "counters": {
+          "success": 5,
+          "failure": 18,
+          "maximum_observed_success_gap_seconds": 1.001247,
+          "seconds_since_last_success_at_run_end": 55.937633
+        },
+        "sample_count": 23,
+        "successful_local_port_count": 1,
+        "tail_last_five_success": false,
+        "original_socket_retained_success": false
+      },
+      "fresh_udp": {
+        "counters": {
+          "success": 5,
+          "failure": 18,
+          "maximum_observed_success_gap_seconds": 1.015017,
+          "seconds_since_last_success_at_run_end": 55.767587
+        },
+        "sample_count": 23,
+        "successful_local_port_count": 5,
+        "tail_last_five_success": false,
+        "original_socket_retained_success": false
+      },
+      "existing_udp": {
+        "counters": {
+          "success": 5,
+          "failure": 18,
+          "maximum_observed_success_gap_seconds": 1.008019,
+          "seconds_since_last_success_at_run_end": 55.741085
+        },
+        "sample_count": 23,
+        "successful_local_port_count": 1,
+        "tail_last_five_success": false,
+        "original_socket_retained_success": false
+      }
+    },
+    "fresh_native_required": true,
+    "acceptance": false,
+    "transport_seconds": 2.118
+  },
+  "restart_command_returned_zero": true,
+  "warm_restart_acceptance": false,
+  "limitations": [
+    "A returned restart command is not a successful quiesce or native recovery certificate",
+    "All four packet classes failed to recover in the measured sixty-second window",
+    "Fresh current full-native observation and exact startup causal diagnosis remain required",
+    "Original sockets were preserved by pinned a9c probe; no reconnect-success claim"
+  ]
+}

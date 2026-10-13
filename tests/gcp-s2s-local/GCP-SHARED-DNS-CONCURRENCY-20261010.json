@@ -1,0 +1,49 @@
+{
+  "scope": "Reviewed shared AWS DNS endpoint concurrency and socket outcome reuse; source/local tests only, no live scheduled FQDN acceptance",
+  "shared_application_sha256": "20e81bec47776b75cf5b32ea5fe141d8139fcf7d46ea76e526eb959c4de3fdf2",
+  "base": "a23c3c17",
+  "files": [
+    {
+      "base_sha256": "ec5db1b50e015cfbd1a865743fa6a177dc5240cb6d0eae128b46ee3dd0cddc19",
+      "path": "apps/node/internal/fqdnrpc/fqdnrpc.go",
+      "post_sha256": "79a802db9af69e9309f49f8edb9d362407b86d04417da47154c7a313ff9d2943"
+    },
+    {
+      "base_sha256": "760b327d5bcc967add1811f5a3b2a07662d86a8143f42eb7a76579d0b976778f",
+      "path": "apps/node/internal/fqdnrpc/fqdnrpc_test.go",
+      "post_sha256": "baae0f8217e5fee1253feb2520186907670d9548e10ecf5f911e324310bda6b5"
+    },
+    {
+      "base_sha256": null,
+      "path": "apps/node/internal/fqdnrpc/resolver_budget_test.go",
+      "post_sha256": "bc9d44f0f93d8ac574d2970bf82c7af9d4f9fb7e56c6d043cb68dd251980e801"
+    },
+    {
+      "base_sha256": null,
+      "path": "apps/node/internal/fqdnrpc/resolver_concurrency_test.go",
+      "post_sha256": "2ca2da07c12eb2091d13db75c133f5c6cd77bd6d61b31f947b6a2aac4781878e"
+    },
+    {
+      "base_sha256": "766f4fac33a4baa5ddc0c41fb205e6cf035423f90b8a9b736781b9aa3713edbc",
+      "path": "apps/node/internal/fqdnrpc/transport.go",
+      "post_sha256": "aaefd27b813658d270cdabd9f866fa9134edb6470e58f8c28ddb143363fc29c1"
+    },
+    {
+      "base_sha256": "7320d9fc222a45620fc2c3dd6e8f9704e4e8810938fe665594d7b4c2be64cbd7",
+      "path": "apps/node/internal/fqdnrpc/transport_test.go",
+      "post_sha256": "f75508289b1f1b81746828c8c81c7b7c72eddea1a5d2e5792778c4b0d59faca1"
+    }
+  ],
+  "gcp_runtime_dns_transport_preserved_sha256": "b63cf2a9c426fb9672a09c43624480ecb80ba03bab80798d3ef15f72ed267b77",
+  "independent_review": "PASS",
+  "focused_race": {
+    "fqdnrpc": "PASS 8.299s",
+    "ipsec_DNSOwnerView_GCPrenewal": "PASS 5.997s"
+  },
+  "constraints": [
+    "Maximum four complete endpoint workflows per request; every endpoint remains authoritative.",
+    "Types and CNAME steps remain sequential; original deadline and all worker drain preserved.",
+    "Configured endpoint order determines error and consensus handling; minimum observed TTL preserved.",
+    "GCP whole-proof single supersession retry/final published digest/source and authority checks preserved."
+  ]
+}

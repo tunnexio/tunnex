@@ -1,0 +1,43 @@
+{
+  "scope": "actual owned gateway deployment observations; no negotiated SA, BGP or application/DNS traffic claim",
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "final_deployment_helper_sha256": "63f42a8de5325598cab36d8af5046788f43e9b74dfc034129e51ee0cec5b52f6",
+  "configuration": {
+    "bridge": "none",
+    "iptables": false,
+    "ip6tables": false,
+    "ip-masq": false
+  },
+  "postboot_route": {
+    "phase": "verify-route",
+    "container_id": "dc81baef1c4924007b39224fd4f9b14bef94e734c2138257b12bfdc46abd8294",
+    "boot_before": "db39e8bf-cb92-44a2-a523-7f00b3d173bd",
+    "boot_after": "9617762e-19db-4a21-bdee-909dfb31e501",
+    "identity_preserved": true,
+    "strict_native_empty": true,
+    "approved_route_restored": true,
+    "status": "deployment observations only; gateway remains stopped"
+  },
+  "same_identity_start": {
+    "phase": "start-after-forward",
+    "container_id": "dc81baef1c4924007b39224fd4f9b14bef94e734c2138257b12bfdc46abd8294",
+    "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+    "identity_preserved": true,
+    "status": "normal existing identity start requested; no connection enable"
+  },
+  "actual_start_stdout_sha256": "574338219d9dcdbe9fba4b114303b48bc7cb8efd6e49bb273f26153e05ac6510",
+  "loopback_forward_readback": {
+    "cp_http_ok": true,
+    "cp_service": "tunnex-api",
+    "agent_loopback_listener": true,
+    "http_loopback_listener": true
+  },
+  "durable_record_scope": "/var/lib/tunnex-gcp-host-repair-20261010 contains deployment observations only; no node authority, journal or namespace restoration proof was fabricated",
+  "compatibility_failures_preserved": [
+    "Docker20.10 missing --validate refused before writes",
+    "actual reboot cleared /tmp deployment records",
+    "successful older ip policy CLI emitted empty stdout; JSON parser refused before route writes"
+  ],
+  "target_trust": "client authenticated serial key and strict SSH boot matched; both target resets await precise human approval after automatic review refused before action",
+  "next_acceptance": "fresh normal eligibility, disabled profile save/enable, actual Google SAs/BGP, packets and DNS"
+}

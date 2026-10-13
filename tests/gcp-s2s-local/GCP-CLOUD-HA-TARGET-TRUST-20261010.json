@@ -1,0 +1,17 @@
+{
+  "instance_id": "7595462031766211538",
+  "attempt": "7abbcd80-5479-4196-8079-ce77f7f6e877",
+  "boot_id": "b421e753-b6cb-470b-9f86-7df987b08a7b",
+  "fingerprint": "SHA256:uYWViNuq8IF0ya9IK4lZxT3jzcGpiYWT9AQ9ovhKvPg",
+  "authenticated_proof_keyscan_exact_match": true,
+  "exclusive_pin_mode": "0600",
+  "strict_ssh": true,
+  "uid": 1000,
+  "private_10_80_0_10_assigned": true,
+  "tcp8080_listener": true,
+  "udp9000_listener": true,
+  "original_metadata_restored": true,
+  "root_reset_chunk": "e249b7",
+  "independent_readback_chunk": "c54232",
+  "scope": "Root executed one genuine approved reset; provider independently verified public key and target identity/listeners only. No listener mutation, tunnel payload, or production readiness claim."
+}

@@ -6,8 +6,8 @@ import { Button, Modal } from "./ui";
 import { ProviderMark } from "./ProviderMarks";
 import "../connection-chooser.css";
 
-export function ConnectionChooser({ sites, orgId, onClose, onAWS }: {
-  sites: Site[]; orgId?: string; onClose: () => void; onAWS: () => void;
+export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure }: {
+  sites: Site[]; orgId?: string; onClose: () => void; onAWS: () => void; onGCP?: () => void; onAzure?: () => void;
 }) {
   const [step, setStep] = useState<"method" | "ipsec" | "wireguard">("method");
   const [adding, setAdding] = useState(false);
@@ -36,10 +36,10 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS }: {
       <button className="sts-chooser-choice" onClick={() => setStep("ipsec")}><span className="sts-chooser-choice-copy"><strong>Cloud VPN / Firewall</strong><span>Configure an external VPN endpoint.</span></span><span className="sts-chooser-choice-meta">IPsec</span></button>
     </div>}
     {step === "ipsec" && <div className="sts-chooser-choices">
-      <button className="sts-chooser-choice" onClick={onAWS}><span className="sts-chooser-provider-identity"><ProviderMark provider="aws" className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>AWS</strong><span>Site-to-Site VPN · Static IPv4</span></span></span><span className="sts-chooser-choice-meta">Configure</span></button>
+      <button className="sts-chooser-choice" onClick={onAWS}><span className="sts-chooser-provider-identity"><ProviderMark provider="aws" className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>AWS</strong><span>Site-to-Site VPN · Static / BGP IPv4</span></span></span><span className="sts-chooser-choice-meta">Configure</span></button>
+      <button className="sts-chooser-choice" disabled={!onGCP} onClick={onGCP}><span className="sts-chooser-provider-identity"><ProviderMark provider="gcp" className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>Google Cloud</strong><span>HA VPN · BGP IPv4</span></span></span><span className="sts-chooser-choice-meta">{onGCP ? "Configure" : "Not available yet"}</span></button>
+      <button className="sts-chooser-choice" disabled={!onAzure} onClick={onAzure}><span className="sts-chooser-provider-identity"><ProviderMark provider="azure" className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>Azure</strong><span>VPN Gateway · Static / BGP IPv4</span></span></span><span className="sts-chooser-choice-meta">Configure</span></button>
       {([
-        { name: "Azure", mark: "azure" },
-        { name: "Google Cloud", mark: "gcp" },
         { name: "On-premises / Other", mark: "self_managed" },
       ] as const).map(provider => <button key={provider.mark} disabled className="sts-chooser-choice"><span className="sts-chooser-provider-identity"><ProviderMark provider={provider.mark} className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>{provider.name}</strong></span></span><span className="sts-chooser-choice-meta">Not available yet</span></button>)}
     </div>}

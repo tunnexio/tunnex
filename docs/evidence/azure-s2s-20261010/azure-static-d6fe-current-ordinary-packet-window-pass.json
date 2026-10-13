@@ -1,0 +1,72 @@
+{
+  "accepted_story_count": 6,
+  "actual_local_result_sha256": "b8e3c4dcd79b167ec5f2208a3cdea45b52f39e54e6b8265156f17fa4418aca33",
+  "actual_window": {
+    "checks": {
+      "all_four_zero_failure": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true
+    },
+    "counters": {
+      "existing_tcp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.024471,
+        "seconds_since_last_success_at_run_end": 0.830706,
+        "success": 60
+      },
+      "existing_udp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.055497,
+        "seconds_since_last_success_at_run_end": 0.655544,
+        "success": 60
+      },
+      "fresh_tcp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.000946,
+        "seconds_since_last_success_at_run_end": 0.964756,
+        "success": 60
+      },
+      "fresh_udp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.042222,
+        "seconds_since_last_success_at_run_end": 0.680128,
+        "success": 60
+      }
+    },
+    "native_acceptance": "source-paired prewindow baseline only",
+    "passed": true,
+    "phase": "ordinary",
+    "private_run_id": "azure-static-window-cd728590-7bf1-4d97-822e-6a2a5c11c2ff",
+    "receipt_sha256": "2484a3cd2c05eeed0afd85dc3298b395d509923803837b007003a3b50f3baeb8",
+    "returncode": 0
+  },
+  "category": "actual_current_d6fe_static_forward_ordinary_packets_pass",
+  "configuration_revision": 1,
+  "desired_revision": 10,
+  "dns_fqdn_acceptance_inferred": false,
+  "native_baseline": {
+    "bgp_routes": 0,
+    "entry_count": 35,
+    "full_saved_journal_sha256": "3f147e2bd7d10cc430b0d316019347817ca8505e6db8adbea42eecd4df3d7d98",
+    "ike": 2,
+    "manifest_sha256": "96a5e51a32862b43b3b0666970d8c2190424db5faf0ac5ee620317d1857d4d03",
+    "normal_at_baseline": {
+      "application_state": "applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled"
+    },
+    "observed_at": "2026-10-12T04:23:27.797807163Z",
+    "receipt_sha256": "15712e1f5ec59efad21ec6f7ef407b6f5ce45810578d8f39b7f2afa046c67fc7",
+    "sad": 4,
+    "scope": "Source-paired current enabled10 preordinary-window baseline only",
+    "spd": 6
+  },
+  "node_sha256": "d6fe6a5b04ce293fe3a524e68c3eb7077df71c25e1773ef794424ce5b9d4b74f",
+  "recorded_at": "2026-10-12T04:28:59.406481+00:00",
+  "seconds": 60,
+  "version": 1,
+  "whole_story_accepted": false
+}

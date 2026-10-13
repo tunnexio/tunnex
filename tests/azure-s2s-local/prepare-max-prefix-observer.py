@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Prepare private observer binding from independent inputs; never run/stage observations."""
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import uuid
+
+IMAGE='585a392b5d5e1881a7e03577b018d44c1d8335be43664c7d2d78a9fadb50b08d'
+NODE='e2fddce35434dd43513ec73ecc10714c01e592d50e368c1278a5a8e1ebd2c49c'
+CONTAINER='50f92a3ff704cd894a1d39f1521651aa802c99a90692d81ec5a4bc2ff133a809'
+OBSERVER='a55be0165ed8990906457efe0e1714971d7826516a9e579e6feebac329734d6a'
+
+def private(path):
+ path=Path(path)
+ for parent in [path.parent,*path.parent.parents]:
+  if parent.is_symlink():raise ValueError('private path')
+ p=path.parent.stat();s=path.lstat()
+ if p.st_uid!=os.getuid() or stat.S_IMODE(p.st_mode)!=0o700 or s.st_uid!=os.getuid() or stat.S_IMODE(s.st_mode)!=0o600 or not stat.S_ISREG(s.st_mode) or s.st_size>131072:raise ValueError('private input')
+ return path.read_bytes()
+
+def timestamp(value):
+ if not isinstance(value,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})',value):raise ValueError('timestamp')
+ normalized=re.sub(r'\.(\d{1,9})',lambda m:'.'+m[1][:6].ljust(6,'0'),value)
+ return datetime.fromisoformat(normalized.replace('Z','+00:00'))
+
+def build(normal,attestation,immutable,mode,clock):
+ if normal.get('kind')=='owned_finalized_prior_authority':return finalized_build(normal,attestation,immutable,mode,clock)
+ if mode not in ('baseline','absence','post-limit'):raise ValueError('mode')
+ for source in (normal,attestation):
+  if not 0<=(clock-timestamp(source['observed_at'])).total_seconds()<=60:raise ValueError('fresh input')
+ if attestation['container_id']!=CONTAINER or attestation['image_sha256']!=IMAGE or attestation['node_executable_sha256']!=NODE:raise ValueError('current owned image')
+ n=normal['normal_connection'];b=attestation['binding']
+ if b['connection_id'] not in [immutable.get(k,{}).get('id') for k in ('target','prior')]:raise ValueError('saved immutable connection')
+ if n['profile_id']!='azure-active-active-bgp-ipv4-v1':raise ValueError('profile')
+ for key in ('org_id','site_id','gateway_id','connection_id'):
+  v=b[key]
+  if not isinstance(v,str) or str(uuid.UUID(v))!=v:raise ValueError('identity')
+ if n['id']!=b['connection_id']:raise ValueError('connection')
+ # Separate independently attested normal immutable ownership, not inferred from API readiness.
+ for key in ('org_id','site_id','gateway_id'):
+  if immutable['setup'][key]!=b[key]:raise ValueError('normal ownership')
+ for key in ('desired_revision','configuration_revision','maximum_prefixes'):
+  if type(b[key])!=int or b[key]<1 or n[key]!=b[key]:raise ValueError('revision')
+ if b['maximum_prefixes'] not in (1,8):raise ValueError('limit')
+ expected=['10.231.0.0/16'] if b['maximum_prefixes']==8 else ['10.231.0.0/16','10.235.77.0/24']
+ if n['remote_prefixes']!=expected:raise ValueError('allowlist')
+ if mode=='absence':
+  if n['desired_intent']!='disabled' or n['application_state']!='not_applied' or n['cleanup_state']=='pending' or attestation['journal_cleanup_desired_revision']!=b['desired_revision']:raise ValueError('disabled actual cleanup binding')
+ elif n['desired_intent']!='enabled':raise ValueError('enabled binding')
+ if mode=='baseline' and n['application_state']!='applied':raise ValueError('normal baseline')
+ if mode=='post-limit' and (b['maximum_prefixes']!=1 or normal.get('runtime_observation')!='not_requested'):raise ValueError('postlimit immutable read only')
+ for key in ('namespace_device','namespace_inode'):
+  if type(b[key])!=int or b[key]<1:raise ValueError('namespace')
+ allowed={'org_id','site_id','gateway_id','connection_id','desired_revision','configuration_revision','maximum_prefixes','namespace_device','namespace_inode'}
+ if set(b)-allowed-{'historical_boot'} or not allowed<=set(b):raise ValueError('binding fields')
+ result={k:b[k] for k in allowed};result.update(mode=mode,node_executable_sha256=NODE)
+ if 'historical_boot' in b:
+  h=b['historical_boot']
+  if set(h)!={'proof_sha256','stopped_journal_sha256','root_attested_host_machine_id'} or any(not re.fullmatch('[0-9a-f]{64}',h[k]) for k in ('proof_sha256','stopped_journal_sha256')) or not re.fullmatch('[0-9a-f]{32}',h['root_attested_host_machine_id']):raise ValueError('historical pins')
+  result['historical_boot']=h
+ return result
+
+def finalized_build(normal,attestation,immutable,mode,clock):
+ if mode!='absence' or normal.get('phase') not in ('finalized-read','reserved-prior-read') or normal.get('policy_count')!=0 or normal.get('runtime_observation')!='not_requested':raise ValueError('finalized absence context')
+ if normal['phase']=='reserved-prior-read':
+  target=immutable.get('target');absence=normal.get('reserved_target_absence')
+  if immutable.get('stage')!='create_reserved' or target is None or absence!={'id':target['id'],'tunnel_ids':target['tunnel_ids'],'saved_stage':'create_reserved','classification':'normal_GET404_only'}:raise ValueError('exact reserved target read required')
+ elif 'target' in immutable or 'reserved_target_absence' in normal:raise ValueError('unreserved finalized prior required')
+ for source in (normal,attestation):
+  if not 0<=(clock-timestamp(source['observed_at'])).total_seconds()<=60:raise ValueError('fresh finalized context')
+ a=normal['finalized_authority'];b=attestation['binding'];saved=immutable.get('prior_configuration')
+ if saved is None:
+  if immutable['purpose']!='limit':raise ValueError('saved prior configuration required')
+  saved=immutable['original_configuration']
+ if normal['saved_prior_configuration_sha256']!=hashlib.sha256(json.dumps(saved,sort_keys=True,separators=(',',':')).encode()).hexdigest():raise ValueError('saved archive hash')
+ if a['id']!=immutable['prior']['id'] or a['id']!=b['connection_id'] or a['desired_intent']!='deleted' or a['application_state']!='not_applied' or a['cleanup_state'] not in ('retained_guard','not_required'):raise ValueError('real finalized prior')
+ for key in ('org_id','site_id','gateway_id'):
+  if a[key]!=immutable['setup'][key] or a[key]!=b[key]:raise ValueError('historical owner')
+ if a['historical_site_id']!=a['site_id'] or a['historical_gateway_node_id']!=a['gateway_id']:raise ValueError('historical binding')
+ if timestamp(a['deleted_at'])>timestamp(a['finalized_at']) or timestamp(a['finalized_at'])>clock:raise ValueError('finalized timestamp')
+ cleanup=immutable['cleanup_revision']
+ if type(cleanup)!=int or cleanup<1 or normal['saved_cleanup_revision']!=cleanup or attestation['journal_cleanup_desired_revision']!=cleanup or b['desired_revision']!=cleanup or type(a['desired_revision'])!=int or a['desired_revision']<cleanup:raise ValueError('actual cleanup distinct from normal revision')
+ contract=normal['saved_prior_contract']
+ if contract['id']!=a['id'] or a['profile_id']!=contract['profile_id'] or a['configuration_revision']!=contract['configuration_revision'] or a['configuration_revision']!=b['configuration_revision'] or a['configuration_revision']!=saved['configuration_revision']:raise ValueError('tombstone metadata')
+ # These fields are explicitly archived; no normal_connection or live state is invented.
+ if saved['profile_id']!='azure-active-active-bgp-ipv4-v1' or contract['maximum_prefixes']!=saved['configuration']['bgp']['maximum_prefixes'] or contract['remote_prefixes']!=saved['configuration']['remote_prefixes'] or b['maximum_prefixes']!=contract['maximum_prefixes']:raise ValueError('archive contract')
+ if b['maximum_prefixes'] not in (1,8) or contract['remote_prefixes']!=(['10.231.0.0/16'] if b['maximum_prefixes']==8 else ['10.231.0.0/16','10.235.77.0/24']):raise ValueError('bounded archived prefixes')
+ if attestation['container_id']!=CONTAINER or attestation['image_sha256']!=IMAGE or attestation['node_executable_sha256']!=NODE:raise ValueError('current owned image')
+ allowed={'org_id','site_id','gateway_id','connection_id','desired_revision','configuration_revision','maximum_prefixes','namespace_device','namespace_inode'}
+ if set(b)-allowed-{'historical_boot'} or not allowed<=set(b):raise ValueError('binding fields')
+ for key in ('org_id','site_id','gateway_id','connection_id'):
+  if str(uuid.UUID(b[key]))!=b[key]:raise ValueError('identity')
+ for key in ('namespace_device','namespace_inode','configuration_revision'):
+  if type(b[key])!=int or b[key]<1:raise ValueError('native binding')
+ result={k:b[k] for k in allowed};result.update(mode='absence',node_executable_sha256=NODE)
+ if 'historical_boot' in b:
+  h=b['historical_boot']
+  if set(h)!={'proof_sha256','stopped_journal_sha256','root_attested_host_machine_id'} or any(not re.fullmatch('[0-9a-f]{64}',h[k]) for k in ('proof_sha256','stopped_journal_sha256')) or not re.fullmatch('[0-9a-f]{32}',h['root_attested_host_machine_id']):raise ValueError('historical pins')
+  result['historical_boot']=h
+ return result
+
+def main():
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--normal',type=Path,required=True);p.add_argument('--attestation',type=Path,required=True);p.add_argument('--immutable',type=Path,required=True);p.add_argument('--observer-binary',type=Path,required=True);p.add_argument('--mode',choices=('baseline','absence','post-limit'),required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+ try:
+  # Binary is a reviewed executable artifact, never run by this preparation helper.
+  if a.observer_binary.is_symlink() or not a.observer_binary.is_file() or hashlib.sha256(a.observer_binary.read_bytes()).hexdigest()!=OBSERVER:raise ValueError('observer hash')
+  result=build(json.loads(private(a.normal)),json.loads(private(a.attestation)),json.loads(private(a.immutable)),a.mode,datetime.now(timezone.utc))
+  parent=a.output.parent
+  if parent.is_symlink() or parent.resolve()!=parent.absolute() or parent.stat().st_uid!=os.getuid() or stat.S_IMODE(parent.stat().st_mode)!=0o700:raise ValueError('private output')
+  fd=os.open(a.output,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+  with os.fdopen(fd,'w') as f:json.dump(result,f,sort_keys=True);f.write('\n');f.flush();os.fsync(f.fileno())
+  print('observer_binding_prepared_no_observation')
+ except (ValueError,KeyError,TypeError,OSError):raise SystemExit('observer_preparation_refused')
+if __name__=='__main__':main()

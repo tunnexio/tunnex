@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Print an isolated TGW plan only. No AWS CLI, SSH, Docker or filesystem mutations."""
+import json
+OWNER='tunnex-bgp-tgw-20261008'
+plan={
+ 'execution_performed':False,'aws_cli_host':'ubuntu@16.170.207.192','region':'eu-north-1','account':'867703355911','owner':OWNER,
+ 'tags':{'TunnexLab':OWNER,'ManagedBy':'Tunnex-authorized-test','Purpose':'isolated TGW BGP qualification'},
+ 'verified_references':{'customer_vpc':'vpc-0446126a8e6d3fa0d','gateway_instance':'i-09d129f71f43119c7','gateway_eni':'eni-0fbe6981ac51bb28e','gateway_private':'10.84.1.10','gateway_public':'13.63.169.255','gateway_sg':'sg-026e49d0f7558609a','gateway_source_dest_check':False,'existing_cgw':'cgw-052420797aa1518a1','existing_igw':'igw-07f50007aa6330df5','ami':'ami-09d835910a77f135c','ami_architecture':'x86_64','ami_owner':'099720109477','ami_state':'available','key' :'tunnex-bgp-20261007-key','az':'eu-north-1a'},
+ 'reserved_after_inventory':{'target_vpc':'10.86.0.0/16','target_subnet':'10.86.1.0/24','target_instance':'10.86.1.10','customer_subnet':'10.84.3.0/24','customer_instance':'10.84.3.10','vpn_inside':['169.254.120.0/30','169.254.120.4/30']},
+ 'inventory_evidence':{'existing_vpcs':['172.31.0.0/16','10.73.0.0/16','10.84.0.0/16','10.85.0.0/16'],'customer_subnets':['10.84.1.0/24','10.84.2.0/24'],'existing_vpn':'vpn-05f16361b6265e541','existing_inside':['169.254.16.80/30','169.254.98.188/30'],'existing_tgw_count':0,'existing_gateway_groups':['sg-026e49d0f7558609a']},
+ 'ledger_protocol':{'location':'~/tunnex-bgp-tgw-20261008/ledger.jsonl on designated host root-private or user0700 dir/0600files','before_mutation':'fsync append intent {sequence,action,owner,tags,expected_absence,previous_setting,request_digest,client_token_if_supported}','after_response':'fsync append result {sequence,resource_id,exact_tags,observed_setting}; no dependent operation until result durable','unknown_result':'readonly tag/client-token discovery and exact request reconciliation; never blindly retry create','before_change_shared_owned_gateway':'record exact ENI SG list, fresh dedicated SG ID and security-group-rule IDs; require unchanged original list; attach additional SG only after root explicit review','cleanup':'reverse dependency order; delete only exact owned tagged IDs after readback, restore ENI groups only if current list exactly prior+ownedSG; no wholesale rollback or foreign deletion'},
+ 'steps':[
+ {'id':'preflight','action':'repeat unusedCIDR/inside/IP/owner tag census; verify AMI available ARM/x86 actual architecture, key exists, gateway refs exact; preserve snapshots of original VGW VPN/routes/SG before any dependent action'},
+ {'id':'target_vpc','create':'VPC10.86/16, target subnet10.86.1/24, dedicated IGW+VPC route table/defaultIGW for bastion-only publicSSH, subnet association','mutates_existing':False},
+ {'id':'tgw','create':'TGW AmazonSideAsn64512,VpnEcmpSupport=disable,DefaultRouteTableAssociation=disable,DefaultRouteTablePropagation=disable; explicit dedicated TGW route table','mutates_existing':False},
+ {'id':'attachment','create':'attach ONLY fresh targetVPC+targetsubnet to TGW; explicitly associate ownTGWtable and enable targetattachment propagation'},
+ {'id':'vpn','create':'NEW dynamic ipsec.1 VPN with existing exactCGW65000/13.63; TGW newlycreated; StaticRoutesOnly=false; Inside120.0/30+120.4/30; do not retrieve/print PSKs outside private0600 provider file','dependent_results':'record VPNID and returnedVPNattachmentID before association/propagation'},
+ {'id':'vpn_routes','action':'associate VPNattachment onlyto ownTGWtable; enable ownVPN propagation; targetVPC ownRT route10.84.3/24→ownTGW; verify TGW target10.86/16 and later actual propagatedcustomer10.84.3/24'},
+ {'id':'target_sg','create':'NEW targetSG TCP8080 ONLY10.84.3/24; TCP22 ONLY16.170.207.192/32; no publicHTTP/0/0 ingress'},
+ {'id':'target','create':'instance ownsubnet10.86.1.10, t3.micro/key+AMI referenced, ownSG, publicIPv4 ONLYmanagementSSHbastion/32; cloud-init bounded Python8080 nonce echo; no NAT/peering required','management_note':'Root-approved publicmanagementSSH22 ONLYdesignatedbastion/32; HTTP8080 ONLYprivate84.3/24. Actualapplicationtarget remains10.86.1.10; no peering.'},
+ {'id':'customer','create':'NEW subnet10.84.3/24 inside existing ownedcustomerVPC, dedicatedRT association, newclient10.84.3.10; RT10.86/16→existinggatewayENI, default→existingownedIGW for bastion-only publicSSH; clientSG TCP22 ONLY16.170.207.192/32','mutates_existing':'new resources only; existingcustomer1/2 subnet associations untouched'},
+ {'id':'gateway_sg_additive','create':'NEW dedicated TGWgateway SG allows UDP500/4500 ONLY returnednewAWS outsidepeer/32s and TCP8080 forwardedsourceONLY10.84.3/24; management22 remains originalSGonly','mutates_existing':'add this ownedSG to existing ownedgateway ENI; originalsg026... unchanged; explicit root review required before execute'},
+ {'id':'host_and_product','action':'SEPARATE root-owned follow-on: verified gateway physical routed reachability10.84.3/24, normalCP newTGWprovider private PSKs/tunnels, BGP65000/64512 local84.3 remote10.86/16, normal grantexacttarget8080; do not mutateVGW provider/lease or reuse its evidence'},
+ {'id':'acceptance','action':'actual TGW2SAs/BGP2Established/current routes; denywithoutnormalgrant, allowwithnormalgrant, independentlyhealthy failover/withdraw/delete/restart; actual TGWnonECMP readback. No acceptance inferred fromVGW.'}
+ ],
+ 'sources':['https://docs.aws.amazon.com/cli/latest/reference/ec2/create-transit-gateway.html','https://docs.aws.amazon.com/vpc/latest/tgw/how-transit-gateways-work.html']
+}
+if __name__=='__main__':print(json.dumps(plan,indent=2))

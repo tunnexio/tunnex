@@ -37,6 +37,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/subnetguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/subnetsrc"
 	"github.com/tunnexio/tunnex/apps/api/internal/wgkey"
+	"github.com/tunnexio/tunnex/apps/api/internal/wgmtu"
 )
 
 // Service provides device/peer operations.
@@ -531,7 +532,7 @@ func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.
 				}
 				return []string{}
 			}(),
-			MTU: clientMTU, PersistentKeepalive: keepalive,
+			MTU: s.selectedGatewayMTU(ctx, orgID, node, endpoint, serverPubKey), PersistentKeepalive: keepalive,
 		}}
 		return nil
 	})
@@ -1010,7 +1011,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 				}
 			}
 		}
-		mtu := clientMTU
+		mtu := s.selectedGatewayMTU(ctx, in.OrgID, node, endpoint, serverPubKey)
 		// Only a verified single-use sandbox bootstrap selects the sandbox path MTU.
 		if sandboxBinding != nil {
 			mtu = sandboxMTU
@@ -1804,4 +1805,34 @@ func (s *Service) checkNewPrincipalAllowed() error {
 func (s *Service) WithLicence(m *licence.Manager) *Service {
 	s.licence = m
 	return s
+}
+
+// selectedGatewayMTU follows the SAME endpoint/key selected for the config,
+// including an active-hub dial. Never borrow an assigned spoke's report for a
+// different hub. Ambiguous/missing topology retains the legacy default.
+func (s *Service) selectedGatewayMTU(ctx context.Context, orgID uuid.UUID, assigned sqlc.Node, endpoint, publicKey string) int {
+	selected := assigned
+	if endpoint != assigned.Endpoint || publicKey != assigned.WgPublicKey {
+		nodes, err := s.q.ListNodes(ctx, orgID)
+		if err != nil {
+			return wgmtu.Default
+		}
+		found := false
+		for _, n := range nodes {
+			if n.Endpoint == endpoint && n.WgPublicKey == publicKey {
+				if found {
+					return wgmtu.Default
+				}
+				selected = n
+				found = true
+			}
+		}
+		if !found {
+			return wgmtu.Default
+		}
+	}
+	if !selected.PolicyReportedAt.Valid {
+		return wgmtu.Default
+	}
+	return wgmtu.Applied(selected.Capabilities, selected.PolicyReportedAt.Time, time.Now())
 }

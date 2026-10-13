@@ -44,7 +44,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 118); err != nil {
+	if err := db.MigrateTo(testURL.String(), 219); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())

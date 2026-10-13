@@ -1,0 +1,3 @@
+# Portability boundaries
+
+The clock subprocess and full bracket tests can use adjacent archived source files without live transport. The pending-bracket and transition-contract tests also retain private actual capture dependencies and the original v3 helper path. Their copies under portable-tests are provenance copies, not standalone portable executions. No replacement capture is fabricated. The recorded original qualification remains authoritative. Replaying these tests requires the original protected capture and pinned helper sources or a separately reviewed synthetic fixture derivative. The Go actual-pair test has the same protected-fixture boundary. No portability test was executed for this archive.

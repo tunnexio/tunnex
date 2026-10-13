@@ -196,7 +196,8 @@ it("routes AWS through provider selection and does not reopen a cancelled draft 
     expect(logo?.getAttribute("focusable")).toBe("false");
     if (provider !== "self_managed") expect(logo?.querySelector("image")?.getAttribute("href")).toMatch(/^data:image\/(?:svg\+xml|png);base64,/);
   }
-  for (const name of [/Azure/, /Google Cloud/, /On-premises/]) {
+  expect((screen.getByRole("button", { name: /Azure/ }) as HTMLButtonElement).disabled).toBe(false);
+  for (const name of [/On-premises/]) {
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   }
   fireEvent.click(screen.getByRole("button", { name: /AWS Site-to-Site/ }));
@@ -239,4 +240,20 @@ it("opens IPsec directly from a shared connection-method URL", async () => {
   expect((screen.getByRole("radio", { name: /To a cloud VPN/ }) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole("radio", { name: /Between your networks/ }));
   expect(screen.queryByRole("heading", { name: "IPsec VPN connections" })).toBeNull();
+});
+
+it("opens Google Cloud HA profile through the existing provider chooser", async () => {
+  mock.get.mockImplementation(async (path:string) => {
+    if(path.endsWith("/members"))return {data:[{user_id:"user",role:"owner"}]};
+    if(path.endsWith("/settings"))return {data:{enabled:true,revision:1}};
+    if(path.endsWith("/connections"))return {data:{items:[],next_cursor:null}};
+    return {data:[]};
+  });
+  render(app());fireEvent.click(await screen.findByRole("button",{name:"Create connection"}));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button",{name:/IPsec/}));
+  fireEvent.click(screen.getByRole("button",{name:/Google Cloud HA VPN/}));
+  await screen.findByRole("dialog",{name:"New IPsec connection"});
+  expect((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).value).toBe("gcp-ha-bgp-ipv4-v1");
+  expect((screen.getByLabelText("Routing") as HTMLSelectElement).value).toBe("ipv4-bgp");
+  expect(screen.getByLabelText("Cloud Router ASN")).toBeTruthy();
 });

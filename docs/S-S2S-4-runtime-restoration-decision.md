@@ -99,3 +99,40 @@ The Docker stop observer and receipt assembler are privileged host-supervisor to
 
 
 Controlled lifecycle automation uses a private startup gate held from before stop until the exact new-runtime receipt is durably installed. Apply withdraws permits while that gate exists, including an unsafe or unreadable gate. The supervisor removes only the gate it created after validating identity and content. This prevents the ordinary same-namespace missing-link path from racing receipt installation when Linux reuses a namespace inode. An exact current-entry receipt is itself a restoration trigger even when the boot and namespace numbers are unchanged; complete absence and all fresh-authority checks still apply. Stale receipts cannot match the new entry digest and do not trigger another epoch.
+
+
+### Host supervisor context and explicit resume (10 October 2026)
+
+The GCP Classic controlled restart captured valid original stop evidence and recycled the old namespace inode. The subsequent resume was refused before receipt assembly because the helper compared its Docker host namespace with the container target namespace. The unconditional inode inequality was a separate source incompatibility; the captured failure does not establish it as the original entrypoint refusal.
+
+An explicit fresh-runtime observation lets the host helper independently verify the target process namespace, exact dedicated container cgroup, process start ticks, unchanged host boot and retained root-private startup gate. Legacy invocations still require the helper itself to run in the target namespace. Same-inode restoration without fresh evidence remains refused. Target process and gate identity are checked again after assembly; the agent independently requires current material, policy/lease authority and absence before any restoration.
+
+Explicit resume preserves the original stopped snapshot and proof. Current journals must validate completely and retain identical entries, owner and format; only valid guard metadata and monotonic sequence advancement may differ. Older evidence did not persist the original gate inode, so resume matches the original private gate hash/run/container record and holds the currently observed gate identity without inventing a historical inode claim. Its timing metric reports resumed wait only, not the total outage since the original stop. These checks are source qualification until the captured run is successfully resumed; they do not prove host-reboot or GCP cloud acceptance.
+
+### Superseding an exact unconsumed receipt after a corrected node build
+
+A bounded restoration wait can fail after installing its receipt and releasing
+the startup gate, leaving the journal obligation unchanged. A fresh controlled
+restart may explicitly use `--supersede-unconsumed-evidence-dir` pointing to that
+exact prior attempt. This is distinct from resuming a retained gate. Admission
+requires the installed receipt bytes to match the root-private archived receipt,
+unchanged complete journal entry lineage, and the exact currently running PID,
+Docker StartedAt, process start ticks, dedicated cgroup, namespace and boot
+recorded in the prior fresh-runtime evidence. The helper's `-verify-existing` mode
+reconstructs that historical receipt with the complete product journal reader;
+it verifies only and cannot publish a receipt or attest the historical gate as
+currently present. Changed historical proof, journal, receipt or target identity
+refuses before stopping.
+
+The new run preserves the previous receipt in its evidence directory, creates
+its own startup gate, and captures a genuine new stop proof for the currently
+running process. Only the ordinary fresh-runtime helper path may install the
+new receipt after that stop. Original evidence is never rewritten and an old
+stop proof is never reused to authorize the new stopped instance. Existing
+receipt and journal checks remain active during installation; ordinary timeout
+and failure retention are unchanged.
+
+Initial admission refusal creates no startup gate. A later identity refusal after
+the new run creates its gate preserves that exact owned gate even if no stop
+has occurred. Explicit operator diagnosis is required; the runner does not
+delete the gate automatically or manufacture stop evidence for retry.

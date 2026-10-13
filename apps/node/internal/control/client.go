@@ -175,9 +175,10 @@ func (c *Client) AdoptCredentials(certPEM, keyPEM []byte) error {
 // control plane compares this against what it pushed — applied != pushed means the
 // gateway is running STALE policy, which must be visible, never silent.
 type PolicyStatus struct {
-	Version int
-	Hash    string
-	Error   string
+	WireGuardAppliedMTU int
+	Version             int
+	Hash                string
+	Error               string
 	// FailingSince (RFC3339, empty when healthy) is the mismatch onset — the control
 	// plane's stale alarm measures elapsed time from here, not the applied-hash age.
 	FailingSince string
@@ -216,6 +217,9 @@ type PolicyStatus struct {
 	// selected-gateway DNS RPC version. Zero/missing means an older agent and is
 	// a compatibility refusal for FQDN enforcement, never a public-DNS fallback.
 	DNSResolveRPCVersion int
+	// DNSIPsecResolveVersion independently gates the source-bound private DNS
+	// path. Legacy RPC v2 agents must never receive this optional transport.
+	DNSIPsecResolveVersion int
 	// FlowLogState reports whether the NFLOG observer is active, explicitly
 	// disabled, failed to read its source, or failed to deliver. It is a closed
 	// catalogue on the wire so the server can distinguish an idle gateway from
@@ -237,19 +241,43 @@ type PolicyStatus struct {
 // and the applied Zero Trust policy status (S7.2 staleness).
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
 	payload := map[string]any{
+		"wireguard_applied_mtu": ps.WireGuardAppliedMTU,
 		// Only the actual qualified controller may advertise this protocol.
-		"ipsec_config_version":   c.ipsecCapability(),
-		"ipsec_recovery_version": c.ipsecRecoveryCapability(),
-		"public_key":             publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
+		"ipsec_config_version":         c.ipsecCapability(),
+		"ipsec_recovery_version":       c.ipsecRecoveryCapability(),
+		"ipsec_retained_guard_version": c.ipsecRetainedGuardCapability(),
+		"public_key":                   publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
 		"policy_version": ps.Version, "policy_hash": ps.Hash, "policy_error": ps.Error,
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
-		"ovpn_health":             ps.OVPNHealth,
-		"dns_resolve_rpc_version": ps.DNSResolveRPCVersion,
-		"flow_log_state":          ps.FlowLogState.Bounded(),
-		"ai_vpn_http_ready":       ps.AIVPNHTTPReady,
-		"ai_vpn_http_address":     ps.AIVPNHTTPAddress,
+		"ovpn_health":               ps.OVPNHealth,
+		"dns_resolve_rpc_version":   ps.DNSResolveRPCVersion,
+		"dns_ipsec_resolve_version": ps.DNSIPsecResolveVersion,
+		"flow_log_state":            ps.FlowLogState.Bounded(),
+		"ai_vpn_http_ready":         ps.AIVPNHTTPReady,
+		"ai_vpn_http_address":       ps.AIVPNHTTPAddress,
+	}
+	if version := c.ipsecBGPCapability(); version == 1 {
+		payload["ipsec_bgp_version"] = version
+	}
+	if version := c.ipsecAzureBGPRecreationCapability(); version == 1 {
+		payload["ipsec_azure_bgp_recreation_version"] = version
+	}
+	if version := c.ipsecAzureProfileRecreationCapability(); version == 1 {
+		payload["ipsec_azure_profile_recreation_version"] = version
+	}
+	if version := c.ipsecFQDNPolicyCapability(); version == 1 || version == 2 {
+		payload["ipsec_fqdn_policy_version"] = version
+	}
+	if c.ipsecAzureCapability() == 1 {
+		payload["ipsec_azure_version"] = 1
+	}
+	if c.ipsecGCPHACapability() == 1 {
+		payload["ipsec_gcp_ha_version"] = 1
+	}
+	if c.ipsecGCPClassicCapability() == 1 {
+		payload["ipsec_gcp_classic_version"] = 1
 	}
 	if !ps.FlowLogLastObservedAt.IsZero() {
 		payload["flow_log_last_observed_at"] = ps.FlowLogLastObservedAt.UTC().Format(time.RFC3339Nano)
@@ -295,7 +323,7 @@ func (c *Client) ReportDNSResolution(ctx context.Context, response fqdnrpc.Respo
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("dns-resolution status %d", resp.StatusCode)
+		return dnsReportHTTPError{status: resp.StatusCode}
 	}
 	return nil
 }

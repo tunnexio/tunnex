@@ -1,0 +1,30 @@
+{
+  "scope": "read-only designated bastion; key-free Cloud Router and HA VPN gateway projection",
+  "project": "project-0048836f-6ba1-4a14-8da",
+  "router": "tn-gcps2s-20261010-router",
+  "region": "asia-south2",
+  "cloud_asn": 64514,
+  "customer_asn": 65010,
+  "interfaces": [
+    {
+      "id": 0,
+      "name": "tunnex-if-0",
+      "tunnel": "tn-gcps2s-20261010-ha-0",
+      "outside": "34.153.32.207",
+      "cloud_ip": "169.254.100.1",
+      "customer_ip": "169.254.100.2",
+      "cloud_ip_range": "169.254.100.1/30"
+    },
+    {
+      "id": 1,
+      "name": "tunnex-if-1",
+      "tunnel": "tn-gcps2s-20261010-ha-1",
+      "outside": "34.153.224.218",
+      "cloud_ip": "169.254.100.5",
+      "customer_ip": "169.254.100.6",
+      "cloud_ip_range": "169.254.100.5/30"
+    }
+  ],
+  "secrets_read": false,
+  "cloud_mutation": false
+}

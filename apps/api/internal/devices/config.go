@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	clientMTU  = 1420 // match the server interface MTU (S3.2 decision)
+	clientMTU  = 1420 // legacy/requested default; fresh gateway applied MTU can cap an issued config
 	sandboxMTU = 1280 // bounded sandbox path avoids the measured outer-path fragmentation limit
 	keepalive  = 25   // seconds; makes the client initiate a handshake through NAT
 	// fullTunnelDNS is handed to full-tunnel clients so name resolution still

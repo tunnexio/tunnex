@@ -1,0 +1,135 @@
+{
+  "baseline": {
+    "resources": {
+      "original_count": 9,
+      "current_count": 11,
+      "original_exact_preserved": true,
+      "new_ids": [
+        "01a12659-7de0-79ad-8a39-03d62cbcb3d5",
+        "01a12659-f410-74f3-8d4d-3b0dbbac1729"
+      ]
+    },
+    "policies": {
+      "original_count": 8,
+      "current_count": 10,
+      "original_exact_preserved": true,
+      "new_ids": [
+        "01a12659-c017-70c0-b02d-2fe6051f51a5",
+        "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+      ]
+    },
+    "new_exact_checks": [
+      {
+        "kind": "resources",
+        "id": "01a12659-7de0-79ad-8a39-03d62cbcb3d5",
+        "exact_template": true
+      },
+      {
+        "kind": "policies",
+        "id": "01a12659-c017-70c0-b02d-2fe6051f51a5",
+        "exact_template": true
+      },
+      {
+        "kind": "resources",
+        "id": "01a12659-f410-74f3-8d4d-3b0dbbac1729",
+        "exact_template": true
+      },
+      {
+        "kind": "policies",
+        "id": "01a1265a-3527-7b51-b8fc-e7a9404981f4",
+        "exact_template": true
+      }
+    ]
+  },
+  "operations": {
+    "classic-http-resource-v1": [
+      {
+        "action": "resource",
+        "profile": "classic",
+        "started": true,
+        "scope": "normal owner API only; no native readiness claim"
+      },
+      {
+        "created_id": "01a12659-7de0-79ad-8a39-03d62cbcb3d5",
+        "resource_name": "gcp-cloud-classic-http-1010"
+      },
+      {
+        "completed": true
+      }
+    ],
+    "classic-http-grant-v1": [
+      {
+        "action": "grant",
+        "profile": "classic",
+        "started": true,
+        "scope": "normal owner API only; no native readiness claim"
+      },
+      {
+        "created_id": "01a12659-c017-70c0-b02d-2fe6051f51a5",
+        "resource_name": "gcp-cloud-classic-http-1010"
+      },
+      {
+        "completed": true
+      }
+    ],
+    "classic-udp-resource-v1": [
+      {
+        "action": "resource",
+        "profile": "classic",
+        "started": true,
+        "scope": "normal owner API only; no native readiness claim"
+      },
+      {
+        "created_id": "01a12659-f410-74f3-8d4d-3b0dbbac1729",
+        "resource_name": "gcp-cloud-classic-udp-echo-1010"
+      },
+      {
+        "completed": true
+      }
+    ],
+    "classic-udp-grant-v1": [
+      {
+        "action": "grant",
+        "profile": "classic",
+        "started": true,
+        "scope": "normal owner API only; no native readiness claim"
+      },
+      {
+        "created_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4",
+        "resource_name": "gcp-cloud-classic-udp-echo-1010"
+      },
+      {
+        "completed": true
+      }
+    ]
+  },
+  "fresh_status": {
+    "connection": {
+      "id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+      "gateway_node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+      "desired_revision": 2,
+      "desired_intent": "enabled",
+      "cleanup_state": "not_required",
+      "application_state": "applied",
+      "finalized_at": null
+    },
+    "status": {
+      "observed_at": "2026-10-10T15:06:49.429218Z",
+      "active_slot": null,
+      "tunnels": [
+        {
+          "id": "8494b8ef-e6e8-4d8d-b964-fc6faec7cb72",
+          "slot": 1,
+          "selected": true,
+          "status": "up"
+        }
+      ]
+    },
+    "revision_stable_during_collection": true,
+    "collected_at_utc": "2026-10-10T15:06:53.083916+00:00",
+    "scope": "public API receipt only; native SA/route/guard and payload evidence collected separately"
+  },
+  "default_deny_receipt_sha256": "4ebf7e54b731f167763b12411db17ad9bcb8cc43a652d6af92305bed4bfe50a8",
+  "scope": "Only normal Classic application TCP8080 and UDP9000 resources/grants. All original IDs/bodies preserved. Actual allow/payload/counter proof pending root execution; no HA/DNS/FQDN grants."
+}

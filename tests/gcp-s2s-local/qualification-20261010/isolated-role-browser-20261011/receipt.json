@@ -1,0 +1,103 @@
+{
+  "completed": true,
+  "scope": "isolated normal-session read-only browser acceptance; no PSK input or Save",
+  "browserVersion": "149.0.7827.55",
+  "executable": "/Users/pawangupta/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+  "packagePath": "/Users/pawangupta/tunnex/e2e/node_modules/@playwright/test",
+  "results": [
+    {
+      "role": "owner",
+      "membershipVerified": true,
+      "createVisible": true,
+      "classicMenu": [
+        "Connection details",
+        "Disable gcp-cloud-classic-1010",
+        "Delete gcp-cloud-classic-1010"
+      ],
+      "haMenu": [
+        "Connection details",
+        "Disable gcp-cloud-ha-1010",
+        "Delete gcp-cloud-ha-1010"
+      ],
+      "classicSingleTunnel": true,
+      "classicConfig": true,
+      "haTwoTunnels": true,
+      "haBGPVisible": true,
+      "mobile": {
+        "viewport": 390,
+        "body": 390,
+        "document": 390,
+        "menu": true
+      },
+      "draftCheck": {
+        "count": 1,
+        "allBlank": true,
+        "allNoAutocomplete": true
+      },
+      "storageKeyNames": {
+        "localKeys": [],
+        "sessionKeys": []
+      }
+    },
+    {
+      "role": "admin",
+      "membershipVerified": true,
+      "createVisible": true,
+      "classicMenu": [
+        "Connection details",
+        "Disable gcp-cloud-classic-1010",
+        "Delete gcp-cloud-classic-1010"
+      ],
+      "haMenu": [
+        "Connection details",
+        "Disable gcp-cloud-ha-1010",
+        "Delete gcp-cloud-ha-1010"
+      ],
+      "classicSingleTunnel": true,
+      "classicConfig": true,
+      "haTwoTunnels": true,
+      "haBGPVisible": true,
+      "mobile": {
+        "viewport": 390,
+        "body": 390,
+        "document": 390,
+        "menu": true
+      },
+      "draftCheck": {
+        "count": 1,
+        "allBlank": true,
+        "allNoAutocomplete": true
+      },
+      "storageKeyNames": {
+        "localKeys": [],
+        "sessionKeys": []
+      }
+    },
+    {
+      "role": "member",
+      "membershipVerified": true,
+      "createVisible": false,
+      "classicMenu": [
+        "Connection details"
+      ],
+      "haMenu": [
+        "Connection details"
+      ],
+      "classicSingleTunnel": true,
+      "classicConfig": true,
+      "haTwoTunnels": true,
+      "haBGPVisible": true,
+      "mobile": {
+        "viewport": 390,
+        "body": 390,
+        "document": 390,
+        "menu": true
+      },
+      "draftCheck": null,
+      "storageKeyNames": {
+        "localKeys": [],
+        "sessionKeys": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "ui_source_commit": "4cea7dfd7133d4ec4237035d20dae1c7f322e994",
+  "web_source_identical_to_integration_commit": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "source_worktree_clean": true,
+  "vite_pid": 76741,
+  "vite_listen": "127.0.0.1:35173",
+  "browser": "Chrome",
+  "real_connections": {
+    "ha": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+    "classic": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6"
+  },
+  "actual_checks": {
+    "member_classic_one_up_no_management_actions": true,
+    "member_ha_two_up_bgp_unknown_no_installed80_route": true,
+    "member_classic_mobile_viewport": "390x844",
+    "member_mobile_document_width": 390,
+    "viewport_reset_after_check": true,
+    "owner_normal_existing_login": true,
+    "owner_ha_two_up_bgp_unknown_maxprefix1": true,
+    "owner_classic_one_up": true,
+    "owner_classic_actions": [
+      "Connection details",
+      "Disable",
+      "Delete"
+    ],
+    "applied_text_separates_end_to_end_traffic": true,
+    "connection_state_mutated_by_browser": false
+  },
+  "artifacts": [
+    {
+      "private_basename": "member-classic-up.jpg",
+      "sha256": "9860b606e3105ad761f893b386a08d4ad03d530590eb28e0b575297f88c94494"
+    },
+    {
+      "private_basename": "member-classic-mobile.jpg",
+      "sha256": "b083ebb7008b59d34b654f1692087f36a2d74e2bb56812e40f46dd981fdb0b1a"
+    },
+    {
+      "private_basename": "owner-classic-actions.jpg",
+      "sha256": "17c86595aecb88b0f30f1a468e32f8b98c1a9c864e0aae11fa287fa3bda33b9f"
+    },
+    {
+      "private_basename": "owner-classic-up.jpg",
+      "sha256": "57bfb8ba5efe4accb48802919000d9a9b163ce42ca1cf2a4601a5185622aa1ea"
+    },
+    {
+      "private_basename": "owner-classic-detail.txt",
+      "sha256": "653eebe365ed00bcaf06d1a58adec21e42ed992b32aa7ec9dfa3daa6bd25d833"
+    }
+  ],
+  "scope": "Actual normal role-specific local UI showing real GCP connection reports. Observational UI evidence only; does not prove cloud packets, HA BGP, or lifecycle operation. Existing login only, no secret reveal or connection mutation."
+}

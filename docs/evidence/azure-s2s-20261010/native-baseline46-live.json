@@ -1,0 +1,76 @@
+{
+  "observed_at": "2026-10-10T21:11:59.474460+00:00",
+  "passed": true,
+  "return_code": 0,
+  "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+  "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+  "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+  "private_log_sha256": "7ea4d64b4c14f9e707a08d0d9b3800636988c0a821cf515f725935f19020bdc3",
+  "desired_revision": 46,
+  "namespace_device": 4,
+  "namespace_inode": 4026532430,
+  "native_receipt": {
+    "bgp": {
+      "peers": [
+        {
+          "accepted_prefixes": 1,
+          "slot": 1,
+          "state": "established"
+        },
+        {
+          "accepted_prefixes": 1,
+          "slot": 2,
+          "state": "established"
+        }
+      ],
+      "routes": [
+        "10.231.0.0/16"
+      ]
+    },
+    "configuration_revision": 1,
+    "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+    "desired_revision": 46,
+    "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "historical_boot_entry_count": 1,
+    "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+    "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+    "host_machine_identity_source": "external_root_attestation",
+    "journal_entries": 22,
+    "journal_sha256": "49a803360e61cca42c45f85c2e174cf6e6f033c8d1d2026d6b7f27c7c4dc15bd",
+    "kind": "owned_max_prefix_baseline",
+    "namespace": {
+      "device": 4,
+      "inode": 4026532430
+    },
+    "native": {
+      "sad": 4,
+      "spd_fwd": 2,
+      "spd_in": 2,
+      "spd_out": 2
+    },
+    "observed_at": "2026-10-10T21:11:58.835945041Z",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "traffic_counters_monotonic_advanced": false,
+    "tunnels": [
+      {
+        "owned_ike": 1,
+        "owned_installed_children": 1,
+        "slot": 1,
+        "state": "up"
+      },
+      {
+        "owned_ike": 1,
+        "owned_installed_children": 1,
+        "slot": 2,
+        "state": "up"
+      }
+    ],
+    "version": 1
+  },
+  "limits": [
+    "This is the actual revision46 independent read-only native baseline only; it does not prove maximum-prefix enforcement, Azure advertisement changes, packet continuity, DNS stability or scheduled rekey.",
+    "The earlier observer refusal remains unclassified. This successful run uses a separately reviewed helper that permits only monotonic byte-counter changes while retaining identity and native brackets."
+  ]
+}

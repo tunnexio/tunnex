@@ -1,0 +1,25 @@
+{
+  "archive_sha256": "64802a4e72df8c72cdd207c5e0d4bd097e702727d1d7e12fb45dd6eae29d731d",
+  "automatic_approval_review": {
+    "action": "Relay generic V7 derivation script through designated bastion to owned Azure peer and create exclusive qualification source/kit directories",
+    "exact_human_approval_requested": true,
+    "executed": false,
+    "reason": "Specific internal derivation payload and pinned infrastructure metadata destination were not explicitly authorized by the earlier V10 approval",
+    "workaround_attempted": false
+  },
+  "category": "running_native_observer_locally_qualified_remote_transfer_blocked",
+  "connection_recovery_performed": false,
+  "derivation_script_sha256": "7327fe52f8d0520bf112fa7f65779da6c4f9d8698dff569cebc6cfaff4f0c541",
+  "driver_sha256": "6e6320e1e7263e322b931c1daf97f3e86ca346e057372b9a9ad8353df2ddf60c",
+  "independent_source_review": "V6-to-V7 no blocker. Generic derivation optimization blocker fixed and actual python -O refused before writes; launcher also explicitly rejects optimization environment.",
+  "launcher_sha256": "7a98470303658b0ecd51a57d31d22fc321c0da3478786facc00579458d304b67",
+  "local_derivation": "Complete independently pinned archive/member/manifest/driver reproduction passed.",
+  "manifest_sha256": "0ba71caf5dc6a9df3d59a7f35d8c9df75974fbc58e2dbae8db40207702cf8add",
+  "native_running_observation_performed": false,
+  "node_executable_sha256": "029a6b041de018112a83f7d99bdfd155a708521746373466d072fe6bc60085e6",
+  "observed_at": "2026-10-11T05:16:11.454080+00:00",
+  "remaining_acceptance": "Full fresh running native absence, same-ID recovery, maximum-prefix/cloud restore, other profiles, lifecycle, sustained DNS/FQDN application and final UI still pending.",
+  "running_gateway_container": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+  "source_changes": "Only three Python files literal source paths/current CID/image/node/actual start; unchanged native observer and native Go source. Historical M remains immutable.",
+  "version": 1
+}

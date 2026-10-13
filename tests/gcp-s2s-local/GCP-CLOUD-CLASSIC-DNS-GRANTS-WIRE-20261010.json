@@ -1,0 +1,81 @@
+{
+  "scope": "normal owner API only; exact Classic DNS grants. Wire failed; no DNShealth/lease/FQDN claim",
+  "created": [
+    {
+      "action": "resource",
+      "name": "gcp-cloud-classic-dns-udp-1010",
+      "id": "01a1269c-2e2e-7363-9c2c-b986bf3b1241",
+      "reconciled_prior_success": true
+    },
+    {
+      "action": "grant",
+      "name": "gcp-cloud-classic-dns-udp-1010",
+      "id": "01a1269c-c2e3-7c36-801a-eb4969972410"
+    },
+    {
+      "action": "resource",
+      "name": "gcp-cloud-classic-dns-tcp-1010",
+      "id": "01a1269c-c34e-7dd5-9e6f-cc69a639b9b0"
+    },
+    {
+      "action": "grant",
+      "name": "gcp-cloud-classic-dns-tcp-1010",
+      "id": "01a1269c-c3ab-70eb-a073-a2f2a6d58bff"
+    }
+  ],
+  "original_11_resources_10_policies_preserved": true,
+  "final_counts": {
+    "resources": 13,
+    "policies": 12
+  },
+  "source_cidr": "10.70.0.2/32",
+  "destination_cidr": "10.81.0.2/32",
+  "ports": [
+    {
+      "protocol": "udp",
+      "port": 53
+    },
+    {
+      "protocol": "tcp",
+      "port": 53
+    }
+  ],
+  "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+  "desired_revision": 2,
+  "application_state_at_write_readback": "applied",
+  "private_baselines": {
+    "before.json": "3108b0aba672e70c7cbc2c8d41a285d3bb31ae930e0795b270c6ceb8910cf3d2",
+    "public-summary.json": "cb9d15a818b86259fcbda6946458e92bb6e47b8f70d493e2875c35a57eb99e70",
+    "gcp-cloud-classic-dns-udp-1010-after-grant.json": "8df8be0693ae8c4b483f9df2ea5c5cccdf74e7cba6aa1869adc96ac8f0e23c48",
+    "gcp-cloud-classic-dns-tcp-1010-after-resource.json": "9d9bf1f6de83d64efdf7f8e1af1f71aef47ce6f885ae6952d5bbd6214fff2863",
+    "after-all.json": "599ca055dda7651a6f900cc7a7165b05a749715a7602824171ca30006016fb3f",
+    "gcp-cloud-classic-dns-tcp-1010-after-grant.json": "599ca055dda7651a6f900cc7a7165b05a749715a7602824171ca30006016fb3f",
+    "reconcile-original-plus-one-resource.json": "935529e7d596a212f6a1246d0042291c7cbd4fc53ab108f3b3633a7ad291ae6b",
+    "gcp-cloud-classic-dns-tcp-1010-before-grant.json": "9d9bf1f6de83d64efdf7f8e1af1f71aef47ce6f885ae6952d5bbd6214fff2863",
+    "gcp-cloud-classic-dns-tcp-1010-before-resource.json": "8df8be0693ae8c4b483f9df2ea5c5cccdf74e7cba6aa1869adc96ac8f0e23c48",
+    "gcp-cloud-classic-dns-udp-1010-before-grant.json": "935529e7d596a212f6a1246d0042291c7cbd4fc53ab108f3b3633a7ad291ae6b",
+    "gcp-cloud-classic-dns-udp-1010-before-resource.json": "3108b0aba672e70c7cbc2c8d41a285d3bb31ae930e0795b270c6ceb8910cf3d2"
+  },
+  "partial_readback_error": {
+    "after": "successful first UDPresourcePOST",
+    "unsupported_resource_detail_GET_status": 404,
+    "successful_POST_replayed": false,
+    "reconciled_via": "supported normal GET/resources list"
+  },
+  "wire": {
+    "source_sha256": "63349a13021913f9da41f7f350141da46c318f3410d02fa4befb9300be29112e",
+    "receipt_path": "/var/lib/tunnex-gcp-cloud-preparation/dns-wire-63349a/classic-after-exact-grants-v1.json",
+    "receipt_sha256": "24f3bc6d10bea166a8d29e8fd340c9aa2238845c1825a0fb42f8c31c43ac266b",
+    "completed": false,
+    "accepted": false,
+    "results_count": 0,
+    "error_type": "PermissionError",
+    "stage_not_recorded": true,
+    "replayed": false
+  },
+  "subsequent_native_observation": {
+    "exact81_2_accept_rule_count": 0,
+    "causal_global_bug_claim": false
+  },
+  "api_writes_paused": true
+}

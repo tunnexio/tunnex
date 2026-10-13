@@ -1,0 +1,33 @@
+{
+  "scope": "Genuine normal withdrawal on the deployed cleanup source; no remediation helper mutation",
+  "production_source_commit": "5861090f",
+  "desired_revision": 17,
+  "desired_intent": "disabled",
+  "application_state": "not_applied",
+  "cleanup_state": "retained_guard",
+  "normal_read_observed_at": "2026-10-10T16:04:39.509688+00:00",
+  "original_namespace_and_journal_history_preserved": true,
+  "retained_entries": 8,
+  "read_only_native_diagnostic": {
+    "daemon_sas": 0,
+    "daemon_connections": 0,
+    "daemon_shared_keys": 0,
+    "sad": 0,
+    "spd": 0,
+    "owned_xfrm_links": 0,
+    "protocol242_routes": 0,
+    "full_guard_verified": true,
+    "withdrawal_guard_verified": true,
+    "journal_unchanged": true
+  },
+  "receipt_helper_issue": {
+    "first_attempt_failed_after_mutation_at": "typed_runtime_status",
+    "cause": "Python 3.9/3.10 fromisoformat rejects valid Go RFC3339Nano timestamp with five fractional digits",
+    "actual_status_timestamp": "2026-10-10T15:59:52.17802Z",
+    "fix_commit": "58b4c5c9",
+    "offline_tests_passed": 2,
+    "subsequent_normal_read_passed": true,
+    "disable_mutation_not_repeated": true
+  },
+  "limits": ["Withdrawal duration was not measured", "Prior native snapshots had exact default selectors; live narrowed-selector cleanup is not independently demonstrated by this withdrawal", "No image stop/replacement or journal editing was used to achieve settlement"]
+}

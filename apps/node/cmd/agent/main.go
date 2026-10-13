@@ -32,6 +32,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
 	"github.com/tunnexio/tunnex/apps/node/internal/identity"
+	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
 	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
@@ -218,10 +219,18 @@ func main() {
 			go appRuntime.Run(ctx)
 		}
 	}
-	if err := startIPsecRuntime(ctx, client, certDir, logger); err != nil {
+	dnsTransport := &ipsec.DNSRuntimeTransport{}
+	fqdnPolicySource := &ipsec.RuntimeFQDNPolicySource{}
+	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource)
+	if err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
 	}
+	defer func() {
+		if err := shutdownIPsec(); err != nil {
+			logger.Error("ipsec_runtime_shutdown_incomplete")
+		}
+	}()
 	// WireGuard key: generated locally and persisted; the private key never
 	// leaves the node. Re-key = delete the file -> a new key is generated and its
 	// pubkey re-reported.
@@ -255,6 +264,7 @@ func main() {
 	// review #6), then reconcile on an interval (heals a flushed table). Torn down on
 	// shutdown (full-sweep). No-op / not-capable off Linux.
 	egressMgr := egress.New(wgIface)
+	egressMgr.SetFQDNPolicyCallbacks(fqdnPolicySource.BeforePolicy, fqdnPolicySource.CommittedPolicy)
 	egressMgr.SetKubernetesMode(kubernetesMode)
 	if kubernetesMode {
 		guard, err := newKubernetesCNIAuthorityGuard(
@@ -282,11 +292,13 @@ func main() {
 	// The FQDN baseline survives agent restarts. A missing/corrupt file does
 	// not silently become an empty generation: egress performs its documented
 	// deny-all + conntrack recovery before accepting the first policy.
+	egressMgr.SetFQDNPolicyCallbacks(fqdnPolicySource.BeforePolicy, fqdnPolicySource.CommittedPolicy)
 	egressMgr.SetFQDNBaselinePath(filepath.Join(certDir, "fqdn-policy-baseline.json"))
 	defer egressMgr.Teardown(context.Background())
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.
 	dnsFwd := dnsforward.New(logger, nil)
+	dnsFwd.SetResolverTransport(dnsTransport)
 	if err := dnsFwd.SetVPNHost(os.Getenv("TUNNEX_AI_VPN_HOSTNAME"), os.Getenv("TUNNEX_AI_VPN_ADDRESS")); err != nil {
 		logger.Error("invalid VPN AI DNS configuration")
 		return
@@ -387,7 +399,7 @@ func main() {
 		go aiVPN.Run(ctx)
 		defer aiVPN.Close()
 	}
-	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger)
+	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger, r.AppliedWireGuardMTU)
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
 	r.SetForwardBlockedFn(egressMgr.ForwardBlocked)        // WF-4: Docker FORWARD DROP swallowing the forward → same signal
@@ -396,7 +408,8 @@ func main() {
 	r.OnPolicy(func(p *nodepolicy.Compiled) {
 		if err := reconcileWithPolicyReportWake(egressMgr, &egressNAT, &egressIPv6, reportKick, func() error {
 			egressMgr.SetPolicy(p)
-			dnsFwd.SetTable(dnsEntriesFrom(p))      // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
+			dnsFwd.SetTable(dnsEntriesFrom(p)) // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
+			dnsFwd.SetResolverProfiles(dnsResolverProfilesFrom(p))
 			dnsFwd.SetK8sAnswers(k8sAnswersFrom(p)) // S10.3 A1: reprogram the K8s direct-answer set (nil policy → empty → answers nothing)
 			// ReconcileOnce itself runs on the serialized command lane. Apply policy
 			// substrates inline so revocation is complete before the desired-state
@@ -414,20 +427,29 @@ func main() {
 	// DirectResolver accepts only the immutable resolver endpoint snapshot bound
 	// into an authenticated gateway DNS RPC request. It never consults host DNS,
 	// resolv.conf, public DNS, or the control plane as a fallback.
-	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{})
+	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{Transport: dnsTransport})
+	fqdnTimingEnabled := os.Getenv("TUNNEX_FQDN_RPC_TIMING") == "true"
 	r.OnDNSResolve(func(ds reconcile.DesiredState) {
 		if ds.DNSResolveRequest == nil {
 			return
 		}
 		request := *ds.DNSResolveRequest
 		nodeID := ds.NodeID
+		var dispatch time.Time
+		if fqdnTimingEnabled {
+			dispatch = time.Now().UTC()
+		}
 		go func() {
-			response := dnsResponder.Handle(ctx, nodeID, request)
-			if err := client.ReportDNSResolution(ctx, response); err != nil && ctx.Err() == nil {
-				// Do not log hostname or answer data. The request id is enough to
-				// correlate the retried, cached response at the control plane.
-				logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
-			}
+			dnsResponder.Run(ctx, nodeID, request, func() {
+				response, err := timedFQDNResolve(ctx, nodeID, request, dispatch, fqdnTimingEnabled, dnsResponder.Handle, client.ReportDNSResolution, time.Now, func(event fqdnRPCTiming) {
+					logger.Info("fqdn_rpc_timing", "dispatch_utc", event.DispatchUTC, "deadline_remaining_ms", event.DeadlineRemainingMillis, "start_delay_ms", event.StartDelayMillis, "handle_ms", event.HandleMillis, "status", event.Status, "result", event.Result, "report_ms", event.ReportMillis, "delivery", event.Delivery, "context_state", event.Context, "lookup", event.Lookup, "report_http_status", event.ReportHTTPStatus, "report_failure", event.ReportFailure)
+				})
+				if err != nil && ctx.Err() == nil {
+					// Do not log hostname or answer data. The request id is enough to
+					// correlate the retried, cached response at the control plane.
+					logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
+				}
+			})
 		}()
 	})
 
@@ -909,7 +931,7 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 // failures with backoff and publishing changed applied policy promptly. The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger, mtuSource ...func() int) {
 	report := func(reportCtx context.Context) bool {
 		endpoint := endpointSource()
 		if !endpoint.Reportable {
@@ -925,6 +947,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 		}
 		flow := flowStatus.Snapshot()
 		ps := control.PolicyStatus{
+			WireGuardAppliedMTU:       observedWireGuardMTU(mtuSource),
 			Version:                   v,
 			Hash:                      h,
 			RefusedVersion:            egressMgr.RefusedVersion(),
@@ -935,6 +958,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 			MaxSupportedVersion:       nodepolicy.MaxSupportedVersion,
 			OVPNHealth:                ovpnH,
 			DNSResolveRPCVersion:      fqdnrpc.Version,
+			DNSIPsecResolveVersion:    1,
 			FlowLogState:              flow.State,
 			FlowLogLastObservedAt:     flow.LastObservedAt,
 			FlowLogLastDeliveredAt:    flow.LastDeliveredAt,
@@ -1572,4 +1596,11 @@ func enrollWithToken(ctx context.Context, logger *slog.Logger, apiURL, certDir, 
 	}
 	logger.Info("agent_enrolled", slog.String("node_id", res.NodeID))
 	return certPEM, keyPEM, caPEM, true
+}
+
+func observedWireGuardMTU(source []func() int) int {
+	if len(source) != 1 || source[0] == nil {
+		return 0
+	}
+	return source[0]()
 }

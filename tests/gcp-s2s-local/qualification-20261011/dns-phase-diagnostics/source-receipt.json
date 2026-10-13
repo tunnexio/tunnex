@@ -1,0 +1,20 @@
+{
+  "base": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "source_only": true,
+  "tests": {
+    "focused": "PASS1.685s",
+    "race": "PASS4.214s",
+    "linux_amd64_agent_build": "PASS",
+    "sink": "standalone exact portable sink+test PASS",
+    "agent_full_host_test": "unavailable: unchanged Linux-only egress APIs prevent Darwin agent package build"
+  },
+  "files": {
+    "apps/node/internal/ipsec/runtime_dns_transport.go": "aad7d6bd74db010d0cbd2e067542b06b1689bf1f848dadb26cd4546a3bc78279",
+    "apps/node/internal/ipsec/runtime_diagnostic.go": "3ce09fbb2f9217e721ff4c6b089a7ed59b8d7563ead92371aa71a82d4fc68325",
+    "apps/node/internal/ipsec/runtime_dns_diagnostic_test.go": "a7a9c1516ac22a27fc5df451844cdb48b25b20b446b69a61cc9ff236e1676643",
+    "apps/node/cmd/agent/ipsec_runtime_linux.go": "ad80cf4773cad546e7d1e535f7011943368f5d696a290232a9c107a781c823eb",
+    "apps/node/cmd/agent/ipsec_runtime_diagnostics.go": "2bcf333b37a5f85f58e1305ca22c5088753b74d674775cb9c129951dea351b06",
+    "apps/node/cmd/agent/ipsec_runtime_diagnostics_test.go": "7f9ec1720caf670e7f81802efb5e5bfa32c78a15c2915dc64d3a57618bd9f57a"
+  },
+  "deployment": "not deployed; lab success Info requires separately reviewed env TUNNEX_IPSEC_DNS_DIAGNOSTICS=1; default Debug unchanged"
+}

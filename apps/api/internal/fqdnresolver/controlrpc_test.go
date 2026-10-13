@@ -68,7 +68,8 @@ func responseFor(request GatewayDNSRequest, now time.Time, records ...Record) Ga
 		OrgID: request.OrgID, ResourceID: request.ResourceID, SiteID: request.SiteID, GatewayID: request.GatewayID,
 		ResolverConfigID: request.ResolverConfigID, ResolverConfigVersion: request.ResolverConfigVersion,
 		ResolverProfileID: request.ResolverProfileID, ResolverMatchSuffix: request.ResolverMatchSuffix,
-		Hostname: request.Hostname, RecordTypes: append([]RecordType(nil), request.RecordTypes...),
+		ResolverIPsecPath: request.ResolverIPsecPath,
+		Hostname:          request.Hostname, RecordTypes: append([]RecordType(nil), request.RecordTypes...),
 		ObservedAt: now, Status: StatusNoError, Records: wired,
 	}
 }
@@ -250,5 +251,97 @@ func TestGatewayDNSRPCTransportKeepsFailoverGatewayScopeSeparate(t *testing.T) {
 	}
 	if got, want := seen, []uuid.UUID{uuid.MustParse(first.Context.GatewayID), uuid.MustParse(second.Context.GatewayID)}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("gateway failover scope leaked or substituted: got %v want %v", got, want)
+	}
+}
+
+func TestGatewayDNSRPCIPsecPathIsEchoedAndCannotBeSubstituted(t *testing.T) {
+	w := rpcWork()
+	w.ResolverConfig.Endpoints = w.ResolverConfig.Endpoints[:1]
+	w.ResolverConfig.IPsecPath = &ResolverIPsecPath{ConnectionID: uuid.NewString(), ConfigurationRevision: 3, SourceAddress: "10.10.0.5"}
+	for _, kind := range []string{"good", "missing", "connection", "revision", "source"} {
+		t.Run(kind, func(t *testing.T) {
+			var now time.Time
+			transport, now := newRPCTestTransport(t, func(_ context.Context, request GatewayDNSRequest) (GatewayDNSResponse, error) {
+				if !sameIPsecPath(request.ResolverIPsecPath, w.ResolverConfig.IPsecPath) {
+					t.Fatal("immutable path omitted from request")
+				}
+				r := responseFor(request, now, Record{Name: w.Hostname, Type: TypeA, Address: netip.MustParseAddr("10.20.30.40"), TTL: time.Minute})
+				if kind == "missing" {
+					r.ResolverIPsecPath = nil
+				} else {
+					path := *r.ResolverIPsecPath
+					r.ResolverIPsecPath = &path
+					switch kind {
+					case "connection":
+						path.ConnectionID = uuid.NewString()
+					case "revision":
+						path.ConfigurationRevision++
+					case "source":
+						path.SourceAddress = "10.10.0.6"
+					}
+				}
+				return r, nil
+			})
+			_, err := transport.LookupWork(context.Background(), w)
+			if kind == "good" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if !errors.Is(err, ErrGatewayDNSRPCIdentity) {
+				t.Fatalf("substituted path accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestGatewayDNSRPCTransportValidatesAtReceiptWithoutExtendingDeadline(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		observed, receipt time.Duration
+		canceled          bool
+		want              error
+	}{
+		{"genuine post-resolution", 2500 * time.Millisecond, 2600 * time.Millisecond, false, nil},
+		{"aged at receipt", -GatewayDNSResponseMaxAge + time.Second, 2600 * time.Millisecond, false, ErrGatewayDNSRPCStale},
+		{"future beyond skew", 3700 * time.Millisecond, 2600 * time.Millisecond, false, ErrGatewayDNSRPCStale},
+		{"future within skew", 3500 * time.Millisecond, 2600 * time.Millisecond, false, nil},
+		{"observed after original deadline", 5100 * time.Millisecond, 4500 * time.Millisecond, false, ErrGatewayDNSRPCStale},
+		{"received at original deadline", 2500 * time.Millisecond, 5 * time.Second, false, context.DeadlineExceeded},
+		{"clock rollback", -time.Second, -time.Second, false, ErrGatewayDNSRPCStale},
+		{"canceled despite mailbox success", 2500 * time.Millisecond, 2600 * time.Millisecond, true, context.Canceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			start := time.Now()
+			clock := start
+			deadline := start.Add(5 * time.Second)
+			ctx, cancel := context.WithDeadline(context.Background(), deadline)
+			defer cancel()
+			mailbox := &scriptedMailbox{call: func(c context.Context, r GatewayDNSRequest) (GatewayDNSResponse, error) {
+				if !r.Deadline.Equal(deadline) {
+					t.Fatal("request deadline changed")
+				}
+				d, ok := c.Deadline()
+				if !ok || !d.Equal(deadline) {
+					t.Fatal("mailbox deadline changed")
+				}
+				clock = start.Add(tc.receipt)
+				if tc.canceled {
+					cancel()
+				}
+				return responseFor(r, start.Add(tc.observed), Record{Name: rpcWork().Hostname, Type: TypeA, Address: netip.MustParseAddr("10.20.30.40"), TTL: time.Minute}), nil
+			}}
+			transport := NewGatewayDNSRPCTransport(mailbox)
+			transport.now = func() time.Time { return clock }
+			responses, err := transport.LookupWork(ctx, rpcWork())
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("got %v want %v", err, tc.want)
+			}
+			if tc.want == nil && (len(responses) != 1 || len(responses[0].Records) != 1) {
+				t.Fatal("accepted observation lost")
+			}
+			if tc.want != nil && len(responses) != 0 {
+				t.Fatal("refusal published response")
+			}
+		})
 	}
 }

@@ -194,7 +194,7 @@
 .sts-chooser-empty { padding:18px 0; font-size:12px; line-height:1.65; color:var(--tnx-text-secondary); }
 .tnx-modal-panel:has(.sts-chooser) { max-width:720px; }
 .tnx-modal-panel:has(.ipsec-setup-form) { max-width:800px; }
-.ipsec-setup-form { display:grid; gap:18px; font-size:12px; }
+.ipsec-setup-form { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:18px; font-size:12px; overflow-wrap:anywhere; }
 .ipsec-setup-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
 .ipsec-tunnel-fields { min-width:0; padding:14px; border:1px solid var(--tnx-border); border-radius:7px; }
 .ipsec-tunnel-fields h3 { font-size:13px; font-weight:500; }
@@ -205,6 +205,11 @@
 .ipsec-setup-steps li { display:flex; align-items:center; gap:7px; }
 .ipsec-setup-readiness { display:flex; justify-content:space-between; align-items:center; gap:16px; font-size:11.5px; }
 .ipsec-setup-actions { display:flex; justify-content:flex-end; gap:8px; padding-top:16px; border-top:1px solid var(--tnx-border); }
+@media (max-width:640px) {
+  .ipsec-setup-grid { grid-template-columns:minmax(0,1fr); }
+  .ipsec-setup-readiness { flex-wrap:wrap; align-items:flex-start; }
+  .ipsec-setup-actions { flex-wrap:wrap; }
+}
 .ipsec-workspace { min-width:0; display:grid; gap:18px; }
 .ipsec-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .ipsec-inventory-toolbar,.ipsec-toolbar-actions { display:flex; align-items:center; gap:10px; min-width:0; }
@@ -300,4 +305,11 @@
   .site-to-site-workspace .connection-purpose-option > span { gap:8px; }
   .site-to-site-workspace .pair-endpoints,.sts-chooser .pair-endpoints { gap:18px; }
   .site-to-site-workspace .site-pair-configuration .pair-endpoint + .pair-endpoint,.sts-chooser .site-pair-configuration .pair-endpoint + .pair-endpoint { padding-left:18px !important; }
+}
+
+@media (max-width:640px) {
+  .site-to-site-workspace .connection-purpose { flex-direction:column; align-items:stretch; }
+  .site-to-site-workspace .connection-purpose-option { flex:none; min-width:0; }
+  .site-to-site-workspace .connection-purpose-option > span { flex:1; min-width:0; width:auto; flex-direction:column; align-items:flex-start; gap:4px; }
+  .site-to-site-workspace .connection-purpose-option small { white-space:normal; overflow-wrap:anywhere; }
 }

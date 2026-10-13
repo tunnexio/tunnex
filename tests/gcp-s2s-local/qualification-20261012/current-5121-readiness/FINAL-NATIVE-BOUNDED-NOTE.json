@@ -1,0 +1,13 @@
+{
+  "scope": "supplemental fixed projection; no continuous availability",
+  "known_guard_publication_pending_samples": 1,
+  "pending_sample_authority": false,
+  "strict_settler_subsequent_full_capture_passed": true,
+  "all_eight_final_after_guard_models_passed": true,
+  "fresh_ha_classic_tcp_udp_payloads_accepted": true,
+  "native_before_after_sha256": "2520d20f1266b98ee66cbdf989e693042c19919516598ee0815a06dda85708ae",
+  "aggregate_completed": true,
+  "elapsed_seconds": 14.61729729199999,
+  "final_receipt_sha256": "e788f79a91c8365c5009b8ec48e31789e72e41c43aefbafc3fa28ddd4aac70ef",
+  "every_intermediate_leaf_passed_asserted": false
+}

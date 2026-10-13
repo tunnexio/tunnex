@@ -1,0 +1,302 @@
+{
+  "exported_at": "2026-10-10T13:26:48.371991+00:00",
+  "scope": "Historical packet observations and optional fresh normal API status; no restoration authorization or production readiness claim",
+  "historical_packet_receipts": {
+    "postboot-reenabled-packets.json": {
+      "availability": "observed",
+      "observations": {
+        "started_at": "2026-10-10T12:12:53.529452+00:00",
+        "packet_finished_at": "2026-10-10T12:13:53.529823+00:00",
+        "source_address": "10.233.10.2",
+        "direction": "forward",
+        "counters": {
+          "fresh_tcp": {
+            "success": 56,
+            "failure": 1,
+            "maximum_observed_success_gap_seconds": 1.26929,
+            "seconds_since_last_success_at_run_end": 0.425129
+          },
+          "existing_tcp": {
+            "success": 56,
+            "failure": 1,
+            "maximum_observed_success_gap_seconds": 1.276235,
+            "seconds_since_last_success_at_run_end": 0.306451
+          },
+          "fresh_udp": {
+            "success": 54,
+            "failure": 3,
+            "maximum_observed_success_gap_seconds": 1.055723,
+            "seconds_since_last_success_at_run_end": 0.168239
+          },
+          "existing_udp": {
+            "success": 56,
+            "failure": 1,
+            "maximum_observed_success_gap_seconds": 1.26993,
+            "seconds_since_last_success_at_run_end": 0.148936
+          }
+        },
+        "tcp_source_preservation_counts": {
+          "diagnostic_unknown": 2,
+          "preserved": 112
+        },
+        "packet_run_elapsed_seconds": 60.000398
+      }
+    },
+    "anchored-active-restart-cbdf882f-packets.json": {
+      "availability": "observed",
+      "observations": {
+        "started_at": "2026-10-10T12:14:20.352465+00:00",
+        "packet_finished_at": "2026-10-10T12:15:20.426848+00:00",
+        "source_address": "10.233.10.2",
+        "direction": "forward",
+        "counters": {
+          "fresh_tcp": {
+            "success": 5,
+            "failure": 14,
+            "maximum_observed_success_gap_seconds": 1.000771,
+            "seconds_since_last_success_at_run_end": 56.072155
+          },
+          "existing_tcp": {
+            "success": 5,
+            "failure": 14,
+            "maximum_observed_success_gap_seconds": 1.006285,
+            "seconds_since_last_success_at_run_end": 55.952717
+          },
+          "fresh_udp": {
+            "success": 5,
+            "failure": 14,
+            "maximum_observed_success_gap_seconds": 1.03077,
+            "seconds_since_last_success_at_run_end": 55.819546
+          },
+          "existing_udp": {
+            "success": 5,
+            "failure": 13,
+            "maximum_observed_success_gap_seconds": 1.031556,
+            "seconds_since_last_success_at_run_end": 55.800123
+          }
+        },
+        "tcp_source_preservation_counts": {
+          "preserved": 10,
+          "diagnostic_unknown": 28
+        },
+        "packet_run_elapsed_seconds": 60.074405
+      }
+    },
+    "controlled-recovery-fd6eeaff-packets.json": {
+      "availability": "observed",
+      "observations": {
+        "started_at": "2026-10-10T12:51:32.629638+00:00",
+        "packet_finished_at": "2026-10-10T12:52:32.630292+00:00",
+        "source_address": "10.233.10.2",
+        "direction": "forward",
+        "counters": {
+          "fresh_tcp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.000739,
+            "seconds_since_last_success_at_run_end": 0.965604
+          },
+          "existing_tcp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.043867,
+            "seconds_since_last_success_at_run_end": 0.856703
+          },
+          "fresh_udp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.066517,
+            "seconds_since_last_success_at_run_end": 0.722991
+          },
+          "existing_udp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.070919,
+            "seconds_since_last_success_at_run_end": 0.69637
+          }
+        },
+        "tcp_source_preservation_counts": {
+          "preserved": 120
+        },
+        "packet_run_elapsed_seconds": 60.000698
+      }
+    },
+    "controlled-healthy-restart-12cfccbb-packets.json": {
+      "availability": "observed",
+      "observations": {
+        "started_at": "2026-10-10T13:03:46.790476+00:00",
+        "packet_finished_at": "2026-10-10T13:04:46.790912+00:00",
+        "source_address": "10.233.10.2",
+        "direction": "forward",
+        "counters": {
+          "fresh_tcp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.00143,
+            "seconds_since_last_success_at_run_end": 0.964223
+          },
+          "existing_tcp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.016193,
+            "seconds_since_last_success_at_run_end": 0.850664
+          },
+          "fresh_udp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.0487,
+            "seconds_since_last_success_at_run_end": 0.718669
+          },
+          "existing_udp": {
+            "success": 60,
+            "failure": 0,
+            "maximum_observed_success_gap_seconds": 1.048328,
+            "seconds_since_last_success_at_run_end": 0.699974
+          }
+        },
+        "tcp_source_preservation_counts": {
+          "preserved": 120
+        },
+        "packet_run_elapsed_seconds": 60.00047
+      }
+    }
+  },
+  "current_status": {
+    "availability": "fresh_normal_api_read",
+    "observed_at": "2026-10-10T13:26:48.485732+00:00",
+    "connection": {
+      "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 6,
+      "desired_intent": "enabled",
+      "application_state": "applied",
+      "cleanup_state": "retained_guard"
+    },
+    "runtime": {
+      "observed_at": "2026-10-10T13:26:47.274745+00:00",
+      "tunnels": [
+        {
+          "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+          "slot": 1,
+          "status": "up",
+          "selected": false
+        },
+        {
+          "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+          "slot": 2,
+          "status": "up",
+          "selected": false
+        }
+      ],
+      "bgp": {
+        "version": 1,
+        "sequence": 13532,
+        "peers": [
+          {
+            "slot": 1,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 1
+          },
+          {
+            "slot": 2,
+            "state": "established",
+            "accepted_prefixes": 1,
+            "installed_prefixes": 0
+          }
+        ],
+        "route_count": 1
+      }
+    },
+    "application_reachability": "not_measured_by_status_read"
+  },
+  "warm_restart_summary": {
+    "availability": "not_projected_without_verified_schema"
+  },
+  "cleanup_revision_5_receipt": {
+    "availability": "not_saved"
+  },
+  "enable_revision_6_receipt": {
+    "availability": "not_saved"
+  },
+  "controlled_restart": {
+    "availability": "observed",
+    "snapshot": {
+      "version": 1,
+      "container": "7d2d83bb1b85c1d343b33b8b661dc254f09b6ecfce7fd56ebe76e148e56a9dc0",
+      "boot": "66142c80-c3da-4137-97ba-9b8896cc3deb",
+      "pid": 27352,
+      "started": "2026-10-10T12:33:26.634992901Z",
+      "observed_ns": 1791637317381528457,
+      "namespace": {
+        "device": 4,
+        "inode": 4026532374
+      },
+      "journal_entries_sha256": "58d67a6a367846f66dbf059abd500ba197e2bf4bfc975cb25e2b0eea249a757c",
+      "journal_raw_sha256": "245f2696efec7662fe22f05eae2f735a5c20bbdeb6658a7cdf2f99176834fd91"
+    },
+    "stop_proof": {
+      "version": 1,
+      "kind": "supervisor-confirmed-runtime-stop",
+      "snapshot": {
+        "version": 1,
+        "container": "7d2d83bb1b85c1d343b33b8b661dc254f09b6ecfce7fd56ebe76e148e56a9dc0",
+        "boot": "66142c80-c3da-4137-97ba-9b8896cc3deb",
+        "pid": 27352,
+        "started": "2026-10-10T12:33:26.634992901Z",
+        "observed_ns": 1791637317381528457,
+        "namespace": {
+          "device": 4,
+          "inode": 4026532374
+        },
+        "journal_entries_sha256": "58d67a6a367846f66dbf059abd500ba197e2bf4bfc975cb25e2b0eea249a757c",
+        "journal_raw_sha256": "245f2696efec7662fe22f05eae2f735a5c20bbdeb6658a7cdf2f99176834fd91"
+      },
+      "checks": [
+        "exact-stopped-runtime",
+        "empty-cgroup",
+        "no-namespace-holders-two-passes"
+      ],
+      "termination": {
+        "container": "7d2d83bb1b85c1d343b33b8b661dc254f09b6ecfce7fd56ebe76e148e56a9dc0",
+        "action": "die",
+        "time_ns": 1791637317645153573
+      },
+      "verified_ns": 1791637328364825649,
+      "stopped_journal_raw_sha256": "b6b1755b0c9b2fdee46b14f099b5f6ba91cee4a5cf583518501e4b4a94ec12c0"
+    },
+    "accepted_installation": {
+      "fresh_runtime": {
+        "version": 1,
+        "kind": "supervisor-confirmed-fresh-runtime",
+        "container": "7d2d83bb1b85c1d343b33b8b661dc254f09b6ecfce7fd56ebe76e148e56a9dc0",
+        "boot": "66142c80-c3da-4137-97ba-9b8896cc3deb",
+        "namespace": "net:[4026532430]",
+        "started_at": "2026-10-10T13:02:09.580703094Z",
+        "pid": 79567,
+        "pid_start_ticks": 380040,
+        "startup_gate_device": 2049,
+        "startup_gate_inode": 520576,
+        "stop_evidence_sha256": "07388dd188d048edf8ca265df43d9a3f51cf1d7d617279c1aec691973ee52b97",
+        "stopped_journal_sha256": "b6b1755b0c9b2fdee46b14f099b5f6ba91cee4a5cf583518501e4b4a94ec12c0",
+        "current_journal_sha256": "361216b6ec2836acc6f0c4e602c2f341bcc79925b67b662e74893557b97f5ef1",
+        "startup_gate_sha256": "7a53995e880162c8a2ef6dd7807933d30a97b5636b3025c4193da6a4f43873c2"
+      },
+      "gate_release": {
+        "stage": "exact_gate_released",
+        "observed_at": "2026-10-10T13:02:38.210115+00:00",
+        "runtime_acceptance": "not_observed"
+      }
+    },
+    "attempts_without_result": 1,
+    "initial_install_refusal": {
+      "availability": "not_saved",
+      "cause": "unclassified"
+    },
+    "scope": "Stop and exact gate-release observations only; no zero-outage or old LAN socket continuity proof"
+  },
+  "initial_refusal_receipt": {
+    "path": "docs/evidence/azure-s2s-20261010/genuine-reboot-recovery.json",
+    "sha256": "f8f5f73de6f2a4aed575dd839359bfd5f90f366587f7d4bb33cf087af8c19751",
+    "preserved": true
+  }
+}

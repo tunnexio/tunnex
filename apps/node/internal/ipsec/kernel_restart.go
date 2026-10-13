@@ -9,12 +9,19 @@ import "context"
 // Caller holds the journal lock and verified prefix refusal throughout, obtains
 // fresh CP authority, repeats this census, and persists new ownership before use.
 func (a *KernelApplier) RestartNeedsRecreation(ctx context.Context, p KernelAllocation, previous [2]Ownership) (bool, error) {
+	return a.restartNeedsRecreation(ctx, p, previous, nil)
+}
+
+func (a *KernelApplier) restartNeedsRecreation(ctx context.Context, p KernelAllocation, previous [2]Ownership, proveOthers func(context.Context, XFRMInventory) error) (bool, error) {
+	if p.activeTunnelCount() == 1 && previous[1] != (Ownership{}) {
+		return false, ErrKernelApply
+	}
 	for pass := 0; pass < 2; pass++ {
 		s, err := a.snapshotSelection(ctx, p, true)
 		if err != nil {
 			return false, ErrKernelApply
 		}
-		if s.ownership == previous && previous[0].InterfaceIndex > 0 && previous[1].InterfaceIndex > 0 {
+		if s.ownership == previous && previous[0].InterfaceIndex > 0 && (p.activeTunnelCount() == 1 || previous[1].InterfaceIndex > 0) {
 			return false, nil
 		}
 		if s.ownership != ([2]Ownership{}) {
@@ -29,7 +36,14 @@ func (a *KernelApplier) RestartNeedsRecreation(ctx context.Context, p KernelAllo
 			return false, ErrKernelApply
 		}
 		x, err := (&XFRMReader{run: a.run, namespace: a.namespace}).Read(ctx)
-		if err != nil || len(x.States) != 0 || len(x.Policies) != 0 || a.check(ctx, p) != nil {
+		if err != nil || a.check(ctx, p) != nil {
+			return false, ErrKernelApply
+		}
+		if proveOthers == nil {
+			if len(x.States) != 0 || len(x.Policies) != 0 {
+				return false, ErrKernelApply
+			}
+		} else if proveOthers(ctx, x) != nil {
 			return false, ErrKernelApply
 		}
 	}

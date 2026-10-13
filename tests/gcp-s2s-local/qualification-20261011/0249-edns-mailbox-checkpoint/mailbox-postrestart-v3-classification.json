@@ -1,0 +1,154 @@
+{
+  "source_receipt_sha256": "4547ef0a08c4b10e1d96d7cb1b1b42d9116de7d30cb72797e46bcb1ec5101102",
+  "scope": "bounded100 latest30min owned metadata, not whole history",
+  "completed": true,
+  "resources": [
+    {
+      "resource_id": "01a127b1-ba33-7941-9bdf-58dbaca5ab12",
+      "count": 39,
+      "outcomes": [
+        {
+          "state": "completed",
+          "response_status": "NOERROR",
+          "response_error_code": null,
+          "count": 31
+        },
+        {
+          "state": "completed",
+          "response_status": "SERVFAIL",
+          "response_error_code": "resolver_unavailable",
+          "count": 7
+        },
+        {
+          "state": "expired",
+          "response_status": null,
+          "response_error_code": null,
+          "count": 1
+        }
+      ],
+      "latest": {
+        "request_id": "2489c6a4-53c4-43d6-824f-be1f57162f24",
+        "resource_id": "01a127b1-ba33-7941-9bdf-58dbaca5ab12",
+        "created_at": "2026-10-11T00:26:47.929619+00:00",
+        "deadline": "2026-10-11T00:26:52.929542+00:00",
+        "state": "completed",
+        "completed_at": "2026-10-11T00:26:49.846359+00:00",
+        "expired_at": null,
+        "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+        "resolver_config_version": 2,
+        "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+        "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+        "hostname": "app.classic.gcp.s2s-qa.tunnex.app",
+        "protocol_version": 2,
+        "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+        "response_config_version": "2",
+        "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+        "response_status": "NOERROR",
+        "response_error_code": null,
+        "response_observed_at": "2026-10-11T00:26:49.831812068Z"
+      },
+      "all_request_bindings_current": true,
+      "completed_response_bindings_match": true
+    },
+    {
+      "resource_id": "01a127b1-ba4c-74bf-bbb5-38339ea6c516",
+      "count": 31,
+      "outcomes": [
+        {
+          "state": "expired",
+          "response_status": null,
+          "response_error_code": null,
+          "count": 13
+        },
+        {
+          "state": "completed",
+          "response_status": "SERVFAIL",
+          "response_error_code": "resolver_unavailable",
+          "count": 11
+        },
+        {
+          "state": "completed",
+          "response_status": "NOERROR",
+          "response_error_code": null,
+          "count": 7
+        }
+      ],
+      "latest": {
+        "request_id": "5f99489b-c226-46e4-ae3c-3a1eeafc10eb",
+        "resource_id": "01a127b1-ba4c-74bf-bbb5-38339ea6c516",
+        "created_at": "2026-10-11T00:26:19.928439+00:00",
+        "deadline": "2026-10-11T00:26:24.928396+00:00",
+        "state": "expired",
+        "completed_at": null,
+        "expired_at": "2026-10-11T00:26:24.932788+00:00",
+        "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+        "resolver_config_version": 2,
+        "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+        "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+        "hostname": "alias.classic.gcp.s2s-qa.tunnex.app",
+        "protocol_version": 2,
+        "response_config_id": null,
+        "response_config_version": null,
+        "response_profile_id": null,
+        "response_status": null,
+        "response_error_code": null,
+        "response_observed_at": null
+      },
+      "all_request_bindings_current": true,
+      "completed_response_bindings_match": true
+    },
+    {
+      "resource_id": "01a127b1-ba5d-7b7d-a885-4230f29ee67b",
+      "count": 30,
+      "outcomes": [
+        {
+          "state": "completed",
+          "response_status": "NXDOMAIN",
+          "response_error_code": null,
+          "count": 27
+        },
+        {
+          "state": "completed",
+          "response_status": "SERVFAIL",
+          "response_error_code": "resolver_unavailable",
+          "count": 2
+        },
+        {
+          "state": "expired",
+          "response_status": null,
+          "response_error_code": null,
+          "count": 1
+        }
+      ],
+      "latest": {
+        "request_id": "933192d6-1701-47bd-a892-edc2458ee324",
+        "resource_id": "01a127b1-ba5d-7b7d-a885-4230f29ee67b",
+        "created_at": "2026-10-11T00:26:24.935667+00:00",
+        "deadline": "2026-10-11T00:26:29.935617+00:00",
+        "state": "completed",
+        "completed_at": "2026-10-11T00:26:25.949637+00:00",
+        "expired_at": null,
+        "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+        "resolver_config_version": 2,
+        "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+        "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+        "hostname": "nx-qualification.classic.gcp.s2s-qa.tunnex.app",
+        "protocol_version": 2,
+        "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+        "response_config_version": "2",
+        "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+        "response_status": "NXDOMAIN",
+        "response_error_code": null,
+        "response_observed_at": "2026-10-11T00:26:25.926900974Z"
+      },
+      "all_request_bindings_current": true,
+      "completed_response_bindings_match": true
+    }
+  ],
+  "limits": [
+    "expired means no accepted completion by deadline, not proof of undelivered work",
+    "resolver_unavailable collapses native proof, socket, config and consensus errors",
+    "successful NX completions after071 show its timeout was transient",
+    "alias repeated expiry requires per-exchange causal evidence before a production fix"
+  ]
+}

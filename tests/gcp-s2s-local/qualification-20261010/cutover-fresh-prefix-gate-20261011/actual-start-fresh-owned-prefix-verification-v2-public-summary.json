@@ -1,0 +1,12 @@
+{
+  "capture_sha256": "b4d7dda65fc2a2a3441fadf3408ad2f229dce26279c95898231f43c647202af2",
+  "guard_digest": "997fd0ca0efac4588a3d8bde274f4a5c6f43fc551899153230d6aeb0a3a1232e",
+  "guard_revision": 61410,
+  "journal_sha256": "c04c42eaf92bfe2e0cfdb12189851de390f84db0ccaf9a83ac69cd9a1803f791",
+  "namespace": "net:[4026531840]",
+  "owned_table_prefix_refusal_verified": true,
+  "permit_sets_actually_empty": true,
+  "qualifier_source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "scope": "fresh captured owned table only; NOT host firewall census, lease/cleanup/restoration authority or packet proof",
+  "private_original_sha256": "0098b7fdd113f641243cded65b8c37545a36157f5fc12af82666ab0173a3afb5"
+}

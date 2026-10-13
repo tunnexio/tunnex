@@ -28,3 +28,105 @@ func (c *Client) ipsecRecoveryCapability() int {
 	}
 	return controller.RecoveryCapability()
 }
+
+// BGP support is reported only from the actual opaque qualified controller.
+func (c *Client) ipsecBGPCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil || controller.Capability() != 1 {
+		return 0
+	}
+	return controller.BGPCapability()
+}
+
+// The provider capability identifies this reader, while native BGP/controller
+// qualification still determines host readiness. It is not a cloud health claim.
+func (c *Client) ipsecGCPHACapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.GCPHACapability()
+}
+
+func (c *Client) ipsecGCPClassicCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.GCPClassicCapability()
+}
+
+func (c *Client) ipsecAzureCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.AzureCapability()
+}
+
+// Azure BGP retained recreation has a separate protocol qualification. Neither
+// the provider reader nor static retained-guard support implies this capability.
+func (c *Client) ipsecAzureBGPRecreationCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil || controller.Capability() != 1 {
+		return 0
+	}
+	return azureBGPRecreationVersion(controller)
+}
+
+// The optional method keeps old controllers explicitly unsupported. This helper
+// is only reached with the actual opaque controller in the advertisement path.
+func azureBGPRecreationVersion(controller any) int {
+	qualified, ok := controller.(interface{ AzureBGPRecreationCapability() int })
+	if !ok || qualified.AzureBGPRecreationCapability() != 1 {
+		return 0
+	}
+	return 1
+}
+
+func (c *Client) ipsecFQDNPolicyCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.FQDNPolicyCapability()
+}
+
+// Cross-profile Azure retained recreation is independently qualified; the old
+// Azure reader and same-profile BGP/static flags do not imply this protocol.
+func (c *Client) ipsecAzureProfileRecreationCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil || controller.Capability() != 1 {
+		return 0
+	}
+	return azureProfileRecreationVersion(controller)
+}
+
+func azureProfileRecreationVersion(controller any) int {
+	qualified, ok := controller.(interface{ AzureProfileRecreationCapability() int })
+	if !ok || qualified.AzureProfileRecreationCapability() != 1 {
+		return 0
+	}
+	return 1
+}

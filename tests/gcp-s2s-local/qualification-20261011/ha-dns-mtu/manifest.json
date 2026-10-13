@@ -1,0 +1,228 @@
+{
+  "artifact_source": "9c3ab006c13b72285f43baed1805da1af273ffa7",
+  "scope": "exact key-free existing evidence; no new execution",
+  "files": [
+    {
+      "path": "ha-app/before-app-packets.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/before-app-packets.json",
+      "sha256": "0843d7ec58219dc96b5e6c72daf5ef937e9c65e7b6222bed168e5e5c9b5533fb",
+      "bytes": 3521
+    },
+    {
+      "path": "ha-app/before-app-tcp-observer.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/before-app-tcp-observer.json",
+      "sha256": "1abcb26db39af6f126c070e28fda9230edc5f4da2498969debd83fae2a015b14",
+      "bytes": 1025
+    },
+    {
+      "path": "ha-app/before-app-udp-observer.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/before-app-udp-observer.json",
+      "sha256": "8112f90a4410e9e4d2e3f28d0b08094cca105ae8d9964a21c5e57d3d244f5a94",
+      "bytes": 1025
+    },
+    {
+      "path": "ha-app/after-app-packets.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/after-app-packets.json",
+      "sha256": "4f9a58f5cb1867048e1f37eb77cf38a5e5b2d71bd15afaa9dd179303d9d655bd",
+      "bytes": 3722
+    },
+    {
+      "path": "ha-app/after-app-tcp-observer.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/after-app-tcp-observer.json",
+      "sha256": "1429395d6617b5269500351449d90ecda23496bda02bd53f8c6772c9674434eb",
+      "bytes": 4184
+    },
+    {
+      "path": "ha-app/after-app-udp-observer.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/after-app-udp-observer.json",
+      "sha256": "037c4cacb9cbd0ec52bc1d2854710bc09d01c772354c71142a8d25518dea63bc",
+      "bytes": 4184
+    },
+    {
+      "path": "ha-app/api-after-ha-app-grants-v1.json",
+      "original_path": "/private/tmp/gcp-ha-app-acceptance-9c3ab006-20261011/api-after-ha-app-grants-v1.json",
+      "sha256": "4ac53ba6071be20e25ba55c9e68d2a27698c7bfa97f9bebc9fa45afee1214003",
+      "bytes": 23615
+    },
+    {
+      "path": "ha-context/ha-context-apply-v1.jsonl",
+      "original_path": "/private/tmp/gcp-ha-dns-context-9c3-20261011/ha-context-apply-v1.jsonl",
+      "sha256": "6c017081cab11c05ab2b706561efff4625a5302c936dd31129070a63d65472c7",
+      "bytes": 1933
+    },
+    {
+      "path": "ha-context/ha-context2-full-readback-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-context-9c3-20261011/ha-context2-full-readback-v1.json",
+      "sha256": "e5cfeb438459446443280e80c02f9d44c0e1353131cce60c2c752d3931370f8f",
+      "bytes": 1267
+    },
+    {
+      "path": "ha-context/ha-dns-context-deny-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-context-9c3-20261011/ha-dns-context-deny-tcp-guard-v1.json",
+      "sha256": "9d85401a4f08c9bfc0404c004c48b566b4f6ca6403fdf523071c2818fbf225d0",
+      "bytes": 1047
+    },
+    {
+      "path": "ha-context/ha-dns-context-deny-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-context-9c3-20261011/ha-dns-context-deny-udp-guard-v1.json",
+      "sha256": "20f84b91d95f7b755462540e638f1a06011ee9fd89b22f5f43de8ff5c2f8688f",
+      "bytes": 1047
+    },
+    {
+      "path": "ha-context/ha-dns-context-allow-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-context-9c3-20261011/ha-dns-context-allow-tcp-guard-v1.json",
+      "sha256": "be423d02cc2bc8e67ac5c12737e8d6de21c0ffec715f7f6205f952c88d06e326",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-context/ha-dns-context-allow-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-context-9c3-20261011/ha-dns-context-allow-udp-guard-v1.json",
+      "sha256": "400492c417313234138f33517c9c7d71c5742ffc3ca87850c69f2809bf0b5771",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-alias-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-alias-v1.json",
+      "sha256": "fd4baf75a7704a0bc5f44c5ac81b74653abd34a11422d5fceec4b5181da3c225",
+      "bytes": 2509
+    },
+    {
+      "path": "ha-wire/ha-dns-app-after-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-app-after-udp-guard-v1.json",
+      "sha256": "437a11bb941e566980b8fdb2b05b5c4512f31700fcb8cdea00692b258f71277b",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-nx-qualification-before-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-nx-qualification-before-tcp-guard-v1.json",
+      "sha256": "3481a8e452b72dd27de64ae74aa0652ede827c896f911b6f4be6da1e33951bd2",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-alias-after-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-alias-after-tcp-guard-v1.json",
+      "sha256": "b36633d68729a3745dd05c98ed55b81fd33c894ed73962b072ba85bfdad6f250",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-app-before-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-app-before-udp-guard-v1.json",
+      "sha256": "e3277c255624903d7457f4a12200473efa491fed7d4e97dd3439b583491055eb",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-alias-after-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-alias-after-udp-guard-v1.json",
+      "sha256": "d4b0c32b9da24dab3745423ecc5f63f49e421232d1a6959728ba77ef3f68c648",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-app-before-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-app-before-tcp-guard-v1.json",
+      "sha256": "97877229b37ecf170db3629fd702f198b157eb770706006b7efb88a404205b8a",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-nx-qualification-before-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-nx-qualification-before-udp-guard-v1.json",
+      "sha256": "81f795b979454a7f178fb6e2d53ea31a210d3ddb1f8b44ffa937484c005e0a0a",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-app-after-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-app-after-tcp-guard-v1.json",
+      "sha256": "d7e7cd08a7f2d90c9379085904af146215653e5860a56b35550fcc3fb53eac73",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-alias-before-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-alias-before-tcp-guard-v1.json",
+      "sha256": "76efa973ce4039225f11ccbd41cf147f7cddbc51a429fce47e6767d45788eabe",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-nx-qualification-after-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-nx-qualification-after-udp-guard-v1.json",
+      "sha256": "4668ec3c30c989da960ce3ca29a11b2ba34404de37c4b0f73768bf92fc9ff965",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-nx-qualification-after-tcp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-nx-qualification-after-tcp-guard-v1.json",
+      "sha256": "ae4ec5d8a1272695f95f6eb02d4ae2b44aac5820eccb8e1cd09a6c98968fa67c",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-app-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-app-v1.json",
+      "sha256": "944c4705d8fbde1057dce46b0edc223767fc354afba679c260e75a186fdd58fd",
+      "bytes": 2350
+    },
+    {
+      "path": "ha-wire/ha-dns-nx-qualification-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-nx-qualification-v1.json",
+      "sha256": "345e7c7aedf984559fe333645dbff62fa597bd795662d9f1480407a038500fe4",
+      "bytes": 2331
+    },
+    {
+      "path": "ha-wire/ha-dns-alias-before-udp-guard-v1.json",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-alias-before-udp-guard-v1.json",
+      "sha256": "6b3d8b42f6edde81b0b0858e03584681cb4601bd9d1e756780dfb84cc8b997af",
+      "bytes": 1070
+    },
+    {
+      "path": "ha-wire/ha-dns-app-v1.jsonl",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-app-v1.jsonl",
+      "sha256": "ab5d60933e7fcace47c9732ea3503c41d9f6d3a3ad6637f7e37bbca0d78641fe",
+      "bytes": 1745
+    },
+    {
+      "path": "ha-wire/ha-dns-nx-qualification-v1.jsonl",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-nx-qualification-v1.jsonl",
+      "sha256": "d7001bcc0df50570dc5d71d51631c7d0012464b948817c08d0050b9f0890c11b",
+      "bytes": 1745
+    },
+    {
+      "path": "ha-wire/ha-dns-alias-v1.jsonl",
+      "original_path": "/private/tmp/gcp-ha-dns-wire-9c3-20261011/ha-dns-alias-v1.jsonl",
+      "sha256": "d2d1a852bb41c54c6e23b1362192773cc8461e52a85197b3c07f1372870e7126",
+      "bytes": 1745
+    },
+    {
+      "path": "mtu/ha-udp1200-df-false-v1.json",
+      "original_path": "/private/tmp/gcp-mtu-source-prep-9c3ab006-20261011/ha-udp1200-df-false-v1.json",
+      "sha256": "251566b0ce120f8822324afd6fbfabcb9348f385e784e7fdb38384fd4601de57",
+      "bytes": 1026
+    },
+    {
+      "path": "mtu/ha-udp1200-df-false-v2.json",
+      "original_path": "/private/tmp/gcp-mtu-source-prep-9c3ab006-20261011/ha-udp1200-df-false-v2.json",
+      "sha256": "ed1f3edff10ac0bff53fc0d3160da8f71528b4377796d86c4f6f46e546ebc20f",
+      "bytes": 1345
+    },
+    {
+      "path": "mtu/ha-udp1200-df-false-v3.json",
+      "original_path": "/private/tmp/gcp-mtu-source-prep-9c3ab006-20261011/ha-udp1200-df-false-v3.json",
+      "sha256": "3274f8165307c9de55c62c0dda617d1d03f6d8f8815b37486fd234b62e5efc1a",
+      "bytes": 4288
+    },
+    {
+      "path": "mtu/ha-udp1354-df-true-v3.json",
+      "original_path": "/private/tmp/gcp-mtu-source-prep-9c3ab006-20261011/ha-udp1354-df-true-v3.json",
+      "sha256": "3fe3dd3d3ce2755548ccadc7c858a6aa13cb68724c54d6eff2a0b70c96f09ae9",
+      "bytes": 4284
+    },
+    {
+      "path": "mtu/ha-udp1355-df-true-v3.json",
+      "original_path": "/private/tmp/gcp-mtu-source-prep-9c3ab006-20261011/ha-udp1355-df-true-v3.json",
+      "sha256": "18fad78d3a34fa498552862b03dcef4a46ee28407b4da9d66e4ad92ce8b1ac4e",
+      "bytes": 3858
+    },
+    {
+      "path": "mtu/ha-udp1400-df-false-v3.json",
+      "original_path": "/private/tmp/gcp-mtu-source-prep-9c3ab006-20261011/ha-udp1400-df-false-v3.json",
+      "sha256": "e0bf65c6f3d490d23534513ecdbda28cdf9bc81af33be46135ef26d8dc88ff34",
+      "bytes": 4109
+    }
+  ]
+}

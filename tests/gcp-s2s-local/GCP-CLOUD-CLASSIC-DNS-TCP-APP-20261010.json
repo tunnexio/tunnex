@@ -1,0 +1,61 @@
+{
+  "scope": "new finite directTCP appA gate; first connect timeout preserved, no query retry",
+  "source_sha256": "b260ea4e8985926022411a2015e495c3fedbfc56238544af9e8528fef39740ba",
+  "receipt_path": "/var/lib/tunnex-gcp-cloud-preparation/dns-wire-stage-b260ea/classic-tcp-app-v1.json",
+  "receipt_sha256": "c68c916b02c009651ce2214769f81b7dbfa0621157851d4136f08d31414861d7",
+  "receipt": {
+    "started": true,
+    "profile": "classic",
+    "completed": false,
+    "utc": "2026-10-10T16:36:35Z",
+    "results": [],
+    "progress": [
+      {
+        "profile": "classic",
+        "source": "10.70.0.2",
+        "resolver": "10.81.0.2",
+        "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+        "id": 33271,
+        "query_has_edns": false,
+        "tcp_direct_used": true,
+        "stage": "tcp_bind"
+      },
+      {
+        "profile": "classic",
+        "source": "10.70.0.2",
+        "resolver": "10.81.0.2",
+        "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+        "id": 33271,
+        "query_has_edns": false,
+        "tcp_direct_used": true,
+        "stage": "tcp_connect"
+      },
+      {
+        "profile": "classic",
+        "source": "10.70.0.2",
+        "resolver": "10.81.0.2",
+        "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+        "id": 33271,
+        "query_has_edns": false,
+        "tcp_direct_used": true,
+        "stage": "tcp_connect",
+        "error_type": "TimeoutError",
+        "errno": null
+      }
+    ],
+    "accepted": false,
+    "error_type": "TimeoutError"
+  },
+  "native_preflight_sha256": "942e9a0e7d883cabbf8195c5972f7a39e5805a5234b31988bb8ad532cf4ee813",
+  "native_preflight": {
+    "identity_verified": true,
+    "applied_classic_route_verified": true,
+    "managed_ike_established_child_installed": true,
+    "tcp_udp_hostorigin_rules_present": true,
+    "three_live_lease_sets_present": true
+  },
+  "tcp_health_verified": false,
+  "tc100_failure_cause_claim": false,
+  "udp_queries_sent": 0,
+  "normal_api_or_cloud_acl_changes": false
+}

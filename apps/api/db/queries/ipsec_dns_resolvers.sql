@@ -1,0 +1,14 @@
+-- name: ListIPsecDNSResolverProfiles :many
+-- lint:cross-org — explicitly scoped to the authenticated organization; caller filters exact gateway.
+SELECT cfg.gateway_id,
+ jsonb_build_object('context_config_id',cfg.id,'context_config_version',cfg.version,'profile_id',p.id,
+  'zone_suffixes',COALESCE((SELECT jsonb_agg(s.suffix ORDER BY s.suffix) FROM fqdn_resolver_context_profile_suffixes s WHERE s.profile_id=p.id AND s.org_id=p.org_id),'[]'::jsonb),
+  'endpoints',COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.address,e.port,e.transport) FROM fqdn_resolver_context_profile_endpoints e WHERE e.profile_id=p.id AND e.org_id=p.org_id),'[]'::jsonb),
+  'ipsec_path',jsonb_build_object('connection_id',p.ipsec_connection_id,'configuration_revision',p.ipsec_configuration_revision,'source_address',host(p.ipsec_source_address)),
+  'allowed_sources','[]'::jsonb)::jsonb AS profile,
+ COALESCE((SELECT jsonb_agg(lp.cidr::text ORDER BY lp.cidr) FROM ipsec_aws_local_prefixes lp JOIN site_subnets ss ON ss.id=lp.subnet_id AND ss.site_id=lp.site_id AND ss.status='approved' WHERE lp.connection_id=p.ipsec_connection_id AND lp.org_id=p.org_id),'[]'::jsonb)::jsonb AS local_prefixes,
+ fqdn_ipsec_resolver_profile_valid(p.id,p.org_id)::boolean AS transport_available
+FROM fqdn_resolver_context_configs cfg JOIN fqdn_resolver_context_profiles p ON p.config_id=cfg.id AND p.org_id=cfg.org_id
+JOIN nodes n ON n.id=cfg.gateway_id AND n.org_id=cfg.org_id AND n.site_id=cfg.site_id AND n.status='active' AND n.revoked_at IS NULL
+WHERE cfg.org_id=$1 AND cfg.state='active' AND p.ipsec_connection_id IS NOT NULL
+ORDER BY cfg.gateway_id,cfg.id,p.ordinal;

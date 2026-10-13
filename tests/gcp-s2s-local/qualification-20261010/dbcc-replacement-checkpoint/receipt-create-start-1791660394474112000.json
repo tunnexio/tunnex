@@ -1,0 +1,6 @@
+{
+  "phase": "create-start",
+  "container_id": "9d375d340bee9726a4f0d237e64c5f9bab80350d2fd5e2c6db563cc71e96e15e",
+  "created_receipt_sha256": "134f965fb5b51ebc501b7f0688c518f9f926a38039a4eeb124e03f3847a05267",
+  "status": "normal same-identity startup; independently verify readiness"
+}

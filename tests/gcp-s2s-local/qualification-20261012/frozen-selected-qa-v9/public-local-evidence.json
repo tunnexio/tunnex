@@ -1,0 +1,20 @@
+{
+  "local_tests_passed": 3,
+  "failures": 0,
+  "source_before_after_equal": true,
+  "local_receipt_sha256": "949ce0166a8637735b4ce7434a7cab7b6d5ac5d28f16f1171b0367903ac63ab2",
+  "log_sha256": "c310a4831bdc53adada1baa44f19128f902ebf2777afc1c8c1a8341b5bd524af",
+  "production_changed": false,
+  "v9_udp_acceptance_asserted": false,
+  "historical_v8_attempt2": {
+    "receipt_sha256": "cf9f98e6bcb88d238e80090599e19f951661b777cf2f8eb176ab1ef23cbbf437",
+    "completed": true,
+    "accepted": false,
+    "cleanup_errors": [],
+    "owned_grants_removed": true,
+    "category": "native_before_recovery_exact_SA_census_refusal; no ALLOW packet",
+    "causal_attribution_established": false
+  },
+  "scoped_stories": "9/11",
+  "all_story_signoff": false
+}

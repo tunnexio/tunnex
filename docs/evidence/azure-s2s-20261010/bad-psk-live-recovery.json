@@ -1,0 +1,135 @@
+{
+  "source_helper": "75974544",
+  "node_source": "069978cb",
+  "observed_date": "2026-10-10",
+  "scope": "Original owned AA-BGP connection CP-only bad-key mismatch and normal restoration; no Azure secret/mode mutation",
+  "desired_revisions": {
+    "original_enabled": 24,
+    "disable": 25,
+    "bad_rotation": 26,
+    "bad_enable": 27,
+    "bad_disable": 28,
+    "restore_rotation": 29,
+    "restore_enable": 30
+  },
+  "rotation_acknowledgements": {
+    "bad": true,
+    "restore": true,
+    "network_configuration_revision": 1,
+    "network_sha256": "d3401a5fd5bc9b3cfd677dc6eb7e7308c2ea295f3f73d786c2a23128c00a2b90"
+  },
+  "cleanup_before_bad": {
+    "retained_entries": 12,
+    "connections": 0,
+    "sas": 0,
+    "keys": 0,
+    "sad": 0,
+    "spd": 0,
+    "owned_links": 0,
+    "protocol242_routes": 0,
+    "full_guard": true,
+    "withdrawal_guard": true,
+    "journal_unchanged": true
+  },
+  "bad_native": {
+    "observed_at": "2026-10-10T17:46:34.950562527Z",
+    "phase": "applying",
+    "both_tunnels": "down",
+    "each_ike_child_sad_spd": 0,
+    "scope": "No established native transport observed; exact daemon authentication error not exposed or asserted"
+  },
+  "bad_packets": {
+    "duration_seconds": 12,
+    "each_flow_success": 0,
+    "each_flow_failure": 3,
+    "flows": [
+      "fresh_tcp",
+      "existing_tcp",
+      "fresh_udp",
+      "existing_udp"
+    ],
+    "scope": "Existing-labelled probes began during denied state; no pre-fault established socket continuity claim. Wrapper printed stale20s label; actual configured duration12s."
+  },
+  "cleanup_before_restore": {
+    "retained_entries": 13,
+    "connections": 0,
+    "sas": 0,
+    "keys": 0,
+    "sad": 0,
+    "spd": 0,
+    "owned_links": 0,
+    "protocol242_routes": 0,
+    "full_guard": true,
+    "withdrawal_guard": true,
+    "journal_unchanged": true
+  },
+  "restored_status": {
+    "observed_at": "2026-10-10T17:48:01.794939Z",
+    "application_state": "applied",
+    "both_tunnels": "up",
+    "both_bgp": "established",
+    "approved_route_slot": 1
+  },
+  "restored_native": {
+    "observed_at": "2026-10-10T17:48:16.200397313Z",
+    "each_slot": {
+      "ike": 1,
+      "installed_child": 1,
+      "sad": 2,
+      "spd_each_direction": 1,
+      "selectors": "0.0.0.0/0"
+    },
+    "positive_guard_parser": true
+  },
+  "first_restored_packets": {
+    "started_at": "2026-10-10T17:48:11.859045Z",
+    "tcp_each_success_failure": [
+      14,
+      2
+    ],
+    "udp_each_success_failure": [
+      15,
+      1
+    ],
+    "tails_successful": true,
+    "acceptance_passed": false,
+    "receipt_sha256": "dd43d2815e5247450026f8940cc023ae958678807931c7436b4aa4139e0302b3"
+  },
+  "settled_restored_packets": {
+    "started_at": "2026-10-10T17:48:57.438048Z",
+    "duration_seconds": 20,
+    "each_flow_success": 20,
+    "each_flow_failure": 0,
+    "tcp_exact_65536_source_preserved": true,
+    "udp_exact_4096": true,
+    "existing_socket_reuse": true,
+    "receipt_sha256": "60f8c1511a70c071682b53ce2fbe9b407fde604f2ec000fdb42636f3ef9b363b",
+    "acceptance_passed": true
+  },
+  "fresh_arm": {
+    "mode": "Default",
+    "bgp": true,
+    "selectors": false,
+    "state": "Succeeded",
+    "owner_verified": true
+  },
+  "limitations": [
+    "No FQDN grant or DNS/application recovery acceptance",
+    "No pre-fault established TCP socket continuity test",
+    "No exact daemon AUTH_FAILED category observed",
+    "20s settled packet qualification does not prove sustained stability"
+  ],
+  "restored_fqdn_stored_readback": {
+    "ready": false,
+    "state": "failed",
+    "status_source": "latest_generation",
+    "failure_code": "timeout",
+    "grant_issued": false
+  },
+  "restored_ui": {
+    "both_tunnels": "Up",
+    "both_bgp": "Established",
+    "approved_route_slot": 1,
+    "screenshot_sha256": "14ca0a61a98e1c50a5f3ac695ccff4e5eaec7661f258f64789ef9da05fbd8f2c"
+  }
+}

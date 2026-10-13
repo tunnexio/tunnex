@@ -1,0 +1,33 @@
+{
+  "source_only": true,
+  "record_source_sha256": "c99ac11f0695bec58905b3620b3585efd8a41fe3b6170330c530ff63e08171e9",
+  "wire_source_sha256": "bc5e3e4d1f02b7c07b6fd421a78ce259e54b6cc1653a61dd089498e395cb6f46",
+  "profile": "classic",
+  "zone": "tn-gcps2s-20261010-classic-qa-zone",
+  "network_id": "3397467516692614609",
+  "name": "tc-large.classic.gcp.s2s-qa.tunnex.app.",
+  "type": "A",
+  "ttl": 30,
+  "count": 100,
+  "addresses": "10.81.0.100 through10.81.0.199",
+  "record_args": [
+    "--profile",
+    "classic",
+    "--tc-large",
+    "--apply"
+  ],
+  "wire_args": [
+    "--profile",
+    "classic",
+    "--case",
+    "tc-large"
+  ],
+  "original_large40_unchanged": true,
+  "original_udp40_tc_false_receipt_sha256": "8d2a0cc4af8126549e84c7df857ffa78b5dbab93a1176467a3bb2ddb6464f0a2",
+  "acceptance": "Actual UDP TCbit then sameID/question/rcode completeTCP100answers; no size inference",
+  "tcp_total_deadline_seconds": 4,
+  "source_address": "10.70.0.2",
+  "resolver": "10.81.0.2",
+  "normal_permissions_changed": false,
+  "tests": "14 Python-O pass; no live creation/query"
+}

@@ -1,0 +1,22 @@
+{
+  "started": true,
+  "completed": true,
+  "apply": true,
+  "phase": "route-delete",
+  "requested_phase": "route-delete",
+  "utc": "2026-10-10T23:35:51.974624+00:00",
+  "mutations_submitted": 1,
+  "mutation_attempted": true,
+  "operation": {
+    "id": "3699394010975532338",
+    "name": "operation-1791675356881-65d84ed3322f1-43660cc0-55dc145d",
+    "operationType": "delete",
+    "status": "DONE",
+    "targetLink": "https://www.googleapis.com/compute/v1/projects/project-0048836f-6ba1-4a14-8da/global/routes/tn-gcps2s-20261010-classic-return"
+  },
+  "api_secret_fields_privately_discarded": true,
+  "psk_file_read_attempted": false,
+  "native_and_normal_API_gates": "external ROOT responsibility; not supplied by this executor",
+  "private_original_sha256": "02c128dcf42fbd0aa335f4dc2e529304af5cc8ba8d48637cc207e5c5a3a0581e",
+  "full_inventory_archived": false
+}

@@ -47,6 +47,14 @@ func (w *runtimeCommitRecorder) Write(b []byte) (int, error) {
 	return w.ResponseRecorder.Write(b)
 }
 func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
+	testAgentIPsecCommittedDelivery(t, false)
+}
+func TestGCPClassicAgentIPsecStatusWire(t *testing.T) { testAgentIPsecCommittedDelivery(t, true) }
+func TestAzureStandbyBGPAgentIPsecStatusWire(t *testing.T) {
+	testAgentIPsecCommittedDelivery(t, false, true)
+}
+func testAgentIPsecCommittedDelivery(t *testing.T, classic bool, azure ...bool) {
+	t.Helper()
 	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("requires guarded isolated PostgreSQL")
@@ -115,13 +123,48 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := store.CreateProviderDisabled(ctx, org, actor, sealer, ipsec.CreateProviderRequest{ID: id, SiteID: site, GatewayID: gateway, Name: "runtime HTTP", TunnelIDs: [2]uuid.UUID{uuid.New(), uuid.New()}, Config: cfg})
+	tunnelIDs := [2]uuid.UUID{uuid.New(), uuid.New()}
+	count := 2
+	if classic {
+		count = 1
+		cfg.ProfileID = ipsec.GCPClassicProfile
+		cfg.Tunnels = cfg.Tunnels[:1]
+		cfg.Tunnels[0].InsideCIDR = ""
+		cfg.Tunnels[0].CustomerInsideAddress = ""
+		cfg.Tunnels[0].CloudInsideAddress = ""
+		tunnelIDs[1] = uuid.Nil
+		if _, err = pool.Exec(ctx, `UPDATE nodes SET capabilities=capabilities||'{"ipsec_gcp_classic_version":1}'::jsonb WHERE id=$1`, gateway); err != nil {
+			t.Fatal(err)
+		}
+	}
+	azureBGP := len(azure) > 0 && azure[0]
+	if azureBGP {
+		count = 1
+		cfg.ProfileID = ipsec.AzureActiveStandbyBGPProfile
+		cfg.Mode = "ipv4-bgp"
+		cfg.Azure = &ipsec.AzureContract{GatewaySKU: "VpnGw1AZ", VPNType: "RouteBased", IKEVersion: 2, CustomPolicy: "aes256-sha256-dh14-pfs2048"}
+		cfg.BGP = &ipsec.BGPConfig{LocalASN: 64512, RemoteASN: 65515, RouterID: "10.10.0.1", MaximumPrefixes: 16}
+		cfg.Tunnels = cfg.Tunnels[:1]
+		cfg.Tunnels[0].InsideCIDR = "169.254.20.1/32"
+		cfg.Tunnels[0].CustomerInsideAddress = "169.254.20.1"
+		cfg.Tunnels[0].CloudInsideAddress = "169.254.21.2"
+		tunnelIDs[1] = uuid.Nil
+		channel := NewAgentChannel(nodes.NewService(pool, nil, nil), nil, nil, nil)
+		req := httptest.NewRequest("POST", "/agent/report", strings.NewReader(`{"public_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE=","ipsec_config_version":1,"ipsec_bgp_version":1,"ipsec_azure_version":1}`)).WithContext(ctx)
+		req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{SerialNumber: big.NewInt(0x010203)}}}
+		rr := httptest.NewRecorder()
+		channel.report(rr, req)
+		if rr.Code != 204 {
+			t.Fatal("Azure capability report rejected", rr.Code)
+		}
+	}
+	c, err := store.CreateProviderDisabled(ctx, org, actor, sealer, ipsec.CreateProviderRequest{ID: id, SiteID: site, GatewayID: gateway, Name: "runtime HTTP", TunnelIDs: tunnelIDs, Config: cfg})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("create disabled provider", err)
 	}
 	c, err = store.SetIntent(ctx, org, actor, id, c.DesiredRevision, "enabled")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("enable provider", err)
 	}
 	rule := uuid.New()
 	if _, err = pool.Exec(ctx, `UPDATE organizations SET zero_trust_mode='enforcing' WHERE id=$1`, org); err != nil {
@@ -167,6 +210,16 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 	}
 
 	statusReport := ipsec.RuntimeStatusReport{DeliveryID: material.ID, DesiredRevision: material.DesiredRevision, ConfigurationRevision: 1, Tunnels: [2]ipsec.RuntimeTunnelStatus{{ID: material.Manifest.Tunnels[0].ID, Slot: 1, Status: "up", Selected: true}, {ID: material.Manifest.Tunnels[1].ID, Slot: 2, Status: "down"}}}
+	if classic || azureBGP {
+		version, count := 1, 1
+		statusReport.TransportVersion = &version
+		statusReport.TunnelCount = &count
+		statusReport.Tunnels[1] = ipsec.RuntimeTunnelStatus{}
+	}
+	if azureBGP {
+		statusReport.Tunnels[0].Selected = false
+		statusReport.BGP = &ipsec.RuntimeBGPStatus{Version: 1, Sequence: 1, Peers: [2]ipsec.RuntimeBGPPeerStatus{{Slot: 1, State: "idle"}, {}}, Routes: []ipsec.RuntimeBGPRoute{}}
+	}
 	statusBytes, _ := json.Marshal(statusReport)
 	statusReply := httptest.NewRecorder()
 	call("POST", "/status", string(statusBytes), statusReply)
@@ -174,7 +227,7 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 		t.Fatalf("status report %d", statusReply.Code)
 	}
 	observed, e := store.ReadStatus(ctx, org, id)
-	if e != nil || len(observed.Tunnels) != 2 || observed.Tunnels[0].Status != "up" || observed.Tunnels[1].Status != "down" {
+	if e != nil || len(observed.Tunnels) != count || observed.ObservedAt == nil || observed.Tunnels[0].Status != "up" || (count == 2 && observed.Tunnels[1].Status != "down") {
 		t.Fatal("status projection failed", e)
 	}
 	malformedStatus := strings.Replace(string(statusBytes), `"selected":false`, `"selected":false,"selected":true`, 1)
@@ -189,10 +242,40 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 	if deniedStatus.Code != 400 {
 		t.Fatal("missing telemetry field accepted")
 	}
+	if classic {
+		for _, mutate := range []func(*ipsec.RuntimeStatusReport){
+			func(r *ipsec.RuntimeStatusReport) { r.TunnelCount = nil },
+			func(r *ipsec.RuntimeStatusReport) { v := 2; r.TransportVersion = &v },
+			func(r *ipsec.RuntimeStatusReport) { r.Tunnels[1].Status = "unknown" },
+			func(r *ipsec.RuntimeStatusReport) { r.Tunnels[1].ID = uuid.New() },
+		} {
+			bad := statusReport
+			mutate(&bad)
+			raw, _ := json.Marshal(bad)
+			reply := httptest.NewRecorder()
+			call("POST", "/status", string(raw), reply)
+			if reply.Code != 400 {
+				t.Fatal("invalid Classic wire accepted", reply.Code)
+			}
+		}
+	}
+	if azureBGP {
+		bad := statusReport
+		clone := *bad.BGP
+		bad.BGP = &clone
+		bad.BGP.Peers[1].Slot = 2
+		raw, _ := json.Marshal(bad)
+		reply := httptest.NewRecorder()
+		call("POST", "/status", string(raw), reply)
+		if reply.Code != 400 {
+			t.Fatal("nonzero inactive Azure peer accepted", reply.Code)
+		}
+		return
+	}
 	runtimeLeasePolicyRace(t, ctx, pool, store, org, gateway, id, rule, material)
 	c, err = store.SetIntent(ctx, org, actor, id, c.DesiredRevision, "disabled")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("disable provider", err)
 	}
 	if c.CleanupState != "pending" {
 		t.Fatal("failed response lost cleanup obligation")
@@ -203,7 +286,7 @@ func TestAgentIPsecCommittedDeliveryBeforeBytes(t *testing.T) {
 		t.Fatalf("stale material status %d", stale.Code)
 	}
 	for _, secret := range material.Secrets {
-		if strings.Contains(logs.String(), secret.PSK) || strings.Contains(stale.Body.String(), secret.PSK) {
+		if secret.PSK != "" && (strings.Contains(logs.String(), secret.PSK) || strings.Contains(stale.Body.String(), secret.PSK)) {
 			t.Fatal("secret logged or reflected")
 		}
 	}

@@ -1,0 +1,354 @@
+{
+  "scope": "Owned local Docker emulator only; no Google cloud or production qualification",
+  "source": "f1675dd3a2120092fb5058467eedf772fcffce76",
+  "node_sha256": "72352e13ce725c4ecd87d79df76467803b4a4e071cf12206aa372f47ff47ce8e",
+  "helper_sha256": "606dd810adc151ea9439d92eca4338be9c4262048958bddc447d996d3447deb8",
+  "peer_fixture_sha256": "865878f482aca57362c498e25e376ddc0d02184e93a549a4da32d1ac4f2f27ce",
+  "restoration": {
+    "supported_runner_exit": 0,
+    "run": "696effbf-f373-4c24-a18f-7772e6e138e1",
+    "fresh_current_sa": true,
+    "root_reported_epoch": 2,
+    "root_reported_normal_cp_up_utc": "12:00:33",
+    "helper_old_reader_epoch1_refusal": "RED invalid persisted journal; integrated strict reader GREEN",
+    "peer_stage": "PASS",
+    "peer_initiate": "refused; not counted",
+    "peer_serve": "strict native ready"
+  },
+  "mtu": {
+    "gateway_underlay": "33.0.0.50 eth1 index3",
+    "peer_underlay": "33.0.0.60 eth0 index2",
+    "original": 1500,
+    "lowered": 1400,
+    "gateway_xfrm_normal_controller": 1326,
+    "peer_xfrm_fixture": 1326,
+    "original_physical_and_peer_mtu_restored": true,
+    "manual_gateway_authority_or_xfrm_mutation": false,
+    "tcp_mss_tested": true
+  },
+  "limits": [
+    "One initial1400 timeout before repeated exact successes remains unclassified",
+    "DF1298 sent but reply timed out; no boundary delivery claim",
+    "Gateway retains controller-owned lower XFRM ceiling after physical restore"
+  ],
+  "evidence": {
+    "post-supported-resume-payload.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "lower1400-df.json": {
+      "sha256": "8b38bdfb1522c5ce226da3b646aedda5bdf2eb78013bd5d1c1977f41cddca57c",
+      "result": [
+        {
+          "size": 1400,
+          "df": true,
+          "errno": 90,
+          "timeout": false,
+          "path_mtu": 1326
+        },
+        {
+          "size": 1298,
+          "df": true,
+          "errno": null,
+          "timeout": true,
+          "path_mtu": 1326
+        },
+        {
+          "size": 1299,
+          "df": true,
+          "errno": 90,
+          "timeout": false,
+          "path_mtu": 1326
+        }
+      ]
+    },
+    "lower1400-df-small.json": {
+      "sha256": "d7e27fcb3a7e38b0ff224f2bb79664e4f5e51bf99818007b10ada7a68cd194c4",
+      "result": {
+        "df": true,
+        "size": 1200,
+        "exact": true,
+        "reply_len": 1222,
+        "path_mtu": 1326
+      }
+    },
+    "lower1400-payload.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "mtu-restored.json": {
+      "sha256": "a05cdee03b530225c976026e10446189be0ce686977288d46d15725d745512e3",
+      "result": [
+        {
+          "container": "tunnexgcps2slifecycle1010-gateway-1",
+          "interface": "eth1",
+          "index": 3,
+          "mtu": 1500,
+          "address": "33.0.0.50"
+        },
+        {
+          "container": "tunnex-gcp-lifecycle-owned1010-peer",
+          "interface": "eth0",
+          "index": 2,
+          "mtu": 1500,
+          "address": "33.0.0.60"
+        }
+      ]
+    },
+    "post-mtu-restore-payload.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "tcp8080-baseline.json": {
+      "sha256": "b486cc469acd02bb3cb0aa227e019998cc35debaf82a2a8f15cc47e3009e20f0",
+      "result": {
+        "download_bytes": 1098504,
+        "download_exact": true,
+        "upload_bytes": 1048576,
+        "upload_sha_exact": true
+      }
+    },
+    "tcp8080-lower1400.json": {
+      "sha256": "b486cc469acd02bb3cb0aa227e019998cc35debaf82a2a8f15cc47e3009e20f0",
+      "result": {
+        "download_bytes": 1098504,
+        "download_exact": true,
+        "upload_bytes": 1048576,
+        "upload_sha_exact": true
+      }
+    },
+    "tcp8080-restored.json": {
+      "sha256": "f8c70e241862e2347e6b71ca94887f2df68a25250f2f750e3bd23cd34a624243",
+      "result": {
+        "download_exact": true,
+        "download_bytes": 1098504,
+        "upload_sha_exact": true,
+        "upload_bytes": 1048576
+      }
+    },
+    "post-tcp-mtu-restore-udp.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "tcp8080-lower-target-syn.txt": {
+      "sha256": "a47d7c91c0a87227cfa178e34ac5c15f6aa9cfd3a18de00a78bb8259d803de92",
+      "result": "tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n12:08:05.795267 IP (tos 0x0, ttl 62, id 1915, offset 0, flags [DF], proto TCP (6), length 60)\n    10.76.0.10.56318 > 10.75.0.10.8080: Flags [S], cksum 0x8bf7 (correct), seq 3474728013, win 64300, options [mss 1286,sackOK,TS val 3863795609 ecr 0,nop,wscale 7], length 0\n12:08:05.795323 IP (tos 0x0, ttl 64, id 0, offset 0, flags [DF], proto TCP (6), length 60)\n    10.75.0.10.8080 > 10.76.0.10.56318: Flags [S.], cksum 0x14d9 (incorrect -> 0x6589), seq 2929145884, ack 3474728014, win 64974, options [mss 1286,sackOK,TS val 1208546558 ecr 3863795609,nop,wscale 7], length 0\n2 packets captured\n4 packets received by filter\n0 packets dropped by kernel\n"
+    },
+    "tcp8080-lower-client-syn.txt": {
+      "sha256": "899bd97c2357de4299b7a0e309e52e285c5f0c3fe0f2ec66a577e270d615a2ba",
+      "result": "tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n12:08:26.350694 IP (tos 0x0, ttl 64, id 49896, offset 0, flags [DF], proto TCP (6), length 60)\n    10.76.0.10.60302 > 10.75.0.10.8080: Flags [S], cksum 0x14d9 (incorrect -> 0x9f5a), seq 2652692587, win 64300, options [mss 1286,sackOK,TS val 3863816583 ecr 0,nop,wscale 7], length 0\n12:08:26.351347 IP (tos 0x0, ttl 62, id 0, offset 0, flags [DF], proto TCP (6), length 60)\n    10.75.0.10.8080 > 10.76.0.10.60302: Flags [S.], cksum 0xa624 (correct), seq 2250563944, ack 2652692588, win 64974, options [mss 1286,sackOK,TS val 1208567532 ecr 3863816583,nop,wscale 7], length 0\n2 packets captured\n2 packets received by filter\n0 packets dropped by kernel\n"
+    },
+    "continuous-supported-restart-result.json": {
+      "sha256": "f5db01c7ec9a5574a3470b4532a42e5269f09bdf57573ebb8e4752dcd7bd872e",
+      "result": {
+        "active_tunnel_count": 1,
+        "epoch": 3,
+        "payload_verified": false,
+        "scope": "controlled-supervisor-container-restart",
+        "started_utc": "2026-10-10T12:11:39.749826+00:00",
+        "status": "controller-and-tunnels-restored",
+        "stop_to_active_established_seconds": 37.744,
+        "version": 1
+      }
+    },
+    "continuous-supported-restart-udp.json": {
+      "sha256": "14cd421dbf82cfd3aeefd644327d72f6f02938e9db0579e4e9a2c3226ca4efad",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "denied": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "continuous-supported-restart-udp-repeat.json": {
+      "sha256": "0ffaa5022a438c26c9a6d37fcd3d7df46c2e9399da52595b91ae8045586a28b8",
+      "result": [
+        {
+          "port": 9000,
+          "size": 16,
+          "reply_len": 38,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1200,
+          "reply_len": 1222,
+          "exact": true
+        },
+        {
+          "port": 9000,
+          "size": 1400,
+          "reply_len": 1422,
+          "exact": true
+        },
+        {
+          "port": 9002,
+          "size": 16,
+          "denied": true
+        }
+      ]
+    },
+    "continuous-supported-restart-tcp.json": {
+      "sha256": "f8c70e241862e2347e6b71ca94887f2df68a25250f2f750e3bd23cd34a624243",
+      "result": {
+        "download_exact": true,
+        "download_bytes": 1098504,
+        "upload_sha_exact": true,
+        "upload_bytes": 1048576
+      }
+    }
+  },
+  "tcp_followup": {
+    "authority": "UI-owned normal Site76 grant to exact75.10/32 TCP8080; no target-initiated reverse grant",
+    "policy_id": "01a125b4-4ea3-7fbe-b5a2-1fec6f4271fa",
+    "peer_service": "exact76.10 to75.10 TCP8080 added; existing UDP services preserved",
+    "strict_serve": "native ready; restage refused existing engine and is not counted",
+    "physical_lowered": 1400,
+    "gateway_controller_xfrm": 1326,
+    "actual_syn_mss_each_direction": 1286,
+    "capture_scope": "Two new owned16MiB NET_RAW-only capture containers, sequential, metadata-only exactTCP8080 SYN, exited preserved",
+    "physical_original_restored": 1500,
+    "post_restore_exact_tcp_and_udp": true,
+    "limitations": [
+      "Initial upload exceeded fixture1MiB cap and caused BrokenPipe; corrected1MiB upload passed",
+      "No independently target-initiated TCP session proof or reverse-grant claim"
+    ]
+  },
+  "continuous_restart": {
+    "same_container_id": "cf5a1c57bb1ff50adfab944070bf87c793ec65b0b871c0b30fdd160f39f76571",
+    "stop_grace": 45,
+    "recovery_bound": 180,
+    "runner_exit": 0,
+    "run": "6d05b86c-e8b1-4bca-ba1a-ea3da812ead7",
+    "fresh_epoch": 3,
+    "stop_to_active_established_seconds": 37.744,
+    "peer_remained_active": true,
+    "scope": "controlled supervisor container restart, not VM reboot/crash",
+    "limits": [
+      "First missing evidence directory refusal occurred before stop; required root700 directory created",
+      "First postrestart1400 probe timed out; recorded independently, no reliability claim"
+    ]
+  },
+  "final_peer": {
+    "scope": "only owned strictserve and peerPID1daemon gracefully stopped beforeboundeddeadline; gateway untouched",
+    "strict_serve_exit": 0,
+    "strict_serve_seconds": 824.47,
+    "preserved": "container/config/network/evidence",
+    "sha256": "28e2ee67083de9956a02664696917b02effe0933b8b4746f369be56e22abf99d",
+    "state": "running=false exit=0 oom=false finished=2026-10-10T12:19:44.472269135Z"
+  }
+}

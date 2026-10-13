@@ -17,6 +17,7 @@ beforeEach(() => {
  mock.GET.mockImplementation(async (path: string) => {
   if(path.endsWith("/settings")) return {data:{enabled:false,revision:1}};
   if(path.endsWith("/connections")) return {data:{next_cursor:null,items:[record]}};
+  if(path.endsWith("/configuration")) return {data:{profile_id:"aws-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{},{}]}}};
   if(path.endsWith("/status")) return {data:{tunnels:[{id:"tunnel-a",slot:1,status:"unknown",selected:true},{id:"tunnel-b",slot:2,status:"unknown",selected:false}]}};
   return {data:record};
  });
@@ -78,4 +79,46 @@ it("submits only once while a rotation is in flight",async()=>{
 });
 it("does not offer rotation when successor revision cannot be represented safely",async()=>{
  const original=mock.GET.getMockImplementation()!; mock.GET.mockImplementation((path:string)=>path.endsWith("/connections")?Promise.resolve({data:{next_cursor:null,items:[{...record,desired_revision:Number.MAX_SAFE_INTEGER}]}}):original(path)); render(view()); expect((await connectionMenu()).queryByRole("menuitem",{name:/Rotate keys/})).toBeNull();
+});
+it("rotates exactly the existing Classic single-slot key without a second input",async()=>{
+ const original=mock.GET.getMockImplementation()!;
+ mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:"gcp-classic-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{}]}}}:path.endsWith("/status")?{data:{tunnels:[{id:"classic-tunnel",slot:1,status:"unknown",selected:true}]}}:original(path));
+ render(view());await open();expect(screen.queryByLabelText("Tunnel 2 new PSK")).toBeNull();
+ fireEvent.change(screen.getByLabelText("Tunnel 1 new PSK"),{target:{value:"Synthetic.Classic1"}});fireEvent.click(screen.getByRole("button",{name:"Save new keys"}));
+ await waitFor(()=>expect(mock.POST).toHaveBeenCalledTimes(1));expect(mock.POST.mock.calls[0][1].body).toEqual({expected_desired_revision:4,tunnels:[{tunnel_id:"classic-tunnel",psk:"Synthetic.Classic1"}]});
+});
+it("refuses Classic rotation if status contains a foreign second slot",async()=>{
+ const original=mock.GET.getMockImplementation()!;
+ mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:"gcp-classic-static-ipv4-v1",configuration_revision:1,configuration:{mode:"ipv4-static",tunnels:[{}]}}}:original(path));
+ render(view());fireEvent.click((await connectionMenu()).getByRole("menuitem",{name:/Rotate keys/}));await screen.findByText(/Could not load tunnel identities/);expect(screen.queryByLabelText("Tunnel 1 new PSK")).toBeNull();expect(mock.POST).not.toHaveBeenCalled();
+});
+it.each([
+ ["gcp-ha-bgp-ipv4-v1", "ipv4-bgp", 2],
+ ["gcp-classic-static-ipv4-v1", "ipv4-static", 1],
+])("clears %s rotation secrets after revision conflict and blocks stale retry", async (profile, mode, count) => {
+ const original = mock.GET.getMockImplementation()!;
+ mock.GET.mockImplementation(async (path: string) => path.endsWith("/configuration") ? {data:{profile_id:profile,configuration_revision:1,configuration:{mode,tunnels:Array.from({length:Number(count)},()=>({}))}}} : path.endsWith("/status") ? {data:{tunnels:Array.from({length:Number(count)},(_,index)=>({id:`gcp-tunnel-${index+1}`,slot:index+1,status:"unknown",selected:index===0}))}} : original(path));
+ mock.POST.mockResolvedValue({error:{code:"ipsec_revision_conflict"},response:{status:409}});
+ render(view()); await open();
+ fireEvent.change(screen.getByLabelText("Tunnel 1 new PSK"), {target:{value:"Synthetic.GCPSecret1"}});
+ fireEvent.click(screen.getByRole("button", {name:"Save new keys"}));
+ await screen.findByText(/Could not confirm the key change/);
+ expect(screen.queryByDisplayValue("Synthetic.GCPSecret1")).toBeNull();
+ const retry = screen.getByRole("button", {name:"Save new keys"});
+ expect((retry as HTMLButtonElement).disabled).toBe(true); fireEvent.click(retry);
+ expect(mock.POST).toHaveBeenCalledTimes(1); expect(mock.PUT).not.toHaveBeenCalled();
+ expect(mock.POST.mock.calls[0][1].body.expected_desired_revision).toBe(4);
+});
+it.each(["azure-active-active-bgp-ipv4-v1", "azure-active-active-static-ipv4-v1", "azure-active-standby-bgp-ipv4-v1", "azure-active-standby-static-ipv4-v1"])("rotates %s through one shared connection key without exposing stored secrets", async profile => {
+ const original=mock.GET.getMockImplementation()!; const count=profile.includes("-standby-")?1:2;
+ mock.GET.mockImplementation(async(path:string)=>path.endsWith("/configuration")?{data:{profile_id:profile,configuration_revision:1,configuration:{mode:profile.includes("-bgp-")?"ipv4-bgp":"ipv4-static",tunnels:Array.from({length:count},()=>({}))}}}:path.endsWith("/status")?{data:{tunnels:Array.from({length:count},(_,i)=>({id:`tunnel-${i===0?"a":"b"}`,slot:i+1,status:"unknown",selected:false}))}}:original(path));
+ render(view()); fireEvent.click((await connectionMenu()).getByRole("menuitem",{name:"Rotate keys for Office cloud"}));
+ const input=await screen.findByLabelText("Azure connection new PSK");
+ expect(screen.queryByLabelText("Tunnel 2 new PSK")).toBeNull(); expect(input.getAttribute("type")).toBe("password");
+ fireEvent.change(input,{target:{value:"Synthetic.SharedAzureRotation"}});
+ fireEvent.click(screen.getByRole("button",{name:"Save new keys"}));
+ await waitFor(()=>expect(mock.POST).toHaveBeenCalled());
+ const body=mock.POST.mock.calls[0][1].body;
+ expect(body.expected_desired_revision).toBe(4); expect(body.tunnels).toHaveLength(count); expect(body.tunnels.every((t:any)=>t.psk==="Synthetic.SharedAzureRotation")).toBe(true);
+ await screen.findByText(/Keys saved/); expect(screen.queryByDisplayValue("Synthetic.SharedAzureRotation")).toBeNull();
 });

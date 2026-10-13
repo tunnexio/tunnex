@@ -2,8 +2,6 @@ package policy
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/netip"
 	"sort"
@@ -11,17 +9,60 @@ import (
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
+	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
 // CompileIPsecRuntimePolicy must run inside the runtime transaction after its
 // organization serialization lock. Migration policy-writer mirrors preserve a
 // coherent snapshot across these queries. Caller input never supplies authority.
 func CompileIPsecRuntimePolicy(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+	return compileIPsecRuntimePolicyWithEntitlement(ctx, q, input, false)
+}
+
+// IPsecRuntimePolicyCompiler uses the same named entitlement as ordinary policy.
+// A missing entitlement callback remains fail closed for retained FQDN rules.
+func IPsecRuntimePolicyCompiler(entitled func() bool) ipsec.RuntimePolicyCompiler {
+	return func(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+		return compileIPsecRuntimePolicyWithEntitlement(ctx, q, input, entitled != nil && entitled())
+	}
+}
+
+func compileIPsecRuntimePolicyWithEntitlement(ctx context.Context, q *sqlc.Queries, input ipsec.RuntimePolicyInput, entitled bool) (ipsec.RuntimePolicy, error) {
 	snapshot, err := BuildSnapshotWithQueries(ctx, q, input.OrgID)
 	if err != nil {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
 	}
-	return compileIPsecRuntimePolicy(snapshot, input)
+	if err := appendRuntimeFQDNGenerations(ctx, &snapshot, input, entitled); err != nil {
+		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+	}
+	rows, err := q.ListIPsecDNSResolverProfiles(ctx, input.OrgID)
+	if err != nil {
+		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+	}
+	declared := []IPsecDNSProfile{}
+	for _, row := range rows {
+		if row.GatewayID != input.NodeID {
+			continue
+		}
+		profile, err := DecodeIPsecDNSProfile(row)
+		if err != nil {
+			return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
+		}
+		declared = append(declared, profile)
+	}
+	result, err := compileIPsecRuntimePolicy(snapshot, input)
+	if err != nil {
+		return result, err
+	}
+	// Proxy entitlement uses ordinary WG policy before the forwarded IPsec compiler filters local cloud prefixes.
+	var proxyAllows []policyspec.AllowEntry
+	if snapshot.Mode == ModeEnforcing {
+		proxyAllows = Compile(snapshot)[input.NodeID].Allow
+	}
+	if err := attachRuntimeDNSProfiles(&result, declared, input, proxyAllows); err != nil {
+		return ipsec.RuntimePolicy{}, err
+	}
+	return hashRuntimePolicy(result, input)
 }
 func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
 	if input.OrgID == uuid.Nil || input.NodeID == uuid.Nil || input.SiteID == uuid.Nil || input.ConnectionID == uuid.Nil {
@@ -45,6 +86,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	snapshot.SiteNodes = siteNodes
+	fqdnSnapshot := snapshot
 	result := ipsec.RuntimePolicy{Grants: []ipsec.RuntimeGrant{}}
 	// Isolate the supported shared-rule classes before compilation. Membership,
 	// FQDN generations, device owners and service discovery cannot widen this port.
@@ -75,7 +117,17 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 			result.Grants = append(result.Grants, ipsec.RuntimeGrant{Source: source.String(), Destination: destination.String(), Protocol: string(grant.Protocol), PortLow: uint16(grant.PortLow), PortHigh: uint16(grant.PortHigh), RuleID: grant.RuleID})
 		}
 	}
-	if len(result.Grants) > 128 {
+	result.FQDNGrants = compileIPsecFQDNGrants(fqdnSnapshot, input)
+	if len(result.FQDNGrants) != 0 {
+		result.FQDNPolicyVersion = input.FQDNPolicyVersion
+		if input.FQDNPolicyVersion == 1 {
+			result.FQDNLeaseDeadline = runtimeFQDNLeaseDeadline(fqdnSnapshot, result.FQDNGrants)
+			if !result.FQDNLeaseDeadline.After(input.CompiledAt) {
+				return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
+			}
+		}
+	}
+	if len(result.Grants)+len(result.FQDNGrants) > 128 {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	sort.Slice(result.Grants, func(a, b int) bool {
@@ -83,18 +135,10 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 		y, _ := json.Marshal(result.Grants[b])
 		return string(x) < string(y)
 	})
-	// Bind the hash to this exact connection even when its effective policy is
-	// empty. Hash only canonical nonsecret forwarding authority, never PSKs.
-	raw, err := json.Marshal(struct {
-		Org, Node, Site, Connection uuid.UUID
-		Grants                      []ipsec.RuntimeGrant
-	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants})
-	if err != nil {
-		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionUnavailable
-	}
-	hash := sha256.Sum256(raw)
-	result.Hash = hex.EncodeToString(hash[:])
-	return result, nil
+	return hashRuntimePolicy(result, input)
+}
+func hashRuntimePolicy(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInput) (ipsec.RuntimePolicy, error) {
+	return ipsec.HashRuntimePolicy(result, input)
 }
 func runtimePolicyPrefix(raw string) (netip.Prefix, bool) {
 	p, err := netip.ParsePrefix(raw)
@@ -115,4 +159,15 @@ func runtimePolicyWithin(prefix netip.Prefix, ranges []string) bool {
 		}
 	}
 	return false
+}
+
+func runtimePolicyHashBytes(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInput) ([]byte, error) {
+	return json.Marshal(struct {
+		Org, Node, Site, Connection uuid.UUID
+		Grants                      []ipsec.RuntimeGrant
+		DNSResolverGrants           []ipsec.RuntimeDNSResolverGrant `json:"dns_resolver_grants,omitempty"`
+		DNSResolverProfiles         []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+		FQDNPolicyVersion           int                             `json:"fqdn_policy_version,omitempty"`
+		FQDNGrants                  []ipsec.RuntimeFQDNGrant        `json:"fqdn_grants,omitempty"`
+	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles, result.FQDNPolicyVersion, result.FQDNGrants})
 }

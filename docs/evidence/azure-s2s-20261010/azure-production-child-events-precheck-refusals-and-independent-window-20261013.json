@@ -1,0 +1,115 @@
+{
+  "accepted_story_count": 6,
+  "category": "actual_production_child_events_and_independent_readonly_packet_checkpoint",
+  "corrected_administrative_runner": {
+    "material_independent_review": "runtime clear",
+    "native_retry": false,
+    "path": "/private/tmp/azure-production-child-packets-existing-tools-v3.py",
+    "project_tools": "Already installed pinned6af/0eb/047/b59; generic administrative orchestration passed normal approval review.",
+    "sha256": "625dd97d5b7844d8ad48c427f81d612833c362c74c34d6b14fd37f1c1855e2d0",
+    "targets_per_invocation": 1,
+    "window_seconds": 180
+  },
+  "current_event_monitor": {
+    "acceptance": false,
+    "deadline_seconds": 3600,
+    "monitor_pid": 768328,
+    "node_host_pid": 2361623,
+    "private_run_id": "azure-production-child-events-09422380-e1d1-42c3-a939-132c8e0ff625",
+    "protocol": "event-register-only",
+    "session_id": 95507,
+    "status": "live_subscription_confirmed"
+  },
+  "grant_cloud_or_restart_writes": 0,
+  "independent_target1": {
+    "acceptance": false,
+    "initial_snapshot_failure_stage": "journal-identity",
+    "packet_started": false,
+    "private_run_id": "azure-production-child-packets-fb9bb729-9a77-47d6-a2f9-721c993051c1",
+    "session_id": 59853,
+    "stdout_sha256": "95b13365228a8eeac1a4a76f0b05215b689a947a6fd8e44816bc23a5dc70dbd5",
+    "terminal_returncode": 1
+  },
+  "independent_target2": {
+    "acceptance": false,
+    "coordinator_pid": 779160,
+    "packet_started": false,
+    "private_run_id": "azure-production-child-packets-c791179c-872f-489f-8924-2c54f71be31e",
+    "session_id": 4718,
+    "status": "live_waiting_confirmed",
+    "strict_initial_native_snapshot_passed": true,
+    "target_name": "tnx-ipsec-47e20c0a-1fcd-4cfb-819a-3fb72ecc3f09-d18-c1-s1",
+    "target_remaining_seconds_at_confirmation": 1250
+  },
+  "live_acceptance_remaining": "Actual event in the genuinely measured original four-flow packet interval, correct pre/post CHILD IDs and SPIs, all original packet checks, and unchanged full native after the complete180s are mandatory.",
+  "new_live_slices_closed": 0,
+  "observed_events": [
+    {
+      "frame_sha256": "131af122690ae9e4fe5f423ffc0d2dd95c2d910f1bf91734664d3f25468d7b7d",
+      "ike_id": 3,
+      "name": "tnx-ipsec-1b81313d-a8d1-422a-87f2-6b9a2eca72f0-d18-c1-s1",
+      "new_child_id": 25,
+      "new_rekey_seconds": 2443,
+      "new_spi_in": "c0b95c5b",
+      "new_spi_out": "71a626b8",
+      "observed_at": "2026-10-12T20:03:21.365743+00:00",
+      "old_child_id": 23,
+      "old_rekey_seconds": 0,
+      "old_spi_in": "c9d8928d",
+      "old_spi_out": "44647216"
+    },
+    {
+      "frame_sha256": "a91d549e99f6ee4427025b662b8e32131b48c15cc4ee7fcffcc638cec22fe04c",
+      "ike_id": 4,
+      "name": "tnx-ipsec-47e20c0a-1fcd-4cfb-819a-3fb72ecc3f09-d18-c1-s1",
+      "new_child_id": 26,
+      "new_rekey_seconds": 2835,
+      "new_spi_in": "ce446297",
+      "new_spi_out": "200f902e",
+      "observed_at": "2026-10-12T20:05:48.320788+00:00",
+      "old_child_id": 24,
+      "old_rekey_seconds": 0,
+      "old_spi_in": "cbdfc026",
+      "old_spi_out": "c5d36eba"
+    }
+  ],
+  "ordinary_expiry_depends_on_dns_or_api_upgrade": false,
+  "original_event_monitor": {
+    "acceptance": false,
+    "event_count": 2,
+    "normal_unchanged": true,
+    "private_run_id": "azure-production-child-events-f1c24dde-f6fb-410b-9ade-722eab20313a",
+    "service_identity_unchanged": true,
+    "session_id": 82479,
+    "terminal": true
+  },
+  "original_packet_coordinator": {
+    "acceptance": false,
+    "failure": "original full observer final_bracket refused; journal flag false",
+    "inner_native_result": "unknown; final bracket is evaluated before native extraction",
+    "packet_started": false,
+    "private_run_id": "azure-production-child-packets-2f661b08-55e4-4ccd-804a-7f0ffef6c84d",
+    "session_id": 58931,
+    "terminal_returncode": 1
+  },
+  "priority_order": [
+    "Story6 ordinary expiry/recovery",
+    "Story5 active-standby BGP",
+    "Story6 active-standby static"
+  ],
+  "priority_source_dispatch": "Existing exact human questions remain pending after actual automatic-review rejection; no denied payload was sent through an alternate path.",
+  "project_source_bundle_or_binary_transfers_this_checkpoint": 0,
+  "raw_native_frames_journals_or_keys_exported": false,
+  "recorded_at": "2026-10-12T20:33:28.534824+00:00",
+  "separate_fresh_native_after": {
+    "private_run_id": "azure-profile-observe-658daddb-2102-4a78-9ef7-af480c701862",
+    "receipt_sha256": "6a14820e5ebaa5c9775b06d71c24633b12afe76d3aad16e8f857a52169d6e501",
+    "scope": "Original full native post-read only; cannot authenticate the earlier failed pre-read or packet continuity.",
+    "session_id": 65712,
+    "terminal_returncode": 0
+  },
+  "timer_or_control_changes": 0,
+  "total_story_count": 11,
+  "version": 1,
+  "whole_story_accepted": false
+}

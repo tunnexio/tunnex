@@ -1,0 +1,30 @@
+{
+  "actual_update_result": {
+    "category": "started_requires_independent_normal_native_read",
+    "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "executable_sha256": "0dda48e7f09d7c03467b9f66df0fb4bb1eac8f458f99f0606d594307d4bc42a5",
+    "image_unchanged": true,
+    "immutable_sha256": "c1d958821728a1b1c833350e6897a45c1f0ce750c8e37fdc092376e0677fc0de",
+    "namespace": "net:[4026532430]",
+    "pid": 3858909,
+    "started_at": "2026-10-11T22:47:47.153840417Z"
+  },
+  "capture_refusal_cause": "qualification_capture_referenced_nonexistent_CleanupCoveredDeliveryRevision_instead_of_production_CoveredDeliveryRevision",
+  "category": "static_causal_fix_deployed_and_normal_cleanup_settled",
+  "native_capture_refused_before_test": true,
+  "native_cleanup_acceptance": false,
+  "normal_status": {
+    "application_state": "not_applied",
+    "category": "actual_poststart_normal_status",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "desired_revision": 3,
+    "native_acceptance": false,
+    "policy_count": 0,
+    "private_run_id": "azure-static-poststart-status-f71d3987-e070-4de9-b593-fede436b9e1b"
+  },
+  "static_packets_acceptance": false,
+  "stories_accepted": 6,
+  "update_result_sha256": "04ec4b7add033eff8c5729aa93e05b35ac7a91356a19e9f381f6c257987b08e4",
+  "version": 1
+}

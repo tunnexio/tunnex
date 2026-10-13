@@ -407,6 +407,10 @@ func TestKubernetesBackendShutdownDrainsDataplaneAndReusesCleanShell(t *testing.
 		case joined == "ip -4 rule del pref 100 to 10.99.0.0/24 lookup main":
 			rulePresent = false
 			return "", nil
+		case joined == "ip -j -4 route show default" || joined == "ip -j -6 route show default":
+			return `[]`, nil
+		case joined == "ip -j link show dev wg0":
+			return `[{"ifname":"wg0","mtu":1420,"flags":["UP"]}]`, nil
 		case joined == "ip -j address show dev wg0":
 			if addressPresent {
 				return `[{"ifname":"wg0","addr_info":[{"family":"inet","local":"10.99.0.1","prefixlen":24}]}]`, nil

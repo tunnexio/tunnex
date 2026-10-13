@@ -1,0 +1,76 @@
+{
+  "eligibility": {
+    "bgp": {
+      "eligible": true,
+      "reason": "eligible"
+    },
+    "eligible": true,
+    "gcp_classic": {
+      "eligible": true,
+      "reason": "eligible"
+    },
+    "gcp_ha": {
+      "eligible": true,
+      "reason": "eligible"
+    },
+    "reason": "eligible"
+  },
+  "connections": [
+    {
+      "id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+      "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+      "gateway_node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+      "desired_revision": 1,
+      "desired_intent": "disabled",
+      "cleanup_state": "not_required",
+      "application_state": "not_applied",
+      "profile_id": "gcp-ha-bgp-ipv4-v1",
+      "configuration_revision": 1,
+      "configuration_keys": [
+        "configuration",
+        "configuration_revision",
+        "profile_id"
+      ],
+      "exact_template_checks": {
+        "profile_id": true,
+        "mode": true,
+        "customer_outside_address": true,
+        "local_prefixes": true,
+        "remote_prefixes": true,
+        "bgp": true,
+        "tunnels": true,
+        "secret_free": true
+      }
+    },
+    {
+      "id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+      "gateway_node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+      "desired_revision": 1,
+      "desired_intent": "disabled",
+      "cleanup_state": "not_required",
+      "application_state": "not_applied",
+      "profile_id": "gcp-classic-static-ipv4-v1",
+      "configuration_revision": 1,
+      "configuration_keys": [
+        "configuration",
+        "configuration_revision",
+        "profile_id"
+      ],
+      "exact_template_checks": {
+        "profile_id": true,
+        "mode": true,
+        "customer_outside_address": true,
+        "local_prefixes": true,
+        "remote_prefixes": true,
+        "tunnels": true,
+        "secret_free": true
+      }
+    }
+  ],
+  "scope": "normal owner API disabled-save/read only; no enable, grants, target reset, negotiated SA or payload claim",
+  "runner_sha256": "5623fc4798a464e2926229646465b2603aea960d5f496abae136e871f9e4181e",
+  "ha_create_chunk": "927751",
+  "classic_create_chunk": "2726ac",
+  "readback_chunk": "e13d95"
+}

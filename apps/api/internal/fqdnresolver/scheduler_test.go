@@ -3,6 +3,7 @@ package fqdnresolver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -157,5 +158,56 @@ func TestSchedulerHasNoFallbackWhenTransportIsAbsent(t *testing.T) {
 	NewScheduler(store, nil, SchedulerConfig{}).Tick(context.Background())
 	if store.dueCalls != 0 || len(store.published) != 0 || len(store.withdrawn) != 0 {
 		t.Fatalf("nil transport must do no DNS work: %#v", store)
+	}
+}
+
+func TestSchedulerBoundedQueueDelayDoesNotAgeLaterLookupBeforeItStarts(t *testing.T) {
+	start := time.Now()
+	clock := &schedulerTestClock{at: start}
+	works := []Work{}
+	org := uuid.New()
+	for i := 0; i < 16; i++ {
+		w := work(fmt.Sprintf("orders%d.internal", i))
+		w.OrgID = org
+		works = append(works, w)
+	}
+	store := &memoryStore{work: works}
+	resolver, entered := stagedSchedulerResolver(t, clock)
+	scheduler := NewScheduler(store, resolver, SchedulerConfig{Batch: 16, Timeout: 5 * time.Second})
+	scheduler.now = clock.now
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { scheduler.Tick(ctx); close(done) }()
+	starts := map[string]time.Time{}
+	var last schedulerTestLookup
+	for wave := 0; wave < 8; wave++ {
+		first, second := awaitSchedulerLookup(t, entered), awaitSchedulerLookup(t, entered)
+		starts[first.name], starts[second.name] = first.started, second.started
+		// Two workers per gateway retain a real queued delay of 34.3s for the last
+		// wave, while each simulated lookup stays inside its original 5s bound.
+		if wave < 7 {
+			clock.advance(4900 * time.Millisecond)
+		} else {
+			clock.advance(time.Second)
+		}
+		close(first.release)
+		close(second.release)
+		last = second
+	}
+	<-done
+	if len(store.published) != 16 {
+		t.Fatal("missing publication")
+	}
+	for _, g := range store.published {
+		if !g.ResolvedAt.Equal(starts[g.Hostname]) {
+			t.Fatalf("lookup %s timestamp aged by queue: got %s want %s", g.Hostname, g.ResolvedAt, starts[g.Hostname])
+		}
+		if g.Hostname == last.name && (!g.ResolvedAt.Add(g.TTL).After(clock.now()) || g.ResolvedAt.Equal(clock.now())) {
+			t.Fatal("fresh final lookup expired or completion extended TTL")
+		}
+	}
+	if last.started.Sub(start) != 34300*time.Millisecond {
+		t.Fatal("fixture did not exercise queue longer than minimum TTL")
 	}
 }

@@ -1,0 +1,172 @@
+{
+  "scope": "normal resolver context + native HostOrigin guard + ordinary DNS wire; no authenticated DNSRuntimeTransport lease/FQDN claim",
+  "resolver_source_sha256": "e360e8a497cdb48d653bb3967d364e41911c0e0cc73a731bab169fd2501d9138",
+  "prepare_sha256": "a0e821c53a5709ce8c5f7ba7c927ce1e35ee91c565cd29b9c5c0278bfae4ec00",
+  "apply_sha256": "05895ec7318ac1e1bb025be5fb7be2aa508ad9781ef7604ddb1e3f45fad1d53d",
+  "baseline_context_absent": true,
+  "only_classic_context_configured": true,
+  "context": {
+    "created_at": "2026-10-10T16:23:14.503902Z",
+    "endpoints": [
+      {
+        "address": "10.81.0.2",
+        "port": 53,
+        "transport": "tcp"
+      },
+      {
+        "address": "10.81.0.2",
+        "port": 53,
+        "transport": "udp"
+      }
+    ],
+    "gateway_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+    "id": "01a126a0-2f4a-707e-9bcf-d6608754c079",
+    "org_id": "01a124e7-60c7-78ca-aa85-d3a5025d9764",
+    "profiles": [
+      {
+        "endpoints": [
+          {
+            "address": "10.81.0.2",
+            "port": 53,
+            "transport": "tcp"
+          },
+          {
+            "address": "10.81.0.2",
+            "port": 53,
+            "transport": "udp"
+          }
+        ],
+        "id": "cb7a9520-0fdc-4ddf-a4d4-1ec4b8102e80",
+        "ipsec_path": {
+          "configuration_revision": 1,
+          "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+          "source_address": "10.70.0.2"
+        },
+        "legacy_default": false,
+        "name": "GCP cloud QA classic",
+        "provider_hint": "google_cloud",
+        "zone_suffixes": [
+          "classic.gcp.s2s-qa.tunnex.app"
+        ]
+      }
+    ],
+    "provider_hint": "google_cloud",
+    "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+    "state": "active",
+    "version": 1
+  },
+  "native_guard": {
+    "projection_sha256": "16fa117d30ff6442a3f822a2d61c633371fc865e6d21e455436cb6574cf456b3",
+    "guard_stable": true,
+    "identity": {
+      "Revision": 15003,
+      "Digest": "4c762d429bc81437deb2ef24fc30a611bc6229bb0a3180b7b1386bc55a9724d5",
+      "Namespace": "net:[4026531840]"
+    },
+    "exact_output_tcp_udp53_70_2_to81_2": true,
+    "exact_input_established_reply_tcp_udp53_81_2_to70_2": true
+  },
+  "wire": {
+    "receipt_path": "/var/lib/tunnex-gcp-cloud-preparation/dns-wire-63349a/classic-after-resolver-v2.json",
+    "receipt_sha256": "8d2a0cc4af8126549e84c7df857ffa78b5dbab93a1176467a3bb2ddb6464f0a2",
+    "completed": true,
+    "accepted": false,
+    "results": [
+      {
+        "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "answer_count": 1,
+        "udp_tc": false,
+        "tcp_fallback_used": false,
+        "accepted": true,
+        "addresses": [
+          "10.81.0.10"
+        ],
+        "cname": []
+      },
+      {
+        "name": "alias.classic.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "answer_count": 2,
+        "udp_tc": false,
+        "tcp_fallback_used": false,
+        "accepted": true,
+        "addresses": [
+          "10.81.0.10"
+        ],
+        "cname": [
+          {
+            "owner": "alias.classic.gcp.s2s-qa.tunnex.app.",
+            "target": "app.classic.gcp.s2s-qa.tunnex.app."
+          }
+        ]
+      },
+      {
+        "name": "nx-qualification.classic.gcp.s2s-qa.tunnex.app.",
+        "rcode": 3,
+        "answer_count": 0,
+        "udp_tc": false,
+        "tcp_fallback_used": false,
+        "accepted": true,
+        "addresses": [],
+        "cname": []
+      },
+      {
+        "name": "large.classic.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "answer_count": 40,
+        "udp_tc": false,
+        "tcp_fallback_used": false,
+        "accepted": false,
+        "addresses": [
+          "10.81.0.127",
+          "10.81.0.116",
+          "10.81.0.138",
+          "10.81.0.124",
+          "10.81.0.110",
+          "10.81.0.121",
+          "10.81.0.102",
+          "10.81.0.105",
+          "10.81.0.104",
+          "10.81.0.139",
+          "10.81.0.108",
+          "10.81.0.132",
+          "10.81.0.131",
+          "10.81.0.134",
+          "10.81.0.111",
+          "10.81.0.126",
+          "10.81.0.118",
+          "10.81.0.133",
+          "10.81.0.123",
+          "10.81.0.115",
+          "10.81.0.125",
+          "10.81.0.112",
+          "10.81.0.113",
+          "10.81.0.137",
+          "10.81.0.128",
+          "10.81.0.129",
+          "10.81.0.130",
+          "10.81.0.114",
+          "10.81.0.122",
+          "10.81.0.103",
+          "10.81.0.106",
+          "10.81.0.135",
+          "10.81.0.120",
+          "10.81.0.117",
+          "10.81.0.119",
+          "10.81.0.101",
+          "10.81.0.107",
+          "10.81.0.136",
+          "10.81.0.109",
+          "10.81.0.100"
+        ],
+        "cname": []
+      }
+    ]
+  },
+  "tcp_fallback_verified": false,
+  "tcp_direct_wire_verified": false,
+  "original_permission_failure_preserved": true,
+  "new_dns_queries_replayed": false,
+  "normal_api_resource_policy_writes_paused": true
+}

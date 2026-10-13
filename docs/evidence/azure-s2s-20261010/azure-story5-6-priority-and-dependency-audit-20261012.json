@@ -1,0 +1,47 @@
+{
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "active_standby_reverse_source": "in_progress",
+  "api_update_upload_approval_pending": true,
+  "category": "story5_story6_priority_and_dependency_audit",
+  "new_live_slices_closed": 0,
+  "ordinary_story6_requires_dns_ready": false,
+  "ordinary_story6_requires_scheduler_api_update": false,
+  "post_ttl_dns_consumer_source": "in_progress",
+  "qa_actions_this_audit": 0,
+  "recorded_at": "2026-10-12T15:57:08.075721+00:00",
+  "remaining_test_integration": "TTL recovery creates two new grant IDs; original-ID-only DNS consumer needs explicit validated descendant support. Current-API V4 also needs archive-parent durability correction before any dispatch.",
+  "sequencing_correction": "Story5 and Story6 have dedicated workers; ordinary expiry does not wait for DNS Ready. Preserve pending API update package; genuine recovered grant IDs must be supported by later DNS qualification.",
+  "story5_current_cloud_read": {
+    "current_connection_bgp": false,
+    "current_connection_mode": "ResponderOnly",
+    "current_gateway_active_active": true,
+    "gateway_sku": "VpnGw1AZ",
+    "independent_review": {
+      "path": "/private/tmp/azure-story5-saved-arm-independent-review-v2-20261012.json",
+      "sha256": "61119559d849de4f3d3dc12c903a35d111bae3cf354c5022d85019add7d788a7"
+    },
+    "new_cloud_writes": 0,
+    "read_only": true,
+    "seven_commands_succeeded": true,
+    "tenant_enabled_and_owned_topology_verified": true
+  },
+  "story6_dependency_audit": {
+    "path": "/private/tmp/azure-story6-current25fe-dependency-audit-20261012.json",
+    "sha256": "ae91b8ea1a20ad9455dc3f8138d5a3f23fc6952a98ad7e0a8d14469afdb4ac5b"
+  },
+  "story6_live_expiry_recovery_accepted": false,
+  "story6_post_api_source_review": {
+    "path": "/private/tmp/azure-ttl-v5-postapi-ui-independent-review.json",
+    "sha256": "d68f18eac9f4399690a618b001d807a5d8041904a02a9e026dba90654a6abcf9"
+  },
+  "story6_post_api_source_tests_passed": 39,
+  "version": 1
+}

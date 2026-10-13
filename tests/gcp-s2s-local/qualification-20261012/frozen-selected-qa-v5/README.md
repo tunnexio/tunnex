@@ -1,0 +1,11 @@
+# Frozen selected application QA v5 and bounded retry qualification
+
+This archive preserves test and QA source provenance for serving node source5121. It does not change production source or establish aggregate application acceptance. The v5 selected TCP full cycle was accepted separately; UDP and owned cloud inverses remain pending. Earlier failures remain historical.
+
+Python qualification recorded 11 tests passing. The Classic transition observer recorded 10 named top tests and 11 subtests with no skips or failures, including the protected actual EMPTY→LIVE pair and conservative rejection cases. Node bounded retry recorded two top tests and five subtests. API pending-cleanup retry recorded two named tests on an owned isolated loopback PostgreSQL fixture. Receipt projections contain fixed outcomes and hashes only; raw logs, environment, cookies, private configuration, native captures and credentials are excluded.
+
+Source files are byte-exact copies. The portable-test directory changes only the literal checker path to an adjacent source file where required; the manifest records both hashes. Copy the relevant adjacent Python source files from sources/ into an isolated local test directory before running these tests. These portability derivatives have not been executed and are not substituted for the recorded original test results.
+
+The Go actual-pair test retains its original protected-capture dependency. Those captures are deliberately excluded. Replaying that test requires the owned original fixture and its original source-bound build recipe; this archive does not claim standalone replay of private live captures. The other Go tests require the matching source5121 package and original Classic producer tests. Executable QA sources retain historical absolute artifact pins and require a reviewed binder before use elsewhere; they are not a deployment recipe.
+
+No simultaneous TCP/UDP, continuous availability, general retry guarantee, CI, publication or production readiness is asserted. Shared clock uses CLOCK_MONOTONIC for cross-process deadlines; original80/shared20/ACK5 and strict native/payload/inverse checks remain unchanged in this v5 snapshot. Future freshness screening proposals are not qualified by these receipts.

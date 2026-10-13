@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
@@ -74,5 +75,43 @@ func TestIPsecTunnelStatusMemberAndStaticErrors(t *testing.T) {
 	w = call()
 	if w.Code != 503 || strings.Contains(w.Body.String(), "private-secret-marker") {
 		t.Fatal("raw error reflected", w.Code)
+	}
+}
+
+func TestIPsecBGPStatusProjection(t *testing.T) {
+	org := uuid.New()
+	rejected := 3
+	f := &tunnelStatusFake{status: &ipsec.ConnectionStatus{
+		BGP: &ipsec.RuntimeBGPStatus{Version: 1, Sequence: 7, Peers: [2]ipsec.RuntimeBGPPeerStatus{
+			{Slot: 1, State: "established", AcceptedPrefixes: 1, InstalledPrefixes: 1, RejectedPrefixes: &rejected},
+			{Slot: 2, State: "active"},
+		}, Routes: []ipsec.RuntimeBGPRoute{{Prefix: "10.85.0.0/16", Slot: 1}}},
+		Tunnels: []ipsec.RuntimeTunnelStatus{{ID: uuid.New(), Slot: 1, Status: "up"}, {ID: uuid.New(), Slot: 2, Status: "up"}},
+	}}
+	h, err := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), Deps{IPsecStatus: f, AuthFn: func(*http.Request) *authctx.Principal {
+		return &authctx.Principal{UserID: uuid.New(), Roles: map[uuid.UUID]string{org: rbac.RoleMember}}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/organizations/"+org.String()+"/ipsec/connections/"+uuid.NewString()+"/status", nil))
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("BGP status projection failed", w.Code)
+	}
+	var body struct {
+		BGP             *ipsec.RuntimeBGPStatus `json:"bgp"`
+		RecoveryVersion *int                    `json:"recovery_version"`
+		ActiveSlot      *int                    `json:"active_slot"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &body) != nil || body.BGP == nil || body.BGP.Sequence != 7 || body.BGP.Peers[0].RejectedPrefixes == nil || *body.BGP.Peers[0].RejectedPrefixes != 3 || len(body.BGP.Routes) != 1 || body.BGP.Routes[0].Slot != 1 || body.RecoveryVersion != nil || body.ActiveSlot != nil {
+		t.Fatal("BGP observation mapping lost", w.Body.String())
+	}
+	f.status.BGP.Routes = nil
+	f.status.BGP.Peers[0].RejectedPrefixes = nil
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/organizations/"+org.String()+"/ipsec/connections/"+uuid.NewString()+"/status", nil))
+	if !strings.Contains(w.Body.String(), `"routes":[]`) || strings.Contains(w.Body.String(), `"rejected_prefixes"`) {
+		t.Fatal("empty routes or unmeasured rejection misreported", w.Body.String())
 	}
 }

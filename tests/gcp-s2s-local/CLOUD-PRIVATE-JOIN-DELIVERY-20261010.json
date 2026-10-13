@@ -1,0 +1,19 @@
+{
+  "scope": "Normal owner API join-token issuance and private SSH delivery to exact owned GCP test gateway only",
+  "runner_sha256": "5623fc4798a464e2926229646465b2603aea960d5f496abae136e871f9e4181e",
+  "source_freeze": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "executing_chat": "01a115f0-1ee8-7412-855b-00d1719ba8d9",
+  "execution_chunk": "92e2ca",
+  "exit_code": 0,
+  "public_result": {
+    "token_issued": true,
+    "private_gateway_env_delivered": true,
+    "gateway_started": false
+  },
+  "target": "34.131.136.132",
+  "private_delivery_path": "/var/lib/tunnex-gcp-cloud-preparation/enrollment.env",
+  "secret_output": false,
+  "token_reissue": false,
+  "gateway_launch": "Automatic approval review rejected exact enrollment/start before execution; direct human approval question pending",
+  "cloud_tunnel_or_payload_accepted": false
+}

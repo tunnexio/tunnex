@@ -1,0 +1,67 @@
+{
+  "scope": "actual owned GCP Classic native captured full guard validation plus bounded behind-LAN TCP/UDP default-deny observation; allow/revoke acceptance separate",
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+  "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+  "desired_revision": 2,
+  "configuration_revision": 1,
+  "guard_validation": {
+    "application_grant_absence_review_pass": true,
+    "boot_id": "9617762e-19db-4a21-bdee-909dfb31e501",
+    "capture_sha256": "12a2fbc21e35df41bfa48e3408047ba9855d28a10d45c9b3339c7ed9bc2d24fe",
+    "checker_source": "source-only 9bfecef8 based frozen3d; positive permit normalization unchanged",
+    "forward_accept_rules_before_app_grants": 0,
+    "forward_rules": 23,
+    "full_guard_readback_pass": true,
+    "guard_digest": "71cdaa288a67b28e960e052afa0abd50af70604033a5bcb33fee288124842cc6",
+    "guard_revision": 1617,
+    "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+    "namespace": "net:[4026531840]",
+    "namespace_and_guard_stable": true,
+    "scope": "independent real exported positive guard validator on stable captured native table; observation at capture only, no lease renewal or packet proof",
+    "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9"
+  },
+  "guard_validator_source_sha256": "1275683e36fa7e76dd3e4a08b580b933f24494028c817fa5dfae24202aaa6568",
+  "packet_helper_file_sha256": "b459a936a7d2b1899cdda72e311a217ea60b771dd97a649291ecb63a82a8bf49",
+  "packet_receipt_sha256": "4ebf7e54b731f167763b12411db17ad9bcb8cc43a652d6af92305bed4bfe50a8",
+  "packet_completed": true,
+  "packet_accepted": true,
+  "packet_executed_at_utc": "2026-10-10T15:03:38Z",
+  "observations": [
+    {
+      "protocol": "tcp",
+      "client_outcome": "timeout",
+      "elapsed_ms": 3003.254,
+      "target_self_control_exact": true,
+      "target_boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+      "target_receiver_counts": {
+        "exact_payload": 0,
+        "syn": 0,
+        "other_tuple": 0,
+        "unsupported": 0
+      },
+      "capture_drops": 0,
+      "accepted": true
+    },
+    {
+      "protocol": "udp",
+      "client_outcome": "timeout",
+      "elapsed_ms": 3003.22,
+      "target_self_control_exact": true,
+      "target_boot_id": "638afa49-665d-4778-b6af-362a5bbd1a7e",
+      "target_receiver_counts": {
+        "exact_payload": 0,
+        "syn": 0,
+        "other_tuple": 0,
+        "unsupported": 0
+      },
+      "capture_drops": 0,
+      "accepted": true
+    }
+  ],
+  "limitations": [
+    "Full guard is an independently validated stable captured observation, not new lease authority.",
+    "Bounded denial does not alone prove a working permitted path; exact post-grant allow/capture proof remains required.",
+    "Actual HA BGP and application acceptance remain separate."
+  ]
+}

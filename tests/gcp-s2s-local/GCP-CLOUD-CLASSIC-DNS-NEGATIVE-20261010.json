@@ -1,0 +1,79 @@
+{
+  "scope": "One original socket observation refused; not DNS health or native deny proof",
+  "source_sha256": "61709f210dbe4c16e298c3653a971f7ed8afb2704f06cbe89c784ea9b79c4918",
+  "receipt_path": "/var/lib/tunnex-gcp-cloud-preparation/dns-negative-61709f/classic-default-deny-v1.json",
+  "receipt_sha256": "90c68d98316493003e796cb5c744db463be9badcfd160d297896ed6ccf369cb8",
+  "started": true,
+  "completed": false,
+  "error_type": "PermissionError",
+  "before_snapshot_present": true,
+  "results_count": 0,
+  "replayed": false,
+  "grants_created": false,
+  "next_source_sha256": "f46d04e3757c8be1921d55fa4e87b506355e52497daca2980c6c080e76ceb225",
+  "next_source_tests": "four Python-O tests pass; reviewed and executed one v2",
+  "v2": {
+    "receipt_path": "/var/lib/tunnex-gcp-cloud-preparation/dns-negative-f46d04/classic-default-deny-v2.json",
+    "receipt_sha256": "357405eaf830624a6a46a88e2ebd0b14052986196bd6d64cfc85d0b887733491",
+    "completed": true,
+    "results": [
+      {
+        "protocol": "udp",
+        "source": "10.70.0.2",
+        "resolver": "10.81.0.2",
+        "port": 53,
+        "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+        "id": 32852,
+        "no_edns": true,
+        "accepted_negative": false,
+        "outcome": "administrative_refusal",
+        "error_type": "PermissionError",
+        "errno": 1,
+        "stage": "send",
+        "elapsed_ms": 0.202
+      },
+      {
+        "protocol": "tcp",
+        "source": "10.70.0.2",
+        "resolver": "10.81.0.2",
+        "port": 53,
+        "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+        "id": 64258,
+        "no_edns": true,
+        "accepted_negative": true,
+        "outcome": "timeout_or_refusal",
+        "error_type": "TimeoutError",
+        "errno": null,
+        "stage": "connect",
+        "elapsed_ms": 4000.797
+      }
+    ],
+    "guard_renewed": true,
+    "counter_causality_accepted": false,
+    "native_deny_independently_verified_by_parent": true,
+    "native_validator_capture_sha256": "e4e5b11dc6d7d9eb1a11603134187c3098c2eb958d818d1f0282b4ea9c5b11da",
+    "cloud_dns_health_verified": false,
+    "before": {
+      "guard_revision": 12678,
+      "guard_digest": "5594d124acce709e8a020361edea6909294345a2e0eabf439b9e3867355d0692",
+      "namespace": "net:[4026531840]",
+      "terminal_destination_prefix": "10.81.0.0/24",
+      "terminal_drop_counter": {
+        "packets": 0,
+        "bytes": 0
+      },
+      "handle": 387964
+    },
+    "after": {
+      "guard_revision": 12691,
+      "guard_digest": "92c0624f5d62c5f23abe44aad238c293a87512bb82905b2962c04104cb889f17",
+      "namespace": "net:[4026531840]",
+      "terminal_destination_prefix": "10.81.0.0/24",
+      "terminal_drop_counter": {
+        "packets": 1,
+        "bytes": 60
+      },
+      "handle": 388283
+    }
+  }
+}

@@ -1,0 +1,29 @@
+name: tunnexazures2sgateway1010
+services:
+  gateway:
+    image: ${AZURE_NATIVE_NODE_IMAGE:?set verified native image}
+    labels:
+      tunnex.lab: azure-s2s-20261010
+    env_file: [.runtime/gateway.env]
+    environment:
+      TUNNEX_API_URL: http://api:8080
+      TUNNEX_AGENT_URL: https://api:8443
+      TUNNEX_AGENT_SERVERNAME: tunnex-control
+      TUNNEX_NODE_NAME: azure-local-native-gateway
+      TUNNEX_NODE_STATE_DIR: /var/lib/tunnex-node
+      TUNNEX_NODE_ENDPOINT: 198.19.241.10:51820
+      TUNNEX_WG_BACKEND: wgctrl
+      TUNNEX_AI_VPN_AUTO: 'false'
+      TUNNEX_FLOWLOG_GROUP: '0'
+    volumes: [gateway_state:/var/lib/tunnex-node]
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: '1'
+    devices: [/dev/net/tun:/dev/net/tun]
+    networks: [local_cp]
+networks:
+  local_cp:
+    external: true
+    name: tunnexazures2slocal1010_default
+volumes:
+  gateway_state:

@@ -1,0 +1,18 @@
+{"utc": "2026-10-10T20:17:54.438895+00:00", "started": true, "scope": "Only owned Classic TCP8080/UDP9000 normal API expiry; original two grants always restored; no HA or DNS expiry claim"}
+{"utc": "2026-10-10T20:17:55.967138+00:00", "stage": "native_fresh-pre-expiry", "accepted": true, "positive_retry_receipt_sha256": "a7cc4d86c221f0852fd64793bcab4c329f2724bc804e7f8ac282dacdb9312537"}
+{"utc": "2026-10-10T20:17:57.614762+00:00", "stage": "packet_fresh-pre-expiry", "accepted": true, "receipt_sha256": "4c780b5c0c1b1a7f21a58ce1f8ed0e0d47e0a1bafab5a9294f370fab18022547"}
+{"utc": "2026-10-10T20:17:57.715152+00:00", "phase": "lease", "completed": true, "receipt_sha256": "38a7ea60ab215ebad4f0a9e4f1568dc223aab044d463a3b04f7587f9a8ab5cb9"}
+{"utc": "2026-10-10T20:18:05.701710+00:00", "stage": "native_temporary-allow", "accepted": true, "positive_retry_receipt_sha256": "b59492fe6f0e3b0b2f037959e932adf000ccd941764f9f947ffea284038cb4ef"}
+{"utc": "2026-10-10T20:18:07.165565+00:00", "stage": "packet_temporary-allow", "accepted": true, "receipt_sha256": "c05f8240b025bffcf18d8042dc5c30c5578d74733c3e7a3e216ae24e774b6d63"}
+{"utc": "2026-10-10T20:18:07.165802+00:00", "stage": "waiting_original_api_deadline", "remaining_seconds": 83.5}
+{"utc": "2026-10-10T20:18:22.174489+00:00", "stage": "waiting_original_api_deadline", "remaining_seconds": 68.5}
+{"utc": "2026-10-10T20:18:37.182743+00:00", "stage": "waiting_original_api_deadline", "remaining_seconds": 53.49}
+{"utc": "2026-10-10T20:18:52.191930+00:00", "stage": "waiting_original_api_deadline", "remaining_seconds": 38.48}
+{"utc": "2026-10-10T20:19:07.194186+00:00", "stage": "waiting_original_api_deadline", "remaining_seconds": 23.48}
+{"utc": "2026-10-10T20:19:22.196245+00:00", "stage": "waiting_original_api_deadline", "remaining_seconds": 8.47}
+{"utc": "2026-10-10T20:19:32.024930+00:00", "stage": "native_expired-deny", "accepted": true, "capture_sha256": "263a7ff8bb3597ef8de23c89c9b44ce2e1d5042fe4b57cb3f763d45844daca8b"}
+{"utc": "2026-10-10T20:19:39.672265+00:00", "stage": "packet_expired-deny", "accepted": true, "receipt_sha256": "975051899cdb6bb497e4cbac14d954b7b40ccd000af98db77d49b3012e875d6e"}
+{"utc": "2026-10-10T20:19:39.672635+00:00", "expiry_packet_and_native_acceptance": true, "deadline": "2026-10-10T20:19:27.669941Z", "scope": "fresh exact TCP/UDP flows; no existing-flow downtime claim"}
+{"utc": "2026-10-10T20:19:39.795443+00:00", "phase": "restore", "completed": true, "receipt_sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934"}
+{"utc": "2026-10-10T20:19:39.890288+00:00", "phase": "cleanup", "completed": true, "receipt_sha256": "8340565e232ca893844ae3bef39ad9bb7557a337f6442b17ef2e1ec0471ddf70"}
+{"utc": "2026-10-10T20:19:41.411837+00:00", "completed": false, "cleanup_incomplete_or_unverified": true, "error_type": "ValueError"}

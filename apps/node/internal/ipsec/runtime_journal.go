@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
+	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,12 +17,18 @@ import (
 
 var ErrRuntimeJournal = errors.New("IPsec runtime journal unavailable")
 
+// A journal includes bounded restoration history and both potential guard
+// templates during an atomic replacement. Its envelope can exceed one native
+// kernel dump without increasing any native-reader limit or dropping duties.
+const runtimeJournalLimit = 16 << 20
+
 type RuntimePhase string
 
 const (
 	RuntimeReserved        RuntimePhase = "reserved"
 	RuntimeApplying        RuntimePhase = "applying"
 	RuntimeApplied         RuntimePhase = "applied"
+	RuntimeQuiesced        RuntimePhase = "quiesced"
 	RuntimeCleanupPending  RuntimePhase = "cleanup_pending"
 	RuntimeRetainedRefusal RuntimePhase = "retained_refusal"
 )
@@ -44,6 +51,14 @@ type RuntimeResetCleanup struct {
 }
 
 type RuntimeJournalEntry struct {
+	AzureBGPRecreationVersion     int                               `json:",omitempty"`
+	AzureProfileRecreationVersion int                               `json:",omitempty"`
+	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:",omitempty"`
+	BGPProcessHistory             *RuntimeHistoryContinuation       `json:",omitempty"`
+	BGPProcessRetired             []bgpengine.ProcessIdentity       `json:",omitempty"`
+	BGPProcess                    *bgpengine.ProcessIdentity        `json:",omitempty"`
+	BGPRoutes                     *RuntimeBGPRoutes                 `json:",omitempty"`
+	BGP                           *BGPConfig                        `json:",omitempty"`
 	// Omitted fields preserve the original v1 canonical checksum byte for byte.
 	// Authorization is immutable; recovery state records duty, never authority.
 	ContractVersion int                   `json:",omitempty"`
@@ -169,11 +184,18 @@ func (j *RuntimeJournal) read() (runtimeJournalPayload, error) {
 	}
 	defer f.Close()
 	info, e := f.Stat()
-	if e != nil || !journalPrivate(info, false) || info.Size() > kernelDumpLimit {
+	if e != nil || !journalPrivate(info, false) || info.Size() > runtimeJournalLimit {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
-	raw, e := io.ReadAll(io.LimitReader(f, kernelDumpLimit+1))
-	if e != nil || len(raw) > kernelDumpLimit {
+	raw, e := io.ReadAll(io.LimitReader(f, runtimeJournalLimit+1))
+	if e != nil || len(raw) > runtimeJournalLimit {
+		return runtimeJournalPayload{}, ErrRuntimeJournal
+	}
+	return decodeRuntimeJournalSnapshot(raw)
+}
+
+func decodeRuntimeJournalSnapshot(raw []byte) (runtimeJournalPayload, error) {
+	if len(raw) == 0 || len(raw) > runtimeJournalLimit {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -181,7 +203,7 @@ func (j *RuntimeJournal) read() (runtimeJournalPayload, error) {
 	if !kernelJSONValue(d, 0) {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
-	if _, e = d.Token(); e != io.EOF {
+	if _, e := d.Token(); e != io.EOF {
 		return runtimeJournalPayload{}, ErrRuntimeJournal
 	}
 	var env runtimeJournalEnvelope
@@ -211,12 +233,28 @@ func (j *RuntimeJournal) Entries() ([]RuntimeJournalEntry, error) {
 	}
 	return cloneJournal(j.payload).Entries, nil
 }
+
+// cleanupSnapshot retains the real journal version and complete predecessor
+// graph. A detached entry cannot validate recreation or historical obligations.
+func (j *RuntimeJournal) cleanupSnapshot() (runtimeJournalPayload, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.pathsIntact() {
+		return runtimeJournalPayload{}, ErrRuntimeJournal
+	}
+	observed, err := j.read()
+	if err != nil || !reflect.DeepEqual(observed, cloneJournal(j.payload)) {
+		return runtimeJournalPayload{}, ErrRuntimeJournal
+	}
+	return cloneJournal(observed), nil
+}
+
 func validDigest(v string) bool {
 	b, e := hex.DecodeString(v)
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11 && p.Version != 12 && p.Version != 13) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -228,11 +266,38 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 		}
 	}
 	ids := map[uuid.UUID]bool{}
+	if !validRetainedGuardJournal(p.Entries) {
+		return false
+	}
 	for _, r := range p.Entries {
+		if r.Phase == RuntimeQuiesced && (p.Version < 12 || !validQuiescedEntry(r)) {
+			return false
+		}
+		if (r.ContractVersion == 4 && p.Version < 10) || !validClassicJournal(r) {
+			return false
+		}
+		if r.AzureProfileRecreationVersion != 0 && p.Version < 13 {
+			return false
+		}
+		if r.AzureBGPRecreationVersion != 0 && p.Version < 11 {
+			return false
+		}
+		if len(r.RetainedGuardPredecessors) > 0 && p.Version < 9 {
+			return false
+		}
+		if hasHistoryContinuation(r) && p.Version < 8 {
+			return false
+		}
 		if !validRestoration(r) || (r.Restoration != nil && p.Version < 4) {
 			return false
 		}
 		if !validJournalResetCleanup(r) || (r.ResetCleanup != nil && p.Version < 3) {
+			return false
+		}
+		if (r.ContractVersion == 3 && p.Version < 5) || !validJournalBGP(r) || !validBGPRoutes(r) || (r.BGPRoutes != nil && p.Version < 6) {
+			return false
+		}
+		if !validBGPProcess(r) || ((r.BGPProcess != nil || len(r.BGPProcessRetired) > 0) && p.Version < 7) {
 			return false
 		}
 		if !validJournalRecovery(r) || (p.Version == 1 && (r.ContractVersion == 2 || r.Recovery != nil)) {
@@ -242,9 +307,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 			return false
 		}
 		ids[r.DeliveryID] = true
-		for i, e := range r.Engines {
+		for i, e := range r.Engines[:r.Allocation.activeTunnelCount()] {
 			a := r.Allocation.Tunnels[i]
-			if !validEngineTunnel(e) || e.Binding.GatewayID != p.OwnerID || e.Binding.ConnectionID != r.Allocation.ConnectionID || e.TunnelID != a.TunnelID || e.XFRMID != a.XFRMID || !sameEnginePrefixes(e.RemotePrefixes, a.RemotePrefixes) || e.Binding != r.Engines[0].Binding {
+			if e.ProfileID != r.Allocation.ProfileID || !validEngineTunnel(e) || e.Binding.GatewayID != p.OwnerID || e.Binding.ConnectionID != r.Allocation.ConnectionID || e.TunnelID != a.TunnelID || e.XFRMID != a.XFRMID || !sameEnginePrefixes(e.RemotePrefixes, a.RemotePrefixes) || e.Binding != r.Engines[0].Binding {
 				return false
 			}
 			o := r.Observed[i]
@@ -256,7 +321,7 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 			return false
 		}
 		switch r.Phase {
-		case RuntimeReserved, RuntimeApplying, RuntimeApplied:
+		case RuntimeReserved, RuntimeApplying, RuntimeApplied, RuntimeQuiesced:
 			if r.CleanupID != uuid.Nil || r.CleanupDesiredRevision != 0 || r.CoveredDeliveryRevision != 0 {
 				return false
 			}
@@ -271,8 +336,89 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 4 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4) {
+	if next.Version < old.Version || next.Version > 13 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11 && next.Version != 12 && next.Version != 13) {
 		return false
+	}
+	if next.Version == 13 && old.Version < 13 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.AzureProfileRecreationVersion == 1
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 12 && old.Version < 12 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.Phase == RuntimeQuiesced
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 11 && old.Version < 11 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.AzureBGPRecreationVersion == 1
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 10 && old.Version < 10 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.ContractVersion == 4
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 9 && old.Version < 9 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || len(r.RetainedGuardPredecessors) > 0
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 8 && old.Version < 8 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || hasHistoryContinuation(r)
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 7 && old.Version < 7 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.BGPProcess != nil || len(r.BGPProcessRetired) > 0
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 6 && old.Version < 6 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.BGPRoutes != nil
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 5 && old.Version < 5 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.ContractVersion == 3
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 4 && old.Version < 4 {
 		upgrade := false
@@ -313,7 +459,7 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 	}
 	for _, r := range next.Entries {
 		if !oldIDs[r.DeliveryID] {
-			if r.Phase != RuntimeReserved || r.ResetCleanup != nil || r.Restoration != nil {
+			if r.Phase != RuntimeReserved || r.ResetCleanup != nil || r.Restoration != nil || r.BGPRoutes != nil || r.BGPProcess != nil || len(r.BGPProcessRetired) != 0 || r.BGPProcessHistory != nil {
 				return false
 			}
 			if r.Recovery != nil && *r.Recovery != (RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"}) {
@@ -327,6 +473,12 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 			return false
 		}
 		if !validRestorationSuccessor(before, after) {
+			return false
+		}
+		if !restorationAdvanced(before, after) && !validBGPProcessSuccessor(before, after) {
+			return false
+		}
+		if !restorationAdvanced(before, after) && !validBGPRoutesSuccessor(before, after) {
 			return false
 		}
 		if !validRecoverySuccessor(before, after) {
@@ -345,6 +497,10 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		b.Restoration, a.Restoration = nil, nil
 		b.ResetCleanup, a.ResetCleanup = nil, nil
 		b.Recovery, a.Recovery = nil, nil
+		b.BGPProcess, a.BGPProcess = nil, nil
+		b.BGPProcessRetired, a.BGPProcessRetired = nil, nil
+		b.BGPProcessHistory, a.BGPProcessHistory = nil, nil
+		b.BGPRoutes, a.BGPRoutes = nil, nil
 		b.Phase, a.Phase = "", ""
 		b.Observed, a.Observed = [2]Ownership{}, [2]Ownership{}
 		b.CleanupID, a.CleanupID = uuid.Nil, uuid.Nil
@@ -356,7 +512,16 @@ func validJournalSuccessor(old, next runtimeJournalPayload) bool {
 		if before.Phase == RuntimeRetainedRefusal && !reflect.DeepEqual(before, after) {
 			return false
 		}
-		allowed := before.Phase == after.Phase || (before.Phase == RuntimeReserved && after.Phase == RuntimeApplying) || (before.Phase == RuntimeApplying && after.Phase == RuntimeApplied) || (before.Phase != RuntimeRetainedRefusal && after.Phase == RuntimeCleanupPending) || (before.Phase == RuntimeCleanupPending && after.Phase == RuntimeRetainedRefusal)
+		if after.Phase == RuntimeQuiesced && (before.Observed != after.Observed || !validQuiescedEntry(after)) {
+			return false
+		}
+		if before.Phase == RuntimeQuiesced && after.Phase == RuntimeQuiesced && !reflect.DeepEqual(before, after) {
+			return false
+		}
+		if before.Phase == RuntimeQuiesced && after.Phase == RuntimeApplying && after.Observed != ([2]Ownership{}) {
+			return false
+		}
+		allowed := (before.Phase == RuntimeApplied && after.Phase == RuntimeQuiesced) || (before.Phase == RuntimeQuiesced && after.Phase == RuntimeApplying) || before.Phase == after.Phase || (before.Phase == RuntimeReserved && after.Phase == RuntimeApplying) || (before.Phase == RuntimeApplying && after.Phase == RuntimeApplied) || (before.Phase != RuntimeRetainedRefusal && after.Phase == RuntimeCleanupPending) || (before.Phase == RuntimeCleanupPending && after.Phase == RuntimeRetainedRefusal)
 		if !allowed || after.CleanupDesiredRevision < before.CleanupDesiredRevision || after.CoveredDeliveryRevision < before.CoveredDeliveryRevision {
 			return false
 		}
@@ -379,14 +544,47 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
+		if entry.AzureProfileRecreationVersion == 1 && next.Version < 13 {
+			next.Version = 13
+		}
+		if entry.Phase == RuntimeQuiesced && next.Version < 12 {
+			next.Version = 12
+		}
+		if entry.AzureBGPRecreationVersion == 1 && next.Version < 11 {
+			next.Version = 11
+		}
+		if entry.ContractVersion == 4 && next.Version < 10 {
+			next.Version = 10
+		}
+		if len(entry.RetainedGuardPredecessors) > 0 && next.Version < 9 {
+			next.Version = 9
+		}
+		if hasHistoryContinuation(entry) && next.Version < 8 {
+			next.Version = 8
+		}
 		if entry.ContractVersion == 2 && next.Version < 2 {
 			next.Version = 2
 		}
 		if entry.ResetCleanup != nil && next.Version < 3 {
 			next.Version = 3
 		}
-		if entry.Restoration != nil {
+		if entry.Restoration != nil && next.Version < 4 {
 			next.Version = 4
+		}
+	}
+	for _, entry := range entries {
+		if entry.ContractVersion == 3 && next.Version < 5 {
+			next.Version = 5
+		}
+	}
+	for _, entry := range entries {
+		if entry.BGPRoutes != nil && next.Version < 6 {
+			next.Version = 6
+		}
+	}
+	for _, entry := range entries {
+		if (entry.BGPProcess != nil || len(entry.BGPProcessRetired) > 0) && next.Version < 7 {
+			next.Version = 7
 		}
 	}
 	return j.saveLocked(cloneJournal(next))
@@ -396,7 +594,7 @@ func (j *RuntimeJournal) saveLocked(next runtimeJournalPayload) error {
 		return ErrRuntimeJournal
 	}
 	raw, e := json.Marshal(runtimeJournalEnvelope{Payload: next, Checksum: journalChecksum(next)})
-	if e != nil || len(raw) > kernelDumpLimit {
+	if e != nil || len(raw) > runtimeJournalLimit {
 		return ErrRuntimeJournal
 	}
 	current, e := j.read()
@@ -548,7 +746,7 @@ func ReadRuntimeJournalIdentity(dir string) (uuid.UUID, uuid.UUID, error) {
 	}
 	org := p.Entries[0].Engines[0].Binding.OrgID
 	for _, entry := range p.Entries {
-		for _, engine := range entry.Engines {
+		for _, engine := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if engine.Binding.OrgID != org || engine.Binding.GatewayID != p.OwnerID {
 				return fail()
 			}
@@ -560,7 +758,10 @@ func ReadRuntimeJournalIdentity(dir string) (uuid.UUID, uuid.UUID, error) {
 // The selected slot denotes completed route duty only. A pending record retains
 // the old slot until exact readback completes; neither stage grants permission.
 func validJournalRecovery(r RuntimeJournalEntry) bool {
-	if r.ContractVersion == 0 {
+	if r.ContractVersion == 3 {
+		return r.Recovery == nil
+	}
+	if r.ContractVersion == 0 || r.ContractVersion == 4 {
 		return r.Recovery == nil
 	}
 	if r.ContractVersion != 2 || r.Recovery == nil {

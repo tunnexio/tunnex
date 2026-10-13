@@ -1,0 +1,35 @@
+{
+  "original_receipt_sha256": "ebb8b3bed1478689363bc9cc7a924437894101bb22c4f12efae6e195336826e9",
+  "completed": true,
+  "initial_source_bindings": {
+    "mutations": 0,
+    "remote_source_sha256": "f198a449c762e10fec840ac470709aa02dfc147d6dff85e2d07fede28892ac6c",
+    "started": true,
+    "transport_sha256": "f2b27b12b40073ed5ad0d9625d92778047dbf766d460368db2fc97602d77ce38"
+  },
+  "scope": "native observation only; separate normalAPI cleanup ACK and fullguard required",
+  "stdout_sha256": "128a86dd9f9b8cf3b3e63f28750e4c28e7b9f1892a5a4a5a8fbcbb0a2ea21a1e",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "observation": {
+    "identity": {
+      "boot_id": "9617762e-19db-4a21-bdee-909dfb31e501",
+      "container_id": "3bad435938b37398218e1c28a278fe72a57735cc489719527d2f8d1167e732ed",
+      "image_id": "sha256:dfbe391873e7013111d47f489cf6ddbd6c8a83541b8bbb8aab191310879a8db9",
+      "namespace": "net:[4026531840]",
+      "node_sha256": "eb319ffd37c12bb65b0d2ea5190e56cb3cdf3f8b131363642eb8db18c0766923",
+      "pid": 1058650,
+      "source_commit": "9c3ab006c13b72285f43baed1805da1af273ffa7",
+      "started_at": "2026-10-10T20:05:03.776455252Z"
+    },
+    "completed": true,
+    "source_schema_verified": true,
+    "complete_schema_sha256": "ac14e9cd861b3260b0c30599fe02b8d4cc9730a5b0e1967cb9e0bb1e0382639e",
+    "schema_source_input_proof_sha256": "3678eb0404b2e538e37c0b123d39d50a2c697fb8aa484d0e81f9b1c775fd85fe",
+    "wg_objects_sha256": "16d953d8e3a45bd06cf88459483e95d0d763ae09f0ab966882a95b38f29c563d",
+    "foreign_nft_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "full_nft_sha256": "ca93017512d9e55e780a54101506d7dbf670bd6fc3538bf29bce5086d2f53808",
+    "scope": "key-free observational capture only; schema comparison ignores handles ONLY for source audit; exact runtime WG hash retains every actual handle; no adoption or teardown authority"
+  },
+  "whole_nft_or_journal_archived": false,
+  "cutover_accepted": false
+}

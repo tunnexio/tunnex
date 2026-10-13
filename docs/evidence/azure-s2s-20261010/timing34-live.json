@@ -1,0 +1,267 @@
+{
+  "root_source": "d37ecf91a75c89fc03a918d44e04152e99f3639a",
+  "apps_node_tree": "eaffb6eb6d72b6a254071b963bb99153c68e6228",
+  "local_qualification": {
+    "parser_focused_race_seconds": 23.699,
+    "parser_frozen_differential_race_seconds": 17.966,
+    "timing_focused_race_seconds": 1.974,
+    "integrated_linux_amd64_build_passed": true,
+    "agent_linux_amd64_arm64_builds_passed": true,
+    "darwin_whole_agent_test_unsupported_build_preserved": true
+  },
+  "binary_sha256": "d16c4edba62dd71cf316ca8f36afb997bd5f2534aca2ea0163269dd172ff3b28",
+  "image": "sha256:6be7a63a69c7aac85047e421477eac8f6fc5130f5aba786025e0dfd580ff96b6",
+  "container": "7bf8e4bc75b7bf70f4e02dfe561793e9c54745e16fd35144a54e87d13494eff7",
+  "normal_disable": {
+    "revision": 33,
+    "observed_at": "2026-10-10T18:19:19.024766Z",
+    "cleanup_settled": true
+  },
+  "independent_absence": {
+    "retained_entries": 15,
+    "daemon_connections_sas_keys": 0,
+    "sad_spd_links_protocol242_routes": 0,
+    "full_guard_verified": true,
+    "withdrawal_guard_verified": true,
+    "journal_unchanged": true
+  },
+  "deployment": {
+    "same_namespace_and_state": true,
+    "previous_container_retained_stopped": true,
+    "timing_opt_in": true,
+    "original_dns_deadline_seconds": 5,
+    "endpoint_workers": 4,
+    "first_normal_enable_refused_409_ineligible": true,
+    "fresh_normal_eligibility_then_enabled": true
+  },
+  "normal_enable": {
+    "revision": 34,
+    "observed_at": "2026-10-10T18:20:49.124475Z",
+    "applied_observed_at": "2026-10-10T18:21:16.530296Z",
+    "both_tunnels": "up",
+    "both_bgp": "established",
+    "approved_route_slot": 1
+  },
+  "native_status": {
+    "observed_at": "2026-10-10T18:21:38.922055392Z",
+    "each_slot_ike": 1,
+    "each_slot_installed_child": 1,
+    "each_slot_sad": 2,
+    "each_slot_spd_direction": 1,
+    "selectors": "0.0.0.0/0",
+    "positive_guard_verified": true
+  },
+  "packet_windows": [
+    {
+      "started_at": "2026-10-10T18:21:41.565333Z",
+      "seconds": 60,
+      "fresh_tcp": [
+        59,
+        1
+      ],
+      "existing_tcp": [
+        60,
+        0
+      ],
+      "fresh_udp": [
+        60,
+        0
+      ],
+      "existing_udp": [
+        60,
+        0
+      ],
+      "failure_at": "2026-10-10T18:21:53.572673Z",
+      "failure_category": "packet_failed",
+      "failure_elapsed_seconds": 1.001056,
+      "receipt_sha256": "4bc98e12ea3ff836d01307cae061be79aa6ae6367639b989003ef521ca7fe5ae",
+      "acceptance_passed": false
+    },
+    {
+      "started_at": "2026-10-10T18:23:18.348978Z",
+      "seconds": 60,
+      "fresh_tcp": [
+        59,
+        1
+      ],
+      "existing_tcp": [
+        60,
+        0
+      ],
+      "fresh_udp": [
+        60,
+        0
+      ],
+      "existing_udp": [
+        60,
+        0
+      ],
+      "failure_at": "2026-10-10T18:24:08.381685Z",
+      "failure_category": "packet_failed",
+      "failure_elapsed_seconds": 1.001041,
+      "receipt_sha256": "b4f43a9ef80d6243d862ae7a830ac5001d4de8687453761318f40471fbcc3f07",
+      "acceptance_passed": false
+    },
+    {
+      "started_at": "2026-10-10T18:33:57.618588Z",
+      "seconds": 60,
+      "application_request_timeout_seconds": 2,
+      "fresh_tcp": [
+        60,
+        0
+      ],
+      "existing_tcp": [
+        60,
+        0
+      ],
+      "fresh_udp": [
+        60,
+        0
+      ],
+      "existing_udp": [
+        60,
+        0
+      ],
+      "source_preserved_tcp64KiB": true,
+      "udp_exact4096": true,
+      "existing_socket_reuse": true,
+      "receipt_sha256": "e126559a7508e020a8b451032553c209d3121a4c000c191060ca93c30cb7a215",
+      "acceptance_passed": true,
+      "scope": "Separate supported two-second request limit; does not replace either failed one-second window or extend DNS/native deadlines"
+    }
+  ],
+  "direct_gateway_source_dns": {
+    "source": "10.233.10.1",
+    "both_existing_resolvers_udp_tcp_noerror_exact_vip": true,
+    "scope": "Independent four-query transport snapshot; does not prove failed RPC packet delivery/proof"
+  },
+  "first_fqdn_window": {
+    "fresh_generation_found": false,
+    "normal_reads": 60,
+    "grant_issued": false
+  },
+  "guard_size_observation": {
+    "observed_at": "2026-10-10T18:25:46.222109Z",
+    "object_count": 165,
+    "rules": 154,
+    "sets": 3,
+    "json_bytes": 115750,
+    "container_cpu_percent_single_snapshot": 101.63
+  },
+  "timing_observation": {
+    "observed_at": "2026-10-10T18:25:48.917075Z",
+    "events": 18,
+    "noerror_events": 2,
+    "initial_handle_failure_ms": [
+      3503,
+      3886,
+      3965,
+      4299
+    ],
+    "initial_dispatch_deadline_remaining_ms": [
+      4871,
+      4867,
+      4493,
+      4894
+    ],
+    "initial_start_delay_ms": [
+      0,
+      0,
+      7,
+      0
+    ],
+    "scope": "Fixed natural RPC events; no request identifiers, hostnames, records or raw errors. Successful event is not separately resource-correlated"
+  },
+  "limits": [
+    "Fresh TCP failure preserved in both windows; no zero-failure acceptance",
+    "FQDN readiness remains intermittent",
+    "Socket has separate original three-second cap; dns_exchange elapsed includes preceding proof",
+    "Active full-guard refusal does not establish CPU/deadline causality",
+    "No same-profile recreation, remaining profiles, unapproved/max-prefix, sustained rekey or end-cleanup qualification from this receipt"
+  ],
+  "live_acceptance_pending": true,
+  "private_dns_packet_observation": {
+    "observed_at": "2026-10-10T18:29:39.781269Z",
+    "seconds": 95,
+    "packet_count": 252,
+    "udp_query_groups": 21,
+    "udp_groups_with_noerror_reply": 21,
+    "reply_delay_ms_range": [
+      18.689,
+      50.625
+    ],
+    "outbound_indices": [
+      54
+    ],
+    "inbound_indices": [
+      54,
+      55
+    ],
+    "tcp_fixed_counts": {
+      "outbound_packets": 126,
+      "inbound_packets": 84,
+      "syn": 42,
+      "rst": 0
+    },
+    "private_pcap_sha256": "ab661467953823a2b2e6cf25c76359640e2e844c9cb199112464e77c257220e2",
+    "scope": "Bounded plaintext packet visibility only; no packet payloads exported, socket delivery/permission or authenticated SA inference"
+  },
+  "capture_window_fixed_refusals": [
+    {
+      "at": "2026-10-10T18:28:37.793957305Z",
+      "operation": "dns_before_proof",
+      "stage": "dns_owner",
+      "context": "active",
+      "elapsed_ms": 0
+    },
+    {
+      "at": "2026-10-10T18:29:22.272975607Z",
+      "operation": "dns_after_proof",
+      "stage": "dns_guard_full_read",
+      "context": "deadline",
+      "elapsed_ms": 839
+    },
+    {
+      "at": "2026-10-10T18:29:25.291300387Z",
+      "operation": "dns_before_proof",
+      "stage": "dns_guard_full_read",
+      "context": "active",
+      "elapsed_ms": 863
+    }
+  ],
+  "reverse_path_filter_observation": {
+    "all": 2,
+    "default": 2,
+    "owned_tunnel54": 2,
+    "owned_tunnel55": 2,
+    "scope": "Actual read only; no sysctl changes"
+  },
+  "actual_ui_download": {
+    "verified": false,
+    "latest_observation": "Documented browser inventory exposes only Chrome; prior owned IAB unavailable; native Codex inspection blocked by computer use boundary",
+    "product_defect_inferred": false
+  },
+  "second_fqdn_window": {
+    "normal_grant_acknowledged_at": "2026-10-10T18:33:49.693086Z",
+    "fresh_read_attempt": 103,
+    "genuine_ready_before_normal_grant": true,
+    "grant_expiry_seconds": 90,
+    "http_probe_start": "2026-10-10T18:33:49.781786Z",
+    "http_probe_end": "2026-10-10T18:33:54.782451Z",
+    "fresh_http": [
+      0,
+      3
+    ],
+    "persistent_http": [
+      0,
+      2
+    ],
+    "dns_confirmed_samples": 2,
+    "total_samples": 5,
+    "actual_reused_socket": false,
+    "normal_revoke_completed": true,
+    "grant_active_after_probe": false,
+    "acceptance_passed": false,
+    "scope": "Immediate five-second preflight did not establish HTTP allow; first two DNS-confirmed probes timed out; later probes failed before HTTP; no revoke enforcement claim"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "observed_at": "2026-10-10T20:01:26.059105+00:00",
+  "browser": "Codex In-app Browser 2",
+  "tab_id": "4",
+  "url": "http://localhost:45174/site-to-site?method=ipsec",
+  "control": "Download nonsecret Azure settings review",
+  "actual_saved_filename": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99-azure-settings (1).json",
+  "actual_saved_path": "/Users/pawangupta/Downloads/9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99-azure-settings (1).json",
+  "filesystem_creation_time": "2026-10-10T19:56:03.938624+00:00",
+  "bytes": 1028,
+  "sha256": "13c5da2c37fe56f0c790703b1b692d9c1bbbf48d99e58d8fec3221b399b7cdbb",
+  "profile_id": "azure-active-active-bgp-ipv4-v1",
+  "configuration_revision": 1,
+  "checks": {
+    "actual_downloaded_file_present": true,
+    "actual_cloud_contract_matches": true,
+    "both_tunnel_settings_present": true,
+    "secret_authority_keys_absent": true
+  },
+  "download_event_api": "timed_out_despite_file_delivery",
+  "scope": "Fresh UI link click followed by actual filesystem delivery and JSON validation. No URI decoding or synthetic file creation. Event timeout is instrumentation evidence, not failed delivery."
+}

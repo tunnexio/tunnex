@@ -1,0 +1,13 @@
+{
+  "category": "azure_sign_in_live_arm_read_verified",
+  "connection_status": "Unknown",
+  "credential_or_source_files_transferred": false,
+  "designated_bastion": "104.211.219.1",
+  "gateway_start_dispatched": false,
+  "provisioning_state": "Succeeded",
+  "read_completed_file_mtime_utc": "2026-10-11T04:02:30.733185+00:00",
+  "read_only": true,
+  "resource_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+  "scope": "Fresh existing-connection ARM read proves usable Azure sign-in; connection status Unknown is not tunnel-health proof",
+  "version": 1
+}

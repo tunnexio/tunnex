@@ -1,0 +1,81 @@
+{
+  "accepted_story_count": 6,
+  "actual_captured_manifest": {
+    "actual_input_sha256": {
+      "allocation": "1103c642d06d7ab8299e73a0a8eef31e080ff8550cbb5f50565e56b69f2e64ab",
+      "current_read": "2fb39287d2f752413142ae6b6123cb23d47c8905538cd95105f89316117dc6d1",
+      "dns_state": "2ff25dd82eb3a758c47d4c9fd6530a23c427460eb87a2e4ce601d22a30e0f191",
+      "node_update_result": "5507e1ca936b380d8cf3c0105257f0f363717ab0ed4dc2aabe68e09410a5775f",
+      "transition": "0caafe9105d3a92a9375e9c03900dc18625ee4e7aeb2da90896c3d9889542801"
+    },
+    "category": "actual_enabled_static_eight_manifest_captured",
+    "manifest_path": "/var/lib/tunnex-qualification-archive/azure-enabled-static-manifest-1297403f-02dc-4d1d-91c0-7372ea9218e3/manifest.json",
+    "manifest_sha256": "ca3c2dd917b22106613c7ed7a88a8ac96f3ad2d977ca55fb0acd64041a2d4cd2",
+    "native_executed": false,
+    "version": 1
+  },
+  "actual_current_read": {
+    "category": "actual_current_enabled_static_read",
+    "mutation": false,
+    "path": "/var/lib/tunnex-qualification-archive/azure-current-static-read-780eda9c-17b9-4c4c-a90e-e6c33b793f60/normal.json",
+    "sha256": "2fb39287d2f752413142ae6b6123cb23d47c8905538cd95105f89316117dc6d1"
+  },
+  "actual_native_outcome": {
+    "outcome": {
+      "returncode": 1,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "57e0cdd4c0b441030c11d2923709e948565c0ea030d502b99b9ede862cc0fb5d"
+    },
+    "stderr_class": "empty",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "typed_stdout": {
+      "acceptance": false,
+      "category": "profile_observer_refused",
+      "stage": "receipt"
+    }
+  },
+  "category": "actual_enabled18_original_native_process_census_refusal",
+  "eight_policy_manifest_captured": true,
+  "enabled_native_entry_count": null,
+  "fixed_native_failure": {
+    "category": "saved_enabled18_native_fixed_failure_projection",
+    "fail_count": 1,
+    "known_failures": [
+      {
+        "reason": "all_process_duties_refused",
+        "source_line": 93
+      }
+    ],
+    "manifest_sha256": "ca3c2dd917b22106613c7ed7a88a8ac96f3ad2d977ca55fb0acd64041a2d4cd2",
+    "measured_scalars": null,
+    "native_authority_acceptance": false,
+    "native_log_sha256": "701a59c1b6c249287ad5076b095f7d5b574956a426c4e30df751873be5089c3b",
+    "pass_count": 0,
+    "private_native_run_id": "azure-profile-observe-02c9b205-e841-4d7e-b610-f14d5f767cbd",
+    "raw_records_exported": false,
+    "receipt_line_count": 0,
+    "skip_count": 0,
+    "transport_seconds": 1.659
+  },
+  "fixed_process_reason": {
+    "category": "saved_enabled18_process_duties_reason",
+    "native_authority_acceptance": false,
+    "native_log_sha256": "701a59c1b6c249287ad5076b095f7d5b574956a426c4e30df751873be5089c3b",
+    "raw_records_exported": false,
+    "reason": "bgp_history_census_refused",
+    "transport_seconds": 1.681
+  },
+  "full_native_accepted": false,
+  "new_acceptance_slices_closed": 0,
+  "node_sha256": "90937a36268f998604d713a77a93b8846556a59e744aaa8021e85d45393f5e61",
+  "normal_desired_revision": 18,
+  "normal_intent": "enabled",
+  "qa_node_deployed": true,
+  "raw_records_exported": false,
+  "recorded_at": "2026-10-12T11:47:28.998386+00:00",
+  "scope": "Authentic current owner GET and eight-policy manifest capture passed. Original source-paired native observation passed final observer brackets then refused receipt extraction because original process-duty history census failed. Its exact underlying condition is under diagnosis; this is no native or DNS acceptance.",
+  "sustained_dns_passed": false,
+  "total_story_count": 11,
+  "version": 1,
+  "whole_final_observer_brackets_passed": true
+}

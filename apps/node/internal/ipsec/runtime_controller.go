@@ -2,14 +2,17 @@ package ipsec
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"github.com/google/uuid"
+	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +21,7 @@ var ErrRuntimeController = errors.New("IPsec runtime operation refused")
 type RuntimeUnderlay struct {
 	InterfaceIndex int
 	LocalAddress   netip.Addr
+	OuterMTU       uint32
 }
 type RuntimeEnvironment struct {
 	Namespace           string
@@ -35,6 +39,9 @@ type RuntimeLeaseClient interface {
 	RenewIPsecLease(context.Context, uuid.UUID, RuntimeLeaseRequest) (RuntimeLease, error)
 }
 type RuntimeControllerConfig struct {
+	FQDNPolicy                  *RuntimeFQDNPolicySource
+	Diagnostic                  func(RuntimeDiagnostic)
+	DNSReadTiming               bool
 	OrgID, GatewayID            uuid.UUID
 	JournalDir, IPPath, NFTPath string
 	Daemon                      *DaemonClient
@@ -42,34 +49,52 @@ type RuntimeControllerConfig struct {
 	Environment                 RuntimeEnvironmentInspector
 }
 type runtimeActive struct {
-	Entry       RuntimeJournalEntry
-	Environment RuntimeEnvironment
-	Grants      []GuardGrant
-	Identity    PermitLeaseIdentity
-	Authority   *PermitLeaseAuthority
+	StaticKeyDigest [32]byte        // process-private successful Classic key continuity; never journaled or logged
+	Delivery        RuntimeDelivery // secret-free, authenticated normal Apply context for telemetry
+	Entry           RuntimeJournalEntry
+	Environment     RuntimeEnvironment
+	Grants          []GuardGrant
+	// Keep all authenticated v2 descriptors, including expired entries, for lease hash continuity.
+	FQDNLeaseDescriptors []RuntimeFQDNGrant
+	Identity             PermitLeaseIdentity
+	Authority            *PermitLeaseAuthority
 }
 
 type RuntimeController struct {
-	standbyRetries   map[uuid.UUID]runtimeStandbyRetry
-	recoveryInitiate func(context.Context, EngineTunnel) error
-	recoveryMetrics  RecoveryMetrics
-	qualification    *RuntimePlatformQualification
-	prove            func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
-	active           map[uuid.UUID]runtimeActive
-	recoveryHistory  map[uuid.UUID]*recoveryDecision
-	recoveryPrepared map[uuid.UUID]RuntimeEnvironment
-	recoveryClock    func() time.Duration
-	recoveryObserve  func(context.Context, RuntimeJournalEntry) [2]string
-	recoverySwitch   func(context.Context, KernelAllocation, [2]Ownership, uint8) error
-	mu               sync.Mutex
-	config           RuntimeControllerConfig
-	journal          *RuntimeJournal
-	guard            *RuntimeGuard
-	kernel           *KernelApplier
-	client           RuntimeLeaseClient
-	started, closed  bool
-	namespace        func() (string, error)
-	replace          func(context.Context, GuardIntent) (GuardManifest, error)
+	bgpStaged               map[uuid.UUID]bool
+	bgpProcesses            map[uuid.UUID]runtimeBGPSession
+	bgpCheckpointBeforeSave func(bgpengine.ProcessIdentity) error
+	bgpRecover              func(bgpengine.ProcessIdentity) error
+	bgpStart                func(context.Context, RuntimeJournalEntry, bgpengine.Config) (runtimeBGPSession, error)
+	bgpQualification        *bgpengine.PreflightQualification
+	recoveryStatusSequence  map[uuid.UUID]uint64
+	recoveryReportClocks    map[uuid.UUID]runtimeRecoveryReportClock
+	standbyRetries          map[uuid.UUID]runtimeStandbyRetry
+	bgpRetries              map[uuid.UUID][2]runtimeBGPRetry
+	recoveryInitiate        func(context.Context, EngineTunnel) error
+	recoveryMetrics         RecoveryMetrics
+	qualification           *RuntimePlatformQualification
+	prove                   func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
+	active                  map[uuid.UUID]runtimeActive
+	deniedClassicTransports map[uuid.UUID]runtimeDeniedClassicTransport
+	recoveryHistory         map[uuid.UUID]*recoveryDecision
+	recoveryPrepared        map[uuid.UUID]RuntimeEnvironment
+	recoveryClock           func() time.Duration
+	recoveryObserve         func(context.Context, RuntimeJournalEntry) [2]string
+	recoverySwitch          func(context.Context, KernelAllocation, [2]Ownership, uint8) error
+	mu                      sync.Mutex
+	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
+	dnsGuardCommit          atomic.Pointer[runtimeDNSGuardCommit]
+	dnsPublication          atomic.Pointer[runtimeDNSPublication]
+	dnsDiagnosticAfter      atomic.Int64
+	config                  RuntimeControllerConfig
+	journal                 *RuntimeJournal
+	guard                   *RuntimeGuard
+	kernel                  *KernelApplier
+	client                  RuntimeLeaseClient
+	started, closed         bool
+	namespace               func() (string, error)
+	replace                 func(context.Context, GuardIntent) (GuardManifest, error)
 }
 
 func NewRuntimeController(cfg RuntimeControllerConfig, client RuntimeLeaseClient) (*RuntimeController, error) {
@@ -90,6 +115,7 @@ func NewRuntimeController(cfg RuntimeControllerConfig, client RuntimeLeaseClient
 		j.Close()
 		return nil, ErrRuntimeController
 	}
+	g.diagnostic = cfg.Diagnostic
 	return &RuntimeController{config: cfg, journal: j, guard: g, kernel: k, client: client, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }, replace: g.Replace}, nil
 }
 
@@ -116,10 +142,21 @@ func (c *RuntimeController) capabilityFor(goos, goarch string) int {
 func (c *RuntimeController) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.withdrawDNSOwnerView(uuid.Nil)
 	c.closed = true
+	c.deniedClassicTransports = nil
 	c.started = false
 	c.active = nil
-	return c.journal.Close()
+	c.recoveryReportClocks = nil
+	failed := false
+	for _, p := range c.bgpProcesses {
+		failed = p.Close() != nil || failed
+	}
+	journalErr := c.journal.Close()
+	if failed {
+		return ErrRuntimeController
+	}
+	return journalErr
 }
 func (c *RuntimeController) Start(ctx context.Context) error {
 	c.mu.Lock()
@@ -149,10 +186,39 @@ func (c *RuntimeController) Start(ctx context.Context) error {
 			return ErrRuntimeController
 		}
 	}
+	for _, entry := range entries {
+		if entry.ContractVersion == 3 && entry.Phase != RuntimeQuiesced {
+			ns, err := c.namespace()
+			if err != nil {
+				return ErrRuntimeController
+			}
+			if entry.Allocation.Namespace != ns {
+				continue
+			}
+			// Namespace inode numbers can be reused after a kernel reboot.
+			// Old-boot duties cannot identify current processes. Prefix denial
+			// is already installed; exact reset receipt and independent absence
+			// proof remain required by normal restoration and cleanup.
+			if entry.Restoration != nil {
+				boot, err := resetBootID()
+				if err != nil {
+					return ErrRuntimeController
+				}
+				if entry.Restoration.BootID != boot {
+					continue
+				}
+			}
+			if c.cleanupBGPDuties(ctx, entry) != nil {
+				return ErrRuntimeController
+			}
+		}
+	}
 	c.started = true
 	return nil
 }
 func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournalEntry) (GuardManifest, error) {
+	c.withdrawDNSOwnerView(uuid.Nil)
+	c.recoveryReportClocks = nil
 	ns, e := c.namespace()
 	if e != nil {
 		return GuardManifest{}, ErrRuntimeController
@@ -161,13 +227,17 @@ func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournal
 	if e != nil || seq >= uint64(1<<63-1) {
 		return GuardManifest{}, ErrRuntimeController
 	}
-	in := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1}
+	projected, retired, projectionErr := runtimeGuardProjection(entries)
+	if projectionErr != nil {
+		return GuardManifest{}, ErrRuntimeController
+	}
+	in := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired, RefusalPrefixes: retainedRefusalPrefixes(entries, projected, retired)}
 	seen := map[uuid.UUID]GuardConnection{}
-	for _, entry := range entries {
+	for _, entry := range projected {
 		if entry.Engines[0].Binding.OrgID != c.config.OrgID || entry.Engines[0].Binding.GatewayID != c.config.GatewayID {
 			return GuardManifest{}, ErrRuntimeController
 		}
-		g := GuardConnection{ID: entry.Allocation.ConnectionID, PrefixOnly: true, Local: entry.Engines[0].LocalPrefixes, Remote: entry.Engines[0].RemotePrefixes}
+		g := GuardConnection{BGPPeers: bgpRefusalPeers(entry), ID: entry.Allocation.ConnectionID, PrefixOnly: true, Local: entry.Engines[0].LocalPrefixes, Remote: entry.Engines[0].RemotePrefixes}
 		if old, ok := seen[g.ID]; ok {
 			if !reflect.DeepEqual(old, g) {
 				return GuardManifest{}, ErrRuntimeController
@@ -179,16 +249,27 @@ func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournal
 	}
 	return c.replace(ctx, in)
 }
-func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (RuntimeAcknowledgement, error) {
+func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackResult RuntimeAcknowledgement, resultErr error) {
+	stage := "input"
+	started := time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "apply", stage, m.Manifest.ConnectionID, started, resultErr != nil)
+	}()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
+	fail := func() (RuntimeAcknowledgement, error) {
+		delete(c.deniedClassicTransports, m.Manifest.ConnectionID)
+		return RuntimeAcknowledgement{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || ctx.Err() != nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return fail()
 	}
+	stage = "qualification"
 	if !c.qualification.current() {
+		stage = "journal_inventory"
 		entries, e := c.journal.Entries()
 		if e == nil && len(entries) > 0 {
+			c.withdrawDNSOwnerView(uuid.Nil)
 			c.active = nil
 			_, _ = c.refuse(ctx, entries)
 		}
@@ -201,10 +282,25 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 	if e != nil {
 		return fail()
 	}
+	stage = "material_entry"
 	entry, grants, e := runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 	if e != nil {
 		return fail()
 	}
+	c.withdrawChangedDNSMaterial(m, grants)
+	stage = "material_fqdn_withdraw"
+	if err := c.withdrawChangedFQDNMaterial(ctx, m, grants); err != nil {
+		return fail()
+	}
+	stage = "material_fqdn_current"
+	if !c.fqdnGrantsCurrent(grants) {
+		return fail()
+	}
+	stage = "material_bgp_qualification"
+	if (entry.ContractVersion == 3 || entry.AzureProfileRecreationVersion == 1) && !c.bgpQualificationCurrent() {
+		return fail()
+	} // BGP transport alone never grants runtime capability.
+	stage = "material_contract"
 	entries, e := c.journal.Entries()
 	if e != nil {
 		return fail()
@@ -212,11 +308,14 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 	// A trusted lifecycle supervisor holds this gate from before stop until the
 	// exact new-runtime receipt is durable. This also prevents inode-reuse from
 	// taking the ordinary same-namespace recreation path before proof arrives.
+	stage = "startup_gate"
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
 		return fail()
 	}
+	stage = "delivery_lineage"
 	pos := -1
 	for i, old := range entries {
 		if old.Allocation.ConnectionID != entry.Allocation.ConnectionID {
@@ -232,27 +331,35 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 	}
 	// Read-only physical/census discovery precedes reservation; never accept a
 	// public/NAT identity as the actual local socket address.
+	stage = "environment"
 	env, e := c.config.Environment.Observe(ctx, entry.Allocation, entry.Engines)
-	if e != nil || env.Namespace != ns {
+	if e != nil || env.Namespace != ns || (entry.Allocation.activeTunnelCount() == 1 && env.Underlays[1] != (RuntimeUnderlay{})) {
 		return fail()
 	}
-	for i := range entry.Engines {
+	for i := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 		entry.Engines[i].LocalAddress = env.Underlays[i].LocalAddress
 		if env.Underlays[i].InterfaceIndex <= 0 || !validEngineTunnel(entry.Engines[i]) {
 			return fail()
 		}
 	}
+	stage = "journal_continuity"
 	if pos < 0 {
+		if c.admitRetainedGuardHandoff(ctx, entries, entry) != nil {
+			stage = "journal_handoff_refused"
+			return fail()
+		}
 		entries = append(entries, entry)
 		pos = len(entries) - 1
 		if c.journal.Save(entries) != nil {
+			stage = "journal_save_refused"
 			return fail()
 		}
 	} else {
 		old := entries[pos]
-		if entry.ContractVersion == 2 {
+		if entry.ContractVersion == 2 || entry.ContractVersion == 3 || entry.ContractVersion == 4 {
 			boot, err := resetBootID()
 			if err != nil {
+				stage = "journal_boot_refused"
 				return fail()
 			}
 			resetNeeded := old.Allocation.Namespace != ns || (old.Restoration != nil && old.Restoration.BootID != boot)
@@ -264,6 +371,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 			}
 			if resetNeeded {
 				if c.reserveRestoration(ctx, m, entries, pos, entry, boot) != nil {
+					stage = "journal_restoration_refused"
 					return fail()
 				}
 				old = entries[pos]
@@ -272,32 +380,69 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 		same := entry
 		same.Restoration = old.Restoration
 		same.Allocation.Generation = old.Allocation.Generation
-		for i := range same.Allocation.Tunnels {
+		for i := range same.Allocation.Tunnels[:same.Allocation.activeTunnelCount()] {
 			same.Allocation.Tunnels[i].Alias = old.Allocation.Tunnels[i].Alias
 		}
 		same.Phase = old.Phase
 		same.Observed = old.Observed
+		if entry.ContractVersion == 3 {
+			same.BGPRoutes = old.BGPRoutes
+			same.BGPProcess = old.BGPProcess
+			same.BGPProcessRetired = old.BGPProcessRetired
+			same.BGPProcessHistory = old.BGPProcessHistory
+		}
 		if entry.ContractVersion == 2 {
 			same.Recovery = old.Recovery
 		}
 		if old.Phase == RuntimeCleanupPending || old.Phase == RuntimeRetainedRefusal || !reflect.DeepEqual(old, same) {
+			stage = runtimeJournalContinuityRefusalStage(old, same)
 			return fail()
 		}
 	}
+	if entry.ContractVersion == 3 {
+		stage = "bgp_apply"
+		ack, err := c.applyBGP(ctx, m, entries, pos, env, grants)
+		if err == nil && c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.withdrawDNSOwnerView(uuid.Nil)
+			c.active = nil
+			fresh, _ := c.journal.Entries()
+			_, _ = c.refuse(ctx, fresh)
+			for _, e := range fresh {
+				if e.DeliveryID == entry.DeliveryID {
+					_ = c.cleanupBGPDuties(ctx, e)
+				}
+			}
+			return fail()
+		}
+		return ack, err
+	}
 	if entry.ContractVersion == 2 {
+		stage = "static_apply"
 		ack, err := c.applyRecovery(ctx, m, entries, pos, env, grants)
 		if err == nil && c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.withdrawDNSOwnerView(uuid.Nil)
 			c.active = nil
 			_, _ = c.refuse(ctx, entries)
 			return fail()
 		}
 		return ack, err
 	}
+	// Continuity above validated the durable allocation, including any restored
+	// generation. Kernel mutations must use that allocation, not its original
+	// manifest generation, which is now a retired obligation.
+	entry = entries[pos]
 	if c.active == nil {
 		c.active = map[uuid.UUID]runtimeActive{}
 	}
 	prior, known := c.active[entry.Allocation.ConnectionID]
 	unchanged := known && prior.Entry.DeliveryID == entry.DeliveryID && reflect.DeepEqual(prior.Environment, env)
+	if !known {
+		reuse, err := c.deniedClassicTransportMatches(ctx, m, entry, env, entries)
+		if err != nil {
+			return fail()
+		}
+		unchanged = reuse
+	}
 	if unchanged && prior.Identity.PolicyHash != m.Policy.Hash {
 		delete(c.active, entry.Allocation.ConnectionID)
 		if c.installActive(ctx, entries) != nil {
@@ -323,7 +468,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
-		for i, t := range entry.Engines {
+		for i, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -339,28 +484,31 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 	}
 	authority := NewPermitLeaseAuthority()
 	identity := PermitLeaseIdentity{PolicyHash: m.Policy.Hash, Binding: entry.Engines[0].Binding, DeliveryID: entry.DeliveryID}
-	request, e := authority.Begin(identity)
+	request, e := authority.BeginFQDN(identity, runtimeFQDNLeaseKeys(m.Policy))
 	if e != nil {
 		return fail()
 	}
-	lease, e := c.client.RenewIPsecLease(ctx, entry.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce})
-	if e != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
+	lease, e := c.client.RenewIPsecLease(ctx, entry.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(m.Policy)})
+	if e != nil || lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.Policy.Hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS, FQDNPermits: lease.FQDNPermits}) != nil {
 		return fail()
 	}
 	if !unchanged {
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.initiateTunnel(ctx, t) != nil {
 				return fail()
 			}
 		}
 	}
-	// Both tunnel observations are required; selection remains explicit slot 1.
+	// Every active tunnel must be independently observed; static selection is slot 1.
 	if e = c.proveCurrent(ctx, entries[pos], env); e != nil {
 		delete(c.active, entry.Allocation.ConnectionID)
 		_ = c.installActive(ctx, entries)
 		return fail()
 	}
-	c.active[entry.Allocation.ConnectionID] = runtimeActive{Entry: entries[pos], Environment: env, Grants: grants, Identity: identity, Authority: authority}
+	if _, err := c.ensureUnderlayMTUs(ctx, entries[pos], env, entries); err != nil {
+		return fail()
+	}
+	c.active[entry.Allocation.ConnectionID] = runtimeActive{Entry: entries[pos], Environment: env, Grants: grants, FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), Identity: identity, Authority: authority}
 	if c.installActive(ctx, entries) != nil {
 		delete(c.active, entry.Allocation.ConnectionID)
 		_, _ = c.refuse(ctx, entries)
@@ -374,20 +522,79 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (Runti
 		_, _ = c.refuse(ctx, entries)
 		return fail()
 	}
+	if entry.ContractVersion == 4 {
+		stage = "static_boot_record"
+		if c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+		// Initial Apply commits Phase and boot provenance after the native guard.
+		// Maintenance must retain that exact durable entry, not its Applying copy.
+		committed, readErr := c.journal.Entries()
+		boot, bootErr := resetBootID()
+		if bootErr != nil {
+			readErr = bootErr
+		}
+		active, present := c.active[entry.Allocation.ConnectionID]
+		found := false
+		for _, saved := range committed {
+			if saved.DeliveryID != entry.DeliveryID {
+				continue
+			}
+
+			if found || !present || !classicCommittedEntryMatches(active.Entry, saved, boot) {
+				readErr = ErrRuntimeController
+				break
+			}
+			active.Entry, found = saved, true
+		}
+		if readErr != nil || !found {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+		active.Delivery = m.RuntimeDelivery
+		active.StaticKeyDigest = sha256.Sum256([]byte(m.Secrets[0].PSK))
+		c.active[entry.Allocation.ConnectionID] = active
+	}
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
 }
 
-func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (RuntimeAcknowledgement, error) {
+// Only the ordinary Applied phase and initial proven boot stamp may advance.
+func classicCommittedEntryMatches(before, saved RuntimeJournalEntry, boot string) bool {
+	if boot == "" || (before.Restoration != nil && before.Restoration.BootID != boot) {
+		return false
+	}
+	before.Phase = RuntimeApplied
+	if before.Restoration == nil {
+		before.Restoration = &RuntimeRestoration{BootID: boot}
+	}
+	return reflect.DeepEqual(before, saved)
+}
+
+func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (ack RuntimeAcknowledgement, resultErr error) {
+	stage, started := "cleanup_validation", time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "cleanup", stage, cleanup.Manifest.ConnectionID, started, resultErr != nil)
+	}()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
+	fail := func() (RuntimeAcknowledgement, error) {
+		c.deniedClassicTransports = nil
+		return RuntimeAcknowledgement{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || ctx.Err() != nil || !cleanup.RetainGuard || !runtimeCleanupValid(cleanup, c.config.OrgID, c.config.GatewayID) || cleanup.CoversDeliveryRevision <= 0 || cleanup.CoversDeliveryRevision >= cleanup.DesiredRevision || len(cleanup.Lineage) == 0 || len(cleanup.Lineage) > 256 {
 		return fail()
 	}
+	delete(c.deniedClassicTransports, cleanup.Manifest.ConnectionID)
+	c.withdrawDNSOwnerView(cleanup.Manifest.ConnectionID)
+	stage = "cleanup_journal_read"
 	entries, e := c.journal.Entries()
 	if e != nil {
 		return fail()
 	}
+	stage = "cleanup_lineage"
 	lineage := map[uuid.UUID]RuntimeDelivery{}
 	for _, d := range cleanup.Lineage {
 		if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.Manifest.ConnectionID != cleanup.Manifest.ConnectionID || d.DesiredRevision > cleanup.CoversDeliveryRevision {
@@ -420,9 +627,11 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		entry.AbsenceOnly = true
 		entries = append(entries, entry)
 	}
+	stage = "cleanup_journal_commit"
 	if c.journal.Save(entries) != nil {
 		return fail()
 	}
+	stage = "cleanup_covered_lineage"
 	positions := []int{}
 	covered := []RuntimeJournalEntry{}
 	for i, entry := range entries {
@@ -456,10 +665,13 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		return fail()
 	}
 	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
+	delete(c.recoveryReportClocks, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
+	stage = "cleanup_install_active"
 	if e = c.installActive(ctx, entries); e != nil {
 		return fail()
 	}
+	stage = "cleanup_environment"
 	if c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return fail()
 	}
@@ -470,6 +682,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	var resetProof *RuntimeResetCleanup
 	for _, entry := range covered {
 		if entry.Phase != RuntimeRetainedRefusal && entry.Allocation.Namespace != currentNamespace {
+			stage = "cleanup_reset_receipt"
 			resetProof, e = c.resetCleanupReceipt(cleanup, covered)
 			if e != nil {
 				return fail()
@@ -490,6 +703,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			entries[i].ResetCleanup = resetProof
 			covered[n].ResetCleanup = resetProof
 		}
+		stage = "cleanup_journal_commit"
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
@@ -500,6 +714,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			continue
 		}
 		if entry.Allocation.Namespace != currentNamespace {
+			stage = "cleanup_prove_reset_absent"
 			if c.proveResetAbsent(ctx, entry, resetProof) != nil {
 				return fail()
 			}
@@ -511,16 +726,50 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		}
 		drainEntries = append(drainEntries, entry)
 		if entry.AbsenceOnly {
+			stage = "cleanup_prove_absent"
 			if c.proveAbsent(ctx, entry) != nil {
 				return fail()
 			}
 			continue
 		}
-		for _, t := range entry.Engines {
-			if c.config.Daemon.removeTunnel(ctx, t) != nil {
+		if entry.ContractVersion == 3 {
+			stage = "cleanup_bgp_duties"
+			if c.cleanupBGPDuties(ctx, entry) != nil {
+				return fail()
+			}
+			stage = "cleanup_journal_read"
+			refreshed, err := c.journal.Entries()
+			if err != nil {
+				return fail()
+			}
+			for _, updated := range refreshed {
+				if updated.DeliveryID == entry.DeliveryID {
+					entry = updated
+					for i := range entries {
+						if entries[i].DeliveryID == entry.DeliveryID {
+							entries[i] = updated
+						}
+					}
+				}
+			}
+		}
+		for slot, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
+			stage = "cleanup_remove_tunnel"
+			var removeErr error
+			if IsAzureBGPProfile(entry.Allocation.ProfileID) {
+				snapshot, snapshotErr := c.journal.cleanupSnapshot()
+				if snapshotErr != nil {
+					return fail()
+				}
+				removeErr = c.config.Daemon.removeAzureCleanupTunnelJournal(ctx, entry, slot, currentNamespace, snapshot)
+			} else {
+				removeErr = c.config.Daemon.removeTunnel(ctx, t)
+			}
+			if removeErr != nil {
 				return fail()
 			}
 		}
+		stage = "cleanup_kernel_remove"
 		if entry.ContractVersion == 2 {
 			if c.kernel.RemoveRecovery(ctx, entry.Allocation, entry.Observed) != nil {
 				return fail()
@@ -529,10 +778,12 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 			return fail()
 		}
 	}
+	stage = "cleanup_environment_drain"
 	if len(drainEntries) > 0 && c.config.Environment.Drain(ctx, drainEntries) != nil {
 		return fail()
 	}
 	if resetProof != nil {
+		stage = "cleanup_prove_reset_absent"
 		for _, entry := range covered {
 			if entry.Phase != RuntimeRetainedRefusal && entry.Allocation.Namespace != currentNamespace && c.proveResetAbsent(ctx, entry, resetProof) != nil {
 				return fail()
@@ -540,10 +791,13 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 		}
 	}
 	delete(c.recoveryHistory, cleanup.Manifest.ConnectionID)
+	delete(c.recoveryReportClocks, cleanup.Manifest.ConnectionID)
 	delete(c.active, cleanup.Manifest.ConnectionID)
+	stage = "cleanup_install_active"
 	if e = c.installActive(ctx, entries); e != nil {
 		return fail()
 	}
+	stage = "cleanup_retained_guard_commit"
 	for _, i := range positions {
 		entries[i].Phase = RuntimeRetainedRefusal
 	}
@@ -557,44 +811,105 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 // Other connections keep only their original remaining deadlines; neither a
 // journal template nor this replacement renews their authority.
 func (c *RuntimeController) installActive(ctx context.Context, entries []RuntimeJournalEntry) error {
+	return c.installActiveCandidates(ctx, entries, c.active, nil, nil, nil)
+}
+
+// installActiveCandidates uses the original collection and atomic commit. A
+// maintenance overlay remains owner-private until every required candidate
+// survives the complete native proof and final lease checks.
+func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool) (resultErr error) {
+	c.reconcileDNSOwnerView()
+	stage := "input"
+	connection := uuid.Nil
+	started := time.Now()
+	defer func() { c.emitRuntimeDiagnostic(ctx, "install_active", stage, connection, started, resultErr != nil) }()
 	ns, e := c.namespace()
 	if e != nil {
 		return ErrRuntimeController
 	}
 	if !c.qualification.current() {
+		c.withdrawDNSOwnerView(uuid.Nil)
+		active = nil
 		c.active = nil
 	}
-	for id, a := range c.active {
-		if a.Entry.Allocation.Namespace != ns || c.proveCurrent(ctx, a.Entry, a.Environment) != nil {
-			delete(c.active, id)
+	for id, a := range active {
+		connection = id
+		stage = "entry_current_proof"
+		proofStarted := time.Now()
+		proofCtx, proofCancel := context.WithTimeout(ctx, 5*time.Second)
+		proofErr := c.proveCurrent(proofCtx, a.Entry, a.Environment)
+		c.emitRuntimeDiagnostic(proofCtx, "install_active", stage, id, proofStarted, a.Entry.Allocation.Namespace != ns || proofErr != nil)
+		proofCancel()
+		if a.Entry.Allocation.Namespace != ns || proofErr != nil || !c.fqdnGrantsCurrent(a.Grants) {
+			c.withdrawDNSOwnerView(id)
+			delete(active, id)
 			continue
 		}
-		if _, e = a.Authority.RemainingForApply(a.Identity, 5*time.Second); e != nil {
-			delete(c.active, id)
+		stage = "entry_lease_remaining"
+		leaseStarted := time.Now()
+		_, e = a.Authority.RemainingForApply(a.Identity, 5*time.Second)
+		c.emitRuntimeDiagnostic(ctx, "install_active", stage, id, leaseStarted, e != nil)
+		if e != nil {
+			c.withdrawDNSOwnerView(id)
+			delete(active, id)
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	connection = uuid.Nil
+	stage = "journal_inventory"
 	_, seq, e := c.journal.guardTemplates()
 	if e != nil || seq >= uint64(1<<63-1) {
 		return ErrRuntimeController
 	}
-	intent := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1}
+	stage = "guard_projection"
+	projected, retired, projectionErr := runtimeGuardProjection(entries)
+	if projectionErr != nil {
+		return ErrRuntimeController
+	}
+	intent := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired, RefusalPrefixes: retainedRefusalPrefixes(entries, projected, retired)}
 	seen := map[uuid.UUID]bool{}
-	for _, entry := range entries {
+	for _, entry := range projected {
 		id := entry.Allocation.ConnectionID
+		connection = id
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
-		g := GuardConnection{ID: id, PrefixOnly: true, Local: entry.Engines[0].LocalPrefixes, Remote: entry.Engines[0].RemotePrefixes}
-		if a, ok := c.active[id]; ok {
+		g := GuardConnection{BGPPeers: bgpRefusalPeers(entry), ID: id, PrefixOnly: true, Local: entry.Engines[0].LocalPrefixes, Remote: entry.Engines[0].RemotePrefixes}
+		if a, ok := active[id]; ok {
+			assemblyCtx, assemblyCancel := context.WithTimeout(ctx, 5*time.Second)
+			defer assemblyCancel()
+			stage = "entry_lease_remaining"
 			remaining, err := a.Authority.RemainingForApply(a.Identity, 5*time.Second)
+			if assemblyCtx.Err() != nil {
+				return ErrRuntimeController
+			}
 			if err != nil {
-				delete(c.active, id)
+				c.withdrawDNSOwnerView(id)
+				delete(active, id)
 			} else {
+				if a.Entry.ContractVersion == 3 {
+					observeCtx, observeCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
+					stage = "entry_bgp_observation"
+					if _, candidate := required[id]; candidate {
+						g, err = c.maintenanceBGPGuard(observeCtx, a, prior[id], remaining, candidateQualification)
+					} else {
+						g, err = c.bgpGuard(observeCtx, a, remaining)
+					}
+					observeCancel()
+					if err != nil {
+						c.withdrawDNSOwnerView(id)
+						delete(active, id)
+						_, _ = c.refuse(ctx, entries)
+						return ErrRuntimeController
+					}
+					intent.Connections = append(intent.Connections, g)
+					continue
+				}
 				g.PrefixOnly = false
 				g.Tunnels = a.Entry.Observed
+				if a.Entry.Allocation.activeTunnelCount() == 1 {
+					g.TunnelCount = 1
+				}
 				g.Grants = a.Grants
 				g.LocalIngressIndices = a.Environment.LocalIngressIndices
 				g.PermitFor = remaining
@@ -604,47 +919,231 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 				}
 				index := int(slot) - 1
 				g.PermittedInterfaceIndices = []int{a.Entry.Observed[index].InterfaceIndex}
-				statuses := c.observeRecovery(ctx, a.Entry)
+				observeCtx, observeCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
+				stage = "entry_static_observation"
+				statuses := c.observeRecovery(observeCtx, a.Entry)
+				observeCancel()
 				// The installation observation can disagree with the earlier recovery
 				// decision. Withdraw existing authority before returning; empty reply
 				// observations must never fall back to selected-path permission.
-				if statuses[index] != "up" || (statuses[1-index] != "up" && statuses[1-index] != "down") {
-					delete(c.active, id)
+				if statuses[index] != "up" || (a.Entry.Allocation.activeTunnelCount() == 2 && statuses[1-index] != "up" && statuses[1-index] != "down") {
+					c.withdrawDNSOwnerView(id)
+					delete(active, id)
 					_, _ = c.refuse(ctx, entries)
 					return ErrRuntimeController
 				}
+				stage = "entry_lease_remaining"
 				remaining, err = a.Authority.RemainingForApply(a.Identity, 5*time.Second)
 				if err != nil {
 					return ErrRuntimeController
 				}
 				g.PermitFor = remaining
-				for i, status := range statuses {
+				for i, status := range statuses[:a.Entry.Allocation.activeTunnelCount()] {
 					if status == "up" {
 						g.ReplyIngressIndices = append(g.ReplyIngressIndices, a.Entry.Observed[i].InterfaceIndex)
 					}
 				}
 				g.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: a.Entry.Observed[index].InterfaceIndex, ReqID: a.Entry.Engines[index].ReqID, Peer: a.Entry.Engines[index].RemoteAddress, UnderlayInterfaceIndex: a.Environment.Underlays[index].InterfaceIndex}}
+				if len(g.Grants) > 0 {
+					mtuCtx, mtuCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
+					stage = "entry_tunnel_mtu"
+					g.TunnelMTUs, err = c.guardTunnelMTUs(mtuCtx, a.Entry, a.Environment, g.PermittedInterfaceIndices, g.ReplyIngressIndices)
+					mtuCancel()
+					if err != nil {
+						c.withdrawDNSOwnerView(id)
+						delete(active, id)
+						_, _ = c.refuse(ctx, entries)
+						return ErrRuntimeController
+					}
+				}
 			}
 		}
 		intent.Connections = append(intent.Connections, g)
 	}
+	connection = uuid.Nil
+	stage = "combined_guard_context"
 	if ctx.Err() != nil {
+		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
-	if _, e = c.replace(ctx, intent); e != nil {
+	commitCtx, commitCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer commitCancel()
+	// Native collection does not consume the atomic replacement budget. Never
+	// install a duration captured before another connection's observations.
+	for i := range intent.Connections {
+		g := &intent.Connections[i]
+		connection = g.ID
+		stage = "combined_guard_authority"
+		if g.PrefixOnly {
+			continue
+		}
+		a, ok := active[g.ID]
+		if !ok {
+			_, _ = c.refuse(ctx, entries)
+			return ErrRuntimeController
+		}
+		if !c.fqdnGrantsCurrent(a.Grants) {
+			c.withdrawDNSOwnerView(g.ID)
+			delete(active, g.ID)
+			_, _ = c.refuse(ctx, entries)
+			return ErrRuntimeController
+		}
+		stage = "entry_dns_source"
+		for _, grant := range g.Grants {
+			if grant.DNSResolver != (DNSResolverBinding{}) {
+				if _, err := observeDNSSource(grant.Source.Addr(), a.Environment.LocalIngressIndices); err != nil {
+					c.withdrawDNSOwnerView(g.ID)
+					delete(active, g.ID)
+					_, _ = c.refuse(ctx, entries)
+					return ErrRuntimeController
+				}
+			}
+		}
+		remaining, err := a.Authority.RemainingForApply(a.Identity, 5*time.Second)
+		if err != nil {
+			c.withdrawDNSOwnerView(g.ID)
+			delete(active, g.ID)
+			_, _ = c.refuse(ctx, entries)
+			return ErrRuntimeController
+		}
+		g.PermitFor = remaining
+	}
+	connection = uuid.Nil
+	stage = "combined_guard_qualification"
+	if len(active) > 0 && (!c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive()) {
+		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
-	if len(c.active) > 0 && !c.qualification.current() {
+	for _, g := range intent.Connections {
+		if g.PrefixOnly {
+			continue
+		}
+		connection = g.ID
+		stage = "entry_bgp_process"
+		a := active[g.ID]
+		if a.Entry.ContractVersion == 3 && len(g.Grants) > 0 {
+			process := c.bgpProcesses[a.Entry.DeliveryID]
+			if process == nil || !process.Alive() {
+				c.withdrawDNSOwnerView(g.ID)
+				delete(active, g.ID)
+				_, _ = c.refuse(ctx, entries)
+				return ErrRuntimeController
+			}
+		}
+	}
+	connection = uuid.Nil
+	stage = "combined_guard_context"
+	if commitCtx.Err() != nil {
+		_, _ = c.refuse(ctx, entries)
+		return ErrRuntimeController
+	}
+	for id, candidate := range required {
+		connection = id
+		stage = "combined_guard_required_binding"
+		current, ok := active[id]
+		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
+			return ErrRuntimeController
+		}
+	}
+	for id := range required {
+		connection = id
+		stage = "combined_guard_prior_binding"
+		original, ok := prior[id]
+		if !ok || original.Authority == nil {
+			return ErrRuntimeController
+		}
+		stage = "combined_guard_prior_reserve"
+		if _, err := original.Authority.RemainingForApply(original.Identity, 5*time.Second); err != nil {
+			return ErrRuntimeController
+		}
+	}
+	connection = uuid.Nil
+	stage = "combined_guard_candidate_qualification"
+	if candidateQualification != nil && !candidateQualification() {
+		return ErrRuntimeController
+	}
+	intent = limitFQDNGuardIntent(intent, time.Now(), 5*time.Second, func(id uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
+		a, ok := active[id]
+		if !ok || a.Authority == nil {
+			return 0, ErrPermitLease
+		}
+		return a.Authority.RemainingFQDNForApply(a.Identity, guardFQDNGrantDigest(g), budget)
+	})
+	stage = "combined_guard_replace"
+	publication := &runtimeDNSPublication{previous: c.dnsView.Load(), done: make(chan struct{})}
+	c.dnsPublication.Store(publication)
+	defer func() {
+		published := c.dnsView.Load()
+		publication.committed = resultErr == nil && ctx.Err() == nil && commitCtx.Err() == nil && published != nil && published != publication.previous
+		c.dnsPublication.CompareAndSwap(publication, nil)
+		close(publication.done)
+	}()
+	guardCommit := c.beginDNSGuardCommit()
+	if guardCommit == nil {
+		return ErrRuntimeController
+	}
+	defer c.finishDNSGuardCommit(guardCommit)
+	manifest, replaceErr := c.replace(commitCtx, intent)
+	if replaceErr != nil {
+		return ErrRuntimeController
+	}
+	stage = "combined_guard_final_binding"
+	if len(active) > 0 && !c.qualification.current() {
+		c.withdrawDNSOwnerView(uuid.Nil)
+		active = nil
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
-	for _, a := range c.active {
+	for id, a := range active {
+		connection = id
+		stage = "combined_guard_final_lease"
+		for _, connection := range intent.Connections {
+			if connection.ID != id {
+				continue
+			}
+			for _, grant := range connection.Grants {
+				if grant.FQDN.Version == 2 {
+					if _, err := a.Authority.RemainingFQDNForApply(a.Identity, guardFQDNGrantDigest(grant), time.Millisecond); err != nil {
+						_, _ = c.refuse(ctx, entries)
+						return ErrRuntimeController
+					}
+				}
+			}
+		}
+		if !c.fqdnGrantsCurrent(a.Grants) {
+			_, _ = c.refuse(ctx, entries)
+			return ErrRuntimeController
+		}
 		if _, e = a.Authority.RemainingForApply(a.Identity, time.Millisecond); e != nil {
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController
 		}
 	}
+	for id, candidate := range required {
+		connection = id
+		stage = "combined_guard_required_binding"
+		current, ok := active[id]
+		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
+			return ErrRuntimeController
+		}
+	}
+	for id := range required {
+		connection = id
+		stage = "combined_guard_final_prior_reserve"
+		original := prior[id]
+		if _, err := original.Authority.RemainingForApply(original.Identity, time.Millisecond); err != nil {
+			return ErrRuntimeController
+		}
+	}
+	connection = uuid.Nil
+	stage = "combined_guard_candidate_qualification"
+	if candidateQualification != nil && !candidateQualification() {
+		return ErrRuntimeController
+	}
+	c.active = active
+	c.publishDNSOwnerView(manifest)
+	guardCommit.published = c.dnsView.Load()
 	return nil
 }
 
@@ -662,10 +1161,19 @@ func (c *RuntimeController) AttachDaemon(client *DaemonClient, alive func() bool
 }
 
 func (c *RuntimeController) proveCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	return c.proveCurrentObserved(ctx, e, env, nil)
+}
+func (c *RuntimeController) proveCurrentObserved(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string)) error {
+	return c.proveCurrentTimed(ctx, e, env, observe, nil)
+}
+func (c *RuntimeController) proveCurrentTimed(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, observe func(string), timing func(runtimeNativePhaseTiming)) error {
 	if c.prove != nil {
 		return c.prove(ctx, e, env)
 	}
-	return c.proveRuntime(ctx, e, env)
+	if e.ContractVersion == 3 {
+		return c.proveBGPCurrentTimed(ctx, e, env, observe, timing)
+	}
+	return c.proveRuntimeTimed(ctx, e, env, timing)
 }
 
 // AttachQualification adds independently observed process/platform facts. It is
@@ -691,26 +1199,83 @@ func supportedRuntimePlatform(goos, goarch string) bool {
 
 // Validate runs even when the CP has no pending work or is unreachable. It may
 // withdraw authority and preserve its existing deadline, but never renew it.
-func (c *RuntimeController) Validate(ctx context.Context) error {
+func (c *RuntimeController) Validate(ctx context.Context) (resultErr error) {
+	stage := "input"
+	started := time.Now()
+	defer func() { c.emitRuntimeDiagnostic(ctx, "validate", stage, uuid.Nil, started, resultErr != nil) }()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed || !c.started || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
+	stage = "journal_inventory"
 	entries, e := c.journal.Entries()
 	if e != nil {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		return ErrRuntimeController
 	}
+	stage = "qualification"
 	if !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		if len(entries) > 0 {
-			_, _ = c.refuse(ctx, entries)
+			if _, err := c.refuse(ctx, entries); err != nil {
+				return ErrRuntimeController
+			}
+			for _, entry := range entries {
+				if entry.ContractVersion == 3 {
+					if c.cleanupBGPDuties(ctx, entry) != nil {
+						return ErrRuntimeController
+					}
+				}
+			}
 		}
 		return ErrRuntimeController
 	}
 	if len(entries) == 0 {
 		return nil
 	}
+	stage = "bgp_qualification"
+	if !c.bgpQualificationCurrent() {
+		var staleBGP []RuntimeJournalEntry
+		for _, entry := range entries {
+			if entry.ContractVersion == 3 {
+				staleBGP = append(staleBGP, entry)
+			}
+		}
+		for connection, active := range c.active {
+			if active.Entry.ContractVersion == 3 {
+				c.withdrawDNSOwnerView(connection)
+				delete(c.active, connection)
+			}
+		}
+		if len(staleBGP) > 0 {
+			// Preserve qualified static grants, but prove BGP denial before
+			// stopping exports or consuming exact owned route obligations.
+			if c.installActive(ctx, entries) != nil {
+				return ErrRuntimeController
+			}
+			refused := false
+			for _, entry := range staleBGP {
+				if c.cleanupBGPDuties(ctx, entry) != nil {
+					refused = true
+				}
+			}
+			if refused {
+				return ErrRuntimeController
+			}
+			return ErrRuntimeController
+		}
+	}
+	stage = "bgp_reconcile"
+	if c.reconcileActiveBGP(ctx, entries) != nil {
+		return ErrRuntimeController
+	}
+	entries, e = c.journal.Entries()
+	if e != nil {
+		return e
+	}
+	stage = "combined_guard"
 	return c.installActive(ctx, entries)
 }

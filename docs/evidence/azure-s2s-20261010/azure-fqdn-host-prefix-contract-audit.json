@@ -1,0 +1,59 @@
+{
+  "recorded_at_utc": "2026-10-11T11:56:06.113949+00:00",
+  "scope": "Read-only local Azure producer/consumer host-prefix contract audit after GCP/AWS shared bare-address mismatch report",
+  "root_head": "da9915c4a15473861ac8718e94b9345b6895d851",
+  "verdict": "PASS; existing Azure contract matches; no donor correction needed",
+  "contract": {
+    "compiler": "apps/api/internal/policy/compiler.go:970 emits PrefixFrom(addr, addr.BitLen()).String() into compiled generation Answers",
+    "runtime_projection": "apps/api/internal/policy/ipsec_runtime_fqdn.go:95 requires destination.Bits()==32; line115 emits destination.String()",
+    "guard_type": "GuardGrant.Destination is netip.Prefix",
+    "committed_matcher": "apps/node/internal/ipsec/runtime_fqdn_policy.go:111 compares Answers against g.Destination.String(), not Addr().String()",
+    "strict_material": "apps/node/internal/ipsec/runtime_fqdn_material.go requires exact canonical prefix, valid IPv4 prefix, Bits()==32 and approved remote ownership",
+    "fixtures": "runtime_fqdn_test.go:26 and207 use /32; bridge fixture uses RuntimeFQDNGrant.Destination directly",
+    "absolute_expiry_and_resolver_source": "Existing ExpiresAt and ResolverSourceAddress validation/matching remain unchanged"
+  },
+  "current_hashes_matching_prior_race": {
+    "apps/api/internal/policy/compiler.go": "1bdf2115f8137cdac90e31fda9b13ac42c8834e9a03a52419a2304058c2455cd",
+    "apps/api/internal/policy/ipsec_runtime_fqdn.go": "9a6a5befaa36fade76b6dba0640ac0b63e2e230af457364c4d2844adf45b5a35",
+    "apps/node/internal/ipsec/runtime_fqdn_policy.go": "f3a496314c7b14f5c3b18b711b7b9938c68c4acf55511fd3a0d02c3c19e22c60",
+    "apps/node/internal/ipsec/runtime_fqdn_material.go": "d5a0dc30db81d1adde1a5d66fe7da6d22cc5d45fcb050da3f383fa529950ff4d",
+    "apps/node/internal/ipsec/runtime_fqdn_wire_test.go": "96d7a8946a5fe0dbb911a86bffe4df0a3cef411e21f05b6d9fcbbf38e2c93252"
+  },
+  "bounded_qualification_reuse": {
+    "receipt_path": "/private/tmp/azure-fqdn-focused-race-20261011-2/node-result.json",
+    "receipt_sha256": "f420b052b2ca985f3514031655176d2db411c7386d01d5c0639afc4f77f11cf7",
+    "source_manifest_path": "/private/tmp/azure-fqdn-focused-race-20261011-2/result.json",
+    "source_manifest_sha256": "60695c275bfa93a14dddee9227b8fbf025235633f24e491fd153ffefa3c982c0",
+    "prior_node_gate_passed": 40,
+    "prior_node_gate_skipped": 0,
+    "prior_node_log_sha256": "5f45dcd272864fe4493e756abf33ea7cb26d4458811db4a9f2d6ab37066506e2",
+    "verified_saved_pass_cases": [
+      "TestRuntimeFQDNCommittedAnswerRequiresCanonicalCompilerPrefix",
+      "TestRuntimeFQDNConsumesActualCompilerWire"
+    ],
+    "compiler_wire_cases": "V1/V2 /32 destinations, retained ordinary host grant, v2 absolute expiry/source fields, and bare destination wire alias denial",
+    "committed_prefix_case": "Accept canonical /32; deny the same destination address without /32",
+    "fixture_file_current_sha256": "b19c77edbb961fc56951074f29b5a020967f8749d64dd811c6def8decdbc6cea",
+    "fixture_helper_sha256": "6dbcf999709d61879f16bf755ee5cce51691858d660d2336405042182dad0a31",
+    "fixture_helper_unchanged": true,
+    "whole_fixture_file_difference": "Only approved native-canonical mark expectation text f0ffffff to f1ffffff; exact inverse matches saved fixture file pin",
+    "new_test_run": false
+  },
+  "independent_review": {
+    "path": "/private/tmp/azure-fqdn-host-prefix-independent-audit-runtime.json",
+    "sha256": "0f75e82344ccccc8d9a505ac0aa6f683acb431b5a660d03ff6057c23ce2644f0",
+    "verdict": "PASS; no donor correction needed"
+  },
+  "boundaries": {
+    "source_or_test_patch_applied": false,
+    "whole_file_overlay": false,
+    "build_or_test_run": false,
+    "push_or_deployment": false,
+    "cloud_or_peer_action": false,
+    "recovery_kit_staged": false,
+    "recovery_post_or_repeated_start": false,
+    "live_cloud_prefix_acceptance_claimed": false,
+    "formal_stories_closed": 0,
+    "formal_story_count": 11
+  }
+}

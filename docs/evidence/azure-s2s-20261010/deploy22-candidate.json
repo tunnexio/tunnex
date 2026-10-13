@@ -1,0 +1,20 @@
+{
+  "production_source": "077bccf4",
+  "image": "sha256:91d6de872f922ee2c84da3000bc33147fec0c3fd25d47ad0ab65e02ceb2ffd33",
+  "node_sha256": "bd28fea088fde56134ce3ef745ffa997b94fb33530534eb2ee0f3670eee4d2a2",
+  "cleanup_revision": 21,
+  "retained_entries": 10,
+  "all_retained_native_absent": true,
+  "full_guard_and_withdrawal_verified": true,
+  "journal_unchanged_during_absence_check": true,
+  "original_namespace_and_state_preserved": true,
+  "new_desired_revision": 22,
+  "application_state_at_enable": "pending",
+  "qualification": {
+    "shared_guard_full_local_race_seconds": 201.695,
+    "bgp_scope_race_seconds": 53.083,
+    "integrated_census_dns_race_seconds": 8.932,
+    "fqdnrpc_race_seconds": 8.473
+  },
+  "scope": "Candidate deployed and normally enabled; live packet and FQDN proof still pending, no production readiness claim"
+}

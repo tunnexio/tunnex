@@ -1,0 +1,39 @@
+{
+  "scope": "isolated Linux ARM64 controller unit regression; kernel/process fixture doubles; no live restoration or cloud claim",
+  "base_commit": "e807aaff35170f5fea30b8f0dae1158f1ae5de8c",
+  "source_patch": "Azure cbdf882fe83ca0988bef691bf446f7ea80cbe00b narrow shared Start adaptation",
+  "source_patch_sha256": "fee8847b93dfca7e431653c20a5caf7ca18d75ab41800e8e19f2560eb4bcedfa",
+  "red": {
+    "binary_sha256": "f962bcf2dbb83798ccefe5e6401ecac8c7881f11f89e0dfcdaeaabb89e6c57da",
+    "exit_code": 1,
+    "log_sha256": "15fb99bc37ba1529c944f66875f0ff28551212bbfd024742e2030bb2ce9aafb0",
+    "stopped_state": {
+      "name": "tunnex-gcp-ha-boot-red2-unit-1010",
+      "running": false,
+      "oom": false
+    }
+  },
+  "green": {
+    "binary_sha256": "e06daea6dc4cc03ccfc489f9778aeefb6cdb70b03ff0ec9fdf3e3209f817bed7",
+    "exit_code": 0,
+    "log_sha256": "1f253c001ae2377c3ca5bc25a95d8adff81dff5e75db563968d2c90f370a6529",
+    "stopped_state": {
+      "name": "tunnex-gcp-ha-boot-green3-unit-1010",
+      "running": false,
+      "oom": false
+    }
+  },
+  "profiles": [
+    "aws-bgp-ipv4-v1",
+    "gcp-ha-bgp-ipv4-v1"
+  ],
+  "phases": [
+    "applied",
+    "cleanup_pending",
+    "retained_refusal"
+  ],
+  "same_boot_cleanup_preserved": true,
+  "prefix_denial_journal_immutability_no_capability_asserted": true,
+  "focused_bgp_race": "PASS 3.055s",
+  "independent_review": "runtime_engine PASS"
+}

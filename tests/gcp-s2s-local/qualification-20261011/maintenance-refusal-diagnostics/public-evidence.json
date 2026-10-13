@@ -1,0 +1,47 @@
+{
+  "completed": true,
+  "accepted": true,
+  "exit_code": 0,
+  "elapsed_seconds": 23.196414458,
+  "test_names": [
+    "TestMaintenanceDiagnosticScopedWithdrawalParity",
+    "TestMaintenanceDiagnosticCurrentOrderAndError",
+    "TestMaintenanceDiagnosticGlobalPublishFailure",
+    "TestMaintenanceDiagnosticClosedVocabulary",
+    "TestGCPBaselineRetainedFQDNRefreshDoesNotWithdrawClassic",
+    "TestGCPMaintenanceTransientClassicProofPublishesPrefixOnlyWithoutApplyError",
+    "TestGCPHACommitFreshnessChangeClassicSibling",
+    "TestGCPMaintainedRestoredClassic",
+    "TestGCPMaintainedHAClassicPair",
+    "TestGCPMaintainedStrictRefusal",
+    "TestMaintainedNativeObservationDoesNotWaitForOtherReports",
+    "TestMaintainedObservationCallbackCannotAcknowledgeInvalidAuthority",
+    "TestMaintainedObservedCompleteSetDeadlineStillGatesResults",
+    "TestFiveProviderMaintainedRenewalDeadline",
+    "TestMaintainedChangedDNSInputsWithdrawBeforeEnvironmentIO",
+    "TestMaintainedRenewalStrictFallback",
+    "TestMaintainedResultsRecheckFirstDeadlineAfterLastReport",
+    "TestOrdinaryBGPPublicationIsSecretFreeAndBound"
+  ],
+  "passed_top_count": 18,
+  "fail_count": 0,
+  "skip_count": 0,
+  "parent_source_before": {
+    "runtime_maintenance.go": "7a758ca1a461d286a576712908009b0e627cc05bf26c7f5e761d3b31565a5e9c",
+    "runtime_diagnostic.go": "195c5ed2cd4619c57189b79558e5426464f2dd12283ef174e0d13c39c71a2739"
+  },
+  "parent_source_after": {
+    "runtime_maintenance.go": "7a758ca1a461d286a576712908009b0e627cc05bf26c7f5e761d3b31565a5e9c",
+    "runtime_diagnostic.go": "195c5ed2cd4619c57189b79558e5426464f2dd12283ef174e0d13c39c71a2739"
+  },
+  "formatted_source_pins": {
+    "runtime_maintenance.go": "0a5717416f17c283b4c52dc34d35a3e5241b803e25383095595abe44598c9829",
+    "runtime_diagnostic.go": "75a311bb727fdc74918fe8a828c2f5ca2add107626ee14be5b0f7575a97c181e",
+    "runtime_maintenance_diagnostic_test.go": "5e1050a185bfeba0bbcf8ebeb12ecdf333ec469162a58c737098f0db5334b6e7"
+  },
+  "log_sha256": "f838608a9d43186e5341d66abf63b642e2fb5a31d33dfa36d42cebaa5eae8ea1",
+  "serving_mutations": 0,
+  "scope": "source-model maintenance telemetry/refusal qualification; no live failure attribution or product defect claim",
+  "model_test_source_before_format_sha256": "e9cab396760c960b4121a6e8c19cb52f0d16d62c218f3e2f9614f07be8fe3626",
+  "model_test_source_after_format_sha256": "5310f8e1ceb137d2280d5b44112158a2ebf70f72eeb5f209de8ca47ee63d6f6c"
+}

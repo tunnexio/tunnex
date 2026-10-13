@@ -3834,7 +3834,7 @@ paths:
     post:
       operationId: checkIPsecConfiguration
       summary: Validate an IPsec configuration without saving it
-      description: Requires verified human ipsec:manage. Checks only the proposed AWS static IPv4 input profile. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
+      description: Requires verified human ipsec:manage. Checks bounded AWS static/BGP IPv4 or explicitly selected GCP HA BGP/Classic static and Azure active-active/active-standby static/BGP IPv4 profiles. AWS and GCP HA require two tunnels; GCP HA uses two cloud interfaces to one public peer. GCP Classic requires one tunnel with empty inside address fields and no BGP configuration. Azure requires its gateway contract and one active-standby or two active-active tunnels with the declared routing mode. Does not persist, create, activate, reserve addresses, test connectivity or establish provider readiness. PSKs are write-only and never returned.
       tags: [ipsec]
       requestBody:
         required: true
@@ -4012,7 +4012,7 @@ paths:
       tags: [ipsec]
       responses:
         "200":
-          description: Nonsecret two-tunnel status; finalized tombstones may have no tunnel identities.
+          description: "Nonsecret status for the actual profile tunnel count: two for AWS, GCP HA, or Azure active-active; one for GCP Classic or Azure active-standby. Finalized tombstones may have no tunnel identities."
           headers:
             X-Request-Id: { $ref: "#/components/headers/RequestId" }
             Cache-Control: { schema: { type: string } }
@@ -11671,11 +11671,21 @@ components:
           description: "Immutable named DNS authorities in this revision. Runtime chooses one profile by longest label-boundary suffix; endpoints from other profiles are never fallback targets."
         created_at: { type: string, format: date-time }
 
+    FQDNResolverIPsecPath:
+      type: object
+      required: [connection_id, configuration_revision, source_address]
+      additionalProperties: false
+      properties:
+        connection_id: { type: string, format: uuid }
+        configuration_revision: { type: integer, format: int64, minimum: 1 }
+        source_address: { type: string, format: ipv4, description: "Private IPv4 address owned by the selected gateway, inside an approved local connection prefix. Runtime ownership and lease are verified before every DNS query." }
+
     FQDNResolverProfile:
       type: object
       required: [id, name, provider_hint, zone_suffixes, endpoints, legacy_default]
       additionalProperties: false
       properties:
+        ipsec_path: { $ref: "#/components/schemas/FQDNResolverIPsecPath" }
         id: { type: string, format: uuid, description: "Immutable profile provenance bound to gateway DNS requests and answer generations." }
         name: { type: string, minLength: 1, maxLength: 80 }
         provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises], description: "Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning." }
@@ -11688,6 +11698,7 @@ components:
       required: [name, provider_hint, zone_suffixes, endpoints]
       additionalProperties: false
       properties:
+        ipsec_path: { $ref: "#/components/schemas/FQDNResolverIPsecPath" }
         name: { type: string, minLength: 1, maxLength: 80 }
         provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises] }
         zone_suffixes: { type: array, minItems: 1, maxItems: 16, items: { type: string, minLength: 1, maxLength: 253 } }
@@ -12274,6 +12285,29 @@ components:
       properties:
         eligible: { type: boolean }
         reason: { type: string, enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale] }
+        bgp:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+        gcp_ha:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+        azure_bgp_recreation:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+        azure_bgp:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+        azure_static:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+        gcp_classic:
+          $ref: '#/components/schemas/IPsecBGPEligibility'
+    IPsecBGPEligibility:
+      type: object
+      additionalProperties: false
+      description: Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+      required: [eligible, reason]
+      properties:
+        eligible: { type: boolean }
+        reason:
+          type: string
+          enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale]
+          x-enum-varnames: [IPsecBGPEligible, IPsecBGPOptInRequired, IPsecBGPGatewayUnavailable, IPsecBGPUnsupported, IPsecBGPReportStale]
     IPsecPSKRotationInput:
       type: object
       additionalProperties: false
@@ -12302,7 +12336,7 @@ components:
         gateway_node_id: { type: string, format: uuid }
         tunnel_ids:
           type: array
-          minItems: 2
+          minItems: 1
           maxItems: 2
           uniqueItems: true
           items: { type: string, format: uuid }
@@ -12315,12 +12349,25 @@ components:
         profile_id: { type: string }
         configuration_revision: { type: integer, format: int64, minimum: 1 }
         configuration: { $ref: "#/components/schemas/IPsecProviderNetworkConfiguration" }
+    IPsecAzureContract:
+      type: object
+      additionalProperties: false
+      required: [gateway_sku, vpn_type, ike_version, custom_policy, use_policy_based_traffic_selectors, nat_enabled]
+      properties:
+        gateway_sku: { type: string, enum: [VpnGw1, VpnGw2, VpnGw3, VpnGw4, VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ, VpnGw4AZ, VpnGw5AZ] }
+        vpn_type: { type: string, enum: [RouteBased] }
+        ike_version: { type: integer, enum: [2] }
+        custom_policy: { type: string, enum: [aes256-sha256-dh14-pfs2048] }
+        use_policy_based_traffic_selectors: { type: boolean, enum: [false] }
+        nat_enabled: { type: boolean, enum: [false] }
     IPsecProviderNetworkConfiguration:
       type: object
       additionalProperties: false
       required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
       properties:
+        azure: { $ref: "#/components/schemas/IPsecAzureContract" }
         mode: { type: string }
+        bgp: { $ref: "#/components/schemas/IPsecBGPConfiguration" }
         customer_outside_address: { type: string }
         local_prefixes: { type: array, items: { type: string } }
         remote_prefixes: { type: array, items: { type: string } }
@@ -12341,7 +12388,10 @@ components:
       additionalProperties: false
       required: [mode, customer_outside_address, local_prefixes, remote_prefixes, tunnels]
       properties:
-        mode: { type: string, enum: [ipv4-static] }
+        azure: { $ref: "#/components/schemas/IPsecAzureContract" }
+        profile_id: { type: string, enum: [aws-static-ipv4-v1, aws-bgp-ipv4-v1, gcp-ha-bgp-ipv4-v1, gcp-classic-static-ipv4-v1, azure-active-active-bgp-ipv4-v1, azure-active-active-static-ipv4-v1, azure-active-standby-bgp-ipv4-v1, azure-active-standby-static-ipv4-v1], description: "Omit for legacy AWS mode selection. GCP and Azure profiles require explicit selection. GCP HA uses IPv4 BGP and two tunnels to one public peer; GCP Classic uses IPv4 static routing and one tunnel with empty inside address fields. Azure uses one active-standby or two active-active tunnels with the declared routing mode." }
+        mode: { type: string, enum: [ipv4-static, ipv4-bgp] }
+        bgp: { $ref: "#/components/schemas/IPsecBGPConfiguration" }
         customer_outside_address: { type: string, minLength: 1, maxLength: 15 }
         local_prefixes:
           type: array
@@ -12355,18 +12405,28 @@ components:
           items: { type: string, minLength: 1, maxLength: 18 }
         tunnels:
           type: array
-          minItems: 2
+          minItems: 1
           maxItems: 2
           items: { $ref: "#/components/schemas/IPsecConfigurationCheckTunnel" }
+    IPsecBGPConfiguration:
+      type: object
+      additionalProperties: false
+      description: Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
+      required: [local_asn, remote_asn, router_id, maximum_prefixes]
+      properties:
+        local_asn: { type: integer, format: uint32, minimum: 1, maximum: 4294967294 }
+        remote_asn: { type: integer, format: uint32, minimum: 1, maximum: 4294967294 }
+        router_id: { type: string, minLength: 1, maxLength: 15 }
+        maximum_prefixes: { type: integer, minimum: 1, maximum: 64, description: "Maximum accepted prefixes per BGP peer. Installed destinations across both peers remain bounded by the approved remote prefix list." }
     IPsecConfigurationCheckTunnel:
       type: object
       additionalProperties: false
       required: [outside_address, inside_cidr, customer_inside_address, cloud_inside_address, psk]
       properties:
         outside_address: { type: string, minLength: 1, maxLength: 15 }
-        inside_cidr: { type: string, minLength: 1, maxLength: 18 }
-        customer_inside_address: { type: string, minLength: 1, maxLength: 15 }
-        cloud_inside_address: { type: string, minLength: 1, maxLength: 15 }
+        inside_cidr: { type: string, minLength: 0, maxLength: 18 }
+        customer_inside_address: { type: string, minLength: 0, maxLength: 15 }
+        cloud_inside_address: { type: string, minLength: 0, maxLength: 15 }
         psk: { type: string, minLength: 8, maxLength: 64, writeOnly: true }
     IPsecConfigurationCheckResult:
       type: object
@@ -12383,11 +12443,45 @@ components:
         slot: { type: integer, minimum: 1, maximum: 2 }
         status: { type: string, enum: [up, down, unknown], x-enum-varnames: [IPsecTunnelUp, IPsecTunnelDown, IPsecTunnelUnknown] }
         selected: { type: boolean, description: Configured traffic path; does not imply reachability. }
+    IPsecBGPPeerStatus:
+      type: object
+      additionalProperties: false
+      required: [slot, state, accepted_prefixes, installed_prefixes]
+      properties:
+        slot: { type: integer, minimum: 1, maximum: 2 }
+        state: { type: string, enum: [unknown, idle, connect, active, opensent, openconfirm, established], x-enum-varnames: [IPsecBGPUnknown, IPsecBGPIdle, IPsecBGPConnect, IPsecBGPActive, IPsecBGPOpenSent, IPsecBGPOpenConfirm, IPsecBGPEstablished] }
+        accepted_prefixes: { type: integer, minimum: 0, maximum: 64 }
+        installed_prefixes: { type: integer, minimum: 0, maximum: 64 }
+        rejected_prefixes: { type: integer, minimum: 0, description: Present only when the gateway can measure rejected prefixes. }
+    IPsecBGPRouteStatus:
+      type: object
+      additionalProperties: false
+      required: [prefix, slot]
+      properties:
+        prefix: { type: string, maxLength: 18, description: Exact approved IPv4 prefix with a verified installed route. }
+        slot: { type: integer, minimum: 1, maximum: 2 }
+    IPsecBGPStatus:
+      type: object
+      additionalProperties: false
+      required: [version, sequence, peers, routes]
+      properties:
+        version: { type: integer, enum: [1], x-enum-varnames: [IPsecBGPStatusVersion1] }
+        sequence: { type: integer, format: uint64, minimum: 1, maximum: 9007199254740991 }
+        peers:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: "#/components/schemas/IPsecBGPPeerStatus" }
+        routes:
+          type: array
+          maxItems: 64
+          items: { $ref: "#/components/schemas/IPsecBGPRouteStatus" }
     IPsecConnectionStatus:
       type: object
       additionalProperties: false
       required: [observed_at, tunnels]
       properties:
+        bgp: { $ref: "#/components/schemas/IPsecBGPStatus" }
         recovery_version: { type: integer, enum: [1], description: Explicit recovery contract of the observed delivery. }
         selection_sequence: { type: integer, format: uint64, minimum: 1, maximum: 9007199254740991, description: Monotonic gateway observation sequence for this delivery. }
         active_slot: { type: integer, nullable: true, minimum: 1, maximum: 2, description: Verified active path; absent or null is unknown and is separate from configured preference. }

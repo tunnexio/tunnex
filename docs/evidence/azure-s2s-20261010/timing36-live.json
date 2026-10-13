@@ -1,0 +1,153 @@
+{
+  "observed_at": "2026-10-10T19:24:37.363908+00:00",
+  "source_node_tree": "e26f3fd989956b6e30386b8c7f9b787b89390eb4",
+  "binary_sha256": "0ca387d53be4875aa3a45a7b64b5834383b429c7e842709a589a3669f676269e",
+  "image": "sha256:0634f9dda31e9818d2f525c23d52450337183aa2a7808f7a2c52233eea2c0fd0",
+  "packet_window": {
+    "started_at": "2026-10-10T19:04:05.925063+00:00",
+    "counters": {
+      "fresh_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_udp": {
+        "success": 60,
+        "failure": 0
+      },
+      "existing_tcp": {
+        "success": 60,
+        "failure": 0
+      },
+      "fresh_udp": {
+        "success": 60,
+        "failure": 0
+      }
+    },
+    "checks": {
+      "all_four_zero_failure": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true
+    },
+    "receipt_sha256": "b168e8040676fe41b058a171e76060ec9fe6cf5e16661f04861549b3e22b76e3",
+    "acceptance_passed": true,
+    "application_request_timeout_seconds": 2,
+    "seconds": 60
+  },
+  "packet_validation_sha256": "84734a0028e64ad7e34d274fd61fdbb03353c155062c51e535b971cf53872d34",
+  "dns_wire": {
+    "observed_at": "2026-10-10T19:07:52.147208+00:00",
+    "capture_seconds": 95,
+    "packet_count": 384,
+    "tcp_groups": 32,
+    "all_tcp_handshakes_complete": true,
+    "all_tcp_single_syn_no_reset": true,
+    "synack_delay_ms_range": [
+      18.868,
+      28.979
+    ],
+    "udp_groups": 32,
+    "all_udp_noerror_replies": true,
+    "udp_reply_delay_ms_range": [
+      20.594,
+      29.275
+    ],
+    "outbound_interfaces": [
+      58
+    ],
+    "inbound_interfaces": [
+      58,
+      59
+    ],
+    "first_group_sent_at": "2026-10-10T19:06:47.748984+00:00",
+    "last_group_sent_at": "2026-10-10T19:07:41.105705+00:00",
+    "private_pcap_sha256": "39fd5787f102fb447fbb7eaf8a4db8bd4c594d9d8bdfd37fb27ce1e07d6e4d98",
+    "typed_projection_sha256": "b6a4382233a3bd350e6a01524bfae206da7963bb2e11d97e42c74e883b32b733",
+    "matching_guard_refusals_in_wire_group_time_envelope": [
+      {
+        "time": "2026-10-10T19:06:51.878676466Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_guard_full_read",
+        "elapsed_ms": 588,
+        "context_state": "active",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 41,
+        "guard_verification_ms": 83,
+        "guard_failure_class": "structural_or_read",
+        "socket_ms": 0,
+        "socket_stage": ""
+      },
+      {
+        "time": "2026-10-10T19:07:37.233017927Z",
+        "operation": "dns_after_proof",
+        "stage": "dns_guard_full_read",
+        "elapsed_ms": 655,
+        "context_state": "deadline",
+        "guard_bracket_count": 1,
+        "guard_command_ms": 44,
+        "guard_verification_ms": 0,
+        "guard_failure_class": "context_deadline",
+        "socket_ms": 0,
+        "socket_stage": ""
+      }
+    ],
+    "timing_private_log_sha256": "9fb8413b3aa780ef8246866386975fd81f308904266a77171e8b37594ce27e45"
+  },
+  "fqdn_immediate_grant_probe": {
+    "started_at": "2026-10-10T19:09:25.694128+00:00",
+    "finished_at": "2026-10-10T19:09:40.694876+00:00",
+    "counters": {
+      "fresh_http": {
+        "success": 0,
+        "failure": 4
+      },
+      "persistent_http": {
+        "success": 0,
+        "failure": 4
+      }
+    },
+    "sample_count": 8,
+    "dns_confirmed_samples": 2,
+    "actual_reused_socket_success": false,
+    "receipt_sha256": "8b6bb4965ae24e1406e8ef148f8a7c159c3f52c97055d200de4d63baf45031ea",
+    "acceptance_passed": false
+  },
+  "fqdn_postgrant_generation_wait": {
+    "observed_at": "2026-10-10T19:22:05.817828+00:00",
+    "grant_receipt": {
+      "actual_grant_response_received_at": "2026-10-10T19:18:35.876307+00:00",
+      "pregrant_generation": 514,
+      "pregrant_observed_at": "2026-10-10T19:18:32.221908+00:00"
+    },
+    "postgrant_read_counts": [
+      {
+        "ready": true,
+        "state": "healthy",
+        "status_source": "active_generation",
+        "failure_code": null,
+        "count": 24
+      },
+      {
+        "ready": false,
+        "state": "failed",
+        "status_source": "latest_generation",
+        "failure_code": "timeout",
+        "count": 81
+      }
+    ],
+    "read_log_manifest_sha256": "b4d8698f2409652ce0865d97835ac34e880121a13f7d753b366a307a41421346",
+    "fqdn_grant_present": false,
+    "ip_grant_present": false,
+    "positive_probe_run": false
+  },
+  "postgrant_summary_sha256": "ddcfb43ed832671b90d8e1e24890d03657830e5850639ff6a08ade962335744b",
+  "limits": [
+    "Bounded wire replies do not prove socket delivery, SA authentication, or identify a particular RPC.",
+    "Matching refusal time does not establish a causal relation to any captured DNS exchange.",
+    "Earlier three-second TCP dial failure was outside this capture and remains unresolved.",
+    "No HTTP grant, persistent revoke or expiry acceptance from either failed FQDN attempt.",
+    "No remaining-profile, maximum-prefix, sustained rekey or production stability acceptance."
+  ]
+}

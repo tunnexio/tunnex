@@ -1,0 +1,145 @@
+{
+  "accepted_story_count": 6,
+  "category": "actual_mtu_after_ready_observer_lock_refusal",
+  "known_failure_projection": {
+    "acceptance": false,
+    "category": "readonly_actual_mtu16_refusal_projection",
+    "coordinator": {
+      "artifact_presence": {
+        "after-native.stderr": false,
+        "after-native.stdout": false,
+        "outcome.json": false,
+        "packets-started.json": true,
+        "packets.json": true,
+        "private.stderr": false,
+        "private.stdout": false,
+        "request.json": true,
+        "result.json": false,
+        "timing.json": false
+      },
+      "coordinator_error": {
+        "exception_type": "ValueError",
+        "fixed_reason": "fresh_after_ready_native_refused",
+        "sha256": "39a626b96d43dc98fa18d16ca12ccd4e9778bd4e65d1fdee37f36fd51fe8a9cd",
+        "source_location": {
+          "line": 72,
+          "source": "coordinate-overlap.py"
+        }
+      },
+      "flows": {
+        "existing_tcp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 0.127295,
+          "last_elapsed": 179.231829,
+          "maxgap_seconds": 1.1426559999999881,
+          "samples": 180,
+          "socket_reused": false,
+          "source_preserved": true,
+          "success": 180
+        },
+        "existing_udp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 0.274059,
+          "last_elapsed": 179.39422,
+          "maxgap_seconds": 1.1492529999999874,
+          "samples": 180,
+          "socket_reused": false,
+          "source_preserved": null,
+          "success": 180
+        },
+        "fresh_tcp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 4.4e-05,
+          "last_elapsed": 179.121875,
+          "maxgap_seconds": 1.0026650000000004,
+          "samples": 180,
+          "socket_reused": null,
+          "source_preserved": true,
+          "success": 180
+        },
+        "fresh_udp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 0.248212,
+          "last_elapsed": 179.373541,
+          "maxgap_seconds": 1.1450880000000154,
+          "samples": 180,
+          "socket_reused": null,
+          "source_preserved": null,
+          "success": 180
+        }
+      },
+      "four_ready": true,
+      "fresh-after-ready-native.stderr": {
+        "bytes": 0,
+        "fixed_error": {
+          "exception_type": "unclassified",
+          "fixed_reason": "unclassified",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "source_location": null
+        },
+        "native_status": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fresh-after-ready-native.stdout": {
+        "bytes": 94,
+        "fixed_error": null,
+        "native_status": {
+          "category_matches": false,
+          "receipt_verified": false,
+          "refusal_stage": "entry",
+          "result_json": true
+        },
+        "sha256": "7537cf8c1b4b5c6702dea882a4caf113e6961641a4e4f30bba44b68f8432ea05"
+      },
+      "original_request_binding": true,
+      "packet_elapsed_seconds": 180.000659,
+      "packet_scope": true,
+      "packet_sha256": "a212f94b437261d5ba61972acebce4b566e1bec01d2fb217a5b006db3c0ee72f"
+    },
+    "initial_native": {
+      "category_matches": true,
+      "entry_count": 38,
+      "history_boot_count": 1,
+      "mode_matches": true,
+      "private_run_id": "azure-profile-observe-7b447ca8-cff7-4f8e-81e2-aef7d38b644f",
+      "receipt_sha256": "00124f27ab24bfd8b47f8bc021b18cd4ff38fd8bb1e724bb7222dddef6e8a6c3",
+      "receipt_verified": true,
+      "result_json": true,
+      "static_two_matches": true
+    },
+    "markers": {
+      "coordinator": {
+        "present": true,
+        "private_run_id": "azure-mtu-overlap-2afb2ca6-aced-4773-b3f7-e3e25d122600",
+        "sha256": "4c1a9583fc6547e1c490db646adac134e758bcdc3cc614fdf0375d2527db69b2"
+      },
+      "helper": {
+        "present": false
+      },
+      "recorder": {
+        "present": false
+      }
+    },
+    "mutations": 0,
+    "native_rerun": false,
+    "transport_seconds": 1.666
+  },
+  "mtu_reduction_applied": false,
+  "native_after_entire_window_completed": false,
+  "new_acceptance_slices_closed": 0,
+  "next_step": "Qualify the process-lifetime correction, authenticate the known pre-SET refusal, then execute a distinct once-only attempt with all original native and packet gates.",
+  "original_packet_window_seconds": 180.000659,
+  "packet_failure_count": 0,
+  "per_flow_success_count": 180,
+  "projection_sha256": "227857dec5aede06669e1499308f9d0b64676ea09e9da79248b873ed2b5410db",
+  "raw_records_exported": false,
+  "recorded_at": "2026-10-12T10:37:10.370858+00:00",
+  "restoration_needed": false,
+  "source_diagnosis": "Original in-process prewindow observer retains its flock file descriptor while its parent waits for a child native observer. Child refuses at entry. The unchanged oracle must run in a separate process so exit releases the lock.",
+  "version": 1,
+  "whole_mtu_acceptance_passed": false
+}

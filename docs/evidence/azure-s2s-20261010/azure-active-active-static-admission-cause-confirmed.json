@@ -1,0 +1,92 @@
+{
+  "kind": "owned_azure_static_admission_causal_diagnostic",
+  "recorded_at": "2026-10-11T22:22:35.543862+00:00",
+  "accepted_story_count": 6,
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "open_human_story_numbers": [
+    5,
+    6,
+    9,
+    10,
+    11
+  ],
+  "profile_id": "azure-active-active-static-ipv4-v1",
+  "connection_id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+  "actual_saved_graph": {
+    "entries": 30,
+    "refs": 30,
+    "existing_delivery": false,
+    "valid_reference_graph": false,
+    "valid_guard_projection": false,
+    "domain_refusals": 1,
+    "failing_predecessor_index": 9,
+    "predicate_projection": {
+      "absence_only": true,
+      "cleanup_match": true,
+      "connection_match": true,
+      "gateway_match": true,
+      "index": 9,
+      "local_prefix_match": true,
+      "org_match": true,
+      "ownership_match": true,
+      "predecessor_azure": true,
+      "predecessor_bgp_config_present": true,
+      "predecessor_bgp_valid": true,
+      "predecessor_classic_valid": true,
+      "predecessor_kernel_valid": true,
+      "present": true,
+      "remote_relation": true,
+      "retained_phase": true,
+      "same_domain": false,
+      "site_match": true,
+      "slot_predicates": [
+        {
+          "bgp_transport_match": false,
+          "inside_match": false,
+          "local_address_match": false,
+          "local_identity_match": true,
+          "predecessor_local_address_equals_identity": true,
+          "remote_address_match": true,
+          "remote_identity_match": true,
+          "same_routing_kind": false
+        },
+        {
+          "bgp_transport_match": false,
+          "inside_match": false,
+          "local_address_match": false,
+          "local_identity_match": true,
+          "predecessor_local_address_equals_identity": true,
+          "remote_address_match": true,
+          "remote_identity_match": true,
+          "same_routing_kind": false
+        }
+      ],
+      "successor_azure": true,
+      "successor_bgp_config_present": false,
+      "successor_bgp_valid": true,
+      "successor_classic_valid": true,
+      "successor_kernel_valid": true,
+      "successor_profile_version": 1
+    },
+    "input_sha256": "fb24e9ecbf10bb82aa1074ca5010c262440937a5ed9459fe78ff9deb3d705bd1",
+    "journal_sha256": "e0c3226e1e27215e3edf75df350228feabe10e40aeb79d739a84dee700b420af"
+  },
+  "genuine_underlay_binding": true,
+  "unchanged_deployed_domain_predicate": true,
+  "diagnostic_source_sha256": "c6cef64107dee72addec05cdc8c8ad8c96d899f00128c61aa1709bb5049a2a90",
+  "diagnostic_binary_sha256": "82d2feac67b517891d4d6e9221ce2002fde698fa742d521283eab90b653abb4e",
+  "actual_diagnostic_stdout_sha256": "2fe0e2b3982022207bb1cebd27d607ebe0138aad4a24185c102d2b309b61c91a",
+  "actual_local_result_sha256": "f5b6db81aa2263900e7249a90ff9b0a1707a3d3ec4e179fc09822fccff608995",
+  "native_authority_accepted": false,
+  "static_traffic_accepted": false,
+  "production_patch_deployed": false,
+  "cause": "One fully retained cleanup-only predecessor has a public-identity placeholder for its never-observed local socket. Unchanged cross-profile comparison demands equality with the successors actual observed underlay. Public local identity, remote identity/address, scope, ownership and cleanup references all match. BGP-to-static transport comparison is inapplicable.",
+  "scope": "Pure original-source predicates evaluated against genuinely saved delivery/journal and independently observed underlays. This identifies admission refusal; it does not prove native absence, tunnels, packets or story acceptance."
+}

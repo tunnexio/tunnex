@@ -1,0 +1,8 @@
+{"utc": "2026-10-10T18:33:29.661414+00:00", "started": true, "scope": "Only owned Classic TCP8080/UDP9000 normal API expiry; original two grants always restored; no HA or DNS expiry claim"}
+{"utc": "2026-10-10T18:33:30.867833+00:00", "stage": "native_fresh-pre-expiry", "accepted": true, "capture_sha256": "48a7d0004ddba83a7ac30e9b19202a3e39b72e2412455253b019002a1cdc9d8e"}
+{"utc": "2026-10-10T18:33:30.993940+00:00", "phase": "lease", "completed": true, "receipt_sha256": "82b79d9346da23e24e68da3e05fbda4bc6561356d301b848a0f7fbe791276761"}
+{"utc": "2026-10-10T18:33:38.001906+00:00", "completed": false, "error_type": "ValueError", "expiry_packet_and_native_acceptance": false}
+{"utc": "2026-10-10T18:33:38.126203+00:00", "phase": "restore", "completed": true, "receipt_sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934"}
+{"utc": "2026-10-10T18:33:39.495103+00:00", "stage": "native_restored-allow", "accepted": false, "capture_sha256": "883bdedeb09d5d435d01af2f56c7766db8fd947fc14ecddc4cd97dab16301924"}
+{"utc": "2026-10-10T18:33:47.122616+00:00", "stage": "packet_restored-allow", "accepted": false, "receipt_sha256": "8db4ba1575cabfbe0f362b81b40e8f8de00cd1b9d025c0c33e6975060bc298b5"}
+{"utc": "2026-10-10T18:33:47.243161+00:00", "completed": false, "restore_incomplete_or_unverified": true, "error_type": "ValueError"}

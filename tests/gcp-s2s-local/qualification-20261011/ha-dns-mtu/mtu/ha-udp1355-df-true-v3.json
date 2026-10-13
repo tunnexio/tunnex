@@ -1,0 +1,133 @@
+{
+  "completed": true,
+  "scope": "fixed owned packet observation; no authority/MTU mutation",
+  "profile": "ha",
+  "size": 1355,
+  "df": true,
+  "source_sha256": "073001c83af7a069e798efe50d4f146fc9dd77c2d77ff04e55d8d8cd37e1dc65",
+  "started_at_utc": "2026-10-10T21:07:18Z",
+  "stderr_sha256": "f7616a7370e4bfec1b1976d361cbe09aed492ad029beaf83096cd3d236a23ddc",
+  "observation": {
+    "completed": true,
+    "observer_ready": [
+      {
+        "ready": true,
+        "address": "10.70.0.10",
+        "interface": "ens4",
+        "boot_id": "5d6a0f20-8cc2-45fd-b604-7802d95658f7"
+      },
+      {
+        "ready": true,
+        "address": "10.80.0.10",
+        "interface": "ens4",
+        "boot_id": "b421e753-b6cb-470b-9f86-7df987b08a7b"
+      }
+    ],
+    "ends": [
+      {
+        "stopped": true,
+        "capture_packets": 17,
+        "capture_drops": 0,
+        "counts": {
+          "request_exact": 0,
+          "reply_exact": 0,
+          "malformed_or_overlap": 0,
+          "icmp_frag_needed": [
+            {
+              "mtu": 1382,
+              "source_port": 36872
+            }
+          ],
+          "syn_mss": [
+            {
+              "direction": "reply",
+              "mss": 1342,
+              "source_port": 8080,
+              "destination_port": 40075
+            }
+          ],
+          "exact_datagrams": []
+        },
+        "partial_datagrams": 0,
+        "drain_limit_reached": false,
+        "udp_source_port": 36872,
+        "tcp_source_port": 40075,
+        "scope": "two-ended packet metadata only; no guard/SA/route authority"
+      },
+      {
+        "stopped": true,
+        "capture_packets": 7,
+        "capture_drops": 0,
+        "counts": {
+          "request_exact": 0,
+          "reply_exact": 0,
+          "malformed_or_overlap": 0,
+          "icmp_frag_needed": [],
+          "syn_mss": [
+            {
+              "direction": "request",
+              "mss": 1342,
+              "source_port": 40075,
+              "destination_port": 8080
+            }
+          ],
+          "exact_datagrams": []
+        },
+        "partial_datagrams": 0,
+        "drain_limit_reached": false,
+        "udp_source_port": 36872,
+        "tcp_source_port": 40075,
+        "scope": "two-ended packet metadata only; no guard/SA/route authority"
+      }
+    ],
+    "client_stderr_path": "/tmp/tunnex-gcp-mtu-client-dv3asrp9/client.stderr",
+    "scope": "observation only; fresh full guard/native/API evidence bound separately",
+    "reservation": {
+      "ready": true,
+      "source": "10.70.0.10",
+      "udp_port": 36872,
+      "tcp_port": 40075
+    },
+    "probe": {
+      "completed": true,
+      "udp": {
+        "size": 1355,
+        "df": true,
+        "payload_sha256": "e10e2333b55d8691efcb73c2095559c1ac8e9a8d8b24e289aca85d3c809a9b23",
+        "destination": "10.80.0.10",
+        "source": "10.70.0.10",
+        "source_port": 36872,
+        "outcome": "socket_refusal",
+        "errno": 90,
+        "error_type": "OSError",
+        "exact_response": false,
+        "discovered_ip_mtu": 1382,
+        "elapsed_ms": 1.289,
+        "error_queue": [
+          {
+            "errno": 90,
+            "origin": 2,
+            "type": 3,
+            "code": 4,
+            "info": 1382
+          }
+        ],
+        "error_queue_complete": true
+      },
+      "tcp": {
+        "source": "10.70.0.10",
+        "destination": "10.80.0.10",
+        "port": 8080,
+        "nonce": "e8f76445c4874de486747b7d0861a78a",
+        "source_port": 40075,
+        "outcome": "response",
+        "exact_response": true,
+        "response_sha256": "2b26eb46f238d711cc32bc4fbee832951c44099a1a14cd22ed05be319fb9625f",
+        "elapsed_ms": 7.784
+      }
+    },
+    "observations_complete": true,
+    "client_stderr_sha256": "777593ae215d028305cd716d8cdcf28a2d2dc5c229f4836adcce175c282ec87d",
+    "client_stderr_size": 1364
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "accepted_story_count": 6,
+  "authority_issued": false,
+  "auxiliary_read_sha256": "d15bec09f54e92a69ea2f12c892821e35e2b233ed98d15451e70daeb82d55c47",
+  "category": "actual_outer_refused_readonly_dial_auxiliary_observations",
+  "failed_requests": [
+    {
+      "command": "stats",
+      "connection": {
+        "CompleteWrites": true,
+        "Context": "active",
+        "DeadlineCalled": false,
+        "DeadlineError": "none",
+        "DeadlinePassed": false,
+        "DialCalled": true,
+        "DialError": "socket_dial_refused",
+        "DialPassed": false,
+        "ElapsedMS": 0,
+        "ReadBytes": 0,
+        "ReadCalls": 0,
+        "ReadError": "none",
+        "ReadPackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        },
+        "WriteBytes": 0,
+        "WriteCalls": 0,
+        "WriteError": "none",
+        "WritePackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        }
+      },
+      "worker": 11
+    },
+    {
+      "command": "get-conns",
+      "connection": {
+        "CompleteWrites": true,
+        "Context": "active",
+        "DeadlineCalled": false,
+        "DeadlineError": "none",
+        "DeadlinePassed": false,
+        "DialCalled": true,
+        "DialError": "socket_dial_refused",
+        "DialPassed": false,
+        "ElapsedMS": 0,
+        "ReadBytes": 0,
+        "ReadCalls": 0,
+        "ReadError": "none",
+        "ReadPackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        },
+        "WriteBytes": 0,
+        "WriteCalls": 0,
+        "WriteError": "none",
+        "WritePackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        }
+      },
+      "worker": 12
+    },
+    {
+      "command": "get-conns",
+      "connection": {
+        "CompleteWrites": true,
+        "Context": "active",
+        "DeadlineCalled": false,
+        "DeadlineError": "none",
+        "DeadlinePassed": false,
+        "DialCalled": true,
+        "DialError": "socket_dial_refused",
+        "DialPassed": false,
+        "ElapsedMS": 0,
+        "ReadBytes": 0,
+        "ReadCalls": 0,
+        "ReadError": "none",
+        "ReadPackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        },
+        "WriteBytes": 0,
+        "WriteCalls": 0,
+        "WriteError": "none",
+        "WritePackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        }
+      },
+      "worker": 13
+    },
+    {
+      "command": "get-conns",
+      "connection": {
+        "CompleteWrites": true,
+        "Context": "active",
+        "DeadlineCalled": false,
+        "DeadlineError": "none",
+        "DeadlinePassed": false,
+        "DialCalled": true,
+        "DialError": "socket_dial_refused",
+        "DialPassed": false,
+        "ElapsedMS": 0,
+        "ReadBytes": 0,
+        "ReadCalls": 0,
+        "ReadError": "none",
+        "ReadPackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        },
+        "WriteBytes": 0,
+        "WriteCalls": 0,
+        "WriteError": "none",
+        "WritePackets": {
+          "BodyPartial": false,
+          "Complete": 0,
+          "HeaderPartial": false,
+          "Headers": [],
+          "InvalidLength": false,
+          "Kinds": [],
+          "Overflow": false
+        }
+      },
+      "worker": 15
+    }
+  ],
+  "independent_review_sha256": "7496c7c9055f689e4546ce53dfe425693ae957b2dd6b85e297831878991b6372",
+  "native_log_sha256": "25950ffa56359dbc84938d374a4164ab704ec0bed809cd7c0e39f68e767ecfe8",
+  "observer_binary_sha256": "7c8b2e26ab370666d16c192a596d295d545f6b5024af284fa4c150eb0e470c6a",
+  "original_refused_results": [
+    {
+      "local_result_sha256": "313361ab7fed8647dc21964889e60a181bc72dc14314eded102347a6719b308e",
+      "stage": "final_bracket"
+    },
+    {
+      "local_result_sha256": "7b49d6e5e9f39524a19f65e990c4ac5dbed721227e78c739a2235c784bf11a6b",
+      "stage": "before_bracket"
+    }
+  ],
+  "outer_final_flags": {
+    "binary": true,
+    "identity": true,
+    "journal": false,
+    "manifest": true,
+    "normal": true
+  },
+  "outer_native_receipt_issued": false,
+  "raw_syscall_errno_identified": false,
+  "recorded_at": "2026-10-12T05:05:55.315645+00:00",
+  "scope": "Auxiliary request observations from a refused full outer bracket only. Four failures occurred before any packet read or write, at the bound-helper dial. No current native receipt, DNS acceptance or specific syscall cause inferred.",
+  "source_sha256": "4d79e22a073d32f6712ed8b380e51c07b6589f007573e7cf1870b98de23f4116",
+  "story9_pending_main_slices": 2,
+  "version": 3
+}

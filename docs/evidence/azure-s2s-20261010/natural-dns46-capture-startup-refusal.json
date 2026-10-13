@@ -1,0 +1,115 @@
+{
+  "observed_at": "2026-10-10T21:15:32.378560+00:00",
+  "source_commit": "8a96ce0c",
+  "capture_helper_sha256": "bed61ddb33db95e6c64deecbe3a7b74ddd2220a5b03f96fd7b74366ec5c0ecbc",
+  "capture_return_code": 1,
+  "native_baseline": {
+    "observed_at": "2026-10-10T21:15:32.078339+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+    "private_log_sha256": "01385a942c98ee6f561ed33230f02bf23f0877c936e2b83a257315d4b7904f68",
+    "desired_revision": 46,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 46,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 22,
+      "journal_sha256": "49f73fc647a112dd09ee719606d7183f1f0ad86ecfb19a79fdeb40f517aa23ca",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "observed_at": "2026-10-10T21:15:31.665957552Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    }
+  },
+  "preserved_normal_grants": {
+    "dns": 4,
+    "application": 2,
+    "reverse": 2,
+    "exact_ids_match": true
+  },
+  "capture_private_output_sha256": "13c5da0ab563d1e1f69d725264a8b3767f90cc8896dcc44538c87d9ffdebf425",
+  "capture": {
+    "status": "refused",
+    "category": "owned_capture_refused"
+  },
+  "actual_harness_diagnosis": {
+    "host_node_executable_matches_container_pid1": true,
+    "private_attestation_read_passed": true,
+    "journal_xfrm_interfaces_present": [
+      true,
+      true
+    ],
+    "expected_client_side_interface_in_gateway_namespace": false,
+    "correct_gateway_lan_source_verified": true,
+    "capture_startup_fixed_classes": [
+      [
+        "listening"
+      ],
+      [
+        "listening"
+      ],
+      [
+        "missing_device"
+      ]
+    ]
+  },
+  "limits": [
+    "The initial capture helper used the client-side interface name in the gateway namespace and refused at startup. No packet-path conclusion follows from this failed harness attempt.",
+    "The separate fresh independent native baseline and normal API checks passed; these do not certify capture completeness or DNS stability.",
+    "A subsequent corrected attempt refused journal_bracket_changed in preflight before capture; its private failure remains preserved."
+  ]
+}
